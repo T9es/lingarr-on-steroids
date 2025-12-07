@@ -9,9 +9,16 @@
                     SERVICE_TYPE.DEEPSEEK,
                     SERVICE_TYPE.GEMINI,
                     SERVICE_TYPE.LOCALAI,
-                    SERVICE_TYPE.OPENAI
+                    SERVICE_TYPE.OPENAI,
+                    SERVICE_TYPE.CHUTES
                 ].includes(
-                    serviceType as 'openai' | 'anthropic' | 'localai' | 'gemini' | 'deepseek'
+                    serviceType as
+                        | 'openai'
+                        | 'anthropic'
+                        | 'localai'
+                        | 'gemini'
+                        | 'deepseek'
+                        | 'chutes'
                 )
             " />
         <TranslationSettings
@@ -21,9 +28,16 @@
                     SERVICE_TYPE.DEEPSEEK,
                     SERVICE_TYPE.GEMINI,
                     SERVICE_TYPE.LOCALAI,
-                    SERVICE_TYPE.OPENAI
+                    SERVICE_TYPE.OPENAI,
+                    SERVICE_TYPE.CHUTES
                 ].includes(
-                    serviceType as 'openai' | 'anthropic' | 'localai' | 'gemini' | 'deepseek'
+                    serviceType as
+                        | 'openai'
+                        | 'anthropic'
+                        | 'localai'
+                        | 'gemini'
+                        | 'deepseek'
+                        | 'chutes'
                 )
             " />
         <CustomAiParameters
@@ -33,9 +47,16 @@
                     SERVICE_TYPE.DEEPSEEK,
                     SERVICE_TYPE.GEMINI,
                     SERVICE_TYPE.LOCALAI,
-                    SERVICE_TYPE.OPENAI
+                    SERVICE_TYPE.OPENAI,
+                    SERVICE_TYPE.CHUTES
                 ].includes(
-                    serviceType as 'openai' | 'anthropic' | 'localai' | 'gemini' | 'deepseek'
+                    serviceType as
+                        | 'openai'
+                        | 'anthropic'
+                        | 'localai'
+                        | 'gemini'
+                        | 'deepseek'
+                        | 'chutes'
                 )
             " />
     </div>

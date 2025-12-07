@@ -11,11 +11,13 @@ import { mappingService } from '@/services/mappingService'
 import { directoryService } from '@/services/directoryService'
 import { statisticsService } from '@/services/statisticsService'
 import { logsService } from '@/services/logsService'
+import { chutesService } from '@/services/chutesService'
 
 const services = (axios: AxiosStatic): Services => ({
     setting: settingService(axios),
     subtitle: subtitleService(axios),
     translate: translateService(axios),
+    chutes: chutesService(axios),
     translationRequest: translationRequestService(axios),
     version: versionService(axios),
     media: mediaService(axios),

@@ -138,7 +138,22 @@
       "localAiPlaceholder": "http://ollama:11434/v1/chat/completions",
       "localAiModelPlaceholder": "aya-expanse",
       "batchSupportAvailable": "Batch vertaling is beschikbaar voor deze AI-service. Configureer batch instellingen",
-      "batchSupportLink": "hier"
+      "batchSupportLink": "hier",
+      "overrideUsageLimit": "Dagelijkse gebruikslimiet",
+      "overrideUsageLimitError": "Voer een geldig getal in",
+      "overrideUsageLimitHelp": "Optioneel: beperk hoeveel aanvragen Lingarr per dag mag uitvoeren, zelfs als je abonnement meer toelaat. Laat dit leeg om de volledige limiet te gebruiken.",
+      "chutesUsageTitle": "Chutes-gebruik",
+      "chutesPlan": "Abonnement: {plan}",
+      "chutesPlanUnknown": "Abonnement onbekend.",
+      "refreshUsage": "Vernieuwen",
+      "requestsToday": "Aanvragen vandaag",
+      "unlimited": "Onbeperkt",
+      "overrideLimitLabel": "Limiet override",
+      "noOverride": "Geen",
+      "lastSynced": "Laatst gesynchroniseerd",
+      "chutesMissingApiKey": "Chutes API-sleutel ontbreekt.",
+      "usageLoadError": "Kan gebruiksinformatie niet laden.",
+      "modelSearchPlaceholder": "Zoek modellen..."
     },
     "translate": {
       "title": "Vertaling",

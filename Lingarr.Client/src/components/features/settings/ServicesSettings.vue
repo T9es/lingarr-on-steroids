@@ -10,10 +10,12 @@
                     {{ translate('settings.services.serviceSelect') }}
                 </span>
                 <SelectComponent v-model:selected="serviceType" :options="serviceOptions" />
-                <component
-                    :is="serviceConfigComponent"
-                    v-if="serviceConfigComponent"
-                    @save="saveNotification?.show()" />
+        <component
+            :is="serviceConfigComponent"
+            v-if="serviceConfigComponent"
+            @save="saveNotification?.show()" />
+
+        <ChutesUsageCard v-if="serviceType === SERVICE_TYPE.CHUTES" />
             </div>
 
             <SourceAndTarget @save="saveNotification?.show()" />
@@ -37,6 +39,8 @@ import LocalAiConfig from '@/components/features/settings/services/LocalAiConfig
 import GeminiConfig from '@/components/features/settings/services/GeminiConfig.vue'
 import DeepSeekConfig from '@/components/features/settings/services/DeepSeekConfig.vue'
 import SourceAndTarget from '@/components/features/settings/SourceAndTarget.vue'
+import ChutesConfig from '@/components/features/settings/services/ChutesConfig.vue'
+import ChutesUsageCard from '@/components/features/settings/ChutesUsageCard.vue'
 
 const saveNotification = ref<InstanceType<typeof SaveNotification> | null>(null)
 const settingsStore = useSettingStore()
@@ -60,6 +64,7 @@ const serviceOptions = [
     { value: SERVICE_TYPE.LOCALAI, label: 'Local AI (Custom)' },
     { value: SERVICE_TYPE.MICROSOFT, label: 'Microsoft' },
     { value: SERVICE_TYPE.OPENAI, label: 'OpenAI' },
+    { value: SERVICE_TYPE.CHUTES, label: 'Chutes.ai' },
     { value: SERVICE_TYPE.YANDEX, label: 'Yandex' }
 ]
 
@@ -79,6 +84,8 @@ const serviceConfigComponent = computed(() => {
             return GeminiConfig
         case SERVICE_TYPE.DEEPSEEK:
             return DeepSeekConfig
+        case SERVICE_TYPE.CHUTES:
+            return ChutesConfig
         case SERVICE_TYPE.GOOGLE:
         case SERVICE_TYPE.BING:
         case SERVICE_TYPE.MICROSOFT:

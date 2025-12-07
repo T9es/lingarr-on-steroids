@@ -1,4 +1,5 @@
-﻿using GTranslate.Translators;
+using System.Net.Http;
+using GTranslate.Translators;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Translation;
 
@@ -88,7 +89,15 @@ public class TranslationFactory : ITranslationServiceFactory
                 _serviceProvider.GetRequiredService<ILogger<GoogleGeminiService>>()
             ),
 
+            "chutes" => new ChutesAiService(
+                _serviceProvider.GetRequiredService<ISettingService>(),
+                _serviceProvider.GetRequiredService<ILogger<ChutesAiService>>(),
+                _serviceProvider.GetRequiredService<IChutesUsageService>(),
+                _serviceProvider.GetRequiredService<IHttpClientFactory>()
+            ),
+
             _ => throw new ArgumentException("Unsupported translation service type", nameof(serviceType))
         };
     }
 }
+

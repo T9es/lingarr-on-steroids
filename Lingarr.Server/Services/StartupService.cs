@@ -28,6 +28,12 @@ public class StartupService : IHostedService
         var dbContext = scope.ServiceProvider.GetRequiredService<LingarrDbContext>();
 
         await ApplySettingsFromEnvironment(dbContext);
+        await EnsureSettingsExist(dbContext, new Dictionary<string, string>
+        {
+            { SettingKeys.Translation.Chutes.Model, string.Empty },
+            { SettingKeys.Translation.Chutes.ApiKey, string.Empty },
+            { SettingKeys.Translation.Chutes.UsageLimitOverride, string.Empty }
+        });
 
         await CheckAndUpdateIntegrationSettings(dbContext, "radarr", [
             SettingKeys.Integration.RadarrUrl,
@@ -71,6 +77,32 @@ public class StartupService : IHostedService
         }
     }
 
+    private static async Task EnsureSettingsExist(LingarrDbContext dbContext, IReadOnlyDictionary<string, string> defaults)
+    {
+        var existingKeys = await dbContext.Settings
+            .Where(s => defaults.Keys.Contains(s.Key))
+            .ToDictionaryAsync(s => s.Key, s => s);
+
+        foreach (var entry in defaults)
+        {
+            if (existingKeys.ContainsKey(entry.Key))
+            {
+                continue;
+            }
+
+            dbContext.Settings.Add(new Setting
+            {
+                Key = entry.Key,
+                Value = entry.Value
+            });
+        }
+
+        if (dbContext.ChangeTracker.HasChanges())
+        {
+            await dbContext.SaveChangesAsync();
+        }
+    }
+
     /// <summary>
     /// Applies settings from environment variables to the database.
     /// </summary>
@@ -109,7 +141,11 @@ public class StartupService : IHostedService
             { "DEEPSEEK_MODEL", SettingKeys.Translation.DeepSeek.Model },
             { "DEEPSEEK_API_KEY", SettingKeys.Translation.DeepSeek.ApiKey },
 
-            { "DEEPL_API_KEY", SettingKeys.Translation.DeepL.DeeplApiKey }
+            { "DEEPL_API_KEY", SettingKeys.Translation.DeepL.DeeplApiKey },
+
+            { "CHUTES_MODEL", SettingKeys.Translation.Chutes.Model },
+            { "CHUTES_API_KEY", SettingKeys.Translation.Chutes.ApiKey },
+            { "CHUTES_USAGE_LIMIT_OVERRIDE", SettingKeys.Translation.Chutes.UsageLimitOverride }
         };
 
         foreach (var (envVar, settingKey) in environmentSettings)

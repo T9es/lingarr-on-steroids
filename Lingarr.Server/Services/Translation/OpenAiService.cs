@@ -15,7 +15,11 @@ namespace Lingarr.Server.Services.Translation;
 
 public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTranslationService
 {
-    private readonly string? _endpoint = "https://api.openai.com/v1/";
+    protected virtual string ModelSettingKey => SettingKeys.Translation.OpenAi.Model;
+    protected virtual string ApiKeySettingKey => SettingKeys.Translation.OpenAi.ApiKey;
+    protected virtual string EndpointBase => "https://api.openai.com/v1/";
+
+    private readonly string _endpoint;
     private string? _prompt;
     private string? _model;
     private string? _apiKey;
@@ -35,6 +39,7 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
         : base(settings, logger, "/app/Statics/ai_languages.json")
     {
         _httpClient = httpClient ?? new HttpClient();
+        _endpoint = EndpointBase;
     }
 
     /// <summary>
@@ -55,8 +60,8 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
             if (_initialized) return;
 
             var settings = await _settings.GetSettings([
-                SettingKeys.Translation.OpenAi.Model,
-                SettingKeys.Translation.OpenAi.ApiKey,
+                ModelSettingKey,
+                ApiKeySettingKey,
                 SettingKeys.Translation.AiPrompt,
                 SettingKeys.Translation.AiContextPrompt,
                 SettingKeys.Translation.AiContextPromptEnabled,
@@ -67,8 +72,8 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
                 SettingKeys.Translation.RetryDelayMultiplier
             ]);
 
-            _model = settings[SettingKeys.Translation.OpenAi.Model];
-            _apiKey = settings[SettingKeys.Translation.OpenAi.ApiKey];
+            _model = settings[ModelSettingKey];
+            _apiKey = settings[ApiKeySettingKey];
             _contextPromptEnabled = settings[SettingKeys.Translation.AiContextPromptEnabled];
 
             if (string.IsNullOrEmpty(_model) || string.IsNullOrEmpty(_apiKey))
@@ -238,7 +243,7 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
     /// <param name="targetLanguage">Target language code</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Dictionary mapping position to translated content</returns>
-    public async Task<Dictionary<int, string>> TranslateBatchAsync(
+    public virtual async Task<Dictionary<int, string>> TranslateBatchAsync(
         List<BatchSubtitleItem> subtitleBatch,
         string sourceLanguage,
         string targetLanguage,
@@ -407,9 +412,7 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
     /// <inheritdoc />
     public override async Task<ModelsResponse> GetModels()
     {
-        var apiKey = await _settings.GetSetting(
-            SettingKeys.Translation.OpenAi.ApiKey
-        );
+        var apiKey = await _settings.GetSetting(ApiKeySettingKey);
 
         if (string.IsNullOrEmpty(apiKey))
         {

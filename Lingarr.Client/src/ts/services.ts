@@ -12,6 +12,7 @@ export interface Services {
     setting: ISettingService
     subtitle: ISubtitleService
     translate: ITranslateService
+    chutes: IChutesService
     translationRequest: ITranslationRequestService
     version: IVersionService
     media: IMediaService
@@ -64,6 +65,10 @@ export interface ITranslateService {
     ): Promise<T>
     getLanguages<T>(): Promise<T>
     getModels<T>(): Promise<T>
+}
+
+export interface IChutesService {
+    getUsage<T>(forceRefresh?: boolean): Promise<T>
 }
 
 export interface ITranslationRequestService {

@@ -53,6 +53,13 @@ public static class SettingKeys
             public const string ApiKey = "deepseek_api_key";
         }
 
+        public static class Chutes
+        {
+            public const string Model = "chutes_model";
+            public const string ApiKey = "chutes_api_key";
+            public const string UsageLimitOverride = "chutes_usage_limit_override";
+        }
+
         public static class LibreTranslate
         {
             public const string Url = "libretranslate_url";

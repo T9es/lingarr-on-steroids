@@ -25,9 +25,16 @@
             v-show="isOpen"
             ref="clickOutside"
             class="border-accent bg-primary absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md border shadow-lg">
-            <li v-if="!sortedOptions.length" class="p-3">{{ noOptions }}</li>
+            <li v-if="enableSearch" class="border-b border-border p-2">
+                <input
+                    v-model="searchQuery"
+                    type="text"
+                    class="w-full rounded border border-border bg-transparent px-2 py-1 text-sm outline-hidden"
+                    :placeholder="translate('settings.services.modelSearchPlaceholder')" />
+            </li>
+            <li v-if="!filteredOptions.length" class="p-3">{{ noOptions }}</li>
             <li
-                v-for="(option, index) in sortedOptions"
+                v-for="(option, index) in filteredOptions"
                 :key="`${option.value}-${index}`"
                 class="cursor-pointer px-4 py-2"
                 :class="{ 'bg-accent/20': isSelected(option.value) }"
@@ -43,6 +50,7 @@ import { Ref, ref, nextTick, computed } from 'vue'
 import CaretRightIcon from '@/components/icons/CaretRightIcon.vue'
 import LoaderCircleIcon from '@/components/icons/LoaderCircleIcon.vue'
 import useClickOutside from '@/composables/useClickOutside'
+import { useI18n } from '@/plugins/i18n'
 
 export interface ISelectOption {
     value: string
@@ -58,6 +66,7 @@ const props = withDefaults(
         loadOnOpen?: boolean
         placeholder?: string
         noOptions?: string
+        enableSearch?: boolean
     }>(),
     {
         label: '',
@@ -65,19 +74,34 @@ const props = withDefaults(
         selected: '',
         placeholder: 'Select items...',
         noOptions: 'Select a source language first.',
-        selectedLabel: ''
+        selectedLabel: '',
+        enableSearch: false
     }
 )
 
 const emit = defineEmits(['update:selected', 'fetch-options'])
+const { translate } = useI18n()
 
 const isOpen: Ref<boolean> = ref(false)
 const isLoading: Ref<boolean> = ref(false)
 const clickOutside: Ref<HTMLElement | undefined> = ref()
 const excludeClickOutside: Ref<HTMLElement | undefined> = ref()
+const searchQuery = ref('')
 
 const sortedOptions = computed(() => {
     return [...props.options].sort((a, b) => a.label.localeCompare(b.label))
+})
+
+const filteredOptions = computed(() => {
+    if (!props.enableSearch || searchQuery.value.trim() === '') {
+        return sortedOptions.value
+    }
+
+    const query = searchQuery.value.toLowerCase()
+    return sortedOptions.value.filter(
+        (option) =>
+            option.label.toLowerCase().includes(query) || option.value.toLowerCase().includes(query)
+    )
 })
 
 const displaySelectedLabel = computed(() => {
@@ -93,6 +117,10 @@ const toggleDropdown = async () => {
     if (isOpen.value && props.loadOnOpen) {
         isLoading.value = true
         emit('fetch-options')
+    }
+
+    if (isOpen.value && props.enableSearch) {
+        searchQuery.value = ''
     }
 
     await nextTick()

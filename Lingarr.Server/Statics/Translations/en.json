@@ -138,7 +138,22 @@
       "localAiPlaceholder": "http://ollama:11434/v1/chat/completions",
       "localAiModelPlaceholder": "aya-expanse",
       "batchSupportAvailable": "Batch translation is available for this AI service. Configure batch settings",
-      "batchSupportLink": "here"
+      "batchSupportLink": "here",
+      "overrideUsageLimit": "Daily usage limit override",
+      "overrideUsageLimitError": "Please enter a valid number",
+      "overrideUsageLimitHelp": "Optional: cap the number of requests Lingarr can make each day, even if your plan allows more. Leave empty to use the full plan limit.",
+      "chutesUsageTitle": "Chutes usage",
+      "chutesPlan": "Plan: {plan}",
+      "chutesPlanUnknown": "Plan information unavailable.",
+      "refreshUsage": "Refresh",
+      "requestsToday": "Requests today",
+      "unlimited": "Unlimited",
+      "overrideLimitLabel": "Limit override",
+      "noOverride": "Not set",
+      "lastSynced": "Last synced",
+      "chutesMissingApiKey": "Chutes API key is missing.",
+      "usageLoadError": "Unable to load usage information.",
+      "modelSearchPlaceholder": "Search models..."
     },
     "translate": {
       "sourceAndTargetTitle": "Source and target translation",

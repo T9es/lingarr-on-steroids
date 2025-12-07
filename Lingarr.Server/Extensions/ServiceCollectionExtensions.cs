@@ -139,6 +139,7 @@ public static class ServiceCollectionExtensions
 
         builder.Services.AddTransient<PathConversionService>();
         builder.Services.AddScoped<IStatisticsService, StatisticsService>();
+        builder.Services.AddSingleton<IChutesUsageService, ChutesUsageService>();
 
         // Add Sync services
         builder.Services.AddScoped<IShowSyncService, ShowSyncService>();

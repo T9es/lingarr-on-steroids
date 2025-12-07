@@ -48,4 +48,34 @@ public class ModelData
     /// </summary>
     [JsonPropertyName("owned_by")]
     public string? OwnedBy { get; set; }
+
+    /// <summary>
+    /// Chutes-specific chute identifier
+    /// </summary>
+    [JsonPropertyName("chute_id")]
+    public string? ChuteId { get; set; }
+
+    /// <summary>
+    /// Pricing data when available.
+    /// </summary>
+    [JsonPropertyName("price")]
+    public ChutesModelPrice? Price { get; set; }
+}
+
+public class ChutesModelPrice
+{
+    [JsonPropertyName("input")]
+    public ChutesModelPriceBreakdown? Input { get; set; }
+
+    [JsonPropertyName("output")]
+    public ChutesModelPriceBreakdown? Output { get; set; }
+}
+
+public class ChutesModelPriceBreakdown
+{
+    [JsonPropertyName("usd")]
+    public decimal? Usd { get; set; }
+
+    [JsonPropertyName("tao")]
+    public decimal? Tao { get; set; }
 }
