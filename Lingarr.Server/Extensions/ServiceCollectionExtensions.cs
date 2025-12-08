@@ -181,9 +181,7 @@ public static class ServiceCollectionExtensions
                 .UseSimpleAssemblyNameTypeSerializer()
                 .UseRecommendedSerializerSettings();
 
-            var dbConnection = Environment.GetEnvironmentVariable("DB_CONNECTION")?.ToLower() 
-                ?? builder.Configuration["DbConnection"]?.ToLower() 
-                ?? "sqlite";
+            var dbConnection = builder.Configuration["DbConnection"]?.ToLower() ?? "sqlite";
             if (dbConnection == "mysql")
             {
                 var connectionString = builder.Configuration.GetConnectionString("MySqlConnection");
