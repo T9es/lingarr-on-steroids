@@ -6,10 +6,10 @@
         <button
             type="button"
             role="switch"
-            :aria-checked="modelValue.toString() === 'true'"
+            :aria-checked="String(modelValue) === 'true'"
             :class="[
                 'border-accent relative inline-flex shrink-0 cursor-pointer items-center border transition-colors duration-200 ease-in-out',
-                modelValue.toString() === 'true' ? 'bg-accent/30' : '',
+                String(modelValue) === 'true' ? 'bg-accent/30' : '',
                 size === 'small'
                     ? 'h-[1.17rem] w-[2.08rem] rounded-sm p-0.5'
                     : 'h-7 w-[3.125rem] rounded-md p-1'
@@ -20,7 +20,7 @@
                 :class="[
                     'bg-accent pointer-events-none inline-block transform ring-0 shadow-sm transition duration-200 ease-in-out',
                     size === 'small' ? 'h-[0.83rem] w-[0.83rem] rounded-sm' : 'h-5 w-5 rounded-md',
-                    modelValue.toString() === 'true'
+                    String(modelValue) === 'true'
                         ? size === 'small'
                             ? 'translate-x-[0.83rem]'
                             : 'translate-x-5'
