@@ -92,4 +92,15 @@ public class MediaController : ControllerBase
         var value = await _mediaService.Threshold(request.MediaType, request.Id, request.Hours);
         return Ok(value);
     }
+
+    /// <summary>
+    /// Toggles the priority status of a specified media item.
+    /// </summary>
+    /// <param name="request">The request object containing the media type and id.</param>
+    [HttpPost("priority")]
+    public async Task<ActionResult<bool>> Priority([FromBody] ExcludeRequest request)
+    {
+        var value = await _mediaService.TogglePriority(request.MediaType, request.Id);
+        return Ok(value);
+    }
 }

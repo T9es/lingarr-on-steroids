@@ -15,6 +15,8 @@ export interface IShow extends IBaseEntity {
     seasons: ISeason[]
     excludeFromTranslation: string
     translationAgeThreshold: string
+    isPriority: boolean
+    priorityDate?: Date | null
 }
 
 export interface IMovie extends IBaseEntity {
@@ -27,6 +29,8 @@ export interface IMovie extends IBaseEntity {
     subtitles?: ISubtitle[]
     excludeFromTranslation: string
     translationAgeThreshold: string
+    isPriority: boolean
+    priorityDate?: Date | null
 }
 
 export interface ITranslationRequest {

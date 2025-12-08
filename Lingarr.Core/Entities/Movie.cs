@@ -13,4 +13,6 @@ public class Movie : BaseEntity, IMedia
     public List<Image> Images { get; set; } = new();
     public bool ExcludeFromTranslation { get; set; }
     public int? TranslationAgeThreshold { get; set; }
+    public bool IsPriority { get; set; }
+    public DateTime? PriorityDate { get; set; }
 }

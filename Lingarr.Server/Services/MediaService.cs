@@ -357,7 +357,53 @@ public class MediaService : IMediaService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error excluding media item. Type: {MediaType}, Id: {Id}", mediaType, id);
+            _logger.LogError(ex, "Error updating threshold for media item. Type: {MediaType}, Id: {Id}", mediaType, id);
+            return false;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> TogglePriority(
+        MediaType mediaType,
+        int id)
+    {
+        try
+        {
+            switch (mediaType)
+            {
+                case MediaType.Movie:
+                    var movie = await _dbContext.Movies.FindAsync(id);
+                    if (movie != null)
+                    {
+                        movie.IsPriority = !movie.IsPriority;
+                        movie.PriorityDate = movie.IsPriority ? DateTime.UtcNow : null;
+                        await _dbContext.SaveChangesAsync();
+                        return true;
+                    }
+                    break;
+
+                case MediaType.Show:
+                    var show = await _dbContext.Shows.FindAsync(id);
+                    if (show != null)
+                    {
+                        show.IsPriority = !show.IsPriority;
+                        show.PriorityDate = show.IsPriority ? DateTime.UtcNow : null;
+                        await _dbContext.SaveChangesAsync();
+                        return true;
+                    }
+                    break;
+
+                default:
+                    _logger.LogWarning("Unsupported media type for priority toggle: {MediaType}", mediaType);
+                    return false;
+            }
+
+            _logger.LogWarning("Media item not found for priority toggle. Type: {MediaType}, Id: {Id}", mediaType, id);
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error toggling priority for media item. Type: {MediaType}, Id: {Id}", mediaType, id);
             return false;
         }
     }

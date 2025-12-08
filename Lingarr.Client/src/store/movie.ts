@@ -49,6 +49,9 @@ export const useMovieStore = defineStore('movie', {
         },
         async updateThreshold(type: MediaType, id: number, hours: string) {
             await services.media.threshold(type, id, hours)
+        },
+        async priority(type: MediaType, id: number) {
+            await services.media.priority(type, id)
         }
     }
 })

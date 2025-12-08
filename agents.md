@@ -187,3 +187,4 @@ Use **Tailwind CSS** utility classes.
 - **Dependencies**: Do not add new heavy NuGet or npm packages without a clear reason.
 - **EF Migrations**: Always use generic steps to apply migrations.
   - To create: `../create-migrations.ps1 "MigrationName"` (powershell script helper)
+  - **IMPORTANT**: If creating migrations manually or if the script fails, you **MUST** ensure the `*.Designer.cs` file is created and includes the `[Migration("...")]` attribute. Without this file, Entity Framework will **silently ignore** the migration.

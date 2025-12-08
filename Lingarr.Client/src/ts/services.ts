@@ -27,17 +27,18 @@ export interface IMediaService {
     movies<T>(
         pageNumber: number,
         searchQuery: string,
-        sortBy: string,
+        orderBy: string,
         ascending: boolean
     ): Promise<T>
     shows<T>(
         pageNumber: number,
         searchQuery: string,
-        sortBy: string,
+        orderBy: string,
         ascending: boolean
     ): Promise<T>
     exclude<T>(mediaType: MediaType, id: number): Promise<T>
     threshold<T>(mediaType: MediaType, id: number, hours: string): Promise<T>
+    priority<T>(mediaType: MediaType, id: number): Promise<T>
 }
 
 export interface ISettingService {

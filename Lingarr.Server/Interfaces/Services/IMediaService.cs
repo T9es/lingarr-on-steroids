@@ -89,4 +89,16 @@ public interface IMediaService
     /// <param name="id">The unique identifier of the media item.</param>
     /// <param name="hours">The amount of hours that needs to be set</param>
     Task<bool> Threshold(MediaType mediaType, int id, int hours);
+    
+    /// <summary>
+    /// Toggles the priority status of a media item.
+    /// </summary>
+    /// <param name="mediaType">The type of media (Movie, Show, Season, or Episode).</param>
+    /// <param name="id">The unique identifier of the media item.</param>
+    /// <returns>
+    /// A task that represents the asynchronous operation. The task result contains a boolean value:
+    /// - true if the priority status was successfully toggled
+    /// - false if the item was not found or an error occurred
+    /// </returns>
+    Task<bool> TogglePriority(MediaType mediaType, int id);
 }

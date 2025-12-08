@@ -76,6 +76,20 @@ const service = (http: AxiosStatic, resource = '/api/media'): IMediaService => (
                     reject(error.response)
                 })
         })
+    },
+    priority<T>(mediaType: MediaType, id: number): Promise<T> {
+        return new Promise((resolve, reject) => {
+            http.post(`${resource}/priority`, {
+                mediaType: mediaType,
+                id: id
+            })
+                .then((response: AxiosResponse<T>) => {
+                    resolve(response.data)
+                })
+                .catch((error: AxiosError) => {
+                    reject(error.response)
+                })
+        })
     }
 })
 

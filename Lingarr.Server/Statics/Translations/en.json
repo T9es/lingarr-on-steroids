@@ -32,8 +32,10 @@
     "title": "Title",
     "subtitles": "Subtitles",
     "exclude": "Exclude",
+    "episodeSubtitles": "Subtitles",
     "ageThreshold": "Delay",
-    "hours": "hours"
+    "hours": "hours",
+    "priority": "Prioritize"
   },
   "tvShows": {
     "title": "Title",
@@ -46,7 +48,8 @@
     "episodeTitle": "Title",
     "episodeSubtitles": "Subtitles",
     "ageThreshold": "Delay",
-    "hours": "hours"
+    "hours": "hours",
+    "priority": "Prioritize"
   },
   "translations": {
     "title": "Title",

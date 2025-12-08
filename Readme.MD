@@ -1,6 +1,6 @@
 ﻿# Lingarr on Steroids
 
-[![Version](https://img.shields.io/github/v/release/ree0/lingarr-on-steroids)](https://github.com/ree0/lingarr-on-steroids/releases)
+[![Version](https://img.shields.io/github/v/release/T9es/lingarr-on-steroids)](https://github.com/T9es/lingarr-on-steroids/releases)
 [![Docker Pulls](https://img.shields.io/docker/pulls/ree0/lingarr-on-steroids.svg)](https://hub.docker.com/r/ree0/lingarr-on-steroids)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-green.svg)](LICENSE)
 [![Discord](https://img.shields.io/discord/1293119073739210885?label=discord&logo=discord)](https://discord.gg/HkubmH2rcR)

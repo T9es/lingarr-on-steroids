@@ -143,7 +143,9 @@ public class AutomatedTranslationJob
 
         var movies = await _dbContext.Movies
             .Where(movie => !movie.ExcludeFromTranslation)
-            .OrderBy(movie => movie.Id)
+            .OrderByDescending(movie => movie.IsPriority)
+            .ThenBy(movie => movie.PriorityDate)
+            .ThenBy(movie => movie.Id)
             .ToListAsync();
 
         if (!movies.Any())
@@ -237,7 +239,9 @@ public class AutomatedTranslationJob
         var episodes = await _dbContext.Episodes
             .Where(episode =>
                 seasons.Select(s => s.Id).Contains(episode.SeasonId) && !episode.ExcludeFromTranslation)
-            .OrderBy(e => e.Id)
+            .OrderByDescending(e => seasons.FirstOrDefault(s => s.Id == e.SeasonId).Show.IsPriority)
+            .ThenBy(e => seasons.FirstOrDefault(s => s.Id == e.SeasonId).Show.PriorityDate)
+            .ThenBy(e => e.Id)
             .ToListAsync();
 
         if (!episodes.Any())

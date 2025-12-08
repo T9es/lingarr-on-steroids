@@ -23,9 +23,15 @@
             <div class="w-full px-4">
                 <div class="border-accent grid grid-cols-12 border-b font-bold">
                     <div class="col-span-5 px-4 py-2">{{ translate('movies.title') }}</div>
-                    <div class="col-span-4 px-4 py-2">{{ translate('movies.subtitles') }}</div>
+                    <div class="col-span-3 px-4 py-2">{{ translate('movies.subtitles') }}</div>
                     <div class="col-span-1 px-4 py-2">
                         {{ translate('movies.exclude') }}
+                    </div>
+                     <div class="col-span-1 px-4 py-2 text-center">
+                        <span class="hidden md:block">
+                            {{ translate('movies.priority') }}
+                        </span>
+                        <span class="block md:hidden">★</span>
                     </div>
                     <div class="col-span-1 px-4 py-2">
                         {{ translate('movies.ageThreshold') }}
@@ -39,7 +45,7 @@
                         <div class="col-span-5 px-4 py-2">
                             {{ item.title }}
                         </div>
-                        <div class="col-span-4 flex flex-wrap items-center gap-2 px-4 py-2">
+                        <div class="col-span-3 flex flex-wrap items-center gap-2 px-4 py-2">
                             <ContextMenu
                                 v-for="(subtitle, index) in item.subtitles"
                                 :key="`${index}-${subtitle.fileName}`"
@@ -61,6 +67,14 @@
                                 size="small"
                                 @toggle:update="
                                     () => movieStore.exclude(MEDIA_TYPE.MOVIE, item.id)
+                                " />
+                        </div>
+                        <div class="col-span-1 flex items-center justify-center px-4 py-2">
+                            <ToggleButton
+                                v-model="item.isPriority"
+                                size="small"
+                                @toggle:update="
+                                    () => movieStore.priority(MEDIA_TYPE.MOVIE, item.id)
                                 " />
                         </div>
                         <div class="col-span-2 flex items-center px-4 py-2" @click.stop>

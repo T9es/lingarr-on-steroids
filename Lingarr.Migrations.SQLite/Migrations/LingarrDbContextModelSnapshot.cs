@@ -15,7 +15,7 @@ namespace Lingarr.Migrations.SQLite.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "9.0.8");
+            modelBuilder.HasAnnotation("ProductVersion", "9.0.11");
 
             modelBuilder.Entity("Lingarr.Core.Entities.DailyStatistics", b =>
                 {
@@ -167,6 +167,10 @@ namespace Lingarr.Migrations.SQLite.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("file_name");
 
+                    b.Property<bool>("IsPriority")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("is_priority");
+
                     b.Property<string>("MediaHash")
                         .HasColumnType("TEXT")
                         .HasColumnName("media_hash");
@@ -174,6 +178,10 @@ namespace Lingarr.Migrations.SQLite.Migrations
                     b.Property<string>("Path")
                         .HasColumnType("TEXT")
                         .HasColumnName("path");
+
+                    b.Property<DateTime?>("PriorityDate")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("priority_date");
 
                     b.Property<int>("RadarrId")
                         .HasColumnType("INTEGER")
@@ -310,10 +318,18 @@ namespace Lingarr.Migrations.SQLite.Migrations
                         .HasColumnType("INTEGER")
                         .HasColumnName("exclude_from_translation");
 
+                    b.Property<bool>("IsPriority")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("is_priority");
+
                     b.Property<string>("Path")
                         .IsRequired()
                         .HasColumnType("TEXT")
                         .HasColumnName("path");
+
+                    b.Property<DateTime?>("PriorityDate")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("priority_date");
 
                     b.Property<int>("SonarrId")
                         .HasColumnType("INTEGER")

@@ -12,6 +12,29 @@
     "tasks": "Taken",
     "logs": "Logs"
   },
+  "movies": {
+    "title": "Titel",
+    "subtitles": "Ondertitels",
+    "exclude": "Uitsluiten",
+    "episodeSubtitles": "Ondertiteling",
+    "ageThreshold": "Vertraging",
+    "hours": "uren",
+    "priority": "Prioriteren"
+  },
+  "tvShows": {
+    "title": "Titel",
+    "exclude": "Uitsluiten",
+    "season": "Seizoen",
+    "episodes": "Afleveringen",
+    "episodesLine": "afleveringen",
+    "specials": "Specials",
+    "episode": "Aflevering",
+    "episodeTitle": "Titel",
+    "episodeSubtitles": "Ondertiteling",
+    "ageThreshold": "Vertraging",
+    "hours": "uren",
+    "priority": "Prioriteren"
+  },
   "statistics": {
     "notAvailable": "Geen statistieken beschikbaar",
     "translationServices": "Vertaaldiensten",
@@ -27,26 +50,6 @@
     "languageStatistics": "Taalstatistieken",
     "translated": "Vertaald",
     "noDataAvailable": "Geen gegevens beschikbaar"
-  },
-  "movies": {
-    "title": "Titel",
-    "subtitles": "Ondertitels",
-    "exclude": "Uitsluiten",
-    "ageThreshold": "Vertraging",
-    "hours": "uren"
-  },
-  "tvShows": {
-    "title": "Titel",
-    "exclude": "Uitsluiten",
-    "season": "Seizoen",
-    "episodes": "Afleveringen",
-    "episodesLine": "afleveringen",
-    "specials": "Specials",
-    "episode": "Aflevering",
-    "episodeTitle": "Titel",
-    "episodeSubtitles": "Ondertitels",
-    "ageThreshold": "Vertraging",
-    "hours": "uren"
   },
   "translations": {
     "title": "Titel",

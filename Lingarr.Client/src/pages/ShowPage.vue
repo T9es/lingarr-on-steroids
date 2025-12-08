@@ -23,7 +23,7 @@
             <div class="w-full px-4">
                 <!-- Shows -->
                 <div class="border-accent grid grid-cols-12 border-b font-bold">
-                    <div class="col-span-8 px-4 py-2">{{ translate('tvShows.title') }}</div>
+                    <div class="col-span-7 px-4 py-2">{{ translate('tvShows.title') }}</div>
                     <div class="col-span-1 px-4 py-2">
                         <span class="hidden md:block">
                             {{ translate('tvShows.exclude') }}
@@ -33,7 +33,13 @@
                     <div class="col-span-1 px-4 py-2">
                         {{ translate('tvShows.ageThreshold') }}
                     </div>
-                    <div class="col-span-2 flex justify-end px-4 py-2">
+                    <div class="col-span-1 px-4 py-2 text-center">
+                        <span class="hidden md:block">
+                            {{ translate('tvShows.priority') }}
+                        </span>
+                        <span class="block md:hidden">★</span>
+                    </div>
+                    <div class="col-span-1 flex justify-end px-4 py-2">
                         <ReloadComponent @toggle:update="showStore.fetch()" />
                     </div>
                 </div>
@@ -41,7 +47,7 @@
                     <div
                         class="border-accent grid cursor-pointer grid-cols-12 border-b"
                         @click="toggleShow(item)">
-                        <div class="col-span-8 flex items-center px-4 py-2">
+                        <div class="col-span-7 flex items-center px-4 py-2">
                             <CaretButton :is-expanded="expandedShow !== item.id" class="pr-2" />
                             {{ item.title }}
                         </div>
@@ -52,8 +58,9 @@
                                 @toggle:update="
                                     () => showStore.exclude(MEDIA_TYPE.SHOW, item.id)
                                 " />
+                                " />
                         </div>
-                        <div class="col-span-3 flex items-center px-4 py-2" @click.stop>
+                        <div class="col-span-2 flex items-center px-4 py-2" @click.stop>
                             <InputComponent
                                 :model-value="item.translationAgeThreshold ?? null"
                                 :placeholder="translate('tvShows.hours')"
@@ -66,6 +73,16 @@
                                         item.translationAgeThreshold = value
                                         showStore.updateThreshold(MEDIA_TYPE.SHOW, item.id, value)
                                     }
+                                " />
+                                    }
+                                " />
+                        </div>
+                        <div class="col-span-1 flex items-center justify-center px-4 py-2" @click.stop>
+                            <ToggleButton
+                                v-model="item.isPriority"
+                                size="small"
+                                @toggle:update="
+                                    () => showStore.priority(MEDIA_TYPE.SHOW, item.id)
                                 " />
                         </div>
                     </div>

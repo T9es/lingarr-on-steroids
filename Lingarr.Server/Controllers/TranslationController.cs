@@ -10,8 +10,8 @@ public class TranslationController : ControllerBase
 {
     private readonly ISettingService _settingService;
     private readonly ILogger<TranslationController> _logger;
-    private const string ConfigPath = "/app/config/translations";
-    private const string DefaultPath = "/app/Statics/Translations";
+    private readonly string ConfigPath = Path.Combine(AppContext.BaseDirectory, "config", "translations");
+    private readonly string DefaultPath = Path.Combine(AppContext.BaseDirectory, "Statics", "Translations");
 
     public TranslationController(
         ISettingService settingService,
