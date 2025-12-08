@@ -178,8 +178,8 @@
       "useBatchTranslationDescription": "Verwerk meerdere ondertitelregels samen in batches om de vertaalefficiëntie en het contextbewustzijn te verbeteren. Houd er rekening mee dat vertalingen van enkele regels met context nog steeds betrouwbaarder en van hogere kwaliteit zijn",
       "maxBatchSize": "Maximale batchgrootte:",
       "maxBatchSizeDescription": "Maximaal aantal ondertitelregels per batch. Laat op 0 voor geen limiet.",
-      "maxRetries": "Maximaal aantal pogingen:",
-      "maxRetriesDescription": "Maximaal aantal pogingen per regel of batch.",
+      "maxRetries": "API-verzoek pogingen:",
+      "maxRetriesDescription": "Hoeveel keer opnieuw proberen wanneer de vertaal-API een fout geeft (limieten, time-outs, etc).",
       "retryDelay": "Vertraging tussen pogingen:",
       "retryDelayDescription": "Initiële vertraging voordat opnieuw geprobeerd wordt, in seconden.",
       "retryDelayMultiplier": "Vertraging vermenigvuldiger bij pogingen:",
@@ -188,8 +188,8 @@
       "maxParallelTranslationsDescription": "Maximaal aantal ondertitelbestanden dat tegelijkertijd wordt vertaald. Hogere waarden versnellen de verwerking maar gebruiken meer API-aanvragen. Stel in op 1 voor sequentiële vertaling.",
       "enableBatchFallback": "Mislukte batches opnieuw proberen:",
       "enableBatchFallbackDescription": "Wanneer een batch vertaling mislukt, automatisch opnieuw proberen met kleinere delen voordat het hele bestand als mislukt wordt gemarkeerd.",
-      "maxBatchSplitAttempts": "Aantal pogingsniveaus:",
-      "maxBatchSplitAttemptsDescription": "Hoe vaak mislukte batches worden gesplitst en opnieuw geprobeerd. Niveau 1 herhaalt de volledige batch, niveau 2 splitst in tweeën, niveau 3 splitst in drieën. Als alle niveaus mislukken, mislukt de vertaaltaak."
+      "maxBatchSplitAttempts": "Batch-splitsingsniveaus:",
+      "maxBatchSplitAttemptsDescription": "Als een batch te groot is, splits in kleinere delen. Niveau 1 = volledige batch, 2 = helften, 3 = derden."
     },
     "subtitle": {
       "title": "Ondertiteling",

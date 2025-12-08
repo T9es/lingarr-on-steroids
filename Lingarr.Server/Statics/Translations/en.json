@@ -177,7 +177,7 @@
       "maxBatchSize": "Max batch size:",
       "maxBatchSizeDescription": "Maximum number of subtitle lines to process in a single batch. Leave at 0 for no limit.",
       "maxRetries": "API request retries:",
-      "maxRetriesDescription": "How many times to retry a failed API call before giving up or splitting the batch.",
+      "maxRetriesDescription": "How many times to retry when the translation API returns an error (rate limits, timeouts, etc).",
       "retryDelay": "Delay between retries:",
       "retryDelayDescription": "Initial delay before retrying, in seconds.",
       "retryDelayMultiplier": "Retry delay multiplier:",
@@ -187,7 +187,7 @@
       "enableBatchFallback": "Retry failed batches:",
       "enableBatchFallbackDescription": "When a batch translation fails, automatically retry with smaller chunks before failing the entire file.",
       "maxBatchSplitAttempts": "Batch split levels:",
-      "maxBatchSplitAttemptsDescription": "After API retries fail, split the batch into smaller chunks. Level 1 = full batch, level 2 = halves, level 3 = thirds. If all fail, the task fails."
+      "maxBatchSplitAttemptsDescription": "If a batch is too large, split it into smaller chunks. Level 1 = full batch, 2 = halves, 3 = thirds."
     },
     "subtitle": {
       "title": "Subtitle",
