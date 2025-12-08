@@ -190,34 +190,13 @@ public static class ServiceCollectionExtensions
                 if (string.IsNullOrWhiteSpace(connectionString))
                 {
                     Console.WriteLine("[Hangfire] Connection string not found in Configuration. Falling back to Environment Variables.");
-                    // Fallback to Env Vars
                     var host = Environment.GetEnvironmentVariable("DB_HOST") ?? "Lingarr.Mysql";
                     var port = Environment.GetEnvironmentVariable("DB_PORT") ?? "3306";
                     var db = Environment.GetEnvironmentVariable("DB_DATABASE") ?? "LingarrMysql";
                     var user = Environment.GetEnvironmentVariable("DB_USERNAME") ?? "LingarrMysql";
                     var pass = Environment.GetEnvironmentVariable("DB_PASSWORD") ?? "Secret1234";
-
-                    // CRITICAL FIX: Resolve IP address manually to bypass potential MySqlConnector/Docker DNS issues
-                    try 
-                    {
-                        var addresses = System.Net.Dns.GetHostAddresses(host);
-                        var ipv4 = addresses.FirstOrDefault(a => a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork);
-                        if (ipv4 != null)
-                        {
-                            Console.WriteLine($"[Hangfire] Resolved '{host}' to IPv4: {ipv4}");
-                            host = ipv4.ToString();
-                        }
-                        else 
-                        {
-                            Console.WriteLine($"[Hangfire] Could not resolve '{host}' to an IPv4 address. Keeping original hostname.");
-                        }
-                    }
-                    catch (Exception dnsEx)
-                    {
-                         Console.WriteLine($"[Hangfire] DNS Resolution warning for '{host}': {dnsEx.Message}");
-                    }
                     
-                    connectionString = $"Server={host};Port={port};Database={db};Uid={user};Pwd={pass};Allow User Variables=True;SslMode=None";
+                    connectionString = $"Server={host};Port={port};Database={db};Uid={user};Pwd={pass};Allow User Variables=True";
                 }
                 else 
                 {
