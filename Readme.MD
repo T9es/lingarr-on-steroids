@@ -1,12 +1,22 @@
-﻿# Lingarr: Subtitle Translation Made Easy
+﻿# Lingarr on Steroids
 
-[![Version](https://img.shields.io/github/v/release/lingarr-translate/lingarr)](https://github.com/lingarr-translate/lingarr/releases)
+[![Version](https://img.shields.io/github/v/release/ree0/lingarr-on-steroids)](https://github.com/ree0/lingarr-on-steroids/releases)
 [![Docker Pulls](https://img.shields.io/docker/pulls/ree0/lingarr-on-steroids.svg)](https://hub.docker.com/r/ree0/lingarr-on-steroids)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-green.svg)](LICENSE)
 [![Discord](https://img.shields.io/discord/1293119073739210885?label=discord&logo=discord)](https://discord.gg/HkubmH2rcR)
 
-Lingarr is an application that leverages translation technologies to automatically translate subtitle files to your desired target language. 
-With support for multiple translation services including LibreTranslate, DeepL, and various AI providers, Lingarr offers a flexible solution for all your subtitle translation needs.
+**Lingarr on Steroids** is a specialized fork of the original Lingarr application, re-engineered for performance, reliability, and cost-effective AI usage.
+
+While staying true to the core mission of seamless **Radarr** and **Sonarr** subtitle translation, this fork introduces significant architectural improvements for power users.
+
+## Key Enhancements vs Original
+*   **Parallel Translation Engine**: Processes multiple files simultaneously using a semaphore-based concurrency system (configurable limits), drastically reducing library scan times.
+*   **Chutes.ai Integration**: First-class support for Chutes.ai, enabling high-quality LLM translations at a fraction of the cost of OpenAI/Anthropic.
+*   **Resilient Batching**: Implements a "Graduated Retry" system. If a large batch fails, it automatically splits into smaller chunks (and eventually single items) to ensure successful translation without wasting tokens.
+*   **Simplified Automation**: Replaces raw cron expressions with a user-friendly, preset-based scheduler UI.
+*   **Enhanced Stability**: Improved error handling, better Radarr/Sonarr connectivity checks, and a polished UI for clearer status visibility.
+
+Supports all major translation services including LibreTranslate, DeepL, OpenAI, Anthropic, Chutes.ai, LocalAI, and more.
 
 https://github.com/user-attachments/assets/be753d77-ca53-4867-adea-363145613d2b
 
@@ -17,6 +27,7 @@ Lingarr now offers multiple services for automated translation:
 - **Local AI (with Ollama, or any other OpenAPI compatible model/router)**
 - **[DeepL](https://www.deepl.com/)**  (without pt-BR)
 - **[Anthropic](https://www.anthropic.com/)**
+- **[Chutes.ai](https://chutes.ai)**
 - **[OpenAI](https://openai.com/)**
 - **[DeepSeek](https://deepseek.com)**
 - **[Gemini](https://gemini.google.com/)**

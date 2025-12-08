@@ -8,6 +8,12 @@ Lingarr on Steroids is an advanced subtitling and translation tool that integrat
 - **Type**: Monorepo (Client + Server)
 - **Primary Languages**: C# (Backend), TypeScript (Frontend)
 
+### 1.1 Key Features & Recent Updates
+- **Parallel Translation**: Implemented using `SemaphoreSlim` in `TranslationJob`. Configurable via `MAX_CONCURRENT_JOBS` or settings.
+- **Chutes.ai Integration**: Dedicated service `ChutesService` for cost-effective AI translation. Includes usage tracking and rate-limiting buffers.
+- **Smart Scheduling**: Automation pages now use a simplified scheduler component instead of raw cron expressions.
+- **Resilient Batching**: `BatchFallbackService` handles partial failures in translation batches with graduated retries (Full -> Split -> Itemized).
+
 ## 2. Technology Stack
 
 ### Backend (`Lingarr.Server`)
