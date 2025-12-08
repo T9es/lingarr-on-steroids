@@ -1,14 +1,14 @@
 ﻿<template>
-    <CardComponent :title="translate('settings.integrations.title')">
+    <SaveNotification ref="saveNotification" />
+    <CardComponent :title="translate('settings.integrations.radarrHeader')">
+        <template #icon>
+            <RadarrIcon />
+        </template>
         <template #description>
             {{ translate('settings.integrations.description') }}
         </template>
         <template #content>
-            <SaveNotification ref="saveNotification" />
             <div class="flex flex-col space-y-2">
-                <span class="font-semibold">
-                    {{ translate('settings.integrations.radarrHeader') }}
-                </span>
                 <InputComponent
                     v-model="radarrUrl"
                     validation-type="url"
@@ -25,10 +25,19 @@
                     :error-message="translate('settings.integrations.radarrApiKeyError')"
                     @update:validation="(val) => (isValid.radarrApiKey = val)" />
             </div>
+            <div v-translate="'settings.integrations.reindexTask'" />
+        </template>
+    </CardComponent>
+
+    <CardComponent :title="translate('settings.integrations.sonarrHeader')">
+        <template #icon>
+            <SonarrIcon />
+        </template>
+        <template #description>
+            {{ translate('settings.integrations.description') }}
+        </template>
+        <template #content>
             <div class="flex flex-col space-y-2">
-                <span class="font-semibold">
-                    {{ translate('settings.integrations.sonarrHeader') }}
-                </span>
                 <InputComponent
                     v-model="sonarrUrl"
                     validation-type="url"
@@ -57,6 +66,8 @@ import SaveNotification from '@/components/common/SaveNotification.vue'
 import { SETTINGS } from '@/ts'
 import CardComponent from '@/components/common/CardComponent.vue'
 import InputComponent from '@/components/common/InputComponent.vue'
+import RadarrIcon from '@/components/icons/RadarrIcon.vue'
+import SonarrIcon from '@/components/icons/SonarrIcon.vue'
 
 const isValid = reactive({
     radarrUrl: false,
@@ -104,3 +115,4 @@ const sonarrUrl = computed({
     }
 })
 </script>
+
