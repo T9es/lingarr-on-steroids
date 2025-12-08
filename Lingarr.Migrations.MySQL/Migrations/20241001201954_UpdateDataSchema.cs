@@ -85,7 +85,7 @@ namespace Lingarr.Migrations.MySQL.Migrations
                 values: new object[,]
                 {
                     { "automation_enabled", "false" },
-                    { "service_type", "libretranslate" },
+                    { "service_type", "localai" },
                     { "libretranslate_url", Environment.GetEnvironmentVariable("LIBRETRANSLATE_API") ?? "http://libretranslate:5000" },
                     { "max_translations_per_run", "10" },
                     { "deepl_api_key", "" },

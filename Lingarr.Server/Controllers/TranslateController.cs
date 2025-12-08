@@ -61,7 +61,7 @@ public class TranslateController : ControllerBase
         [FromBody] TranslateAbleSubtitleLine translateAbleSubtitleLine,
         CancellationToken cancellationToken)
     {
-        var serviceType = await _settings.GetSetting(SettingKeys.Translation.ServiceType) ?? "libretranslate";
+        var serviceType = await _settings.GetSetting(SettingKeys.Translation.ServiceType) ?? "localai";
 
         var translationService = _translationServiceFactory.CreateTranslationService(serviceType);
         var subtitleTranslator = new SubtitleTranslationService(translationService, _logger);
@@ -104,7 +104,7 @@ public class TranslateController : ControllerBase
     [HttpGet("languages")]
     public async Task<List<SourceLanguage>> GetLanguages()
     {
-        var serviceType = await _settings.GetSetting("service_type") ?? "libretranslate";
+        var serviceType = await _settings.GetSetting("service_type") ?? "localai";
         var translationService = _translationServiceFactory.CreateTranslationService(serviceType);
 
         return await translationService.GetLanguages();
@@ -120,7 +120,7 @@ public class TranslateController : ControllerBase
     {
         try
         {
-            var serviceType = await _settings.GetSetting(SettingKeys.Translation.ServiceType) ?? "libretranslate";
+            var serviceType = await _settings.GetSetting(SettingKeys.Translation.ServiceType) ?? "localai";
             var translationService = _translationServiceFactory.CreateTranslationService(serviceType);
 
             // Service-specific logic to get models
