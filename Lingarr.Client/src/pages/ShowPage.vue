@@ -58,7 +58,6 @@
                                 @toggle:update="
                                     () => showStore.exclude(MEDIA_TYPE.SHOW, item.id)
                                 " />
-                                " />
                         </div>
                         <div class="col-span-2 flex items-center px-4 py-2" @click.stop>
                             <InputComponent
@@ -72,8 +71,6 @@
                                     (value) => {
                                         item.translationAgeThreshold = value
                                         showStore.updateThreshold(MEDIA_TYPE.SHOW, item.id, value)
-                                    }
-                                " />
                                     }
                                 " />
                         </div>
