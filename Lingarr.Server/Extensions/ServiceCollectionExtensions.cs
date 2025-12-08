@@ -170,10 +170,12 @@ public static class ServiceCollectionExtensions
         builder.Services.AddHangfireServer(options =>
         {
             options.Queues = ["movies", "shows", "system", "translation", "default"];
+            // Default to 20 workers so the ParallelTranslationLimiter can control actual concurrency
+            // The semaphore-based limiter respects the UI setting for max_parallel_translations
             options.WorkerCount =
                 int.TryParse(Environment.GetEnvironmentVariable("MAX_CONCURRENT_JOBS"), out int maxConcurrentJobs)
                     ? maxConcurrentJobs
-                    : 1;
+                    : 20;
         });
 
         builder.Services.AddHangfire(configuration =>

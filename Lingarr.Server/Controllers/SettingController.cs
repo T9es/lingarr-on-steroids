@@ -80,4 +80,21 @@ public class SettingController : ControllerBase
 
         return BadRequest("Some settings were not found or could not be updated.");
     }
+    
+    /// <summary>
+    /// Retrieves system configuration limits.
+    /// </summary>
+    /// <returns>Returns system limits including max concurrent translations.</returns>
+    [HttpGet("system/limits")]
+    public ActionResult<object> GetSystemLimits()
+    {
+        var maxConcurrentJobs = int.TryParse(
+            Environment.GetEnvironmentVariable("MAX_CONCURRENT_JOBS"), 
+            out int value) ? value : 20;
+        
+        return Ok(new
+        {
+            MaxConcurrentTranslations = maxConcurrentJobs
+        });
+    }
 }

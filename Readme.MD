@@ -96,7 +96,7 @@ These variables can be used
 | **Environment Variable**                          | **Description**                                                                   |
 |---------------------------------------------------|-----------------------------------------------------------------------------------|
 | `ASPNETCORE_URLS=http://+:9876`                   | The internal port that Lingarr will listen on inside the container.               |
-| `MAX_CONCURRENT_JOBS=1`                           | Sets the amount of jobs that can run concurrently, defaults to 1.                 |
+| `MAX_CONCURRENT_JOBS`                             | Hangfire worker pool size (default: 20). The UI setting "Concurrent file translations" controls actual translation concurrency. |
 | `DB_CONNECTION=mysql`                             | Specifies the database connection type. Options are `mysql` or `sqlite`.          |
 | `DB_HOST=Lingarr.Mysql`                           | The hostname for the MySQL database (required when using `mysql`).                |
 | `DB_PORT=3306`                                    | The port for the MySQL database (required when using `mysql`).                    |

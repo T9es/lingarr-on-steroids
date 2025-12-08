@@ -195,6 +195,7 @@
       "retryDelayMultiplierDescription": "Factor waarmee de vertraging na elke poging toeneemt.",
       "maxParallelTranslations": "Gelijktijdige bestandsvertalingen:",
       "maxParallelTranslationsDescription": "Maximaal aantal ondertitelbestanden dat tegelijkertijd wordt vertaald. Hogere waarden versnellen de verwerking maar gebruiken meer API-aanvragen. Stel in op 1 voor sequentiële vertaling.",
+      "maxParallelTranslationsLimit": "Maximum: {max}",
       "enableBatchFallback": "Mislukte batches opnieuw proberen:",
       "enableBatchFallbackDescription": "Wanneer een batch vertaling mislukt, automatisch opnieuw proberen met kleinere delen voordat het hele bestand als mislukt wordt gemarkeerd.",
       "maxBatchSplitAttempts": "Batch-splitsingsniveaus:",

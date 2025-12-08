@@ -48,6 +48,17 @@ const service = (http: AxiosStatic, resource = '/api/setting'): ISettingService 
                     reject(error.response)
                 })
         })
+    },
+    getSystemLimits<T>(): Promise<T> {
+        return new Promise((resolve, reject) => {
+            http.get(`${resource}/system/limits`)
+                .then((response: AxiosResponse<T>) => {
+                    resolve(response.data)
+                })
+                .catch((error: AxiosError) => {
+                    reject(error.response)
+                })
+        })
     }
 })
 

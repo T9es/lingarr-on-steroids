@@ -101,20 +101,24 @@
                     {{ translate('settings.translation.maxParallelTranslations') }}
                 </span>
                 {{ translate('settings.translation.maxParallelTranslationsDescription') }}
+                <span v-if="maxConcurrentLimit" class="text-xs text-secondary-content/60">
+                    {{ translate('settings.translation.maxParallelTranslationsLimit').format({ max: maxConcurrentLimit }) }}
+                </span>
             </div>
             <InputComponent
                 v-model="maxParallelTranslations"
                 validation-type="number"
-                placeholder="1"
+                :placeholder="'1'"
+                :max="maxConcurrentLimit"
                 @update:validation="(val) => (isValid.maxParallelTranslations = val)" />
         </template>
     </CardComponent>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, reactive } from 'vue'
+import { computed, ref, reactive, onMounted } from 'vue'
 import { useSettingStore } from '@/store/setting'
-import { SETTINGS } from '@/ts'
+import { SETTINGS, services } from '@/ts'
 import CardComponent from '@/components/common/CardComponent.vue'
 import SaveNotification from '@/components/common/SaveNotification.vue'
 import InputComponent from '@/components/common/InputComponent.vue'
@@ -124,6 +128,7 @@ import { useI18n } from '@/plugins/i18n'
 const { translate } = useI18n()
 const saveNotification = ref<InstanceType<typeof SaveNotification> | null>(null)
 const settingsStore = useSettingStore()
+const maxConcurrentLimit = ref<number>(20)
 const isValid = reactive({
     maxBatchSize: true,
     maxRetries: true,
@@ -131,6 +136,15 @@ const isValid = reactive({
     retryDelayMultiplier: true,
     maxParallelTranslations: true,
     maxBatchSplitAttempts: true
+})
+
+onMounted(async () => {
+    try {
+        const limits = await services.setting.getSystemLimits<{ maxConcurrentTranslations: number }>()
+        maxConcurrentLimit.value = limits.maxConcurrentTranslations
+    } catch (error) {
+        console.error('Failed to fetch system limits:', error)
+    }
 })
 
 const useBatchTranslation = computed({

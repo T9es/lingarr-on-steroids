@@ -46,6 +46,7 @@ export interface ISettingService {
     getSettings<T>(keys: string[]): Promise<T>
     setSetting(key: string, value: string): Promise<void>
     setSettings(keys: ISettings): Promise<void>
+    getSystemLimits<T>(): Promise<T>
 }
 
 export interface ISubtitleService {

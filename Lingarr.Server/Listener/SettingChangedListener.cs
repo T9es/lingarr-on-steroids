@@ -3,6 +3,7 @@ using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Server.Hubs;
 using Lingarr.Server.Interfaces.Services;
+using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Jobs;
 using Lingarr.Server.Services;
 using Microsoft.AspNetCore.SignalR;
@@ -71,6 +72,11 @@ public class SettingChangedListener
             {
                 "batchTranslation", ("Action", "BatchTranslation", [
                     SettingKeys.Translation.UseBatchTranslation
+                ])
+            },
+            {
+                "parallelTranslations", ("Action", "ParallelTranslations", [
+                    SettingKeys.Translation.MaxParallelTranslations
                 ])
             }
         };
@@ -223,6 +229,16 @@ public class SettingChangedListener
                     {
                         await settingService.SetSetting(SettingKeys.Translation.AiContextPromptEnabled, "false");
                     }
+                    break;
+                    
+                case "ParallelTranslations":
+                    var parallelLimiter = _serviceProvider.GetRequiredService<IParallelTranslationLimiter>();
+                    var maxParallelSetting = await settingService.GetSetting(SettingKeys.Translation.MaxParallelTranslations);
+                    var maxParallel = int.TryParse(maxParallelSetting, out var val) && val > 0 ? val : 1;
+                    await parallelLimiter.ReconfigureAsync(maxParallel);
+                    _logger.LogInformation(
+                        "Settings changed for |Green|ParallelTranslations|/Green|. Reconfigured to |Orange|{MaxParallel}|/Orange| concurrent translations.",
+                        maxParallel);
                     break;
             }
         }
