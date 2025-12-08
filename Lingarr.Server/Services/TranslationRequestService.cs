@@ -26,6 +26,7 @@ public class TranslationRequestService : ITranslationRequestService
     private readonly IStatisticsService _statisticsService;
     private readonly IMediaService _mediaService;
     private readonly ISettingService _settingService;
+    private readonly IBatchFallbackService _batchFallbackService;
     private readonly ILogger<TranslationRequestService> _logger;
     static private Dictionary<int, CancellationTokenSource> _asyncTranslationJobs = new Dictionary<int, CancellationTokenSource>();
 
@@ -38,6 +39,7 @@ public class TranslationRequestService : ITranslationRequestService
         IStatisticsService statisticsService,
         IMediaService mediaService,
         ISettingService settingService,
+        IBatchFallbackService batchFallbackService,
         ILogger<TranslationRequestService> logger)
     {
         _dbContext = dbContext;
@@ -48,6 +50,7 @@ public class TranslationRequestService : ITranslationRequestService
         _statisticsService = statisticsService;
         _mediaService = mediaService;
         _settingService = settingService;
+        _batchFallbackService = batchFallbackService;
         _logger = logger;
     }
 
@@ -327,7 +330,9 @@ public class TranslationRequestService : ITranslationRequestService
                 SettingKeys.Translation.UseBatchTranslation,
                 SettingKeys.Translation.ServiceType,
                 SettingKeys.Translation.MaxBatchSize,
-                SettingKeys.Translation.StripSubtitleFormatting
+                SettingKeys.Translation.StripSubtitleFormatting,
+                SettingKeys.Translation.EnableBatchFallback,
+                SettingKeys.Translation.MaxBatchSplitAttempts
             ]);
             var serviceType = settings[SettingKeys.Translation.ServiceType];
             var translationService = _translationServiceFactory.CreateTranslationService(
@@ -351,17 +356,21 @@ public class TranslationRequestService : ITranslationRequestService
                 _logger.LogInformation("Processing batch translation request with {lineCount} lines from {sourceLanguage} to {targetLanguage}",
                     translateAbleContent.Lines.Count, translateAbleContent.SourceLanguage, translateAbleContent.TargetLanguage);
 
-                var subtitleTranslator = new SubtitleTranslationService(translationService, _logger);
+                var subtitleTranslator = new SubtitleTranslationService(translationService, _logger, null, _batchFallbackService);
                 var totalSize = translateAbleContent.Lines.Count;
                 var maxBatchSize = settings[SettingKeys.Translation.MaxBatchSize];
                 var stripSubtitleFormatting = settings[SettingKeys.Translation.StripSubtitleFormatting] == "true";
+                var enableBatchFallback = settings[SettingKeys.Translation.EnableBatchFallback] == "true";
+                var maxBatchSplitAttempts = int.TryParse(settings[SettingKeys.Translation.MaxBatchSplitAttempts], out var splitAttempts)
+                    ? splitAttempts
+                    : 3;
                 var maxSize = int.TryParse(maxBatchSize,
                     out var batchSize)
                     ? batchSize
                     : 10000;
 
-                _logger.LogDebug("Batch translation configuration: maxSize={maxSize}, stripFormatting={stripFormatting}, totalLines={totalLines}",
-                    maxSize, stripSubtitleFormatting, totalSize);
+                _logger.LogDebug("Batch translation configuration: maxSize={maxSize}, stripFormatting={stripFormatting}, totalLines={totalLines}, fallback={fallback}",
+                    maxSize, stripSubtitleFormatting, totalSize, enableBatchFallback);
 
                 if (maxSize != 0 && totalSize > maxSize)
                 {
@@ -401,6 +410,8 @@ public class TranslationRequestService : ITranslationRequestService
                     translateAbleContent.SourceLanguage,
                     translateAbleContent.TargetLanguage,
                     stripSubtitleFormatting,
+                    enableBatchFallback,
+                    maxBatchSplitAttempts,
                     cancellationToken);
 
                 results = subtitleItems.Select(subtitle => new BatchTranslatedLine
@@ -594,6 +605,8 @@ public class TranslationRequestService : ITranslationRequestService
             sourceLanguage,
             targetLanguage,
             stripSubtitleFormatting,
+            false, // Fallback disabled for chunked batches (already chunking)
+            3,
             cancellationToken);
 
         results.AddRange(batch.Select(subtitle => new BatchTranslatedLine

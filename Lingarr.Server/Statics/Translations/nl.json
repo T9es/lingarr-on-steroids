@@ -176,6 +176,8 @@
       "description": "Pas de instellingen van het vertaalverzoek aan door batchgrootte of retry-opties te wijzigen.",
       "useBatchTranslation": "Gebruik batch vertaling",
       "useBatchTranslationDescription": "Verwerk meerdere ondertitelregels samen in batches om de vertaalefficiëntie en het contextbewustzijn te verbeteren. Houd er rekening mee dat vertalingen van enkele regels met context nog steeds betrouwbaarder en van hogere kwaliteit zijn",
+      "maxBatchSize": "Maximale batchgrootte:",
+      "maxBatchSizeDescription": "Maximaal aantal ondertitelregels per batch. Laat op 0 voor geen limiet.",
       "maxRetries": "Maximaal aantal pogingen:",
       "maxRetriesDescription": "Maximaal aantal pogingen per regel of batch.",
       "retryDelay": "Vertraging tussen pogingen:",
@@ -183,7 +185,11 @@
       "retryDelayMultiplier": "Vertraging vermenigvuldiger bij pogingen:",
       "retryDelayMultiplierDescription": "Factor waarmee de vertraging na elke poging toeneemt.",
       "maxParallelTranslations": "Gelijktijdige bestandsvertalingen:",
-      "maxParallelTranslationsDescription": "Maximaal aantal ondertitelbestanden dat tegelijkertijd wordt vertaald. Hogere waarden versnellen de verwerking maar gebruiken meer API-aanvragen. Stel in op 1 voor sequentiële vertaling."
+      "maxParallelTranslationsDescription": "Maximaal aantal ondertitelbestanden dat tegelijkertijd wordt vertaald. Hogere waarden versnellen de verwerking maar gebruiken meer API-aanvragen. Stel in op 1 voor sequentiële vertaling.",
+      "enableBatchFallback": "Mislukte batches opnieuw proberen:",
+      "enableBatchFallbackDescription": "Wanneer een batch vertaling mislukt, automatisch opnieuw proberen met kleinere delen voordat het hele bestand als mislukt wordt gemarkeerd.",
+      "maxBatchSplitAttempts": "Aantal pogingsniveaus:",
+      "maxBatchSplitAttemptsDescription": "Hoe vaak mislukte batches worden gesplitst en opnieuw geprobeerd. Niveau 1 herhaalt de volledige batch, niveau 2 splitst in tweeën, niveau 3 splitst in drieën. Als alle niveaus mislukken, mislukt de vertaaltaak."
     },
     "subtitle": {
       "title": "Ondertiteling",

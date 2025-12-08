@@ -21,11 +21,47 @@
                     }}
                 </span>
             </ToggleButton>
+            <div v-if="useBatchTranslation == 'true'" class="flex flex-col space-x-2">
+                <span class="font-semibold">
+                    {{ translate('settings.translation.maxBatchSize') }}
+                </span>
+                {{ translate('settings.translation.maxBatchSizeDescription') }}
+            </div>
             <InputComponent
                 v-if="useBatchTranslation == 'true'"
                 v-model="maxBatchSize"
                 validation-type="number"
+                placeholder="50"
                 @update:validation="(val) => (isValid.maxBatchSize = val)" />
+
+            <!-- Batch Fallback Settings -->
+            <div v-if="useBatchTranslation == 'true'" class="flex flex-col space-x-2">
+                <span class="font-semibold">
+                    {{ translate('settings.translation.enableBatchFallback') }}
+                </span>
+                {{ translate('settings.translation.enableBatchFallbackDescription') }}
+            </div>
+            <ToggleButton v-if="useBatchTranslation == 'true'" v-model="enableBatchFallback">
+                <span class="text-primary-content text-sm font-medium">
+                    {{
+                        enableBatchFallback == 'true'
+                            ? translate('common.enabled')
+                            : translate('common.disabled')
+                    }}
+                </span>
+            </ToggleButton>
+            <div v-if="useBatchTranslation == 'true' && enableBatchFallback == 'true'" class="flex flex-col space-x-2">
+                <span class="font-semibold">
+                    {{ translate('settings.translation.maxBatchSplitAttempts') }}
+                </span>
+                {{ translate('settings.translation.maxBatchSplitAttemptsDescription') }}
+            </div>
+            <InputComponent
+                v-if="useBatchTranslation == 'true' && enableBatchFallback == 'true'"
+                v-model="maxBatchSplitAttempts"
+                validation-type="number"
+                placeholder="3"
+                @update:validation="(val) => (isValid.maxBatchSplitAttempts = val)" />
 
             <div class="flex flex-col space-x-2">
                 <span class="font-semibold">
@@ -93,7 +129,8 @@ const isValid = reactive({
     maxRetries: true,
     retryDelay: true,
     retryDelayMultiplier: true,
-    maxParallelTranslations: true
+    maxParallelTranslations: true,
+    maxBatchSplitAttempts: true
 })
 
 const useBatchTranslation = computed({
@@ -147,6 +184,26 @@ const maxParallelTranslations = computed({
             SETTINGS.MAX_PARALLEL_TRANSLATIONS,
             newValue,
             isValid.maxParallelTranslations
+        )
+        saveNotification.value?.show()
+    }
+})
+
+const enableBatchFallback = computed({
+    get: (): string => settingsStore.getSetting(SETTINGS.ENABLE_BATCH_FALLBACK) as string ?? 'true',
+    set: (newValue: string): void => {
+        settingsStore.updateSetting(SETTINGS.ENABLE_BATCH_FALLBACK, newValue, true)
+        saveNotification.value?.show()
+    }
+})
+
+const maxBatchSplitAttempts = computed({
+    get: (): string => settingsStore.getSetting(SETTINGS.MAX_BATCH_SPLIT_ATTEMPTS) as string ?? '3',
+    set: (newValue: string): void => {
+        settingsStore.updateSetting(
+            SETTINGS.MAX_BATCH_SPLIT_ATTEMPTS,
+            newValue,
+            isValid.maxBatchSplitAttempts
         )
         saveNotification.value?.show()
     }

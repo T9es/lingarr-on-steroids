@@ -89,6 +89,8 @@ public static class SettingKeys
         public const string MaxRetries = "max_retries";
         public const string RetryDelay = "retry_delay";
         public const string RetryDelayMultiplier = "retry_delay_multiplier";
+        public const string EnableBatchFallback = "enable_batch_fallback";
+        public const string MaxBatchSplitAttempts = "max_batch_split_attempts";
     }
 
     public static class Automation

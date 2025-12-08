@@ -63,7 +63,9 @@ export const SETTINGS = {
     RETRY_DELAY: 'retry_delay',
     RETRY_DELAY_MULTIPLIER: 'retry_delay_multiplier',
     MAX_PARALLEL_TRANSLATIONS: 'max_parallel_translations',
-    CHUTES_REQUEST_BUFFER: 'chutes_request_buffer'
+    CHUTES_REQUEST_BUFFER: 'chutes_request_buffer',
+    ENABLE_BATCH_FALLBACK: 'enable_batch_fallback',
+    MAX_BATCH_SPLIT_ATTEMPTS: 'max_batch_split_attempts'
 } as const
 
 export interface ISettings {
@@ -129,6 +131,8 @@ export interface ISettings {
     retry_delay_multiplier: string
     max_parallel_translations: string
     chutes_request_buffer: string
+    enable_batch_fallback: string
+    max_batch_split_attempts: string
 }
 
 export interface ICustomAiParams {

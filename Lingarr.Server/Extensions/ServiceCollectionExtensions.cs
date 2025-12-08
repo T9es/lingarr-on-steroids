@@ -143,6 +143,9 @@ public static class ServiceCollectionExtensions
         
         // Parallel translation limiter (singleton to maintain state across jobs)
         builder.Services.AddSingleton<IParallelTranslationLimiter, ParallelTranslationLimiter>();
+        
+        // Batch fallback service for graduated retry with chunk splitting
+        builder.Services.AddScoped<IBatchFallbackService, BatchFallbackService>();
 
         // Add Sync services
         builder.Services.AddScoped<IShowSyncService, ShowSyncService>();

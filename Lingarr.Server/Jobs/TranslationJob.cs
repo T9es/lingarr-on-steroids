@@ -26,6 +26,7 @@ public class TranslationJob
     private readonly ITranslationServiceFactory _translationServiceFactory;
     private readonly ITranslationRequestService _translationRequestService;
     private readonly IParallelTranslationLimiter _parallelLimiter;
+    private readonly IBatchFallbackService _batchFallbackService;
 
     public TranslationJob(
         ILogger<TranslationJob> logger,
@@ -37,7 +38,8 @@ public class TranslationJob
         IStatisticsService statisticsService,
         ITranslationServiceFactory translationServiceFactory,
         ITranslationRequestService translationRequestService,
-        IParallelTranslationLimiter parallelLimiter)
+        IParallelTranslationLimiter parallelLimiter,
+        IBatchFallbackService batchFallbackService)
     {
         _logger = logger;
         _settings = settings;
@@ -49,6 +51,7 @@ public class TranslationJob
         _translationServiceFactory = translationServiceFactory;
         _translationRequestService = translationRequestService;
         _parallelLimiter = parallelLimiter;
+        _batchFallbackService = batchFallbackService;
     }
 
     [AutomaticRetry(Attempts = 0)]
@@ -95,7 +98,9 @@ public class TranslationJob
                 SettingKeys.Translation.MaxBatchSize,
                 SettingKeys.Translation.RemoveLanguageTag,
                 SettingKeys.Translation.UseSubtitleTagging,
-                SettingKeys.Translation.SubtitleTag
+                SettingKeys.Translation.SubtitleTag,
+                SettingKeys.Translation.EnableBatchFallback,
+                SettingKeys.Translation.MaxBatchSplitAttempts
             ]);
             var serviceType = settings[SettingKeys.Translation.ServiceType];
             var stripSubtitleFormatting = settings[SettingKeys.Translation.StripSubtitleFormatting] == "true";
@@ -175,8 +180,15 @@ public class TranslationJob
 
             // translate subtitles
             var translationService = _translationServiceFactory.CreateTranslationService(serviceType);
-            var translator = new SubtitleTranslationService(translationService, _logger, _progressService);
+            var translator = new SubtitleTranslationService(translationService, _logger, _progressService, _batchFallbackService);
             var subtitles = await _subtitleService.ReadSubtitles(request.SubtitleToTranslate);
+            
+            // Parse batch fallback settings
+            var enableBatchFallback = settings[SettingKeys.Translation.EnableBatchFallback] == "true";
+            var maxBatchSplitAttempts = int.TryParse(settings[SettingKeys.Translation.MaxBatchSplitAttempts], out var splitAttempts)
+                ? splitAttempts
+                : 3;
+            
             List<SubtitleItem> translatedSubtitles;
             if (settings[SettingKeys.Translation.UseBatchTranslation] == "true"
                 && translationService is IBatchTranslationService _)
@@ -187,14 +199,16 @@ public class TranslationJob
                     : 10000;
 
                 _logger.LogInformation(
-                    "Using batch translation with max batch size: {maxBatchSize} for subtitle: {filePath}",
-                    maxSize, translationRequest.SubtitleToTranslate);
+                    "Using batch translation with max batch size: {maxBatchSize}, fallback: {enableFallback}, split attempts: {splitAttempts} for subtitle: {filePath}",
+                    maxSize, enableBatchFallback, maxBatchSplitAttempts, translationRequest.SubtitleToTranslate);
 
                 translatedSubtitles = await translator.TranslateSubtitlesBatch(
                     subtitles,
                     translationRequest,
                     stripSubtitleFormatting,
                     maxSize,
+                    enableBatchFallback,
+                    maxBatchSplitAttempts,
                     cancellationToken);
             }
             else

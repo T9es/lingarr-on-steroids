@@ -15,15 +15,18 @@ public class SubtitleTranslationService
     private int _lastProgression = -1;
     private readonly ITranslationService _translationService;
     private readonly IProgressService? _progressService;
+    private readonly IBatchFallbackService? _batchFallbackService;
     private readonly ILogger _logger;
 
     public SubtitleTranslationService(
         ITranslationService translationService,
         ILogger logger,
-        IProgressService? progressService = null)
+        IProgressService? progressService = null,
+        IBatchFallbackService? batchFallbackService = null)
     {
         _translationService = translationService;
         _progressService = progressService;
+        _batchFallbackService = batchFallbackService;
         _logger = logger;
     }
 
@@ -130,12 +133,16 @@ public class SubtitleTranslationService
     /// <param name="translationRequest">Contains the source and target language specifications.</param>
     /// <param name="stripSubtitleFormatting">Boolean used for indicating that styles need to be stripped from the subtitle</param>
     /// <param name="batchSize">Number of subtitles to process in each batch (0 for all)</param>
+    /// <param name="enableFallback">Whether to use graduated chunk splitting on failure</param>
+    /// <param name="maxSplitAttempts">Maximum number of chunk split attempts (only used if enableFallback is true)</param>
     /// <param name="cancellationToken">Token to support cancellation of the translation operation.</param>
     public async Task<List<SubtitleItem>> TranslateSubtitlesBatch(
         List<SubtitleItem> subtitles,
         TranslationRequest translationRequest,
         bool stripSubtitleFormatting,
         int batchSize = 0,
+        bool enableFallback = false,
+        int maxSplitAttempts = 3,
         CancellationToken cancellationToken = default)
     {
         if (_progressService == null)
@@ -175,6 +182,8 @@ public class SubtitleTranslationService
                 translationRequest.SourceLanguage,
                 translationRequest.TargetLanguage,
                 stripSubtitleFormatting,
+                enableFallback,
+                maxSplitAttempts,
                 cancellationToken);
 
             processedSubtitles += currentBatch.Count;
@@ -190,9 +199,11 @@ public class SubtitleTranslationService
     /// </summary>
     /// <param name="currentBatch">The batch of subtitles to process</param>
     /// <param name="batchTranslationService">The batch translation service to use</param>
-    /// <param name="sourceLanguage"></param>
-    /// <param name="targetLanguage"></param>
+    /// <param name="sourceLanguage">Source language code</param>
+    /// <param name="targetLanguage">Target language code</param>
     /// <param name="stripSubtitleFormatting">Boolean used for indicating that styles need to be stripped from the subtitle</param>
+    /// <param name="enableFallback">Whether to use graduated chunk splitting on failure</param>
+    /// <param name="maxSplitAttempts">Maximum number of chunk split attempts (only used if enableFallback is true)</param>
     /// <param name="cancellationToken">Token to support cancellation of the translation operation</param>
     public async Task ProcessSubtitleBatch(
         List<SubtitleItem> currentBatch,
@@ -200,7 +211,9 @@ public class SubtitleTranslationService
         string sourceLanguage,
         string targetLanguage,
         bool stripSubtitleFormatting,
-        CancellationToken cancellationToken)
+        bool enableFallback = false,
+        int maxSplitAttempts = 3,
+        CancellationToken cancellationToken = default)
     {
         var batchItems = currentBatch.Select(subtitle => new BatchSubtitleItem
         {
@@ -208,11 +221,27 @@ public class SubtitleTranslationService
             Line = string.Join(" ", stripSubtitleFormatting ? subtitle.PlaintextLines : subtitle.Lines)
         }).ToList();
 
-        var batchResults = await batchTranslationService.TranslateBatchAsync(
-            batchItems,
-            sourceLanguage,
-            targetLanguage,
-            cancellationToken);
+        Dictionary<int, string> batchResults;
+        
+        if (enableFallback && _batchFallbackService != null)
+        {
+            _logger.LogDebug("Using batch fallback service with max {MaxSplitAttempts} split attempts", maxSplitAttempts);
+            batchResults = await _batchFallbackService.TranslateWithFallbackAsync(
+                batchItems,
+                batchTranslationService,
+                sourceLanguage,
+                targetLanguage,
+                maxSplitAttempts,
+                cancellationToken);
+        }
+        else
+        {
+            batchResults = await batchTranslationService.TranslateBatchAsync(
+                batchItems,
+                sourceLanguage,
+                targetLanguage,
+                cancellationToken);
+        }
         
         foreach (var subtitle in currentBatch)
         {
