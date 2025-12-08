@@ -153,7 +153,10 @@
       "lastSynced": "Last synced",
       "chutesMissingApiKey": "Chutes API key is missing.",
       "usageLoadError": "Unable to load usage information.",
-      "modelSearchPlaceholder": "Search models..."
+      "modelSearchPlaceholder": "Search models...",
+      "chutesRequestBuffer": "Request safety buffer",
+      "chutesRequestBufferDescription": "Stop translations when remaining daily requests reach this buffer. Helps prevent exceeding limits with parallel translations.",
+      "chutesRequestBufferError": "Please enter a valid number"
     },
     "translate": {
       "sourceAndTargetTitle": "Source and target translation",
@@ -176,7 +179,9 @@
       "retryDelay": "Delay between retries:",
       "retryDelayDescription": "Initial delay before retrying, in seconds.",
       "retryDelayMultiplier": "Retry delay multiplier:",
-      "retryDelayMultiplierDescription": "Factor by which the delay increases after each retry."
+      "retryDelayMultiplierDescription": "Factor by which the delay increases after each retry.",
+      "maxParallelTranslations": "Concurrent file translations:",
+      "maxParallelTranslationsDescription": "Maximum number of subtitle files to translate simultaneously. Higher values speed up processing but use more API requests. Set to 1 for sequential translation."
     },
     "subtitle": {
       "title": "Subtitle",

@@ -61,7 +61,9 @@ export const SETTINGS = {
     IGNORE_CAPTIONS: 'ignore_captions',
     MAX_RETRIES: 'max_retries',
     RETRY_DELAY: 'retry_delay',
-    RETRY_DELAY_MULTIPLIER: 'retry_delay_multiplier'
+    RETRY_DELAY_MULTIPLIER: 'retry_delay_multiplier',
+    MAX_PARALLEL_TRANSLATIONS: 'max_parallel_translations',
+    CHUTES_REQUEST_BUFFER: 'chutes_request_buffer'
 } as const
 
 export interface ISettings {
@@ -125,6 +127,8 @@ export interface ISettings {
     max_retries: string
     retry_delay: string
     retry_delay_multiplier: string
+    max_parallel_translations: string
+    chutes_request_buffer: string
 }
 
 export interface ICustomAiParams {

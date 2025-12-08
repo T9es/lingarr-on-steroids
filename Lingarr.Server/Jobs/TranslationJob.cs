@@ -25,6 +25,7 @@ public class TranslationJob
     private readonly IStatisticsService _statisticsService;
     private readonly ITranslationServiceFactory _translationServiceFactory;
     private readonly ITranslationRequestService _translationRequestService;
+    private readonly IParallelTranslationLimiter _parallelLimiter;
 
     public TranslationJob(
         ILogger<TranslationJob> logger,
@@ -35,7 +36,8 @@ public class TranslationJob
         IScheduleService scheduleService,
         IStatisticsService statisticsService,
         ITranslationServiceFactory translationServiceFactory,
-        ITranslationRequestService translationRequestService)
+        ITranslationRequestService translationRequestService,
+        IParallelTranslationLimiter parallelLimiter)
     {
         _logger = logger;
         _settings = settings;
@@ -46,6 +48,7 @@ public class TranslationJob
         _statisticsService = statisticsService;
         _translationServiceFactory = translationServiceFactory;
         _translationRequestService = translationRequestService;
+        _parallelLimiter = parallelLimiter;
     }
 
     [AutomaticRetry(Attempts = 0)]
@@ -56,6 +59,9 @@ public class TranslationJob
     {
         var jobName = JobContextFilter.GetCurrentJobTypeName();
         var jobId = JobContextFilter.GetCurrentJobId();
+
+        // Acquire a parallel translation slot (blocks if limit reached)
+        using var slot = await _parallelLimiter.AcquireAsync(cancellationToken);
 
         try
         {

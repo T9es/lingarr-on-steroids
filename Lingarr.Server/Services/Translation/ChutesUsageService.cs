@@ -18,6 +18,7 @@ public class ChutesUsageService : IChutesUsageService
 
     private static readonly TimeSpan SnapshotCacheLifetime = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan ModelCacheLifetime = TimeSpan.FromHours(6);
+    private static readonly TimeSpan MinRefreshInterval = TimeSpan.FromMinutes(1);
 
     private readonly ISettingService _settings;
     private readonly ILogger<ChutesUsageService> _logger;
@@ -26,6 +27,8 @@ public class ChutesUsageService : IChutesUsageService
     private readonly HttpClient _llmClient;
     private readonly MemoryCacheEntryOptions _snapshotCacheOptions;
     private readonly MemoryCacheEntryOptions _modelCacheOptions;
+    
+    private DateTime _lastApiRefresh = DateTime.MinValue;
 
     public ChutesUsageService(
         ISettingService settings,
@@ -56,7 +59,14 @@ public class ChutesUsageService : IChutesUsageService
 
     public async Task EnsureRequestAllowedAsync(string? modelId, CancellationToken cancellationToken)
     {
-        var snapshot = await GetUsageSnapshotAsync(modelId, false, cancellationToken);
+        // Rate-limited refresh: check API at most once per minute
+        var shouldRefresh = DateTime.UtcNow - _lastApiRefresh >= MinRefreshInterval;
+        var snapshot = await GetUsageSnapshotAsync(modelId, shouldRefresh, cancellationToken);
+        if (shouldRefresh)
+        {
+            _lastApiRefresh = DateTime.UtcNow;
+        }
+
         if (!snapshot.HasApiKey)
         {
             // Let the translation call fail with a clearer message later when it tries to call the API.
@@ -68,20 +78,31 @@ public class ChutesUsageService : IChutesUsageService
             return;
         }
 
-        if (snapshot.RequestsUsed >= snapshot.AllowedRequestsPerDay)
+        // Get buffer setting for soft limit
+        var bufferSetting = await _settings.GetSetting(SettingKeys.Translation.Chutes.RequestBuffer);
+        var buffer = int.TryParse(bufferSetting, out var b) && b >= 0 ? b : 50;
+
+        // Soft limit check: stop if remaining requests <= buffer
+        var remaining = snapshot.AllowedRequestsPerDay - snapshot.RequestsUsed;
+        if (remaining <= buffer)
         {
             throw new TranslationException(
-                "Chutes daily usage limit reached. Please lower concurrent translations or increase your plan.");
+                $"Chutes usage approaching limit (remaining: {remaining}, buffer: {buffer}). " +
+                "Stopping to preserve headroom.");
         }
+
+        // Increment local counter to reserve the slot
+        snapshot.RequestsUsed++;
+        _cache.Set(GetSnapshotCacheKey(modelId), snapshot, _snapshotCacheOptions);
     }
 
     public async Task RecordRequestAsync(string? modelId, CancellationToken cancellationToken)
     {
-        // Update local counter first
+        // Counter already incremented in EnsureRequestAllowedAsync
+        // Just update the LastSyncedUtc timestamp
         var key = GetSnapshotCacheKey(modelId);
         if (_cache.TryGetValue(key, out ChutesUsageSnapshot? snapshot) && snapshot != null)
         {
-            snapshot.RequestsUsed++;
             snapshot.LastSyncedUtc = DateTime.UtcNow;
             _cache.Set(key, snapshot, _snapshotCacheOptions);
         }

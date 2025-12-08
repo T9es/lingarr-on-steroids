@@ -140,6 +140,9 @@ public static class ServiceCollectionExtensions
         builder.Services.AddTransient<PathConversionService>();
         builder.Services.AddScoped<IStatisticsService, StatisticsService>();
         builder.Services.AddScoped<IChutesUsageService, ChutesUsageService>();
+        
+        // Parallel translation limiter (singleton to maintain state across jobs)
+        builder.Services.AddSingleton<IParallelTranslationLimiter, ParallelTranslationLimiter>();
 
         // Add Sync services
         builder.Services.AddScoped<IShowSyncService, ShowSyncService>();

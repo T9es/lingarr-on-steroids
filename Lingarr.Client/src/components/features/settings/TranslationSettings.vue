@@ -59,6 +59,18 @@
                 v-model="retryDelayMultiplier"
                 validation-type="number"
                 @update:validation="(val) => (isValid.retryDelayMultiplier = val)" />
+
+            <div class="flex flex-col space-x-2">
+                <span class="font-semibold">
+                    {{ translate('settings.translation.maxParallelTranslations') }}
+                </span>
+                {{ translate('settings.translation.maxParallelTranslationsDescription') }}
+            </div>
+            <InputComponent
+                v-model="maxParallelTranslations"
+                validation-type="number"
+                placeholder="1"
+                @update:validation="(val) => (isValid.maxParallelTranslations = val)" />
         </template>
     </CardComponent>
 </template>
@@ -71,14 +83,17 @@ import CardComponent from '@/components/common/CardComponent.vue'
 import SaveNotification from '@/components/common/SaveNotification.vue'
 import InputComponent from '@/components/common/InputComponent.vue'
 import ToggleButton from '@/components/common/ToggleButton.vue'
+import { useI18n } from '@/plugins/i18n'
 
+const { translate } = useI18n()
 const saveNotification = ref<InstanceType<typeof SaveNotification> | null>(null)
 const settingsStore = useSettingStore()
 const isValid = reactive({
     maxBatchSize: true,
     maxRetries: true,
     retryDelay: true,
-    retryDelayMultiplier: true
+    retryDelayMultiplier: true,
+    maxParallelTranslations: true
 })
 
 const useBatchTranslation = computed({
@@ -120,6 +135,18 @@ const retryDelayMultiplier = computed({
             SETTINGS.RETRY_DELAY_MULTIPLIER,
             newValue,
             isValid.retryDelayMultiplier
+        )
+        saveNotification.value?.show()
+    }
+})
+
+const maxParallelTranslations = computed({
+    get: (): string => settingsStore.getSetting(SETTINGS.MAX_PARALLEL_TRANSLATIONS) as string,
+    set: (newValue: string): void => {
+        settingsStore.updateSetting(
+            SETTINGS.MAX_PARALLEL_TRANSLATIONS,
+            newValue,
+            isValid.maxParallelTranslations
         )
         saveNotification.value?.show()
     }

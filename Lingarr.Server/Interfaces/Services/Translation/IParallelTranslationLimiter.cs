@@ -1,0 +1,30 @@
+namespace Lingarr.Server.Interfaces.Services.Translation;
+
+/// <summary>
+/// Manages concurrent translation job limits using a semaphore-based approach.
+/// </summary>
+public interface IParallelTranslationLimiter
+{
+    /// <summary>
+    /// Acquires a slot for translation. Blocks if the limit is reached.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>An IDisposable that releases the slot when disposed</returns>
+    Task<IDisposable> AcquireAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Reconfigures the maximum concurrency limit.
+    /// </summary>
+    /// <param name="maxConcurrency">New maximum concurrent translations</param>
+    Task ReconfigureAsync(int maxConcurrency);
+
+    /// <summary>
+    /// Gets the current maximum concurrency setting.
+    /// </summary>
+    int MaxConcurrency { get; }
+
+    /// <summary>
+    /// Gets the number of available slots.
+    /// </summary>
+    int AvailableSlots { get; }
+}

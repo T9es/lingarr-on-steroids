@@ -65,18 +65,32 @@
                         :error-message="translate('settings.services.overrideUsageLimitError')"
                         @update:validation="(val) => (limitOverrideIsValid = val)"
                         class="w-full"
-                        @blur="saveSetting"
-                        @keydown.enter.prevent="saveSetting"
+                        @blur="saveLimitOverride"
+                        @keydown.enter.prevent="saveLimitOverride"
                     />
                 </div>
                 <div>
-                    <p class="text-gray-400">
-                        {{ translate('settings.services.lastSynced') }}
-                    </p>
-                    <p class="font-semibold">
-                        {{ lastSyncedDisplay }}
-                    </p>
+                     <InputComponent
+                        v-model="requestBuffer"
+                        validation-type="number"
+                        type="number"
+                        placeholder="50"
+                        :label="translate('settings.services.chutesRequestBuffer')"
+                        :error-message="translate('settings.services.chutesRequestBufferError')"
+                        @update:validation="(val) => (requestBufferIsValid = val)"
+                        class="w-full"
+                        @blur="saveRequestBuffer"
+                        @keydown.enter.prevent="saveRequestBuffer"
+                    />
                 </div>
+            </div>
+            <div class="mt-2 text-sm">
+                <p class="text-gray-400">
+                    {{ translate('settings.services.lastSynced') }}
+                </p>
+                <p class="font-semibold">
+                    {{ lastSyncedDisplay }}
+                </p>
             </div>
         </div>
     </div>
@@ -99,21 +113,33 @@ const loading = ref(false)
 const errorMessage = ref<string | null>(null)
 const limitOverrideIsValid = ref(true)
 const limitOverride = ref('')
+const requestBufferIsValid = ref(true)
+const requestBuffer = ref('')
 
 onMounted(() => {
     loadUsage()
     limitOverride.value = (settingsStore.getSetting(SETTINGS.CHUTES_USAGE_LIMIT_OVERRIDE) as string) || ''
+    requestBuffer.value = (settingsStore.getSetting(SETTINGS.CHUTES_REQUEST_BUFFER) as string) || '50'
 })
 
-const saveSetting = async () => {
+const saveLimitOverride = async () => {
     if (limitOverrideIsValid.value) {
         await settingsStore.updateSetting(
             SETTINGS.CHUTES_USAGE_LIMIT_OVERRIDE, 
             limitOverride.value, 
             limitOverrideIsValid.value
         )
-        // Reload usage to reflect the new override immediately
         loadUsage() 
+    }
+}
+
+const saveRequestBuffer = async () => {
+    if (requestBufferIsValid.value) {
+        await settingsStore.updateSetting(
+            SETTINGS.CHUTES_REQUEST_BUFFER, 
+            requestBuffer.value, 
+            requestBufferIsValid.value
+        )
     }
 }
 

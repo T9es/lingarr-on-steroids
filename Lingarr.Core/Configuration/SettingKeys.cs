@@ -15,6 +15,7 @@ public static class SettingKeys
     public static class Translation
     {
         public const string ServiceType = "service_type";
+        public const string MaxParallelTranslations = "max_parallel_translations";
 
         public static class OpenAi
         {
@@ -58,6 +59,7 @@ public static class SettingKeys
             public const string Model = "chutes_model";
             public const string ApiKey = "chutes_api_key";
             public const string UsageLimitOverride = "chutes_usage_limit_override";
+            public const string RequestBuffer = "chutes_request_buffer";
         }
 
         public static class LibreTranslate

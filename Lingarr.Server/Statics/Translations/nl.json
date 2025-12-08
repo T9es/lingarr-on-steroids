@@ -153,7 +153,10 @@
       "lastSynced": "Laatst gesynchroniseerd",
       "chutesMissingApiKey": "Chutes API-sleutel ontbreekt.",
       "usageLoadError": "Kan gebruiksinformatie niet laden.",
-      "modelSearchPlaceholder": "Zoek modellen..."
+      "modelSearchPlaceholder": "Zoek modellen...",
+      "chutesRequestBuffer": "Veiligheidsbuffer voor aanvragen",
+      "chutesRequestBufferDescription": "Stop vertalingen wanneer het aantal resterende dagelijkse aanvragen deze buffer bereikt. Helpt voorkomen dat limieten worden overschreden bij parallelle vertalingen.",
+      "chutesRequestBufferError": "Voer een geldig getal in"
     },
     "translate": {
       "title": "Vertaling",
@@ -178,7 +181,9 @@
       "retryDelay": "Vertraging tussen pogingen:",
       "retryDelayDescription": "Initiële vertraging voordat opnieuw geprobeerd wordt, in seconden.",
       "retryDelayMultiplier": "Vertraging vermenigvuldiger bij pogingen:",
-      "retryDelayMultiplierDescription": "Factor waarmee de vertraging na elke poging toeneemt."
+      "retryDelayMultiplierDescription": "Factor waarmee de vertraging na elke poging toeneemt.",
+      "maxParallelTranslations": "Gelijktijdige bestandsvertalingen:",
+      "maxParallelTranslationsDescription": "Maximaal aantal ondertitelbestanden dat tegelijkertijd wordt vertaald. Hogere waarden versnellen de verwerking maar gebruiken meer API-aanvragen. Stel in op 1 voor sequentiële vertaling."
     },
     "subtitle": {
       "title": "Ondertiteling",
