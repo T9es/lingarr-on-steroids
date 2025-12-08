@@ -186,8 +186,10 @@ public static class ServiceCollectionExtensions
             {
                 var connectionString = builder.Configuration.GetConnectionString("MySqlConnection");
                 
+                // Check if connection string exists in Configuration (appsettings.json etc)
                 if (string.IsNullOrWhiteSpace(connectionString))
                 {
+                    Console.WriteLine("[Hangfire] Connection string not found in Configuration. Falling back to Environment Variables.");
                     var host = Environment.GetEnvironmentVariable("DB_HOST") ?? "Lingarr.Mysql";
                     var port = Environment.GetEnvironmentVariable("DB_PORT") ?? "3306";
                     var db = Environment.GetEnvironmentVariable("DB_DATABASE") ?? "LingarrMysql";
@@ -196,6 +198,14 @@ public static class ServiceCollectionExtensions
                     
                     connectionString = $"Server={host};Port={port};Database={db};Uid={user};Pwd={pass};Allow User Variables=True";
                 }
+                else 
+                {
+                    Console.WriteLine("[Hangfire] Connection string FOUND in Configuration.");
+                }
+
+                // Debug logging to identify connection issues
+                var debugConnectionString = System.Text.RegularExpressions.Regex.Replace(connectionString, "Pwd=.*?;", "Pwd=***;");
+                Console.WriteLine($"[Hangfire] Initializing MySQL Storage with connection string: {debugConnectionString}");
 
                 configuration.UseStorage(new MySqlStorage(connectionString, new MySqlStorageOptions
                 {
