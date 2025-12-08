@@ -1,5 +1,5 @@
 ﻿<template>
-    <form class="relative">
+    <div class="relative">
         <label v-if="label" :for="id" class="mb-1 block text-sm">
             {{ label }}
         </label>
@@ -14,7 +14,9 @@
                 :type="type == 'password' ? (showPassword ? 'text' : 'password') : type"
                 :class="inputClasses"
                 :placeholder="placeholder"
-                @input="handleInput" />
+                @input="handleInput"
+                @blur="$emit('blur', $event)"
+                @keydown="$emit('keydown', $event)" />
             <ValidationIcon
                 :is-valid="isValid"
                 :is-invalid="isInvalid"
@@ -34,7 +36,7 @@
             </button>
         </div>
         <p v-if="isInvalid" class="mt-1 text-sm text-red-600" v-html="error" />
-    </form>
+    </div>
 </template>
 
 <script setup lang="ts">
@@ -67,6 +69,8 @@ const emit = defineEmits<{
     (e: 'update:modelValue', value: string): void
     (e: 'update:validation', isValid: boolean): void
     (e: 'update:value', value: string): void
+    (e: 'blur', event: FocusEvent): void
+    (e: 'keydown', event: KeyboardEvent): void
 }>()
 const { isValid, isInvalid, error, validate } = useValidation(props)
 

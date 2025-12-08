@@ -41,6 +41,10 @@
                                   usage.allowedRequestsPerDay > 0
                                       ? usage.allowedRequestsPerDay
                                       : translate('settings.services.unlimited')
+                              }${
+                                  usage.overrideRequestsPerDay
+                                      ? ` (${translate('settings.services.overrideLimitLabel')})`
+                                      : ''
                               }`
                             : translate('common.loading')
                     }}
@@ -53,16 +57,17 @@
             </div>
             <div class="mt-3 grid gap-2 text-sm md:grid-cols-2">
                 <div>
-                    <p class="text-gray-400">
-                        {{ translate('settings.services.overrideLimitLabel') }}
-                    </p>
-                    <p class="font-semibold">
-                        {{
-                            usage?.overrideRequestsPerDay
-                                ? usage.overrideRequestsPerDay
-                                : translate('settings.services.noOverride')
-                        }}
-                    </p>
+                     <InputComponent
+                        v-model="limitOverride"
+                        validation-type="number"
+                        type="number"
+                        :label="translate('settings.services.overrideUsageLimit')"
+                        :error-message="translate('settings.services.overrideUsageLimitError')"
+                        @update:validation="(val) => (limitOverrideIsValid = val)"
+                        class="w-full"
+                        @blur="saveSetting"
+                        @keydown.enter.prevent="saveSetting"
+                    />
                 </div>
                 <div>
                     <p class="text-gray-400">
@@ -82,12 +87,35 @@ import { onMounted, ref, computed } from 'vue'
 import services from '@/services'
 import { ChutesUsageSnapshot } from '@/ts'
 import { useI18n } from '@/plugins/i18n'
+import InputComponent from '@/components/common/InputComponent.vue'
+import { useSettingStore } from '@/store/setting'
+import { SETTINGS } from '@/ts'
 
 const { translate } = useI18n()
+const settingsStore = useSettingStore()
 
 const usage = ref<ChutesUsageSnapshot | null>(null)
 const loading = ref(false)
 const errorMessage = ref<string | null>(null)
+const limitOverrideIsValid = ref(true)
+const limitOverride = ref('')
+
+onMounted(() => {
+    loadUsage()
+    limitOverride.value = (settingsStore.getSetting(SETTINGS.CHUTES_USAGE_LIMIT_OVERRIDE) as string) || ''
+})
+
+const saveSetting = async () => {
+    if (limitOverrideIsValid.value) {
+        await settingsStore.updateSetting(
+            SETTINGS.CHUTES_USAGE_LIMIT_OVERRIDE, 
+            limitOverride.value, 
+            limitOverrideIsValid.value
+        )
+        // Reload usage to reflect the new override immediately
+        loadUsage() 
+    }
+}
 
 const progress = computed(() => {
     if (!usage.value || usage.value.allowedRequestsPerDay <= 0) {
@@ -121,7 +149,5 @@ const loadUsage = async (forceRefresh = false) => {
     }
 }
 
-onMounted(() => {
-    loadUsage()
-})
+
 </script>

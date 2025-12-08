@@ -77,11 +77,27 @@ public class ChutesUsageService : IChutesUsageService
 
     public async Task RecordRequestAsync(string? modelId, CancellationToken cancellationToken)
     {
+        // Update local counter first
         var key = GetSnapshotCacheKey(modelId);
-        var snapshot = await GetUsageSnapshotAsync(modelId, false, cancellationToken);
-        snapshot.RequestsUsed++;
-        snapshot.LastSyncedUtc = DateTime.UtcNow;
-        _cache.Set(key, snapshot, _snapshotCacheOptions);
+        if (_cache.TryGetValue(key, out ChutesUsageSnapshot? snapshot) && snapshot != null)
+        {
+            snapshot.RequestsUsed++;
+            snapshot.LastSyncedUtc = DateTime.UtcNow;
+            _cache.Set(key, snapshot, _snapshotCacheOptions);
+        }
+
+        // Trigger a background refresh to get the accurate count from the server
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await GetUsageSnapshotAsync(modelId, forceRefresh: true, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to refresh Chutes usage snapshot in background.");
+            }
+        }, cancellationToken);
     }
 
     public async Task<ChutesUsageSnapshot> GetUsageSnapshotAsync(
@@ -137,9 +153,7 @@ public class ChutesUsageService : IChutesUsageService
             var allowed = quota.PlanLimit ?? 0;
             if (overrideLimit.HasValue)
             {
-                allowed = allowed == 0
-                    ? overrideLimit.Value
-                    : Math.Min(allowed, overrideLimit.Value);
+                allowed = overrideLimit.Value;
             }
 
             snapshot.AllowedRequestsPerDay = allowed;

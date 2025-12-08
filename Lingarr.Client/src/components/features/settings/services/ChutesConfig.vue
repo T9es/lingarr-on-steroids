@@ -36,16 +36,7 @@
             :no-options="errorMessage || translate('settings.services.loadingModels')"
             @fetch-options="loadOptions" />
 
-        <InputComponent
-            v-model="limitOverride"
-            validation-type="number"
-            type="number"
-            :label="translate('settings.services.overrideUsageLimit')"
-            :error-message="translate('settings.services.overrideUsageLimitError')"
-            @update:validation="(val) => (limitOverrideIsValid = val)" />
-        <p class="text-xs text-gray-400">
-            {{ translate('settings.services.overrideUsageLimitHelp') }}
-        </p>
+
     </div>
 </template>
 
@@ -64,7 +55,6 @@ const { options, errorMessage, selectRef, loadOptions } = useModelOptions()
 const emit = defineEmits(['save'])
 
 const apiKeyIsValid = ref(false)
-const limitOverrideIsValid = ref(true)
 
 const automationEnabled = computed(() => settingsStore.getSetting(SETTINGS.AUTOMATION_ENABLED))
 
@@ -83,23 +73,6 @@ const aiModel = computed({
     set: (newValue: string) => {
         settingsStore.updateSetting(SETTINGS.CHUTES_MODEL, newValue, true)
         emit('save')
-    }
-})
-
-const limitOverride = computed({
-    get: () =>
-        (settingsStore.getSetting(SETTINGS.CHUTES_USAGE_LIMIT_OVERRIDE) as string | undefined) || '',
-    set: (newValue: string) => {
-        const sanitized = newValue.trim()
-        const valueToStore = sanitized === '' ? '' : sanitized
-        settingsStore.updateSetting(
-            SETTINGS.CHUTES_USAGE_LIMIT_OVERRIDE,
-            valueToStore,
-            limitOverrideIsValid.value
-        )
-        if (limitOverrideIsValid.value) {
-            emit('save')
-        }
     }
 })
 </script>
