@@ -143,6 +143,12 @@ public class AutomatedTranslationJobTests
             ProcessedTitles.Add(media.Title);
             return Task.FromResult(true);
         }
+
+        public Task<int> ProcessMediaForceAsync(IMedia media, MediaType mediaType, bool forceProcess = true)
+        {
+            ProcessedTitles.Add(media.Title);
+            return Task.FromResult(1);
+        }
     }
 
     private sealed class NoOpScheduleService : IScheduleService
