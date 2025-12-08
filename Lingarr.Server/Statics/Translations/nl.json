@@ -4,6 +4,7 @@
     "movies": "Films",
     "tvShows": "Series",
     "translations": "Vertalingen",
+    "translationTest": "Test",
     "settings": "Instellingen",
     "integrations": "Integraties",
     "services": "Diensten",
@@ -11,6 +12,24 @@
     "automation": "Automatisering",
     "tasks": "Taken",
     "logs": "Logs"
+  },
+  "translationTest": {
+    "title": "Vertaaltest",
+    "description": "Test vertaling van een ondertitelbestand zonder resultaten op te slaan. Handig voor het debuggen.",
+    "configuration": "Configuratie",
+    "subtitlePath": "Ondertitelbestandspad",
+    "subtitlePathPlaceholder": "/media/path/to/subtitle.srt",
+    "sourceLanguage": "Brontaal",
+    "targetLanguage": "Doeltaal",
+    "startTest": "Start test",
+    "cancel": "Annuleren",
+    "logs": "Vertaallogs",
+    "clearLogs": "Wissen",
+    "waitingForLogs": "Wachten op start van test...",
+    "success": "Vertaling geslaagd",
+    "failed": "Vertaling mislukt",
+    "translated": "Vertaald",
+    "duration": "Duur"
   },
   "movies": {
     "title": "Titel",

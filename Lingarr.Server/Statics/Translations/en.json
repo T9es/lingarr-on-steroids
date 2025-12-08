@@ -4,6 +4,7 @@
     "movies": "Movies",
     "tvShows": "TV Shows",
     "translations": "Translations",
+    "translationTest": "Test",
     "settings": "Settings",
     "integrations": "Integrations",
     "services": "Services",
@@ -11,6 +12,24 @@
     "automation": "Automation",
     "tasks": "Tasks",
     "logs": "Logs"
+  },
+  "translationTest": {
+    "title": "Translation Test",
+    "description": "Test translation of a subtitle file without saving results. Useful for debugging.",
+    "configuration": "Configuration",
+    "subtitlePath": "Subtitle File Path",
+    "subtitlePathPlaceholder": "/media/path/to/subtitle.srt",
+    "sourceLanguage": "Source Language",
+    "targetLanguage": "Target Language",
+    "startTest": "Start Test",
+    "cancel": "Cancel",
+    "logs": "Translation Logs",
+    "clearLogs": "Clear",
+    "waitingForLogs": "Waiting for test to start...",
+    "success": "Translation Successful",
+    "failed": "Translation Failed",
+    "translated": "Translated",
+    "duration": "Duration"
   },
   "statistics": {
     "notAvailable": "No statistics available",

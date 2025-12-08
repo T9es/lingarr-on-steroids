@@ -84,6 +84,7 @@ import SettingIcon from '@/components/icons/SettingIcon.vue'
 import TimesIcon from '@/components/icons/TimesIcon.vue'
 import BadgeComponent from '@/components/common/BadgeComponent.vue'
 import LanguageIcon from '@/components/icons/LanguageIcon.vue'
+import TestIcon from '@/components/icons/TestIcon.vue'
 
 const translationRequestStore = useTranslationRequestStore()
 const instanceStore = useInstanceStore()
@@ -107,6 +108,12 @@ const menuItems: MenuItem[] = [
         label: translate('navigation.translations'),
         icon: LanguageIcon,
         route: 'translations',
+        children: []
+    },
+    {
+        label: translate('navigation.translationTest'),
+        icon: TestIcon,
+        route: 'translation-test',
         children: []
     },
     {

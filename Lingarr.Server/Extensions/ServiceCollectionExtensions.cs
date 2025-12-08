@@ -157,6 +157,9 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<IShowSync, ShowSync>();
         builder.Services.AddScoped<IImageSync, ImageSync>();
         
+        // Test translation service (singleton for single-test-at-a-time behavior)
+        builder.Services.AddSingleton<ITestTranslationService, TestTranslationService>();
+        
     }
 
     private static void ConfigureSignalR(this WebApplicationBuilder builder)

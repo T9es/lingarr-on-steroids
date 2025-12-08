@@ -257,11 +257,24 @@ public class SubtitleTranslationService
             }
             else
             {
-                _logger.LogWarning("Translation not found for subtitle at position {Position} using original line.", subtitle.Position);
-                subtitle.TranslatedLines = stripSubtitleFormatting ? 
-                    subtitle.PlaintextLines : 
-                    subtitle.Lines;
+                _logger.LogError("Translation missing for subtitle at position {Position}.", subtitle.Position);
             }
+        }
+        
+        // Check for missing translations and fail if any are found
+        var missingPositions = currentBatch
+            .Where(s => s.TranslatedLines == null || s.TranslatedLines.Count == 0)
+            .Select(s => s.Position)
+            .ToList();
+            
+        if (missingPositions.Count > 0)
+        {
+            var positionRange = missingPositions.Count <= 5 
+                ? string.Join(", ", missingPositions)
+                : $"{string.Join(", ", missingPositions.Take(5))}... (+{missingPositions.Count - 5} more)";
+                
+            throw new TranslationException(
+                $"Translation failed: {missingPositions.Count} subtitle(s) missing at positions: {positionRange}");
         }
     }
     
