@@ -5,24 +5,14 @@
         </template>
         <template #content>
             <SaveNotification ref="saveNotification" />
-            <div class="flex flex-col space-y-2 pb-4">
-                <span class="font-semibold">
-                    {{ translate('settings.indexing.indexingMoviesLabel') }}
-                </span>
-                <InputComponent
+            <div class="flex flex-col space-y-4 pb-4">
+                <ScheduleSelector
                     v-model="movieSchedule"
-                    label="Cron format: minute hour day month weekday (e.g., '0 * * * *' for hourly)"
-                    :placeholder="'0 * * * *'"
-                    validation-type="cron"
+                    :label="translate('settings.indexing.indexingMoviesLabel')"
                     @update:validation="(val) => (movieScheduleIsValid = val)" />
-                <span class="font-semibold">
-                    {{ translate('settings.indexing.indexingMoviesLabel') }}
-                </span>
-                <InputComponent
+                <ScheduleSelector
                     v-model="showSchedule"
-                    label="Cron format: minute hour day month weekday (e.g., '0 * * * *' for hourly)"
-                    :placeholder="'0 * * * *'"
-                    validation-type="cron"
+                    :label="translate('settings.indexing.indexingTvShowLabel')"
                     @update:validation="(val) => (showScheduleIsValid = val)" />
             </div>
         </template>
@@ -52,14 +42,9 @@
                     </ToggleButton>
                 </div>
 
-                <span class="font-semibold">
-                    {{ translate('settings.automation.translationScheduleLabel') }}
-                </span>
-                <InputComponent
+                <ScheduleSelector
                     v-model="translationSchedule"
-                    label="Cron format: minute hour day month weekday (e.g., '0 * * * *' for hourly)"
-                    :placeholder="'0 * * * *'"
-                    validation-type="cron"
+                    :label="translate('settings.automation.translationScheduleLabel')"
                     @update:validation="(val) => (translationScheduleIsValid = val)" />
 
                 <span class="font-semibold">
@@ -102,6 +87,7 @@ import { useRouter } from 'vue-router'
 import { SETTINGS } from '@/ts'
 import CardComponent from '@/components/common/CardComponent.vue'
 import InputComponent from '@/components/common/InputComponent.vue'
+import ScheduleSelector from '@/components/common/ScheduleSelector.vue'
 import ToggleButton from '@/components/common/ToggleButton.vue'
 import SaveNotification from '@/components/common/SaveNotification.vue'
 import { useI18n } from '@/plugins/i18n'

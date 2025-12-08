@@ -176,8 +176,8 @@
       "useBatchTranslationDescription": "Process multiple subtitle lines together in batches to improve translation efficiency and context awareness. Note that single-line translations with context are still more reliable and of higher quality.",
       "maxBatchSize": "Max batch size:",
       "maxBatchSizeDescription": "Maximum number of subtitle lines to process in a single batch. Leave at 0 for no limit.",
-      "maxRetries": "Max translation retries:",
-      "maxRetriesDescription": "Maximum number of retries per line or batch.",
+      "maxRetries": "API request retries:",
+      "maxRetriesDescription": "How many times to retry a failed API call before giving up or splitting the batch.",
       "retryDelay": "Delay between retries:",
       "retryDelayDescription": "Initial delay before retrying, in seconds.",
       "retryDelayMultiplier": "Retry delay multiplier:",
@@ -186,8 +186,8 @@
       "maxParallelTranslationsDescription": "Maximum number of subtitle files to translate simultaneously. Higher values speed up processing but use more API requests. Set to 1 for sequential translation.",
       "enableBatchFallback": "Retry failed batches:",
       "enableBatchFallbackDescription": "When a batch translation fails, automatically retry with smaller chunks before failing the entire file.",
-      "maxBatchSplitAttempts": "Retry levels:",
-      "maxBatchSplitAttemptsDescription": "How many times to split and retry failed batches. Level 1 retries the full batch, level 2 splits in half, level 3 splits in thirds. If all levels fail, the translation task fails."
+      "maxBatchSplitAttempts": "Batch split levels:",
+      "maxBatchSplitAttemptsDescription": "After API retries fail, split the batch into smaller chunks. Level 1 = full batch, level 2 = halves, level 3 = thirds. If all fail, the task fails."
     },
     "subtitle": {
       "title": "Subtitle",
@@ -236,7 +236,8 @@
       "twiceADay": "Twice daily (Every 12 hours)",
       "dailyAtMidnight": "Daily at midnight",
       "dailyAtFour": "Daily at 04:00",
-      "weeklyOnSundayAtMidnight": "Weekly on Sunday at midnight"
+      "weeklyOnSundayAtMidnight": "Weekly on Sunday at midnight",
+      "custom": "Custom"
     },
     "custom": {
       "parameters": "Custom Parameters",

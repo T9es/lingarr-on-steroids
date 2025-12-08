@@ -238,7 +238,8 @@
       "twiceADay": "Twee keer per dag (Elke 12 uur)",
       "dailyAtMidnight": "Dagelijks om middernacht",
       "dailyAtFour": "Dagelijks om 04:00",
-      "weeklyOnSundayAtMidnight": "Wekelijks op zondag om middernacht"
+      "weeklyOnSundayAtMidnight": "Wekelijks op zondag om middernacht",
+      "custom": "Aangepast"
     },
     "custom": {
       "parameters": "Aangepaste Parameters",
