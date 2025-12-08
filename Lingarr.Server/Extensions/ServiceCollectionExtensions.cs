@@ -196,7 +196,7 @@ public static class ServiceCollectionExtensions
                     var user = Environment.GetEnvironmentVariable("DB_USERNAME") ?? "LingarrMysql";
                     var pass = Environment.GetEnvironmentVariable("DB_PASSWORD") ?? "Secret1234";
                     
-                    connectionString = $"Server={host};Port={port};Database={db};Uid={user};Pwd={pass};Allow User Variables=True";
+                    connectionString = $"Server={host};Port={port};Database={db};Uid={user};Pwd={pass};Allow User Variables=True;SslMode=None";
                 }
                 else 
                 {
