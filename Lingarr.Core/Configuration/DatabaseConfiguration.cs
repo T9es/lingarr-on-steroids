@@ -36,21 +36,8 @@ public static class DatabaseConfiguration
                 $"MySQL connection environment variable(s) '{string.Join(", ", missingVariables)}' is missing or empty.");
         }
 
-        // Fix Hostname Resolution
-        var host = variables["DB_HOST"];
-        try 
-        {
-            var addresses = System.Net.Dns.GetHostAddresses(host);
-            var ipv4 = addresses.FirstOrDefault(a => a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork);
-            if (ipv4 != null)
-            {
-                host = ipv4.ToString();
-            }
-        }
-        catch { /* Ignore DNS errors here, let the connection fail naturally if needed */ }
-
         var connectionString =
-            $"Server={host};Port={variables["DB_PORT"]};Database={variables["DB_DATABASE"]};Uid={variables["DB_USERNAME"]};Pwd={variables["DB_PASSWORD"]};Allow User Variables=True;SslMode=None";
+            $"Server={variables["DB_HOST"]};Port={variables["DB_PORT"]};Database={variables["DB_DATABASE"]};Uid={variables["DB_USERNAME"]};Pwd={variables["DB_PASSWORD"]};Allow User Variables=True";
 
         options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString),
                 mysqlOptions => mysqlOptions.MigrationsAssembly("Lingarr.Migrations.MySQL")
