@@ -33,11 +33,11 @@
                         </span>
                         <span class="block md:hidden">★</span>
                     </div>
-                    <div class="col-span-1 px-4 py-2">
+                    <div class="col-span-2 px-4 py-2">
                         {{ translate('movies.ageThreshold') }}
-                    </div>
-                    <div class="col-span-1 flex justify-end px-4 py-2">
-                        <ReloadComponent @toggle:update="movieStore.fetch()" />
+                        <span class="float-right">
+                            <ReloadComponent @toggle:update="movieStore.fetch()" />
+                        </span>
                     </div>
                 </div>
                 <div v-for="item in movies.items" :key="item.id">

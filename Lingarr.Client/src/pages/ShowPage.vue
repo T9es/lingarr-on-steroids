@@ -30,7 +30,7 @@
                         </span>
                         <span class="block md:hidden">⊘</span>
                     </div>
-                    <div class="col-span-1 px-4 py-2">
+                    <div class="col-span-2 px-4 py-2">
                         {{ translate('tvShows.ageThreshold') }}
                     </div>
                     <div class="col-span-1 px-4 py-2 text-center">
@@ -82,6 +82,7 @@
                                     () => showStore.priority(MEDIA_TYPE.SHOW, item.id)
                                 " />
                         </div>
+                        <div class="col-span-1"></div>
                     </div>
                     <SeasonTable v-if="expandedShow === item.id" :seasons="item.seasons" />
                 </div>
