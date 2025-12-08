@@ -188,11 +188,11 @@ public static class ServiceCollectionExtensions
                 
                 if (string.IsNullOrWhiteSpace(connectionString))
                 {
-                    var host = Environment.GetEnvironmentVariable("DB_HOST") ?? "Lingarr.Mysql";
-                    var port = Environment.GetEnvironmentVariable("DB_PORT") ?? "3306";
-                    var db = Environment.GetEnvironmentVariable("DB_DATABASE") ?? "LingarrMysql";
-                    var user = Environment.GetEnvironmentVariable("DB_USERNAME") ?? "LingarrMysql";
-                    var pass = Environment.GetEnvironmentVariable("DB_PASSWORD") ?? "Secret1234";
+                    var host = builder.Configuration["DB_HOST"] ?? "Lingarr.Mysql";
+                    var port = builder.Configuration["DB_PORT"] ?? "3306";
+                    var db = builder.Configuration["DB_DATABASE"] ?? "LingarrMysql";
+                    var user = builder.Configuration["DB_USERNAME"] ?? "LingarrMysql";
+                    var pass = builder.Configuration["DB_PASSWORD"] ?? "Secret1234";
                     
                     connectionString = $"Server={host};Port={port};Database={db};Uid={user};Pwd={pass};Allow User Variables=True";
                 }
