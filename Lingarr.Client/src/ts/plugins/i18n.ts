@@ -14,7 +14,7 @@ export interface I18nPluginOptions {
 }
 
 export interface I18n {
-    translate: (key: string) => string
+    translate: (key: string, args?: Record<string, string | number>) => string
     loadTranslations: () => Promise<void>
     setLocale: (locale: string) => Promise<void>
     locale: ComputedRef<string>

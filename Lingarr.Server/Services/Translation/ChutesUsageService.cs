@@ -14,7 +14,7 @@ namespace Lingarr.Server.Services.Translation;
 public class ChutesUsageService : IChutesUsageService
 {
     private const string ApiBaseUrl = "https://api.chutes.ai";
-    private const string LlmBaseUrl = "https://llm.chutes.ai/v1";
+    private const string LlmBaseUrl = "https://llm.chutes.ai/v1/";
 
     private static readonly TimeSpan SnapshotCacheLifetime = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan ModelCacheLifetime = TimeSpan.FromHours(6);
@@ -125,7 +125,7 @@ public class ChutesUsageService : IChutesUsageService
 
         try
         {
-            snapshot.ChuteId = await ResolveChuteIdAsync(modelId, cancellationToken);
+            snapshot.ChuteId = await ResolveChuteIdAsync(apiKey, modelId, cancellationToken);
             var quota = await FetchQuotaAsync(apiKey, snapshot.ChuteId, cancellationToken);
             snapshot.Plan = quota.Plan;
             snapshot.PlanRequestsPerDay = quota.PlanLimit;
@@ -214,7 +214,7 @@ public class ChutesUsageService : IChutesUsageService
         }
     }
 
-    private async Task<string?> ResolveChuteIdAsync(string? modelId, CancellationToken cancellationToken)
+    private async Task<string?> ResolveChuteIdAsync(string apiKey, string? modelId, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(modelId))
         {
@@ -227,7 +227,11 @@ public class ChutesUsageService : IChutesUsageService
             return cachedChute;
         }
 
-        var response = await _llmClient.GetAsync("/models", cancellationToken);
+        // Use a relative path 'models'. Since BaseAddress ends in 'v1/', this becomes '.../v1/models'
+        using var request = new HttpRequestMessage(HttpMethod.Get, "models");
+        request.Headers.Add("Authorization", $"Bearer {apiKey}");
+
+        var response = await _llmClient.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
         var models = await response.Content.ReadFromJsonAsync<ModelsListResponse>(cancellationToken: cancellationToken);
         var chuteId = models?.Data?.FirstOrDefault(m => string.Equals(m.Id, modelId, StringComparison.OrdinalIgnoreCase))
@@ -282,19 +286,27 @@ public class ChutesUsageService : IChutesUsageService
     {
         if (!string.IsNullOrWhiteSpace(chuteId) &&
             element.TryGetProperty("chute_id", out var chuteProp) &&
-            !string.Equals(chuteProp.GetString(), chuteId, StringComparison.OrdinalIgnoreCase))
+            !string.Equals(chuteProp.GetString(), chuteId, StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(chuteProp.GetString(), "*", StringComparison.OrdinalIgnoreCase))
         {
             return (null, null, null);
         }
 
         var plan = element.TryGetProperty("plan", out var planProp) ? planProp.GetString() : null;
-        var limit = TryGetInt(element, "limit_per_day", "requests_per_day");
+        var limit = TryGetInt(element, "limit_per_day", "requests_per_day", "quota");
         var resetAt = TryGetDate(element, "reset_at");
 
         if (!limit.HasValue && element.TryGetProperty("quota", out var quotaElement))
         {
-            limit = TryGetInt(quotaElement, "limit_per_day", "requests_per_day", "per_day", "limit");
-            resetAt ??= TryGetDate(quotaElement, "reset_at");
+             if(quotaElement.ValueKind == JsonValueKind.Number)
+             {
+                 limit = quotaElement.GetInt32();
+             }
+             else if(quotaElement.ValueKind == JsonValueKind.Object)
+             {
+                 limit = TryGetInt(quotaElement, "limit_per_day", "requests_per_day", "per_day", "limit");
+                 resetAt ??= TryGetDate(quotaElement, "reset_at");
+             }
         }
 
         return (limit, plan, resetAt);
@@ -332,10 +344,20 @@ public class ChutesUsageService : IChutesUsageService
 
             switch (value.ValueKind)
             {
-                case JsonValueKind.Number when value.TryGetInt32(out var numeric):
-                    return numeric;
+                case JsonValueKind.Number:
+                    if (value.TryGetInt32(out var numeric))
+                    {
+                        return numeric;
+                    }
+                    if (value.TryGetDouble(out var d))
+                    {
+                        return (int)d;
+                    }
+                    break;
                 case JsonValueKind.String when int.TryParse(value.GetString(), out var parsed):
                     return parsed;
+                case JsonValueKind.String when double.TryParse(value.GetString(), out var parsedDouble):
+                    return (int)parsedDouble;
             }
         }
 

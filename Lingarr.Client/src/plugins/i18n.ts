@@ -13,7 +13,7 @@ export function createI18nPlugin(options: I18nPluginOptions = {}) {
     const messages = ref<Record<string, Translations>>({})
     const availableLanguages: Ref<Language[]> = ref<Language[]>([])
 
-    const translate = (key: string): string => {
+    const translate = (key: string, args?: Record<string, string | number>): string => {
         const keys = key.split('.')
         let value: string | Translations = messages.value[currentLocale.value] || {}
 
@@ -26,7 +26,16 @@ export function createI18nPlugin(options: I18nPluginOptions = {}) {
             }
         }
 
-        return typeof value === 'string' ? value : key
+        if (typeof value === 'string') {
+            if (args) {
+                return Object.entries(args).reduce((acc, [argKey, argValue]) => {
+                    return acc.replace(`{${argKey}}`, String(argValue))
+                }, value)
+            }
+            return value
+        }
+
+        return key
     }
 
     const loadTranslations = async (languages = true) => {
