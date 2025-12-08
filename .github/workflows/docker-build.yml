@@ -10,7 +10,7 @@ on:
 
 env:
   REGISTRY: docker.io
-  IMAGE_NAME: lingarr/lingarr
+  IMAGE_NAME: ree0/lingarr-on-steroids
 
 jobs:
   build-and-push:

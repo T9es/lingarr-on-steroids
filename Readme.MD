@@ -1,7 +1,7 @@
 ﻿# Lingarr: Subtitle Translation Made Easy
 
 [![Version](https://img.shields.io/github/v/release/lingarr-translate/lingarr)](https://github.com/lingarr-translate/lingarr/releases)
-[![Docker Pulls](https://img.shields.io/docker/pulls/lingarr/lingarr.svg)](https://hub.docker.com/r/lingarr/lingarr)
+[![Docker Pulls](https://img.shields.io/docker/pulls/ree0/lingarr-on-steroids.svg)](https://hub.docker.com/r/ree0/lingarr-on-steroids)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-green.svg)](LICENSE)
 [![Discord](https://img.shields.io/discord/1293119073739210885?label=discord&logo=discord)](https://discord.gg/HkubmH2rcR)
 
@@ -44,7 +44,7 @@ Lingarr provides multi-architecture Docker images that automatically select the 
 ```yaml
 services:
   lingarr:
-    image: lingarr/lingarr:latest
+    image: ree0/lingarr-on-steroids:latest
     container_name: lingarr
     restart: unless-stopped
     environment:
@@ -76,7 +76,7 @@ docker run -d \
   -v /path/to/media/tv:/tv \
   -v /path/to/config:/app/config \
   --network lingarr \
-  lingarr/lingarr:latest
+  ree0/lingarr-on-steroids:latest
 ```
 
 ### Lingarr environment variables
