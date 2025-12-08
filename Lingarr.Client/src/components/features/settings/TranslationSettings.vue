@@ -118,12 +118,13 @@
 <script setup lang="ts">
 import { computed, ref, reactive, onMounted } from 'vue'
 import { useSettingStore } from '@/store/setting'
-import { SETTINGS, services } from '@/ts'
+import { SETTINGS } from '@/ts'
 import CardComponent from '@/components/common/CardComponent.vue'
 import SaveNotification from '@/components/common/SaveNotification.vue'
 import InputComponent from '@/components/common/InputComponent.vue'
 import ToggleButton from '@/components/common/ToggleButton.vue'
 import { useI18n } from '@/plugins/i18n'
+import axios from 'axios'
 
 const { translate } = useI18n()
 const saveNotification = ref<InstanceType<typeof SaveNotification> | null>(null)
@@ -140,8 +141,8 @@ const isValid = reactive({
 
 onMounted(async () => {
     try {
-        const limits = await services.setting.getSystemLimits<{ maxConcurrentTranslations: number }>()
-        maxConcurrentLimit.value = limits.maxConcurrentTranslations
+        const response = await axios.get<{ maxConcurrentTranslations: number }>('/api/setting/system/limits')
+        maxConcurrentLimit.value = response.data.maxConcurrentTranslations
     } catch (error) {
         console.error('Failed to fetch system limits:', error)
     }
