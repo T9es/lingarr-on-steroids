@@ -19,7 +19,10 @@
     "episodeSubtitles": "Ondertiteling",
     "ageThreshold": "Vertraging",
     "hours": "uren",
-    "priority": "Prioriteren"
+    "priority": "Prioriteren",
+    "translateNow": "Vertalen",
+    "translationQueued": "{count} vertaling(en) in wachtrij",
+    "noTranslationsNeeded": "Geen vertalingen nodig"
   },
   "tvShows": {
     "title": "Titel",
@@ -33,7 +36,10 @@
     "episodeSubtitles": "Ondertiteling",
     "ageThreshold": "Vertraging",
     "hours": "uren",
-    "priority": "Prioriteren"
+    "priority": "Prioriteren",
+    "translateNow": "Vertalen",
+    "translationQueued": "{count} vertaling(en) in wachtrij",
+    "noTranslationsNeeded": "Geen vertalingen nodig"
   },
   "statistics": {
     "notAvailable": "Geen statistieken beschikbaar",

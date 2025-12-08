@@ -225,11 +225,144 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
     /// <summary>
     /// Updates the media hash in the database.
     /// </summary>
-    /// <returns>A task representing the asynchronous operation.</returns
+    /// <returns>A task representing the asynchronous operation.</returns>
     private async Task UpdateHash()
     {
         _media.MediaHash = _hash;
         _dbContext.Update(_media);
         await _dbContext.SaveChangesAsync();
+    }
+    
+    /// <inheritdoc />
+    public async Task<int> ProcessMediaForceAsync(
+        IMedia media, 
+        MediaType mediaType,
+        bool forceProcess = true)
+    {
+        if (media.Path == null)
+        {
+            return 0;
+        }
+        
+        var allSubtitles = await _subtitleService.GetAllSubtitles(media.Path);
+        var matchingSubtitles = allSubtitles
+            .Where(s => s.FileName.StartsWith(media.FileName + ".") || s.FileName == media.FileName)
+            .ToList();
+
+        if (!matchingSubtitles.Any())
+        {
+            return 0;
+        }
+
+        var sourceLanguages = await GetLanguagesSetting<SourceLanguage>(SettingKeys.Translation.SourceLanguages);
+        var targetLanguages = await GetLanguagesSetting<TargetLanguage>(SettingKeys.Translation.TargetLanguages);
+        var ignoreCaptions = await _settingService.GetSetting(SettingKeys.Translation.IgnoreCaptions);
+
+        _media = media;
+        _mediaType = mediaType;
+        _hash = CreateHash(matchingSubtitles, sourceLanguages, targetLanguages, ignoreCaptions);
+        
+        // If not forcing and hash matches, skip processing
+        if (!forceProcess && !string.IsNullOrEmpty(media.MediaHash) && media.MediaHash == _hash)
+        {
+            return 0;
+        }
+        
+        _logger.LogInformation("Initiating manual subtitle processing for {FileName}.", media.FileName);
+        return await ProcessSubtitlesWithCount(matchingSubtitles, sourceLanguages, targetLanguages, ignoreCaptions);
+    }
+    
+    /// <summary>
+    /// Processes subtitle files for translation and returns the count of translations queued.
+    /// </summary>
+    private async Task<int> ProcessSubtitlesWithCount(
+        List<Subtitles> subtitles,
+        HashSet<string> sourceLanguages,
+        HashSet<string> targetLanguages,
+        string ignoreCaptions)
+    {
+        var existingLanguages = ExtractLanguageCodes(subtitles);
+        var translationsQueued = 0;
+
+        if (sourceLanguages.Count == 0 || targetLanguages.Count == 0)
+        {
+            _logger.LogWarning(
+                "Source or target languages are empty. Source languages: {SourceCount}, Target languages: {TargetCount}",
+                sourceLanguages.Count, targetLanguages.Count);
+            await UpdateHash();
+            return 0;
+        }
+
+        var sourceLanguage = existingLanguages.FirstOrDefault(lang => sourceLanguages.Contains(lang));
+        if (sourceLanguage != null && targetLanguages.Any())
+        {
+            var sourceSubtitle = ignoreCaptions == "true"
+                ? subtitles.FirstOrDefault(s => s.Language == sourceLanguage && string.IsNullOrEmpty(s.Caption)) 
+                    ?? subtitles.FirstOrDefault(s => s.Language == sourceLanguage)
+                : subtitles.FirstOrDefault(s => s.Language == sourceLanguage);
+                
+            if (sourceSubtitle != null)
+            {
+                var languagesToTranslate = targetLanguages.Except(existingLanguages);
+                if (ignoreCaptions == "true")
+                {
+                    var targetLanguagesWithCaptions = subtitles
+                        .Where(s => targetLanguages.Contains(s.Language) && !string.IsNullOrEmpty(s.Caption))
+                        .Select(s => s.Language)
+                        .Distinct()
+                        .ToList();
+
+                    if (targetLanguagesWithCaptions.Any())
+                    {
+                        _logger.LogInformation(
+                            "Translation skipped because captions exist for target languages: |Green|{CaptionLanguages}|/Green|",
+                            string.Join(", ", targetLanguagesWithCaptions));
+                        await UpdateHash();
+                        return 0;
+                    }
+                }
+
+                foreach (var targetLanguage in languagesToTranslate)
+                {
+                    await _translationRequestService.CreateRequest(new TranslateAbleSubtitle
+                    {
+                        MediaId = _media.Id,
+                        MediaType = _mediaType,
+                        SubtitlePath = sourceSubtitle.Path,
+                        TargetLanguage = targetLanguage,
+                        SourceLanguage = sourceLanguage,
+                        SubtitleFormat = sourceSubtitle.Format
+                    });
+                    translationsQueued++;
+                    _logger.LogInformation(
+                        "Initiating translation from |Orange|{sourceLanguage}|/Orange| to |Orange|{targetLanguage}|/Orange| for |Green|{subtitleFile}|/Green|",
+                        sourceLanguage,
+                        targetLanguage,
+                        sourceSubtitle.Path);
+                }
+
+                await UpdateHash();
+                return translationsQueued;
+            }
+
+            _logger.LogWarning("No source subtitle file found for language: |Green|{SourceLanguage}|/Green|",
+                sourceLanguage);
+
+            await UpdateHash();
+            return 0;
+        }
+
+        _logger.LogWarning(
+            "No valid source language or target languages found for media |Green|{FileName}|/Green|. " +
+            "Existing languages: |Red|{ExistingLanguages}|/Red|, " +
+            "Source languages: |Red|{SourceLanguages}|/Red|, " +
+            "Target languages: |Red|{TargetLanguages}|/Red|",
+            string.Join(", ", _media?.FileName),
+            string.Join(", ", existingLanguages),
+            string.Join(", ", sourceLanguages),
+            string.Join(", ", targetLanguages));
+
+        await UpdateHash();
+        return 0;
     }
 }

@@ -22,7 +22,7 @@
 
             <div class="w-full px-4">
                 <div class="border-accent grid grid-cols-12 border-b font-bold">
-                    <div class="col-span-5 px-4 py-2">{{ translate('movies.title') }}</div>
+                    <div class="col-span-4 px-4 py-2">{{ translate('movies.title') }}</div>
                     <div class="col-span-3 px-4 py-2">{{ translate('movies.subtitles') }}</div>
                     <div class="col-span-1 px-4 py-2">
                         {{ translate('movies.exclude') }}
@@ -33,6 +33,12 @@
                         </span>
                         <span class="block md:hidden">★</span>
                     </div>
+                    <div class="col-span-1 px-4 py-2 text-center">
+                        <span class="hidden md:block">
+                            {{ translate('movies.translateNow') }}
+                        </span>
+                        <span class="block md:hidden">⚡</span>
+                    </div>
                     <div class="col-span-2 px-4 py-2">
                         {{ translate('movies.ageThreshold') }}
                         <span class="float-right">
@@ -42,7 +48,7 @@
                 </div>
                 <div v-for="item in movies.items" :key="item.id">
                     <div class="border-accent grid grid-cols-12 border-b">
-                        <div class="col-span-5 px-4 py-2">
+                        <div class="col-span-4 px-4 py-2">
                             {{ item.title }}
                         </div>
                         <div class="col-span-3 flex flex-wrap items-center gap-2 px-4 py-2">
@@ -77,6 +83,16 @@
                                     () => movieStore.priority(MEDIA_TYPE.MOVIE, item.id)
                                 " />
                         </div>
+                        <div class="col-span-1 flex items-center justify-center px-4 py-2" @click.stop>
+                            <button
+                                class="border-accent hover:bg-accent cursor-pointer rounded border p-1 transition-colors"
+                                :disabled="translatingMovies[item.id]"
+                                :title="translate('movies.translateNow')"
+                                @click="translateMovie(item)">
+                                <LoaderCircleIcon v-if="translatingMovies[item.id]" class="h-4 w-4 animate-spin" />
+                                <LanguageIcon v-else class="h-4 w-4" />
+                            </button>
+                        </div>
                         <div class="col-span-2 flex items-center px-4 py-2" @click.stop>
                             <InputComponent
                                 :model-value="item?.translationAgeThreshold"
@@ -107,12 +123,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ComputedRef } from 'vue'
+import { computed, onMounted, ComputedRef, reactive } from 'vue'
 import { IFilter, IMovie, IPagedResult, MEDIA_TYPE, SETTINGS } from '@/ts'
 import useDebounce from '@/composables/useDebounce'
 import { useMovieStore } from '@/store/movie'
 import { useSettingStore } from '@/store/setting'
 import { useInstanceStore } from '@/store/instance'
+import { useI18n } from '@/plugins/i18n'
+import services from '@/services'
 import PaginationComponent from '@/components/common/PaginationComponent.vue'
 import PageLayout from '@/components/layout/PageLayout.vue'
 import BadgeComponent from '@/components/common/BadgeComponent.vue'
@@ -123,10 +141,20 @@ import ReloadComponent from '@/components/common/ReloadComponent.vue'
 import NoMediaNotification from '@/components/common/NoMediaNotification.vue'
 import ToggleButton from '@/components/common/ToggleButton.vue'
 import InputComponent from '@/components/common/InputComponent.vue'
+import LanguageIcon from '@/components/icons/LanguageIcon.vue'
+import LoaderCircleIcon from '@/components/icons/LoaderCircleIcon.vue'
 
+const { translate } = useI18n()
 const movieStore = useMovieStore()
 const settingStore = useSettingStore()
 const instanceStore = useInstanceStore()
+
+const translatingMovies = reactive<Record<number, boolean>>({})
+
+interface TranslateMediaResponse {
+    translationsQueued: number
+    message: string
+}
 
 const settingsCompleted: ComputedRef<string> = computed(
     () => settingStore.getSetting(SETTINGS.RADARR_SETTINGS_COMPLETED) as string
@@ -142,6 +170,21 @@ const filter: ComputedRef<IFilter> = computed({
 const toggleMovie = useDebounce(async (movie: IMovie) => {
     instanceStore.setPoster({ content: movie, type: 'movie' })
 }, 1000)
+
+const translateMovie = async (movie: IMovie) => {
+    translatingMovies[movie.id] = true
+    try {
+        const response = await services.translate.translateMedia<TranslateMediaResponse>(
+            movie.id,
+            MEDIA_TYPE.MOVIE
+        )
+        console.log(response.message)
+    } catch (error) {
+        console.error('Failed to translate movie:', error)
+    } finally {
+        translatingMovies[movie.id] = false
+    }
+}
 
 onMounted(async () => {
     await movieStore.fetch()

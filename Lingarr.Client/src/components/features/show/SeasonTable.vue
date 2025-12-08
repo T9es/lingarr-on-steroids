@@ -5,13 +5,20 @@
             <div class="col-span-6 px-4 py-2 md:col-span-3">
                 {{ translate('tvShows.season') }}
             </div>
-            <div class="col-span-6 flex justify-between px-4 py-2 md:col-span-8">
+            <div class="col-span-4 flex justify-between px-4 py-2 md:col-span-6">
                 <span>{{ translate('tvShows.episodes') }}</span>
                 <span class="hidden md:block">
                     {{ translate('tvShows.exclude') }}
                 </span>
                 <span class="block md:hidden">⊘</span>
             </div>
+            <div class="col-span-2 px-4 py-2 text-center md:col-span-2">
+                <span class="hidden md:block">
+                    {{ translate('tvShows.translateNow') }}
+                </span>
+                <span class="block md:hidden">⚡</span>
+            </div>
+            <div class="col-span-0 md:col-span-1"></div>
         </div>
         <!-- Seasons -->
         <div
@@ -33,7 +40,7 @@
                     </span>
                     <span v-else>{{ translate('tvShows.season') }} {{ season.seasonNumber }}</span>
                 </div>
-                <div class="col-span-6 flex justify-between px-4 py-2 select-none md:col-span-8">
+                <div class="col-span-4 flex justify-between px-4 py-2 select-none md:col-span-6">
                     <span>
                         {{ season.episodes.length }}
                         {{ translate('tvShows.episodesLine') }}
@@ -47,6 +54,17 @@
                             " />
                     </span>
                 </div>
+                <div class="col-span-2 flex items-center justify-center px-4 py-2 md:col-span-2" @click.stop>
+                    <button
+                        class="border-accent hover:bg-accent cursor-pointer rounded border p-1 transition-colors"
+                        :disabled="translatingSeason[season.id]"
+                        :title="translate('tvShows.translateNow')"
+                        @click="translateSeason(season)">
+                        <LoaderCircleIcon v-if="translatingSeason[season.id]" class="h-4 w-4 animate-spin" />
+                        <LanguageIcon v-else class="h-4 w-4" />
+                    </button>
+                </div>
+                <div class="col-span-0 md:col-span-1"></div>
             </div>
             <EpisodeTable
                 v-if="expandedSeason?.id === season.id"
@@ -57,13 +75,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, Ref } from 'vue'
+import { ref, Ref, reactive } from 'vue'
 import { ISeason, ISubtitle, MEDIA_TYPE } from '@/ts'
+import { useI18n } from '@/plugins/i18n'
+import services from '@/services'
 import EpisodeTable from '@/components/features/show/EpisodeTable.vue'
 import CaretButton from '@/components/common/CaretButton.vue'
 import ToggleButton from '@/components/common/ToggleButton.vue'
-import services from '@/services'
+import LanguageIcon from '@/components/icons/LanguageIcon.vue'
+import LoaderCircleIcon from '@/components/icons/LoaderCircleIcon.vue'
 import { useShowStore } from '@/store/show'
+
+const { translate } = useI18n()
 
 defineProps<{
     seasons: ISeason[]
@@ -72,6 +95,12 @@ defineProps<{
 const showStore = useShowStore()
 const subtitles: Ref<ISubtitle[]> = ref([])
 const expandedSeason: Ref<ISeason | null> = ref(null)
+const translatingSeason = reactive<Record<number, boolean>>({})
+
+interface TranslateMediaResponse {
+    translationsQueued: number
+    message: string
+}
 
 async function toggleSeason(season: ISeason) {
     if (!season.episodes.length) return
@@ -86,6 +115,21 @@ async function toggleSeason(season: ISeason) {
 async function collectSubtitles() {
     if (expandedSeason.value?.path) {
         subtitles.value = await services.subtitle.collect(expandedSeason.value.path)
+    }
+}
+
+const translateSeason = async (season: ISeason) => {
+    translatingSeason[season.id] = true
+    try {
+        const response = await services.translate.translateMedia<TranslateMediaResponse>(
+            season.id,
+            MEDIA_TYPE.SEASON
+        )
+        console.log(response.message)
+    } catch (error) {
+        console.error('Failed to translate season:', error)
+    } finally {
+        translatingSeason[season.id] = false
     }
 }
 </script>

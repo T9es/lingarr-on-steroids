@@ -23,7 +23,7 @@
             <div class="w-full px-4">
                 <!-- Shows -->
                 <div class="border-accent grid grid-cols-12 border-b font-bold">
-                    <div class="col-span-7 px-4 py-2">{{ translate('tvShows.title') }}</div>
+                    <div class="col-span-6 px-4 py-2">{{ translate('tvShows.title') }}</div>
                     <div class="col-span-1 px-4 py-2">
                         <span class="hidden md:block">
                             {{ translate('tvShows.exclude') }}
@@ -39,6 +39,12 @@
                         </span>
                         <span class="block md:hidden">★</span>
                     </div>
+                    <div class="col-span-1 px-4 py-2 text-center">
+                        <span class="hidden md:block">
+                            {{ translate('tvShows.translateNow') }}
+                        </span>
+                        <span class="block md:hidden">⚡</span>
+                    </div>
                     <div class="col-span-1 flex justify-end px-4 py-2">
                         <ReloadComponent @toggle:update="showStore.fetch()" />
                     </div>
@@ -47,7 +53,7 @@
                     <div
                         class="border-accent grid cursor-pointer grid-cols-12 border-b"
                         @click="toggleShow(item)">
-                        <div class="col-span-7 flex items-center px-4 py-2">
+                        <div class="col-span-6 flex items-center px-4 py-2">
                             <CaretButton :is-expanded="expandedShow !== item.id" class="pr-2" />
                             {{ item.title }}
                         </div>
@@ -82,6 +88,16 @@
                                     () => showStore.priority(MEDIA_TYPE.SHOW, item.id)
                                 " />
                         </div>
+                        <div class="col-span-1 flex items-center justify-center px-4 py-2" @click.stop>
+                            <button
+                                class="border-accent hover:bg-accent cursor-pointer rounded border p-1 transition-colors"
+                                :disabled="translatingShows[item.id]"
+                                :title="translate('tvShows.translateNow')"
+                                @click="translateShow(item)">
+                                <LoaderCircleIcon v-if="translatingShows[item.id]" class="h-4 w-4 animate-spin" />
+                                <LanguageIcon v-else class="h-4 w-4" />
+                            </button>
+                        </div>
                         <div class="col-span-1"></div>
                     </div>
                     <SeasonTable v-if="expandedShow === item.id" :seasons="item.seasons" />
@@ -99,12 +115,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, Ref, computed, onMounted, ComputedRef } from 'vue'
+import { ref, Ref, computed, onMounted, ComputedRef, reactive } from 'vue'
 import { IFilter, IPagedResult, IShow, MEDIA_TYPE, SETTINGS } from '@/ts'
 import useDebounce from '@/composables/useDebounce'
 import { useInstanceStore } from '@/store/instance'
 import { useSettingStore } from '@/store/setting'
 import { useShowStore } from '@/store/show'
+import { useI18n } from '@/plugins/i18n'
+import services from '@/services'
 import PaginationComponent from '@/components/common/PaginationComponent.vue'
 import PageLayout from '@/components/layout/PageLayout.vue'
 import SearchComponent from '@/components/common/SearchComponent.vue'
@@ -115,11 +133,21 @@ import NoMediaNotification from '@/components/common/NoMediaNotification.vue'
 import ToggleButton from '@/components/common/ToggleButton.vue'
 import SeasonTable from '@/components/features/show/SeasonTable.vue'
 import InputComponent from '@/components/common/InputComponent.vue'
+import LanguageIcon from '@/components/icons/LanguageIcon.vue'
+import LoaderCircleIcon from '@/components/icons/LoaderCircleIcon.vue'
 
+const { translate } = useI18n()
 const instanceStore = useInstanceStore()
 const showStore = useShowStore()
 const settingStore = useSettingStore()
 const expandedShow: Ref<boolean | number | null> = ref(null)
+
+const translatingShows = reactive<Record<number, boolean>>({})
+
+interface TranslateMediaResponse {
+    translationsQueued: number
+    message: string
+}
 
 const settingsCompleted: ComputedRef<string> = computed(
     () => settingStore.getSetting(SETTINGS.SONARR_SETTINGS_COMPLETED) as string
@@ -140,6 +168,22 @@ async function toggleShow(show: IShow) {
     instanceStore.setPoster({ content: show, type: 'show' })
     expandedShow.value = show.id
 }
+
+const translateShow = async (show: IShow) => {
+    translatingShows[show.id] = true
+    try {
+        const response = await services.translate.translateMedia<TranslateMediaResponse>(
+            show.id,
+            MEDIA_TYPE.SHOW
+        )
+        console.log(response.message)
+    } catch (error) {
+        console.error('Failed to translate show:', error)
+    } finally {
+        translatingShows[show.id] = false
+    }
+}
+
 onMounted(async () => {
     await showStore.fetch()
 })

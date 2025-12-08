@@ -1,6 +1,9 @@
 ﻿using System.Text.Json;
 using Lingarr.Core.Configuration;
+using Lingarr.Core.Data;
+using Lingarr.Core.Enum;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Lingarr.Server.Models.FileSystem;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Translation;
@@ -18,17 +21,23 @@ public class TranslateController : ControllerBase
 {
     private readonly ITranslationServiceFactory _translationServiceFactory;
     private readonly ITranslationRequestService _translationRequestService;
+    private readonly IMediaSubtitleProcessor _mediaSubtitleProcessor;
+    private readonly LingarrDbContext _dbContext;
     private readonly ISettingService _settings;
     private readonly ILogger<TranslateController> _logger;
 
     public TranslateController(
         ITranslationServiceFactory translationServiceFactory,
         ITranslationRequestService translationRequestService,
+        IMediaSubtitleProcessor mediaSubtitleProcessor,
+        LingarrDbContext dbContext,
         ISettingService settings,
         ILogger<TranslateController> logger)
     {
         _translationServiceFactory = translationServiceFactory;
         _translationRequestService = translationRequestService;
+        _mediaSubtitleProcessor = mediaSubtitleProcessor;
+        _dbContext = dbContext;
         _settings = settings;
         _logger = logger;
     }
@@ -131,6 +140,83 @@ public class TranslateController : ControllerBase
         {
             _logger.LogError(ex, "Error retrieving models for translation service");
             return StatusCode(500, "Failed to retrieve available models");
+        }
+    }
+
+    /// <summary>
+    /// Manually triggers translation for a specific media item.
+    /// </summary>
+    /// <param name="request">The media item to translate (MediaId and MediaType).</param>
+    /// <returns>The number of translations that were queued.</returns>
+    [HttpPost("media")]
+    public async Task<ActionResult<TranslateMediaResponse>> TranslateMedia([FromBody] TranslateMediaRequest request)
+    {
+        try
+        {
+            var translationsQueued = 0;
+            
+            switch (request.MediaType)
+            {
+                case MediaType.Movie:
+                    var movie = await _dbContext.Movies.FindAsync(request.MediaId);
+                    if (movie == null)
+                        return NotFound(new TranslateMediaResponse { Message = "Movie not found" });
+                    translationsQueued = await _mediaSubtitleProcessor.ProcessMediaForceAsync(movie, MediaType.Movie);
+                    break;
+                    
+                case MediaType.Episode:
+                    var episode = await _dbContext.Episodes.FindAsync(request.MediaId);
+                    if (episode == null)
+                        return NotFound(new TranslateMediaResponse { Message = "Episode not found" });
+                    translationsQueued = await _mediaSubtitleProcessor.ProcessMediaForceAsync(episode, MediaType.Episode);
+                    break;
+                    
+                case MediaType.Season:
+                    var season = await _dbContext.Seasons
+                        .Include(s => s.Episodes)
+                        .FirstOrDefaultAsync(s => s.Id == request.MediaId);
+                    if (season == null)
+                        return NotFound(new TranslateMediaResponse { Message = "Season not found" });
+                    foreach (var ep in season.Episodes.Where(e => !e.ExcludeFromTranslation))
+                    {
+                        translationsQueued += await _mediaSubtitleProcessor.ProcessMediaForceAsync(ep, MediaType.Episode);
+                    }
+                    break;
+                    
+                case MediaType.Show:
+                    var show = await _dbContext.Shows
+                        .Include(s => s.Seasons)
+                        .ThenInclude(s => s.Episodes)
+                        .FirstOrDefaultAsync(s => s.Id == request.MediaId);
+                    if (show == null)
+                        return NotFound(new TranslateMediaResponse { Message = "Show not found" });
+                    foreach (var s in show.Seasons.Where(s => !s.ExcludeFromTranslation))
+                    {
+                        foreach (var ep in s.Episodes.Where(e => !e.ExcludeFromTranslation))
+                        {
+                            translationsQueued += await _mediaSubtitleProcessor.ProcessMediaForceAsync(ep, MediaType.Episode);
+                        }
+                    }
+                    break;
+                    
+                default:
+                    return BadRequest(new TranslateMediaResponse { Message = "Invalid media type" });
+            }
+
+            var message = translationsQueued > 0 
+                ? $"{translationsQueued} translation(s) queued" 
+                : "No translations needed";
+                
+            return Ok(new TranslateMediaResponse 
+            { 
+                TranslationsQueued = translationsQueued,
+                Message = message
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error translating media {MediaId} of type {MediaType}", request.MediaId, request.MediaType);
+            return StatusCode(500, new TranslateMediaResponse { Message = "Failed to queue translations" });
         }
     }
 }

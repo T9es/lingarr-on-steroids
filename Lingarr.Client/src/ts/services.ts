@@ -64,6 +64,7 @@ export interface ITranslateService {
         target: ILanguage,
         mediaType: MediaType
     ): Promise<T>
+    translateMedia<T>(mediaId: number, mediaType: MediaType): Promise<T>
     getLanguages<T>(): Promise<T>
     getModels<T>(): Promise<T>
 }

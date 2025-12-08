@@ -35,7 +35,10 @@
     "episodeSubtitles": "Subtitles",
     "ageThreshold": "Delay",
     "hours": "hours",
-    "priority": "Prioritize"
+    "priority": "Prioritize",
+    "translateNow": "Translate",
+    "translationQueued": "{count} translation(s) queued",
+    "noTranslationsNeeded": "No translations needed"
   },
   "tvShows": {
     "title": "Title",
@@ -49,7 +52,10 @@
     "episodeSubtitles": "Subtitles",
     "ageThreshold": "Delay",
     "hours": "hours",
-    "priority": "Prioritize"
+    "priority": "Prioritize",
+    "translateNow": "Translate",
+    "translationQueued": "{count} translation(s) queued",
+    "noTranslationsNeeded": "No translations needed"
   },
   "translations": {
     "title": "Title",
