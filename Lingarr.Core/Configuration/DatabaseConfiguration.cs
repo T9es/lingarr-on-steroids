@@ -50,9 +50,13 @@ public static class DatabaseConfiguration
         catch { /* Ignore DNS errors here, let the connection fail naturally if needed */ }
 
         var connectionString =
-            $"Server={host};Port={variables["DB_PORT"]};Database={variables["DB_DATABASE"]};Uid={variables["DB_USERNAME"]};Pwd={variables["DB_PASSWORD"]};Allow User Variables=True;SslMode=None";
+            $"Server={host};Port={variables["DB_PORT"]};Database={variables["DB_DATABASE"]};Uid={variables["DB_USERNAME"]};Pwd={variables["DB_PASSWORD"]};Allow User Variables=True;SslMode=None;Connection Timeout=30";
 
-        options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString),
+        // Use static version instead of AutoDetect to avoid blocking connection during startup
+        // AutoDetect connects to the database which blocks if MySQL isn't ready
+        var serverVersion = new MariaDbServerVersion(new Version(10, 5));
+        
+        options.UseMySql(connectionString, serverVersion,
                 mysqlOptions => mysqlOptions.MigrationsAssembly("Lingarr.Migrations.MySQL")
                     .UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery))
             .UseSnakeCaseNamingConvention();
