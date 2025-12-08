@@ -196,7 +196,7 @@ public static class ServiceCollectionExtensions
                     var user = Environment.GetEnvironmentVariable("DB_USERNAME") ?? "LingarrMysql";
                     var pass = Environment.GetEnvironmentVariable("DB_PASSWORD") ?? "Secret1234";
                     
-                    connectionString = $"Server={host};Port={port};Database={db};Uid={user};Pwd={pass};Allow User Variables=True";
+                    connectionString = $"Server={host};Port={port};Database={db};Uid={user};Pwd={pass};Allow User Variables=True;SslMode=None";
                 }
                 else 
                 {
@@ -207,32 +207,10 @@ public static class ServiceCollectionExtensions
                 var debugConnectionString = System.Text.RegularExpressions.Regex.Replace(connectionString, "Pwd=.*?;", "Pwd=***;");
                 Console.WriteLine($"[Hangfire] Initializing MySQL Storage with connection string: {debugConnectionString}");
 
-                // Retry logic for Hangfire storage initialization
-                int maxRetries = 5;
-                int delayMs = 2000;
-                for (int i = 0; i < maxRetries; i++)
+                configuration.UseStorage(new MySqlStorage(connectionString, new MySqlStorageOptions
                 {
-                    try
-                    {
-                        var storage = new MySqlStorage(connectionString, new MySqlStorageOptions
-                        {
-                            TablesPrefix = tablePrefix
-                        });
-                        configuration.UseStorage(storage);
-                        Console.WriteLine("[Hangfire] Successfully verified MySQL connection.");
-                        break;
-                    }
-                    catch (Exception ex)
-                    {
-                        if (i == maxRetries - 1)
-                        {
-                            Console.WriteLine($"[Hangfire] Critical Failure: Could not connect to MySQL after {maxRetries} attempts. {ex.Message}");
-                            throw;
-                        }
-                        Console.WriteLine($"[Hangfire] Failed to connect to MySQL (Attempt {i + 1}/{maxRetries}). Retrying in {delayMs}ms... Error: {ex.Message}");
-                        System.Threading.Thread.Sleep(delayMs);
-                    }
-                }
+                    TablesPrefix = tablePrefix
+                }));
             }
             else
             {
