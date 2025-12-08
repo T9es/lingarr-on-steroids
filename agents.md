@@ -188,3 +188,6 @@ Use **Tailwind CSS** utility classes.
 - **EF Migrations**: Always use generic steps to apply migrations.
   - To create: `../create-migrations.ps1 "MigrationName"` (powershell script helper)
   - **IMPORTANT**: If creating migrations manually or if the script fails, you **MUST** ensure the `*.Designer.cs` file is created and includes the `[Migration("...")]` attribute. Without this file, Entity Framework will **silently ignore** the migration.
+- **Verification**: All changes MUST pass the Docker build and any existing tests.
+  - Run `docker-compose -f docker-compose.dev.yml build` to verify the build.
+  - Run `dotnet test` to verify backend tests.
