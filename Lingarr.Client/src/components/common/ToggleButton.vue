@@ -43,18 +43,12 @@ const {
 }>()
 
 const emit = defineEmits<{
-    (e: 'update:modelValue', value: string | boolean): void
+    (e: 'update:modelValue', value: string): void
     (e: 'toggle:update'): void
 }>()
 
 const toggle = () => {
-    // If it's a boolean, emit the opposite boolean
-    if (typeof modelValue === 'boolean') {
-        emit('update:modelValue', !modelValue)
-    } else {
-        // Fallback for string-based 'true'/'false' legacy usage if any
-        emit('update:modelValue', modelValue === 'true' ? 'false' : 'true')
-    }
+    emit('update:modelValue', modelValue === 'true' ? 'false' : 'true')
     emit('toggle:update')
 }
 </script>

@@ -172,7 +172,10 @@ public static class ServiceCollectionExtensions
             options.Queues = ["movies", "shows", "system", "translation", "default"];
             // Default to 20 workers so the ParallelTranslationLimiter can control actual concurrency
             // The semaphore-based limiter respects the UI setting for max_parallel_translations
-            options.WorkerCount = builder.Configuration.GetValue<int?>("MAX_CONCURRENT_JOBS") ?? 20;
+            options.WorkerCount =
+                int.TryParse(Environment.GetEnvironmentVariable("MAX_CONCURRENT_JOBS"), out int maxConcurrentJobs)
+                    ? maxConcurrentJobs
+                    : 20;
         });
 
         builder.Services.AddHangfire(configuration =>
@@ -181,21 +184,20 @@ public static class ServiceCollectionExtensions
                 .UseSimpleAssemblyNameTypeSerializer()
                 .UseRecommendedSerializerSettings();
 
-            var dbConnection = builder.Configuration["DbConnection"]?.ToLower() ?? "sqlite";
+            var dbConnection = Environment.GetEnvironmentVariable("DB_CONNECTION")?.ToLower() ?? "sqlite";
             if (dbConnection == "mysql")
             {
-                var connectionString = builder.Configuration.GetConnectionString("MySqlConnection");
-                
-                if (string.IsNullOrWhiteSpace(connectionString))
+                var variables = new Dictionary<string, string>
                 {
-                    var host = builder.Configuration["DB_HOST"] ?? "Lingarr.Mysql";
-                    var port = builder.Configuration["DB_PORT"] ?? "3306";
-                    var db = builder.Configuration["DB_DATABASE"] ?? "LingarrMysql";
-                    var user = builder.Configuration["DB_USERNAME"] ?? "LingarrMysql";
-                    var pass = builder.Configuration["DB_PASSWORD"] ?? "Secret1234";
-                    
-                    connectionString = $"Server={host};Port={port};Database={db};Uid={user};Pwd={pass};Allow User Variables=True";
-                }
+                    { "DB_HOST", Environment.GetEnvironmentVariable("DB_HOST") ?? "Lingarr.Mysql" },
+                    { "DB_PORT", Environment.GetEnvironmentVariable("DB_PORT") ?? "3306" },
+                    { "DB_DATABASE", Environment.GetEnvironmentVariable("DB_DATABASE") ?? "LingarrMysql" },
+                    { "DB_USERNAME", Environment.GetEnvironmentVariable("DB_USERNAME") ?? "LingarrMysql" },
+                    { "DB_PASSWORD", Environment.GetEnvironmentVariable("DB_PASSWORD") ?? "Secret1234" }
+                };
+
+                var connectionString =
+                    $"Server={variables["DB_HOST"]};Port={variables["DB_PORT"]};Database={variables["DB_DATABASE"]};Uid={variables["DB_USERNAME"]};Pwd={variables["DB_PASSWORD"]};Allow User Variables=True";
 
                 configuration.UseStorage(new MySqlStorage(connectionString, new MySqlStorageOptions
                 {
@@ -204,7 +206,7 @@ public static class ServiceCollectionExtensions
             }
             else
             {
-                var sqliteDbPath = builder.Configuration["DB_HANGFIRE_SQLITE_PATH"] ?? "/app/config/Hangfire.db";
+                var sqliteDbPath = Environment.GetEnvironmentVariable("DB_HANGFIRE_SQLITE_PATH") ?? "/app/config/Hangfire.db";
 
                 configuration
                     .UseSimpleAssemblyNameTypeSerializer()
