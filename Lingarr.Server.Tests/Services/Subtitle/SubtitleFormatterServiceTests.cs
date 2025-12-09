@@ -18,14 +18,30 @@ public class SubtitleFormatterServiceTests
     }
 
     [Theory]
-    [InlineData("1997")]
-    [InlineData("10")]
-    [InlineData("7")]
-    public void IsAssDrawingCommand_ShouldReturnFalse_ForSimpleNumbers(string input)
+    [InlineData("e")]
+    [InlineData("l")]
+    [InlineData("p")]
+    [InlineData("c")]
+    [InlineData("s")]
+    public void IsAssDrawingCommand_ShouldReturnTrue_ForSingleLetterGarbage(string input)
     {
-        // Simple numbers are valid text (e.g. years, countdowns), not drawing commands.
+        // Single letters that are not valid words (I, A) or numbers should be considered garbage/drawing commands
+        // or remnants of vertical text requiring removal.
         var result = SubtitleFormatterService.IsAssDrawingCommand(input);
-        Assert.False(result, $"Incorrectly identified simple number as ASS drawing command: {input}");
+        Assert.True(result, $"Failed to identify single letter garbage: {input}");
+    }
+
+    [Theory]
+    [InlineData("I")]
+    [InlineData("a")]
+    [InlineData("A")]
+    [InlineData("1")]
+    [InlineData("O")]
+    public void IsAssDrawingCommand_ShouldReturnFalse_ForValidSingleLetters(string input)
+    {
+        // Valid single letter words or numbers should be preserved.
+        var result = SubtitleFormatterService.IsAssDrawingCommand(input);
+        Assert.False(result, $"Incorrectly identified valid single letter as garbage: {input}");
     }
 
     [Theory]

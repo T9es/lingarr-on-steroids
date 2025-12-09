@@ -58,6 +58,32 @@ public class SubtitleFormatterService : ISubtitleFormatterService
             return true;
         }
         
+        // HEURISTIC: Remove single character lines that are not valid 1-letter words or numbers.
+        // This handles cases of vertical text splitting (e.g. s, t, e, a, l, i, n, g) or leftovers.
+        // Valid 1-letter words: I, A, a, O (e.g. "O Brother"), i, o
+        // Numbers: 0-9
+        if (cleaned.Length == 1)
+        {
+            char c = cleaned[0];
+            if (char.IsDigit(c))
+            {
+                // Keep numbers (e.g. "1")
+                return false;
+            }
+            
+            // Allow list of valid single-letter words (case-sensitive to be safe, but we include both cases for common ones)
+            // 'I', 'i' (though 'i' is rare as a word in English, common in others)
+            // 'A', 'a'
+            // 'O', 'o'
+            if ("IAaOo".Contains(c)) 
+            {
+                return false;
+            }
+
+            // Everything else (e, l, p, c, s, z, x, etc.) -> Garbage
+            return true;
+        }
+        
         // ASS drawing commands logic:
         // Instead of a complex regex that can fail or backtrack, we tokenize the string.
         // Valid tokens in a drawing command are:
