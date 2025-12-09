@@ -219,7 +219,7 @@ const subtitleTag = computed({
 })
 
 const stripAssDrawingCommands = computed({
-    get: (): string => settingsStore.getSetting(SETTINGS.STRIP_ASS_DRAWING_COMMANDS) as string,
+    get: (): string => settingsStore.getSetting(SETTINGS.STRIP_ASS_DRAWING_COMMANDS) as string ?? 'true',
     set: (newValue: string): void => {
         settingsStore.updateSetting(SETTINGS.STRIP_ASS_DRAWING_COMMANDS, newValue, true)
         // If disabling, also disable the dependent setting
@@ -231,7 +231,7 @@ const stripAssDrawingCommands = computed({
 })
 
 const cleanSourceAssDrawings = computed({
-    get: (): string => settingsStore.getSetting(SETTINGS.CLEAN_SOURCE_ASS_DRAWINGS) as string,
+    get: (): string => settingsStore.getSetting(SETTINGS.CLEAN_SOURCE_ASS_DRAWINGS) as string ?? 'false',
     set: (newValue: string): void => {
         settingsStore.updateSetting(SETTINGS.CLEAN_SOURCE_ASS_DRAWINGS, newValue, true)
         saveNotification.value?.show()
