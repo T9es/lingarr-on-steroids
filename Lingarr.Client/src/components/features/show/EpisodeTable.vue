@@ -128,7 +128,7 @@ const getEmbeddedSubtitles = (episode: IEpisode): IEmbeddedSubtitle[] => {
     
     // Get external subtitle languages for deduplication
     const externalLanguages = new Set(
-        (getSubtitle(episode.fileName) || []).map(s => s.language?.toLowerCase())
+        (getSubtitle(episode.fileName ?? null) || []).map(s => s.language?.toLowerCase())
     )
     
     // Filter out embedded subs that have already been extracted AND have a matching external subtitle

@@ -60,14 +60,14 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
 
         _media = media;
         _mediaType = mediaType;
-        _hash = CreateHash(matchingSubtitles, sourceLanguages, targetLanguages, ignoreCaptions);
+        _hash = CreateHash(matchingSubtitles, sourceLanguages, targetLanguages, ignoreCaptions ?? "");
         if (!string.IsNullOrEmpty(media.MediaHash) && media.MediaHash == _hash)
         {
             return false;
         }
         
         _logger.LogInformation("Initiating subtitle processing.");
-        return await ProcessSubtitles(matchingSubtitles, sourceLanguages, targetLanguages, ignoreCaptions);
+        return await ProcessSubtitles(matchingSubtitles, sourceLanguages, targetLanguages, ignoreCaptions ?? "");
     }
 
     /// <summary>
@@ -260,7 +260,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
 
         _media = media;
         _mediaType = mediaType;
-        _hash = CreateHash(matchingSubtitles, sourceLanguages, targetLanguages, ignoreCaptions);
+        _hash = CreateHash(matchingSubtitles, sourceLanguages, targetLanguages, ignoreCaptions ?? "");
         
         // If not forcing and hash matches, skip processing
         if (!forceProcess && !string.IsNullOrEmpty(media.MediaHash) && media.MediaHash == _hash)
@@ -269,7 +269,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         }
         
         _logger.LogInformation("Initiating manual subtitle processing for {FileName}.", media.FileName);
-        return await ProcessSubtitlesWithCount(matchingSubtitles, sourceLanguages, targetLanguages, ignoreCaptions);
+        return await ProcessSubtitlesWithCount(matchingSubtitles, sourceLanguages, targetLanguages, ignoreCaptions ?? "");
     }
     
     /// <summary>

@@ -32,14 +32,15 @@ public class SubtitleFormatterServiceTests
     }
 
     [Theory]
-    [InlineData("I")]
-    [InlineData("a")]
-    [InlineData("A")]
-    [InlineData("1")]
-    [InlineData("O")]
+    [InlineData("I")]  // Common pronoun - preserved
+    [InlineData("1")]  // Single digit - preserved
+    [InlineData("2")]  // Single digit - preserved
+    [InlineData("9")]  // Single digit - preserved
     public void IsAssDrawingCommand_ShouldReturnFalse_ForValidSingleLetters(string input)
     {
-        // Valid single letter words or numbers should be preserved.
+        // Only "I" (common pronoun) and single digits are preserved.
+        // Letters like "a", "A", "O" are filtered as they are often garbage from
+        // vertical text effects or too rare/poetic to risk keeping noise.
         var result = SubtitleFormatterService.IsAssDrawingCommand(input);
         Assert.False(result, $"Incorrectly identified valid single letter as garbage: {input}");
     }

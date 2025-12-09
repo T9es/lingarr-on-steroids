@@ -128,6 +128,15 @@ public class SubtitleExtractionController : ControllerBase
             });
         }
 
+        if (string.IsNullOrEmpty(movie.Path) || string.IsNullOrEmpty(movie.FileName))
+        {
+            return BadRequest(new ExtractSubtitleResponse
+            {
+                Success = false,
+                Error = "Movie has no file path"
+            });
+        }
+
         var mediaPath = Path.Combine(movie.Path, movie.FileName);
         var outputDir = movie.Path;
 

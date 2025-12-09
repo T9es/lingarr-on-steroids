@@ -17,5 +17,5 @@ public class BatchSubtitleLine
     /// Line to translate
     /// </summary>
     [Required]
-    public string Line { get; set; }
+    public required string Line { get; set; }
 }

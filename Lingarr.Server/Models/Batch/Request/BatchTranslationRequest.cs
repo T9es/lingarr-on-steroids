@@ -11,17 +11,17 @@ public class BatchTranslationRequest
     /// Source language code
     /// </summary>
     [Required]
-    public string SourceLanguage { get; set; }
+    public required string SourceLanguage { get; set; }
 
     /// <summary>
     /// Target language code
     /// </summary>
     [Required]
-    public string TargetLanguage { get; set; }
+    public required string TargetLanguage { get; set; }
 
     /// <summary>
     /// Subtitle Lines to translate
     /// </summary>
     [Required]
-    public List<BatchSubtitleLine> Lines { get; set; }
+    public required List<BatchSubtitleLine> Lines { get; set; }
 }
