@@ -197,8 +197,8 @@ public class TranslationJob
             var fileIdentifier = GenerateFileIdentifier(translationRequest.SubtitleToTranslate);
             
             // Parse ASS drawing command filter settings
-            var stripAssDrawingCommands = settings[SettingKeys.Translation.StripAssDrawingCommands] == "true";
-            var cleanSourceAssDrawings = settings[SettingKeys.Translation.CleanSourceAssDrawings] == "true";
+            var stripAssDrawingCommands = settings.TryGetValue(SettingKeys.Translation.StripAssDrawingCommands, out var stripAssVal) && stripAssVal == "true";
+            var cleanSourceAssDrawings = settings.TryGetValue(SettingKeys.Translation.CleanSourceAssDrawings, out var cleanSourceVal) && cleanSourceVal == "true";
             
             // Filter out ASS drawing commands if enabled
             if (stripAssDrawingCommands)

@@ -32,7 +32,9 @@ public class StartupService : IHostedService
         {
             { SettingKeys.Translation.Chutes.Model, string.Empty },
             { SettingKeys.Translation.Chutes.ApiKey, string.Empty },
-            { SettingKeys.Translation.Chutes.UsageLimitOverride, string.Empty }
+            { SettingKeys.Translation.Chutes.UsageLimitOverride, string.Empty },
+            { SettingKeys.Translation.StripAssDrawingCommands, "false" },
+            { SettingKeys.Translation.CleanSourceAssDrawings, "false" }
         });
 
         await CheckAndUpdateIntegrationSettings(dbContext, "radarr", [
