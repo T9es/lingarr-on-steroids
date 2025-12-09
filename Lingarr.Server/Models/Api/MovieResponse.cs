@@ -16,4 +16,6 @@ public class MovieResponse
     public List<Subtitles> Subtitles { get; set; } = new();
     public bool ExcludeFromTranslation { get; set; }
     public int? TranslationAgeThreshold { get; set; }
+    public bool IsPriority { get; set; }
+    public DateTime? PriorityDate { get; set; }
 }

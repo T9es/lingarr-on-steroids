@@ -89,7 +89,9 @@ public class MediaService : IMediaService
                 Images = movie.Images,
                 Subtitles = subtitles,
                 ExcludeFromTranslation = movie.ExcludeFromTranslation,
-                TranslationAgeThreshold = movie.TranslationAgeThreshold
+                TranslationAgeThreshold = movie.TranslationAgeThreshold,
+                IsPriority = movie.IsPriority,
+                PriorityDate = movie.PriorityDate
             };
             enrichedMovies.Add(enrichedMovie);
         }
