@@ -15,7 +15,7 @@ namespace Lingarr.Server.Controllers
             Response.Headers.Append("Cache-Control", "no-cache");
             Response.Headers.Append("Connection", "keep-alive");
             
-            foreach (var log in InMemoryLogSink.GetRecentLogs(100))
+            foreach (var log in InMemoryLogSink.GetRecentLogs(400))
             {
                 string json = JsonSerializer.Serialize(log);
                 await Response.WriteAsync($"data: {json}\n\n", cancellationToken);

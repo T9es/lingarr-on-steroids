@@ -75,7 +75,7 @@
                                     () => movieStore.exclude(MEDIA_TYPE.MOVIE, item.id)
                                 " />
                         </div>
-                        <div class="col-span-1 flex items-center justify-center px-4 py-2">
+                        <div class="col-span-1 flex items-center justify-center px-4 py-2" @click.stop>
                             <ToggleButton
                                 v-model="item.isPriority"
                                 size="small"

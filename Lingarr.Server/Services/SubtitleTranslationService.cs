@@ -269,26 +269,39 @@ public class SubtitleTranslationService
                 // Rebuild lines based on max length
                 subtitle.TranslatedLines = translated.SplitIntoLines(MaxLineLength);
             }
-            else
-            {
-                _logger.LogError("Translation missing for subtitle at position {Position}.", subtitle.Position);
-            }
         }
         
         // Check for missing translations and fail if any are found
-        var missingPositions = currentBatch
+        var missingSubtitles = currentBatch
             .Where(s => s.TranslatedLines == null || s.TranslatedLines.Count == 0)
-            .Select(s => s.Position)
             .ToList();
             
-        if (missingPositions.Count > 0)
+        if (missingSubtitles.Count > 0)
         {
-            var positionRange = missingPositions.Count <= 5 
-                ? string.Join(", ", missingPositions)
-                : $"{string.Join(", ", missingPositions.Take(5))}... (+{missingPositions.Count - 5} more)";
+            // Log detailed info about each missing translation
+            _logger.LogError("═══════════════════════════════════════════════════════════════");
+            _logger.LogError("MISSING TRANSLATIONS DETECTED: {Count} subtitle(s) failed", missingSubtitles.Count);
+            _logger.LogError("───────────────────────────────────────────────────────────────");
+            
+            foreach (var missing in missingSubtitles.Take(20)) // Limit to first 20 for readability
+            {
+                var originalText = string.Join(" ", stripSubtitleFormatting ? missing.PlaintextLines : missing.Lines);
+                var truncatedText = originalText.Length > 80 ? originalText[..77] + "..." : originalText;
+                _logger.LogError("  [Pos {Position,4}] \"{OriginalText}\"", missing.Position, truncatedText);
+            }
+            
+            if (missingSubtitles.Count > 20)
+            {
+                _logger.LogError("  ... and {More} more missing translations", missingSubtitles.Count - 20);
+            }
+            _logger.LogError("═══════════════════════════════════════════════════════════════");
+            
+            var positionRange = missingSubtitles.Count <= 5 
+                ? string.Join(", ", missingSubtitles.Select(s => s.Position))
+                : $"{string.Join(", ", missingSubtitles.Take(5).Select(s => s.Position))}... (+{missingSubtitles.Count - 5} more)";
                 
             throw new TranslationException(
-                $"Translation failed: {missingPositions.Count} subtitle(s) missing at positions: {positionRange}");
+                $"Translation failed: {missingSubtitles.Count} subtitle(s) missing at positions: {positionRange}");
         }
     }
     
