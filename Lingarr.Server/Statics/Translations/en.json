@@ -13,6 +13,19 @@
     "tasks": "Tasks",
     "logs": "Logs"
   },
+  "embedded": {
+    "title": "Embedded Subtitles",
+    "extract": "Extract",
+    "extracting": "Extracting...",
+    "textBased": "Text-based",
+    "imageBased": "Image-based subtitle (PGS/VobSub). Cannot be extracted without OCR.",
+    "extracted": "Extracted",
+    "notExtracted": "Not extracted - Click to extract",
+    "extractSuccess": "Subtitle extracted successfully",
+    "extractFailed": "Extraction failed",
+    "forced": "Forced",
+    "default": "Default"
+  },
   "translationTest": {
     "title": "Translation Test",
     "description": "Test translation of a subtitle file without saving results. Useful for debugging.",

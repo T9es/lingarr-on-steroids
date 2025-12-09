@@ -51,6 +51,13 @@ export interface ISettingService {
 
 export interface ISubtitleService {
     collect<T>(path: string): Promise<T>
+    getEmbeddedSubtitles<T>(mediaType: 'movie' | 'episode', mediaId: number): Promise<T>
+    extractSubtitle(
+        mediaType: 'movie' | 'episode',
+        mediaId: number,
+        streamIndex: number
+    ): Promise<{ success: boolean; extractedPath: string | null; error: string | null }>
+    probeEmbeddedSubtitles<T>(mediaType: 'movie' | 'episode', mediaId: number): Promise<T>
 }
 
 export interface IVersionService {

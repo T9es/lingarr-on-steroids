@@ -19,6 +19,19 @@ export interface IShow extends IBaseEntity {
     priorityDate?: Date | null
 }
 
+export interface IEmbeddedSubtitle {
+    id: number
+    streamIndex: number
+    language: string | null
+    title: string | null
+    codecName: string
+    isTextBased: boolean
+    isDefault: boolean
+    isForced: boolean
+    isExtracted: boolean
+    extractedPath: string | null
+}
+
 export interface IMovie extends IBaseEntity {
     radarrId: number
     title: string
@@ -27,6 +40,7 @@ export interface IMovie extends IBaseEntity {
     dateAdded?: Date | null
     images: IImage[]
     subtitles?: ISubtitle[]
+    embeddedSubtitles?: IEmbeddedSubtitle[]
     excludeFromTranslation: string
     translationAgeThreshold: string
     isPriority: boolean
@@ -84,6 +98,7 @@ export interface IEpisode extends IBaseEntity {
     seasonId: number
     season: ISeason
     excludeFromTranslation: string
+    embeddedSubtitles?: IEmbeddedSubtitle[]
 }
 
 export interface IPagedResult<T> {

@@ -13,6 +13,19 @@
     "tasks": "Taken",
     "logs": "Logs"
   },
+  "embedded": {
+    "title": "Ingebedde Ondertitels",
+    "extract": "Uitpakken",
+    "extracting": "Bezig met uitpakken...",
+    "textBased": "Tekstgebaseerd",
+    "imageBased": "Afbeeldingsondertitel (PGS/VobSub). Kan niet worden uitgepakt zonder OCR.",
+    "extracted": "Uitgepakt",
+    "notExtracted": "Niet uitgepakt - Klik om uit te pakken",
+    "extractSuccess": "Ondertitel succesvol uitgepakt",
+    "extractFailed": "Uitpakken mislukt",
+    "forced": "Geforceerd",
+    "default": "Standaard"
+  },
   "translationTest": {
     "title": "Vertaaltest",
     "description": "Test vertaling van een ondertitelbestand zonder resultaten op te slaan. Handig voor het debuggen.",
