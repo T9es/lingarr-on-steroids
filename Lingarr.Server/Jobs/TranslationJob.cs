@@ -342,4 +342,29 @@ public class TranslationJob
             await _scheduleService.UpdateJobState(jobName, JobStatus.Cancelled.GetDisplayName());
         }
     }
+    
+    /// <summary>
+    /// Generates a short, readable identifier from the subtitle file path for logging.
+    /// Attempts to extract episode identifiers (e.g., "S02E23") or movie names.
+    /// </summary>
+    /// <param name="subtitlePath">The full path to the subtitle file</param>
+    /// <returns>A short identifier suitable for log output</returns>
+    private static string GenerateFileIdentifier(string subtitlePath)
+    {
+        var fileName = Path.GetFileNameWithoutExtension(subtitlePath);
+        
+        // Try to find episode pattern (S01E01 or similar)
+        var episodeMatch = System.Text.RegularExpressions.Regex.Match(
+            fileName, 
+            @"[Ss]\d{1,2}[Ee]\d{1,2}", 
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        
+        if (episodeMatch.Success)
+        {
+            return episodeMatch.Value.ToUpperInvariant();
+        }
+        
+        // For movies or other files, use first 30 chars of filename
+        return fileName.Length > 30 ? fileName[..30] + "..." : fileName;
+    }
 }

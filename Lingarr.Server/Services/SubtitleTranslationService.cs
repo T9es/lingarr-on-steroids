@@ -325,6 +325,7 @@ public class SubtitleTranslationService
 
     /// <summary>
     /// Emits translation progress updates if progress has changed since the last emission.
+    /// Includes a visual ASCII progress bar in the console logs.
     /// </summary>
     /// <param name="request">The translation request being processed.</param>
     /// <param name="iteration">The current subtitle index being processed.</param>
@@ -335,9 +336,32 @@ public class SubtitleTranslationService
 
         if (progress != _lastProgression)
         {
-            _logger.LogDebug($"Progress: {progress}% (Subtitle {iteration} of {total})");
+            // Create ASCII progress bar
+            var progressBar = BuildProgressBar(progress);
+            _logger.LogInformation(
+                "[{FileName}] {ProgressBar} {Progress}% ({Current}/{Total})",
+                Path.GetFileName(request.SubtitleToTranslate),
+                progressBar,
+                progress,
+                iteration,
+                total);
+            
             await _progressService!.Emit(request, progress);
             _lastProgression = progress;
         }
+    }
+    
+    /// <summary>
+    /// Builds a visual ASCII progress bar string.
+    /// </summary>
+    /// <param name="percentage">The progress percentage (0-100)</param>
+    /// <param name="width">The total width of the progress bar in characters</param>
+    /// <returns>A string representation of the progress bar</returns>
+    private static string BuildProgressBar(int percentage, int width = 30)
+    {
+        int filled = (int)Math.Round((double)percentage * width / 100);
+        int empty = width - filled;
+        
+        return $"[|Green|{new string('█', filled)}|/Green||Orange|{new string('░', empty)}|/Orange|]";
     }
 }

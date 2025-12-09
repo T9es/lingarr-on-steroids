@@ -410,9 +410,10 @@ public class TranslationRequestService : ITranslationRequestService
                     translateAbleContent.SourceLanguage,
                     translateAbleContent.TargetLanguage,
                     stripSubtitleFormatting,
-                    enableBatchFallback,
-                    maxBatchSplitAttempts,
-                    cancellationToken);
+                    enableFallback: enableBatchFallback,
+                    maxSplitAttempts: maxBatchSplitAttempts,
+                    fileIdentifier: translateAbleContent.Title ?? "API",
+                    cancellationToken: cancellationToken);
 
                 results = subtitleItems.Select(subtitle => new BatchTranslatedLine
                 {
@@ -605,9 +606,10 @@ public class TranslationRequestService : ITranslationRequestService
             sourceLanguage,
             targetLanguage,
             stripSubtitleFormatting,
-            false, // Fallback disabled for chunked batches (already chunking)
-            3,
-            cancellationToken);
+            enableFallback: false, // Fallback disabled for chunked batches (already chunking)
+            maxSplitAttempts: 3,
+            fileIdentifier: "API-chunked",
+            cancellationToken: cancellationToken);
 
         results.AddRange(batch.Select(subtitle => new BatchTranslatedLine
         {
