@@ -85,7 +85,19 @@
     "completed": "Voltooid",
     "cancel": "Annuleren",
     "delete": "Verwijder",
-    "select": "Selecteren"
+    "select": "Selecteren",
+    "tabList": "Vertalingen",
+    "tabRunTest": "Test uitvoeren",
+    "runTest": "Test uitvoeren",
+    "startTest": "Start test",
+    "testSuccess": "Vertaling geslaagd",
+    "testFailed": "Vertaling mislukt",
+    "translated": "Vertaald",
+    "duration": "Duur",
+    "logs": "Vertaallogs",
+    "clearLogs": "Wissen",
+    "waitingForLogs": "Wachten op start van test...",
+    "noTestSelected": "Klik op de testknop bij een vertaalitem om een test te starten."
   },
   "schedule": {
     "jobName": "Taaknaam",

@@ -85,7 +85,19 @@
     "completed": "Completed",
     "cancel": "Cancel",
     "delete": "Delete",
-    "select": "Select"
+    "select": "Select",
+    "tabList": "Translations",
+    "tabRunTest": "Run Test",
+    "runTest": "Run Test",
+    "startTest": "Start Test",
+    "testSuccess": "Translation Successful",
+    "testFailed": "Translation Failed",
+    "translated": "Translated",
+    "duration": "Duration",
+    "logs": "Translation Logs",
+    "clearLogs": "Clear",
+    "waitingForLogs": "Waiting for test to start...",
+    "noTestSelected": "Click the test button on a translation item to start a test."
   },
   "schedule": {
     "jobName": "Job Name",

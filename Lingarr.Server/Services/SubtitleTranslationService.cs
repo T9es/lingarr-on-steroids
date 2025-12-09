@@ -349,11 +349,10 @@ public class SubtitleTranslationService
 
         if (progress != _lastProgression)
         {
-            // Create ASCII progress bar
+            // Create ASCII progress bar (filename is already logged in batch processing)
             var progressBar = BuildProgressBar(progress);
             _logger.LogInformation(
-                "[{FileName}] {ProgressBar} {Progress}% ({Current}/{Total})",
-                Path.GetFileName(request.SubtitleToTranslate),
+                "{ProgressBar} {Progress}% ({Current}/{Total})",
                 progressBar,
                 progress,
                 iteration,
