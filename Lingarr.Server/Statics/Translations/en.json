@@ -246,6 +246,10 @@
       "useSubtitleTaggingDescription": "Add a custom tag or text to the subtitle file to identify it as translated by Lingarr.",
       "addTranslatorInfo": "Add translator info",
       "addTranslatorInfoDescription": "Add translator info at the beginning of subtitles.",
+      "stripAssDrawingCommands": "Remove ASS drawing commands:",
+      "stripAssDrawingCommandsDescription": "Skip vector graphics data (shapes, signs) found in ASS-converted SRT files. These are untranslatable and waste API calls.",
+      "cleanSourceAssDrawings": "Also clean source files:",
+      "cleanSourceAssDrawingsDescription": "Additionally remove drawing commands from the original source subtitle file.",
       "subtitleTag": "Subtitle tag"
     },
     "indexing": {

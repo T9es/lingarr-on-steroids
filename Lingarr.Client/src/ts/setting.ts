@@ -65,7 +65,9 @@ export const SETTINGS = {
     MAX_PARALLEL_TRANSLATIONS: 'max_parallel_translations',
     CHUTES_REQUEST_BUFFER: 'chutes_request_buffer',
     ENABLE_BATCH_FALLBACK: 'enable_batch_fallback',
-    MAX_BATCH_SPLIT_ATTEMPTS: 'max_batch_split_attempts'
+    MAX_BATCH_SPLIT_ATTEMPTS: 'max_batch_split_attempts',
+    STRIP_ASS_DRAWING_COMMANDS: 'strip_ass_drawing_commands',
+    CLEAN_SOURCE_ASS_DRAWINGS: 'clean_source_ass_drawings'
 } as const
 
 export interface ISettings {
@@ -133,6 +135,8 @@ export interface ISettings {
     chutes_request_buffer: string
     enable_batch_fallback: string
     max_batch_split_attempts: string
+    strip_ass_drawing_commands: string
+    clean_source_ass_drawings: string
 }
 
 export interface ICustomAiParams {

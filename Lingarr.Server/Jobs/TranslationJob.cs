@@ -8,6 +8,7 @@ using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models.FileSystem;
 using Lingarr.Server.Services;
+using Lingarr.Server.Services.Subtitle;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Extensions;
 using SubtitleValidationOptions = Lingarr.Server.Models.SubtitleValidationOptions;
@@ -100,7 +101,9 @@ public class TranslationJob
                 SettingKeys.Translation.UseSubtitleTagging,
                 SettingKeys.Translation.SubtitleTag,
                 SettingKeys.Translation.EnableBatchFallback,
-                SettingKeys.Translation.MaxBatchSplitAttempts
+                SettingKeys.Translation.MaxBatchSplitAttempts,
+                SettingKeys.Translation.StripAssDrawingCommands,
+                SettingKeys.Translation.CleanSourceAssDrawings
             ]);
             var serviceType = settings[SettingKeys.Translation.ServiceType];
             var stripSubtitleFormatting = settings[SettingKeys.Translation.StripSubtitleFormatting] == "true";
@@ -192,6 +195,36 @@ public class TranslationJob
             // Generate a short, readable identifier from the filename for logging
             // e.g., "S02E23" or "Movie Name (2024)"
             var fileIdentifier = GenerateFileIdentifier(translationRequest.SubtitleToTranslate);
+            
+            // Parse ASS drawing command filter settings
+            var stripAssDrawingCommands = settings[SettingKeys.Translation.StripAssDrawingCommands] == "true";
+            var cleanSourceAssDrawings = settings[SettingKeys.Translation.CleanSourceAssDrawings] == "true";
+            
+            // Filter out ASS drawing commands if enabled
+            if (stripAssDrawingCommands)
+            {
+                var originalCount = subtitles.Count;
+                subtitles = subtitles.Where(s => 
+                {
+                    var text = string.Join(" ", stripSubtitleFormatting ? s.PlaintextLines : s.Lines);
+                    return !SubtitleFormatterService.IsAssDrawingCommand(text);
+                }).ToList();
+                
+                var removedCount = originalCount - subtitles.Count;
+                if (removedCount > 0)
+                {
+                    _logger.LogInformation(
+                        "[{FileId}] Filtered out {RemovedCount} ASS drawing command entries from {OriginalCount} subtitles",
+                        fileIdentifier, removedCount, originalCount);
+                }
+                
+                // Optionally clean the source file as well
+                if (cleanSourceAssDrawings && removedCount > 0)
+                {
+                    await CleanSourceSubtitleFile(translationRequest.SubtitleToTranslate, stripSubtitleFormatting);
+                    _logger.LogInformation("[{FileId}] Cleaned ASS drawing commands from source file", fileIdentifier);
+                }
+            }
             
             List<SubtitleItem> translatedSubtitles;
             if (settings[SettingKeys.Translation.UseBatchTranslation] == "true"
@@ -366,5 +399,44 @@ public class TranslationJob
         
         // For movies or other files, use first 30 chars of filename
         return fileName.Length > 30 ? fileName[..30] + "..." : fileName;
+    }
+    
+    /// <summary>
+    /// Cleans ASS drawing commands from the source subtitle file by reading, filtering, and rewriting it.
+    /// </summary>
+    /// <param name="subtitlePath">Path to the source subtitle file</param>
+    /// <param name="stripSubtitleFormatting">Whether to use plaintext lines for detection</param>
+    private async Task CleanSourceSubtitleFile(string subtitlePath, bool stripSubtitleFormatting)
+    {
+        try
+        {
+            // Read the original subtitles
+            var subtitles = await _subtitleService.ReadSubtitles(subtitlePath);
+            
+            // Filter out ASS drawing commands
+            var cleanedSubtitles = subtitles.Where(s =>
+            {
+                var text = string.Join(" ", stripSubtitleFormatting ? s.PlaintextLines : s.Lines);
+                return !SubtitleFormatterService.IsAssDrawingCommand(text);
+            }).ToList();
+            
+            // Only rewrite if we actually removed something
+            if (cleanedSubtitles.Count < subtitles.Count)
+            {
+                // Reposition the subtitles after filtering
+                for (int i = 0; i < cleanedSubtitles.Count; i++)
+                {
+                    cleanedSubtitles[i].Position = i + 1;
+                }
+                
+                // Write the cleaned subtitles back to the original file
+                await _subtitleService.WriteSubtitles(subtitlePath, cleanedSubtitles, stripSubtitleFormatting);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to clean source subtitle file: {Path}", subtitlePath);
+            // Don't throw - this is a non-critical operation
+        }
     }
 }

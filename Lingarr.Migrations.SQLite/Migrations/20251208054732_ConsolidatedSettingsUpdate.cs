@@ -36,6 +36,16 @@ namespace Lingarr.Migrations.SQLite.Migrations
                     { "enable_batch_fallback", "true" },
                     { "max_batch_split_attempts", "3" }
                 });
+
+            // ASS Drawing Command Filter Settings
+            migrationBuilder.InsertData(
+                table: "settings",
+                columns: new[] { "key", "value" },
+                values: new object[,]
+                {
+                    { "strip_ass_drawing_commands", "true" },
+                    { "clean_source_ass_drawings", "false" }
+                });
         }
 
         /// <inheritdoc />
@@ -56,7 +66,9 @@ namespace Lingarr.Migrations.SQLite.Migrations
                     "max_parallel_translations",
                     "chutes_request_buffer",
                     "enable_batch_fallback",
-                    "max_batch_split_attempts"
+                    "max_batch_split_attempts",
+                    "strip_ass_drawing_commands",
+                    "clean_source_ass_drawings"
                 });
         }
     }

@@ -248,6 +248,10 @@
       "useSubtitleTaggingDescription": "Voeg een aangepaste tag of tekst toe aan het ondertitelbestand om het te identificeren als vertaald door Lingarr.",
       "addTranslatorInfo": "Vertalerinformatie toevoegen",
       "addTranslatorInfoDescription": "Voeg vertalerinformatie toe aan het begin van de ondertitels.",
+      "stripAssDrawingCommands": "Verwijder ASS tekencommando's:",
+      "stripAssDrawingCommandsDescription": "Sla vectorgrafische gegevens (vormen, borden) over die worden gevonden in ASS-geconverteerde SRT-bestanden. Deze zijn niet vertaalbaar en verspillen API-aanroepen.",
+      "cleanSourceAssDrawings": "Ook bronbestanden opschonen:",
+      "cleanSourceAssDrawingsDescription": "Verwijder ook tekencommando's uit het originele bronondertitelbestand.",
       "subtitleTag": "Ondertitel tag"
     },
     "indexing": {

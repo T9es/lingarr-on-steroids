@@ -72,6 +72,38 @@
 
                 <div class="flex flex-col space-x-2">
                     <span class="font-semibold">
+                        {{ translate('settings.subtitle.stripAssDrawingCommands') }}
+                    </span>
+                    {{ translate('settings.subtitle.stripAssDrawingCommandsDescription') }}
+                </div>
+                <ToggleButton v-model="stripAssDrawingCommands">
+                    <span class="text-primary-content text-sm font-medium">
+                        {{
+                            stripAssDrawingCommands == 'true'
+                                ? translate('common.enabled')
+                                : translate('common.disabled')
+                        }}
+                    </span>
+                </ToggleButton>
+
+                <div v-if="stripAssDrawingCommands == 'true'" class="flex flex-col space-x-2 ml-4">
+                    <span class="font-semibold">
+                        {{ translate('settings.subtitle.cleanSourceAssDrawings') }}
+                    </span>
+                    {{ translate('settings.subtitle.cleanSourceAssDrawingsDescription') }}
+                </div>
+                <ToggleButton v-if="stripAssDrawingCommands == 'true'" v-model="cleanSourceAssDrawings">
+                    <span class="text-primary-content text-sm font-medium">
+                        {{
+                            cleanSourceAssDrawings == 'true'
+                                ? translate('common.enabled')
+                                : translate('common.disabled')
+                        }}
+                    </span>
+                </ToggleButton>
+
+                <div class="flex flex-col space-x-2">
+                    <span class="font-semibold">
                         {{ translate('settings.subtitle.removeLanguageTag') }}
                     </span>
                     {{ translate('settings.subtitle.removeLanguageTagDescription') }}
@@ -182,6 +214,26 @@ const subtitleTag = computed({
     get: (): string => settingsStore.getSetting(SETTINGS.SUBTITLE_TAG) as string,
     set: (newValue: string): void => {
         settingsStore.updateSetting(SETTINGS.SUBTITLE_TAG, newValue, isValid.subtitleTag)
+        saveNotification.value?.show()
+    }
+})
+
+const stripAssDrawingCommands = computed({
+    get: (): string => settingsStore.getSetting(SETTINGS.STRIP_ASS_DRAWING_COMMANDS) as string,
+    set: (newValue: string): void => {
+        settingsStore.updateSetting(SETTINGS.STRIP_ASS_DRAWING_COMMANDS, newValue, true)
+        // If disabling, also disable the dependent setting
+        if (newValue === 'false') {
+            settingsStore.updateSetting(SETTINGS.CLEAN_SOURCE_ASS_DRAWINGS, 'false', true)
+        }
+        saveNotification.value?.show()
+    }
+})
+
+const cleanSourceAssDrawings = computed({
+    get: (): string => settingsStore.getSetting(SETTINGS.CLEAN_SOURCE_ASS_DRAWINGS) as string,
+    set: (newValue: string): void => {
+        settingsStore.updateSetting(SETTINGS.CLEAN_SOURCE_ASS_DRAWINGS, newValue, true)
         saveNotification.value?.show()
     }
 })
