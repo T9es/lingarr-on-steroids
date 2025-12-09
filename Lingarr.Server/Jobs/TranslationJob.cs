@@ -189,6 +189,10 @@ public class TranslationJob
                 ? splitAttempts
                 : 3;
             
+            // Generate a short, readable identifier from the filename for logging
+            // e.g., "S02E23" or "Movie Name (2024)"
+            var fileIdentifier = GenerateFileIdentifier(translationRequest.SubtitleToTranslate);
+            
             List<SubtitleItem> translatedSubtitles;
             if (settings[SettingKeys.Translation.UseBatchTranslation] == "true"
                 && translationService is IBatchTranslationService _)
@@ -197,10 +201,14 @@ public class TranslationJob
                     out var batchSize)
                     ? batchSize
                     : 10000;
+                
+                // Calculate effective batch size and total batches for upfront logging
+                var effectiveBatchSize = maxSize <= 0 ? subtitles.Count : maxSize;
+                var totalBatches = (int)Math.Ceiling((double)subtitles.Count / effectiveBatchSize);
 
                 _logger.LogInformation(
-                    "Using batch translation with max batch size: {maxBatchSize}, fallback: {enableFallback}, split attempts: {splitAttempts} for subtitle: {filePath}",
-                    maxSize, enableBatchFallback, maxBatchSplitAttempts, translationRequest.SubtitleToTranslate);
+                    "[{FileId}] Starting batch translation: {SubtitleCount} subtitles, {TotalBatches} batch(es) of {BatchSize}, fallback: {EnableFallback} ({SplitAttempts} attempts)",
+                    fileIdentifier, subtitles.Count, totalBatches, effectiveBatchSize, enableBatchFallback, maxBatchSplitAttempts);
 
                 translatedSubtitles = await translator.TranslateSubtitlesBatch(
                     subtitles,
@@ -209,13 +217,14 @@ public class TranslationJob
                     maxSize,
                     enableBatchFallback,
                     maxBatchSplitAttempts,
+                    fileIdentifier,
                     cancellationToken);
             }
             else
             {
                 _logger.LogInformation(
-                    "Using individual translation with context (before: {contextBefore}, after: {contextAfter}) for subtitle: {filePath}",
-                    contextBefore, contextAfter, translationRequest.SubtitleToTranslate);
+                    "[{FileId}] Starting individual translation: {SubtitleCount} subtitles, context (before: {ContextBefore}, after: {ContextAfter})",
+                    fileIdentifier, subtitles.Count, contextBefore, contextAfter);
 
                 translatedSubtitles = await translator.TranslateSubtitles(
                     subtitles,

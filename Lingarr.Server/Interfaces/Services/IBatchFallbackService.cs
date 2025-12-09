@@ -17,6 +17,9 @@ public interface IBatchFallbackService
     /// <param name="sourceLanguage">Source language code</param>
     /// <param name="targetLanguage">Target language code</param>
     /// <param name="maxSplitAttempts">Maximum number of split attempts (1=retry full, 2=split in half, 3=split in thirds)</param>
+    /// <param name="fileIdentifier">Short identifier for the file being translated (for logging)</param>
+    /// <param name="batchNumber">Current batch number (1-indexed)</param>
+    /// <param name="totalBatches">Total number of batches for this file</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Dictionary mapping position to translated content. Failed items contain original text.</returns>
     Task<Dictionary<int, string>> TranslateWithFallbackAsync(
@@ -25,5 +28,8 @@ public interface IBatchFallbackService
         string sourceLanguage,
         string targetLanguage,
         int maxSplitAttempts,
+        string fileIdentifier,
+        int batchNumber,
+        int totalBatches,
         CancellationToken cancellationToken);
 }

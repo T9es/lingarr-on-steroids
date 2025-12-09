@@ -24,6 +24,9 @@ public class BatchFallbackService : IBatchFallbackService
         string sourceLanguage,
         string targetLanguage,
         int maxSplitAttempts,
+        string fileIdentifier,
+        int batchNumber,
+        int totalBatches,
         CancellationToken cancellationToken)
     {
         if (batch.Count == 0)
@@ -36,6 +39,9 @@ public class BatchFallbackService : IBatchFallbackService
         
         var results = new Dictionary<int, string>();
         var failedItems = new List<BatchSubtitleItem>(batch);
+        
+        // Log with batch progress context
+        var batchProgress = totalBatches > 1 ? $"[Batch {batchNumber}/{totalBatches}] " : "";
 
         for (int splitLevel = 1; splitLevel <= maxSplitAttempts; splitLevel++)
         {
@@ -48,8 +54,8 @@ public class BatchFallbackService : IBatchFallbackService
             var stillFailed = new List<BatchSubtitleItem>();
 
             _logger.LogInformation(
-                "Batch fallback: Attempting split level {Level}/{Max}, processing {ChunkCount} chunk(s) with {ItemCount} total items",
-                splitLevel, maxSplitAttempts, chunks.Count, failedItems.Count);
+                "{BatchProgress}[{FileId}] Split level {Level}/{Max}: processing {ChunkCount} chunk(s), {ItemCount} items",
+                batchProgress, fileIdentifier, splitLevel, maxSplitAttempts, chunks.Count, failedItems.Count);
 
             foreach (var chunk in chunks)
             {
@@ -66,8 +72,8 @@ public class BatchFallbackService : IBatchFallbackService
                     }
 
                     _logger.LogDebug(
-                        "Chunk succeeded at split level {Level}: {Count} items translated",
-                        splitLevel, chunkResults.Count);
+                        "{BatchProgress}[{FileId}] Chunk succeeded at split level {Level}: {Count} items translated",
+                        batchProgress, fileIdentifier, splitLevel, chunkResults.Count);
                 }
                 catch (OperationCanceledException)
                 {
@@ -76,15 +82,15 @@ public class BatchFallbackService : IBatchFallbackService
                 catch (TranslationException ex)
                 {
                     _logger.LogWarning(ex,
-                        "Chunk failed at split level {Level}: {Count} items. Will retry with smaller chunks if available.",
-                        splitLevel, chunk.Count);
+                        "{BatchProgress}[{FileId}] Chunk failed at split level {Level}: {Count} items. Will retry with smaller chunks if available.",
+                        batchProgress, fileIdentifier, splitLevel, chunk.Count);
                     stillFailed.AddRange(chunk);
                 }
                 catch (Exception ex)
                 {
                     _logger.LogWarning(ex,
-                        "Unexpected error in chunk at split level {Level}: {Count} items",
-                        splitLevel, chunk.Count);
+                        "{BatchProgress}[{FileId}] Unexpected error in chunk at split level {Level}: {Count} items",
+                        batchProgress, fileIdentifier, splitLevel, chunk.Count);
                     stillFailed.AddRange(chunk);
                 }
             }
@@ -94,8 +100,8 @@ public class BatchFallbackService : IBatchFallbackService
             if (failedItems.Count > 0 && splitLevel < maxSplitAttempts)
             {
                 _logger.LogInformation(
-                    "Batch fallback: {Count} items still failed, will retry with split level {NextLevel}",
-                    failedItems.Count, splitLevel + 1);
+                    "{BatchProgress}[{FileId}] {Count} items still failed, retrying with split level {NextLevel}",
+                    batchProgress, fileIdentifier, failedItems.Count, splitLevel + 1);
             }
         }
 
@@ -103,14 +109,15 @@ public class BatchFallbackService : IBatchFallbackService
         if (failedItems.Count > 0)
         {
             _logger.LogError(
-                "Batch fallback exhausted after {Attempts} split attempts. {Count} items failed permanently. Failing the translation task.",
-                maxSplitAttempts, failedItems.Count);
+                "{BatchProgress}[{FileId}] Exhausted after {Attempts} split attempts. {Count} items failed permanently.",
+                batchProgress, fileIdentifier, maxSplitAttempts, failedItems.Count);
 
             throw new TranslationException(
                 $"Translation failed after {maxSplitAttempts} fallback attempts. {failedItems.Count} items could not be translated.");
         }
         
-        _logger.LogInformation("Batch fallback completed successfully: all {Count} items translated", batch.Count);
+        _logger.LogInformation("{BatchProgress}[{FileId}] Completed successfully: all {Count} items translated", 
+            batchProgress, fileIdentifier, batch.Count);
 
         return results;
     }
