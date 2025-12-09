@@ -37,6 +37,11 @@ RUN dotnet publish "./Lingarr.Server.csproj" -c $BUILD_CONFIGURATION -o /app/pub
 
 # Step 5: Final image
 FROM base AS final
+
+# Install FFmpeg for embedded subtitle extraction
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 COPY --from=publish /app/publish .
 

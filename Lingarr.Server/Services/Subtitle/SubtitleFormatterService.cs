@@ -51,17 +51,13 @@ public class SubtitleFormatterService : ISubtitleFormatterService
         string cleaned = RemoveMarkup(input);
         
         // If the line consists ONLY of tags (cleaned is empty), treat it as a "drawing" or non-text line
-        // to be filtered out. Ideally this should be a separate check, but for the purpose of
-        // "stripping garbage", this effectively removes empty lines caused by tag-stripping.
+        // to be filtered out.
         if (string.IsNullOrWhiteSpace(cleaned))
         {
             return true;
         }
         
-        // HEURISTIC: Remove single character lines that are not valid 1-letter words or numbers.
-        // This handles cases of vertical text splitting (e.g. s, t, e, a, l, i, n, g) or leftovers.
-        // Valid 1-letter words: I, A, a, O (e.g. "O Brother"), i, o
-        // Numbers: 0-9
+        // Single character check
         if (cleaned.Length == 1)
         {
             char c = cleaned[0];
@@ -70,33 +66,28 @@ public class SubtitleFormatterService : ISubtitleFormatterService
                 // Keep numbers (e.g. "1")
                 return false;
             }
+
+            // STRICTER FILTER:
+            // Even if it is a valid word ("I", "a", "O"), if it has heavy formatting commands, 
+            // it is likely a sign or particle effect context.
+            if (input.Contains(@"{\an") || input.Contains(@"\an") || input.Contains("face=") || input.Contains(@"\fn"))
+            {
+                return true; // Single letter with alignment/font tag -> Junk
+            }
             
-            // Allow list of valid single-letter words (case-sensitive to be safe, but we include both cases for common ones)
-            // 'I', 'i' (though 'i' is rare as a word in English, common in others)
-            // 'A', 'a'
-            // 'O', 'o'
-            if ("IAaOo".Contains(c)) 
+            // Standard valid 1-letter words allowed ONLY if no suspicious tags
+            // We remove 'o'/'O' as they are too rare/poetic to risk keeping noise.
+            // We keep 'I' (common pronoun).
+            if (c == 'I') 
             {
                 return false;
             }
 
-            // Everything else (e, l, p, c, s, z, x, etc.) -> Garbage
+            // Everything else -> Garbage
             return true;
         }
         
         // ASS drawing commands logic:
-        // Instead of a complex regex that can fail or backtrack, we tokenize the string.
-        // Valid tokens in a drawing command are:
-        // - Single letters: m, n, l, b, s, p, c (case insensitive)
-        // - Numbers (integer or decimal, positive or negative)
-        // 
-        // We reject if we find anything else (like actual words).
-        //
-        // SAFEGUARD: To avoid false positives on lines that happen to be just a number (e.g. "1997" or "10"),
-        // we require either:
-        // 1. A Move command "m" was present.
-        // 2. OR at least 2 numbers were present (a coordinate pair).
-        
         var tokens = cleaned.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         bool hasMoveCommand = false;
         int numberCount = 0;
@@ -118,14 +109,9 @@ public class SubtitleFormatterService : ISubtitleFormatterService
             }
             
             // If it's neither a known command nor a number, it's likely text
-            // e.g. "To", "You", "Someday" -> these are not drawing commands
             return false;
         }
 
-        // A valid drawing command sequence requires sufficient evidence it is not just text.
-        // If we saw an explicit "m" command, it's definitely a drawing (as long as all tokens were valid).
-        // If we didn't see "m", we might be seeing a coordinate fragment (e.g. "100 200 ...").
-        // To be safe against single numbers (e.g. "1997"), we require at least 2 numbers.
         return hasMoveCommand || numberCount >= 2;
     }
 }

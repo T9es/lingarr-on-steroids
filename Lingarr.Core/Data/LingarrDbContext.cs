@@ -16,6 +16,7 @@ public class LingarrDbContext : DbContext
     public DbSet<PathMapping> PathMappings { get; set; }
     public DbSet<Statistics> Statistics { get; set; }
     public DbSet<DailyStatistics> DailyStatistics { get; set; }
+    public DbSet<EmbeddedSubtitle> EmbeddedSubtitles { get; set; }
 
     public LingarrDbContext(DbContextOptions options) : base(options)
     {

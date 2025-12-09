@@ -17,4 +17,5 @@ public class Episode : BaseEntity, IMedia
     [ForeignKey(nameof(SeasonId))]
     public required Season Season { get; set; }
     public bool ExcludeFromTranslation { get; set; }
+    public List<EmbeddedSubtitle> EmbeddedSubtitles { get; set; } = new();
 }

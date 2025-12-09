@@ -14,6 +14,7 @@ While staying true to the core mission of seamless **Radarr** and **Sonarr** sub
 *   **Chutes.ai Integration**: First-class support for Chutes.ai, enabling high-quality LLM translations at a fraction of the cost of OpenAI/Anthropic.
 *   **Resilient Batching**: Implements a "Graduated Retry" system. If a large batch fails, it automatically splits into smaller chunks (and eventually single items) to ensure successful translation without wasting tokens.
 *   **Simplified Automation**: Replaces raw cron expressions with a user-friendly, preset-based scheduler UI.
+*   **Advanced Subtitle Cleaning**: Intelligent "ASS stripper" that removes drawing commands, karaoke tags, and garbage characters (like vertical text remnants) from translated subtitles, ensuring clean, readable output even from complex source files.
 *   **Enhanced Stability**: Improved error handling, better Radarr/Sonarr connectivity checks, and a polished UI for clearer status visibility.
 
 Supports all major translation services including LibreTranslate, DeepL, OpenAI, Anthropic, Chutes.ai, LocalAI, and more.

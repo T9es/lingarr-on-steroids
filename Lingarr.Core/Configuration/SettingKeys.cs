@@ -116,4 +116,12 @@ public static class SettingKeys
         public const string MaxDurationSecs = "subtitle_validation_maxdurationsecs";
         public const string ValidateSubtitles = "subtitle_validation_enabled";
     }
+
+    public static class SubtitleExtraction
+    {
+        /// <summary>
+        /// Extraction mode: "on_demand" | "specific_language" | "extract_all"
+        /// </summary>
+        public const string ExtractionMode = "subtitle_extraction_mode";
+    }
 }
