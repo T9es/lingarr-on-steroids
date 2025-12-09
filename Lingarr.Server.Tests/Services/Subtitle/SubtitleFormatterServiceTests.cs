@@ -44,6 +44,26 @@ public class SubtitleFormatterServiceTests
         Assert.False(result, $"Incorrectly identified valid single letter as garbage: {input}");
     }
 
+    [Fact]
+    public void IsAssDrawingCommand_ShouldReturnTrue_ForMassiveNestedTagDrawing()
+    {
+        // User provided example of a massive drawing command with complex nested tags
+        var input = "<font face=\"Cabin\"><font size=\"45\">{\\an7}<font color=\"#eae1a5\">m 352.23 56.19 b 352.23 74.1 352.53 92.01 352.13 109.91 351.83 122.97 352.8 136.13 349.7 149.08 348.79 152.87 349.99 157.12 349.38 161.02 348.04 169.68 351.59 179 345.69 187.13 344.65 188.57 345.7 191.39 345.41 193.52 344.84 197.67 341.43 199.2 338.53 196.29 336.61 194.37 334.78 191.39 334.66 188.8 333.97 174.78 333.74 160.72 333.5 146.68 333.02 118.54 332.59 90.41 332.24 62.27 332.16 56.32 332.45 50.36 332.61 44.41 332.73 40.19 330.71 38.19 326.52 37.97 315.13 37.37 303.73 36.76 292.35 35.94 287.38 35.58 284.08 30.83 284.49 25.28 284.76 21.61 288.31 18.83 292.85 18.59 310.88 17.63 328.89 17.78 346.92 18.75 355.97 19.24 365.07 18.64 374.15 18.84 377.25 18.91 380.97 18.51 381.5 23.52 382.47 32.77 382.65 33.48 375.94 34.95 370.5 36.13 364.67 35.43 359.16 36.4 356.97 36.78 354.05 39.05 353.43 41.06 351.96 45.87 351.67 51.03 350.91 56.05 351.35 56.1 351.79 56.14 352.23 56.19</font></font></font>";
+        
+        var result = SubtitleFormatterService.IsAssDrawingCommand(input);
+        Assert.True(result, "Failed to identify massive nested tag drawing as garbage");
+    }
+
+    [Fact]
+    public void IsAssDrawingCommand_ShouldReturnFalse_ForNormalDialogueWithTags()
+    {
+        // User provided example of normal dialogue
+        var input = "<font face=\"Boopee\"><font size=\"66\"><font color=\"#141313\">{\\an1}Na-Nah you gotta keep it to yourself until you do it</font></font></font>";
+        
+        var result = SubtitleFormatterService.IsAssDrawingCommand(input);
+        Assert.False(result, "Incorrectly identified normal dialogue as garbage");
+    }
+
     [Theory]
     [InlineData("{\\an7}")]
     [InlineData("")]
