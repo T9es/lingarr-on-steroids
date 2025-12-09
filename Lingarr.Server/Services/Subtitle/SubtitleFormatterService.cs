@@ -13,10 +13,12 @@ public class SubtitleFormatterService : ISubtitleFormatterService
         }
 
         // Remove SSA/ASS style tags: {\...}
-        string cleaned = Regex.Replace(input, @"\{.*?\}", string.Empty);
+        // Use Singleline mode to handle tags that span multiple lines
+        string cleaned = Regex.Replace(input, @"\{.*?\}", string.Empty, RegexOptions.Singleline);
 
         // Remove HTML-style tags: <...>
-        cleaned = Regex.Replace(cleaned, @"<.*?>", string.Empty);
+        // Use Singleline mode to handle tags that span multiple lines
+        cleaned = Regex.Replace(cleaned, @"<.*?>", string.Empty, RegexOptions.Singleline);
 
         // Replace SSA line breaks with spaces
         cleaned = cleaned.Replace("\\N", " ").Replace("\\n", " ");
@@ -40,24 +42,64 @@ public class SubtitleFormatterService : ISubtitleFormatterService
     {
         if (string.IsNullOrWhiteSpace(input))
         {
-            return false;
+            // If the line is empty/whitespace, we consider it "garbage" or a "drawing command" 
+            // in the context of filtering, so we return true to have it removed.
+            return true;
         }
         
         // First strip any HTML/font tags to get the raw content
         string cleaned = RemoveMarkup(input);
+        
+        // If the line consists ONLY of tags (cleaned is empty), treat it as a "drawing" or non-text line
+        // to be filtered out. Ideally this should be a separate check, but for the purpose of
+        // "stripping garbage", this effectively removes empty lines caused by tag-stripping.
         if (string.IsNullOrWhiteSpace(cleaned))
         {
-            return false;
+            return true;
         }
         
-        // ASS drawing commands pattern:
-        // - Must start with 'm' (move command) followed by coordinates
-        // - Can contain drawing commands: m (move), b (bezier), l (line), n (move no-close), 
-        //   c (close), s (b-spline), p (extend spline)
-        // - Contains only numbers, decimals, spaces, minus signs, and single letter commands
-        // Pattern matches: "m 625.52 110.81 b 622.39 111.8 ..."
-        // Also matches without 'm' prefix: "625.52 110.8 b 622.4 111.8 ..."
-        var drawingPattern = @"^(m\s+)?[\d.-]+\s+[\d.-]+(\s+[bclmnps]?\s*[\d.\s-]+)*$";
-        return Regex.IsMatch(cleaned.Trim(), drawingPattern, RegexOptions.IgnoreCase);
+        // ASS drawing commands logic:
+        // Instead of a complex regex that can fail or backtrack, we tokenize the string.
+        // Valid tokens in a drawing command are:
+        // - Single letters: m, n, l, b, s, p, c (case insensitive)
+        // - Numbers (integer or decimal, positive or negative)
+        // 
+        // We reject if we find anything else (like actual words).
+        //
+        // SAFEGUARD: To avoid false positives on lines that happen to be just a number (e.g. "1997" or "10"),
+        // we require either:
+        // 1. A Move command "m" was present.
+        // 2. OR at least 2 numbers were present (a coordinate pair).
+        
+        var tokens = cleaned.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        bool hasMoveCommand = false;
+        int numberCount = 0;
+        
+        foreach (var token in tokens)
+        {
+            // Check if token is a valid command letter
+            if (token.Length == 1 && "mnlbspc".Contains(char.ToLowerInvariant(token[0])))
+            {
+                if (char.ToLowerInvariant(token[0]) == 'm') hasMoveCommand = true;
+                continue;
+            }
+            
+            // Check if token is a number
+            if (double.TryParse(token, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out _))
+            {
+                numberCount++;
+                continue;
+            }
+            
+            // If it's neither a known command nor a number, it's likely text
+            // e.g. "To", "You", "Someday" -> these are not drawing commands
+            return false;
+        }
+
+        // A valid drawing command sequence requires sufficient evidence it is not just text.
+        // If we saw an explicit "m" command, it's definitely a drawing (as long as all tokens were valid).
+        // If we didn't see "m", we might be seeing a coordinate fragment (e.g. "100 200 ...").
+        // To be safe against single numbers (e.g. "1997"), we require at least 2 numbers.
+        return hasMoveCommand || numberCount >= 2;
     }
 }
