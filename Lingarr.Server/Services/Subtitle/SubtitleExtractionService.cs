@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Server.Interfaces.Services.Subtitle;
+using Lingarr.Server.Models.FileSystem;
 using Microsoft.EntityFrameworkCore;
 
 namespace Lingarr.Server.Services.Subtitle;
