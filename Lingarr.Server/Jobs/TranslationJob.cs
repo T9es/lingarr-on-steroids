@@ -217,7 +217,7 @@ public class TranslationJob
             
             // Generate a short, readable identifier from the filename for logging
             // e.g., "S02E23" or "Movie Name (2024)"
-            var fileIdentifier = GenerateFileIdentifier(translationRequest.SubtitleToTranslate);
+            var fileIdentifier = GenerateFileIdentifier(request.SubtitleToTranslate);
             
             // Parse ASS drawing command filter settings
             var stripAssDrawingCommands = settings.TryGetValue(SettingKeys.Translation.StripAssDrawingCommands, out var stripAssVal) && stripAssVal == "true";
@@ -244,7 +244,7 @@ public class TranslationJob
                 // Optionally clean the source file as well
                 if (cleanSourceAssDrawings && removedCount > 0)
                 {
-                    await CleanSourceSubtitleFile(translationRequest.SubtitleToTranslate, stripSubtitleFormatting);
+                    await CleanSourceSubtitleFile(request.SubtitleToTranslate, stripSubtitleFormatting);
                     _logger.LogInformation("[{FileId}] Cleaned ASS drawing commands from source file", fileIdentifier);
                 }
             }
@@ -268,7 +268,7 @@ public class TranslationJob
 
                 translatedSubtitles = await translator.TranslateSubtitlesBatch(
                     subtitles,
-                    translationRequest,
+                    request,
                     stripSubtitleFormatting,
                     maxSize,
                     enableBatchFallback,
@@ -406,8 +406,9 @@ public class TranslationJob
     /// </summary>
     /// <param name="subtitlePath">The full path to the subtitle file</param>
     /// <returns>A short identifier suitable for log output</returns>
-    private static string GenerateFileIdentifier(string subtitlePath)
+    private static string GenerateFileIdentifier(string? subtitlePath)
     {
+        if (string.IsNullOrEmpty(subtitlePath)) return "Unknown";
         var fileName = Path.GetFileNameWithoutExtension(subtitlePath);
         
         // Try to find episode pattern (S01E01 or similar)
