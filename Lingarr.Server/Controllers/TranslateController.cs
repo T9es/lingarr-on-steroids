@@ -153,6 +153,10 @@ public class TranslateController : ControllerBase
     {
         try
         {
+            _logger.LogInformation(
+                "TranslateMedia request received: MediaId={MediaId}, MediaType={MediaType}",
+                request.MediaId, request.MediaType);
+                
             var translationsQueued = 0;
             
             switch (request.MediaType)
@@ -161,7 +165,9 @@ public class TranslateController : ControllerBase
                     var movie = await _dbContext.Movies.FindAsync(request.MediaId);
                     if (movie == null)
                         return NotFound(new TranslateMediaResponse { Message = "Movie not found" });
+                    _logger.LogInformation("Processing movie: {Title}, Path: {Path}", movie.Title, movie.Path);
                     translationsQueued = await _mediaSubtitleProcessor.ProcessMediaForceAsync(movie, MediaType.Movie);
+                    _logger.LogInformation("Movie {Title} queued {Count} translations", movie.Title, translationsQueued);
                     break;
                     
                 case MediaType.Episode:
@@ -190,13 +196,28 @@ public class TranslateController : ControllerBase
                         .FirstOrDefaultAsync(s => s.Id == request.MediaId);
                     if (show == null)
                         return NotFound(new TranslateMediaResponse { Message = "Show not found" });
+                    _logger.LogInformation("Processing show: {Title} with {SeasonCount} seasons", 
+                        show.Title, show.Seasons.Count);
+                    var totalEpisodes = 0;
+                    var excludedEpisodes = 0;
                     foreach (var s in show.Seasons.Where(s => !s.ExcludeFromTranslation))
                     {
                         foreach (var ep in s.Episodes.Where(e => !e.ExcludeFromTranslation))
                         {
-                            translationsQueued += await _mediaSubtitleProcessor.ProcessMediaForceAsync(ep, MediaType.Episode);
+                            totalEpisodes++;
+                            var epCount = await _mediaSubtitleProcessor.ProcessMediaForceAsync(ep, MediaType.Episode);
+                            translationsQueued += epCount;
+                            if (epCount == 0)
+                            {
+                                _logger.LogDebug("Episode S{Season}E{Episode} ({Title}) queued 0 translations",
+                                    s.SeasonNumber, ep.EpisodeNumber, ep.Title);
+                            }
                         }
+                        excludedEpisodes += s.Episodes.Count(e => e.ExcludeFromTranslation);
                     }
+                    _logger.LogInformation(
+                        "Show {Title}: processed {Total} episodes, {Excluded} excluded, queued {Count} translations",
+                        show.Title, totalEpisodes, excludedEpisodes, translationsQueued);
                     break;
                     
                 default:

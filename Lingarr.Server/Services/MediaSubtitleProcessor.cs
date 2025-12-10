@@ -249,14 +249,34 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             .Where(s => s.FileName.StartsWith(media.FileName + ".") || s.FileName == media.FileName)
             .ToList();
 
+        _logger.LogDebug(
+            "ProcessMediaForceAsync for {FileName}: Found {AllCount} subtitles in directory, {MatchCount} matching media file",
+            media.FileName, allSubtitles.Count, matchingSubtitles.Count);
+        
         if (!matchingSubtitles.Any())
         {
+            _logger.LogWarning(
+                "No matching subtitles found for {FileName} in {Path}. All subtitles found: [{AllSubtitles}]",
+                media.FileName, media.Path, 
+                string.Join(", ", allSubtitles.Select(s => s.FileName)));
             return 0;
         }
 
         var sourceLanguages = await GetLanguagesSetting<SourceLanguage>(SettingKeys.Translation.SourceLanguages);
         var targetLanguages = await GetLanguagesSetting<TargetLanguage>(SettingKeys.Translation.TargetLanguages);
         var ignoreCaptions = await _settingService.GetSetting(SettingKeys.Translation.IgnoreCaptions);
+
+        _logger.LogDebug(
+            "Language settings for {FileName}: Sources=[{Sources}], Targets=[{Targets}], IgnoreCaptions={IgnoreCaptions}",
+            media.FileName, 
+            string.Join(", ", sourceLanguages), 
+            string.Join(", ", targetLanguages),
+            ignoreCaptions);
+        
+        _logger.LogDebug(
+            "Matching subtitles for {FileName}: [{Subtitles}]",
+            media.FileName,
+            string.Join(", ", matchingSubtitles.Select(s => $"{s.Language}:{s.FileName}")));
 
         _media = media;
         _mediaType = mediaType;
@@ -265,10 +285,11 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         // If not forcing and hash matches, skip processing
         if (!forceProcess && !string.IsNullOrEmpty(media.MediaHash) && media.MediaHash == _hash)
         {
+            _logger.LogDebug("Skipping {FileName}: hash matches and not forcing", media.FileName);
             return 0;
         }
         
-        _logger.LogInformation("Initiating manual subtitle processing for {FileName}.", media.FileName);
+        _logger.LogInformation("Initiating manual subtitle processing for {FileName} (forceProcess={Force}).", media.FileName, forceProcess);
         return await ProcessSubtitlesWithCount(matchingSubtitles, sourceLanguages, targetLanguages, ignoreCaptions ?? "", forceProcess);
     }
     
@@ -286,6 +307,13 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         var existingLanguages = ExtractLanguageCodes(subtitles);
         var translationsQueued = 0;
 
+        _logger.LogDebug(
+            "ProcessSubtitlesWithCount: ExistingLanguages=[{Existing}], SourceLanguages=[{Sources}], TargetLanguages=[{Targets}], ForceTranslation={Force}",
+            string.Join(", ", existingLanguages),
+            string.Join(", ", sourceLanguages),
+            string.Join(", ", targetLanguages),
+            forceTranslation);
+
         if (sourceLanguages.Count == 0 || targetLanguages.Count == 0)
         {
             _logger.LogWarning(
@@ -296,7 +324,10 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         }
 
         var sourceLanguage = existingLanguages.FirstOrDefault(lang => sourceLanguages.Contains(lang));
+        _logger.LogDebug("Source language match result: {SourceLanguage}", sourceLanguage ?? "NONE");
+        
         if (sourceLanguage != null && targetLanguages.Any())
+
         {
             var sourceSubtitle = ignoreCaptions == "true"
                 ? subtitles.FirstOrDefault(s => s.Language == sourceLanguage && string.IsNullOrEmpty(s.Caption)) 
