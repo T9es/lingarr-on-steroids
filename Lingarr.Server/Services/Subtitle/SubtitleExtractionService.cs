@@ -406,135 +406,116 @@ public class SubtitleExtractionService : ISubtitleExtractionService
     {
         try
         {
-            var lines = await File.ReadAllLinesAsync(filePath);
-            var output = new List<string>();
-            var subtitleBuffer = new List<string>();
-            
-            // For deduplication
-            var lastKeptText = string.Empty;
-            var lastKeptTimecodeIndex = -1;
-
-            for (int i = 0; i < lines.Length; i++)
+            // Parse the dirty SRT file
+            var parser = new SrtParser();
+            List<SubtitleItem> items;
+            using (var stream = File.OpenRead(filePath))
             {
-                var line = lines[i];
+                items = parser.ParseStream(stream, System.Text.Encoding.UTF8);
+            }
 
-                if (string.IsNullOrWhiteSpace(line))
+            if (items.Count == 0) return;
+
+            // PRE-FILTER: Remove ASS drawing commands and empty lines
+            var filteredItems = new List<SubtitleItem>();
+            foreach (var item in items)
+            {
+                var cleanedLines = item.Lines
+                    .Select(l => SubtitleFormatterService.RemoveMarkup(l))
+                    .Where(l => !string.IsNullOrWhiteSpace(l))
+                    .ToList();
+                
+                if (cleanedLines.Count == 0) continue;
+
+                var combinedText = string.Join(" ", item.Lines); // Check original for drawings
+                if (SubtitleFormatterService.IsAssDrawingCommand(combinedText)) continue;
+
+                item.Lines = cleanedLines; // Update to cleaned lines
+                item.PlaintextLines = cleanedLines; // Consistent
+                filteredItems.Add(item);
+            }
+
+            if (filteredItems.Count == 0) return;
+
+            // PASS 1: Merge Concurrent Layers (e.g. "Text Part 1" and "Text Part 2" appearing at same time)
+            // Heuristic: If two subtitles start at roughly the same time (< 50ms diff) 
+            // AND are both short duration (< 500ms, typical for animation frames), merge them.
+            var layeredItems = new List<SubtitleItem>();
+            if (filteredItems.Count > 0)
+            {
+                var current = filteredItems[0];
+                for (int i = 1; i < filteredItems.Count; i++)
                 {
-                    if (subtitleBuffer.Count >= 3)
+                    var next = filteredItems[i];
+                    var isConcurrent = Math.Abs(next.StartTime - current.StartTime) < 50; // 50ms tolerance
+                    var isShort = (current.EndTime - current.StartTime) < 1000 && (next.EndTime - next.StartTime) < 1000;
+
+                    if (isConcurrent && isShort)
                     {
-                        ProcessBuffer(output, subtitleBuffer, ref lastKeptText, ref lastKeptTimecodeIndex);
+                        // Merge next into current
+                        current.Lines.AddRange(next.Lines);
+                        current.EndTime = Math.Max(current.EndTime, next.EndTime);
                     }
-                    subtitleBuffer.Clear();
+                    else
+                    {
+                        layeredItems.Add(current);
+                        current = next;
+                    }
                 }
-                else
-                {
-                    subtitleBuffer.Add(line);
-                }
+                layeredItems.Add(current);
             }
 
-            // Process remaining buffer
-            if (subtitleBuffer.Count >= 3)
+            // PASS 2: Deduplicate Sequential Frames (Time Merging)
+            var finalItems = new List<SubtitleItem>();
+            if (layeredItems.Count > 0)
             {
-                ProcessBuffer(output, subtitleBuffer, ref lastKeptText, ref lastKeptTimecodeIndex);
+                var current = layeredItems[0];
+                for (int i = 1; i < layeredItems.Count; i++)
+                {
+                    var next = layeredItems[i];
+                    
+                    var textA = string.Join("\n", current.Lines);
+                    var textB = string.Join("\n", next.Lines);
+
+                    // If text is identical AND timestamps are contiguous (or overlapping)
+                    // Gap tolerance: 100ms
+                    var gap = next.StartTime - current.EndTime;
+                    if (textA == textB && gap < 100) 
+                    {
+                        // Merge time
+                        current.EndTime = Math.Max(current.EndTime, next.EndTime);
+                    }
+                    else
+                    {
+                        finalItems.Add(current);
+                        current = next;
+                    }
+                }
+                finalItems.Add(current);
             }
-            
-            // Overwrite the file with cleaned content
-            await File.WriteAllLinesAsync(filePath, output);
-            _logger.LogDebug("Cleaned extracted subtitle: {FilePath}", filePath);
+
+            // Write back to file
+            var sb = new System.Text.StringBuilder();
+            for (int i = 0; i < finalItems.Count; i++)
+            {
+                var item = finalItems[i];
+                sb.AppendLine((i + 1).ToString());
+                sb.AppendLine($"{FormatSingleTimeCode(item.StartTime)} --> {FormatSingleTimeCode(item.EndTime)}");
+                foreach (var line in item.Lines)
+                {
+                    sb.AppendLine(line);
+                }
+                sb.AppendLine();
+            }
+
+            await File.WriteAllTextAsync(filePath, sb.ToString());
+            _logger.LogDebug("Cleaned extracted subtitle: {FilePath} (Original: {Org}, Final: {Final})", 
+                filePath, items.Count, finalItems.Count);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to clean extracted subtitle file: {FilePath}", filePath);
         }
-    }
-
-    private void ProcessBuffer(List<string> output, List<string> subtitleBuffer, ref string lastKeptText, ref int lastKeptTimecodeIndex)
-    {
-        // Buffer structure: [0]=Number, [1]=Timecode, [2...]=Text
-        var textLines = subtitleBuffer.Skip(2).ToList();
-        var combinedText = string.Join(" ", textLines);
-        
-        var cleanedTextLines = textLines.Select(SubtitleFormatterService.RemoveMarkup).ToList();
-        var cleanedCombinedText = string.Join(" ", cleanedTextLines);
-
-        if (!SubtitleFormatterService.IsAssDrawingCommand(combinedText))
-        {
-            // DEDUPLICATION & TIME MERGING
-            if (cleanedCombinedText == lastKeptText && lastKeptTimecodeIndex != -1)
-            {
-                // It's a duplicate. Instead of just skipping, we try to merge the time compatibility.
-                // Parse current timecode
-                if (TryParseTimeCodes(subtitleBuffer[1], out var currentStart, out var currentEnd))
-                {
-                    // Parse last kept timecode
-                    if (TryParseTimeCodes(output[lastKeptTimecodeIndex], out var lastStart, out var lastEnd))
-                    {
-                        // Check for continuity or overlap (allow small gap < 100ms)
-                        // If the new start is roughly where the old one ended, extend the old one.
-                        if (currentStart <= lastEnd + 100) 
-                        {
-                            // Extend the end time
-                            var newEnd = Math.Max(lastEnd, currentEnd);
-                            output[lastKeptTimecodeIndex] = FormatTimeCodes(lastStart, newEnd);
-                            return; // Deduped and merged
-                        }
-                    }
-                }
-            }
-
-            // If we're here, it's either not a duplicate, or not mergable (too big a gap), or parsing failed.
-            // Treat as new subtitle.
-            
-            // If the buffer numbers are out of sync due to removals, we might want to renumber, 
-            // but FFmpeg usually restarts from 1 anyway. Let's keep original numbers for now or basic renumbering could be added.
-            // For safety against drift, we just push what we have.
-            
-            output.Add(subtitleBuffer[0]);
-            
-            lastKeptTimecodeIndex = output.Count; // Index of the timecode line we are about to add
-            output.Add(subtitleBuffer[1]);
-            
-            output.AddRange(cleanedTextLines);
-            output.Add(""); // Blank line separator
-            
-            lastKeptText = cleanedCombinedText;
-        }
-    }
-
-    // Regex for 00:00:00,000 or 00:00:00.000
-    private static readonly Regex TimeCodeRegex = new(@"([0-9]+):([0-9]+):([0-9]+)(?:[,\.]([0-9]+))?", RegexOptions.Compiled);
-
-    private bool TryParseTimeCodes(string line, out int start, out int end)
-    {
-        start = end = -1;
-        var parts = line.Split(new[] { "-->", "- >", "->" }, StringSplitOptions.RemoveEmptyEntries);
-
-        if (parts.Length != 2) return false;
-        
-        start = ParseTimeCode(parts[0]);
-        end = ParseTimeCode(parts[1]);
-        
-        return start >= 0 && end >= 0;
-    }
-
-    private int ParseTimeCode(string timeCode)
-    {
-        var match = TimeCodeRegex.Match(timeCode.Trim());
-        if (!match.Success) return -1;
-
-        var hours = int.Parse(match.Groups[1].Value);
-        var minutes = int.Parse(match.Groups[2].Value);
-        var seconds = int.Parse(match.Groups[3].Value);
-        var milliseconds = match.Groups[4].Success 
-            ? int.Parse(match.Groups[4].Value.PadRight(3, '0').Substring(0, 3))
-            : 0;
-
-        return hours * 3600000 + minutes * 60000 + seconds * 1000 + milliseconds;
-    }
-
-    private string FormatTimeCodes(int startMs, int endMs)
-    {
-        return $"{FormatSingleTimeCode(startMs)} --> {FormatSingleTimeCode(endMs)}";
     }
 
     private string FormatSingleTimeCode(int totalMs)
