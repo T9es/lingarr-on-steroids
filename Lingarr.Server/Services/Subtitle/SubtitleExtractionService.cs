@@ -285,11 +285,11 @@ public class SubtitleExtractionService : ISubtitleExtractionService
     /// </summary>
     private string? FindMediaFile(string directory, string baseFileName)
     {
-        _logger.LogDebug("FindMediaFile: directory={Directory}, baseFileName={BaseFileName}", directory, baseFileName);
+        _logger.LogInformation("FindMediaFile searching in: {Directory} for base: {BaseFileName}", directory, baseFileName);
         
         if (!Directory.Exists(directory))
         {
-            _logger.LogDebug("FindMediaFile: directory does not exist: {Directory}", directory);
+            _logger.LogWarning("FindMediaFile: directory does not exist: {Directory}", directory);
             return null;
         }
         
@@ -304,7 +304,7 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 var exactPath = Path.Combine(directory, baseFileName);
                 if (File.Exists(exactPath))
                 {
-                    _logger.LogDebug("FindMediaFile: found exact match: {Path}", exactPath);
+                    _logger.LogInformation("FindMediaFile: found exact match: {Path}", exactPath);
                     return exactPath;
                 }
             }
@@ -316,7 +316,7 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             var path = Path.Combine(directory, baseFileName + ext);
             if (File.Exists(path))
             {
-                _logger.LogDebug("FindMediaFile: found with extension: {Path}", path);
+                _logger.LogInformation("FindMediaFile: found with extension: {Path}", path);
                 return path;
             }
         }
@@ -325,7 +325,7 @@ public class SubtitleExtractionService : ISubtitleExtractionService
         try
         {
             var files = Directory.GetFiles(directory);
-            _logger.LogDebug("FindMediaFile: fallback search, {FileCount} files in directory", files.Length);
+            _logger.LogInformation("FindMediaFile: fallback search, {FileCount} files in directory", files.Length);
             
             foreach (var file in files)
             {
@@ -337,7 +337,7 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 if (videoExtensions.Contains(ext) && 
                     (fileNameWithoutExt == baseFileName || fileName.StartsWith(baseFileName + ".")))
                 {
-                    _logger.LogDebug("FindMediaFile: found via fallback search: {Path}", file);
+                    _logger.LogInformation("FindMediaFile: found via fallback search: {Path}", file);
                     return file;
                 }
             }
@@ -347,9 +347,10 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             _logger.LogWarning(ex, "Error searching for media file in directory: {Directory}", directory);
         }
         
-        _logger.LogDebug("FindMediaFile: no matching file found for {BaseFileName} in {Directory}", baseFileName, directory);
+        _logger.LogWarning("FindMediaFile: no matching file found for {BaseFileName} in {Directory}", baseFileName, directory);
         return null;
     }
+
 
 
 
@@ -473,7 +474,7 @@ public class SubtitleExtractionService : ISubtitleExtractionService
         try
         {
             var arguments = $"-v quiet -print_format json -show_streams -select_streams s \"{mediaFilePath}\"";
-            _logger.LogDebug("Running FFprobe: ffprobe {Arguments}", arguments);
+            _logger.LogInformation("Running FFprobe on: {FullPath}", mediaFilePath);
             
             var process = new Process
             {
@@ -493,13 +494,20 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             var stderr = await process.StandardError.ReadToEndAsync();
             await process.WaitForExitAsync();
 
+            _logger.LogInformation("FFprobe result for {FileName}: exit={ExitCode}, output={Length} chars, stderr={StdErrLength} chars",
+                Path.GetFileName(mediaFilePath), process.ExitCode, output.Length, stderr.Length);
+            
             if (!string.IsNullOrEmpty(stderr))
             {
-                _logger.LogDebug("FFprobe stderr: {StdErr}", stderr);
+                _logger.LogWarning("FFprobe stderr: {StdErr}", stderr);
             }
             
-            _logger.LogDebug("FFprobe output ({Length} chars): {Output}", output.Length, 
-                output.Length > 200 ? output.Substring(0, 200) + "..." : output);
+            // Log first part of output to see what we got
+            if (output.Length > 0)
+            {
+                _logger.LogInformation("FFprobe output preview: {Preview}", 
+                    output.Length > 300 ? output.Substring(0, 300) + "..." : output);
+            }
 
             if (process.ExitCode != 0)
             {
