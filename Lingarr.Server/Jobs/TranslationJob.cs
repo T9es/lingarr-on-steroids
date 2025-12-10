@@ -392,6 +392,7 @@ public class TranslationJob
             translationRequest.CompletedAt = DateTime.UtcNow;
             translationRequest.Status = TranslationStatus.Cancelled;
 
+            await _dbContext.SaveChangesAsync();
             await _translationRequestService.ClearMediaHash(translationRequest);
             await _translationRequestService.UpdateActiveCount();
             await _progressService.Emit(translationRequest, 0);
