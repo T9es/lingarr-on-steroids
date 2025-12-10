@@ -149,9 +149,9 @@ const filteredLogs = computed(() => {
 const formatLogMessage = (message: string): string => {
     // Replace color tags
     let formattedMessage = message
-        .replace(/\|Green\|([^|]+)\|\/Green\|/g, '<span class="text-green-500">$1</span>')
-        .replace(/\|Red\|([^|]+)\|\/Red\|/g, '<span class="text-red-500">$1</span>')
-        .replace(/\|Orange\|([^|]+)\|\/Orange\|/g, '<span class="text-orange-500">$1</span>')
+        .replace(/\|Green\|([^|]*)\|\/Green\|/g, '<span class="text-green-500">$1</span>')
+        .replace(/\|Red\|([^|]*)\|\/Red\|/g, '<span class="text-red-500">$1</span>')
+        .replace(/\|Orange\|([^|]*)\|\/Orange\|/g, '<span class="text-orange-500">$1</span>')
 
     // Highlight environment variables
     formattedMessage = formattedMessage.replace(

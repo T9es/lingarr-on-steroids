@@ -453,8 +453,14 @@ public class SubtitleExtractionService : ISubtitleExtractionService
 
                     if (isConcurrent && isShort)
                     {
-                        // Merge next into current
-                        current.Lines.AddRange(next.Lines);
+                        // Merge next into current, but avoid duplicating identical text lines
+                        foreach (var line in next.Lines)
+                        {
+                            if (!current.Lines.Contains(line))
+                            {
+                                current.Lines.Add(line);
+                            }
+                        }
                         current.EndTime = Math.Max(current.EndTime, next.EndTime);
                     }
                     else
