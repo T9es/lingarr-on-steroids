@@ -250,7 +250,13 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             return;
         }
 
-        var mediaPath = Path.Combine(episode.Path, episode.FileName);
+        var mediaPath = FindMediaFile(episode.Path, episode.FileName);
+        if (mediaPath == null)
+        {
+            _logger.LogWarning("Could not find media file for episode: {FileName} in {Path}", episode.FileName, episode.Path);
+            return;
+        }
+        
         await SyncEmbeddedSubtitlesInternal(mediaPath, episode.Id, null);
     }
 
@@ -263,9 +269,79 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             return;
         }
 
-        var mediaPath = Path.Combine(movie.Path, movie.FileName);
+        var mediaPath = FindMediaFile(movie.Path, movie.FileName);
+        if (mediaPath == null)
+        {
+            _logger.LogWarning("Could not find media file for movie: {FileName} in {Path}", movie.FileName, movie.Path);
+            return;
+        }
+        
         await SyncEmbeddedSubtitlesInternal(mediaPath, null, movie.Id);
     }
+    
+    /// <summary>
+    /// Finds the actual media file by searching for files that match the base filename.
+    /// This is needed because FileName in the database may not include the extension.
+    /// </summary>
+    private string? FindMediaFile(string directory, string baseFileName)
+    {
+        if (!Directory.Exists(directory))
+        {
+            return null;
+        }
+        
+        // Common video extensions to search for
+        var videoExtensions = new[] { ".mkv", ".mp4", ".avi", ".m4v", ".webm", ".mov", ".wmv" };
+        
+        // First try exact match with extension already in filename
+        foreach (var ext in videoExtensions)
+        {
+            if (baseFileName.EndsWith(ext, StringComparison.OrdinalIgnoreCase))
+            {
+                var exactPath = Path.Combine(directory, baseFileName);
+                if (File.Exists(exactPath))
+                {
+                    return exactPath;
+                }
+            }
+        }
+        
+        // Search for file with matching base name + video extension
+        foreach (var ext in videoExtensions)
+        {
+            var path = Path.Combine(directory, baseFileName + ext);
+            if (File.Exists(path))
+            {
+                return path;
+            }
+        }
+        
+        // Fallback: search directory for files starting with the base filename
+        try
+        {
+            var files = Directory.GetFiles(directory);
+            foreach (var file in files)
+            {
+                var fileName = Path.GetFileName(file);
+                var fileNameWithoutExt = Path.GetFileNameWithoutExtension(file);
+                var ext = Path.GetExtension(file).ToLowerInvariant();
+                
+                // Check if it's a video file that matches our base filename
+                if (videoExtensions.Contains(ext) && 
+                    (fileNameWithoutExt == baseFileName || fileName.StartsWith(baseFileName + ".")))
+                {
+                    return file;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error searching for media file in directory: {Directory}", directory);
+        }
+        
+        return null;
+    }
+
 
     private async Task SyncEmbeddedSubtitlesInternal(string mediaPath, int? episodeId, int? movieId)
     {
