@@ -21,8 +21,9 @@ public interface ISubtitleExtractionService
     /// <param name="streamIndex">FFmpeg stream index of the subtitle track</param>
     /// <param name="outputDirectory">Directory to save the extracted subtitle</param>
     /// <param name="codecName">Codec name to determine output extension</param>
+    /// <param name="language">Language code for the subtitle (e.g., "eng", "jpn"). Used in the output filename.</param>
     /// <returns>Path to the extracted file, or null if extraction failed</returns>
-    Task<string?> ExtractSubtitle(string mediaFilePath, int streamIndex, string outputDirectory, string codecName);
+    Task<string?> ExtractSubtitle(string mediaFilePath, int streamIndex, string outputDirectory, string codecName, string? language);
 
     /// <summary>
     /// Syncs embedded subtitle information for an episode.

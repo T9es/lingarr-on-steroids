@@ -158,7 +158,7 @@ public class SubtitleExtractionService : ISubtitleExtractionService
     }
 
     /// <inheritdoc />
-    public async Task<string?> ExtractSubtitle(string mediaFilePath, int streamIndex, string outputDirectory, string codecName)
+    public async Task<string?> ExtractSubtitle(string mediaFilePath, int streamIndex, string outputDirectory, string codecName, string? language)
     {
         if (!File.Exists(mediaFilePath))
         {
@@ -174,7 +174,10 @@ public class SubtitleExtractionService : ISubtitleExtractionService
         // Determine output extension
         var extension = CodecToExtension.GetValueOrDefault(codecName, ".srt");
         var baseFileName = Path.GetFileNameWithoutExtension(mediaFilePath);
-        var outputFileName = $"{baseFileName}.extracted.{streamIndex}{extension}";
+        
+        // Use language tag if available (e.g., ".eng.srt"), otherwise fall back to stream index
+        var languageTag = !string.IsNullOrEmpty(language) ? language : $"stream{streamIndex}";
+        var outputFileName = $"{baseFileName}.{languageTag}{extension}";
         var outputPath = Path.Combine(outputDirectory, outputFileName);
 
         try

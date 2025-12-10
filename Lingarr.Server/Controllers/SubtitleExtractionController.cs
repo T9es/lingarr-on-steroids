@@ -256,7 +256,8 @@ public class SubtitleExtractionController : ControllerBase
                 mediaPath,
                 embeddedSub.StreamIndex,
                 outputDir,
-                embeddedSub.CodecName);
+                embeddedSub.CodecName,
+                embeddedSub.Language);
 
             if (string.IsNullOrEmpty(extractedPath))
             {

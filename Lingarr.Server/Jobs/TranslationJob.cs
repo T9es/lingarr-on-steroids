@@ -564,7 +564,8 @@ public class TranslationJob
                 mediaPath!,
                 bestCandidate.StreamIndex,
                 outputDir!,
-                bestCandidate.CodecName);
+                bestCandidate.CodecName,
+                bestCandidate.Language);
 
             if (string.IsNullOrEmpty(extractedPath))
             {
