@@ -1,12 +1,15 @@
 ﻿using System.Security.Cryptography;
 using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
+using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
 using Lingarr.Core.Interfaces;
 using Lingarr.Server.Interfaces;
 using Lingarr.Server.Interfaces.Services;
+using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Models;
 using Lingarr.Server.Models.FileSystem;
+using Microsoft.EntityFrameworkCore;
 
 namespace Lingarr.Server.Services;
 
@@ -16,6 +19,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
     private readonly ILogger<IMediaSubtitleProcessor> _logger;
     private readonly ISubtitleService _subtitleService;
     private readonly ISettingService _settingService;
+    private readonly ISubtitleExtractionService _extractionService;
     private readonly LingarrDbContext _dbContext;
     private string _hash = string.Empty;
     private IMedia _media = null!;
@@ -26,11 +30,13 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         ILogger<IMediaSubtitleProcessor> logger,
         ISettingService settingService,
         ISubtitleService subtitleService,
+        ISubtitleExtractionService extractionService,
         LingarrDbContext dbContext)
     {
         _translationRequestService = translationRequestService;
         _settingService = settingService;
         _subtitleService = subtitleService;
+        _extractionService = extractionService;
         _dbContext = dbContext;
         _logger = logger;
     }
@@ -255,11 +261,12 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         
         if (!matchingSubtitles.Any())
         {
-            _logger.LogWarning(
-                "No matching subtitles found for {FileName} in {Path}. All subtitles found: [{AllSubtitles}]",
-                media.FileName, media.Path, 
-                string.Join(", ", allSubtitles.Select(s => s.FileName)));
-            return 0;
+            _logger.LogInformation(
+                "No external subtitles found for {FileName}. Checking for embedded subtitles...",
+                media.FileName);
+            
+            // Try to queue translation jobs for embedded subtitle extraction
+            return await TryQueueEmbeddedSubtitleTranslation(media, mediaType);
         }
 
         var sourceLanguages = await GetLanguagesSetting<SourceLanguage>(SettingKeys.Translation.SourceLanguages);
@@ -401,4 +408,130 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         await UpdateHash();
         return 0;
     }
+    
+    /// <summary>
+    /// Attempts to queue translation jobs for media with embedded subtitles but no external subtitles.
+    /// </summary>
+    /// <param name="media">The media item to process</param>
+    /// <param name="mediaType">The type of media (Movie or Episode)</param>
+    /// <returns>The number of translation requests queued</returns>
+    private async Task<int> TryQueueEmbeddedSubtitleTranslation(IMedia media, MediaType mediaType)
+    {
+        var sourceLanguages = await GetLanguagesSetting<SourceLanguage>(SettingKeys.Translation.SourceLanguages);
+        var targetLanguages = await GetLanguagesSetting<TargetLanguage>(SettingKeys.Translation.TargetLanguages);
+        
+        if (sourceLanguages.Count == 0 || targetLanguages.Count == 0)
+        {
+            _logger.LogWarning(
+                "Cannot queue embedded subtitle translation for {FileName}: source or target languages not configured",
+                media.FileName);
+            return 0;
+        }
+        
+        // Sync embedded subtitles from the media file
+        List<EmbeddedSubtitle>? embeddedSubtitles = null;
+        
+        if (mediaType == MediaType.Episode)
+        {
+            var episode = await _dbContext.Episodes
+                .Include(e => e.EmbeddedSubtitles)
+                .FirstOrDefaultAsync(e => e.Id == media.Id);
+                
+            if (episode != null)
+            {
+                // Force sync to refresh embedded subtitles
+                await _extractionService.SyncEmbeddedSubtitles(episode);
+                await _dbContext.Entry(episode).Collection(e => e.EmbeddedSubtitles).LoadAsync();
+                embeddedSubtitles = episode.EmbeddedSubtitles;
+            }
+        }
+        else if (mediaType == MediaType.Movie)
+        {
+            var movie = await _dbContext.Movies
+                .Include(m => m.EmbeddedSubtitles)
+                .FirstOrDefaultAsync(m => m.Id == media.Id);
+                
+            if (movie != null)
+            {
+                // Force sync to refresh embedded subtitles
+                await _extractionService.SyncEmbeddedSubtitles(movie);
+                await _dbContext.Entry(movie).Collection(m => m.EmbeddedSubtitles).LoadAsync();
+                embeddedSubtitles = movie.EmbeddedSubtitles;
+            }
+        }
+        
+        if (embeddedSubtitles == null || embeddedSubtitles.Count == 0)
+        {
+            _logger.LogWarning(
+                "No embedded subtitles found for {FileName}. Cannot translate.",
+                media.FileName);
+            return 0;
+        }
+        
+        _logger.LogInformation(
+            "Found {Count} embedded subtitles for {FileName}: [{Subtitles}]",
+            embeddedSubtitles.Count, media.FileName,
+            string.Join(", ", embeddedSubtitles.Select(s => $"{s.Language ?? "unknown"}:{s.CodecName}")));
+        
+        // Find the best embedded subtitle that matches a source language
+        var textBasedSubs = embeddedSubtitles.Where(s => s.IsTextBased).ToList();
+        if (textBasedSubs.Count == 0)
+        {
+            _logger.LogWarning(
+                "No text-based embedded subtitles found for {FileName}. Only image-based subtitles available.",
+                media.FileName);
+            return 0;
+        }
+        
+        // Find embedded subtitle matching source language
+        var matchingEmbedded = textBasedSubs.FirstOrDefault(s => 
+            !string.IsNullOrEmpty(s.Language) && 
+            sourceLanguages.Contains(s.Language.ToLowerInvariant()));
+            
+        if (matchingEmbedded == null)
+        {
+            // Try default subtitle
+            matchingEmbedded = textBasedSubs.FirstOrDefault(s => s.IsDefault);
+            
+            if (matchingEmbedded == null)
+            {
+                // Use first text-based subtitle 
+                matchingEmbedded = textBasedSubs.First();
+            }
+            
+            _logger.LogInformation(
+                "No embedded subtitle matches configured source languages [{Sources}]. Using fallback: {Language}",
+                string.Join(", ", sourceLanguages), matchingEmbedded.Language ?? "unknown");
+        }
+        
+        var sourceLanguage = matchingEmbedded.Language?.ToLowerInvariant() ?? sourceLanguages.First();
+        
+        _logger.LogInformation(
+            "Queuing translation jobs for embedded subtitle: Language={Language}, Codec={Codec}",
+            sourceLanguage, matchingEmbedded.CodecName);
+        
+        // Create translation requests for each target language (with empty subtitle path - TranslationJob will extract)
+        var translationsQueued = 0;
+        foreach (var targetLanguage in targetLanguages)
+        {
+            await _translationRequestService.CreateRequest(new TranslateAbleSubtitle
+            {
+                MediaId = media.Id,
+                MediaType = mediaType,
+                SubtitlePath = null, // Will trigger embedded extraction in TranslationJob
+                TargetLanguage = targetLanguage,
+                SourceLanguage = sourceLanguage,
+                SubtitleFormat = null
+            });
+            translationsQueued++;
+            _logger.LogInformation(
+                "Queued embedded subtitle translation from |Orange|{sourceLanguage}|/Orange| to |Orange|{targetLanguage}|/Orange| for |Green|{FileName}|/Green|",
+                sourceLanguage,
+                targetLanguage,
+                media.FileName);
+        }
+        
+        return translationsQueued;
+    }
 }
+
