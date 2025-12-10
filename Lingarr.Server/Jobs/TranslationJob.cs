@@ -716,32 +716,148 @@ public class TranslationJob
 
     /// <summary>
     /// Finds the best embedded subtitle candidate for translation.
-    /// Prioritizes: text-based > matching source language > default > first available
+    /// Prioritizes: text-based > matching source language > full/dialogue tracks > defaults > first available.
     /// </summary>
     private static EmbeddedSubtitle? FindBestEmbeddedSubtitle(List<EmbeddedSubtitle>? embeddedSubtitles, string sourceLanguage)
     {
         if (embeddedSubtitles == null || embeddedSubtitles.Count == 0)
+        {
             return null;
+        }
 
         // Only consider text-based subtitles
         var textBased = embeddedSubtitles.Where(s => s.IsTextBased).ToList();
         if (textBased.Count == 0)
+        {
             return null;
+        }
 
-        // Try to find one matching the source language
-        var matchingLanguage = textBased.FirstOrDefault(s =>
-            !string.IsNullOrEmpty(s.Language) &&
-            s.Language.Equals(sourceLanguage, StringComparison.OrdinalIgnoreCase));
+        // Prefer subtitles whose language matches the configured source language.
+        // This matcher is tolerant of common 2-letter vs 3-letter ISO code variations (e.g. "en" vs "eng").
+        var languageMatched = textBased
+            .Where(s => LanguageMatches(s.Language, sourceLanguage))
+            .ToList();
 
-        if (matchingLanguage != null)
-            return matchingLanguage;
+        var candidates = languageMatched.Count > 0 ? languageMatched : textBased;
 
-        // Try default subtitle
-        var defaultSub = textBased.FirstOrDefault(s => s.IsDefault);
+        // Score candidates using title and flag heuristics to avoid "Signs & Songs"/karaoke-only tracks
+        // and favor full dialogue tracks.
+        EmbeddedSubtitle? best = null;
+        var bestScore = int.MinValue;
+
+        foreach (var subtitle in candidates)
+        {
+            var score = ScoreSubtitleCandidate(subtitle, sourceLanguage);
+
+            if (score > bestScore ||
+                (score == bestScore && best != null && subtitle.StreamIndex < best.StreamIndex))
+            {
+                bestScore = score;
+                best = subtitle;
+            }
+        }
+
+        if (best != null)
+        {
+            return best;
+        }
+
+        // Fallback: prefer a default text-based subtitle if scoring failed for some reason
+        var defaultSub = candidates.FirstOrDefault(s => s.IsDefault);
         if (defaultSub != null)
+        {
             return defaultSub;
+        }
 
-        // Return first text-based subtitle
-        return textBased.First();
+        // Final fallback: first text-based candidate
+        return candidates.First();
+    }
+
+    /// <summary>
+    /// Scores an embedded subtitle candidate based on language, title, and flags.
+    /// Higher scores indicate better candidates for full dialogue translation.
+    /// </summary>
+    private static int ScoreSubtitleCandidate(EmbeddedSubtitle subtitle, string sourceLanguage)
+    {
+        var score = 0;
+
+        if (LanguageMatches(subtitle.Language, sourceLanguage))
+        {
+            score += 50;
+        }
+
+        // Titles that usually indicate full dialogue tracks
+        var title = subtitle.Title?.ToLowerInvariant() ?? string.Empty;
+        if (title.Contains("full"))
+        {
+            score += 25;
+        }
+
+        if (title.Contains("dialog") || title.Contains("dialogue"))
+        {
+            score += 20;
+        }
+
+        if (title.Contains("sub") || title.Contains("subtitle"))
+        {
+            score += 10;
+        }
+
+        // Titles that typically indicate signs/songs/karaoke-only tracks
+        if (title.Contains("sign") || title.Contains("song") || title.Contains("karaoke"))
+        {
+            score -= 40;
+        }
+
+        // Prefer non-forced tracks for full dialogue; forced tracks are often partial or effect-only.
+        if (subtitle.IsForced)
+        {
+            score -= 10;
+        }
+        else
+        {
+            score += 5;
+        }
+
+        // Being the default stream is a weak positive signal (unless heavily penalized by title heuristics).
+        if (subtitle.IsDefault)
+        {
+            score += 5;
+        }
+
+        return score;
+    }
+
+    /// <summary>
+    /// Determines whether an embedded subtitle language matches the configured source language.
+    /// Handles common 2-letter vs 3-letter ISO code differences (e.g. "en" vs "eng").
+    /// </summary>
+    private static bool LanguageMatches(string? subtitleLanguage, string? sourceLanguage)
+    {
+        if (string.IsNullOrWhiteSpace(subtitleLanguage) || string.IsNullOrWhiteSpace(sourceLanguage))
+        {
+            return false;
+        }
+
+        var sub = subtitleLanguage.Trim().ToLowerInvariant();
+        var src = sourceLanguage.Trim().ToLowerInvariant();
+
+        if (sub == src)
+        {
+            return true;
+        }
+
+        // Treat 2-letter and 3-letter variants that share a prefix as equivalent
+        if (sub.Length == 3 && src.Length == 2 && sub.StartsWith(src, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (sub.Length == 2 && src.Length == 3 && src.StartsWith(sub, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return false;
     }
 }

@@ -273,7 +273,9 @@ public class SubtitleTranslationService
         
         // Check for missing translations and fail if any are found
         var missingSubtitles = currentBatch
-            .Where(s => s.TranslatedLines == null || s.TranslatedLines.Count == 0)
+            .Where(s => s.TranslatedLines == null || 
+                        s.TranslatedLines.Count == 0 || 
+                        s.TranslatedLines.All(string.IsNullOrWhiteSpace))
             .ToList();
             
         if (missingSubtitles.Count > 0)
@@ -295,13 +297,40 @@ public class SubtitleTranslationService
                 _logger.LogError("  ... and {More} more missing translations", missingSubtitles.Count - 20);
             }
             _logger.LogError("═══════════════════════════════════════════════════════════════");
+
+            // Provide an explicit explanation and one concrete example
+            var exampleSubtitle = missingSubtitles[0];
+            var exampleOriginal = string.Join(" ",
+                stripSubtitleFormatting ? exampleSubtitle.PlaintextLines : exampleSubtitle.Lines);
+            string? exampleTruncated = null;
+
+            if (!string.IsNullOrWhiteSpace(exampleOriginal))
+            {
+                exampleTruncated = exampleOriginal.Length > 80
+                    ? exampleOriginal[..77] + "..."
+                    : exampleOriginal;
+                
+                _logger.LogError(
+                    "Example missing subtitle at position {Position}: \"{OriginalText}\". " +
+                    "No translated text was returned for this entry by the batch translation service.",
+                    exampleSubtitle.Position,
+                    exampleTruncated);
+            }
             
             var positionRange = missingSubtitles.Count <= 5 
                 ? string.Join(", ", missingSubtitles.Select(s => s.Position))
                 : $"{string.Join(", ", missingSubtitles.Take(5).Select(s => s.Position))}... (+{missingSubtitles.Count - 5} more)";
+
+            var message =
+                $"Translation failed: {missingSubtitles.Count} subtitle(s) missing at positions: {positionRange}";
+
+            if (!string.IsNullOrEmpty(exampleTruncated))
+            {
+                message +=
+                    $". Example original text at position {exampleSubtitle.Position}: \"{exampleTruncated}\"";
+            }
                 
-            throw new TranslationException(
-                $"Translation failed: {missingSubtitles.Count} subtitle(s) missing at positions: {positionRange}");
+            throw new TranslationException(message);
         }
     }
     

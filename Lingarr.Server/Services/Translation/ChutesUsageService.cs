@@ -19,6 +19,8 @@ public class ChutesUsageService : IChutesUsageService
     private static readonly TimeSpan SnapshotCacheLifetime = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan ModelCacheLifetime = TimeSpan.FromHours(6);
     private static readonly TimeSpan MinRefreshInterval = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan MinPausePollInterval = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan MaxPausePollInterval = TimeSpan.FromMinutes(10);
 
     private readonly ISettingService _settings;
     private readonly ILogger<ChutesUsageService> _logger;
@@ -59,41 +61,128 @@ public class ChutesUsageService : IChutesUsageService
 
     public async Task EnsureRequestAllowedAsync(string? modelId, CancellationToken cancellationToken)
     {
-        // Rate-limited refresh: check API at most once per minute
-        var shouldRefresh = DateTime.UtcNow - _lastApiRefresh >= MinRefreshInterval;
-        var snapshot = await GetUsageSnapshotAsync(modelId, shouldRefresh, cancellationToken);
-        if (shouldRefresh)
+        while (true)
         {
-            _lastApiRefresh = DateTime.UtcNow;
-        }
+            // Rate-limited refresh: check API at most once per minute
+            var shouldRefresh = DateTime.UtcNow - _lastApiRefresh >= MinRefreshInterval;
+            var snapshot = await GetUsageSnapshotAsync(modelId, shouldRefresh, cancellationToken);
+            if (shouldRefresh)
+            {
+                _lastApiRefresh = DateTime.UtcNow;
+            }
 
-        if (!snapshot.HasApiKey)
+            if (!snapshot.HasApiKey)
+            {
+                // Let the translation call fail with a clearer message later when it tries to call the API.
+                return;
+            }
+
+            // If Chutes reports no effective limit, don't gate requests here
+            if (snapshot.AllowedRequestsPerDay <= 0)
+            {
+                return;
+            }
+
+            // Get buffer setting for soft limit
+            var bufferSetting = await _settings.GetSetting(SettingKeys.Translation.Chutes.RequestBuffer);
+            var buffer = int.TryParse(bufferSetting, out var b) && b >= 0 ? b : 50;
+
+            // Compute remaining requests according to the snapshot
+            var remaining = snapshot.AllowedRequestsPerDay - snapshot.RequestsUsed;
+
+            // If we have headroom beyond the buffer, allow the request
+            if (remaining > buffer)
+            {
+                // Increment local counter to reserve the slot
+                snapshot.RequestsUsed++;
+                _cache.Set(GetSnapshotCacheKey(modelId), snapshot, _snapshotCacheOptions);
+                return;
+            }
+
+            // No headroom left inside the configured buffer:
+            // pause all Chutes translations and poll Chutes usage periodically
+            // until credits are available again or the operation is cancelled.
+            _logger.LogWarning(
+                "Chutes usage has reached the configured buffer (remaining: {Remaining}, buffer: {Buffer}, allowedPerDay: {Allowed}, used: {Used}). " +
+                "Pausing Chutes translations until credits are available again.",
+                remaining,
+                buffer,
+                snapshot.AllowedRequestsPerDay,
+                snapshot.RequestsUsed);
+
+            await WaitForQuotaResetAsync(modelId, snapshot, cancellationToken);
+            // Loop back and re-evaluate with a fresh snapshot after waiting.
+        }
+    }
+
+    private async Task WaitForQuotaResetAsync(
+        string? modelId,
+        ChutesUsageSnapshot snapshot,
+        CancellationToken cancellationToken)
+    {
+        while (true)
         {
-            // Let the translation call fail with a clearer message later when it tries to call the API.
-            return;
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // Determine how long to wait before checking again.
+            // Use a random interval between 1 and 10 minutes,
+            // but never wait beyond the known ResetAt time if provided.
+            var randomMinutes = Random.Shared.Next(
+                (int)MinPausePollInterval.TotalMinutes,
+                (int)MaxPausePollInterval.TotalMinutes + 1);
+
+            var delay = TimeSpan.FromMinutes(randomMinutes);
+
+            if (snapshot.ResetAt.HasValue)
+            {
+                var now = DateTime.UtcNow;
+                var untilReset = snapshot.ResetAt.Value - now;
+
+                // If the reset time is in the past or very close, use a minimal delay
+                if (untilReset <= TimeSpan.Zero)
+                {
+                    delay = MinPausePollInterval;
+                }
+                else if (untilReset < delay)
+                {
+                    delay = untilReset;
+                }
+            }
+
+            _logger.LogInformation(
+                "Chutes quota exhausted or within buffer. Waiting {DelayMinutes} minutes before re-checking usage.",
+                delay.TotalMinutes);
+
+            try
+            {
+                await Task.Delay(delay, cancellationToken);
+            }
+            catch (TaskCanceledException)
+            {
+                // Respect cancellation and propagate
+                throw;
+            }
+
+            // Force a fresh snapshot from Chutes to see if credits have reset
+            var refreshed = await GetUsageSnapshotAsync(modelId, forceRefresh: true, cancellationToken);
+
+            // If Chutes is now reporting no limit, or we have positive remaining headroom,
+            // we can exit the pause loop and let EnsureRequestAllowedAsync re-evaluate.
+            if (!refreshed.HasApiKey ||
+                refreshed.AllowedRequestsPerDay <= 0 ||
+                refreshed.RequestsRemaining > 0)
+            {
+                _logger.LogInformation(
+                    "Chutes credits appear to be available again (allowedPerDay: {Allowed}, used: {Used}, remaining: {Remaining}). Resuming translations.",
+                    refreshed.AllowedRequestsPerDay,
+                    refreshed.RequestsUsed,
+                    refreshed.RequestsRemaining);
+                return;
+            }
+
+            // Otherwise, continue waiting with the updated snapshot information
+            snapshot = refreshed;
         }
-
-        if (snapshot.AllowedRequestsPerDay <= 0)
-        {
-            return;
-        }
-
-        // Get buffer setting for soft limit
-        var bufferSetting = await _settings.GetSetting(SettingKeys.Translation.Chutes.RequestBuffer);
-        var buffer = int.TryParse(bufferSetting, out var b) && b >= 0 ? b : 50;
-
-        // Soft limit check: stop if remaining requests <= buffer
-        var remaining = snapshot.AllowedRequestsPerDay - snapshot.RequestsUsed;
-        if (remaining <= buffer)
-        {
-            throw new TranslationException(
-                $"Chutes usage approaching limit (remaining: {remaining}, buffer: {buffer}). " +
-                "Stopping to preserve headroom.");
-        }
-
-        // Increment local counter to reserve the slot
-        snapshot.RequestsUsed++;
-        _cache.Set(GetSnapshotCacheKey(modelId), snapshot, _snapshotCacheOptions);
     }
 
     public async Task RecordRequestAsync(string? modelId, CancellationToken cancellationToken)
