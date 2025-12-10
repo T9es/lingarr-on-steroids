@@ -119,6 +119,15 @@ public class TranslationRequestService : ITranslationRequestService
     }
 
     /// <inheritdoc />
+    public async Task<List<TranslationRequestLog>> GetLogsAsync(int translationRequestId)
+    {
+        return await _dbContext.TranslationRequestLogs
+            .Where(log => log.TranslationRequestId == translationRequestId)
+            .OrderBy(log => log.CreatedAt)
+            .ToListAsync();
+    }
+
+    /// <inheritdoc />
     public async Task<int> UpdateActiveCount()
     {
         var count = await GetActiveCount();

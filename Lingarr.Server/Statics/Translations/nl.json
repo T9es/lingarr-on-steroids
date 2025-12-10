@@ -110,7 +110,11 @@
     "logs": "Vertaallogs",
     "clearLogs": "Wissen",
     "waitingForLogs": "Wachten op start van test...",
-    "noTestSelected": "Klik op de testknop bij een vertaalitem om een test te starten."
+    "noTestSelected": "Klik op de testknop bij een vertaalitem om een test te starten.",
+    "viewLogs": "Bekijk logs",
+    "noLogs": "Geen logs voor deze vertaling.",
+    "loadLogsError": "Kon logs voor deze vertaling niet laden.",
+    "close": "Sluiten"
   },
   "schedule": {
     "jobName": "Taaknaam",

@@ -122,4 +122,11 @@ public interface ITranslationRequestService
     Task<BatchTranslatedLine[]> TranslateContentAsync(
         TranslateAbleSubtitleContent translateAbleContent,
         CancellationToken parentCancellationToken);
+
+    /// <summary>
+    /// Retrieves all persisted log entries for a specific translation request.
+    /// </summary>
+    /// <param name="translationRequestId">The ID of the translation request</param>
+    /// <returns>List of log entries ordered by creation time</returns>
+    Task<List<TranslationRequestLog>> GetLogsAsync(int translationRequestId);
 }

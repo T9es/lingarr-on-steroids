@@ -68,6 +68,19 @@ public class TranslationJob
         TranslationRequest translationRequest,
         CancellationToken cancellationToken)
     {
+        var requestLogs = new List<TranslationRequestLog>();
+
+        void AddRequestLog(string level, string message, string? details = null)
+        {
+            requestLogs.Add(new TranslationRequestLog
+            {
+                TranslationRequestId = translationRequest.Id,
+                Level = level,
+                Message = message,
+                Details = details
+            });
+        }
+
         var jobName = JobContextFilter.GetCurrentJobTypeName();
         var jobId = JobContextFilter.GetCurrentJobId();
 
@@ -86,12 +99,16 @@ public class TranslationJob
             await _scheduleService.UpdateJobState(jobName, JobStatus.Processing.GetDisplayName());
             effectiveCancellationToken.ThrowIfCancellationRequested();
 
-            var request = await _translationRequestService.UpdateTranslationRequest(translationRequest,
+            var request = await _translationRequestService.UpdateTranslationRequest(
+                translationRequest,
                 TranslationStatus.InProgress,
                 jobId);
 
+            var subtitlePathForLog = translationRequest.SubtitleToTranslate ?? "Unknown";
             _logger.LogInformation("TranslateJob started for subtitle: |Green|{filePath}|/Green|",
-                translationRequest.SubtitleToTranslate);
+                subtitlePathForLog);
+            AddRequestLog("Information", $"TranslateJob started for subtitle: {subtitlePathForLog}");
+
             var settings = await _settings.GetSettings([
                 SettingKeys.Translation.ServiceType,
                 SettingKeys.Translation.FixOverlappingSubtitles,
@@ -125,6 +142,10 @@ public class TranslationJob
             var validateSubtitles = settings[SettingKeys.SubtitleValidation.ValidateSubtitles] != "false";
             var removeLanguageTag = settings[SettingKeys.Translation.RemoveLanguageTag] != "false";
 
+            AddRequestLog(
+                "Information",
+                $"Settings: serviceType={serviceType}, stripFormatting={stripSubtitleFormatting}, addTranslatorInfo={addTranslatorInfo}, validateSubtitles={validateSubtitles}, removeLanguageTag={removeLanguageTag}");
+
             var contextBefore = 0;
             var contextAfter = 0;
             if (settings[SettingKeys.Translation.AiContextPromptEnabled] == "true")
@@ -144,18 +165,22 @@ public class TranslationJob
             if (string.IsNullOrEmpty(subtitlePath) || !File.Exists(subtitlePath))
             {
                 _logger.LogInformation("Subtitle file not found, checking for embedded subtitles...");
+                AddRequestLog("Warning", "Subtitle file not found on disk, attempting embedded subtitle extraction");
                 subtitlePath = await TryExtractEmbeddedSubtitle(request);
                 
                 if (string.IsNullOrEmpty(subtitlePath))
                 {
-                    var errorMessage = $"Subtitle file not found and no extractable embedded subtitle available: {request.SubtitleToTranslate}";
+                    var errorMessage =
+                        $"Subtitle file not found and no extractable embedded subtitle available: {request.SubtitleToTranslate}";
                     _logger.LogError(errorMessage);
+                    AddRequestLog("Error", errorMessage);
                     throw new InvalidOperationException(errorMessage);
                 }
                 
                 // Update the request with the extracted subtitle path
                 request.SubtitleToTranslate = subtitlePath;
                 _logger.LogInformation("Using extracted embedded subtitle: {Path}", subtitlePath);
+                AddRequestLog("Information", $"Using extracted embedded subtitle: {subtitlePath}");
                 temporaryFilePath = subtitlePath;
             }
 
@@ -200,8 +225,10 @@ public class TranslationJob
 
                 if (!_subtitleService.ValidateSubtitle(request.SubtitleToTranslate, validationOptions))
                 {
-                    _logger.LogWarning("Subtitle is not valid according to configured preferences.");
-                    throw new TaskCanceledException("Subtitle is not valid according to configured preferences.");
+                    const string validationMessage = "Subtitle is not valid according to configured preferences.";
+                    _logger.LogWarning(validationMessage);
+                    AddRequestLog("Warning", validationMessage);
+                    throw new TaskCanceledException(validationMessage);
                 }
 
                 var isValid = _subtitleService.ValidateSubtitle(
@@ -210,15 +237,22 @@ public class TranslationJob
 
                 if (!isValid)
                 {
-                    _logger.LogWarning("Subtitle is not valid according to configured preferences.");
-                    throw new TaskCanceledException("Subtitle is not valid according to configured preferences.");
+                    const string validationMessage = "Subtitle is not valid according to configured preferences.";
+                    _logger.LogWarning(validationMessage);
+                    AddRequestLog("Warning", validationMessage);
+                    throw new TaskCanceledException(validationMessage);
                 }
             }
 
             // translate subtitles
             var translationService = _translationServiceFactory.CreateTranslationService(serviceType);
-            var translator = new SubtitleTranslationService(translationService, _logger, _progressService, _batchFallbackService);
+            var translator = new SubtitleTranslationService(
+                translationService,
+                _logger,
+                _progressService,
+                _batchFallbackService);
             var subtitles = await _subtitleService.ReadSubtitles(request.SubtitleToTranslate);
+            AddRequestLog("Information", $"Loaded subtitle file with {subtitles.Count} entries for translation");
             
             // Parse batch fallback settings
             var enableBatchFallback = settings[SettingKeys.Translation.EnableBatchFallback] == "true";
@@ -257,6 +291,8 @@ public class TranslationJob
                 {
                     await CleanSourceSubtitleFile(request.SubtitleToTranslate, stripSubtitleFormatting);
                     _logger.LogInformation("[{FileId}] Cleaned ASS drawing commands from source file", fileIdentifier);
+                    AddRequestLog("Information",
+                        $"[{fileIdentifier}] Cleaned ASS drawing commands from source subtitle file");
                 }
             }
             
@@ -277,6 +313,10 @@ public class TranslationJob
                     "[{FileId}] Starting batch translation: {SubtitleCount} subtitles, {TotalBatches} batch(es) of {BatchSize}, fallback: {EnableFallback} ({SplitAttempts} attempts)",
                     fileIdentifier, subtitles.Count, totalBatches, effectiveBatchSize, enableBatchFallback, maxBatchSplitAttempts);
 
+                AddRequestLog(
+                    "Information",
+                    $"[{fileIdentifier}] Starting batch translation: subtitles={subtitles.Count}, totalBatches={totalBatches}, batchSize={effectiveBatchSize}, fallback={enableBatchFallback}, maxSplitAttempts={maxBatchSplitAttempts}");
+
                 translatedSubtitles = await translator.TranslateSubtitlesBatch(
                     subtitles,
                     request,
@@ -292,6 +332,9 @@ public class TranslationJob
                 _logger.LogInformation(
                     "[{FileId}] Starting individual translation: {SubtitleCount} subtitles, context (before: {ContextBefore}, after: {ContextAfter})",
                     fileIdentifier, subtitles.Count, contextBefore, contextAfter);
+                AddRequestLog(
+                    "Information",
+                    $"[{fileIdentifier}] Starting individual translation: subtitles={subtitles.Count}, contextBefore={contextBefore}, contextAfter={contextAfter}");
 
                 translatedSubtitles = await translator.TranslateSubtitles(
                     subtitles,
@@ -332,6 +375,7 @@ public class TranslationJob
             }
 
             await WriteSubtitles(request, translatedSubtitles, stripSubtitleFormatting, subtitleTag, removeLanguageTag);
+            AddRequestLog("Information", "Translation completed successfully and subtitle file was written");
             await HandleCompletion(jobName, request, effectiveCancellationToken);
         }
         catch (TaskCanceledException)
@@ -356,8 +400,30 @@ public class TranslationJob
 
             try 
             {
-                translationRequest = await _translationRequestService.UpdateTranslationRequest(translationRequest, TranslationStatus.Failed,
+                translationRequest = await _translationRequestService.UpdateTranslationRequest(
+                    translationRequest,
+                    TranslationStatus.Failed,
                     jobId);
+
+                // Persist collected logs for failed translations
+                if (requestLogs.Count > 0)
+                {
+                    _dbContext.TranslationRequestLogs.AddRange(requestLogs);
+                }
+
+                // Add the failure entry as the final log message
+                var failureMessage = $"Translation failed: {ex.Message}";
+                _logger.LogError(ex, "Translation failed for request {RequestId}", translationRequest.Id);
+                _dbContext.TranslationRequestLogs.Add(new TranslationRequestLog
+                {
+                    TranslationRequestId = translationRequest.Id,
+                    Level = "Error",
+                    Message = failureMessage,
+                    Details = ex.ToString()
+                });
+
+                await _dbContext.SaveChangesAsync();
+
                 await _scheduleService.UpdateJobState(jobName, JobStatus.Failed.GetDisplayName());
                 await _translationRequestService.UpdateActiveCount();
                 await _progressService.Emit(translationRequest, 0);

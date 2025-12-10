@@ -110,7 +110,11 @@
     "logs": "Translation Logs",
     "clearLogs": "Clear",
     "waitingForLogs": "Waiting for test to start...",
-    "noTestSelected": "Click the test button on a translation item to start a test."
+    "noTestSelected": "Click the test button on a translation item to start a test.",
+    "viewLogs": "View Logs",
+    "noLogs": "No logs were recorded for this translation.",
+    "loadLogsError": "Failed to load logs for this translation.",
+    "close": "Close"
   },
   "schedule": {
     "jobName": "Job Name",

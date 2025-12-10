@@ -61,6 +61,14 @@ export interface ITranslationRequest {
     completedAt?: string | null
 }
 
+export interface ITranslationRequestLog {
+    id: number
+    level: string
+    message: string
+    details?: string | null
+    createdAt: string
+}
+
 export interface IRequestProgress {
     id: number
     jobId: string

@@ -172,6 +172,14 @@
                                     @click.stop="runTestForItem(item)">
                                     <TestIcon class="h-4 w-4" />
                                 </button>
+                                <!-- View Logs Button (failed translations only) -->
+                                <button
+                                    v-if="item.status === TRANSLATION_STATUS.FAILED"
+                                    class="border-accent hover:bg-accent cursor-pointer rounded border px-2 py-1 text-xs transition-colors"
+                                    :title="translate('translations.viewLogs')"
+                                    @click.stop="openLogs(item)">
+                                    {{ translate('translations.logs') }}
+                                </button>
                                 <TranslationAction
                                     :status="item.status"
                                     :on-action="(action) => handleAction(item, action)" />
@@ -201,6 +209,61 @@
             <div v-show="activeTab === 'test'" class="p-4">
                 <TestPanel />
             </div>
+
+            <!-- Logs Modal -->
+            <div
+                v-if="logsModalOpen"
+                class="bg-black/60 fixed inset-0 z-40 flex items-center justify-center">
+                <div class="bg-tertiary max-h-[80vh] w-full max-w-3xl overflow-hidden rounded-lg shadow-lg">
+                    <div class="border-accent flex items-center justify-between border-b px-4 py-2">
+                        <div>
+                            <h2 class="text-lg font-semibold">
+                                {{ translate('translations.logs') }}
+                            </h2>
+                            <p v-if="activeLogRequest" class="text-secondary-content text-xs">
+                                {{ activeLogRequest.title }}
+                            </p>
+                        </div>
+                        <button
+                            class="border-accent hover:bg-accent cursor-pointer rounded border px-3 py-1 text-xs transition-colors"
+                            @click="closeLogs">
+                            {{ translate('translations.close') }}
+                        </button>
+                    </div>
+                    <div class="bg-secondary h-[60vh] overflow-y-auto p-3 font-mono text-xs">
+                        <div v-if="logsLoading" class="flex h-full items-center justify-center text-gray-400">
+                            {{ translate('translations.waitingForLogs') }}
+                        </div>
+                        <div v-else-if="logsError" class="text-error">
+                            {{ logsError }}
+                        </div>
+                        <div
+                            v-else-if="requestLogs.length === 0"
+                            class="flex h-full items-center justify-center text-gray-400">
+                            {{ translate('translations.noLogs') }}
+                        </div>
+                        <div v-else class="space-y-1">
+                            <div
+                                v-for="log in requestLogs"
+                                :key="log.id"
+                                class="border-secondary/30 border-b pb-1">
+                                <span class="mr-2 text-gray-400">
+                                    {{ new Date(log.createdAt).toLocaleTimeString() }}
+                                </span>
+                                <span class="mr-2 font-semibold" :class="getLogLevelClass(log.level)">
+                                    [{{ log.level }}]
+                                </span>
+                                <span>{{ log.message }}</span>
+                                <div
+                                    v-if="log.details"
+                                    class="ml-4 whitespace-pre-wrap text-[0.7rem] text-gray-500">
+                                    {{ log.details }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </PageLayout>
 </template>
@@ -212,6 +275,7 @@ import {
     IFilter,
     IPagedResult,
     ITranslationRequest,
+    ITranslationRequestLog,
     MEDIA_TYPE,
     TRANSLATION_ACTIONS,
     TRANSLATION_STATUS
@@ -241,6 +305,12 @@ const hubConnection = ref<Hub>()
 const translationRequestStore = useTranslationRequestStore()
 const testStore = useTestTranslationStore()
 
+const logsModalOpen = ref(false)
+const logsLoading = ref(false)
+const logsError = ref<string | null>(null)
+const activeLogRequest = ref<ITranslationRequest | null>(null)
+const requestLogs = ref<ITranslationRequestLog[]>([])
+
 const activeTab = ref<'list' | 'test'>('list')
 
 const translationRequests: ComputedRef<IPagedResult<ITranslationRequest>> = computed(
@@ -265,6 +335,34 @@ async function handleAction(translationRequest: ITranslationRequest, action: TRA
         default:
             console.error('unknown translation request action: ' + action)
     }
+}
+
+async function openLogs(item: ITranslationRequest) {
+    if (item.status !== TRANSLATION_STATUS.FAILED) return
+
+    logsModalOpen.value = true
+    logsLoading.value = true
+    logsError.value = null
+    activeLogRequest.value = item
+    requestLogs.value = []
+
+    try {
+        requestLogs.value = await translationRequestStore.getLogs(item.id)
+    } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('Failed to load translation request logs', error)
+        logsError.value = translate('translations.loadLogsError')
+    } finally {
+        logsLoading.value = false
+    }
+}
+
+function closeLogs() {
+    logsModalOpen.value = false
+    logsLoading.value = false
+    logsError.value = null
+    activeLogRequest.value = null
+    requestLogs.value = []
 }
 
 function runTestForItem(item: ITranslationRequest) {
@@ -311,5 +409,18 @@ const handleDelete = async () => {
     }
     translationRequestStore.clearSelection()
     translationRequestStore.fetch()
+}
+
+function getLogLevelClass(level: string): string {
+    switch (level.toUpperCase()) {
+        case 'ERROR':
+            return 'text-red-500'
+        case 'WARNING':
+            return 'text-orange-500'
+        case 'INFORMATION':
+            return 'text-green-500'
+        default:
+            return 'text-blue-500'
+    }
 }
 </script>

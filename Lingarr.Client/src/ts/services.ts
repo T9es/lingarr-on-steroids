@@ -3,6 +3,7 @@ import {
     ILanguage,
     ISettings,
     ISubtitle,
+    ITranslationRequestLog,
     ITranslationRequest,
     MediaType
 } from '@/ts'
@@ -92,6 +93,7 @@ export interface ITranslationRequestService {
     cancel<T>(translationRequest: ITranslationRequest): Promise<T>
     remove<T>(translationRequest: ITranslationRequest): Promise<T>
     retry<T>(translationRequest: ITranslationRequest): Promise<T>
+    logs<T extends ITranslationRequestLog[]>(translationRequestId: number): Promise<T>
 }
 
 export interface IScheduleService {

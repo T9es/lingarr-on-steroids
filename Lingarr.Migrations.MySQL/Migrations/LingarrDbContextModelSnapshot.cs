@@ -575,6 +575,50 @@ namespace Lingarr.Migrations.MySQL.Migrations
                     b.ToTable("translation_requests", (string)null);
                 });
 
+            modelBuilder.Entity("Lingarr.Core.Entities.TranslationRequestLog", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Details")
+                        .HasColumnType("longtext")
+                        .HasColumnName("details");
+
+                    b.Property<string>("Level")
+                        .IsRequired()
+                        .HasColumnType("longtext")
+                        .HasColumnName("level");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasColumnType("longtext")
+                        .HasColumnName("message");
+
+                    b.Property<int>("TranslationRequestId")
+                        .HasColumnType("int")
+                        .HasColumnName("translation_request_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_translation_request_logs");
+
+                    b.HasIndex("TranslationRequestId")
+                        .HasDatabaseName("ix_translation_request_logs_translation_request_id");
+
+                    b.ToTable("translation_request_logs", (string)null);
+                });
+
             modelBuilder.Entity("Lingarr.Core.Entities.EmbeddedSubtitle", b =>
                 {
                     b.HasOne("Lingarr.Core.Entities.Episode", "Episode")
@@ -633,6 +677,18 @@ namespace Lingarr.Migrations.MySQL.Migrations
                         .HasConstraintName("fk_seasons_shows_show_id");
 
                     b.Navigation("Show");
+                });
+
+            modelBuilder.Entity("Lingarr.Core.Entities.TranslationRequestLog", b =>
+                {
+                    b.HasOne("Lingarr.Core.Entities.TranslationRequest", "TranslationRequest")
+                        .WithMany()
+                        .HasForeignKey("TranslationRequestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_translation_request_logs_translation_requests_translation_re");
+
+                    b.Navigation("TranslationRequest");
                 });
 
             modelBuilder.Entity("Lingarr.Core.Entities.Episode", b =>

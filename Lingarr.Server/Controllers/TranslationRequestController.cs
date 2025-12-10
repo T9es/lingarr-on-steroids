@@ -1,7 +1,8 @@
-﻿using Lingarr.Core.Entities;
-using Microsoft.AspNetCore.Mvc;
+using Lingarr.Core.Entities;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Models;
+using Lingarr.Server.Models.Api;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Lingarr.Server.Controllers;
 
@@ -57,6 +58,32 @@ public class TranslationRequestController : ControllerBase
             pageSize);
 
         return Ok(value);
+    }
+
+    /// <summary>
+    /// Retrieves all persisted log entries for a specific translation request.
+    /// </summary>
+    /// <param name="requestId">The ID of the translation request</param>
+    /// <response code="200">Returns the list of log entries (may be empty)</response>
+    /// <response code="500">If there was an error while retrieving logs</response>
+    [HttpGet("logs/{requestId:int}")]
+    public async Task<ActionResult<List<TranslationRequestLogDto>>> GetTranslationRequestLogs(int requestId)
+    {
+        var logs = await _translationRequestService.GetLogsAsync(requestId);
+
+        var response = logs
+            .OrderBy(log => log.CreatedAt)
+            .Select(log => new TranslationRequestLogDto
+            {
+                Id = log.Id,
+                Level = log.Level,
+                Message = log.Message,
+                Details = log.Details,
+                CreatedAt = log.CreatedAt
+            })
+            .ToList();
+
+        return Ok(response);
     }
 
     /// <summary>
@@ -121,3 +148,4 @@ public class TranslationRequestController : ControllerBase
         return NotFound(newTranslationRequest);
     }
 }
+

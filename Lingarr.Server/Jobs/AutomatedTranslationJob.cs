@@ -228,19 +228,15 @@ public class AutomatedTranslationJob
     {
         _logger.LogInformation("Show Translation job initiated");
 
-        var shows = await _dbContext.Shows
-            .Where(show => !show.ExcludeFromTranslation)
-            .ToListAsync();
-
-        var seasons = await _dbContext.Seasons
-            .Where(season => shows.Select(s => s.Id).Contains(season.ShowId) && !season.ExcludeFromTranslation)
-            .ToListAsync();
-
         var episodes = await _dbContext.Episodes
+            .Include(e => e.Season)
+            .ThenInclude(s => s.Show)
             .Where(episode =>
-                seasons.Select(s => s.Id).Contains(episode.SeasonId) && !episode.ExcludeFromTranslation)
-            .OrderByDescending(e => seasons.FirstOrDefault(s => s.Id == e.SeasonId).Show.IsPriority)
-            .ThenBy(e => seasons.FirstOrDefault(s => s.Id == e.SeasonId).Show.PriorityDate)
+                !episode.ExcludeFromTranslation &&
+                !episode.Season.ExcludeFromTranslation &&
+                !episode.Season.Show.ExcludeFromTranslation)
+            .OrderByDescending(e => e.Season.Show.IsPriority)
+            .ThenBy(e => e.Season.Show.PriorityDate)
             .ThenBy(e => e.Id)
             .ToListAsync();
 
@@ -274,11 +270,10 @@ public class AutomatedTranslationJob
 
             try
             {
-                var season = seasons.FirstOrDefault(s => s.Id == episode.SeasonId);
-                var show = shows.FirstOrDefault(s => s.Id == season?.ShowId);
+                var show = episode.Season.Show;
 
                 TimeSpan? threshold = null;
-                if (show != null && show.TranslationAgeThreshold.HasValue)
+                if (show?.TranslationAgeThreshold.HasValue == true)
                 {
                     threshold = TimeSpan.FromHours(show.TranslationAgeThreshold.Value);
                 }

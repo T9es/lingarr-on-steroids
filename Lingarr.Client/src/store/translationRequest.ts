@@ -4,6 +4,7 @@ import {
     IPagedResult,
     IRequestProgress,
     ITranslationRequest,
+    ITranslationRequestLog,
     IUseTranslationRequestStore
 } from '@/ts'
 import services from '@/services'
@@ -71,6 +72,9 @@ export const useTranslationRequestStore = defineStore('translateRequest', {
         },
         async retry(translationRequest: ITranslationRequest) {
             await services.translationRequest.retry<string>(translationRequest)
+        },
+        async getLogs(translationRequestId: number): Promise<ITranslationRequestLog[]> {
+            return await services.translationRequest.logs<ITranslationRequestLog[]>(translationRequestId)
         },
         async updateProgress(requestProgress: IRequestProgress) {
             this.translationRequests.items = this.translationRequests.items.map(
