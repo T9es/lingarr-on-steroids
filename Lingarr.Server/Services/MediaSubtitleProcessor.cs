@@ -269,17 +269,19 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         }
         
         _logger.LogInformation("Initiating manual subtitle processing for {FileName}.", media.FileName);
-        return await ProcessSubtitlesWithCount(matchingSubtitles, sourceLanguages, targetLanguages, ignoreCaptions ?? "");
+        return await ProcessSubtitlesWithCount(matchingSubtitles, sourceLanguages, targetLanguages, ignoreCaptions ?? "", forceProcess);
     }
     
     /// <summary>
     /// Processes subtitle files for translation and returns the count of translations queued.
     /// </summary>
+    /// <param name="forceTranslation">If true, translates to all target languages even if they already exist.</param>
     private async Task<int> ProcessSubtitlesWithCount(
         List<Subtitles> subtitles,
         HashSet<string> sourceLanguages,
         HashSet<string> targetLanguages,
-        string ignoreCaptions)
+        string ignoreCaptions,
+        bool forceTranslation = false)
     {
         var existingLanguages = ExtractLanguageCodes(subtitles);
         var translationsQueued = 0;
@@ -303,7 +305,10 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 
             if (sourceSubtitle != null)
             {
-                var languagesToTranslate = targetLanguages.Except(existingLanguages);
+                // When forceTranslation is true, translate to all target languages even if they exist
+                var languagesToTranslate = forceTranslation 
+                    ? targetLanguages.AsEnumerable()
+                    : targetLanguages.Except(existingLanguages);
                 if (ignoreCaptions == "true")
                 {
                     var targetLanguagesWithCaptions = subtitles
