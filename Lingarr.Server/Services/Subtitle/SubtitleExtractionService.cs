@@ -285,8 +285,11 @@ public class SubtitleExtractionService : ISubtitleExtractionService
     /// </summary>
     private string? FindMediaFile(string directory, string baseFileName)
     {
+        _logger.LogDebug("FindMediaFile: directory={Directory}, baseFileName={BaseFileName}", directory, baseFileName);
+        
         if (!Directory.Exists(directory))
         {
+            _logger.LogDebug("FindMediaFile: directory does not exist: {Directory}", directory);
             return null;
         }
         
@@ -301,6 +304,7 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 var exactPath = Path.Combine(directory, baseFileName);
                 if (File.Exists(exactPath))
                 {
+                    _logger.LogDebug("FindMediaFile: found exact match: {Path}", exactPath);
                     return exactPath;
                 }
             }
@@ -312,6 +316,7 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             var path = Path.Combine(directory, baseFileName + ext);
             if (File.Exists(path))
             {
+                _logger.LogDebug("FindMediaFile: found with extension: {Path}", path);
                 return path;
             }
         }
@@ -320,6 +325,8 @@ public class SubtitleExtractionService : ISubtitleExtractionService
         try
         {
             var files = Directory.GetFiles(directory);
+            _logger.LogDebug("FindMediaFile: fallback search, {FileCount} files in directory", files.Length);
+            
             foreach (var file in files)
             {
                 var fileName = Path.GetFileName(file);
@@ -330,6 +337,7 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 if (videoExtensions.Contains(ext) && 
                     (fileNameWithoutExt == baseFileName || fileName.StartsWith(baseFileName + ".")))
                 {
+                    _logger.LogDebug("FindMediaFile: found via fallback search: {Path}", file);
                     return file;
                 }
             }
@@ -339,8 +347,10 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             _logger.LogWarning(ex, "Error searching for media file in directory: {Directory}", directory);
         }
         
+        _logger.LogDebug("FindMediaFile: no matching file found for {BaseFileName} in {Directory}", baseFileName, directory);
         return null;
     }
+
 
 
     private async Task SyncEmbeddedSubtitlesInternal(string mediaPath, int? episodeId, int? movieId)
@@ -463,6 +473,8 @@ public class SubtitleExtractionService : ISubtitleExtractionService
         try
         {
             var arguments = $"-v quiet -print_format json -show_streams -select_streams s \"{mediaFilePath}\"";
+            _logger.LogDebug("Running FFprobe: ffprobe {Arguments}", arguments);
+            
             var process = new Process
             {
                 StartInfo = new ProcessStartInfo
@@ -478,12 +490,21 @@ public class SubtitleExtractionService : ISubtitleExtractionService
 
             process.Start();
             var output = await process.StandardOutput.ReadToEndAsync();
+            var stderr = await process.StandardError.ReadToEndAsync();
             await process.WaitForExitAsync();
+
+            if (!string.IsNullOrEmpty(stderr))
+            {
+                _logger.LogDebug("FFprobe stderr: {StdErr}", stderr);
+            }
+            
+            _logger.LogDebug("FFprobe output ({Length} chars): {Output}", output.Length, 
+                output.Length > 200 ? output.Substring(0, 200) + "..." : output);
 
             if (process.ExitCode != 0)
             {
-                _logger.LogWarning("FFprobe exited with code {ExitCode} for {FilePath}",
-                    process.ExitCode, mediaFilePath);
+                _logger.LogWarning("FFprobe exited with code {ExitCode} for {FilePath}. Stderr: {StdErr}",
+                    process.ExitCode, mediaFilePath, stderr);
                 return null;
             }
 
@@ -495,6 +516,7 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             return null;
         }
     }
+
 
     // FFprobe JSON result models
     private class FfprobeResult
