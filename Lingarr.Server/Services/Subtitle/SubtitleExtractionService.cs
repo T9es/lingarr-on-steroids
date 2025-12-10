@@ -161,11 +161,27 @@ public class SubtitleExtractionService : ISubtitleExtractionService
     /// <inheritdoc />
     public async Task<string?> ExtractSubtitle(string mediaFilePath, int streamIndex, string outputDirectory, string codecName, string? language)
     {
-        if (!File.Exists(mediaFilePath))
+        // Resolve the actual file path using the same logic as probing
+        // (This handles cases where the DB path is missing the extension)
+        var directory = Path.GetDirectoryName(mediaFilePath);
+        var fileName = Path.GetFileName(mediaFilePath);
+        
+        if (string.IsNullOrEmpty(directory) || string.IsNullOrEmpty(fileName))
         {
-            _logger.LogWarning("Media file not found for extraction: {FilePath}", mediaFilePath);
+            _logger.LogWarning("Invalid media file path for extraction: {FilePath}", mediaFilePath);
             return null;
         }
+
+        var resolvedPath = FindMediaFile(directory, fileName);
+        
+        if (resolvedPath == null)
+        {
+             _logger.LogWarning("Media file not found for extraction: {FilePath}", mediaFilePath);
+             return null;
+        }
+        
+        // Use the actual file path on disk
+        mediaFilePath = resolvedPath;
 
         if (!Directory.Exists(outputDirectory))
         {
