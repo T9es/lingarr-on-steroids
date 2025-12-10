@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Lingarr.Core.Data;
@@ -31,8 +32,8 @@ public class SubtitleExtractionService : ISubtitleExtractionService
     // Map codec names to file extensions
     private static readonly Dictionary<string, string> CodecToExtension = new(StringComparer.OrdinalIgnoreCase)
     {
-        { "ass", ".ass" },
-        { "ssa", ".ssa" },
+        { "ass", ".srt" },
+        { "ssa", ".srt" },
         { "srt", ".srt" },
         { "subrip", ".srt" },
         { "webvtt", ".vtt" },
@@ -411,6 +412,7 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             
             // For deduplication
             var lastKeptText = string.Empty;
+            var lastKeptTimecodeIndex = -1;
 
             for (int i = 0; i < lines.Length; i++)
             {
@@ -420,34 +422,7 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 {
                     if (subtitleBuffer.Count >= 3)
                     {
-                        // Buffer structure: [0]=Number, [1]=Timecode, [2...]=Text
-                        // We skip the first 2 metadata lines to evaluate the text
-                        var textLines = subtitleBuffer.Skip(2).ToList();
-                        var combinedText = string.Join(" ", textLines);
-                        
-                        // Use the formatter to strip markup (<font>, {\an5} etc)
-                        // This serves two purposes:
-                        // 1. To check for "junk" (ASS drawing commands, single-letter karaoke)
-                        // 2. To write CLEAN text to the file (removes visual clutter)
-                        var cleanedTextLines = textLines.Select(SubtitleFormatterService.RemoveMarkup).ToList();
-                        var cleanedCombinedText = string.Join(" ", cleanedTextLines);
-
-                        if (!SubtitleFormatterService.IsAssDrawingCommand(combinedText)) // Check original for context? No, IsAss checks cleaned inside.
-                        {
-                            // DEDUPLICATION:
-                            // If text is effectively identical to the last kept line, likely an ASS layer duplicate -> Skip
-                            if (cleanedCombinedText != lastKeptText)
-                            {
-                                output.Add(subtitleBuffer[0]); // Number
-                                output.Add(subtitleBuffer[1]); // Timecode
-                                
-                                // Write the CLEANED text lines
-                                output.AddRange(cleanedTextLines);
-                                output.Add(""); // Blank line separator
-                                
-                                lastKeptText = cleanedCombinedText;
-                            }
-                        }
+                        ProcessBuffer(output, subtitleBuffer, ref lastKeptText, ref lastKeptTimecodeIndex);
                     }
                     subtitleBuffer.Clear();
                 }
@@ -460,20 +435,7 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             // Process remaining buffer
             if (subtitleBuffer.Count >= 3)
             {
-                var textLines = subtitleBuffer.Skip(2).ToList();
-                var cleanedTextLines = textLines.Select(SubtitleFormatterService.RemoveMarkup).ToList();
-                var cleanedCombinedText = string.Join(" ", cleanedTextLines);
-
-                if (!SubtitleFormatterService.IsAssDrawingCommand(string.Join(" ", textLines)))
-                {
-                    if (cleanedCombinedText != lastKeptText)
-                    {
-                        output.Add(subtitleBuffer[0]);
-                        output.Add(subtitleBuffer[1]);
-                        output.AddRange(cleanedTextLines);
-                        output.Add("");
-                    }
-                }
+                ProcessBuffer(output, subtitleBuffer, ref lastKeptText, ref lastKeptTimecodeIndex);
             }
             
             // Overwrite the file with cleaned content
@@ -484,6 +446,101 @@ public class SubtitleExtractionService : ISubtitleExtractionService
         {
             _logger.LogError(ex, "Failed to clean extracted subtitle file: {FilePath}", filePath);
         }
+    }
+
+    private void ProcessBuffer(List<string> output, List<string> subtitleBuffer, ref string lastKeptText, ref int lastKeptTimecodeIndex)
+    {
+        // Buffer structure: [0]=Number, [1]=Timecode, [2...]=Text
+        var textLines = subtitleBuffer.Skip(2).ToList();
+        var combinedText = string.Join(" ", textLines);
+        
+        var cleanedTextLines = textLines.Select(SubtitleFormatterService.RemoveMarkup).ToList();
+        var cleanedCombinedText = string.Join(" ", cleanedTextLines);
+
+        if (!SubtitleFormatterService.IsAssDrawingCommand(combinedText))
+        {
+            // DEDUPLICATION & TIME MERGING
+            if (cleanedCombinedText == lastKeptText && lastKeptTimecodeIndex != -1)
+            {
+                // It's a duplicate. Instead of just skipping, we try to merge the time compatibility.
+                // Parse current timecode
+                if (TryParseTimeCodes(subtitleBuffer[1], out var currentStart, out var currentEnd))
+                {
+                    // Parse last kept timecode
+                    if (TryParseTimeCodes(output[lastKeptTimecodeIndex], out var lastStart, out var lastEnd))
+                    {
+                        // Check for continuity or overlap (allow small gap < 100ms)
+                        // If the new start is roughly where the old one ended, extend the old one.
+                        if (currentStart <= lastEnd + 100) 
+                        {
+                            // Extend the end time
+                            var newEnd = Math.Max(lastEnd, currentEnd);
+                            output[lastKeptTimecodeIndex] = FormatTimeCodes(lastStart, newEnd);
+                            return; // Deduped and merged
+                        }
+                    }
+                }
+            }
+
+            // If we're here, it's either not a duplicate, or not mergable (too big a gap), or parsing failed.
+            // Treat as new subtitle.
+            
+            // If the buffer numbers are out of sync due to removals, we might want to renumber, 
+            // but FFmpeg usually restarts from 1 anyway. Let's keep original numbers for now or basic renumbering could be added.
+            // For safety against drift, we just push what we have.
+            
+            output.Add(subtitleBuffer[0]);
+            
+            lastKeptTimecodeIndex = output.Count; // Index of the timecode line we are about to add
+            output.Add(subtitleBuffer[1]);
+            
+            output.AddRange(cleanedTextLines);
+            output.Add(""); // Blank line separator
+            
+            lastKeptText = cleanedCombinedText;
+        }
+    }
+
+    // Regex for 00:00:00,000 or 00:00:00.000
+    private static readonly Regex TimeCodeRegex = new(@"([0-9]+):([0-9]+):([0-9]+)(?:[,\.]([0-9]+))?", RegexOptions.Compiled);
+
+    private bool TryParseTimeCodes(string line, out int start, out int end)
+    {
+        start = end = -1;
+        var parts = line.Split(new[] { "-->", "- >", "->" }, StringSplitOptions.RemoveEmptyEntries);
+
+        if (parts.Length != 2) return false;
+        
+        start = ParseTimeCode(parts[0]);
+        end = ParseTimeCode(parts[1]);
+        
+        return start >= 0 && end >= 0;
+    }
+
+    private int ParseTimeCode(string timeCode)
+    {
+        var match = TimeCodeRegex.Match(timeCode.Trim());
+        if (!match.Success) return -1;
+
+        var hours = int.Parse(match.Groups[1].Value);
+        var minutes = int.Parse(match.Groups[2].Value);
+        var seconds = int.Parse(match.Groups[3].Value);
+        var milliseconds = match.Groups[4].Success 
+            ? int.Parse(match.Groups[4].Value.PadRight(3, '0').Substring(0, 3))
+            : 0;
+
+        return hours * 3600000 + minutes * 60000 + seconds * 1000 + milliseconds;
+    }
+
+    private string FormatTimeCodes(int startMs, int endMs)
+    {
+        return $"{FormatSingleTimeCode(startMs)} --> {FormatSingleTimeCode(endMs)}";
+    }
+
+    private string FormatSingleTimeCode(int totalMs)
+    {
+        var ts = TimeSpan.FromMilliseconds(totalMs);
+        return $"{ts.Hours:D2}:{ts.Minutes:D2}:{ts.Seconds:D2},{ts.Milliseconds:D3}";
     }
 
     private async Task<string?> RunFfprobe(string mediaFilePath)

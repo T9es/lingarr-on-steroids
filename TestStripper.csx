@@ -12,6 +12,7 @@ var subtitleBuffer = new List<string>();
 int originalCount = 0;
 int keptCount = 0;
 int removedCount = 0;
+string lastKeptText = string.Empty;
 
 for (int i = 0; i < lines.Length; i++)
 {
@@ -23,24 +24,47 @@ for (int i = 0; i < lines.Length; i++)
         if (subtitleBuffer.Count >= 3)
         {
             originalCount++;
-            // Buffer: [0] = number, [1] = timecode, [2+] = text
+    // Buffer: [0] = number, [1] = timecode, [2+] = text
             var textLines = subtitleBuffer.Skip(2).ToList();
             var combinedText = string.Join(" ", textLines);
-            var cleanedText = string.Join(" ", textLines.Select(RemoveMarkup));
+            // Use local RemoveMarkup
+            var cleanedTextLines = textLines.Select(RemoveMarkup).ToList();
+            var cleanedCombinedText = string.Join(" ", cleanedTextLines);
             
-            if (!IsAssDrawingCommand(combinedText))
+            // Check original text for drawing commands checks
+             if (!IsAssDrawingCommand(combinedText))
             {
-                keptCount++;
-                foreach (var bufferLine in subtitleBuffer)
-                    output.Add(bufferLine);
-                output.Add("");
+                // DEDUPLICATION:
+                // If text is effectively identical to the last kept line, likely an ASS layer duplicate -> Skip
+                if (cleanedCombinedText != lastKeptText)
+                {
+                    keptCount++;
+                    output.Add(subtitleBuffer[0]); // Keep original number for now, though cleaner would renumber
+                    output.Add(subtitleBuffer[1]); 
+                    // Write VALIDATED content
+                    // Note: SubtitleExtractionService writes cleaned lines. TestStripper preserved original.
+                    // Let's mimic ExtractionService and write cleaned lines.
+                    output.AddRange(cleanedTextLines);
+                    output.Add("");
+                    
+                    lastKeptText = cleanedCombinedText;
+                }
+                else
+                {
+                    // It's a duplicate
+                    removedCount++;
+                     if (removedCount <= 50) // Show more duplicates
+                    {
+                        Console.WriteLine($"  DUPLICATE REMOVED #{subtitleBuffer[0]}: \"{cleanedTextLines.FirstOrDefault()}...\"");
+                    }
+                }
             }
             else
             {
                 removedCount++;
                 if (removedCount <= 5)
                 {
-                    Console.WriteLine($"  REMOVED #{subtitleBuffer[0]}: \"{cleanedText.Substring(0, Math.Min(50, cleanedText.Length))}...\"");
+                    Console.WriteLine($"  DRAWING REMOVED #{subtitleBuffer[0]}: \"{cleanedTextLines.FirstOrDefault()}...\"");
                 }
             }
         }
@@ -57,12 +81,24 @@ if (subtitleBuffer.Count >= 3)
 {
     originalCount++;
     var textLines = subtitleBuffer.Skip(2).ToList();
+    var cleanedTextLines = textLines.Select(RemoveMarkup).ToList();
+    var cleanedCombinedText = string.Join(" ", cleanedTextLines);
     var combinedText = string.Join(" ", textLines);
+
     if (!IsAssDrawingCommand(combinedText))
     {
-        keptCount++;
-        foreach (var bufferLine in subtitleBuffer)
-            output.Add(bufferLine);
+        if (cleanedCombinedText != lastKeptText)
+        {
+            keptCount++;
+            output.Add(subtitleBuffer[0]);
+            output.Add(subtitleBuffer[1]);
+            output.AddRange(cleanedTextLines);
+             output.Add("");
+        }
+        else
+        {
+             removedCount++;
+        }
     }
     else
     {
