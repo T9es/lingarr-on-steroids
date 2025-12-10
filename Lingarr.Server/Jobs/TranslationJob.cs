@@ -30,6 +30,7 @@ public class TranslationJob
     private readonly IParallelTranslationLimiter _parallelLimiter;
     private readonly IBatchFallbackService _batchFallbackService;
     private readonly ISubtitleExtractionService _extractionService;
+    private readonly ITranslationCancellationService _cancellationService;
 
     public TranslationJob(
         ILogger<TranslationJob> logger,
@@ -43,7 +44,8 @@ public class TranslationJob
         ITranslationRequestService translationRequestService,
         IParallelTranslationLimiter parallelLimiter,
         IBatchFallbackService batchFallbackService,
-        ISubtitleExtractionService extractionService)
+        ISubtitleExtractionService extractionService,
+        ITranslationCancellationService cancellationService)
     {
         _logger = logger;
         _settings = settings;
@@ -57,6 +59,7 @@ public class TranslationJob
         _parallelLimiter = parallelLimiter;
         _batchFallbackService = batchFallbackService;
         _extractionService = extractionService;
+        _cancellationService = cancellationService;
     }
 
     [AutomaticRetry(Attempts = 0)]
@@ -68,13 +71,20 @@ public class TranslationJob
         var jobName = JobContextFilter.GetCurrentJobTypeName();
         var jobId = JobContextFilter.GetCurrentJobId();
 
+        // Register this job for cooperative cancellation and create a linked token
+        var jobCancellationToken = _cancellationService.RegisterJob(translationRequest.Id);
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, jobCancellationToken);
+        var effectiveCancellationToken = linkedCts.Token;
+        
         // Acquire a parallel translation slot (blocks if limit reached)
-        using var slot = await _parallelLimiter.AcquireAsync(cancellationToken);
+        using var slot = await _parallelLimiter.AcquireAsync(effectiveCancellationToken);
 
+        
+        string? temporaryFilePath = null;
         try
         {
             await _scheduleService.UpdateJobState(jobName, JobStatus.Processing.GetDisplayName());
-            cancellationToken.ThrowIfCancellationRequested();
+            effectiveCancellationToken.ThrowIfCancellationRequested();
 
             var request = await _translationRequestService.UpdateTranslationRequest(translationRequest,
                 TranslationStatus.InProgress,
@@ -146,6 +156,7 @@ public class TranslationJob
                 // Update the request with the extracted subtitle path
                 request.SubtitleToTranslate = subtitlePath;
                 _logger.LogInformation("Using extracted embedded subtitle: {Path}", subtitlePath);
+                temporaryFilePath = subtitlePath;
             }
 
             // validate subtitles
@@ -274,7 +285,7 @@ public class TranslationJob
                     enableBatchFallback,
                     maxBatchSplitAttempts,
                     fileIdentifier,
-                    cancellationToken);
+                    effectiveCancellationToken);
             }
             else
             {
@@ -288,7 +299,7 @@ public class TranslationJob
                     stripSubtitleFormatting,
                     contextBefore,
                     contextAfter,
-                    cancellationToken
+                    effectiveCancellationToken
                 );
             }
 
@@ -321,10 +332,15 @@ public class TranslationJob
             }
 
             await WriteSubtitles(request, translatedSubtitles, stripSubtitleFormatting, subtitleTag, removeLanguageTag);
-            await HandleCompletion(jobName, request, cancellationToken);
+            await HandleCompletion(jobName, request, effectiveCancellationToken);
         }
         catch (TaskCanceledException)
         {
+            await HandleCancellation(jobName, translationRequest);
+        }
+        catch (OperationCanceledException)
+        {
+            // Also catch OperationCanceledException for cooperative cancellation
             await HandleCancellation(jobName, translationRequest);
         }
         catch (Exception)
@@ -336,6 +352,24 @@ public class TranslationJob
             await _translationRequestService.UpdateActiveCount();
             await _progressService.Emit(translationRequest, 0);
             throw;
+        }
+        finally
+        {
+            // Always unregister the job from cooperative cancellation
+            _cancellationService.UnregisterJob(translationRequest.Id);
+            
+            if (!string.IsNullOrEmpty(temporaryFilePath) && File.Exists(temporaryFilePath))
+            {
+                try
+                {
+                    File.Delete(temporaryFilePath);
+                    _logger.LogDebug("Deleted temporary extracted subtitle: {Path}", temporaryFilePath);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to delete temporary extracted subtitle: {Path}", temporaryFilePath);
+                }
+            }
         }
     }
 

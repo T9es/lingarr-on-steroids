@@ -28,6 +28,7 @@ public class TranslationRequestService : ITranslationRequestService
     private readonly ISettingService _settingService;
     private readonly IBatchFallbackService _batchFallbackService;
     private readonly ILogger<TranslationRequestService> _logger;
+    private readonly ITranslationCancellationService _cancellationService;
     static private Dictionary<int, CancellationTokenSource> _asyncTranslationJobs = new Dictionary<int, CancellationTokenSource>();
 
     public TranslationRequestService(
@@ -40,7 +41,8 @@ public class TranslationRequestService : ITranslationRequestService
         IMediaService mediaService,
         ISettingService settingService,
         IBatchFallbackService batchFallbackService,
-        ILogger<TranslationRequestService> logger)
+        ILogger<TranslationRequestService> logger,
+        ITranslationCancellationService cancellationService)
     {
         _dbContext = dbContext;
         _hubContext = hubContext;
@@ -52,6 +54,7 @@ public class TranslationRequestService : ITranslationRequestService
         _settingService = settingService;
         _batchFallbackService = batchFallbackService;
         _logger = logger;
+        _cancellationService = cancellationService;
     }
 
     /// <inheritdoc />
@@ -136,6 +139,10 @@ public class TranslationRequestService : ITranslationRequestService
         {
             return null;
         }
+
+        // Trigger cooperative cancellation for running jobs
+        // This will signal the job to stop at its next cancellation check point
+        _cancellationService.CancelJob(translationRequest.Id);
 
         if (translationRequest.JobId != null)
         {
