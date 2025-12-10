@@ -46,6 +46,78 @@ namespace Lingarr.Migrations.SQLite.Migrations
                     b.ToTable("daily_statistics", (string)null);
                 });
 
+            modelBuilder.Entity("Lingarr.Core.Entities.EmbeddedSubtitle", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("id");
+
+                    b.Property<string>("CodecName")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnName("codec_name");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("created_at");
+
+                    b.Property<int?>("EpisodeId")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("episode_id");
+
+                    b.Property<string>("ExtractedPath")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("extracted_path");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("is_default");
+
+                    b.Property<bool>("IsExtracted")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("is_extracted");
+
+                    b.Property<bool>("IsForced")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("is_forced");
+
+                    b.Property<bool>("IsTextBased")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("is_text_based");
+
+                    b.Property<string>("Language")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("language");
+
+                    b.Property<int?>("MovieId")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("movie_id");
+
+                    b.Property<int>("StreamIndex")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("stream_index");
+
+                    b.Property<string>("Title")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_embedded_subtitles");
+
+                    b.HasIndex("EpisodeId")
+                        .HasDatabaseName("ix_embedded_subtitles_episode_id");
+
+                    b.HasIndex("MovieId")
+                        .HasDatabaseName("ix_embedded_subtitles_movie_id");
+
+                    b.ToTable("embedded_subtitles", (string)null);
+                });
+
             modelBuilder.Entity("Lingarr.Core.Entities.Episode", b =>
                 {
                     b.Property<int>("Id")
@@ -478,6 +550,23 @@ namespace Lingarr.Migrations.SQLite.Migrations
                     b.ToTable("translation_requests", (string)null);
                 });
 
+            modelBuilder.Entity("Lingarr.Core.Entities.EmbeddedSubtitle", b =>
+                {
+                    b.HasOne("Lingarr.Core.Entities.Episode", "Episode")
+                        .WithMany("EmbeddedSubtitles")
+                        .HasForeignKey("EpisodeId")
+                        .HasConstraintName("fk_embedded_subtitles_episodes_episode_id");
+
+                    b.HasOne("Lingarr.Core.Entities.Movie", "Movie")
+                        .WithMany("EmbeddedSubtitles")
+                        .HasForeignKey("MovieId")
+                        .HasConstraintName("fk_embedded_subtitles_movies_movie_id");
+
+                    b.Navigation("Episode");
+
+                    b.Navigation("Movie");
+                });
+
             modelBuilder.Entity("Lingarr.Core.Entities.Episode", b =>
                 {
                     b.HasOne("Lingarr.Core.Entities.Season", "Season")
@@ -521,8 +610,15 @@ namespace Lingarr.Migrations.SQLite.Migrations
                     b.Navigation("Show");
                 });
 
+            modelBuilder.Entity("Lingarr.Core.Entities.Episode", b =>
+                {
+                    b.Navigation("EmbeddedSubtitles");
+                });
+
             modelBuilder.Entity("Lingarr.Core.Entities.Movie", b =>
                 {
+                    b.Navigation("EmbeddedSubtitles");
+
                     b.Navigation("Images");
                 });
 

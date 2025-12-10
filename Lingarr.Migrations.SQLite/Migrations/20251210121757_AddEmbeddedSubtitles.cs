@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -33,28 +33,26 @@ namespace Lingarr.Migrations.SQLite.Migrations
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_embedded_subtitles", x => x.id);
+                    table.PrimaryKey("pk_embedded_subtitles", x => x.id);
                     table.ForeignKey(
-                        name: "FK_embedded_subtitles_episodes_episode_id",
+                        name: "fk_embedded_subtitles_episodes_episode_id",
                         column: x => x.episode_id,
                         principalTable: "episodes",
-                        principalColumn: "id",
-                        onDelete: ReferentialAction.Cascade);
+                        principalColumn: "id");
                     table.ForeignKey(
-                        name: "FK_embedded_subtitles_movies_movie_id",
+                        name: "fk_embedded_subtitles_movies_movie_id",
                         column: x => x.movie_id,
                         principalTable: "movies",
-                        principalColumn: "id",
-                        onDelete: ReferentialAction.Cascade);
+                        principalColumn: "id");
                 });
 
             migrationBuilder.CreateIndex(
-                name: "IX_embedded_subtitles_episode_id",
+                name: "ix_embedded_subtitles_episode_id",
                 table: "embedded_subtitles",
                 column: "episode_id");
 
             migrationBuilder.CreateIndex(
-                name: "IX_embedded_subtitles_movie_id",
+                name: "ix_embedded_subtitles_movie_id",
                 table: "embedded_subtitles",
                 column: "movie_id");
             
@@ -70,11 +68,6 @@ namespace Lingarr.Migrations.SQLite.Migrations
         {
             migrationBuilder.DropTable(
                 name: "embedded_subtitles");
-            
-            migrationBuilder.DeleteData(
-                table: "settings",
-                keyColumn: "key",
-                keyValue: "subtitle_extraction_mode");
         }
     }
 }

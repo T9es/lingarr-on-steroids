@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
 
@@ -19,17 +19,17 @@ namespace Lingarr.Migrations.MySQL.Migrations
                     id = table.Column<int>(type: "int", nullable: false)
                         .Annotation("MySql:ValueGenerationStrategy", MySqlValueGenerationStrategy.IdentityColumn),
                     stream_index = table.Column<int>(type: "int", nullable: false),
-                    language = table.Column<string>(type: "varchar(10)", maxLength: 10, nullable: true)
+                    language = table.Column<string>(type: "longtext", nullable: true)
                         .Annotation("MySql:CharSet", "utf8mb4"),
-                    title = table.Column<string>(type: "varchar(255)", maxLength: 255, nullable: true)
+                    title = table.Column<string>(type: "longtext", nullable: true)
                         .Annotation("MySql:CharSet", "utf8mb4"),
-                    codec_name = table.Column<string>(type: "varchar(50)", maxLength: 50, nullable: false)
+                    codec_name = table.Column<string>(type: "longtext", nullable: false)
                         .Annotation("MySql:CharSet", "utf8mb4"),
                     is_text_based = table.Column<bool>(type: "tinyint(1)", nullable: false),
                     is_default = table.Column<bool>(type: "tinyint(1)", nullable: false),
                     is_forced = table.Column<bool>(type: "tinyint(1)", nullable: false),
                     is_extracted = table.Column<bool>(type: "tinyint(1)", nullable: false),
-                    extracted_path = table.Column<string>(type: "varchar(1024)", maxLength: 1024, nullable: true)
+                    extracted_path = table.Column<string>(type: "longtext", nullable: true)
                         .Annotation("MySql:CharSet", "utf8mb4"),
                     episode_id = table.Column<int>(type: "int", nullable: true),
                     movie_id = table.Column<int>(type: "int", nullable: true),
@@ -38,29 +38,27 @@ namespace Lingarr.Migrations.MySQL.Migrations
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_embedded_subtitles", x => x.id);
+                    table.PrimaryKey("pk_embedded_subtitles", x => x.id);
                     table.ForeignKey(
-                        name: "FK_embedded_subtitles_episodes_episode_id",
+                        name: "fk_embedded_subtitles_episodes_episode_id",
                         column: x => x.episode_id,
                         principalTable: "episodes",
-                        principalColumn: "id",
-                        onDelete: ReferentialAction.Cascade);
+                        principalColumn: "id");
                     table.ForeignKey(
-                        name: "FK_embedded_subtitles_movies_movie_id",
+                        name: "fk_embedded_subtitles_movies_movie_id",
                         column: x => x.movie_id,
                         principalTable: "movies",
-                        principalColumn: "id",
-                        onDelete: ReferentialAction.Cascade);
+                        principalColumn: "id");
                 })
                 .Annotation("MySql:CharSet", "utf8mb4");
 
             migrationBuilder.CreateIndex(
-                name: "IX_embedded_subtitles_episode_id",
+                name: "ix_embedded_subtitles_episode_id",
                 table: "embedded_subtitles",
                 column: "episode_id");
 
             migrationBuilder.CreateIndex(
-                name: "IX_embedded_subtitles_movie_id",
+                name: "ix_embedded_subtitles_movie_id",
                 table: "embedded_subtitles",
                 column: "movie_id");
             
@@ -76,11 +74,6 @@ namespace Lingarr.Migrations.MySQL.Migrations
         {
             migrationBuilder.DropTable(
                 name: "embedded_subtitles");
-            
-            migrationBuilder.DeleteData(
-                table: "settings",
-                keyColumn: "key",
-                keyValue: "subtitle_extraction_mode");
         }
     }
 }
