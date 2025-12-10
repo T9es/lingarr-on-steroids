@@ -284,7 +284,12 @@ public class TranslationRequestService : ITranslationRequestService
     /// <inheritdoc />
     public async Task ClearMediaHash(TranslationRequest translationRequest)
     {
-        if (translationRequest.MediaId.HasValue)
+        if (!translationRequest.MediaId.HasValue) 
+        {
+            return;
+        }
+
+        try
         {
             switch (translationRequest.MediaType)
             {
@@ -305,6 +310,14 @@ public class TranslationRequestService : ITranslationRequestService
                     break;
             }
             await _dbContext.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // Ignore concurrency exceptions here - if another process updated the media,
+            // the hash is likely already cleared or we can't safely clear it anyway without reloading.
+            // Since this is just a cache invalidation optimization, it's safe to skip if we hit a race.
+            _logger.LogDebug("Concurrency exception while clearing media hash for {MediaType} {MediaId} - skipping", 
+                translationRequest.MediaType, translationRequest.MediaId);
         }
     }
 

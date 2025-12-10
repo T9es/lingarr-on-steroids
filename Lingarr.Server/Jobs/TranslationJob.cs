@@ -343,14 +343,36 @@ public class TranslationJob
             // Also catch OperationCanceledException for cooperative cancellation
             await HandleCancellation(jobName, translationRequest);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            await _translationRequestService.ClearMediaHash(translationRequest);
-            translationRequest = await _translationRequestService.UpdateTranslationRequest(translationRequest, TranslationStatus.Failed,
-                jobId);
-            await _scheduleService.UpdateJobState(jobName, JobStatus.Failed.GetDisplayName());
-            await _translationRequestService.UpdateActiveCount();
-            await _progressService.Emit(translationRequest, 0);
+            try
+            {
+                await _translationRequestService.ClearMediaHash(translationRequest);
+            }
+            catch (Exception cleanupEx)
+            {
+                _logger.LogWarning(cleanupEx, "Error clearing media hash during failure handling");
+            }
+
+            try 
+            {
+                translationRequest = await _translationRequestService.UpdateTranslationRequest(translationRequest, TranslationStatus.Failed,
+                    jobId);
+                await _scheduleService.UpdateJobState(jobName, JobStatus.Failed.GetDisplayName());
+                await _translationRequestService.UpdateActiveCount();
+                await _progressService.Emit(translationRequest, 0);
+            }
+            catch (DeepL.NotFoundException)
+            {
+                _logger.LogWarning("Validation request {RequestId} not found during failure handling - it was likely deleted", translationRequest.Id);
+                // Swallow this as we can't update a missing request
+            }
+            catch (Exception stateEx)
+            {
+                _logger.LogError(stateEx, "Error updating job state during failure handling");
+            }
+            
+            // Re-throw the original exception to ensure Hangfire knows the job failed
             throw;
         }
         finally
