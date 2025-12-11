@@ -94,6 +94,7 @@
     "source": "Source",
     "target": "Target",
     "status": "Status",
+    "priority": "Priority media",
     "progress": "Progress",
     "completed": "Completed",
     "cancel": "Cancel",

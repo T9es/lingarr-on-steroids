@@ -1,5 +1,7 @@
 ﻿using DeepL;
 using Hangfire;
+using Hangfire.Common;
+using Hangfire.States;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
@@ -18,6 +20,9 @@ namespace Lingarr.Server.Services;
 
 public class TranslationRequestService : ITranslationRequestService
 {
+    private const string DefaultTranslationQueue = "translation";
+    private const string PriorityTranslationQueue = "translation-priority";
+    
     private readonly LingarrDbContext _dbContext;
     private readonly IBackgroundJobClient _backgroundJobClient;
     private readonly IHubContext<TranslationRequestsHub> _hubContext;
@@ -78,6 +83,11 @@ public class TranslationRequestService : ITranslationRequestService
     /// <inheritdoc />
     public async Task<int> CreateRequest(TranslationRequest translationRequest)
     {
+        return await CreateRequest(translationRequest, false);
+    }
+
+    public async Task<int> CreateRequest(TranslationRequest translationRequest, bool forcePriority)
+    {
         // Create a new TranslationRequest to not keep ID and JobID
         var translationRequestCopy = new TranslationRequest
         {
@@ -93,10 +103,7 @@ public class TranslationRequestService : ITranslationRequestService
         _dbContext.TranslationRequests.Add(translationRequestCopy);
         await _dbContext.SaveChangesAsync();
 
-        var jobId = _backgroundJobClient.Enqueue<TranslationJob>(job =>
-            job.Execute(translationRequestCopy, CancellationToken.None)
-        );
-        await UpdateTranslationRequest(translationRequestCopy, TranslationStatus.Pending, jobId);
+        await EnqueueTranslationJobAsync(translationRequestCopy, forcePriority);
 
         var count = await GetActiveCount();
         await _hubContext.Clients.Group("TranslationRequests").SendAsync("RequestActive", new
@@ -192,8 +199,8 @@ public class TranslationRequestService : ITranslationRequestService
             return null;
         }
 
-
-        int newTranslationRequestId = await CreateRequest(translationRequest);
+        // Retries are treated as priority so they jump ahead of existing backlog
+        int newTranslationRequestId = await CreateRequest(translationRequest, true);
         return $"Translation request with id {retryRequest.Id} has been restarted, new job id {newTranslationRequestId}";
     }
     
@@ -235,10 +242,8 @@ public class TranslationRequestService : ITranslationRequestService
                 continue;
             }
 
-            var jobId = _backgroundJobClient.Enqueue<TranslationJob>(job =>
-                job.Execute(request, CancellationToken.None)
-            );
-            await UpdateTranslationRequest(request, TranslationStatus.Pending, jobId);
+            // Use the same queue selection logic as for new requests
+            await EnqueueTranslationJobAsync(request, false);
         }
     }
     
@@ -280,6 +285,8 @@ public class TranslationRequestService : ITranslationRequestService
             .Skip((pageNumber - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync();
+
+        await PopulatePriorityFlagsAsync(requests);
 
         return new PagedResult<TranslationRequest>
         {
@@ -327,6 +334,129 @@ public class TranslationRequestService : ITranslationRequestService
             // Since this is just a cache invalidation optimization, it's safe to skip if we hit a race.
             _logger.LogDebug("Concurrency exception while clearing media hash for {MediaType} {MediaId} - skipping", 
                 translationRequest.MediaType, translationRequest.MediaId);
+        }
+    }
+
+    private async Task PopulatePriorityFlagsAsync(List<TranslationRequest> requests)
+    {
+        if (!requests.Any())
+        {
+            return;
+        }
+
+        var movieIds = requests
+            .Where(r => r.MediaType == MediaType.Movie && r.MediaId.HasValue)
+            .Select(r => r.MediaId!.Value)
+            .Distinct()
+            .ToList();
+
+        var episodeIds = requests
+            .Where(r => r.MediaType == MediaType.Episode && r.MediaId.HasValue)
+            .Select(r => r.MediaId!.Value)
+            .Distinct()
+            .ToList();
+
+        var moviePriorityMap = movieIds.Count == 0
+            ? new Dictionary<int, bool>()
+            : await _dbContext.Movies
+                .Where(m => movieIds.Contains(m.Id))
+                .ToDictionaryAsync(m => m.Id, m => m.IsPriority);
+
+        var episodePriorityMap = episodeIds.Count == 0
+            ? new Dictionary<int, bool>()
+            : await _dbContext.Episodes
+                .Include(e => e.Season)
+                .ThenInclude(s => s.Show)
+                .Where(e => episodeIds.Contains(e.Id))
+                .ToDictionaryAsync(e => e.Id, e => e.Season.Show.IsPriority);
+
+        foreach (var request in requests)
+        {
+            request.IsPriorityMedia = false;
+            
+            if (!request.MediaId.HasValue)
+            {
+                continue;
+            }
+
+            switch (request.MediaType)
+            {
+                case MediaType.Movie:
+                    if (moviePriorityMap.TryGetValue(request.MediaId.Value, out var moviePriority) && moviePriority)
+                    {
+                        request.IsPriorityMedia = true;
+                    }
+                    break;
+
+                case MediaType.Episode:
+                    if (episodePriorityMap.TryGetValue(request.MediaId.Value, out var episodePriority) && episodePriority)
+                    {
+                        request.IsPriorityMedia = true;
+                    }
+                    break;
+            }
+        }
+    }
+
+    private async Task EnqueueTranslationJobAsync(TranslationRequest translationRequest, bool forcePriority)
+    {
+        var queueName = await GetQueueForTranslationRequestAsync(translationRequest, forcePriority);
+
+        var job = Job.FromExpression<TranslationJob>(job =>
+            job.Execute(translationRequest, CancellationToken.None));
+
+        var jobId = _backgroundJobClient.Create(job, new EnqueuedState(queueName));
+        await UpdateTranslationRequest(translationRequest, TranslationStatus.Pending, jobId);
+        
+        _logger.LogInformation(
+            "Enqueued translation request {RequestId} to Hangfire queue |Green|{Queue}|/Green| (forcePriority={ForcePriority})",
+            translationRequest.Id,
+            queueName,
+            forcePriority);
+    }
+
+    private async Task<string> GetQueueForTranslationRequestAsync(
+        TranslationRequest translationRequest,
+        bool forcePriority)
+    {
+        if (forcePriority)
+        {
+            return PriorityTranslationQueue;
+        }
+
+        if (!translationRequest.MediaId.HasValue)
+        {
+            return DefaultTranslationQueue;
+        }
+
+        try
+        {
+            switch (translationRequest.MediaType)
+            {
+                case MediaType.Movie:
+                    var moviePriority = await _dbContext.Movies
+                        .Where(m => m.Id == translationRequest.MediaId.Value)
+                        .Select(m => m.IsPriority)
+                        .FirstOrDefaultAsync();
+                    return moviePriority ? PriorityTranslationQueue : DefaultTranslationQueue;
+
+                case MediaType.Episode:
+                    var showPriority = await _dbContext.Episodes
+                        .Where(e => e.Id == translationRequest.MediaId.Value)
+                        .Select(e => e.Season.Show.IsPriority)
+                        .FirstOrDefaultAsync();
+                    return showPriority ? PriorityTranslationQueue : DefaultTranslationQueue;
+
+                default:
+                    return DefaultTranslationQueue;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Error determining queue for translation request {RequestId}. Falling back to default queue.",
+                translationRequest.Id);
+            return DefaultTranslationQueue;
         }
     }
 

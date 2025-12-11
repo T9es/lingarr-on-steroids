@@ -1,4 +1,5 @@
-﻿using Lingarr.Core.Enum;
+﻿using System.ComponentModel.DataAnnotations.Schema;
+using Lingarr.Core.Enum;
 
 namespace Lingarr.Core.Entities;
 
@@ -14,4 +15,7 @@ public class TranslationRequest : BaseEntity
     public required MediaType MediaType { get; set; }
     public required TranslationStatus Status { get; set; }
     public DateTime? CompletedAt { get; set; }
+    
+    [NotMapped]
+    public bool IsPriorityMedia { get; set; }
 }

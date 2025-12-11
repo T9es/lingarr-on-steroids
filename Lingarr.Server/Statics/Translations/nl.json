@@ -94,6 +94,7 @@
     "source": "Bron",
     "target": "Doel",
     "status": "Status",
+    "priority": "Prioriteitsmedia",
     "progress": "Voortgang",
     "completed": "Voltooid",
     "cancel": "Annuleren",

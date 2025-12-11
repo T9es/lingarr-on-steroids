@@ -176,7 +176,11 @@ public static class ServiceCollectionExtensions
         var tablePrefix = "_hangfire";
         builder.Services.AddHangfireServer(options =>
         {
-            options.Queues = ["movies", "shows", "system", "translation", "default"];
+            // Prioritize user-visible translation work:
+            // 1) translation-priority (retries, priority media)
+            // 2) regular media sync / system queues
+            // 3) normal translation and default jobs
+            options.Queues = ["translation-priority", "movies", "shows", "system", "translation", "default"];
             // Default to 20 workers so the ParallelTranslationLimiter can control actual concurrency
             // The semaphore-based limiter respects the UI setting for max_parallel_translations
             options.WorkerCount =
