@@ -67,7 +67,8 @@ export const SETTINGS = {
     ENABLE_BATCH_FALLBACK: 'enable_batch_fallback',
     MAX_BATCH_SPLIT_ATTEMPTS: 'max_batch_split_attempts',
     STRIP_ASS_DRAWING_COMMANDS: 'strip_ass_drawing_commands',
-    CLEAN_SOURCE_ASS_DRAWINGS: 'clean_source_ass_drawings'
+    CLEAN_SOURCE_ASS_DRAWINGS: 'clean_source_ass_drawings',
+    SKIP_SIGNS_SONGS_EMBEDDED: 'skip_signs_songs_embedded'
 } as const
 
 export interface ISettings {
@@ -137,6 +138,7 @@ export interface ISettings {
     max_batch_split_attempts: string
     strip_ass_drawing_commands: string
     clean_source_ass_drawings: string
+    skip_signs_songs_embedded: string
 }
 
 export interface ICustomAiParams {

@@ -267,6 +267,8 @@
       "stripAssDrawingCommandsDescription": "Skip vector graphics data (shapes, signs) found in ASS-converted SRT files. These are untranslatable and waste API calls.",
       "cleanSourceAssDrawings": "Also clean source files:",
       "cleanSourceAssDrawingsDescription": "Additionally remove drawing commands from the original source subtitle file.",
+      "skipSignsSongs": "Skip 'Signs / Songs' tracks:",
+      "skipSignsSongsDescription": "When searching for embedded subtitles, skip tracks labeled as Signs/Songs/Karaoke, even if they match the source language. Turn this OFF if you want to translate these tracks.",
       "subtitleTag": "Subtitle tag"
     },
     "indexing": {

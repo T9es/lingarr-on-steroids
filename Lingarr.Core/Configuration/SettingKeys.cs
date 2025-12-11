@@ -123,5 +123,11 @@ public static class SettingKeys
         /// Extraction mode: "on_demand" | "specific_language" | "extract_all"
         /// </summary>
         public const string ExtractionMode = "subtitle_extraction_mode";
+        
+        /// <summary>
+        /// When true, skip Signs/Songs/karaoke-only subtitle tracks during embedded subtitle extraction.
+        /// When false, allow Signs/Songs tracks to be selected if they match the configured source language.
+        /// </summary>
+        public const string SkipSignsSongs = "skip_signs_songs_embedded";
     }
 }
