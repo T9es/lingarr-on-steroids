@@ -96,19 +96,71 @@ export const useTranslationRequestStore = defineStore('translateRequest', {
             return await services.translationRequest.logs<ITranslationRequestLog[]>(translationRequestId)
         },
         async updateProgress(requestProgress: IRequestProgress) {
+            const updatedRequest: Partial<ITranslationRequest> = {
+                status: requestProgress.status,
+                progress: requestProgress.progress,
+                completedAt: requestProgress.completedAt
+            }
+
+            // Update in main translationRequests.items
             this.translationRequests.items = this.translationRequests.items.map(
                 (request: ITranslationRequest) => {
                     if (request.id === requestProgress.id) {
-                        return {
-                            ...request,
-                            status: requestProgress.status,
-                            progress: requestProgress.progress,
-                            completedAt: requestProgress.completedAt
-                        }
+                        return { ...request, ...updatedRequest }
                     }
                     return request
                 }
             )
+
+            // Handle status transitions for inProgressRequests
+            const inProgressIndex = this.inProgressRequests.findIndex(r => r.id === requestProgress.id)
+            if (requestProgress.status === 'InProgress') {
+                // Should be in inProgressRequests
+                if (inProgressIndex === -1) {
+                    // Find the full request data from main list or create minimal entry
+                    const existingRequest = this.translationRequests.items.find(r => r.id === requestProgress.id)
+                    if (existingRequest) {
+                        this.inProgressRequests.push({ ...existingRequest, ...updatedRequest })
+                    }
+                } else {
+                    // Update existing entry
+                    this.inProgressRequests[inProgressIndex] = {
+                        ...this.inProgressRequests[inProgressIndex],
+                        ...updatedRequest
+                    }
+                }
+            } else if (inProgressIndex !== -1) {
+                // Status changed from InProgress to something else - remove from inProgressRequests
+                this.inProgressRequests.splice(inProgressIndex, 1)
+            }
+
+            // Handle status transitions for failedRequests
+            const failedIndex = this.failedRequests.findIndex(r => r.id === requestProgress.id)
+            if (requestProgress.status === 'Failed') {
+                // Should be in failedRequests
+                if (failedIndex === -1) {
+                    const existingRequest = this.translationRequests.items.find(r => r.id === requestProgress.id)
+                    if (existingRequest) {
+                        this.failedRequests.push({ ...existingRequest, ...updatedRequest })
+                    }
+                } else {
+                    // Update existing entry
+                    this.failedRequests[failedIndex] = {
+                        ...this.failedRequests[failedIndex],
+                        ...updatedRequest
+                    }
+                }
+            } else if (failedIndex !== -1) {
+                // Status changed from Failed to something else - remove from failedRequests
+                this.failedRequests.splice(failedIndex, 1)
+            }
+
+            // Remove completed/cancelled items from main queue (they shouldn't show in pending)
+            if (requestProgress.status === 'Completed' || requestProgress.status === 'Cancelled') {
+                this.translationRequests.items = this.translationRequests.items.filter(
+                    r => r.id !== requestProgress.id
+                )
+            }
         },
         clearSelection() {
             this.selectedRequests = []
