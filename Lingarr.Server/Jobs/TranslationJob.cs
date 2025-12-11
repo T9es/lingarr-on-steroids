@@ -733,9 +733,9 @@ public class TranslationJob
         }
 
         // Prefer subtitles whose language matches the configured source language.
-        // This matcher is tolerant of common 2-letter vs 3-letter ISO code variations (e.g. "en" vs "eng").
+        // If none match, fall back to all text-based streams.
         var languageMatched = textBased
-            .Where(s => LanguageMatches(s.Language, sourceLanguage))
+            .Where(s => SubtitleLanguageHelper.LanguageMatches(s.Language, sourceLanguage))
             .ToList();
 
         var candidates = languageMatched.Count > 0 ? languageMatched : textBased;
@@ -747,7 +747,7 @@ public class TranslationJob
 
         foreach (var subtitle in candidates)
         {
-            var score = ScoreSubtitleCandidate(subtitle, sourceLanguage);
+            var score = SubtitleLanguageHelper.ScoreSubtitleCandidate(subtitle, sourceLanguage);
 
             if (score > bestScore ||
                 (score == bestScore && best != null && subtitle.StreamIndex < best.StreamIndex))
@@ -773,91 +773,4 @@ public class TranslationJob
         return candidates.First();
     }
 
-    /// <summary>
-    /// Scores an embedded subtitle candidate based on language, title, and flags.
-    /// Higher scores indicate better candidates for full dialogue translation.
-    /// </summary>
-    private static int ScoreSubtitleCandidate(EmbeddedSubtitle subtitle, string sourceLanguage)
-    {
-        var score = 0;
-
-        if (LanguageMatches(subtitle.Language, sourceLanguage))
-        {
-            score += 50;
-        }
-
-        // Titles that usually indicate full dialogue tracks
-        var title = subtitle.Title?.ToLowerInvariant() ?? string.Empty;
-        if (title.Contains("full"))
-        {
-            score += 25;
-        }
-
-        if (title.Contains("dialog") || title.Contains("dialogue"))
-        {
-            score += 20;
-        }
-
-        if (title.Contains("sub") || title.Contains("subtitle"))
-        {
-            score += 10;
-        }
-
-        // Titles that typically indicate signs/songs/karaoke-only tracks
-        if (title.Contains("sign") || title.Contains("song") || title.Contains("karaoke"))
-        {
-            score -= 40;
-        }
-
-        // Prefer non-forced tracks for full dialogue; forced tracks are often partial or effect-only.
-        if (subtitle.IsForced)
-        {
-            score -= 10;
-        }
-        else
-        {
-            score += 5;
-        }
-
-        // Being the default stream is a weak positive signal (unless heavily penalized by title heuristics).
-        if (subtitle.IsDefault)
-        {
-            score += 5;
-        }
-
-        return score;
-    }
-
-    /// <summary>
-    /// Determines whether an embedded subtitle language matches the configured source language.
-    /// Handles common 2-letter vs 3-letter ISO code differences (e.g. "en" vs "eng").
-    /// </summary>
-    private static bool LanguageMatches(string? subtitleLanguage, string? sourceLanguage)
-    {
-        if (string.IsNullOrWhiteSpace(subtitleLanguage) || string.IsNullOrWhiteSpace(sourceLanguage))
-        {
-            return false;
-        }
-
-        var sub = subtitleLanguage.Trim().ToLowerInvariant();
-        var src = sourceLanguage.Trim().ToLowerInvariant();
-
-        if (sub == src)
-        {
-            return true;
-        }
-
-        // Treat 2-letter and 3-letter variants that share a prefix as equivalent
-        if (sub.Length == 3 && src.Length == 2 && sub.StartsWith(src, StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        if (sub.Length == 2 && src.Length == 3 && src.StartsWith(sub, StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        return false;
-    }
 }

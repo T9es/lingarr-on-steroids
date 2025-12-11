@@ -9,6 +9,7 @@ using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Models;
 using Lingarr.Server.Models.FileSystem;
+using Lingarr.Server.Services.Subtitle;
 using Microsoft.EntityFrameworkCore;
 
 namespace Lingarr.Server.Services;
@@ -417,10 +418,25 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
     /// <returns>The number of translation requests queued</returns>
     private async Task<int> TryQueueEmbeddedSubtitleTranslation(IMedia media, MediaType mediaType)
     {
-        var sourceLanguages = await GetLanguagesSetting<SourceLanguage>(SettingKeys.Translation.SourceLanguages);
-        var targetLanguages = await GetLanguagesSetting<TargetLanguage>(SettingKeys.Translation.TargetLanguages);
+        // Preserve the order of configured source languages so we can treat
+        // them as a priority list (e.g. [en, ja] => prefer English when both
+        // are good candidates, but fall back to Japanese when English only
+        // has "Signs & Songs" style tracks).
+        var sourceLanguageModels =
+            await _settingService.GetSettingAsJson<SourceLanguage>(SettingKeys.Translation.SourceLanguages);
+        var configuredSourceLanguages = sourceLanguageModels
+            .Select(lang => lang.Code)
+            .Where(code => !string.IsNullOrWhiteSpace(code))
+            .ToList();
+
+        var targetLanguageModels =
+            await _settingService.GetSettingAsJson<TargetLanguage>(SettingKeys.Translation.TargetLanguages);
+        var targetLanguages = targetLanguageModels
+            .Select(lang => lang.Code)
+            .Where(code => !string.IsNullOrWhiteSpace(code))
+            .ToHashSet();
         
-        if (sourceLanguages.Count == 0 || targetLanguages.Count == 0)
+        if (configuredSourceLanguages.Count == 0 || targetLanguages.Count == 0)
         {
             _logger.LogWarning(
                 "Cannot queue embedded subtitle translation for {FileName}: source or target languages not configured",
@@ -472,8 +488,8 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             "Found {Count} embedded subtitles for {FileName}: [{Subtitles}]",
             embeddedSubtitles.Count, media.FileName,
             string.Join(", ", embeddedSubtitles.Select(s => $"{s.Language ?? "unknown"}:{s.CodecName}")));
-        
-        // Find the best embedded subtitle that matches a source language
+
+        // Work only with text-based streams; image-based subtitles require OCR
         var textBasedSubs = embeddedSubtitles.Where(s => s.IsTextBased).ToList();
         if (textBasedSubs.Count == 0)
         {
@@ -482,34 +498,85 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 media.FileName);
             return 0;
         }
-        
-        // Find embedded subtitle matching source language
-        var matchingEmbedded = textBasedSubs.FirstOrDefault(s => 
-            !string.IsNullOrEmpty(s.Language) && 
-            sourceLanguages.Contains(s.Language.ToLowerInvariant()));
-            
-        if (matchingEmbedded == null)
+
+        // Score candidates across all configured source languages.
+        // We only consider streams whose language matches one of the
+        // configured languages (via tolerant matching), and apply a small
+        // priority bonus based on the language order.
+        var scoredCandidates = new List<(EmbeddedSubtitle Subtitle, int Score, string MatchedLanguage, int LanguageIndex)>();
+
+        foreach (var subtitle in textBasedSubs)
         {
-            // Try default subtitle
-            matchingEmbedded = textBasedSubs.FirstOrDefault(s => s.IsDefault);
-            
-            if (matchingEmbedded == null)
+            if (string.IsNullOrWhiteSpace(subtitle.Language))
             {
-                // Use first text-based subtitle 
-                matchingEmbedded = textBasedSubs.First();
+                continue;
             }
-            
-            _logger.LogInformation(
-                "No embedded subtitle matches configured source languages [{Sources}]. Using fallback: {Language}",
-                string.Join(", ", sourceLanguages), matchingEmbedded.Language ?? "unknown");
+
+            var bestIndex = -1;
+            string? matchedLanguage = null;
+
+            for (var i = 0; i < configuredSourceLanguages.Count; i++)
+            {
+                var configuredLanguage = configuredSourceLanguages[i];
+                if (SubtitleLanguageHelper.LanguageMatches(subtitle.Language, configuredLanguage))
+                {
+                    bestIndex = i;
+                    matchedLanguage = configuredLanguage;
+                    break;
+                }
+            }
+
+            if (bestIndex == -1 || matchedLanguage == null)
+            {
+                // This subtitle is in a language the user didn't configure;
+                // we'll surface it in logging but won't auto-translate from it.
+                continue;
+            }
+
+            var baseScore = SubtitleLanguageHelper.ScoreSubtitleCandidate(subtitle, matchedLanguage);
+            // Earlier languages in the list get a small priority boost,
+            // but content quality (full vs signs/karaoke) dominates.
+            var priorityBonus = (configuredSourceLanguages.Count - bestIndex) * 5;
+            var totalScore = baseScore + priorityBonus;
+
+            scoredCandidates.Add((subtitle, totalScore, matchedLanguage, bestIndex));
         }
-        
-        var sourceLanguage = matchingEmbedded.Language?.ToLowerInvariant() ?? sourceLanguages.First();
-        
+
+        if (!scoredCandidates.Any())
+        {
+            var availableLanguages = textBasedSubs
+                .GroupBy(s => SubtitleLanguageHelper.NormalizeLanguageCode(s.Language))
+                .Select(g => g.Key ?? "unknown")
+                .Distinct()
+                .ToList();
+
+            _logger.LogWarning(
+                "No embedded subtitle matches configured source languages [{Sources}] for {FileName}. " +
+                "Available embedded subtitle languages: [{Available}]. " +
+                "Update your source languages on the Services page if you want to translate from one of these.",
+                string.Join(", ", configuredSourceLanguages),
+                media.FileName,
+                string.Join(", ", availableLanguages));
+
+            return 0;
+        }
+
+        var bestCandidate = scoredCandidates
+            .OrderByDescending(c => c.Score)
+            .ThenBy(c => c.Subtitle.StreamIndex)
+            .First();
+
+        var selectedSubtitle = bestCandidate.Subtitle;
+        var selectedSourceLanguage = bestCandidate.MatchedLanguage;
+
         _logger.LogInformation(
-            "Queuing translation jobs for embedded subtitle: Language={Language}, Codec={Codec}",
-            sourceLanguage, matchingEmbedded.CodecName);
-        
+            "Selected embedded subtitle for translation: StreamIndex={StreamIndex}, LanguageTag={LanguageTag}, ConfiguredLanguage={ConfiguredLanguage}, Title=\"{Title}\", Codec={Codec}",
+            selectedSubtitle.StreamIndex,
+            selectedSubtitle.Language ?? "unknown",
+            selectedSourceLanguage,
+            selectedSubtitle.Title ?? "<none>",
+            selectedSubtitle.CodecName);
+
         // Create translation requests for each target language (with empty subtitle path - TranslationJob will extract)
         var translationsQueued = 0;
         foreach (var targetLanguage in targetLanguages)
@@ -520,13 +587,13 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 MediaType = mediaType,
                 SubtitlePath = null, // Will trigger embedded extraction in TranslationJob
                 TargetLanguage = targetLanguage,
-                SourceLanguage = sourceLanguage,
+                SourceLanguage = selectedSourceLanguage,
                 SubtitleFormat = null
             });
             translationsQueued++;
             _logger.LogInformation(
                 "Queued embedded subtitle translation from |Orange|{sourceLanguage}|/Orange| to |Orange|{targetLanguage}|/Orange| for |Green|{FileName}|/Green|",
-                sourceLanguage,
+                selectedSourceLanguage,
                 targetLanguage,
                 media.FileName);
         }
