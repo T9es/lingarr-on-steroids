@@ -7,11 +7,19 @@
                 </span>
                 <span class="block lg:hidden">#</span>
             </div>
-            <div class="col-span-7 px-4 py-2 md:col-span-5">
+            <div class="col-span-5 px-4 py-2 md:col-span-4">
                 {{ translate('tvShows.episodeTitle') }}
             </div>
-            <div class="col-span-4 flex justify-between py-2 pr-4 md:col-span-5">
+            <div class="col-span-4 py-2 pr-4 md:col-span-4">
                 <span>{{ translate('tvShows.episodeSubtitles') }}</span>
+            </div>
+            <div class="col-span-1 py-2 text-center md:col-span-2">
+                <span class="hidden md:block">
+                    {{ translate('tvShows.translateNow') }}
+                </span>
+                <span class="block md:hidden">⚡</span>
+            </div>
+            <div class="col-span-1 py-2 pr-4 text-right">
                 <span class="hidden md:block">
                     {{ translate('tvShows.exclude') }}
                 </span>
@@ -22,11 +30,11 @@
             <div class="col-span-1 px-4 py-2">
                 {{ episode.episodeNumber }}
             </div>
-            <div class="col-span-7 px-4 py-2 md:col-span-5">
+            <div class="col-span-5 px-4 py-2 md:col-span-4">
                 {{ episode.title }}
             </div>
-            <div class="col-span-4 flex justify-between pr-4 md:col-span-5">
-                <div v-if="episode?.fileName" class="flex flex-wrap items-center gap-2">
+            <div class="col-span-4 pr-4 md:col-span-4">
+                <div v-if="episode?.fileName" class="flex flex-wrap items-center gap-2 py-2">
                     <!-- External subtitles (blue badges) -->
                     <ContextMenu
                         v-for="(subtitle, jndex) in getSubtitle(episode.fileName)"
@@ -62,12 +70,22 @@
                         </BadgeComponent>
                     </div>
                 </div>
-                <div class="col-span-1 px-1 py-2 md:col-span-1">
-                    <ToggleButton
-                        v-model="episode.excludeFromTranslation"
-                        size="small"
-                        @toggle:update="() => showStore.exclude(MEDIA_TYPE.EPISODE, episode.id)" />
-                </div>
+            </div>
+            <div class="col-span-1 flex items-center justify-center py-2 md:col-span-2">
+                <button
+                    class="border-accent hover:bg-accent cursor-pointer rounded border p-1 transition-colors"
+                    :disabled="translatingEpisode[episode.id]"
+                    :title="translate('tvShows.translateNow')"
+                    @click="translateEpisode(episode)">
+                    <LoaderCircleIcon v-if="translatingEpisode[episode.id]" class="h-4 w-4 animate-spin" />
+                    <LanguageIcon v-else class="h-4 w-4" />
+                </button>
+            </div>
+            <div class="col-span-1 flex items-center justify-end px-1 py-2 pr-4">
+                <ToggleButton
+                    v-model="episode.excludeFromTranslation"
+                    size="small"
+                    @toggle:update="() => showStore.exclude(MEDIA_TYPE.EPISODE, episode.id)" />
             </div>
         </div>
     </div>
@@ -80,6 +98,7 @@ import BadgeComponent from '@/components/common/BadgeComponent.vue'
 import ContextMenu from '@/components/layout/ContextMenu.vue'
 import ToggleButton from '@/components/common/ToggleButton.vue'
 import LoaderCircleIcon from '@/components/icons/LoaderCircleIcon.vue'
+import LanguageIcon from '@/components/icons/LanguageIcon.vue'
 import { useShowStore } from '@/store/show'
 import services from '@/services'
 
@@ -93,6 +112,29 @@ const showStore = useShowStore()
 
 // Track which streams are currently being extracted
 const extractingStreams = reactive<Record<string, boolean>>({})
+
+// Track which episodes are currently being translated
+const translatingEpisode = reactive<Record<number, boolean>>({})
+
+interface TranslateMediaResponse {
+    translationsQueued: number
+    message: string
+}
+
+const translateEpisode = async (episode: IEpisode) => {
+    translatingEpisode[episode.id] = true
+    try {
+        const response = await services.translate.translateMedia<TranslateMediaResponse>(
+            episode.id,
+            MEDIA_TYPE.EPISODE
+        )
+        console.log(response.message)
+    } catch (error) {
+        console.error('Failed to translate episode:', error)
+    } finally {
+        translatingEpisode[episode.id] = false
+    }
+}
 
 // Fetch embedded subtitles for episodes on mount
 onMounted(async () => {
