@@ -66,14 +66,45 @@ public class BatchFallbackService : IBatchFallbackService
                     var chunkResults = await batchService.TranslateBatchAsync(
                         chunk, sourceLanguage, targetLanguage, cancellationToken);
 
+                    // Record successful translations
                     foreach (var kvp in chunkResults)
                     {
                         results[kvp.Key] = kvp.Value;
                     }
 
-                    _logger.LogDebug(
-                        "{BatchProgress}[{FileId}] Chunk succeeded at split level {Level}: {Count} items translated",
-                        batchProgress, fileIdentifier, splitLevel, chunkResults.Count);
+                    // Detect partial failures where some items in the chunk did not receive a translation
+                    var missingInChunk = chunk
+                        .Where(item =>
+                        {
+                            // Ignore items that have no meaningful content to translate
+                            if (string.IsNullOrWhiteSpace(item.Line))
+                            {
+                                return false;
+                            }
+
+                            if (!chunkResults.TryGetValue(item.Position, out var translated))
+                            {
+                                return true;
+                            }
+
+                            return string.IsNullOrWhiteSpace(translated);
+                        })
+                        .ToList();
+
+                    if (missingInChunk.Count > 0)
+                    {
+                        stillFailed.AddRange(missingInChunk);
+
+                        _logger.LogWarning(
+                            "{BatchProgress}[{FileId}] Chunk had {MissingCount}/{ChunkCount} items with missing/empty translations at split level {Level}. These will be retried with smaller chunks if possible.",
+                            batchProgress, fileIdentifier, missingInChunk.Count, chunk.Count, splitLevel);
+                    }
+                    else
+                    {
+                        _logger.LogDebug(
+                            "{BatchProgress}[{FileId}] Chunk succeeded at split level {Level}: {Count} items translated",
+                            batchProgress, fileIdentifier, splitLevel, chunkResults.Count);
+                    }
                 }
                 catch (OperationCanceledException)
                 {

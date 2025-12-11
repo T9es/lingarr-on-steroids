@@ -195,8 +195,9 @@ public class AutomatedTranslationJob
                     continue;
                 }
 
-                var isProcessed = await _mediaSubtitleProcessor.ProcessMedia(movie, MediaType.Movie);
-                if (isProcessed)
+                var translationsQueued =
+                    await _mediaSubtitleProcessor.ProcessMediaForceAsync(movie, MediaType.Movie, forceProcess: false);
+                if (translationsQueued > 0)
                 {
                     translationsInitiated++;
                 }
@@ -283,8 +284,10 @@ public class AutomatedTranslationJob
                     continue;
                 }
 
-                var isProcessed = await _mediaSubtitleProcessor.ProcessMedia(episode, MediaType.Episode);
-                if (isProcessed)
+                var translationsQueued =
+                    await _mediaSubtitleProcessor.ProcessMediaForceAsync(episode, MediaType.Episode,
+                        forceProcess: false);
+                if (translationsQueued > 0)
                 {
                     translationsInitiated++;
                 }

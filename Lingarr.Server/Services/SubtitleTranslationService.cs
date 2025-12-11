@@ -271,11 +271,23 @@ public class SubtitleTranslationService
             }
         }
         
-        // Check for missing translations and fail if any are found
+        // Check for missing translations (only for entries that had meaningful source text)
         var missingSubtitles = currentBatch
-            .Where(s => s.TranslatedLines == null || 
-                        s.TranslatedLines.Count == 0 || 
-                        s.TranslatedLines.All(string.IsNullOrWhiteSpace))
+            .Where(s =>
+            {
+                var originalText = string.Join(" ",
+                    stripSubtitleFormatting ? s.PlaintextLines : s.Lines);
+
+                // If there is no meaningful original text, we don't require a translation
+                if (string.IsNullOrWhiteSpace(originalText))
+                {
+                    return false;
+                }
+
+                return s.TranslatedLines == null ||
+                       s.TranslatedLines.Count == 0 ||
+                       s.TranslatedLines.All(string.IsNullOrWhiteSpace);
+            })
             .ToList();
             
         if (missingSubtitles.Count > 0)
