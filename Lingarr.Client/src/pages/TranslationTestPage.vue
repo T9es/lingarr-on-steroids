@@ -12,7 +12,74 @@
             <!-- Configuration Panel -->
             <div class="bg-secondary rounded-lg p-4 mb-4">
                 <h2 class="text-lg font-semibold mb-3">{{ translate('translationTest.configuration') }}</h2>
-                
+
+                <!-- Media Search -->
+                <div class="mb-4">
+                    <label class="block text-sm font-medium mb-1">
+                        {{ translate('translationTest.searchMedia') }}
+                    </label>
+                    <input
+                        v-model="searchQuery"
+                        type="text"
+                        :placeholder="translate('translationTest.searchPlaceholder')"
+                        class="bg-primary border-accent w-full rounded border px-3 py-2 text-sm"
+                        :disabled="isRunning" />
+                    <p class="text-secondary-content mt-1 text-xs">
+                        {{ translate('translationTest.searchHelp') }}
+                    </p>
+                    <p v-if="searchError" class="text-error mt-1 text-xs">
+                        {{ searchError }}
+                    </p>
+                </div>
+
+                <!-- Search Results -->
+                <div v-if="searchResults.length" class="mb-4 rounded border border-accent/40 bg-tertiary">
+                    <div
+                        class="border-secondary/40 flex items-center justify-between border-b px-3 py-2 text-xs text-secondary-content">
+                        <span>{{ translate('translationTest.searchResultsTitle') }}</span>
+                        <span v-if="isSearching" class="text-[10px] uppercase tracking-wide">
+                            {{ translate('common.loading') }}
+                        </span>
+                    </div>
+                    <div class="max-h-64 divide-y divide-secondary/40 overflow-y-auto">
+                        <div
+                            v-for="result in searchResults"
+                            :key="`${result.mediaType}-${result.mediaId}`"
+                            class="px-3 py-2">
+                            <p class="text-sm font-semibold">
+                                {{ result.displayTitle }}
+                            </p>
+                            <p class="text-secondary-content mb-2 text-xs">
+                                {{
+                                    result.mediaType === 'Movie'
+                                        ? translate('movies.title')
+                                        : translate('tvShows.episode')
+                                }}
+                            </p>
+                            <div class="flex flex-wrap gap-2">
+                                <button
+                                    v-for="subtitle in result.subtitles"
+                                    :key="subtitle.path"
+                                    type="button"
+                                    class="border-accent hover:bg-accent cursor-pointer rounded border px-2 py-1 text-xs text-primary-content transition-colors"
+                                    @click="applySubtitleFromSearch(result, subtitle)">
+                                    {{ subtitle.language.toUpperCase() || '??' }}
+                                    <span
+                                        v-if="subtitle.caption"
+                                        class="text-primary-content/70">
+                                        - {{ subtitle.caption.toUpperCase() }}
+                                    </span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div
+                    v-else-if="searchQuery.trim().length >= 2 && !isSearching"
+                    class="mb-4 text-xs text-secondary-content">
+                    {{ translate('translationTest.noSearchResults') }}
+                </div>
+
                 <!-- Subtitle File Path -->
                 <div class="mb-4">
                     <label class="block text-sm font-medium mb-1">
@@ -24,6 +91,9 @@
                         :placeholder="translate('translationTest.subtitlePathPlaceholder')"
                         class="bg-primary border-accent w-full rounded border px-3 py-2 text-sm"
                         :disabled="isRunning" />
+                    <p v-if="selectedFromSearch" class="text-secondary-content mt-1 text-xs">
+                        {{ translate('translationTest.selectedFromSearch') }} {{ selectedFromSearch }}
+                    </p>
                 </div>
 
                 <!-- Languages -->
@@ -129,9 +199,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed, nextTick, watch } from 'vue'
 import { useI18n } from '@/plugins/i18n'
+import useDebounce from '@/composables/useDebounce'
 import PageLayout from '@/components/layout/PageLayout.vue'
+import type { ISubtitle } from '@/ts'
 
 interface LogEntry {
     level: string
@@ -157,6 +229,20 @@ const isRunning = ref(false)
 const logs = ref<LogEntry[]>([])
 const result = ref<TestResult | null>(null)
 const logContainer = ref<HTMLElement | null>(null)
+
+interface SearchResult {
+    displayTitle: string
+    mediaType: 'Movie' | 'Episode'
+    mediaId: number
+    subtitles: ISubtitle[]
+}
+
+const searchQuery = ref('')
+const searchResults = ref<SearchResult[]>([])
+const isSearching = ref(false)
+const searchError = ref<string | null>(null)
+const selectedFromSearch = ref<string | null>(null)
+let lastSearchToken = ''
 
 const canStart = computed(() => {
     return subtitlePath.value.trim() !== '' && 
@@ -185,6 +271,77 @@ function getLogLevelClass(level: string): string {
 function clearLogs() {
     logs.value = []
     result.value = null
+}
+
+const performSearch = useDebounce(async (value: string) => {
+    const trimmed = value.trim()
+    const token = `${Date.now()}-${trimmed}`
+    lastSearchToken = token
+
+    if (trimmed.length < 2) {
+        searchResults.value = []
+        searchError.value = null
+        isSearching.value = false
+        return
+    }
+
+    isSearching.value = true
+    searchError.value = null
+
+    try {
+        const response = await fetch(
+            `/api/test-translation/search?query=${encodeURIComponent(trimmed)}`
+        )
+        if (!response.ok) {
+            throw new Error(`Search failed with status ${response.status}`)
+        }
+
+        const data = (await response.json()) as SearchResult[]
+
+        // Drop out-of-order responses
+        if (token !== lastSearchToken) {
+            return
+        }
+
+        searchResults.value = data
+    } catch (error) {
+        console.error('Search failed', error)
+        searchError.value =
+            error instanceof Error ? error.message : 'Failed to search media for test translation.'
+        searchResults.value = []
+    } finally {
+        if (token === lastSearchToken) {
+            isSearching.value = false
+        }
+    }
+}, 300)
+
+watch(
+    () => searchQuery.value,
+    (value) => {
+        if (!value) {
+            searchResults.value = []
+            searchError.value = null
+            isSearching.value = false
+            selectedFromSearch.value = null
+            return
+        }
+
+        performSearch(value)
+    }
+)
+
+function applySubtitleFromSearch(result: SearchResult, subtitle: ISubtitle) {
+    subtitlePath.value = subtitle.path
+    if (subtitle.language && subtitle.language.trim() !== '') {
+        sourceLanguage.value = subtitle.language
+    }
+
+    const language = subtitle.language ? subtitle.language.toUpperCase() : '??'
+    const caption = subtitle.caption ? subtitle.caption.toUpperCase() : ''
+    selectedFromSearch.value = caption
+        ? `${result.displayTitle} • ${language} • ${caption}`
+        : `${result.displayTitle} • ${language}`
 }
 
 async function scrollToBottom() {
