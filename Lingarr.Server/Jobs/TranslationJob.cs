@@ -8,7 +8,6 @@ using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models.FileSystem;
-using Lingarr.Server.Models;
 using Lingarr.Server.Services;
 using Lingarr.Server.Services.Subtitle;
 using Microsoft.EntityFrameworkCore;
@@ -254,26 +253,6 @@ public class TranslationJob
                 _batchFallbackService);
             var subtitles = await _subtitleService.ReadSubtitles(request.SubtitleToTranslate);
             AddRequestLog("Information", $"Loaded subtitle file with {subtitles.Count} entries for translation");
-
-            // If the subtitle file parsed to zero entries, attempt a fallback to embedded subtitles (if available)
-            if (subtitles.Count == 0 && request.MediaId != null && string.IsNullOrEmpty(temporaryFilePath))
-            {
-                var emptyMessage =
-                    $"Subtitle file appears to contain no readable entries: {request.SubtitleToTranslate}. Attempting embedded subtitle extraction as fallback.";
-                _logger.LogWarning(emptyMessage);
-                AddRequestLog("Warning", emptyMessage);
-
-                var fallbackPath = await TryExtractEmbeddedSubtitle(request);
-                if (!string.IsNullOrEmpty(fallbackPath))
-                {
-                    request.SubtitleToTranslate = fallbackPath;
-                    temporaryFilePath = fallbackPath;
-
-                    subtitles = await _subtitleService.ReadSubtitles(fallbackPath);
-                    AddRequestLog("Information",
-                        $"Loaded fallback embedded subtitle file with {subtitles.Count} entries for translation");
-                }
-            }
             
             // Parse batch fallback settings
             var enableBatchFallback = settings[SettingKeys.Translation.EnableBatchFallback] == "true";
@@ -315,16 +294,6 @@ public class TranslationJob
                     AddRequestLog("Information",
                         $"[{fileIdentifier}] Cleaned ASS drawing commands from source subtitle file");
                 }
-            }
-
-            // If no subtitles remain after parsing and optional ASS drawing filtering, cancel gracefully
-            if (subtitles.Count == 0)
-            {
-                var noContentMessage =
-                    $"[{fileIdentifier}] Subtitle file has no subtitle entries remaining after parsing and filtering; cancelling translation.";
-                _logger.LogWarning(noContentMessage);
-                AddRequestLog("Warning", noContentMessage);
-                throw new TaskCanceledException(noContentMessage);
             }
             
             List<SubtitleItem> translatedSubtitles;
@@ -387,7 +356,7 @@ public class TranslationJob
                 _subtitleService.AddTranslatorInfo(serviceType, translatedSubtitles, translationService);
             }
 
-            if (stripSubtitleFormatting && translatedSubtitles.Count > 0)
+            if (stripSubtitleFormatting)
             {
                 var format = translatedSubtitles[0].SsaFormat;
                 if (format != null)
@@ -620,8 +589,7 @@ public class TranslationJob
     
     /// <summary>
     /// Attempts to find and extract an embedded subtitle from the media file.
-    /// Iterates through configured source languages in priority order, selecting
-    /// dialogue tracks (not Signs/Songs) when available.
+    /// Prioritizes text-based subtitles that match the source language.
     /// </summary>
     /// <param name="request">The translation request containing media ID and source language</param>
     /// <returns>Path to the extracted subtitle file, or null if no suitable embedded subtitle was found</returns>
@@ -635,7 +603,7 @@ public class TranslationJob
 
         try
         {
-            List<EmbeddedSubtitle>? embeddedSubtitles = null;
+            EmbeddedSubtitle? bestCandidate = null;
             string? mediaPath = null;
             string? outputDir = null;
 
@@ -665,7 +633,7 @@ public class TranslationJob
                     await _dbContext.Entry(episode).Collection(e => e.EmbeddedSubtitles).LoadAsync();
                 }
 
-                embeddedSubtitles = episode.EmbeddedSubtitles;
+                bestCandidate = FindBestEmbeddedSubtitle(episode.EmbeddedSubtitles, request.SourceLanguage);
                 mediaPath = Path.Combine(episode.Path, episode.FileName);
                 outputDir = episode.Path;
             }
@@ -694,7 +662,7 @@ public class TranslationJob
                     await _dbContext.Entry(movie).Collection(m => m.EmbeddedSubtitles).LoadAsync();
                 }
 
-                embeddedSubtitles = movie.EmbeddedSubtitles;
+                bestCandidate = FindBestEmbeddedSubtitle(movie.EmbeddedSubtitles, request.SourceLanguage);
                 mediaPath = Path.Combine(movie.Path, movie.FileName);
                 outputDir = movie.Path;
             }
@@ -704,24 +672,15 @@ public class TranslationJob
                 return null;
             }
 
-            // Fetch ordered source languages from settings
-            var sourceLanguages = await _settings.GetSettingAsJson<SourceLanguage>(SettingKeys.Translation.SourceLanguages);
-            var orderedSourceLanguageCodes = sourceLanguages.Select(l => l.Code).ToList();
-            
-            // Find best subtitle using multi-language priority
-            var result = FindBestEmbeddedSubtitle(embeddedSubtitles, orderedSourceLanguageCodes);
-            
-            if (!result.Success)
+            if (bestCandidate == null)
             {
-                _logger.LogWarning(result.FailureReason);
-                throw new InvalidOperationException(result.FailureReason);
+                _logger.LogInformation("No suitable embedded subtitle found for source language: {Language}", request.SourceLanguage);
+                return null;
             }
-            
-            var bestCandidate = result.Subtitle!;
 
             _logger.LogInformation(
-                "Found embedded subtitle candidate: Stream {StreamIndex}, Language: {Language}, Title: {Title}, Codec: {Codec}",
-                bestCandidate.StreamIndex, bestCandidate.Language ?? "unknown", bestCandidate.Title ?? "untitled", bestCandidate.CodecName);
+                "Found embedded subtitle candidate: Stream {StreamIndex}, Language: {Language}, Codec: {Codec}",
+                bestCandidate.StreamIndex, bestCandidate.Language ?? "unknown", bestCandidate.CodecName);
 
             // Extract the subtitle
             var extractedPath = await _extractionService.ExtractSubtitle(
@@ -756,134 +715,40 @@ public class TranslationJob
     }
 
     /// <summary>
-    /// Result of embedded subtitle selection, including success status and failure reason.
+    /// Finds the best embedded subtitle candidate for translation.
+    /// Prioritizes: text-based > matching source language > full/dialogue tracks > defaults > first available.
     /// </summary>
-    private sealed class SubtitleSelectionResult
-    {
-        public bool Success { get; init; }
-        public EmbeddedSubtitle? Subtitle { get; init; }
-        public string? FailureReason { get; init; }
-        
-        public static SubtitleSelectionResult Found(EmbeddedSubtitle subtitle) =>
-            new() { Success = true, Subtitle = subtitle };
-        
-        public static SubtitleSelectionResult Failed(string reason) =>
-            new() { Success = false, FailureReason = reason };
-    }
-    
-    /// <summary>
-    /// Finds the best embedded subtitle candidate for translation using multi-language priority.
-    /// Iterates through configured source languages in order, selecting dialogue tracks (not Signs/Songs).
-    /// </summary>
-    /// <param name="embeddedSubtitles">List of embedded subtitles from the media</param>
-    /// <param name="orderedSourceLanguages">Ordered list of source language codes from settings</param>
-    /// <returns>Selection result with the best subtitle or failure reason</returns>
-    private static SubtitleSelectionResult FindBestEmbeddedSubtitle(
-        List<EmbeddedSubtitle>? embeddedSubtitles, 
-        List<string> orderedSourceLanguages)
+    private static EmbeddedSubtitle? FindBestEmbeddedSubtitle(List<EmbeddedSubtitle>? embeddedSubtitles, string sourceLanguage)
     {
         if (embeddedSubtitles == null || embeddedSubtitles.Count == 0)
         {
-            return SubtitleSelectionResult.Failed("No embedded subtitles found in media file.");
+            return null;
         }
 
         // Only consider text-based subtitles
         var textBased = embeddedSubtitles.Where(s => s.IsTextBased).ToList();
         if (textBased.Count == 0)
         {
-            return SubtitleSelectionResult.Failed("No text-based embedded subtitles found. Only image-based (bitmap) subtitles available.");
+            return null;
         }
 
-        // Track which languages only have Signs/Songs tracks
-        var languagesWithOnlySignsSongs = new List<string>();
-        
-        // Try each configured source language in priority order
-        foreach (var sourceLanguage in orderedSourceLanguages)
-        {
-            var languageMatched = textBased
-                .Where(s => LanguageMatches(s.Language, sourceLanguage))
-                .ToList();
-            
-            if (languageMatched.Count == 0)
-            {
-                continue; // No subtitles for this language, try next
-            }
-            
-            // Score candidates, looking for dialogue tracks (not Signs/Songs)
-            var bestDialogue = FindBestDialogueTrack(languageMatched, sourceLanguage);
-            
-            if (bestDialogue != null)
-            {
-                return SubtitleSelectionResult.Found(bestDialogue);
-            }
-            
-            // Only Signs/Songs for this language, track it and try next language
-            languagesWithOnlySignsSongs.Add(sourceLanguage);
-        }
-        
-        // No dialogue subtitle found in any configured language.
-        // Check if there are dialogue subtitles in OTHER languages (not configured)
-        var configuredLanguages = orderedSourceLanguages.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var otherLanguageSubs = textBased
-            .Where(s => !string.IsNullOrEmpty(s.Language) && 
-                        !configuredLanguages.Any(cfg => LanguageMatches(s.Language, cfg)))
+        // Prefer subtitles whose language matches the configured source language.
+        // This matcher is tolerant of common 2-letter vs 3-letter ISO code variations (e.g. "en" vs "eng").
+        var languageMatched = textBased
+            .Where(s => LanguageMatches(s.Language, sourceLanguage))
             .ToList();
-        
-        // Check if any of those other language tracks have dialogue content
-        var otherDialogueTracks = otherLanguageSubs
-            .Where(s => !IsSignsSongsTrack(s))
-            .ToList();
-        
-        if (otherDialogueTracks.Count > 0)
-        {
-            // Build actionable message
-            var availableLanguages = otherDialogueTracks
-                .Select(s => s.Language)
-                .Where(l => !string.IsNullOrEmpty(l))
-                .Distinct()
-                .ToList();
-            
-            var trackInfo = string.Join(", ", otherDialogueTracks
-                .Take(3)
-                .Select(s => $"'{s.Title ?? "Untitled"}' ({s.Language})"));
-            
-            return SubtitleSelectionResult.Failed(
-                $"No dialogue subtitles found for configured languages [{string.Join(", ", orderedSourceLanguages)}]. " +
-                $"However, dialogue tracks are available in other languages: {trackInfo}. " +
-                $"Add '{string.Join("' or '", availableLanguages)}' to your source languages if you want to use them.");
-        }
-        
-        // Only Signs/Songs tracks available anywhere
-        if (languagesWithOnlySignsSongs.Count > 0)
-        {
-            return SubtitleSelectionResult.Failed(
-                $"Only Signs/Songs subtitle tracks found for configured languages [{string.Join(", ", languagesWithOnlySignsSongs)}]. " +
-                "No full dialogue subtitles available for translation.");
-        }
-        
-        return SubtitleSelectionResult.Failed(
-            $"No subtitles match configured source languages [{string.Join(", ", orderedSourceLanguages)}]. " +
-            $"Available languages: [{string.Join(", ", textBased.Select(s => s.Language ?? "unknown").Distinct())}].");
-    }
-    
-    /// <summary>
-    /// Finds the best dialogue track from a list of candidates, excluding Signs/Songs/karaoke.
-    /// </summary>
-    private static EmbeddedSubtitle? FindBestDialogueTrack(List<EmbeddedSubtitle> candidates, string sourceLanguage)
-    {
+
+        var candidates = languageMatched.Count > 0 ? languageMatched : textBased;
+
+        // Score candidates using title and flag heuristics to avoid "Signs & Songs"/karaoke-only tracks
+        // and favor full dialogue tracks.
         EmbeddedSubtitle? best = null;
         var bestScore = int.MinValue;
-        
+
         foreach (var subtitle in candidates)
         {
-            // Skip Signs/Songs/karaoke tracks entirely
-            if (IsSignsSongsTrack(subtitle))
-            {
-                continue;
-            }
-            
-            var score = ScoreDialogueCandidate(subtitle, sourceLanguage);
-            
+            var score = ScoreSubtitleCandidate(subtitle, sourceLanguage);
+
             if (score > bestScore ||
                 (score == bestScore && best != null && subtitle.StreamIndex < best.StreamIndex))
             {
@@ -891,80 +756,75 @@ public class TranslationJob
                 best = subtitle;
             }
         }
-        
-        return best;
-    }
-    
-    /// <summary>
-    /// Determines if a subtitle track is a Signs/Songs/karaoke-only track.
-    /// </summary>
-    private static bool IsSignsSongsTrack(EmbeddedSubtitle subtitle)
-    {
-        var title = subtitle.Title?.ToLowerInvariant() ?? string.Empty;
-        
-        // Check title for signs/songs indicators
-        if (title.Contains("sign") || title.Contains("song") || title.Contains("karaoke"))
+
+        if (best != null)
         {
-            // But not if it also says "full" (e.g., "Full Subs + Songs")
-            if (!title.Contains("full") && !title.Contains("dialog") && !title.Contains("dialogue"))
-            {
-                return true;
-            }
+            return best;
         }
-        
-        // Forced tracks are often Signs/Songs
-        if (subtitle.IsForced && !title.Contains("full") && !title.Contains("sub"))
+
+        // Fallback: prefer a default text-based subtitle if scoring failed for some reason
+        var defaultSub = candidates.FirstOrDefault(s => s.IsDefault);
+        if (defaultSub != null)
         {
-            return true;
+            return defaultSub;
         }
-        
-        return false;
+
+        // Final fallback: first text-based candidate
+        return candidates.First();
     }
-    
+
     /// <summary>
-    /// Scores a dialogue subtitle candidate based on title and flags.
+    /// Scores an embedded subtitle candidate based on language, title, and flags.
     /// Higher scores indicate better candidates for full dialogue translation.
     /// </summary>
-    private static int ScoreDialogueCandidate(EmbeddedSubtitle subtitle, string sourceLanguage)
+    private static int ScoreSubtitleCandidate(EmbeddedSubtitle subtitle, string sourceLanguage)
     {
         var score = 0;
-        
-        // Language match bonus
+
         if (LanguageMatches(subtitle.Language, sourceLanguage))
         {
             score += 50;
         }
-        
+
+        // Titles that usually indicate full dialogue tracks
         var title = subtitle.Title?.ToLowerInvariant() ?? string.Empty;
-        
-        // Positive indicators for full dialogue tracks
         if (title.Contains("full"))
         {
             score += 25;
         }
-        
+
         if (title.Contains("dialog") || title.Contains("dialogue"))
         {
             score += 20;
         }
-        
+
         if (title.Contains("sub") || title.Contains("subtitle"))
         {
             score += 10;
         }
-        
-        // Prefer non-forced tracks
-        if (!subtitle.IsForced)
+
+        // Titles that typically indicate signs/songs/karaoke-only tracks
+        if (title.Contains("sign") || title.Contains("song") || title.Contains("karaoke"))
+        {
+            score -= 40;
+        }
+
+        // Prefer non-forced tracks for full dialogue; forced tracks are often partial or effect-only.
+        if (subtitle.IsForced)
+        {
+            score -= 10;
+        }
+        else
         {
             score += 5;
         }
-        
-        // Default is a weak positive
+
+        // Being the default stream is a weak positive signal (unless heavily penalized by title heuristics).
         if (subtitle.IsDefault)
         {
-            score += 3;
+            score += 5;
         }
-        
+
         return score;
     }
 
