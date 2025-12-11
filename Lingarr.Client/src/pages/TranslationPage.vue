@@ -189,15 +189,6 @@
                     </div>
 
                     <!-- Full queue table -->
-                    <div class="mt-8 mb-4 flex items-center gap-3">
-                        <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-gray-700 to-gray-600">
-                            <span class="text-sm font-bold text-white">☰</span>
-                        </div>
-                        <h2 class="text-base font-bold uppercase tracking-wide">
-                            {{ translate('translations.queue') }}
-                        </h2>
-                    </div>
-
                     <div class="border-accent hidden border-b font-bold md:grid md:grid-cols-12">
                         <div class="col-span-4 px-4 py-2">
                             {{ translate('translations.title') }}

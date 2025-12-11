@@ -1,1 +1,0 @@
-const n={MOVIE:"Movie",SHOW:"Show",SEASON:"Season",EPISODE:"Episode"},o={PENDING:"Pending",INPROGRESS:"InProgress",COMPLETED:"Completed",FAILED:"Failed",CANCELLED:"Cancelled",INTERRUPTED:"Interrupted"};var e=(E=>(E[E.CANCEL=0]="CANCEL",E[E.REMOVE=1]="REMOVE",E[E.RETRY=2]="RETRY",E))(e||{});export{n as M,o as T,e as a};
