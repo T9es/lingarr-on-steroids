@@ -76,13 +76,10 @@ export const useTranslationRequestStore = defineStore('translateRequest', {
         async getLogs(translationRequestId: number): Promise<ITranslationRequestLog[]> {
             return await services.translationRequest.logs<ITranslationRequestLog[]>(translationRequestId)
         },
-        updateProgress(requestProgress: IRequestProgress) {
-            // Update existing item if found
-            let found = false
+        async updateProgress(requestProgress: IRequestProgress) {
             this.translationRequests.items = this.translationRequests.items.map(
                 (request: ITranslationRequest) => {
                     if (request.id === requestProgress.id) {
-                        found = true
                         return {
                             ...request,
                             status: requestProgress.status,
@@ -93,13 +90,6 @@ export const useTranslationRequestStore = defineStore('translateRequest', {
                     return request
                 }
             )
-            // If not found and status is InProgress, refetch to get the new item
-            if (!found && requestProgress.status === 'InProgress') {
-                this.fetch()
-            }
-        },
-        updateActiveCount(count: number) {
-            this.activeTranslationRequests = count
         },
         clearSelection() {
             this.selectedRequests = []
