@@ -135,6 +135,30 @@ public class TranslationRequestService : ITranslationRequestService
     }
 
     /// <inheritdoc />
+    public async Task<List<TranslationRequest>> GetFailedRequests()
+    {
+        var requests = await _dbContext.TranslationRequests
+            .Where(tr => tr.Status == TranslationStatus.Failed)
+            .OrderByDescending(tr => tr.CompletedAt)
+            .ToListAsync();
+
+        await PopulatePriorityFlagsAsync(requests);
+        return requests;
+    }
+
+    /// <inheritdoc />
+    public async Task<List<TranslationRequest>> GetInProgressRequests()
+    {
+        var requests = await _dbContext.TranslationRequests
+            .Where(tr => tr.Status == TranslationStatus.InProgress)
+            .OrderByDescending(tr => tr.CreatedAt)
+            .ToListAsync();
+
+        await PopulatePriorityFlagsAsync(requests);
+        return requests;
+    }
+
+    /// <inheritdoc />
     public async Task<int> UpdateActiveCount()
     {
         var count = await GetActiveCount();

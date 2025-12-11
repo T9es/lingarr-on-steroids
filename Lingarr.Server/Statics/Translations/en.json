@@ -121,7 +121,10 @@
     "viewLogs": "View Logs",
     "noLogs": "No logs were recorded for this translation.",
     "loadLogsError": "Failed to load logs for this translation.",
-    "close": "Close"
+    "close": "Close",
+    "noActiveTranslations": "No translations currently in progress.",
+    "noFailedTranslations": "No failed translations.",
+    "noQueuedTranslations": "No translations in queue."
   },
   "schedule": {
     "jobName": "Job Name",
@@ -152,7 +155,8 @@
     "statusCancelled": "Cancelled",
     "statusInterrupted": "Interrupted",
     "updateAvailable": "Update {version} is available",
-    "currentVersion": "Version: {version} beta",
+    "currentVersion": "Version: {version}",
+    "basedOnLingarr": "Based on Lingarr",
     "enabled": "Enabled",
     "disabled": "Disabled",
     "saved": "saved",

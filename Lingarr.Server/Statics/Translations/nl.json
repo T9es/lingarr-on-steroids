@@ -121,7 +121,10 @@
     "viewLogs": "Bekijk logs",
     "noLogs": "Geen logs voor deze vertaling.",
     "loadLogsError": "Kon logs voor deze vertaling niet laden.",
-    "close": "Sluiten"
+    "close": "Sluiten",
+    "noActiveTranslations": "Geen actieve vertalingen.",
+    "noFailedTranslations": "Geen mislukte vertalingen.",
+    "noQueuedTranslations": "Geen vertalingen in wachtrij."
   },
   "schedule": {
     "jobName": "Taaknaam",
@@ -152,7 +155,8 @@
     "statusCancelled": "Geannuleerd",
     "statusInterrupted": "Onderbroken",
     "updateAvailable": "Update {version} is beschikbaar",
-    "currentVersion": "Versie: {version} beta",
+    "currentVersion": "Versie: {version}",
+    "basedOnLingarr": "Gebaseerd op Lingarr",
     "enabled": "Actief",
     "disabled": "Inactief",
     "saved": "opgeslagen",

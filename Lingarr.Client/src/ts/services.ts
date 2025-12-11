@@ -84,6 +84,8 @@ export interface IChutesService {
 
 export interface ITranslationRequestService {
     getActiveCount<T>(): Promise<T>
+    getFailedRequests<T>(): Promise<T>
+    getInProgressRequests<T>(): Promise<T>
     requests<T>(
         pageNumber: number,
         searchQuery: string,

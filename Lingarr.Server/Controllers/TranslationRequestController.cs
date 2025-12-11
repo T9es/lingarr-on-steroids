@@ -32,6 +32,32 @@ public class TranslationRequestController : ControllerBase
     }
 
     /// <summary>
+    /// Gets all translation requests with Failed status
+    /// </summary>
+    /// <response code="200">Returns all failed translation requests</response>
+    /// <response code="500">If there was an error retrieving failed requests</response>
+    /// <returns>ActionResult containing the list of failed translation requests</returns>
+    [HttpGet("failed")]
+    public async Task<ActionResult<List<TranslationRequest>>> GetFailedRequests()
+    {
+        var requests = await _translationRequestService.GetFailedRequests();
+        return Ok(requests);
+    }
+
+    /// <summary>
+    /// Gets all translation requests with InProgress status
+    /// </summary>
+    /// <response code="200">Returns all in-progress translation requests</response>
+    /// <response code="500">If there was an error retrieving in-progress requests</response>
+    /// <returns>ActionResult containing the list of in-progress translation requests</returns>
+    [HttpGet("inprogress")]
+    public async Task<ActionResult<List<TranslationRequest>>> GetInProgressRequests()
+    {
+        var requests = await _translationRequestService.GetInProgressRequests();
+        return Ok(requests);
+    }
+
+    /// <summary>
     /// Retrieves a paginated list of translation requests with optional filtering and sorting
     /// </summary>
     /// <param name="searchQuery">Optional search term to filter requests</param>

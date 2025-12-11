@@ -47,7 +47,7 @@
                     alt="poster" />
                 <div
                     v-if="instanceStore.getVersion.currentVersion.length"
-                    class="absolute right-0 bottom-0 flex w-full justify-center p-4">
+                    class="absolute right-0 bottom-0 flex w-full flex-col items-center gap-2 p-4">
                     <BadgeComponent
                         v-if="instanceStore.getVersion.newVersion"
                         classes="text-white border-green-200 bg-green-500/50">
@@ -57,13 +57,21 @@
                             })
                         }}
                     </BadgeComponent>
-                    <BadgeComponent v-else>
+                    <BadgeComponent v-else classes="text-white border-green-200 bg-green-500/50">
                         {{
                             translate('common.currentVersion').format({
                                 version: instanceStore.getVersion.currentVersion
                             })
                         }}
                     </BadgeComponent>
+                    <a
+                        href="https://github.com/lingarr-translate/lingarr"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="pointer-events-auto flex items-center gap-1.5 text-xs text-gray-400 transition-colors hover:text-white">
+                        <GithubIcon class="h-3.5 w-3.5" />
+                        <span>{{ translate('common.basedOnLingarr') }}</span>
+                    </a>
                 </div>
             </div>
         </aside>
@@ -85,6 +93,7 @@ import TimesIcon from '@/components/icons/TimesIcon.vue'
 import BadgeComponent from '@/components/common/BadgeComponent.vue'
 import LanguageIcon from '@/components/icons/LanguageIcon.vue'
 import TestIcon from '@/components/icons/TestIcon.vue'
+import GithubIcon from '@/components/icons/GithubIcon.vue'
 
 const translationRequestStore = useTranslationRequestStore()
 const instanceStore = useInstanceStore()

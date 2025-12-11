@@ -6,13 +6,13 @@ namespace Lingarr.Core;
 
 public static class LingarrVersion
 {
-    public const string Number = "1.0.3";
+    public const string Number = "1.0.0";
 
     private static readonly HttpClient HttpClient = new()
     {
         DefaultRequestHeaders = { { "User-Agent", "LingarrApp" } }
     };
-    private const string GitHubApiUrl = "https://api.github.com/repos/lingarr-translate/lingarr/releases/latest";
+    private const string GitHubApiUrl = "https://api.github.com/repos/T9es/lingarr-on-steroids/releases/latest";
     private static readonly MemoryCache Cache = new(new MemoryCacheOptions());
 
     public static async Task<VersionInfo> CheckForUpdates()

@@ -18,6 +18,8 @@ export const useTranslationRequestStore = defineStore('translateRequest', {
             pageNumber: 0,
             items: []
         },
+        failedRequests: [] as ITranslationRequest[],
+        inProgressRequests: [] as ITranslationRequest[],
         filter: {
             searchQuery: '',
             sortBy: 'CreatedAt',
@@ -35,7 +37,11 @@ export const useTranslationRequestStore = defineStore('translateRequest', {
         },
         getFilter: (state: IUseTranslationRequestStore): IFilter => state.filter,
         getSelectedRequests: (state: IUseTranslationRequestStore): ITranslationRequest[] =>
-            state.selectedRequests
+            state.selectedRequests,
+        getFailedRequests: (state: IUseTranslationRequestStore): ITranslationRequest[] =>
+            state.failedRequests,
+        getInProgressRequests: (state: IUseTranslationRequestStore): ITranslationRequest[] =>
+            state.inProgressRequests
     },
     actions: {
         async setFilter(filterVal: IFilter) {
@@ -51,6 +57,19 @@ export const useTranslationRequestStore = defineStore('translateRequest', {
                 this.filter.sortBy,
                 this.filter.isAscending
             )
+        },
+        async fetchFailedRequests() {
+            this.failedRequests = await services.translationRequest.getFailedRequests<ITranslationRequest[]>()
+        },
+        async fetchInProgressRequests() {
+            this.inProgressRequests = await services.translationRequest.getInProgressRequests<ITranslationRequest[]>()
+        },
+        async fetchAllSections() {
+            await Promise.all([
+                this.fetch(),
+                this.fetchFailedRequests(),
+                this.fetchInProgressRequests()
+            ])
         },
         async setActiveCount(activeTranslationRequests: number) {
             this.activeTranslationRequests = activeTranslationRequests

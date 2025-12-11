@@ -20,6 +20,28 @@ const service = (
                 })
         })
     },
+    getFailedRequests<T>(): Promise<T> {
+        return new Promise((resolve, reject) => {
+            http.get(`${resource}/failed`)
+                .then((response: AxiosResponse<T>) => {
+                    resolve(response.data)
+                })
+                .catch((error: AxiosError) => {
+                    reject(error.response)
+                })
+        })
+    },
+    getInProgressRequests<T>(): Promise<T> {
+        return new Promise((resolve, reject) => {
+            http.get(`${resource}/inprogress`)
+                .then((response: AxiosResponse<T>) => {
+                    resolve(response.data)
+                })
+                .catch((error: AxiosError) => {
+                    reject(error.response)
+                })
+        })
+    },
     requests<T>(
         pageNumber: number,
         searchQuery: string,

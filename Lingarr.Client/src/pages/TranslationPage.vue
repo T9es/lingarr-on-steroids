@@ -72,9 +72,7 @@
 
                 <div class="w-full space-y-4 px-4 py-4">
                     <!-- Active translations -->
-                    <div
-                        v-if="inProgressRequests.length"
-                        class="border-accent bg-secondary rounded-md border p-4 shadow-sm">
+                    <div class="border-accent bg-secondary rounded-md border p-4 shadow-sm">
                         <div class="mb-3 flex items-center justify-between">
                             <h2 class="text-sm font-semibold uppercase tracking-wide">
                                 {{ translate('common.statusInProgress') }}
@@ -84,7 +82,7 @@
                                 {{ translate('common.items') }}
                             </span>
                         </div>
-                        <div class="space-y-3">
+                        <div v-if="inProgressRequests.length" class="space-y-3">
                             <div
                                 v-for="item in inProgressRequests"
                                 :key="`active-${item.id}`"
@@ -116,25 +114,30 @@
                                 </div>
                             </div>
                         </div>
+                        <div v-else class="text-secondary-content py-4 text-center text-sm">
+                            {{ translate('translations.noActiveTranslations') }}
+                        </div>
                     </div>
 
                     <!-- Failed translations -->
-                    <div
-                        v-if="failedRequests.length"
-                        class="border-accent bg-secondary rounded-md border p-4 shadow-sm">
+                    <div class="border-accent bg-secondary rounded-md border p-4 shadow-sm">
                         <div class="mb-3 flex items-center justify-between">
                             <h2 class="text-sm font-semibold uppercase tracking-wide">
                                 {{ translate('common.statusFailed') }}
                             </h2>
                             <button
+                                v-if="failedRequests.length"
                                 class="border-accent text-primary-content hover:bg-accent cursor-pointer rounded-md border px-3 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                                 :disabled="retryingFailed"
                                 @click="retryAllFailed">
                                 {{ translate('common.retry') }}
                                 ({{ failedRequests.length }})
                             </button>
+                            <span v-else class="text-secondary-content text-xs">
+                                0 {{ translate('common.items') }}
+                            </span>
                         </div>
-                        <div class="max-h-64 space-y-3 overflow-y-auto pr-1">
+                        <div v-if="failedRequests.length" class="max-h-64 space-y-3 overflow-y-auto pr-1">
                             <div
                                 v-for="item in failedRequests"
                                 :key="`failed-${item.id}`"
@@ -175,43 +178,58 @@
                                 </div>
                             </div>
                         </div>
+                        <div v-else class="text-secondary-content py-4 text-center text-sm">
+                            {{ translate('translations.noFailedTranslations') }}
+                        </div>
                     </div>
 
-                    <!-- Full queue table -->
-                    <div class="border-accent hidden border-b font-bold md:grid md:grid-cols-12">
-                        <div class="col-span-4 px-4 py-2">
-                            {{ translate('translations.title') }}
+                    <!-- Queued translations -->
+                    <div class="border-accent bg-secondary rounded-md border p-4 shadow-sm">
+                        <div class="mb-3 flex items-center justify-between">
+                            <h2 class="text-sm font-semibold uppercase tracking-wide">
+                                {{ translate('common.statusPending') }}
+                            </h2>
+                            <span class="text-secondary-content text-xs">
+                                {{ queuedRequests.length }}
+                                {{ translate('common.items') }}
+                            </span>
                         </div>
-                        <div class="col-span-1 px-4 py-2">{{ translate('translations.source') }}</div>
-                        <div class="col-span-1 px-4 py-2">{{ translate('translations.target') }}</div>
-                        <div class="col-span-1 px-4 py-2">{{ translate('translations.status') }}</div>
-                        <div class="px-4 py-2" :class="isSelectMode ? 'col-span-1' : 'col-span-2'">
-                            {{ translate('translations.progress') }}
+
+                        <template v-if="queuedRequests.length">
+                        <!-- Queue table header -->
+                        <div class="border-accent hidden border-b font-bold md:grid md:grid-cols-12">
+                            <div class="col-span-5 px-4 py-2">
+                                {{ translate('translations.title') }}
+                            </div>
+                            <div class="col-span-1 px-4 py-2">{{ translate('translations.source') }}</div>
+                            <div class="col-span-1 px-4 py-2">{{ translate('translations.target') }}</div>
+                            <div class="col-span-1 px-4 py-2">{{ translate('translations.status') }}</div>
+                            <div class="col-span-2 px-4 py-2">
+                                {{ translate('translations.completed') }}
+                            </div>
+                            <div class="col-span-1 flex justify-end px-4 py-2">
+                                <ReloadComponent @toggle:update="translationRequestStore.fetch()" />
+                            </div>
+                            <div
+                                v-if="isSelectMode"
+                                class="col-span-1 flex items-center justify-center px-4 py-2">
+                                <CheckboxComponent
+                                    :model-value="translationRequestStore.selectAll"
+                                    @change="translationRequestStore.toggleSelectAll()" />
+                            </div>
                         </div>
-                        <div class="col-span-1 px-4 py-2">
-                            {{ translate('translations.completed') }}
-                        </div>
-                        <div class="col-span-1 flex justify-end px-4 py-2">
-                            <ReloadComponent @toggle:update="translationRequestStore.fetch()" />
-                        </div>
+
+                        <!-- Queue table rows -->
                         <div
-                            v-if="isSelectMode"
-                            class="col-span-1 flex items-center justify-center px-4 py-2">
-                            <CheckboxComponent
-                                :model-value="translationRequestStore.selectAll"
-                                @change="translationRequestStore.toggleSelectAll()" />
-                        </div>
-                    </div>
-                    <div
-                        v-for="item in translationRequests.items"
-                        :key="item.id"
-                        class="md:border-accent rounded-lg py-4 shadow-sm md:grid md:grid-cols-12 md:rounded-none md:border-b md:bg-transparent md:p-0 md:shadow-none">
+                            v-for="item in queuedRequests"
+                            :key="item.id"
+                            class="md:border-accent rounded-lg py-4 shadow-sm md:grid md:grid-cols-12 md:rounded-none md:border-b md:bg-transparent md:p-0 md:shadow-none">
                         <div class="deletable float-right w-5 md:hidden">
                             <TranslationAction
                                 :status="item.status"
                                 :on-action="(action) => handleAction(item, action)" />
                         </div>
-                        <div class="mb-2 md:col-span-4 md:mb-0 md:px-4 md:py-2">
+                        <div class="mb-2 md:col-span-5 md:mb-0 md:px-4 md:py-2">
                             <span :id="`deletable-${item.id}`" class="font-bold md:hidden">
                                 {{ translate('translations.title') }}:&nbsp;
                             </span>
@@ -255,19 +273,7 @@
                             </span>
                             <TranslationStatus :translation-status="item.status" />
                         </div>
-                        <div
-                            class="mb-2 flex items-center md:mb-0 md:px-4 md:py-2"
-                            :class="isSelectMode ? 'md:col-span-1' : 'md:col-span-2'">
-                            <div
-                                v-if="item.status === TRANSLATION_STATUS.INPROGRESS"
-                                class="w-full">
-                                <span class="mr-2 font-bold md:hidden">
-                                    {{ translate('translations.progress') }}:&nbsp;
-                                </span>
-                                <TranslationProgress :progress="item.progress ?? 0" />
-                            </div>
-                        </div>
-                        <div class="mb-2 md:col-span-1 md:mb-0 md:px-4 md:py-2">
+                        <div class="mb-2 md:col-span-2 md:mb-0 md:px-4 md:py-2">
                             <span class="font-bold md:hidden">
                                 {{ translate('translations.completed') }}:&nbsp;
                             </span>
@@ -309,6 +315,11 @@
                                     )
                                 "
                                 @change="translationRequestStore.toggleSelect(item)" />
+                        </div>
+                    </div>
+                        </template>
+                        <div v-else class="text-secondary-content py-4 text-center text-sm">
+                            {{ translate('translations.noQueuedTranslations') }}
                         </div>
                     </div>
                 </div>
@@ -432,15 +443,13 @@ const translationRequests: ComputedRef<IPagedResult<ITranslationRequest>> = comp
     () => translationRequestStore.getTranslationRequests
 )
 
-const inProgressRequests = computed(() =>
-    translationRequests.value.items.filter(
-        (request) => request.status === TRANSLATION_STATUS.INPROGRESS
-    )
-)
+const inProgressRequests = computed(() => translationRequestStore.inProgressRequests)
 
-const failedRequests = computed(() =>
+const failedRequests = computed(() => translationRequestStore.failedRequests)
+
+const queuedRequests = computed(() =>
     translationRequests.value.items.filter(
-        (request) => request.status === TRANSLATION_STATUS.FAILED
+        (request) => request.status === TRANSLATION_STATUS.PENDING
     )
 )
 
@@ -523,7 +532,7 @@ function runTestForItem(item: ITranslationRequest) {
 }
 
 onMounted(async () => {
-    await translationRequestStore.fetch()
+    await translationRequestStore.fetchAllSections()
     hubConnection.value = await signalR.connect(
         'TranslationRequests',
         '/signalr/TranslationRequests'

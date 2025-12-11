@@ -129,4 +129,16 @@ public interface ITranslationRequestService
     /// <param name="translationRequestId">The ID of the translation request</param>
     /// <returns>List of log entries ordered by creation time</returns>
     Task<List<TranslationRequestLog>> GetLogsAsync(int translationRequestId);
+
+    /// <summary>
+    /// Retrieves all translation requests with Failed status.
+    /// </summary>
+    /// <returns>List of all failed translation requests</returns>
+    Task<List<TranslationRequest>> GetFailedRequests();
+
+    /// <summary>
+    /// Retrieves all translation requests with InProgress status.
+    /// </summary>
+    /// <returns>List of all in-progress translation requests</returns>
+    Task<List<TranslationRequest>> GetInProgressRequests();
 }
