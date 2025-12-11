@@ -74,21 +74,27 @@
                     <!-- Active translations -->
                     <div
                         v-if="inProgressRequests.length"
-                        class="border-accent bg-secondary rounded-md border p-4 shadow-sm">
-                        <div class="mb-3 flex items-center justify-between">
-                            <h2 class="text-sm font-semibold uppercase tracking-wide">
-                                {{ translate('common.statusInProgress') }}
-                            </h2>
-                            <span class="text-secondary-content text-xs">
+                        class="relative overflow-hidden rounded-lg border border-blue-500/30 bg-gradient-to-br from-blue-500/10 via-secondary to-purple-500/10 p-4 shadow-lg backdrop-blur-sm">
+                        <div class="absolute inset-0 bg-gradient-to-r from-blue-500/5 to-purple-500/5 animate-pulse" />
+                        <div class="relative mb-4 flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-purple-500">
+                                    <span class="text-sm font-bold text-white">▶</span>
+                                </div>
+                                <h2 class="text-base font-bold uppercase tracking-wide">
+                                    {{ translate('common.statusInProgress') }}
+                                </h2>
+                            </div>
+                            <span class="rounded-full bg-gradient-to-r from-blue-500 to-purple-500 px-3 py-1 text-xs font-bold text-white shadow-lg">
                                 {{ inProgressRequests.length }}
                                 {{ translate('common.items') }}
                             </span>
                         </div>
-                        <div class="space-y-3">
+                        <div class="relative space-y-3">
                             <div
                                 v-for="item in inProgressRequests"
                                 :key="`active-${item.id}`"
-                                class="border-secondary/40 bg-tertiary flex flex-col gap-2 rounded-md border px-3 py-2 md:flex-row md:items-center md:justify-between">
+                                class="group relative overflow-hidden rounded-lg border border-blue-500/20 bg-tertiary/80 px-4 py-3 shadow-md transition-all duration-300 hover:border-blue-500/40 hover:shadow-blue-500/10 md:flex md:items-center md:justify-between">
                                 <div class="space-y-1">
                                     <div class="flex items-center gap-2">
                                         <span class="font-semibold">
@@ -108,9 +114,9 @@
                                         <TranslationStatus :translation-status="item.status" />
                                     </div>
                                 </div>
-                                <div class="flex w-full items-center gap-2 md:w-1/2">
+                                <div class="flex w-full items-center gap-3 md:w-1/2">
                                     <TranslationProgress :progress="item.progress ?? 0" />
-                                    <span class="text-secondary-content text-xs min-w-[3rem] text-right">
+                                    <span class="min-w-[3.5rem] rounded-full bg-secondary/80 px-2 py-0.5 text-center text-xs font-semibold text-primary-content">
                                         {{ (item.progress ?? 0).toString() }}%
                                     </span>
                                 </div>
@@ -121,24 +127,29 @@
                     <!-- Failed translations -->
                     <div
                         v-if="failedRequests.length"
-                        class="border-accent bg-secondary rounded-md border p-4 shadow-sm">
-                        <div class="mb-3 flex items-center justify-between">
-                            <h2 class="text-sm font-semibold uppercase tracking-wide">
-                                {{ translate('common.statusFailed') }}
-                            </h2>
+                        class="relative overflow-hidden rounded-lg border border-red-500/30 bg-gradient-to-br from-red-500/10 via-secondary to-orange-500/10 p-4 shadow-lg backdrop-blur-sm">
+                        <div class="relative mb-4 flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-red-500 to-orange-500">
+                                    <span class="text-sm font-bold text-white">✕</span>
+                                </div>
+                                <h2 class="text-base font-bold uppercase tracking-wide">
+                                    {{ translate('common.statusFailed') }}
+                                </h2>
+                            </div>
                             <button
-                                class="border-accent text-primary-content hover:bg-accent cursor-pointer rounded-md border px-3 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+                                class="flex items-center gap-2 rounded-full bg-gradient-to-r from-red-500 to-orange-500 px-4 py-1.5 text-xs font-bold text-white shadow-lg transition-all duration-300 hover:shadow-red-500/30 hover:scale-105 disabled:cursor-not-allowed disabled:opacity-60"
                                 :disabled="retryingFailed"
                                 @click="retryAllFailed">
-                                {{ translate('common.retry') }}
-                                ({{ failedRequests.length }})
+                                <span v-if="retryingFailed" class="animate-spin">⟳</span>
+                                <span>{{ translate('common.retry') }} ({{ failedRequests.length }})</span>
                             </button>
                         </div>
-                        <div class="max-h-64 space-y-3 overflow-y-auto pr-1">
+                        <div class="max-h-64 space-y-3 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-red-500/20 scrollbar-track-transparent">
                             <div
                                 v-for="item in failedRequests"
                                 :key="`failed-${item.id}`"
-                                class="border-secondary/40 bg-tertiary flex flex-col gap-2 rounded-md border px-3 py-2 md:flex-row md:items-center md:justify-between">
+                                class="group relative overflow-hidden rounded-lg border border-red-500/20 bg-tertiary/80 px-4 py-3 shadow-md transition-all duration-300 hover:border-red-500/40 md:flex md:items-center md:justify-between">
                                 <div>
                                     <div class="flex items-center gap-2">
                                         <span class="font-semibold">
@@ -418,6 +429,9 @@ const signalR = useSignalR()
 const hubConnection = ref<Hub>()
 const translationRequestStore = useTranslationRequestStore()
 const testStore = useTestTranslationStore()
+const requestActiveCallback = (payload: { count: number }) => {
+    translationRequestStore.updateActiveCount(payload.count)
+}
 
 const logsModalOpen = ref(false)
 const logsLoading = ref(false)
@@ -524,6 +538,7 @@ function runTestForItem(item: ITranslationRequest) {
 
 onMounted(async () => {
     await translationRequestStore.fetch()
+    await translationRequestStore.getActiveCount()
     hubConnection.value = await signalR.connect(
         'TranslationRequests',
         '/signalr/TranslationRequests'
@@ -531,10 +546,12 @@ onMounted(async () => {
 
     await hubConnection.value.joinGroup({ group: 'TranslationRequests' })
     hubConnection.value.on('RequestProgress', translationRequestStore.updateProgress)
+    hubConnection.value.on('RequestActive', requestActiveCallback)
 })
 
 onUnmounted(async () => {
     hubConnection.value?.off('RequestProgress', translationRequestStore.updateProgress)
+    hubConnection.value?.off('RequestActive', requestActiveCallback)
 })
 
 const isSelectMode = ref(false)
