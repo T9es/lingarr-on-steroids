@@ -99,21 +99,6 @@
                                 ? translate('common.enabled')
                                 : translate('common.disabled')
                         }}
-                </ToggleButton>
-
-                <div class="flex flex-col space-x-2">
-                    <span class="font-semibold">
-                        {{ translate('settings.subtitle.skipSignsSongs') }}
-                    </span>
-                    {{ translate('settings.subtitle.skipSignsSongsDescription') }}
-                </div>
-                <ToggleButton v-model="skipSignsSongs">
-                    <span class="text-primary-content text-sm font-medium">
-                        {{
-                            skipSignsSongs == 'true'
-                                ? translate('common.enabled')
-                                : translate('common.disabled')
-                        }}
                     </span>
                 </ToggleButton>
 
@@ -249,14 +234,6 @@ const cleanSourceAssDrawings = computed({
     get: (): string => settingsStore.getSetting(SETTINGS.CLEAN_SOURCE_ASS_DRAWINGS) as string ?? 'false',
     set: (newValue: string): void => {
         settingsStore.updateSetting(SETTINGS.CLEAN_SOURCE_ASS_DRAWINGS, newValue, true)
-        saveNotification.value?.show()
-    }
-})
-
-const skipSignsSongs = computed({
-    get: (): string => settingsStore.getSetting(SETTINGS.SKIP_SIGNS_SONGS_EMBEDDED) as string ?? 'true',
-    set: (newValue: string): void => {
-        settingsStore.updateSetting(SETTINGS.SKIP_SIGNS_SONGS_EMBEDDED, newValue, true)
         saveNotification.value?.show()
     }
 })

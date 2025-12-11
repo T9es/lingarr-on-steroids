@@ -708,12 +708,8 @@ public class TranslationJob
             var sourceLanguages = await _settings.GetSettingAsJson<SourceLanguage>(SettingKeys.Translation.SourceLanguages);
             var orderedSourceLanguageCodes = sourceLanguages.Select(l => l.Code).ToList();
             
-            // Fetch skip Signs/Songs setting (defaults to true if not set)
-            var skipSignsSongsSetting = await _settings.GetSetting(SettingKeys.SubtitleExtraction.SkipSignsSongs);
-            var skipSignsSongs = skipSignsSongsSetting != "false"; // Default to true
-            
             // Find best subtitle using multi-language priority
-            var result = FindBestEmbeddedSubtitle(embeddedSubtitles, orderedSourceLanguageCodes, skipSignsSongs);
+            var result = FindBestEmbeddedSubtitle(embeddedSubtitles, orderedSourceLanguageCodes);
             
             if (!result.Success)
             {
@@ -777,16 +773,14 @@ public class TranslationJob
     
     /// <summary>
     /// Finds the best embedded subtitle candidate for translation using multi-language priority.
-    /// Iterates through configured source languages in order, optionally skipping Signs/Songs tracks.
+    /// Iterates through configured source languages in order, selecting dialogue tracks (not Signs/Songs).
     /// </summary>
     /// <param name="embeddedSubtitles">List of embedded subtitles from the media</param>
     /// <param name="orderedSourceLanguages">Ordered list of source language codes from settings</param>
-    /// <param name="skipSignsSongs">When true, skip Signs/Songs/karaoke tracks; when false, allow them</param>
     /// <returns>Selection result with the best subtitle or failure reason</returns>
     private static SubtitleSelectionResult FindBestEmbeddedSubtitle(
         List<EmbeddedSubtitle>? embeddedSubtitles, 
-        List<string> orderedSourceLanguages,
-        bool skipSignsSongs)
+        List<string> orderedSourceLanguages)
     {
         if (embeddedSubtitles == null || embeddedSubtitles.Count == 0)
         {
@@ -800,7 +794,7 @@ public class TranslationJob
             return SubtitleSelectionResult.Failed("No text-based embedded subtitles found. Only image-based (bitmap) subtitles available.");
         }
 
-        // Track which languages only have Signs/Songs tracks (only relevant if skipping)
+        // Track which languages only have Signs/Songs tracks
         var languagesWithOnlySignsSongs = new List<string>();
         
         // Try each configured source language in priority order
@@ -815,14 +809,12 @@ public class TranslationJob
                 continue; // No subtitles for this language, try next
             }
             
-            // Score candidates
-            var bestTrack = skipSignsSongs 
-                ? FindBestDialogueTrack(languageMatched, sourceLanguage) 
-                : FindBestTrackIncludingSignsSongs(languageMatched, sourceLanguage);
+            // Score candidates, looking for dialogue tracks (not Signs/Songs)
+            var bestDialogue = FindBestDialogueTrack(languageMatched, sourceLanguage);
             
-            if (bestTrack != null)
+            if (bestDialogue != null)
             {
-                return SubtitleSelectionResult.Found(bestTrack);
+                return SubtitleSelectionResult.Found(bestDialogue);
             }
             
             // Only Signs/Songs for this language, track it and try next language
@@ -973,85 +965,6 @@ public class TranslationJob
             score += 3;
         }
         
-        return score;
-    }
-
-    /// <summary>
-    /// Finds the best track, allowing Signs/Songs but penalizing them.
-    /// Used when the user has disabled "Skip Signs/Songs".
-    /// </summary>
-    private static EmbeddedSubtitle? FindBestTrackIncludingSignsSongs(List<EmbeddedSubtitle> candidates, string sourceLanguage)
-    {
-        EmbeddedSubtitle? best = null;
-        var bestScore = int.MinValue;
-        
-        foreach (var subtitle in candidates)
-        {
-            var score = ScoreSubtitleCandidate(subtitle, sourceLanguage);
-            
-            if (score > bestScore ||
-                (score == bestScore && best != null && subtitle.StreamIndex < best.StreamIndex))
-            {
-                bestScore = score;
-                best = subtitle;
-            }
-        }
-        
-        return best;
-    }
-
-    /// <summary>
-    /// Scores an embedded subtitle candidate based on language, title, and flags.
-    /// Penalizes Signs/Songs but allows them to be selected if they are the best option.
-    /// </summary>
-    private static int ScoreSubtitleCandidate(EmbeddedSubtitle subtitle, string sourceLanguage)
-    {
-        var score = 0;
-
-        if (LanguageMatches(subtitle.Language, sourceLanguage))
-        {
-            score += 50;
-        }
-
-        // Titles that usually indicate full dialogue tracks
-        var title = subtitle.Title?.ToLowerInvariant() ?? string.Empty;
-        if (title.Contains("full"))
-        {
-            score += 25;
-        }
-
-        if (title.Contains("dialog") || title.Contains("dialogue"))
-        {
-            score += 20;
-        }
-
-        if (title.Contains("sub") || title.Contains("subtitle"))
-        {
-            score += 10;
-        }
-
-        // Titles that typically indicate signs/songs/karaoke-only tracks
-        if (title.Contains("sign") || title.Contains("song") || title.Contains("karaoke"))
-        {
-            score -= 40;
-        }
-
-        // Prefer non-forced tracks for full dialogue; forced tracks are often partial or effect-only.
-        if (subtitle.IsForced)
-        {
-            score -= 10;
-        }
-        else
-        {
-            score += 5;
-        }
-
-        // Being the default stream is a weak positive signal (unless heavily penalized by title heuristics).
-        if (subtitle.IsDefault)
-        {
-            score += 5;
-        }
-
         return score;
     }
 
