@@ -105,15 +105,69 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             return false;
         }
 
-        var sourceLanguage = existingLanguages.FirstOrDefault(lang => sourceLanguages.Contains(lang));
-        if (sourceLanguage != null && targetLanguages.Any())
+        string? tempSourcePath = null;
+        try
         {
-            // If ignoreCaptions is disabled, prefer non-caption source subtitles, but fallback to caption subtitles if no alternative exists
-            var sourceSubtitle = ignoreCaptions == "true"
-                ? subtitles.FirstOrDefault(s => s.Language == sourceLanguage && string.IsNullOrEmpty(s.Caption)) 
-                    ?? subtitles.FirstOrDefault(s => s.Language == sourceLanguage)
-                : subtitles.FirstOrDefault(s => s.Language == sourceLanguage);
+            var sourceLanguage = existingLanguages.FirstOrDefault(lang => sourceLanguages.Contains(lang));
+            Subtitles? sourceSubtitle = null;
+
+            if (sourceLanguage != null)
+            {
+               sourceSubtitle = ignoreCaptions == "true"
+                    ? subtitles.FirstOrDefault(s => s.Language == sourceLanguage && string.IsNullOrEmpty(s.Caption)) 
+                        ?? subtitles.FirstOrDefault(s => s.Language == sourceLanguage)
+                    : subtitles.FirstOrDefault(s => s.Language == sourceLanguage);
+            }
+
+            // Fallback: If no external source found (even if sourceLanguage was detected but file missing?)
+            // Actually, existingLanguages comes from files. So if sourceLanguage != null, the file exists.
+            // But if existingLanguages DOES NOT contain sourceLanguage, sourceLanguage is null.
+            // So we check if validSource is missing.
+            
+            if (sourceSubtitle == null)
+            {
+                _logger.LogInformation("No external source subtitle found for {FileName}. Checking for embedded subtitles for validation...", _media.FileName);
                 
+                // Logic to extract embedded subtitle
+                var sourceLanguageModels = await _settingService.GetSettingAsJson<SourceLanguage>(SettingKeys.Translation.SourceLanguages);
+                var configuredSourceLanguages = sourceLanguageModels.Select(lang => lang.Code).Where(c => !string.IsNullOrWhiteSpace(c)).ToList();
+
+                var embeddedSubtitles = await ProbeEmbeddedSubtitlesForCurrentMedia();
+                
+                if (embeddedSubtitles != null && embeddedSubtitles.Any())
+                {
+                     var textBasedSubs = embeddedSubtitles.Where(s => s.IsTextBased).ToList();
+                     var bestMatch = SubtitleLanguageHelper.FindBestMatch(textBasedSubs, configuredSourceLanguages);
+                     
+                     if (bestMatch.Subtitle != null)
+                     {
+                         var tempDir = Path.GetTempPath();
+                         var tempFileName = $"lingarr_temp_source_{Guid.NewGuid()}.{bestMatch.MatchedLanguage}.srt";
+                         
+                         tempSourcePath = await _extractionService.ExtractSubtitle(
+                             _media.Path, 
+                             bestMatch.Subtitle.StreamIndex, 
+                             tempDir, 
+                             "srt", 
+                             bestMatch.MatchedLanguage);
+                             
+                         if (tempSourcePath != null)
+                         {
+                             // Create a temporary Subtitles object
+                             sourceSubtitle = new Subtitles
+                             {
+                                 Path = tempSourcePath,
+                                 Language = bestMatch.MatchedLanguage,
+                                 Format = "srt",
+                                 FileName = Path.GetFileName(tempSourcePath)
+                             };
+                             sourceLanguage = bestMatch.MatchedLanguage;
+                             _logger.LogInformation("Extracted temporary source subtitle for validation: {TempPath}", tempSourcePath);
+                         }
+                     }
+                }
+            }
+
             if (sourceSubtitle != null)
             {
                 // Get languages that don't yet exist to validate whether captions in those languages are available
@@ -152,11 +206,28 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
 
                     if (targetLanguagesWithCaptions.Any())
                     {
-                        _logger.LogInformation(
-                            "Translation skipped because captions exist for target languages: |Green|{CaptionLanguages}|/Green| and ignoreCaptions is disabled",
-                            string.Join(", ", targetLanguagesWithCaptions));
-                        await UpdateHash();
-                        return false;
+                        // Remove languages that have captions from languagesToTranslate if ignoreCaptions is true
+                        // Actually logic above just returns. But if we have corrupt languages, maybe we want to continue?
+                        // Original logic returns if ANY valid caption exists? No, it returns if target exists w/ caption.
+                        // Let's keep original logic strictness for now.
+                        
+                        // BUT: corruptLanguages might NEED re-translation. If a corrupt subtitle has a caption, do we skip it?
+                        // If it's corrupt, it's corrupt.
+                        
+                        var skipped = targetLanguagesWithCaptions.Except(corruptLanguages).ToList();
+                        if (skipped.Any())
+                        {
+                            _logger.LogInformation(
+                                "Translation skipped because captions exist for target languages: |Green|{CaptionLanguages}|/Green| and ignoreCaptions is disabled",
+                                string.Join(", ", skipped));
+                            
+                           // If all targets are skipped, return.
+                           if (!languagesToTranslate.Except(skipped).Any())
+                           {
+                               await UpdateHash();
+                               return false;
+                           }
+                        }
                     }
                 }
 
@@ -176,7 +247,10 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                     {
                         MediaId = _media.Id,
                         MediaType = _mediaType,
-                        SubtitlePath = sourceSubtitle.Path,
+                        SubtitlePath = (tempSourcePath != null) ? null : sourceSubtitle.Path, // If temp, use NULL so Job extracts fresh? Or use temp? 
+                        // IMPORTANT: If we use temp path, the Job might fail if temp is deleted.
+                        // Ideally, we pass NULL so the Job does its own extraction. 
+                        // We ONLY extracted temp for VALIDATION.
                         TargetLanguage = targetLanguage,
                         SourceLanguage = sourceLanguage,
                         SubtitleFormat = sourceSubtitle.Format
@@ -198,19 +272,21 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             await UpdateHash();
             return false;
         }
-
-        _logger.LogWarning(
-            "No valid source language or target languages found for media |Green|{FileName}|/Green|. " +
-            "Existing languages: |Red|{ExistingLanguages}|/Red|, " +
-            "Source languages: |Red|{SourceLanguages}|/Red|, " +
-            "Target languages: |Red|{TargetLanguages}|/Red|",
-            string.Join(", ", _media?.FileName),
-            string.Join(", ", existingLanguages),
-            string.Join(", ", sourceLanguages),
-            string.Join(", ", targetLanguages));
-
-        await UpdateHash();
-        return false;
+        finally
+        {
+            if (tempSourcePath != null && File.Exists(tempSourcePath))
+            {
+                try 
+                { 
+                    File.Delete(tempSourcePath); 
+                    _logger.LogDebug("Deleted temporary validation subtitle: {TempPath}", tempSourcePath);
+                }
+                catch (Exception ex) 
+                {
+                    _logger.LogWarning(ex, "Failed to delete temporary validation subtitle: {TempPath}", tempSourcePath);
+                }
+            }
+        }
     }
 
     /// <summary>
@@ -235,7 +311,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         var sourceLangs = string.Join(",", sourceLanguages.OrderBy(l => l));
         var targetLangs = string.Join(",", targetLanguages.OrderBy(l => l));
         
-        var hashInput = $"{subtitlePaths}|{sourceLangs}|{targetLangs}|{ignoreCaptions}";
+        var hashInput = $"{subtitlePaths}|{sourceLangs}|{targetLangs}|{ignoreCaptions}|v2";
 	        var hashBytes = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(hashInput));
 	        return Convert.ToBase64String(hashBytes);
 	    }
@@ -255,7 +331,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
 	        var sources = string.Join(",", configuredSourceLanguages.OrderBy(l => l));
 	        var targets = string.Join(",", targetLanguages.OrderBy(l => l));
 
-	        var hashInput = $"{string.Join("|", streamTokens)}|{sources}|{targets}";
+	        var hashInput = $"{string.Join("|", streamTokens)}|{sources}|{targets}|v2";
 	        var hashBytes = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(hashInput));
 	        return Convert.ToBase64String(hashBytes);
 	    }
@@ -461,8 +537,12 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             _logger.LogWarning("No source subtitle file found for language: |Green|{SourceLanguage}|/Green|",
                 sourceLanguage);
 
-            await UpdateHash();
-            return 0;
+            _logger.LogInformation(
+                "No external source subtitle found for {FileName}. Checking for embedded subtitles...",
+                _media.FileName);
+            
+            // Try to queue translation jobs for embedded subtitle extraction as fallback
+            return await TryQueueEmbeddedSubtitleTranslation(_media, _mediaType, forceTranslation, forcePriority);
         }
 
         _logger.LogWarning(
@@ -470,13 +550,19 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             "Existing languages: |Red|{ExistingLanguages}|/Red|, " +
             "Source languages: |Red|{SourceLanguages}|/Red|, " +
             "Target languages: |Red|{TargetLanguages}|/Red|",
-            string.Join(", ", _media?.FileName),
+            _media?.FileName ?? "Unknown",
             string.Join(", ", existingLanguages),
             string.Join(", ", sourceLanguages),
             string.Join(", ", targetLanguages));
 
-        await UpdateHash();
-        return 0;
+
+
+        _logger.LogInformation(
+            "No valid external processing path for {FileName}. Checking for embedded subtitles...",
+            _media?.FileName ?? "Unknown");
+            
+        // Final fallback: try embedded
+        return await TryQueueEmbeddedSubtitleTranslation(_media, _mediaType, forceTranslation, forcePriority);
     }
     
     /// <summary>
@@ -709,6 +795,45 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
 	        await UpdateHash();
 	        return translationsQueued;
 	    }
+
+	    /// <summary>
+    /// Probes and retrieves embedded subtitles for the currently processing media.
+    /// Ensures the database is synced with the file's current state.
+    /// </summary>
+    private async Task<List<EmbeddedSubtitle>?> ProbeEmbeddedSubtitlesForCurrentMedia()
+    {
+        if (_media == null) return null;
+
+        if (_mediaType == MediaType.Episode)
+        {
+            var episode = await _dbContext.Episodes
+                .Include(e => e.EmbeddedSubtitles)
+                .FirstOrDefaultAsync(e => e.Id == _media.Id);
+                
+            if (episode != null)
+            {
+                await _extractionService.SyncEmbeddedSubtitles(episode);
+                await _dbContext.Entry(episode).Collection(e => e.EmbeddedSubtitles).LoadAsync();
+                return episode.EmbeddedSubtitles;
+            }
+        }
+        else if (_mediaType == MediaType.Movie)
+        {
+            var movie = await _dbContext.Movies
+                .Include(m => m.EmbeddedSubtitles)
+                .FirstOrDefaultAsync(m => m.Id == _media.Id);
+                
+            if (movie != null)
+            {
+                await _extractionService.SyncEmbeddedSubtitles(movie);
+                await _dbContext.Entry(movie).Collection(m => m.EmbeddedSubtitles).LoadAsync();
+                return movie.EmbeddedSubtitles;
+            }
+        }
+        
+        return null;
+    }
+
 
     private async Task<bool> HasActiveRequestAsync(
         int mediaId,

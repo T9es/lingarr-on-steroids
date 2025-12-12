@@ -1,4 +1,5 @@
 ﻿using Hangfire;
+using Microsoft.EntityFrameworkCore;
 using Lingarr.Core.Data;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Filters;
@@ -48,12 +49,16 @@ public class SyncMovieJob
 
             _logger.LogInformation("Fetched {Count} movies from Radarr", movies.Count());
 
-            await using var transaction = await _dbContext.Database.BeginTransactionAsync();
+            var strategy = _dbContext.Database.CreateExecutionStrategy();
+            await strategy.ExecuteAsync(async () =>
+            {
+                await using var transaction = await _dbContext.Database.BeginTransactionAsync();
 
-            await _movieSyncService.SyncMovies(movies);
-            await _movieSyncService.RemoveNonExistentMovies(movies.Select(m => m.Id));
+                await _movieSyncService.SyncMovies(movies);
+                await _movieSyncService.RemoveNonExistentMovies(movies.Select(m => m.Id));
 
-            await transaction.CommitAsync();
+                await transaction.CommitAsync();
+            });
             await _scheduleService.UpdateJobState(jobName, JobStatus.Succeeded.GetDisplayName());
             _logger.LogInformation("Movies synced successfully.");
         }

@@ -27,12 +27,21 @@ JOIN (
     GROUP BY media_id, media_type, source_language, target_language
     HAVING COUNT(*) > 1
 ) d
-  ON tr.media_id <=> d.media_id
+  ON tr.media_id = d.media_id
  AND tr.media_type = d.media_type
  AND tr.source_language = d.source_language
  AND tr.target_language = d.target_language
 SET tr.is_active = 0
 WHERE tr.status IN (0,1) AND tr.id <> d.keep_id;
+
+-- Delete logs associated with inactive duplicate requests to avoid FK issues
+DELETE l FROM translation_request_logs l
+INNER JOIN translation_requests tr ON l.translation_request_id = tr.id
+WHERE tr.is_active = 0 AND tr.status IN (0,1);
+
+-- Delete the inactive duplicate requests themselves
+DELETE FROM translation_requests 
+WHERE is_active = 0 AND status IN (0,1);
 ");
 
             // Prefer INPLACE to avoid table rebuilds that can fail with foreign key constraints.

@@ -209,5 +209,72 @@ public static class SubtitleLanguageHelper
 
         return score;
     }
+    /// <summary>
+    /// Minimum quality threshold for a subtitle track to be considered "acceptable".
+    /// Tracks below this threshold will not receive language priority bonuses.
+    /// </summary>
+    private const int QualityThreshold = 40;
+    
+    /// <summary>
+    /// Priority bonus per language rank position (earlier languages get higher bonuses).
+    /// </summary>
+    private const int LanguagePriorityBonus = 80;
+    
+    /// <summary>
+    /// Finds the best matching embedded subtitle from a list of candidates based on configured language priorities.
+    /// Uses a quality threshold approach: higher-priority languages receive bonuses only if they meet minimum quality.
+    /// This prevents selecting partial/garbage tracks (e.g., "Signs & Songs") over complete dialogue tracks in other languages.
+    /// </summary>
+    public static (EmbeddedSubtitle? Subtitle, string MatchedLanguage) FindBestMatch(
+        List<EmbeddedSubtitle> candidates, 
+        List<string> configuredLanguages)
+    {
+        if (candidates == null || !candidates.Any() || configuredLanguages == null || !configuredLanguages.Any())
+        {
+            return (null, string.Empty);
+        }
+
+        EmbeddedSubtitle? bestSubtitle = null;
+        string bestLanguage = string.Empty;
+        int bestScore = int.MinValue;
+
+        // Score all candidates across all configured languages
+        foreach (var candidate in candidates)
+        {
+            if (string.IsNullOrWhiteSpace(candidate.Language))
+            {
+                continue;
+            }
+
+            // Find if this candidate matches any configured language
+            for (var i = 0; i < configuredLanguages.Count; i++)
+            {
+                var configuredLanguage = configuredLanguages[i];
+                if (LanguageMatches(candidate.Language, configuredLanguage))
+                {
+                    var baseScore = ScoreSubtitleCandidate(candidate, configuredLanguage);
+                    var totalScore = baseScore;
+                    
+                    // Apply language priority bonus ONLY if track meets quality threshold
+                    // This ensures garbage high-priority tracks don't beat good low-priority ones
+                    if (baseScore >= QualityThreshold)
+                    {
+                        var priorityBonus = (configuredLanguages.Count - i) * LanguagePriorityBonus;
+                        totalScore += priorityBonus;
+                    }
+                    
+                    if (totalScore > bestScore)
+                    {
+                        bestScore = totalScore;
+                        bestSubtitle = candidate;
+                        bestLanguage = configuredLanguage;
+                    }
+                    break; // Matched this language, no need to check others for this candidate
+                }
+            }
+        }
+
+        return (bestSubtitle, bestLanguage);
+    }
 }
 

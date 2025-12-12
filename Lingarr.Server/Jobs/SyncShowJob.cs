@@ -1,4 +1,5 @@
 ﻿using Hangfire;
+using Microsoft.EntityFrameworkCore;
 using Lingarr.Core.Data;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Filters;
@@ -48,12 +49,16 @@ public class SyncShowJob
 
             _logger.LogInformation("Fetched {ShowCount} shows from Sonarr", shows.Count);
 
-            await using var transaction = await _dbContext.Database.BeginTransactionAsync();
+            var strategy = _dbContext.Database.CreateExecutionStrategy();
+            await strategy.ExecuteAsync(async () =>
+            {
+                await using var transaction = await _dbContext.Database.BeginTransactionAsync();
 
-            await _showSyncService.SyncShows(shows);
-            await _showSyncService.RemoveNonExistentShows(shows.Select(s => s.Id).ToHashSet());
+                await _showSyncService.SyncShows(shows);
+                await _showSyncService.RemoveNonExistentShows(shows.Select(s => s.Id).ToHashSet());
 
-            await transaction.CommitAsync();
+                await transaction.CommitAsync();
+            });
             await _scheduleService.UpdateJobState(jobName, JobStatus.Succeeded.GetDisplayName());
             _logger.LogInformation("Shows synced successfully.");
         }
