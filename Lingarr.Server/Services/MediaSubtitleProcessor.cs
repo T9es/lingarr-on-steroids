@@ -135,7 +135,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
 
                 foreach (var targetLanguage in languagesToTranslate)
                 {
-                    if (await HasActiveRequestAsync(_media.Id, _mediaType, sourceLanguage, targetLanguage, sourceSubtitle.Path))
+                    if (await HasActiveRequestAsync(_media.Id, _mediaType, sourceLanguage, targetLanguage))
                     {
                         _logger.LogInformation(
                             "Skipping enqueue for {FileName} {Source}->{Target}: translation request already active.",
@@ -194,11 +194,11 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
     /// <param name="targetLanguages">The target languages.</param>
     /// <param name="ignoreCaptions">The ignore captions setting.</param>
     /// <returns>A Base64 encoded string representing the hash of the current subtitle state.</returns>
-    private string CreateHash(
-        List<Subtitles> subtitles,
-        HashSet<string> sourceLanguages,
-        HashSet<string> targetLanguages,
-        string ignoreCaptions)
+	    private string CreateHash(
+	        List<Subtitles> subtitles,
+	        HashSet<string> sourceLanguages,
+	        HashSet<string> targetLanguages,
+	        string ignoreCaptions)
     {
         using var sha256 = SHA256.Create();
         var subtitlePaths = string.Join("|", subtitles.Select(subtitle => subtitle.Path)
@@ -209,13 +209,33 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         var targetLangs = string.Join(",", targetLanguages.OrderBy(l => l));
         
         var hashInput = $"{subtitlePaths}|{sourceLangs}|{targetLangs}|{ignoreCaptions}";
-        var hashBytes = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(hashInput));
-        return Convert.ToBase64String(hashBytes);
-    }
+	        var hashBytes = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(hashInput));
+	        return Convert.ToBase64String(hashBytes);
+	    }
 
-    /// <summary>
-    /// Extracts language codes from subtitle file names.
-    /// </summary>
+	    private string CreateEmbeddedHash(
+	        IReadOnlyCollection<EmbeddedSubtitle> embeddedSubtitles,
+	        IEnumerable<string> configuredSourceLanguages,
+	        IEnumerable<string> targetLanguages)
+	    {
+	        using var sha256 = SHA256.Create();
+
+	        var streamTokens = embeddedSubtitles
+	            .OrderBy(s => s.StreamIndex)
+	            .Select(s =>
+	                $"{s.StreamIndex}:{s.Language?.ToLowerInvariant()}:{s.CodecName}:{s.IsTextBased}:{s.IsDefault}:{s.IsForced}");
+
+	        var sources = string.Join(",", configuredSourceLanguages.OrderBy(l => l));
+	        var targets = string.Join(",", targetLanguages.OrderBy(l => l));
+
+	        var hashInput = $"{string.Join("|", streamTokens)}|{sources}|{targets}";
+	        var hashBytes = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(hashInput));
+	        return Convert.ToBase64String(hashBytes);
+	    }
+
+	    /// <summary>
+	    /// Extracts language codes from subtitle file names.
+	    /// </summary>
     /// <param name="subtitles">List of subtitle file paths to process.</param>
     /// <returns>A HashSet of valid language codes found in the file names.</returns>
     private HashSet<string> ExtractLanguageCodes(List<Subtitles> subtitles)
@@ -277,7 +297,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 media.FileName);
             
             // Try to queue translation jobs for embedded subtitle extraction
-            return await TryQueueEmbeddedSubtitleTranslation(media, mediaType);
+            return await TryQueueEmbeddedSubtitleTranslation(media, mediaType, forceProcess);
         }
 
         var sourceLanguages = await GetLanguagesSetting<SourceLanguage>(SettingKeys.Translation.SourceLanguages);
@@ -378,7 +398,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
 
                 foreach (var targetLanguage in languagesToTranslate)
                 {
-                    if (await HasActiveRequestAsync(_media.Id, _mediaType, sourceLanguage, targetLanguage, sourceSubtitle.Path))
+                    if (await HasActiveRequestAsync(_media.Id, _mediaType, sourceLanguage, targetLanguage))
                     {
                         _logger.LogInformation(
                             "Skipping enqueue for {FileName} {Source}->{Target}: translation request already active.",
@@ -436,7 +456,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
     /// <param name="media">The media item to process</param>
     /// <param name="mediaType">The type of media (Movie or Episode)</param>
     /// <returns>The number of translation requests queued</returns>
-    private async Task<int> TryQueueEmbeddedSubtitleTranslation(IMedia media, MediaType mediaType)
+    private async Task<int> TryQueueEmbeddedSubtitleTranslation(IMedia media, MediaType mediaType, bool forceProcess)
     {
         // Preserve the order of configured source languages so we can treat
         // them as a priority list (e.g. [en, ja] => prefer English when both
@@ -466,6 +486,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         
         // Sync embedded subtitles from the media file
         List<EmbeddedSubtitle>? embeddedSubtitles = null;
+        IMedia? trackedMedia = null;
         
         if (mediaType == MediaType.Episode)
         {
@@ -479,6 +500,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 await _extractionService.SyncEmbeddedSubtitles(episode);
                 await _dbContext.Entry(episode).Collection(e => e.EmbeddedSubtitles).LoadAsync();
                 embeddedSubtitles = episode.EmbeddedSubtitles;
+                trackedMedia = episode;
             }
         }
         else if (mediaType == MediaType.Movie)
@@ -493,6 +515,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 await _extractionService.SyncEmbeddedSubtitles(movie);
                 await _dbContext.Entry(movie).Collection(m => m.EmbeddedSubtitles).LoadAsync();
                 embeddedSubtitles = movie.EmbeddedSubtitles;
+                trackedMedia = movie;
             }
         }
         
@@ -501,8 +524,30 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             _logger.LogWarning(
                 "No embedded subtitles found for {FileName}. Cannot translate.",
                 media.FileName);
+
+            // Update hash so we don't retry constantly unless streams or settings change
+            _media = trackedMedia ?? media;
+            _mediaType = mediaType;
+            _hash = CreateEmbeddedHash([], configuredSourceLanguages, targetLanguages);
+            await UpdateHash();
+
             return 0;
         }
+
+        var mediaForHash = trackedMedia ?? media;
+
+        // Compute embedded hash based on current streams and settings
+        var embeddedHash = CreateEmbeddedHash(embeddedSubtitles, configuredSourceLanguages, targetLanguages);
+
+        if (!forceProcess && !string.IsNullOrEmpty(mediaForHash.MediaHash) && mediaForHash.MediaHash == embeddedHash)
+        {
+            _logger.LogDebug("Skipping embedded translation for {FileName}: hash matches and not forcing", media.FileName);
+            return 0;
+        }
+
+        _media = mediaForHash;
+        _mediaType = mediaType;
+        _hash = embeddedHash;
         
         _logger.LogInformation(
             "Found {Count} embedded subtitles for {FileName}: [{Subtitles}]",
@@ -511,13 +556,14 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
 
         // Work only with text-based streams; image-based subtitles require OCR
         var textBasedSubs = embeddedSubtitles.Where(s => s.IsTextBased).ToList();
-        if (textBasedSubs.Count == 0)
-        {
-            _logger.LogWarning(
-                "No text-based embedded subtitles found for {FileName}. Only image-based subtitles available.",
-                media.FileName);
-            return 0;
-        }
+	        if (textBasedSubs.Count == 0)
+	        {
+	            _logger.LogWarning(
+	                "No text-based embedded subtitles found for {FileName}. Only image-based subtitles available.",
+	                media.FileName);
+	            await UpdateHash();
+	            return 0;
+	        }
 
         // Score candidates across all configured source languages.
         // We only consider streams whose language matches one of the
@@ -570,16 +616,17 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 .Distinct()
                 .ToList();
 
-            _logger.LogWarning(
-                "No embedded subtitle matches configured source languages [{Sources}] for {FileName}. " +
-                "Available embedded subtitle languages: [{Available}]. " +
-                "Update your source languages on the Services page if you want to translate from one of these.",
-                string.Join(", ", configuredSourceLanguages),
-                media.FileName,
-                string.Join(", ", availableLanguages));
+	            _logger.LogWarning(
+	                "No embedded subtitle matches configured source languages [{Sources}] for {FileName}. " +
+	                "Available embedded subtitle languages: [{Available}]. " +
+	                "Update your source languages on the Services page if you want to translate from one of these.",
+	                string.Join(", ", configuredSourceLanguages),
+	                media.FileName,
+	                string.Join(", ", availableLanguages));
 
-            return 0;
-        }
+	            await UpdateHash();
+	            return 0;
+	        }
 
         var bestCandidate = scoredCandidates
             .OrderByDescending(c => c.Score)
@@ -599,9 +646,9 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
 
         // Create translation requests for each target language (with empty subtitle path - TranslationJob will extract)
         var translationsQueued = 0;
-        foreach (var targetLanguage in targetLanguages)
-        {
-            if (await HasActiveRequestAsync(media.Id, mediaType, selectedSourceLanguage, targetLanguage, null))
+	        foreach (var targetLanguage in targetLanguages)
+	        {
+            if (await HasActiveRequestAsync(media.Id, mediaType, selectedSourceLanguage, targetLanguage))
             {
                 _logger.LogInformation(
                     "Skipping embedded enqueue for {FileName} {Source}->{Target}: translation request already active.",
@@ -621,29 +668,28 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 SubtitleFormat = null
             });
             translationsQueued++;
-            _logger.LogInformation(
-                "Queued embedded subtitle translation from |Orange|{sourceLanguage}|/Orange| to |Orange|{targetLanguage}|/Orange| for |Green|{FileName}|/Green|",
-                selectedSourceLanguage,
-                targetLanguage,
-                media.FileName);
-        }
-        
-        return translationsQueued;
-    }
+	            _logger.LogInformation(
+	                "Queued embedded subtitle translation from |Orange|{sourceLanguage}|/Orange| to |Orange|{targetLanguage}|/Orange| for |Green|{FileName}|/Green|",
+	                selectedSourceLanguage,
+	                targetLanguage,
+	                media.FileName);
+	        }
+
+	        await UpdateHash();
+	        return translationsQueued;
+	    }
 
     private async Task<bool> HasActiveRequestAsync(
         int mediaId,
         MediaType mediaType,
         string sourceLanguage,
-        string targetLanguage,
-        string? subtitlePath)
+        string targetLanguage)
     {
         return await _dbContext.TranslationRequests.AnyAsync(tr =>
             tr.MediaId == mediaId &&
             tr.MediaType == mediaType &&
             tr.SourceLanguage == sourceLanguage &&
             tr.TargetLanguage == targetLanguage &&
-            tr.SubtitleToTranslate == subtitlePath &&
             (tr.Status == TranslationStatus.Pending || tr.Status == TranslationStatus.InProgress));
     }
 }

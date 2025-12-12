@@ -55,8 +55,7 @@ public interface ITranslationRequestService
 
 	    /// <summary>
 	    /// Removes duplicate queued translation requests.
-	    /// Duplicates are requests with the same media id/type, source/target language,
-	    /// and subtitle path (null for embedded).
+	    /// Duplicates are requests with the same media id/type and source/target language.
 	    /// By default, only Pending requests are deduplicated.
 	    /// Requests whose Hangfire job is currently processing are skipped.
 	    /// </summary>

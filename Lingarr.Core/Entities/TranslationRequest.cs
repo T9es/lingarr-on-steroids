@@ -14,6 +14,7 @@ public class TranslationRequest : BaseEntity
     public string? TranslatedSubtitle { get; set; }
     public required MediaType MediaType { get; set; }
     public required TranslationStatus Status { get; set; }
+    public bool IsActive { get; set; }
     public DateTime? CompletedAt { get; set; }
     public int Progress { get; set; }
     

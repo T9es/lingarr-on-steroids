@@ -32,6 +32,20 @@ public class LingarrDbContext : DbContext
         modelBuilder.ApplyConfiguration(new SeasonConfiguration());
         modelBuilder.ApplyConfiguration(new EpisodeConfiguration());
         modelBuilder.ApplyConfiguration(new ImageConfiguration());
+
+        modelBuilder.Entity<TranslationRequest>(b =>
+        {
+            b.HasIndex(tr => new
+                {
+                    tr.MediaId,
+                    tr.MediaType,
+                    tr.SourceLanguage,
+                    tr.TargetLanguage,
+                    tr.IsActive
+                })
+                .IsUnique()
+                .HasDatabaseName("ux_translation_requests_active_dedupe");
+        });
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)

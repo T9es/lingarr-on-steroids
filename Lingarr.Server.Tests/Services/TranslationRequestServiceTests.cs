@@ -4,6 +4,8 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Hangfire;
+using Hangfire.Common;
+using Hangfire.States;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
@@ -55,6 +57,72 @@ public class TranslationRequestServiceTests
         Assert.Contains(remaining, tr => tr.MediaId == 11 && tr.SubtitleToTranslate == "/movies/b.en.srt");
     }
 
+    [Fact]
+    public async Task ReenqueueQueuedRequests_EnqueuesPriorityRequestsFirst()
+    {
+        await using var context = BuildContext();
+
+        var now = DateTime.UtcNow;
+
+        var normalMovie = new Movie
+        {
+            Id = 10,
+            RadarrId = 10,
+            Title = "Normal Movie",
+            FileName = "normal.mkv",
+            Path = "/movies/normal.mkv",
+            DateAdded = now.AddDays(-2),
+            IsPriority = false
+        };
+
+        var priorityMovie = new Movie
+        {
+            Id = 11,
+            RadarrId = 11,
+            Title = "Priority Movie",
+            FileName = "priority.mkv",
+            Path = "/movies/priority.mkv",
+            DateAdded = now.AddDays(-2),
+            IsPriority = true,
+            PriorityDate = now
+        };
+
+        context.Movies.AddRange(normalMovie, priorityMovie);
+
+        var requests = new List<TranslationRequest>
+        {
+            // Insert normal first to ensure ordering logic is exercised
+            CreateRequest(1, normalMovie.Id, MediaType.Movie, "en", "ro", "/movies/normal.en.srt",
+                TranslationStatus.Pending, now),
+            CreateRequest(2, priorityMovie.Id, MediaType.Movie, "en", "ro", "/movies/priority.en.srt",
+                TranslationStatus.Pending, now.AddSeconds(1))
+        };
+
+        context.TranslationRequests.AddRange(requests);
+        await context.SaveChangesAsync();
+
+        var createdQueues = new List<string>();
+        var backgroundJobClientMock = new Mock<IBackgroundJobClient>();
+        backgroundJobClientMock
+            .Setup(c => c.Create(It.IsAny<Job>(), It.IsAny<IState>()))
+            .Callback<Job, IState>((_, state) =>
+            {
+                if (state is EnqueuedState enqueued)
+                {
+                    createdQueues.Add(enqueued.Queue);
+                }
+            })
+            .Returns(Guid.NewGuid().ToString());
+
+        var service = CreateService(context, backgroundJobClientMock);
+
+        await service.ReenqueueQueuedRequests();
+
+        Assert.Equal(2, createdQueues.Count);
+        Assert.Equal("translation-priority", createdQueues[0]);
+        Assert.Equal("translation", createdQueues[1]);
+    }
+
     private static LingarrDbContext BuildContext()
     {
         var options = new DbContextOptionsBuilder<LingarrDbContext>()
@@ -88,9 +156,11 @@ public class TranslationRequestServiceTests
         };
     }
 
-    private static TranslationRequestService CreateService(LingarrDbContext context)
+    private static TranslationRequestService CreateService(
+        LingarrDbContext context,
+        Mock<IBackgroundJobClient>? backgroundJobClientMock = null)
     {
-        var backgroundJobClient = new Mock<IBackgroundJobClient>();
+        backgroundJobClientMock ??= new Mock<IBackgroundJobClient>();
 
         var clientProxyMock = new Mock<IClientProxy>();
         clientProxyMock
@@ -105,7 +175,7 @@ public class TranslationRequestServiceTests
 
         return new TranslationRequestService(
             context,
-            backgroundJobClient.Object,
+            backgroundJobClientMock.Object,
             hubContextMock.Object,
             new Mock<ITranslationServiceFactory>().Object,
             new Mock<IProgressService>().Object,
@@ -117,4 +187,3 @@ public class TranslationRequestServiceTests
             new Mock<ITranslationCancellationService>().Object);
     }
 }
-

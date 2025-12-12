@@ -60,6 +60,7 @@ export interface ITranslationRequest {
     progress: number
     completedAt?: string | null
     isPriorityMedia?: boolean
+    isActive?: boolean
 }
 
 export interface ITranslationRequestLog {

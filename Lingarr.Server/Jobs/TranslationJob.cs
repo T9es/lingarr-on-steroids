@@ -497,12 +497,13 @@ public class TranslationJob
         TranslationRequest translationRequest,
         CancellationToken cancellationToken)
     {
-        translationRequest.CompletedAt = DateTime.UtcNow;
-        translationRequest.Status = TranslationStatus.Completed;
-        await _dbContext.SaveChangesAsync(cancellationToken);
-        await _translationRequestService.UpdateActiveCount();
-        await _progressService.Emit(translationRequest, 100);
-        await _scheduleService.UpdateJobState(jobName, JobStatus.Succeeded.GetDisplayName());
+	        translationRequest.CompletedAt = DateTime.UtcNow;
+	        translationRequest.Status = TranslationStatus.Completed;
+	        translationRequest.IsActive = false;
+	        await _dbContext.SaveChangesAsync(cancellationToken);
+	        await _translationRequestService.UpdateActiveCount();
+	        await _progressService.Emit(translationRequest, 100);
+	        await _scheduleService.UpdateJobState(jobName, JobStatus.Succeeded.GetDisplayName());
     }
 
     private async Task HandleCancellation(string jobName, TranslationRequest request)
@@ -513,13 +514,14 @@ public class TranslationJob
             await _dbContext.TranslationRequests.FirstOrDefaultAsync(translationRequest =>
                 translationRequest.Id == request.Id);
 
-        if (translationRequest != null)
-        {
-            translationRequest.CompletedAt = DateTime.UtcNow;
-            translationRequest.Status = TranslationStatus.Cancelled;
-
-            await _dbContext.SaveChangesAsync();
-            await _translationRequestService.ClearMediaHash(translationRequest);
+	        if (translationRequest != null)
+	        {
+	            translationRequest.CompletedAt = DateTime.UtcNow;
+	            translationRequest.Status = TranslationStatus.Cancelled;
+	            translationRequest.IsActive = false;
+	
+	            await _dbContext.SaveChangesAsync();
+	            await _translationRequestService.ClearMediaHash(translationRequest);
             await _translationRequestService.UpdateActiveCount();
             await _progressService.Emit(translationRequest, 0);
             await _scheduleService.UpdateJobState(jobName, JobStatus.Cancelled.GetDisplayName());

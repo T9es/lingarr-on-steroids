@@ -547,9 +547,13 @@ namespace Lingarr.Migrations.MySQL.Migrations
                         .HasColumnType("longtext")
                         .HasColumnName("source_language");
 
-                    b.Property<int>("Status")
-                        .HasColumnType("int")
-                        .HasColumnName("status");
+	                    b.Property<int>("Status")
+	                        .HasColumnType("int")
+	                        .HasColumnName("status");
+
+	                    b.Property<bool>("IsActive")
+	                        .HasColumnType("tinyint(1)")
+	                        .HasColumnName("is_active");
 
                     b.Property<string>("SubtitleToTranslate")
                         .HasColumnType("longtext")
@@ -573,11 +577,15 @@ namespace Lingarr.Migrations.MySQL.Migrations
                         .HasColumnType("datetime(6)")
                         .HasColumnName("updated_at");
 
-                    b.HasKey("Id")
-                        .HasName("pk_translation_requests");
+	                    b.HasKey("Id")
+	                        .HasName("pk_translation_requests");
 
-                    b.ToTable("translation_requests", (string)null);
-                });
+	                    b.HasIndex("MediaId", "MediaType", "SourceLanguage", "TargetLanguage", "IsActive")
+	                        .IsUnique()
+	                        .HasDatabaseName("ux_translation_requests_active_dedupe");
+	
+	                    b.ToTable("translation_requests", (string)null);
+	                });
 
             modelBuilder.Entity("Lingarr.Core.Entities.TranslationRequestLog", b =>
                 {
