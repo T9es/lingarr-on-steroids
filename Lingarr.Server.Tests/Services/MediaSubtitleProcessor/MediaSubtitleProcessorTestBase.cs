@@ -24,6 +24,7 @@ public abstract class MediaSubtitleProcessorTestBase : IDisposable
     protected readonly Mock<ISubtitleService> SubtitleServiceMock;
     protected readonly Mock<ISettingService> SettingServiceMock;
     protected readonly Mock<ISubtitleExtractionService> SubtitleExtractionServiceMock;
+    protected readonly Mock<ISubtitleIntegrityService> SubtitleIntegrityServiceMock;
     protected readonly LingarrDbContext DbContext;
     protected readonly Lingarr.Server.Services.MediaSubtitleProcessor Processor;
 
@@ -34,6 +35,12 @@ public abstract class MediaSubtitleProcessorTestBase : IDisposable
         SubtitleServiceMock = new Mock<ISubtitleService>();
         SettingServiceMock = new Mock<ISettingService>();
         SubtitleExtractionServiceMock = new Mock<ISubtitleExtractionService>();
+        SubtitleIntegrityServiceMock = new Mock<ISubtitleIntegrityService>();
+        
+        // Default behavior: integrity validation returns true (valid)
+        SubtitleIntegrityServiceMock
+            .Setup(s => s.ValidateIntegrityAsync(It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync(true);
 
         var options = new DbContextOptionsBuilder<LingarrDbContext>()
             .UseInMemoryDatabase(databaseName: System.Guid.NewGuid().ToString())
@@ -46,6 +53,7 @@ public abstract class MediaSubtitleProcessorTestBase : IDisposable
             SettingServiceMock.Object,
             SubtitleServiceMock.Object,
             SubtitleExtractionServiceMock.Object,
+            SubtitleIntegrityServiceMock.Object,
             DbContext);
     }
 

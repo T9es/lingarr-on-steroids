@@ -110,6 +110,27 @@
                         </button>
                     </div>
                 </InputComponent>
+
+                <!-- Integrity Validation Section -->
+                <div class="mt-6 border-t border-base-300 pt-4">
+                    <div class="flex flex-col space-y-2">
+                        <span class="font-semibold">
+                            {{ translate('settings.validation.integrityEnabled') }}
+                        </span>
+                        <span class="text-sm opacity-70">
+                            {{ translate('settings.validation.integrityDescription') }}
+                        </span>
+                    </div>
+                    <ToggleButton v-model="integrityValidationEnabled" class="mt-2">
+                        <span class="text-primary-content text-sm font-medium">
+                            {{
+                                integrityValidationEnabled == 'true'
+                                    ? translate('common.enabled')
+                                    : translate('common.disabled')
+                            }}
+                        </span>
+                    </ToggleButton>
+                </div>
             </div>
         </template>
     </CardComponent>
@@ -211,6 +232,14 @@ const maxFileSizeBytes = computed({
         if (isValid.maxFileSizeBytes) {
             saveNotification.value?.show()
         }
+    }
+})
+
+const integrityValidationEnabled = computed({
+    get: (): string => settingsStore.getSetting(SETTINGS.SUBTITLE_INTEGRITY_VALIDATION_ENABLED) as string,
+    set: (newValue: string): void => {
+        settingsStore.updateSetting(SETTINGS.SUBTITLE_INTEGRITY_VALIDATION_ENABLED, newValue, true)
+        saveNotification.value?.show()
     }
 })
 </script>

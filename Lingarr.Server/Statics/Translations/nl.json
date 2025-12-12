@@ -334,7 +334,9 @@
       "minDurationMs": "De minimale tijdsduur in milliseconden dat een ondertitel moet worden weergegeven:",
       "minSubtitleLength": "Het minimale aantal tekens dat een ondertitel moet bevatten:",
       "maxSubtitleLength": "Het maximale aantal tekens dat een ondertitel mag bevatten:",
-      "maxFileSizeBytes": "De maximale grootte van een ondertitelbestand in bytes:"
+      "maxFileSizeBytes": "De maximale grootte van een ondertitelbestand in bytes:",
+      "integrityEnabled": "Integriteitsvalidatie inschakelen:",
+      "integrityDescription": "Detecteer en herstel gedeeltelijke/corrupte vertalingen. Wanneer ingeschakeld, vergelijkt Lingarr het aantal regels van bestaande vertaalde ondertitels met de bron. Als er minder regels worden gevonden (wat duidt op een mislukte vertaling), wordt de ondertitel opnieuw vertaald. Nuttig wanneer vertalingen worden onderbroken door crashes of API-storingen."
     },
     "prompt": {
       "title": "Systeem- en Contextprompts",

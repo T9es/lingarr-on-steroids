@@ -22,6 +22,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
     private readonly ISettingService _settingService;
     private readonly ISubtitleExtractionService _extractionService;
     private readonly LingarrDbContext _dbContext;
+    private readonly ISubtitleIntegrityService _integrityService;
     private string _hash = string.Empty;
     private IMedia _media = null!;
     private MediaType _mediaType;
@@ -32,12 +33,14 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         ISettingService settingService,
         ISubtitleService subtitleService,
         ISubtitleExtractionService extractionService,
+        ISubtitleIntegrityService integrityService,
         LingarrDbContext dbContext)
     {
         _translationRequestService = translationRequestService;
         _settingService = settingService;
         _subtitleService = subtitleService;
         _extractionService = extractionService;
+        _integrityService = integrityService;
         _dbContext = dbContext;
         _logger = logger;
     }
@@ -114,7 +117,31 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             if (sourceSubtitle != null)
             {
                 // Get languages that don't yet exist to validate whether captions in those languages are available
-                var languagesToTranslate = targetLanguages.Except(existingLanguages);
+                var languagesToTranslate = targetLanguages.Except(existingLanguages).ToList();
+                
+                // Check integrity of existing target subtitles and add corrupt ones for re-translation
+                var corruptLanguages = new List<string>();
+                foreach (var targetLang in targetLanguages.Intersect(existingLanguages))
+                {
+                    var targetSubtitle = subtitles.FirstOrDefault(s => s.Language == targetLang);
+                    if (targetSubtitle != null)
+                    {
+                        var isValid = await _integrityService.ValidateIntegrityAsync(
+                            sourceSubtitle.Path, 
+                            targetSubtitle.Path);
+                        if (!isValid)
+                        {
+                            _logger.LogWarning(
+                                "Integrity check failed for {TargetLang} subtitle: {Path} - scheduling re-translation",
+                                targetLang, targetSubtitle.Path);
+                            corruptLanguages.Add(targetLang);
+                        }
+                    }
+                }
+                
+                // Add corrupt languages to the translation queue
+                languagesToTranslate = languagesToTranslate.Union(corruptLanguages).ToList();
+                
                 if (ignoreCaptions == "true")
                 {
                     var targetLanguagesWithCaptions = subtitles

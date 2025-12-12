@@ -49,6 +49,7 @@ export const SETTINGS = {
     SUBTITLE_VALIDATION_MINSUBTITLELENGTH: 'subtitle_validation_minsubtitlelength',
     SUBTITLE_VALIDATION_MAXSUBTITLELENGTH: 'subtitle_validation_maxsubtitlelength',
     SUBTITLE_VALIDATION_MAXFILESIZEBYTES: 'subtitle_validation_maxfilesizebytes',
+    SUBTITLE_INTEGRITY_VALIDATION_ENABLED: 'subtitle_integrity_validation_enabled',
     AI_CONTEXT_PROMPT_ENABLED: 'ai_context_prompt_enabled',
     AI_CONTEXT_PROMPT: 'ai_context_prompt',
     AI_CONTEXT_BEFORE: 'ai_context_before',
@@ -118,6 +119,7 @@ export interface ISettings {
     subtitle_validation_maxsubtitlelength: string
     subtitle_validation_mindurationms: string
     subtitle_validation_maxdurationsecs: string
+    subtitle_integrity_validation_enabled: string
     ai_context_prompt_enabled: string
     ai_context_prompt: string
     ai_context_before: string

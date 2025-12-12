@@ -115,6 +115,7 @@ public static class SettingKeys
         public const string MinDurationMs = "subtitle_validation_mindurationms";
         public const string MaxDurationSecs = "subtitle_validation_maxdurationsecs";
         public const string ValidateSubtitles = "subtitle_validation_enabled";
+        public const string IntegrityValidationEnabled = "subtitle_integrity_validation_enabled";
     }
 
     public static class SubtitleExtraction

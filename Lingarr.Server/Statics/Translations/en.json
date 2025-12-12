@@ -332,7 +332,9 @@
       "minDurationMs": "The minimum time duration in milliseconds that a subtitle must be displayed:",
       "minSubtitleLength": "The minimum number of characters that a subtitle must contain:",
       "maxSubtitleLength": "The maximum number of characters that a subtitle can contain:",
-      "maxFileSizeBytes": "The maximum size of a subtitle file in bytes:"
+      "maxFileSizeBytes": "The maximum size of a subtitle file in bytes:",
+      "integrityEnabled": "Enable integrity validation:",
+      "integrityDescription": "Detect and recover partial/corrupted translations. When enabled, Lingarr compares the line count of existing translated subtitles against the source. If fewer lines are found (indicating a failed translation), the subtitle will be re-translated. Useful when translations are interrupted by crashes or API failures."
     },
     "prompt": {
       "title": "System & Context Prompts",
