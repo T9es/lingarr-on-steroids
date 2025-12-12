@@ -496,16 +496,14 @@ public class TranslationRequestService : ITranslationRequestService
 
         foreach (var request in requests)
         {
+            // Check if job is currently processing (active in Hangfire worker)
+            var isProcessing = false;
             if (request.JobId != null)
             {
                 try
                 {
                     var stateData = JobStorage.Current.GetConnection().GetStateData(request.JobId);
-                    if (stateData?.Name == ProcessingState.StateName)
-                    {
-                        skippedProcessing++;
-                        continue;
-                    }
+                    isProcessing = stateData?.Name == ProcessingState.StateName;
                 }
                 catch (Exception ex)
                 {
@@ -516,17 +514,26 @@ public class TranslationRequestService : ITranslationRequestService
                 }
             }
 
+            // Always trigger cancellation - this signals running jobs to stop
+            // CancelTranslationRequest will call _cancellationService.CancelJob() 
+            // which will interrupt the running translation at the next checkpoint
             await CancelTranslationRequest(request);
+            
+            if (isProcessing)
+            {
+                skippedProcessing++;
+            }
             cancelled++;
         }
 
         _logger.LogInformation(
-            "Cancelled {CancelledCount} translation request(s). Skipped {SkippedCount} currently processing job(s).",
+            "Cancelled {CancelledCount} translation request(s). {ProcessingCount} were actively processing (cancellation signal sent).",
             cancelled,
             skippedProcessing);
 
         return (cancelled, skippedProcessing);
     }
+
     
 
     private async Task<List<TranslationRequest>> OrderRequestsForPriorityProcessingAsync(List<TranslationRequest> requests)

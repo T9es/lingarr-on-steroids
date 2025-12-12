@@ -558,7 +558,7 @@ const cancelAllQueued = async () => {
 
     cancellingQueued.value = true
     try {
-        await translationRequestStore.cancelAllQueued(false)
+        await translationRequestStore.cancelAllQueued(true)
     } catch (error) {
         // eslint-disable-next-line no-console
         console.error('Failed to cancel queued translation requests', error)
