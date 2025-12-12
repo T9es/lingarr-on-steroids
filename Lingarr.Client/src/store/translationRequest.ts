@@ -91,6 +91,10 @@ export const useTranslationRequestStore = defineStore('translateRequest', {
         },
         async retry(translationRequest: ITranslationRequest) {
             await services.translationRequest.retry<string>(translationRequest)
+            // Immediately remove from failedRequests so UI updates instantly
+            this.failedRequests = this.failedRequests.filter(
+                (request) => request.id !== translationRequest.id
+            )
         },
         async getLogs(translationRequestId: number): Promise<ITranslationRequestLog[]> {
             return await services.translationRequest.logs<ITranslationRequestLog[]>(translationRequestId)
