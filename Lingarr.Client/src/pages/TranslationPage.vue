@@ -111,6 +111,9 @@
                                     <span class="text-secondary-content text-xs min-w-[3rem] text-right">
                                         {{ (item.progress ?? 0).toString() }}%
                                     </span>
+                                    <TranslationAction
+                                        :status="item.status"
+                                        :on-action="(action) => handleAction(item, action)" />
                                 </div>
                             </div>
                         </div>

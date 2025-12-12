@@ -2,7 +2,7 @@
     <div v-if="loading" class="md:px-4">
         <LoaderCircleIcon class="h-5 w-5 animate-spin" />
     </div>
-    <div v-else-if="inProgress">
+    <div v-else-if="cancelable">
         <button 
             :disabled="loading" 
             class="md:px-4"
@@ -41,7 +41,10 @@ const props = defineProps<{
 
 const loading = ref(false)
 
-const inProgress = computed(() => props.status === TRANSLATION_STATUS.INPROGRESS)
+const cancelable = computed(() => 
+    props.status === TRANSLATION_STATUS.INPROGRESS || 
+    props.status === TRANSLATION_STATUS.PENDING
+)
 
 const removable = computed(() => {
     return (
