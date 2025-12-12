@@ -513,6 +513,10 @@ namespace Lingarr.Migrations.SQLite.Migrations
                         .HasColumnType("INTEGER")
                         .HasColumnName("media_type");
 
+                    b.Property<int>("Progress")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("progress");
+
                     b.Property<string>("SourceLanguage")
                         .IsRequired()
                         .HasColumnType("TEXT")
