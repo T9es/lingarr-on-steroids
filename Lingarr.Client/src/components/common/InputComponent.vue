@@ -15,10 +15,10 @@
                 :class="inputClasses"
                 :placeholder="placeholder"
                 @input="handleInput"
-                @blur="$emit('blur', $event)"
+                @blur="handleBlur"
                 @keydown="$emit('keydown', $event)" />
             <ValidationIcon
-                :is-valid="isValid"
+                :is-valid="showValidIndicator"
                 :is-invalid="isInvalid"
                 :size="size"
                 :class="{
@@ -73,6 +73,8 @@ const emit = defineEmits<{
     (e: 'keydown', event: KeyboardEvent): void
 }>()
 const { isValid, isInvalid, error, validate } = useValidation(props)
+const hasInteracted = ref(false)
+const showValidIndicator = computed(() => hasInteracted.value && isValid.value && !isInvalid.value)
 
 // Validate initial value on mount so pre-populated fields are properly validated
 onMounted(() => {
@@ -91,19 +93,32 @@ const inputClasses = computed(() => [
         'px-4 py-2': props.size === 'md',
         'px-2 py-0.5 leading-3 text-sm': props.size === 'sm'
     },
-    { 'border-green-500': isValid.value },
+    { 'border-green-500': hasInteracted.value && isValid.value && !isInvalid.value },
     { 'border-red-500': isInvalid.value },
-    { 'border-accent': !isValid.value && !isInvalid.value },
+    { 'border-accent': !isInvalid.value && !(hasInteracted.value && isValid.value) },
     { 'pr-10': props.type === 'password' }
 ])
 
-const handleInput = useDebounce((event: Event) => {
+const handleInputDebounced = useDebounce((event: Event) => {
     const value = (event.target as HTMLInputElement).value
     validate(value)
     emit('update:validation', isValid.value)
     emit('update:modelValue', value)
     emit('update:value', value)
 }, 1000)
+
+const handleInput = (event: Event) => {
+    hasInteracted.value = true
+    handleInputDebounced(event)
+}
+
+const handleBlur = (event: FocusEvent) => {
+    hasInteracted.value = true
+    const value = (event.target as HTMLInputElement).value
+    validate(value)
+    emit('update:validation', isValid.value)
+    emit('blur', event)
+}
 
 const togglePassword = () => {
     showPassword.value = !showPassword.value

@@ -238,7 +238,8 @@ const maxFileSizeBytes = computed({
 })
 
 const integrityValidationEnabled = computed({
-    get: (): string => settingsStore.getSetting(SETTINGS.SUBTITLE_INTEGRITY_VALIDATION_ENABLED) as string,
+    get: (): string =>
+        (settingsStore.getSetting(SETTINGS.SUBTITLE_INTEGRITY_VALIDATION_ENABLED) as string) ?? 'false',
     set: (newValue: string): void => {
         settingsStore.updateSetting(SETTINGS.SUBTITLE_INTEGRITY_VALIDATION_ENABLED, newValue, true)
         saveNotification.value?.show()
