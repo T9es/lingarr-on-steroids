@@ -97,4 +97,51 @@ public class SettingController : ControllerBase
             MaxConcurrentTranslations = maxConcurrentJobs
         });
     }
+    
+    /// <summary>
+    /// Gets information about translation worker configuration and whether restart is needed.
+    /// </summary>
+    /// <returns>Returns current configured workers, database setting, and restart status.</returns>
+    [HttpGet("system/worker-status")]
+    public async Task<ActionResult<object>> GetWorkerStatus()
+    {
+        // Get current configured worker count (from startup)
+        var configuredWorkers = int.TryParse(
+            Environment.GetEnvironmentVariable("CONFIGURED_TRANSLATION_WORKERS"),
+            out int configured) ? configured : 0;
+        
+        // Get database setting value
+        var dbSetting = await _settingService.GetSetting("max_parallel_translations");
+        var dbWorkers = int.TryParse(dbSetting, out int db) ? db : 4;
+        
+        // Check if restart is needed (db setting differs from configured)
+        var restartNeeded = configuredWorkers > 0 && configuredWorkers != dbWorkers;
+        
+        return Ok(new
+        {
+            ConfiguredWorkers = configuredWorkers > 0 ? configuredWorkers : dbWorkers,
+            DatabaseSetting = dbWorkers,
+            RestartNeeded = restartNeeded
+        });
+    }
+    
+    /// <summary>
+    /// Triggers a graceful restart of the application container.
+    /// </summary>
+    /// <returns>Returns OK if restart was initiated.</returns>
+    [HttpPost("system/restart")]
+    public ActionResult Restart()
+    {
+        // Log the restart request
+        Console.WriteLine("[System] Restart requested via API");
+        
+        // Schedule exit with delay to allow response to be sent
+        Task.Run(async () =>
+        {
+            await Task.Delay(1000);
+            Environment.Exit(0);
+        });
+        
+        return Ok(new { Message = "Restart initiated. Container will restart shortly." });
+    }
 }

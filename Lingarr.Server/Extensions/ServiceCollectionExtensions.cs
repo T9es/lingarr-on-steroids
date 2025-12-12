@@ -174,19 +174,36 @@ public static class ServiceCollectionExtensions
     private static void ConfigureHangfire(this WebApplicationBuilder builder)
     {
         var tablePrefix = "_hangfire";
+        
+        // Translation server: dedicated workers for translation jobs only
+        // Worker count is read from: database setting -> env var -> default (4)
+        // Priority queue is checked first, ensuring priority jobs get processed immediately
+        var translationWorkers = GetTranslationWorkerCount();
+        
+        // Store configured value so we can detect if restart is needed later
+        Environment.SetEnvironmentVariable("CONFIGURED_TRANSLATION_WORKERS", translationWorkers.ToString());
+        
+        Console.WriteLine($"[Hangfire] Translation server configured with {translationWorkers} workers");
+        
         builder.Services.AddHangfireServer(options =>
         {
-            // Prioritize user-visible translation work:
-            // 1) translation-priority (retries, priority media)
-            // 2) regular media sync / system queues
-            // 3) normal translation and default jobs
-            options.Queues = ["translation-priority", "movies", "shows", "system", "translation", "default"];
-            // Default to 20 workers so the ParallelTranslationLimiter can control actual concurrency
-            // The semaphore-based limiter respects the UI setting for max_parallel_translations
-            options.WorkerCount =
-                int.TryParse(Environment.GetEnvironmentVariable("MAX_CONCURRENT_JOBS"), out int maxConcurrentJobs)
-                    ? maxConcurrentJobs
-                    : 20;
+            options.ServerName = "translation-server";
+            options.Queues = ["translation-priority", "translation"];
+            options.WorkerCount = translationWorkers;
+        });
+        
+        // Sync server: handles media sync, system jobs, and other background tasks
+        // High worker count for parallel sync operations
+        var syncWorkers = int.TryParse(
+            Environment.GetEnvironmentVariable("MAX_CONCURRENT_JOBS"), out int maxConcurrent)
+            ? maxConcurrent
+            : 20;
+        
+        builder.Services.AddHangfireServer(options =>
+        {
+            options.ServerName = "sync-server";
+            options.Queues = ["movies", "shows", "system", "default"];
+            options.WorkerCount = syncWorkers;
         });
 
         builder.Services.AddHangfire(configuration =>
@@ -227,5 +244,84 @@ public static class ServiceCollectionExtensions
 
             configuration.UseFilter(new JobContextFilter());
         });
+    }
+    
+    /// <summary>
+    /// Reads max_parallel_translations from database at startup.
+    /// Fallback chain: database -> MAX_PARALLEL_TRANSLATIONS env var -> default (4)
+    /// </summary>
+    private static int GetTranslationWorkerCount()
+    {
+        const int defaultWorkers = 4;
+        
+        // Try environment variable first (allows override without database)
+        if (int.TryParse(Environment.GetEnvironmentVariable("MAX_PARALLEL_TRANSLATIONS"), out int envValue) && envValue > 0)
+        {
+            return envValue;
+        }
+        
+        // Try reading from database
+        try
+        {
+            var dbConnection = Environment.GetEnvironmentVariable("DB_CONNECTION")?.ToLower() ?? "sqlite";
+            string? settingValue = null;
+            
+            if (dbConnection == "mysql")
+            {
+                settingValue = ReadSettingFromMySql("max_parallel_translations");
+            }
+            else
+            {
+                settingValue = ReadSettingFromSqlite("max_parallel_translations");
+            }
+            
+            if (int.TryParse(settingValue, out int dbValue) && dbValue > 0)
+            {
+                return dbValue;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Hangfire] Could not read max_parallel_translations from database: {ex.Message}. Using default.");
+        }
+        
+        return defaultWorkers;
+    }
+    
+    private static string? ReadSettingFromSqlite(string settingKey)
+    {
+        var sqliteDbPath = Environment.GetEnvironmentVariable("SQLITE_DB_PATH") ?? "local.db";
+        var connectionString = $"Data Source=/app/config/{sqliteDbPath}";
+        
+        using var connection = new Microsoft.Data.Sqlite.SqliteConnection(connectionString);
+        connection.Open();
+        
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT value FROM settings WHERE key = @key LIMIT 1";
+        command.Parameters.AddWithValue("@key", settingKey);
+        
+        var result = command.ExecuteScalar();
+        return result?.ToString();
+    }
+    
+    private static string? ReadSettingFromMySql(string settingKey)
+    {
+        var host = Environment.GetEnvironmentVariable("DB_HOST") ?? "Lingarr.Mysql";
+        var port = Environment.GetEnvironmentVariable("DB_PORT") ?? "3306";
+        var database = Environment.GetEnvironmentVariable("DB_DATABASE") ?? "LingarrMysql";
+        var username = Environment.GetEnvironmentVariable("DB_USERNAME") ?? "LingarrMysql";
+        var password = Environment.GetEnvironmentVariable("DB_PASSWORD") ?? "Secret1234";
+        
+        var connectionString = $"Server={host};Port={port};Database={database};Uid={username};Pwd={password}";
+        
+        using var connection = new MySqlConnector.MySqlConnection(connectionString);
+        connection.Open();
+        
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT value FROM settings WHERE `key` = @key LIMIT 1";
+        command.Parameters.AddWithValue("@key", settingKey);
+        
+        var result = command.ExecuteScalar();
+        return result?.ToString();
     }
 }

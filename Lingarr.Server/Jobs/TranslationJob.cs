@@ -1,7 +1,4 @@
 ﻿using Hangfire;
-using Hangfire.Common;
-using Hangfire.States;
-using Hangfire.Storage;
 using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
@@ -34,7 +31,6 @@ public class TranslationJob
     private readonly IBatchFallbackService _batchFallbackService;
     private readonly ISubtitleExtractionService _extractionService;
     private readonly ITranslationCancellationService _cancellationService;
-    private readonly IBackgroundJobClient _backgroundJobClient;
 
     private const string DefaultTranslationQueue = "translation";
     private const string PriorityTranslationQueue = "translation-priority";
@@ -52,8 +48,7 @@ public class TranslationJob
         IParallelTranslationLimiter parallelLimiter,
         IBatchFallbackService batchFallbackService,
         ISubtitleExtractionService extractionService,
-        ITranslationCancellationService cancellationService,
-        IBackgroundJobClient backgroundJobClient)
+        ITranslationCancellationService cancellationService)
     {
         _logger = logger;
         _settings = settings;
@@ -68,7 +63,6 @@ public class TranslationJob
         _batchFallbackService = batchFallbackService;
         _extractionService = extractionService;
         _cancellationService = cancellationService;
-        _backgroundJobClient = backgroundJobClient;
     }
 
     [AutomaticRetry(Attempts = 0)]
@@ -110,22 +104,12 @@ public class TranslationJob
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, jobCancellationToken);
         var effectiveCancellationToken = linkedCts.Token;
         
-        // Determine if this is a priority translation (before acquiring slot)
+        // Determine if this is a priority translation for limiter ordering
         var isPriority = await IsPriorityMediaAsync(translationRequest);
-
-        // Avoid worker starvation: if no slots are available (or priority backlog exists for normal jobs),
-        // reschedule this job instead of waiting inside the Hangfire worker.
-        if (await TryRescheduleUntilSlotAvailableAsync(
-                translationRequest,
-                isPriority,
-                jobId,
-                effectiveCancellationToken))
-        {
-            return;
-        }
         
-        // Acquire a parallel translation slot (blocks if limit reached)
-        // Priority jobs are served first when slots become available
+        // Acquire a parallel translation slot
+        // With dedicated translation workers, priority is now enforced at Hangfire queue level
+        // The limiter still provides additional priority ordering when jobs are waiting
         using var slot = await _parallelLimiter.AcquireAsync(isPriority, effectiveCancellationToken);
 
 
@@ -596,95 +580,6 @@ public class TranslationJob
             _logger.LogWarning(ex, "Error determining priority status for request {RequestId}", request.Id);
             return false;
         }
-    }
-
-    private async Task<bool> TryRescheduleUntilSlotAvailableAsync(
-        TranslationRequest request,
-        bool isPriority,
-        string currentJobId,
-        CancellationToken cancellationToken)
-    {
-        if (cancellationToken.IsCancellationRequested)
-        {
-            return false;
-        }
-
-        var availableSlots = _parallelLimiter.AvailableSlots;
-
-        var hasPriorityBacklog = false;
-        if (!isPriority)
-        {
-            try
-            {
-                var monitor = JobStorage.Current?.GetMonitoringApi();
-                hasPriorityBacklog = monitor?.EnqueuedJobs(PriorityTranslationQueue, 0, 1).Any() == true;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogDebug(ex, "Failed to check priority backlog.");
-            }
-        }
-
-        if (availableSlots > 0 && !hasPriorityBacklog)
-        {
-            return false;
-        }
-
-        TranslationRequest? persisted;
-        try
-        {
-            persisted = await _dbContext.TranslationRequests
-                .AsNoTracking()
-                .FirstOrDefaultAsync(tr => tr.Id == request.Id, cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to reload translation request {RequestId} for reschedule check", request.Id);
-            return false;
-        }
-
-        if (persisted == null || persisted.Status != TranslationStatus.Pending)
-        {
-            return false;
-        }
-
-        if (!string.IsNullOrEmpty(persisted.JobId) && persisted.JobId != currentJobId)
-        {
-            // A newer job already exists for this request.
-            return true;
-        }
-
-        var delaySeconds = isPriority ? 5 : 30;
-        var delay = TimeSpan.FromSeconds(delaySeconds);
-
-        var job = isPriority
-            ? Job.FromExpression<TranslationJob>(j => j.ExecutePriority(request, CancellationToken.None))
-            : Job.FromExpression<TranslationJob>(j => j.ExecuteNormal(request, CancellationToken.None));
-
-        var newJobId = _backgroundJobClient.Create(job, new ScheduledState(delay));
-
-        try
-        {
-            var tracked = await _dbContext.TranslationRequests.FindAsync(request.Id);
-            if (tracked != null)
-            {
-                tracked.JobId = newJobId;
-                tracked.Status = TranslationStatus.Pending;
-                await _dbContext.SaveChangesAsync(cancellationToken);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to update JobId for rescheduled request {RequestId}", request.Id);
-        }
-
-        _logger.LogInformation(
-            "Rescheduled translation request {RequestId} (priority={IsPriority}) in {DelaySeconds}s to avoid worker starvation.",
-            request.Id,
-            isPriority,
-            delaySeconds);
-
-        return true;
     }
     
     /// <summary>
