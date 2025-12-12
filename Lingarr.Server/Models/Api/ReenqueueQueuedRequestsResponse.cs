@@ -6,6 +6,16 @@ namespace Lingarr.Server.Models.Api;
 public class ReenqueueQueuedRequestsResponse
 {
     /// <summary>
+    /// Number of duplicate translation requests that were removed before re-enqueueing.
+    /// </summary>
+    public int RemovedDuplicates { get; set; }
+
+    /// <summary>
+    /// Number of duplicate requests skipped because their Hangfire job was already processing.
+    /// </summary>
+    public int SkippedDuplicateProcessing { get; set; }
+
+    /// <summary>
     /// Number of translation requests that were re-enqueued.
     /// </summary>
     public int Reenqueued { get; set; }
@@ -20,4 +30,3 @@ public class ReenqueueQueuedRequestsResponse
     /// </summary>
     public string Message { get; set; } = string.Empty;
 }
-

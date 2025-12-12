@@ -53,6 +53,19 @@ public interface ITranslationRequestService
 	    /// </returns>
 	    Task<(int Reenqueued, int SkippedProcessing)> ReenqueueQueuedRequests(bool includeInProgress = false);
 
+	    /// <summary>
+	    /// Removes duplicate queued translation requests.
+	    /// Duplicates are requests with the same media id/type, source/target language,
+	    /// and subtitle path (null for embedded).
+	    /// By default, only Pending requests are deduplicated.
+	    /// Requests whose Hangfire job is currently processing are skipped.
+	    /// </summary>
+	    /// <param name="includeInProgress">If true, also attempts to dedupe non-processing InProgress requests.</param>
+	    /// <returns>
+	    /// Tuple containing (removedDuplicatesCount, skippedProcessingCount).
+	    /// </returns>
+	    Task<(int RemovedDuplicates, int SkippedProcessing)> DedupeQueuedRequests(bool includeInProgress = false);
+
     /// <summary>
     /// Retrieves a paginated list of translation requests with optional filtering and sorting.
     /// </summary>

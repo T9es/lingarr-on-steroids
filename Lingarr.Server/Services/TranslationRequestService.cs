@@ -347,6 +347,116 @@ public class TranslationRequestService : ITranslationRequestService
 
         return (reenqueued, skippedProcessing);
     }
+
+    /// <inheritdoc />
+    public async Task<(int RemovedDuplicates, int SkippedProcessing)> DedupeQueuedRequests(bool includeInProgress = false)
+    {
+        var statuses = includeInProgress
+            ? new[] { TranslationStatus.Pending, TranslationStatus.InProgress }
+            : new[] { TranslationStatus.Pending };
+
+        var requests = await _dbContext.TranslationRequests
+            .Where(tr => statuses.Contains(tr.Status))
+            .OrderBy(tr => tr.CreatedAt)
+            .ThenBy(tr => tr.Id)
+            .ToListAsync();
+
+        var duplicatesToRemove = new List<TranslationRequest>();
+        var skippedProcessing = 0;
+
+        foreach (var group in requests.GroupBy(tr => new
+                 {
+                     tr.MediaId,
+                     tr.MediaType,
+                     tr.SourceLanguage,
+                     tr.TargetLanguage,
+                     tr.SubtitleToTranslate
+                 }))
+        {
+            if (group.Count() <= 1)
+            {
+                continue;
+            }
+
+            var orderedGroup = group
+                .OrderBy(tr => tr.CreatedAt)
+                .ThenBy(tr => tr.Id)
+                .ToList();
+
+            TranslationRequest? canonical = null;
+            foreach (var candidate in orderedGroup)
+            {
+                if (candidate.JobId == null)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    var stateData = JobStorage.Current.GetConnection().GetStateData(candidate.JobId);
+                    if (stateData?.Name == ProcessingState.StateName)
+                    {
+                        canonical = candidate;
+                        break;
+                    }
+                }
+                catch
+                {
+                    // Ignore state lookup errors and fall back to oldest request.
+                }
+            }
+
+            canonical ??= orderedGroup.First();
+
+            foreach (var duplicate in orderedGroup)
+            {
+                if (duplicate.Id == canonical.Id)
+                {
+                    continue;
+                }
+
+                if (duplicate.JobId != null)
+                {
+                    try
+                    {
+                        var stateData = JobStorage.Current.GetConnection().GetStateData(duplicate.JobId);
+                        if (stateData?.Name == ProcessingState.StateName)
+                        {
+                            skippedProcessing++;
+                            continue;
+                        }
+
+                        _backgroundJobClient.Delete(duplicate.JobId);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex,
+                            "Failed to delete duplicate Hangfire job {JobId} for request {RequestId}.",
+                            duplicate.JobId,
+                            duplicate.Id);
+                    }
+                }
+
+                duplicatesToRemove.Add(duplicate);
+            }
+        }
+
+        if (duplicatesToRemove.Count > 0)
+        {
+            _dbContext.TranslationRequests.RemoveRange(duplicatesToRemove);
+            await _dbContext.SaveChangesAsync();
+            await UpdateActiveCount();
+        }
+
+        var removedDuplicates = duplicatesToRemove.Count;
+
+        _logger.LogInformation(
+            "Removed {RemovedCount} duplicate translation request(s). Skipped {SkippedCount} processing duplicate(s).",
+            removedDuplicates,
+            skippedProcessing);
+
+        return (removedDuplicates, skippedProcessing);
+    }
     
     /// <inheritdoc />
     public async Task<PagedResult<TranslationRequest>> GetTranslationRequests(

@@ -176,23 +176,40 @@ public class TranslationRequestController : ControllerBase
 
     /// <summary>
     /// Re-enqueues queued translation requests so they are placed into the correct Hangfire queue
-    /// based on current priority flags.
-    /// </summary>
-    /// <param name="includeInProgress">If true, also attempts to re-enqueue non-processing in-progress requests.</param>
-    /// <response code="200">Returns counts of re-enqueued and skipped requests</response>
-    /// <response code="500">If there was an error while re-enqueueing requests</response>
-    [HttpPost("reenqueue")]
-    public async Task<ActionResult<ReenqueueQueuedRequestsResponse>> ReenqueueQueuedRequests(
-        [FromQuery] bool includeInProgress = false)
-    {
-        var (reenqueued, skippedProcessing) =
-            await _translationRequestService.ReenqueueQueuedRequests(includeInProgress);
+	    /// based on current priority flags.
+	    /// </summary>
+	    /// <param name="includeInProgress">If true, also attempts to re-enqueue non-processing in-progress requests.</param>
+	    /// <param name="dedupe">If true, removes duplicate queued requests before re-enqueueing.</param>
+	    /// <response code="200">Returns counts of re-enqueued and skipped requests</response>
+	    /// <response code="500">If there was an error while re-enqueueing requests</response>
+	    [HttpPost("reenqueue")]
+	    public async Task<ActionResult<ReenqueueQueuedRequestsResponse>> ReenqueueQueuedRequests(
+	        [FromQuery] bool includeInProgress = false,
+	        [FromQuery] bool dedupe = true)
+	    {
+	        var removedDuplicates = 0;
+	        var skippedDuplicateProcessing = 0;
+	        if (dedupe)
+	        {
+	            (removedDuplicates, skippedDuplicateProcessing) =
+	                await _translationRequestService.DedupeQueuedRequests(includeInProgress);
+	        }
 
-        return Ok(new ReenqueueQueuedRequestsResponse
-        {
-            Reenqueued = reenqueued,
-            SkippedProcessing = skippedProcessing,
-            Message = $"Re-enqueued {reenqueued} request(s). Skipped {skippedProcessing} processing job(s)."
-        });
-    }
+	        var (reenqueued, skippedProcessing) =
+	            await _translationRequestService.ReenqueueQueuedRequests(includeInProgress);
+
+	        var message = $"Re-enqueued {reenqueued} request(s). " +
+	                      $"Removed {removedDuplicates} duplicate(s). " +
+	                      $"Skipped {skippedProcessing} processing job(s). " +
+	                      $"Skipped {skippedDuplicateProcessing} processing duplicate(s).";
+
+	        return Ok(new ReenqueueQueuedRequestsResponse
+	        {
+	            RemovedDuplicates = removedDuplicates,
+	            SkippedDuplicateProcessing = skippedDuplicateProcessing,
+	            Reenqueued = reenqueued,
+	            SkippedProcessing = skippedProcessing,
+	            Message = message
+	        });
+	    }
 }
