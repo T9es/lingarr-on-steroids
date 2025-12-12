@@ -118,7 +118,7 @@
                     </span>
                 </ToggleButton>
 
-                <div class="flex flex-col space-y-4">
+            <div class="flex flex-col space-y-4">
                     <div class="flex flex-col space-x-2">
                         <span class="font-semibold">
                             {{ translate('settings.subtitle.useSubtitleTagging') }}
@@ -141,6 +141,22 @@
                         :label="translate('settings.subtitle.subtitleTag')"
                         @update:validation="(val) => (isValid.subtitleTag = val)" />
                 </div>
+                
+                <div class="flex flex-col space-x-2 pt-4 border-t border-base-300">
+                    <span class="font-semibold">
+                        {{ translate('settings.subtitle.subtitleIntegrityValidationEnabled') }}
+                    </span>
+                    {{ translate('settings.subtitle.subtitleIntegrityValidationEnabledDescription') }}
+                </div>
+                <ToggleButton v-model="subtitleIntegrityValidationEnabled">
+                    <span class="text-primary-content text-sm font-medium">
+                        {{
+                            subtitleIntegrityValidationEnabled == 'true'
+                                ? translate('common.enabled')
+                                : translate('common.disabled')
+                        }}
+                    </span>
+                </ToggleButton>
             </div>
         </template>
     </CardComponent>
@@ -234,6 +250,14 @@ const cleanSourceAssDrawings = computed({
     get: (): string => settingsStore.getSetting(SETTINGS.CLEAN_SOURCE_ASS_DRAWINGS) as string ?? 'false',
     set: (newValue: string): void => {
         settingsStore.updateSetting(SETTINGS.CLEAN_SOURCE_ASS_DRAWINGS, newValue, true)
+        saveNotification.value?.show()
+    }
+})
+
+const subtitleIntegrityValidationEnabled = computed({
+    get: (): string => settingsStore.getSetting(SETTINGS.SUBTITLE_INTEGRITY_VALIDATION_ENABLED) as string ?? 'false',
+    set: (newValue: string): void => {
+        settingsStore.updateSetting(SETTINGS.SUBTITLE_INTEGRITY_VALIDATION_ENABLED, newValue, true)
         saveNotification.value?.show()
     }
 })

@@ -288,7 +288,9 @@
       "stripAssDrawingCommandsDescription": "Sla vectorgrafische gegevens (vormen, borden) over die worden gevonden in ASS-geconverteerde SRT-bestanden. Deze zijn niet vertaalbaar en verspillen API-aanroepen.",
       "cleanSourceAssDrawings": "Ook bronbestanden opschonen:",
       "cleanSourceAssDrawingsDescription": "Verwijder ook tekencommando's uit het originele bronondertitelbestand.",
-      "subtitleTag": "Ondertitel tag"
+      "subtitleTag": "Ondertitel tag",
+      "subtitleIntegrityValidationEnabled": "Valideer Ondertitel Integriteit",
+      "subtitleIntegrityValidationEnabledDescription": "Controleer of de vertaalde ondertitel ongeveer hetzelfde aantal regels heeft als het origineel om gedeeltelijke vertalingen te detecteren."
     },
     "indexing": {
       "title": "Indexering",

@@ -286,7 +286,9 @@
       "stripAssDrawingCommandsDescription": "Skip vector graphics data (shapes, signs) found in ASS-converted SRT files. These are untranslatable and waste API calls.",
       "cleanSourceAssDrawings": "Also clean source files:",
       "cleanSourceAssDrawingsDescription": "Additionally remove drawing commands from the original source subtitle file.",
-      "subtitleTag": "Subtitle tag"
+      "subtitleTag": "Subtitle tag",
+      "subtitleIntegrityValidationEnabled": "Validate Subtitle Integrity",
+      "subtitleIntegrityValidationEnabledDescription": "Check if the translated subtitle has roughly the same number of lines as the original to detect partial translations."
     },
     "indexing": {
       "title": "Indexing",
