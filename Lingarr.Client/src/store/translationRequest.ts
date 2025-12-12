@@ -180,9 +180,13 @@ export const useTranslationRequestStore = defineStore('translateRequest', {
 
             // Remove completed/cancelled items from main queue (they shouldn't show in pending)
             if (requestProgress.status === 'Completed' || requestProgress.status === 'Cancelled') {
+                const initialLength = this.translationRequests.items.length
                 this.translationRequests.items = this.translationRequests.items.filter(
                     r => r.id !== requestProgress.id
                 )
+                if (this.translationRequests.items.length < initialLength) {
+                    this.translationRequests.totalCount = Math.max(0, this.translationRequests.totalCount - 1)
+                }
             }
         },
         clearSelection() {

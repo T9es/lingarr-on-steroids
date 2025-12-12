@@ -75,6 +75,12 @@ public interface ITranslationRequestService
 	    /// </returns>
 	    Task<(int Cancelled, int SkippedProcessing)> CancelAllQueuedRequests(bool includeInProgress = false);
 
+    /// <summary>
+    /// Refreshes the queue priority for all pending requests associated with the given media.
+    /// deletes existing jobs and re-enqueues them to respect the new priority.
+    /// </summary>
+    Task RefreshPriorityForMedia(MediaType mediaType, int mediaId);
+
 
     /// <summary>
     /// Retrieves a paginated list of translation requests with optional filtering and sorting.

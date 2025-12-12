@@ -12,10 +12,12 @@ namespace Lingarr.Server.Controllers;
 public class MediaController : ControllerBase
 {
     private readonly IMediaService _mediaService;
+    private readonly ITranslationRequestService _translationRequestService;
 
-    public MediaController(IMediaService mediaService)
+    public MediaController(IMediaService mediaService, ITranslationRequestService translationRequestService)
     {
         _mediaService = mediaService;
+        _translationRequestService = translationRequestService;
     }
     
     /// <summary>
@@ -101,6 +103,10 @@ public class MediaController : ControllerBase
     public async Task<ActionResult<bool>> Priority([FromBody] ExcludeRequest request)
     {
         var value = await _mediaService.TogglePriority(request.MediaType, request.Id);
+        if (value)
+        {
+            await _translationRequestService.RefreshPriorityForMedia(request.MediaType, request.Id);
+        }
         return Ok(value);
     }
 }

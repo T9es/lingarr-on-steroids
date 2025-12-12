@@ -41,7 +41,8 @@ public static class DatabaseConfiguration
 
         options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString),
                 mysqlOptions => mysqlOptions.MigrationsAssembly("Lingarr.Migrations.MySQL")
-                    .UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery))
+                    .UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery)
+                    .EnableRetryOnFailure())
             .UseSnakeCaseNamingConvention();
     }
 
