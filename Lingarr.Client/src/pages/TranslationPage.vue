@@ -187,18 +187,27 @@
                     </div>
 
                     <!-- Queued translations -->
-                    <div class="border-accent bg-secondary rounded-md border p-4 shadow-sm">
-                        <div class="mb-3 flex items-center justify-between">
-                            <h2 class="text-sm font-semibold uppercase tracking-wide">
-                                {{ translate('common.statusPending') }}
-                            </h2>
-                            <span class="text-secondary-content text-xs">
-                                {{ queuedRequests.length }}
-                                {{ translate('common.items') }}
-                            </span>
-                        </div>
-
-                        <template v-if="queuedRequests.length">
+	                    <div class="border-accent bg-secondary rounded-md border p-4 shadow-sm">
+	                        <div class="mb-3 flex items-center justify-between">
+	                            <h2 class="text-sm font-semibold uppercase tracking-wide">
+	                                {{ translate('common.statusPending') }}
+	                            </h2>
+	                            <div class="flex items-center gap-2">
+	                                <button
+	                                    v-if="queuedRequests.length"
+	                                    class="border-accent text-primary-content hover:bg-accent cursor-pointer rounded-md border px-3 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+	                                    :disabled="reenqueuingQueued"
+	                                    @click="reenqueueQueued">
+	                                    {{ translate('translations.reenqueueQueue') }}
+	                                </button>
+	                                <span class="text-secondary-content text-xs">
+	                                    {{ queuedRequests.length }}
+	                                    {{ translate('common.items') }}
+	                                </span>
+	                            </div>
+	                        </div>
+	
+	                        <template v-if="queuedRequests.length">
                         <!-- Queue table header -->
                         <div class="border-accent hidden border-b font-bold md:grid md:grid-cols-12">
                             <div class="col-span-5 px-4 py-2">
@@ -437,10 +446,11 @@ const logsModalOpen = ref(false)
 const logsLoading = ref(false)
 const logsError = ref<string | null>(null)
 const activeLogRequest = ref<ITranslationRequest | null>(null)
-const requestLogs = ref<ITranslationRequestLog[]>([])
-const retryingFailed = ref(false)
-
-const activeTab = ref<'list' | 'test'>('list')
+	const requestLogs = ref<ITranslationRequestLog[]>([])
+	const retryingFailed = ref(false)
+	const reenqueuingQueued = ref(false)
+	
+	const activeTab = ref<'list' | 'test'>('list')
 
 const translationRequests: ComputedRef<IPagedResult<ITranslationRequest>> = computed(
     () => translationRequestStore.getTranslationRequests
@@ -517,6 +527,20 @@ const retryAllFailed = async () => {
         await translationRequestStore.fetch()
     } finally {
         retryingFailed.value = false
+    }
+}
+
+const reenqueueQueued = async () => {
+    if (!queuedRequests.value.length || reenqueuingQueued.value) return
+
+    reenqueuingQueued.value = true
+    try {
+        await translationRequestStore.reenqueueQueued(false)
+    } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('Failed to re-enqueue queued translation requests', error)
+    } finally {
+        reenqueuingQueued.value = false
     }
 }
 

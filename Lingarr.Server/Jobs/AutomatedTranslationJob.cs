@@ -153,31 +153,82 @@ public class AutomatedTranslationJob
             _logger.LogInformation("No translatable movies found.");
             return 0;
         }
-        
-        // Instead of a random selection based on updatedAt, we will use a cycle so that all shows are processed.
-        // Hopefully, this will prevent some shows from not being processed at all.
-        var currentIndex = GetProcessingIndex(MovieProcessingIndexKey);
-        if (currentIndex >= movies.Count)
-        {
-            currentIndex = 0;
-            _logger.LogInformation("Movie processing cycle completed. Starting new cycle from the beginning.");
-        }
-        // Scan movies starting from `currentIndex` until we reach the maximum
-        // number of translations or we processed all movies once; this ensures
-        // we evaluate past the initial window when few items are eligible.
-        _logger.LogInformation(
-            "Processing up to {MaxTranslations} movies starting at {StartIndex} out of {TotalCount}",
-            limit,
-            currentIndex,
-            movies.Count);
+
+        var priorityMovies = movies.Where(movie => movie.IsPriority).ToList();
+        var normalMovies = movies.Where(movie => !movie.IsPriority).ToList();
 
         var translationsInitiated = 0;
+
+        if (priorityMovies.Count > 0)
+        {
+            _logger.LogInformation("Processing {PriorityCount} priority movie(s) first.", priorityMovies.Count);
+            foreach (var movie in priorityMovies)
+            {
+                if (translationsInitiated >= limit)
+                {
+                    _logger.LogInformation("Max translations per run reached while processing priority movies.");
+                    break;
+                }
+
+                try
+                {
+                    TimeSpan? threshold = movie.TranslationAgeThreshold.HasValue
+                        ? TimeSpan.FromHours(movie.TranslationAgeThreshold.Value)
+                        : null;
+
+                    if (!ShouldProcessMedia(movie, MediaType.Movie, threshold))
+                    {
+                        continue;
+                    }
+
+                    var translationsQueued =
+                        await _mediaSubtitleProcessor.ProcessMediaForceAsync(movie, MediaType.Movie, forceProcess: false);
+                    if (translationsQueued > 0)
+                    {
+                        translationsInitiated++;
+                    }
+                }
+                catch (DirectoryNotFoundException)
+                {
+                    _logger.LogWarning("Directory not found at path: |Red|{Path}|/Red|, skipping subtitle", movie.Path);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex,
+                        "Error processing subtitles for movie at path: |Red|{Path}|/Red|, skipping subtitle",
+                        movie.Path);
+                }
+            }
+        }
+
+        if (translationsInitiated >= limit || normalMovies.Count == 0)
+        {
+            return translationsInitiated;
+        }
+
+        // Cycle through non-priority movies to avoid starvation,
+        // but always process priority items first.
+        var currentIndex = GetProcessingIndex(MovieProcessingIndexKey);
+        if (currentIndex >= normalMovies.Count)
+        {
+            currentIndex = 0;
+            _logger.LogInformation(
+                "Movie processing cycle completed for non-priority movies. Starting new cycle from the beginning.");
+        }
+
+        var remainingLimit = limit - translationsInitiated;
+        _logger.LogInformation(
+            "Processing up to {MaxTranslations} non-priority movies starting at {StartIndex} out of {TotalCount}",
+            remainingLimit,
+            currentIndex,
+            normalMovies.Count);
+
         var scannedMovies = 0;
         var index = currentIndex;
 
-        while (translationsInitiated < limit && scannedMovies < movies.Count)
+        while (translationsInitiated < limit && scannedMovies < normalMovies.Count)
         {
-            var movie = movies[index % movies.Count];
+            var movie = normalMovies[index % normalMovies.Count];
             try
             {
                 if (translationsInitiated >= limit)
@@ -219,7 +270,7 @@ public class AutomatedTranslationJob
             }
         }
 
-        var newIndex = index % movies.Count;
+        var newIndex = index % normalMovies.Count;
         SetProcessingIndex(MovieProcessingIndexKey, newIndex);
 
         return translationsInitiated;
@@ -247,27 +298,87 @@ public class AutomatedTranslationJob
             return 0;
         }
 
-        // Instead of a random selection based on updatedAt, we will use a cycle so that all shows are processed.
-        // Hopefully, this will prevent some shows from not being processed at all.
-        var currentIndex = GetProcessingIndex(ShowProcessingIndexKey);
-        if (currentIndex >= episodes.Count)
-        {
-            currentIndex = 0;
-            _logger.LogInformation("Show processing cycle completed. Starting new cycle from the beginning.");
-        }
-        _logger.LogInformation(
-            "Processing up to {MaxTranslations} episodes starting at {StartIndex} out of {TotalCount}",
-            limit,
-            currentIndex,
-            episodes.Count);
+        var priorityEpisodes = episodes.Where(e => e.Season.Show.IsPriority).ToList();
+        var normalEpisodes = episodes.Where(e => !e.Season.Show.IsPriority).ToList();
 
         var translationsInitiated = 0;
+
+        if (priorityEpisodes.Count > 0)
+        {
+            _logger.LogInformation("Processing {PriorityCount} priority episode(s) first.", priorityEpisodes.Count);
+            foreach (var episode in priorityEpisodes)
+            {
+                if (translationsInitiated >= limit)
+                {
+                    _logger.LogInformation("Max translations per run reached while processing priority episodes.");
+                    break;
+                }
+
+                try
+                {
+                    var show = episode.Season.Show;
+
+                    TimeSpan? threshold = null;
+                    if (show?.TranslationAgeThreshold.HasValue == true)
+                    {
+                        threshold = TimeSpan.FromHours(show.TranslationAgeThreshold.Value);
+                    }
+
+                    if (!ShouldProcessMedia(episode, MediaType.Episode, threshold))
+                    {
+                        continue;
+                    }
+
+                    var translationsQueued =
+                        await _mediaSubtitleProcessor.ProcessMediaForceAsync(episode, MediaType.Episode,
+                            forceProcess: false);
+                    if (translationsQueued > 0)
+                    {
+                        translationsInitiated++;
+                    }
+                }
+                catch (DirectoryNotFoundException)
+                {
+                    _logger.LogWarning("Directory not found for show at path: |Red|{Path}|/Red|, skipping episode",
+                        episode.Path);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex,
+                        "Error processing subtitles for episode at path: |Red|{Path}|/Red|, skipping episode",
+                        episode.Path);
+                }
+            }
+        }
+
+        if (translationsInitiated >= limit || normalEpisodes.Count == 0)
+        {
+            return translationsInitiated;
+        }
+
+        // Cycle through non-priority episodes to avoid starvation,
+        // but always process priority items first.
+        var currentIndex = GetProcessingIndex(ShowProcessingIndexKey);
+        if (currentIndex >= normalEpisodes.Count)
+        {
+            currentIndex = 0;
+            _logger.LogInformation(
+                "Show processing cycle completed for non-priority episodes. Starting new cycle from the beginning.");
+        }
+
+        var remainingLimit = limit - translationsInitiated;
+        _logger.LogInformation(
+            "Processing up to {MaxTranslations} non-priority episodes starting at {StartIndex} out of {TotalCount}",
+            remainingLimit,
+            currentIndex,
+            normalEpisodes.Count);
+
         var scannedEpisodes = 0;
         var episodeIndex = currentIndex;
 
-        while (translationsInitiated < limit && scannedEpisodes < episodes.Count)
+        while (translationsInitiated < limit && scannedEpisodes < normalEpisodes.Count)
         {
-            var episode = episodes[episodeIndex % episodes.Count];
+            var episode = normalEpisodes[episodeIndex % normalEpisodes.Count];
 
             try
             {
@@ -310,7 +421,7 @@ public class AutomatedTranslationJob
             }
         }
 
-        var newIndex = episodeIndex % episodes.Count;
+        var newIndex = episodeIndex % normalEpisodes.Count;
         SetProcessingIndex(ShowProcessingIndexKey, newIndex);
 
         return translationsInitiated;

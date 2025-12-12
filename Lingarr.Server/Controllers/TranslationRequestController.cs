@@ -173,5 +173,26 @@ public class TranslationRequestController : ControllerBase
 
         return NotFound(newTranslationRequest);
     }
-}
 
+    /// <summary>
+    /// Re-enqueues queued translation requests so they are placed into the correct Hangfire queue
+    /// based on current priority flags.
+    /// </summary>
+    /// <param name="includeInProgress">If true, also attempts to re-enqueue non-processing in-progress requests.</param>
+    /// <response code="200">Returns counts of re-enqueued and skipped requests</response>
+    /// <response code="500">If there was an error while re-enqueueing requests</response>
+    [HttpPost("reenqueue")]
+    public async Task<ActionResult<ReenqueueQueuedRequestsResponse>> ReenqueueQueuedRequests(
+        [FromQuery] bool includeInProgress = false)
+    {
+        var (reenqueued, skippedProcessing) =
+            await _translationRequestService.ReenqueueQueuedRequests(includeInProgress);
+
+        return Ok(new ReenqueueQueuedRequestsResponse
+        {
+            Reenqueued = reenqueued,
+            SkippedProcessing = skippedProcessing,
+            Message = $"Re-enqueued {reenqueued} request(s). Skipped {skippedProcessing} processing job(s)."
+        });
+    }
+}

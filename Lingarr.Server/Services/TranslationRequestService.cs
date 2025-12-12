@@ -2,6 +2,7 @@
 using Hangfire;
 using Hangfire.Common;
 using Hangfire.States;
+using Hangfire.Storage;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
@@ -269,6 +270,56 @@ public class TranslationRequestService : ITranslationRequestService
             // Use the same queue selection logic as for new requests
             await EnqueueTranslationJobAsync(request, false);
         }
+    }
+
+    /// <inheritdoc />
+    public async Task<(int Reenqueued, int SkippedProcessing)> ReenqueueQueuedRequests(bool includeInProgress = false)
+    {
+        var statuses = includeInProgress
+            ? new[] { TranslationStatus.Pending, TranslationStatus.InProgress }
+            : new[] { TranslationStatus.Pending };
+
+        var requests = await _dbContext.TranslationRequests
+            .Where(tr => statuses.Contains(tr.Status))
+            .ToListAsync();
+
+        var reenqueued = 0;
+        var skippedProcessing = 0;
+
+        foreach (var request in requests)
+        {
+            if (request.JobId != null)
+            {
+                try
+                {
+                    var stateData = JobStorage.Current.GetConnection().GetStateData(request.JobId);
+                    if (stateData?.Name == ProcessingState.StateName)
+                    {
+                        skippedProcessing++;
+                        continue;
+                    }
+
+                    _backgroundJobClient.Delete(request.JobId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex,
+                        "Failed to delete existing Hangfire job {JobId} for request {RequestId} before re-enqueue.",
+                        request.JobId,
+                        request.Id);
+                }
+            }
+
+            await EnqueueTranslationJobAsync(request, false);
+            reenqueued++;
+        }
+
+        _logger.LogInformation(
+            "Re-enqueued {ReenqueuedCount} translation request(s). Skipped {SkippedProcessingCount} currently processing job(s).",
+            reenqueued,
+            skippedProcessing);
+
+        return (reenqueued, skippedProcessing);
     }
     
     /// <inheritdoc />

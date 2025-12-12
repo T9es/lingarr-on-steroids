@@ -382,25 +382,49 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             return;
         }
 
-        // Remove existing embedded subtitle records for this media
-        var existing = await _dbContext.EmbeddedSubtitles
-            .Where(e => e.EpisodeId == episodeId && e.MovieId == movieId)
-            .ToListAsync();
-
-        if (existing.Any())
+        // Retry logic for concurrency conflicts (multiple jobs processing same media)
+        const int maxRetries = 3;
+        for (int attempt = 1; attempt <= maxRetries; attempt++)
         {
-            _dbContext.EmbeddedSubtitles.RemoveRange(existing);
-        }
+            try
+            {
+                // Use ExecuteDeleteAsync for atomic deletion - won't fail if rows already deleted
+                await _dbContext.EmbeddedSubtitles
+                    .Where(e => e.EpisodeId == episodeId && e.MovieId == movieId)
+                    .ExecuteDeleteAsync();
 
-        // Add new records
-        foreach (var sub in embeddedSubs)
-        {
-            sub.EpisodeId = episodeId;
-            sub.MovieId = movieId;
-            _dbContext.EmbeddedSubtitles.Add(sub);
-        }
+                // Add new records
+                foreach (var sub in embeddedSubs)
+                {
+                    sub.EpisodeId = episodeId;
+                    sub.MovieId = movieId;
+                    _dbContext.EmbeddedSubtitles.Add(sub);
+                }
 
-        await _dbContext.SaveChangesAsync();
+                await _dbContext.SaveChangesAsync();
+                return; // Success, exit the retry loop
+            }
+            catch (DbUpdateConcurrencyException ex)
+            {
+                _logger.LogWarning(
+                    "Concurrency conflict syncing embedded subtitles (attempt {Attempt}/{MaxRetries}) for EpisodeId={EpisodeId}, MovieId={MovieId}: {Message}",
+                    attempt, maxRetries, episodeId, movieId, ex.Message);
+
+                if (attempt == maxRetries)
+                {
+                    _logger.LogError(ex, 
+                        "Failed to sync embedded subtitles after {MaxRetries} attempts for EpisodeId={EpisodeId}, MovieId={MovieId}",
+                        maxRetries, episodeId, movieId);
+                    throw;
+                }
+
+                // Clear the change tracker to remove stale entities before retry
+                _dbContext.ChangeTracker.Clear();
+                
+                // Small delay before retry to reduce collision chance
+                await Task.Delay(50 * attempt);
+            }
+        }
     }
 
     private async Task CleanupSubtitleFile(string filePath)

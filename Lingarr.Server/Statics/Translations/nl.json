@@ -122,10 +122,11 @@
     "noLogs": "Geen logs voor deze vertaling.",
     "loadLogsError": "Kon logs voor deze vertaling niet laden.",
     "close": "Sluiten",
-    "noActiveTranslations": "Geen actieve vertalingen.",
-    "noFailedTranslations": "Geen mislukte vertalingen.",
-    "noQueuedTranslations": "Geen vertalingen in wachtrij."
-  },
+	    "noActiveTranslations": "Geen actieve vertalingen.",
+	    "noFailedTranslations": "Geen mislukte vertalingen.",
+	    "noQueuedTranslations": "Geen vertalingen in wachtrij.",
+	    "reenqueueQueue": "Wachtrij opnieuw inplannen"
+	  },
   "schedule": {
     "jobName": "Taaknaam",
     "state": "Status",

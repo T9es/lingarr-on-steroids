@@ -35,11 +35,23 @@ public interface ITranslationRequestService
     /// <returns>The current count of active translation requests</returns>
     Task<int> UpdateActiveCount();
 
-    /// <summary>
-    /// Resumes all pending and in-progress translation requests by re-enqueueing them in the job queue.
-    /// </summary>
-    /// <returns>A task representing the asynchronous operation.</returns>
-    Task ResumeTranslationRequests();
+	    /// <summary>
+	    /// Resumes all pending and in-progress translation requests by re-enqueueing them in the job queue.
+	    /// </summary>
+	    /// <returns>A task representing the asynchronous operation.</returns>
+	    Task ResumeTranslationRequests();
+
+	    /// <summary>
+	    /// Re-enqueues queued translation requests so they are placed into the correct Hangfire queue
+	    /// based on current priority flags.
+	    /// By default, only Pending requests are re-enqueued; InProgress requests are left untouched.
+	    /// Requests whose Hangfire job is currently processing are skipped.
+	    /// </summary>
+	    /// <param name="includeInProgress">If true, also attempts to re-enqueue non-processing InProgress requests.</param>
+	    /// <returns>
+	    /// Tuple containing (reenqueuedCount, skippedProcessingCount).
+	    /// </returns>
+	    Task<(int Reenqueued, int SkippedProcessing)> ReenqueueQueuedRequests(bool includeInProgress = false);
 
     /// <summary>
     /// Retrieves a paginated list of translation requests with optional filtering and sorting.

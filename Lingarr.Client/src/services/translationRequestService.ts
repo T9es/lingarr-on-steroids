@@ -87,22 +87,36 @@ const service = (
                 })
         })
     },
-    retry<T>(translationRequest: ITranslationRequest): Promise<T> {
-        return new Promise((resolve, reject) => {
-            http.post(`${resource}/retry`, translationRequest)
-                .then((response: AxiosResponse<T>) => {
-                    resolve(response.data)
+	    retry<T>(translationRequest: ITranslationRequest): Promise<T> {
+	        return new Promise((resolve, reject) => {
+	            http.post(`${resource}/retry`, translationRequest)
+	                .then((response: AxiosResponse<T>) => {
+	                    resolve(response.data)
                 })
                 .catch((error: AxiosError) => {
                     reject(error.response)
-                })
-        })
-    },
-    logs<T extends ITranslationRequestLog[]>(translationRequestId: number): Promise<T> {
-        return new Promise((resolve, reject) => {
-            http.get(`${resource}/logs/${translationRequestId}`)
-                .then((response: AxiosResponse<T>) => {
-                    resolve(response.data)
+	                })
+	        })
+	    },
+	    reenqueueQueued<T>(includeInProgress = false): Promise<T> {
+	        return new Promise((resolve, reject) => {
+	            http.post(
+	                `${resource}/reenqueue`.addParams({ includeInProgress }),
+	                null
+	            )
+	                .then((response: AxiosResponse<T>) => {
+	                    resolve(response.data)
+	                })
+	                .catch((error: AxiosError) => {
+	                    reject(error.response)
+	                })
+	        })
+	    },
+	    logs<T extends ITranslationRequestLog[]>(translationRequestId: number): Promise<T> {
+	        return new Promise((resolve, reject) => {
+	            http.get(`${resource}/logs/${translationRequestId}`)
+	                .then((response: AxiosResponse<T>) => {
+	                    resolve(response.data)
                 })
                 .catch((error: AxiosError) => {
                     reject(error.response)

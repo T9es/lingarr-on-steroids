@@ -19,11 +19,11 @@ using Xunit;
 
 namespace Lingarr.Server.Tests.Jobs;
 
-public class AutomatedTranslationJobTests
-{
-    [Fact]
-    public async Task ProcessMovies_ScansPastInitialWindowWhenEarlyItemsTooNew()
+    public class AutomatedTranslationJobTests
     {
+        [Fact]
+        public async Task ProcessMovies_ScansPastInitialWindowWhenEarlyItemsTooNew()
+        {
         var tempDirectory = Directory.CreateTempSubdirectory();
         try
         {
@@ -35,9 +35,9 @@ public class AutomatedTranslationJobTests
             var job = CreateJob(context, processor);
             ConfigureJobForMovies(job);
 
-            var result = await InvokeProcessMoviesAsync(job);
+            var result = await InvokeProcessMoviesAsync(job, 1);
 
-            Assert.True(result);
+            Assert.True(result > 0);
             Assert.Single(processor.ProcessedTitles);
             Assert.Equal(movies[^1].Title, processor.ProcessedTitles.Single());
         }
@@ -46,6 +46,123 @@ public class AutomatedTranslationJobTests
             tempDirectory.Delete(recursive: true);
         }
     }
+
+    [Fact]
+        public async Task ProcessMovies_PrioritizesPriorityMoviesRegardlessOfCycleIndex()
+        {
+            var tempDirectory = Directory.CreateTempSubdirectory();
+            try
+            {
+                var dbContext = BuildContext();
+                await using var context = dbContext;
+
+                var priorityMovie = CreateMovie(1, "Priority Movie", tempDirectory.FullName, TimeSpan.FromHours(80));
+                priorityMovie.IsPriority = true;
+                priorityMovie.PriorityDate = DateTime.UtcNow;
+
+                var normalMovie1 = CreateMovie(2, "Normal Movie 1", tempDirectory.FullName, TimeSpan.FromHours(80));
+                var normalMovie2 = CreateMovie(3, "Normal Movie 2", tempDirectory.FullName, TimeSpan.FromHours(80));
+
+                context.Movies.AddRange(priorityMovie, normalMovie1, normalMovie2);
+                await context.SaveChangesAsync();
+
+                var processor = new RecordingMediaSubtitleProcessor();
+                var job = CreateJob(context, processor);
+                ConfigureJobForMovies(job);
+
+                var cache = GetPrivateField<IMemoryCache>(job, "_memoryCache");
+                cache.Set("Automation:MovieProcessingIndex", 1);
+
+                var result = await InvokeProcessMoviesAsync(job, 1);
+
+                Assert.Equal(1, result);
+                Assert.Single(processor.ProcessedTitles);
+                Assert.Equal(priorityMovie.Title, processor.ProcessedTitles.Single());
+            }
+            finally
+            {
+                tempDirectory.Delete(recursive: true);
+            }
+        }
+
+        [Fact]
+        public async Task ProcessShows_PrioritizesPriorityShowsRegardlessOfCycleIndex()
+        {
+            var tempDirectory = Directory.CreateTempSubdirectory();
+            try
+            {
+                var dbContext = BuildContext();
+                await using var context = dbContext;
+
+                var priorityShow = new Show
+                {
+                    Id = 1,
+                    SonarrId = 1,
+                    Title = "Priority Show",
+                    Path = tempDirectory.FullName,
+                    DateAdded = DateTime.UtcNow - TimeSpan.FromHours(80),
+                    ExcludeFromTranslation = false,
+                    IsPriority = true,
+                    PriorityDate = DateTime.UtcNow
+                };
+
+                var normalShow = new Show
+                {
+                    Id = 2,
+                    SonarrId = 2,
+                    Title = "Normal Show",
+                    Path = tempDirectory.FullName,
+                    DateAdded = DateTime.UtcNow - TimeSpan.FromHours(80),
+                    ExcludeFromTranslation = false,
+                    IsPriority = false
+                };
+
+                var prioritySeason = new Season
+                {
+                    Id = 1,
+                    SeasonNumber = 1,
+                    Show = priorityShow,
+                    ShowId = priorityShow.Id,
+                    ExcludeFromTranslation = false
+                };
+
+                var normalSeason = new Season
+                {
+                    Id = 2,
+                    SeasonNumber = 1,
+                    Show = normalShow,
+                    ShowId = normalShow.Id,
+                    ExcludeFromTranslation = false
+                };
+
+                var priorityEpisode = CreateEpisode(1, "Priority Episode", tempDirectory.FullName, prioritySeason,
+                    TimeSpan.FromHours(80));
+                var normalEpisode = CreateEpisode(2, "Normal Episode", tempDirectory.FullName, normalSeason,
+                    TimeSpan.FromHours(80));
+
+                context.Shows.AddRange(priorityShow, normalShow);
+                context.Seasons.AddRange(prioritySeason, normalSeason);
+                context.Episodes.AddRange(priorityEpisode, normalEpisode);
+                await context.SaveChangesAsync();
+
+                var processor = new RecordingMediaSubtitleProcessor();
+                var job = CreateJob(context, processor);
+                ConfigureJobForMovies(job);
+
+                var cache = GetPrivateField<IMemoryCache>(job, "_memoryCache");
+                cache.Set("Automation:ShowProcessingIndex", 1);
+
+                var result = await InvokeProcessShowsAsync(job, 1);
+
+                Assert.Equal(1, result);
+                Assert.Single(processor.ProcessedTitles);
+                Assert.Equal(priorityEpisode.Title, processor.ProcessedTitles.Single());
+            }
+            finally
+            {
+                    tempDirectory.Delete(recursive: true);
+            }
+        }
 
     private static LingarrDbContext BuildContext()
     {
@@ -108,31 +225,82 @@ public class AutomatedTranslationJobTests
         SetPrivateField(job, "_defaultShowAgeThreshold", TimeSpan.FromHours(48));
     }
 
-    private static async Task<bool> InvokeProcessMoviesAsync(AutomatedTranslationJob job)
-    {
-        var method = typeof(AutomatedTranslationJob)
-            .GetMethod("ProcessMovies", BindingFlags.NonPublic | BindingFlags.Instance);
-        if (method == null)
+        private static async Task<int> InvokeProcessMoviesAsync(AutomatedTranslationJob job, int limit)
         {
-            throw new InvalidOperationException("ProcessMovies method not found via reflection.");
+            var method = typeof(AutomatedTranslationJob)
+                .GetMethod("ProcessMovies", BindingFlags.NonPublic | BindingFlags.Instance);
+            if (method == null)
+            {
+                throw new InvalidOperationException("ProcessMovies method not found via reflection.");
+            }
+
+            var resultTask = (Task<int>)method.Invoke(job, new object[] { limit })!;
+            return await resultTask.ConfigureAwait(false);
         }
 
-        var resultTask = (Task<int>)method.Invoke(job, new object[] { 1 })!;
-        var result = await resultTask.ConfigureAwait(false);
-        return result > 0;
-    }
-
-    private static void SetPrivateField<T>(AutomatedTranslationJob job, string fieldName, T value)
-    {
-        var field = typeof(AutomatedTranslationJob)
-            .GetField(fieldName, BindingFlags.NonPublic | BindingFlags.Instance);
+        private static void SetPrivateField<T>(AutomatedTranslationJob job, string fieldName, T value)
+        {
+            var field = typeof(AutomatedTranslationJob)
+                .GetField(fieldName, BindingFlags.NonPublic | BindingFlags.Instance);
         if (field == null)
         {
             throw new InvalidOperationException($"Field '{fieldName}' not found on AutomatedTranslationJob.");
         }
 
-        field.SetValue(job, value);
-    }
+            field.SetValue(job, value);
+        }
+
+        private static T GetPrivateField<T>(AutomatedTranslationJob job, string fieldName) where T : class
+        {
+            var field = typeof(AutomatedTranslationJob)
+                .GetField(fieldName, BindingFlags.NonPublic | BindingFlags.Instance);
+            if (field == null)
+            {
+                throw new InvalidOperationException($"Field '{fieldName}' not found on AutomatedTranslationJob.");
+            }
+
+            return (T)field.GetValue(job)!;
+        }
+
+        private static async Task<int> InvokeProcessShowsAsync(AutomatedTranslationJob job, int limit)
+        {
+            var method = typeof(AutomatedTranslationJob)
+                .GetMethod("ProcessShows", BindingFlags.NonPublic | BindingFlags.Instance);
+            if (method == null)
+            {
+                throw new InvalidOperationException("ProcessShows method not found via reflection.");
+            }
+
+            var resultTask = (Task<int>)method.Invoke(job, new object[] { limit })!;
+            return await resultTask.ConfigureAwait(false);
+        }
+
+        private static Episode CreateEpisode(
+            int id,
+            string title,
+            string directory,
+            Season season,
+            TimeSpan age)
+        {
+            var fileName = $"{title.Replace(' ', '_')}.mkv";
+            var filePath = Path.Combine(directory, fileName);
+            File.WriteAllText(filePath, "stub");
+            File.SetLastWriteTimeUtc(filePath, DateTime.UtcNow - age);
+
+            return new Episode
+            {
+                Id = id,
+                SonarrId = id,
+                EpisodeNumber = id,
+                Title = title,
+                FileName = fileName,
+                Path = filePath,
+                DateAdded = DateTime.UtcNow - age,
+                Season = season,
+                SeasonId = season.Id,
+                ExcludeFromTranslation = false
+            };
+        }
 
     private sealed class RecordingMediaSubtitleProcessor : IMediaSubtitleProcessor
     {
