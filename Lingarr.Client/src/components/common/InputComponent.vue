@@ -40,7 +40,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import useValidation from '@/composables/useValidation'
 import useDebounce from '@/composables/useDebounce'
 import ValidationIcon from '@/components/common/ValidationIcon.vue'
@@ -73,6 +73,14 @@ const emit = defineEmits<{
     (e: 'keydown', event: KeyboardEvent): void
 }>()
 const { isValid, isInvalid, error, validate } = useValidation(props)
+
+// Validate initial value on mount so pre-populated fields are properly validated
+onMounted(() => {
+    if (props.modelValue !== null && props.modelValue !== undefined && props.modelValue !== '') {
+        validate(String(props.modelValue))
+        emit('update:validation', isValid.value)
+    }
+})
 
 const showPassword = ref(false)
 const inputClasses = computed(() => [
