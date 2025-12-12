@@ -651,8 +651,11 @@ public class TranslationRequestService : ITranslationRequestService
     {
         var queueName = await GetQueueForTranslationRequestAsync(translationRequest, forcePriority);
 
-        var job = Job.FromExpression<TranslationJob>(job =>
-            job.Execute(translationRequest, CancellationToken.None));
+        var job = queueName == PriorityTranslationQueue
+            ? Job.FromExpression<TranslationJob>(job =>
+                job.ExecutePriority(translationRequest, CancellationToken.None))
+            : Job.FromExpression<TranslationJob>(job =>
+                job.ExecuteNormal(translationRequest, CancellationToken.None));
 
         var jobId = _backgroundJobClient.Create(job, new EnqueuedState(queueName));
         await UpdateTranslationRequest(translationRequest, TranslationStatus.Pending, jobId);
