@@ -11,6 +11,15 @@ public interface IParallelTranslationLimiter
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>An IDisposable that releases the slot when disposed</returns>
     Task<IDisposable> AcquireAsync(CancellationToken cancellationToken);
+    
+    /// <summary>
+    /// Acquires a slot for translation with priority support.
+    /// Priority requests are processed before non-priority requests when a slot becomes available.
+    /// </summary>
+    /// <param name="isPriority">Whether this is a priority request</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>An IDisposable that releases the slot when disposed</returns>
+    Task<IDisposable> AcquireAsync(bool isPriority, CancellationToken cancellationToken);
 
     /// <summary>
     /// Reconfigures the maximum concurrency limit.

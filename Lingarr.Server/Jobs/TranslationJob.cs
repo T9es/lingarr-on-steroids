@@ -88,8 +88,13 @@ public class TranslationJob
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, jobCancellationToken);
         var effectiveCancellationToken = linkedCts.Token;
         
+        // Determine if this is a priority translation (before acquiring slot)
+        var isPriority = await IsPriorityMediaAsync(translationRequest);
+        
         // Acquire a parallel translation slot (blocks if limit reached)
-        using var slot = await _parallelLimiter.AcquireAsync(effectiveCancellationToken);
+        // Priority jobs are served first when slots become available
+        using var slot = await _parallelLimiter.AcquireAsync(isPriority, effectiveCancellationToken);
+
 
         
         string? temporaryFilePath = null;
@@ -518,6 +523,43 @@ public class TranslationJob
             await _translationRequestService.UpdateActiveCount();
             await _progressService.Emit(translationRequest, 0);
             await _scheduleService.UpdateJobState(jobName, JobStatus.Cancelled.GetDisplayName());
+        }
+    }
+    
+    /// <summary>
+    /// Determines if this translation request is for priority media.
+    /// </summary>
+    private async Task<bool> IsPriorityMediaAsync(TranslationRequest request)
+    {
+        if (!request.MediaId.HasValue)
+        {
+            return false;
+        }
+
+        try
+        {
+            switch (request.MediaType)
+            {
+                case MediaType.Movie:
+                    return await _dbContext.Movies
+                        .Where(m => m.Id == request.MediaId.Value)
+                        .Select(m => m.IsPriority)
+                        .FirstOrDefaultAsync();
+
+                case MediaType.Episode:
+                    return await _dbContext.Episodes
+                        .Where(e => e.Id == request.MediaId.Value)
+                        .Select(e => e.Season.Show.IsPriority)
+                        .FirstOrDefaultAsync();
+
+                default:
+                    return false;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error determining priority status for request {RequestId}", request.Id);
+            return false;
         }
     }
     
