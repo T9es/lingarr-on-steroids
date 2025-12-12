@@ -179,7 +179,13 @@
       "sonarrAddressError": "Voer een geldige URL in (bijv. http://localhost:3000 of https://api.example.com)",
       "sonarrApiKey": "API-sleutel",
       "sonarrApiKeyError": "API-sleutel moet {minLength} tekens bevatten",
-      "reindexTask": "Geen media zichtbaar? Probeer opnieuw te indexeren door <a href=\"/settings/tasks\" class=\"underline\">hier</a> een synchronisatietaak te starten."
+      "reindexTask": "Geen media zichtbaar? Probeer opnieuw te indexeren door <a href=\"/settings/tasks\" class=\"underline\">hier</a> een synchronisatietaak te starten.",
+      "testConnection": "Test verbinding",
+      "testing": "Testen...",
+      "connectionSuccess": "Verbonden",
+      "connectionFailed": "Verbinding mislukt",
+      "notTested": "Niet getest",
+      "version": "Versie"
     },
     "services": {
       "title": "Diensten",

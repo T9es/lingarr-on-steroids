@@ -49,7 +49,7 @@ public class DuplicationPreventionTests : MediaSubtitleProcessorTestBase
         var queued = await Processor.ProcessMediaForceAsync(movie, MediaType.Movie, forceProcess: false);
 
         Assert.Equal(0, queued);
-        TranslationRequestServiceMock.Verify(s => s.CreateRequest(It.IsAny<TranslateAbleSubtitle>()), Times.Never);
+        TranslationRequestServiceMock.Verify(s => s.CreateRequest(It.IsAny<TranslateAbleSubtitle>(), It.IsAny<bool>()), Times.Never);
     }
 
     [Fact]
@@ -125,7 +125,7 @@ public class DuplicationPreventionTests : MediaSubtitleProcessorTestBase
         var queued = await Processor.ProcessMediaForceAsync(movie, MediaType.Movie);
 
         Assert.Equal(0, queued);
-        TranslationRequestServiceMock.Verify(s => s.CreateRequest(It.IsAny<TranslateAbleSubtitle>()), Times.Never);
+        TranslationRequestServiceMock.Verify(s => s.CreateRequest(It.IsAny<TranslateAbleSubtitle>(), It.IsAny<bool>()), Times.Never);
     }
 }
 

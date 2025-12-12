@@ -48,6 +48,8 @@ export interface ISettingService {
     setSetting(key: string, value: string): Promise<void>
     setSettings(keys: ISettings): Promise<void>
     getSystemLimits<T>(): Promise<T>
+    testRadarrConnection<T>(): Promise<T>
+    testSonarrConnection<T>(): Promise<T>
 }
 
 export interface ISubtitleService {

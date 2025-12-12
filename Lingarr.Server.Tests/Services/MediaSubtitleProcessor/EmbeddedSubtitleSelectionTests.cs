@@ -84,7 +84,7 @@ public class EmbeddedSubtitleSelectionTests : MediaSubtitleProcessorTestBase
                 t.MediaType == MediaType.Movie &&
                 t.SubtitlePath == null &&
                 t.SourceLanguage == "ja" &&
-                t.TargetLanguage == "ro")),
+                t.TargetLanguage == "ro"), It.IsAny<bool>()),
             Times.Once);
     }
 }

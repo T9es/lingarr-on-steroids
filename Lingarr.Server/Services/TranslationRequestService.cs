@@ -67,7 +67,7 @@ public class TranslationRequestService : ITranslationRequestService
     }
 
     /// <inheritdoc />
-    public async Task<int> CreateRequest(TranslateAbleSubtitle translateAbleSubtitle)
+    public async Task<int> CreateRequest(TranslateAbleSubtitle translateAbleSubtitle, bool forcePriority = false)
     {
         var mediaTitle = await FormatMediaTitle(translateAbleSubtitle);
         var translationRequest = new TranslationRequest
@@ -82,7 +82,7 @@ public class TranslationRequestService : ITranslationRequestService
             IsActive = true
         };
 
-        return await CreateRequest(translationRequest);
+        return await CreateRequest(translationRequest, forcePriority);
     }
 
     /// <inheritdoc />
@@ -718,6 +718,7 @@ public class TranslationRequestService : ITranslationRequestService
     {
         var query = _dbContext.TranslationRequests
             .AsSplitQuery()
+            .Where(tr => tr.Status == TranslationStatus.Pending)
             .AsQueryable();
 
         if (!string.IsNullOrEmpty(searchQuery))

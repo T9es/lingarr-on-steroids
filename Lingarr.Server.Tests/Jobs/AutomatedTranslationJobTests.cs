@@ -312,7 +312,7 @@ namespace Lingarr.Server.Tests.Jobs;
             return Task.FromResult(true);
         }
 
-        public Task<int> ProcessMediaForceAsync(IMedia media, MediaType mediaType, bool forceProcess = true)
+        public Task<int> ProcessMediaForceAsync(IMedia media, MediaType mediaType, bool forceProcess = true, bool forcePriority = false)
         {
             ProcessedTitles.Add(media.Title);
             return Task.FromResult(1);

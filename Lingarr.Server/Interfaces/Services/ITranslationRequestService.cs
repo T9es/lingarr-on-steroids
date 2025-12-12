@@ -13,8 +13,9 @@ public interface ITranslationRequestService
     /// Creates a new translation request for a subtitle file and enqueues it for processing.
     /// </summary>
     /// <param name="translateAbleSubtitle">Details of the subtitle to be translated, including source and target languages</param>
+    /// <param name="forcePriority">If true, forces the request to use the priority queue regardless of media priority status</param>
     /// <returns>The ID of the created translation request</returns>
-    Task<int> CreateRequest(TranslateAbleSubtitle translateAbleSubtitle);
+    Task<int> CreateRequest(TranslateAbleSubtitle translateAbleSubtitle, bool forcePriority = false);
 
     /// <summary>
     /// Creates a new translation request from a translationRequest, creating a new one with the same exact settings.

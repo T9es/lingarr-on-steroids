@@ -301,7 +301,8 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
     public async Task<int> ProcessMediaForceAsync(
         IMedia media, 
         MediaType mediaType,
-        bool forceProcess = true)
+        bool forceProcess = true,
+        bool forcePriority = false)
     {
         if (media.Path == null)
         {
@@ -324,7 +325,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 media.FileName);
             
             // Try to queue translation jobs for embedded subtitle extraction
-            return await TryQueueEmbeddedSubtitleTranslation(media, mediaType, forceProcess);
+            return await TryQueueEmbeddedSubtitleTranslation(media, mediaType, forceProcess, forcePriority);
         }
 
         var sourceLanguages = await GetLanguagesSetting<SourceLanguage>(SettingKeys.Translation.SourceLanguages);
@@ -354,8 +355,8 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             return 0;
         }
         
-        _logger.LogInformation("Initiating manual subtitle processing for {FileName} (forceProcess={Force}).", media.FileName, forceProcess);
-        return await ProcessSubtitlesWithCount(matchingSubtitles, sourceLanguages, targetLanguages, ignoreCaptions ?? "", forceProcess);
+        _logger.LogInformation("Initiating manual subtitle processing for {FileName} (forceProcess={Force}, forcePriority={Priority}).", media.FileName, forceProcess, forcePriority);
+        return await ProcessSubtitlesWithCount(matchingSubtitles, sourceLanguages, targetLanguages, ignoreCaptions ?? "", forceProcess, forcePriority);
     }
     
     /// <summary>
@@ -367,7 +368,8 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         HashSet<string> sourceLanguages,
         HashSet<string> targetLanguages,
         string ignoreCaptions,
-        bool forceTranslation = false)
+        bool forceTranslation = false,
+        bool forcePriority = false)
     {
         var existingLanguages = ExtractLanguageCodes(subtitles);
         var translationsQueued = 0;
@@ -443,7 +445,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                         TargetLanguage = targetLanguage,
                         SourceLanguage = sourceLanguage,
                         SubtitleFormat = sourceSubtitle.Format
-                    });
+                    }, forcePriority);
                     translationsQueued++;
                     _logger.LogInformation(
                         "Initiating translation from |Orange|{sourceLanguage}|/Orange| to |Orange|{targetLanguage}|/Orange| for |Green|{subtitleFile}|/Green|",
@@ -482,8 +484,10 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
     /// </summary>
     /// <param name="media">The media item to process</param>
     /// <param name="mediaType">The type of media (Movie or Episode)</param>
+    /// <param name="forceProcess">If true, bypasses the media hash check</param>
+    /// <param name="forcePriority">If true, forces jobs to use the priority queue</param>
     /// <returns>The number of translation requests queued</returns>
-    private async Task<int> TryQueueEmbeddedSubtitleTranslation(IMedia media, MediaType mediaType, bool forceProcess)
+    private async Task<int> TryQueueEmbeddedSubtitleTranslation(IMedia media, MediaType mediaType, bool forceProcess, bool forcePriority = false)
     {
         // Preserve the order of configured source languages so we can treat
         // them as a priority list (e.g. [en, ja] => prefer English when both
@@ -693,7 +697,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 TargetLanguage = targetLanguage,
                 SourceLanguage = selectedSourceLanguage,
                 SubtitleFormat = null
-            });
+            }, forcePriority);
             translationsQueued++;
 	            _logger.LogInformation(
 	                "Queued embedded subtitle translation from |Orange|{sourceLanguage}|/Orange| to |Orange|{targetLanguage}|/Orange| for |Green|{FileName}|/Green|",

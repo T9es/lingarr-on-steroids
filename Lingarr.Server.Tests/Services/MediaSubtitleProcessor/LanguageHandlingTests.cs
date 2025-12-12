@@ -56,7 +56,7 @@ public class LanguageHandlingTests : MediaSubtitleProcessorTestBase
             s => s.CreateRequest(It.Is<TranslateAbleSubtitle>(t =>
                 t.SourceLanguage == "hi" &&
                 t.TargetLanguage == "en" &&
-                t.SubtitlePath.Contains("test.movie.hi.srt"))),
+                t.SubtitlePath.Contains("test.movie.hi.srt")), It.IsAny<bool>()),
             Times.Once);
     }
 }

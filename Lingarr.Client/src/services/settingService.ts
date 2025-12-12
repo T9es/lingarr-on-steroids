@@ -59,6 +59,28 @@ const service = (http: AxiosStatic, resource = '/api/setting'): ISettingService 
                     reject(error.response)
                 })
         })
+    },
+    testRadarrConnection<T>(): Promise<T> {
+        return new Promise((resolve, reject) => {
+            http.post(`${resource}/test/radarr`)
+                .then((response: AxiosResponse<T>) => {
+                    resolve(response.data)
+                })
+                .catch((error: AxiosError) => {
+                    reject(error.response)
+                })
+        })
+    },
+    testSonarrConnection<T>(): Promise<T> {
+        return new Promise((resolve, reject) => {
+            http.post(`${resource}/test/sonarr`)
+                .then((response: AxiosResponse<T>) => {
+                    resolve(response.data)
+                })
+                .catch((error: AxiosError) => {
+                    reject(error.response)
+                })
+        })
     }
 })
 

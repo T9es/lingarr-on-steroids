@@ -16,4 +16,11 @@ public interface IIntegrationService
     /// </returns>
     /// <exception cref="HttpRequestException">Thrown when the API request fails.</exception>
     Task<T?> GetApiResponse<T>(string apiUrl, IntegrationSettingKeys settingKeys);
+    
+    /// <summary>
+    /// Tests a connection to an integration service by calling its health endpoint.
+    /// </summary>
+    /// <param name="settingKeys">The integration settings containing the base URL and API key.</param>
+    /// <returns>A task that contains the connection test result including success status and version info.</returns>
+    Task<IntegrationTestResult> TestConnection(IntegrationSettingKeys settingKeys);
 }

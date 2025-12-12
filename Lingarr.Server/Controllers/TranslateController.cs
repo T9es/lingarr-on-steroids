@@ -166,7 +166,7 @@ public class TranslateController : ControllerBase
                     if (movie == null)
                         return NotFound(new TranslateMediaResponse { Message = "Movie not found" });
                     _logger.LogInformation("Processing movie: {Title}, Path: {Path}", movie.Title, movie.Path);
-                    translationsQueued = await _mediaSubtitleProcessor.ProcessMediaForceAsync(movie, MediaType.Movie);
+                    translationsQueued = await _mediaSubtitleProcessor.ProcessMediaForceAsync(movie, MediaType.Movie, forceProcess: true, forcePriority: true);
                     _logger.LogInformation("Movie {Title} queued {Count} translations", movie.Title, translationsQueued);
                     break;
                     
@@ -174,7 +174,7 @@ public class TranslateController : ControllerBase
                     var episode = await _dbContext.Episodes.FindAsync(request.MediaId);
                     if (episode == null)
                         return NotFound(new TranslateMediaResponse { Message = "Episode not found" });
-                    translationsQueued = await _mediaSubtitleProcessor.ProcessMediaForceAsync(episode, MediaType.Episode);
+                    translationsQueued = await _mediaSubtitleProcessor.ProcessMediaForceAsync(episode, MediaType.Episode, forceProcess: true, forcePriority: true);
                     break;
                     
                 case MediaType.Season:
@@ -185,7 +185,7 @@ public class TranslateController : ControllerBase
                         return NotFound(new TranslateMediaResponse { Message = "Season not found" });
                     foreach (var ep in season.Episodes.Where(e => !e.ExcludeFromTranslation))
                     {
-                        translationsQueued += await _mediaSubtitleProcessor.ProcessMediaForceAsync(ep, MediaType.Episode);
+                        translationsQueued += await _mediaSubtitleProcessor.ProcessMediaForceAsync(ep, MediaType.Episode, forceProcess: true, forcePriority: true);
                     }
                     break;
                     
@@ -205,7 +205,7 @@ public class TranslateController : ControllerBase
                         foreach (var ep in s.Episodes.Where(e => !e.ExcludeFromTranslation))
                         {
                             totalEpisodes++;
-                            var epCount = await _mediaSubtitleProcessor.ProcessMediaForceAsync(ep, MediaType.Episode);
+                            var epCount = await _mediaSubtitleProcessor.ProcessMediaForceAsync(ep, MediaType.Episode, forceProcess: true, forcePriority: true);
                             translationsQueued += epCount;
                             if (epCount == 0)
                             {

@@ -22,8 +22,9 @@ public interface IMediaSubtitleProcessor
     /// <param name="media">The media item to process subtitles for.</param>
     /// <param name="mediaType">The type of the media (e.g., Movie, Episode).</param>
     /// <param name="forceProcess">If true, bypasses the media hash check and always processes.</param>
+    /// <param name="forcePriority">If true, forces jobs to use the priority queue regardless of media priority status.</param>
     /// <returns>
     /// The number of translation requests that were queued.
     /// </returns>
-    Task<int> ProcessMediaForceAsync(IMedia media, MediaType mediaType, bool forceProcess = true);
+    Task<int> ProcessMediaForceAsync(IMedia media, MediaType mediaType, bool forceProcess = true, bool forcePriority = false);
 }

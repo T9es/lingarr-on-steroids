@@ -1,5 +1,6 @@
 ﻿using Lingarr.Core.Entities;
 using Lingarr.Server.Interfaces.Services;
+using Lingarr.Server.Models;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Lingarr.Server.Controllers;
@@ -9,10 +10,12 @@ namespace Lingarr.Server.Controllers;
 public class SettingController : ControllerBase
 {
     private readonly ISettingService _settingService;
+    private readonly IIntegrationService _integrationService;
 
-    public SettingController(ISettingService settingService)
+    public SettingController(ISettingService settingService, IIntegrationService integrationService)
     {
         _settingService = settingService;
+        _integrationService = integrationService;
     }
     
     /// <summary>
@@ -143,5 +146,37 @@ public class SettingController : ControllerBase
         });
         
         return Ok(new { Message = "Restart initiated. Container will restart shortly." });
+    }
+    
+    /// <summary>
+    /// Tests the connection to the configured Radarr instance.
+    /// </summary>
+    /// <returns>Returns the connection status and version information.</returns>
+    [HttpPost("test/radarr")]
+    public async Task<ActionResult<IntegrationTestResult>> TestRadarrConnection()
+    {
+        var result = await _integrationService.TestConnection(
+            new IntegrationSettingKeys
+            {
+                Url = "radarr_url",
+                ApiKey = "radarr_api_key"
+            });
+        return Ok(result);
+    }
+    
+    /// <summary>
+    /// Tests the connection to the configured Sonarr instance.
+    /// </summary>
+    /// <returns>Returns the connection status and version information.</returns>
+    [HttpPost("test/sonarr")]
+    public async Task<ActionResult<IntegrationTestResult>> TestSonarrConnection()
+    {
+        var result = await _integrationService.TestConnection(
+            new IntegrationSettingKeys
+            {
+                Url = "sonarr_url",
+                ApiKey = "sonarr_api_key"
+            });
+        return Ok(result);
     }
 }

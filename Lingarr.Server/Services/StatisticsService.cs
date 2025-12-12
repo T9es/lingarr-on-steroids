@@ -1,5 +1,6 @@
 ﻿using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
+using Lingarr.Core.Enum;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Models.Batch.Response;
 using Lingarr.Server.Models.FileSystem;
@@ -19,7 +20,34 @@ public class StatisticsService : IStatisticsService
 
     public async Task<Statistics> GetStatistics()
     {
-        return await GetOrCreateStatistics();
+        var stats = await GetOrCreateStatistics();
+        
+        // Calculate unique translated media counts dynamically from completed translation requests
+        // This prevents double-counting when media is re-translated
+        var translatedMovies = await _dbContext.TranslationRequests
+            .Where(r => r.Status == TranslationStatus.Completed && 
+                        r.MediaType == MediaType.Movie && 
+                        r.MediaId != null)
+            .Select(r => r.MediaId)
+            .Distinct()
+            .CountAsync();
+
+        var translatedEpisodes = await _dbContext.TranslationRequests
+            .Where(r => r.Status == TranslationStatus.Completed && 
+                        r.MediaType == MediaType.Episode && 
+                        r.MediaId != null)
+            .Select(r => r.MediaId)
+            .Distinct()
+            .CountAsync();
+
+        // Update the TranslationsByMediaType with accurate unique counts
+        stats.TranslationsByMediaType = new Dictionary<string, int>
+        {
+            { MediaType.Movie.ToString(), translatedMovies },
+            { MediaType.Episode.ToString(), translatedEpisodes }
+        };
+
+        return stats;
     }
 
     public async Task<IEnumerable<DailyStatistics>> GetDailyStatistics(int days = 30)
@@ -99,11 +127,8 @@ public class StatisticsService : IStatisticsService
         stats.TotalCharactersTranslated += totalCharacters;
         stats.TotalFilesTranslated++;
 
-        // Update media type statistics
-        var mediaType = request.MediaType.ToString();
-        var mediaTypeStats = stats.TranslationsByMediaType;
-        mediaTypeStats[mediaType] = mediaTypeStats.GetValueOrDefault(mediaType) + 1;
-        stats.TranslationsByMediaType = mediaTypeStats;
+        // NOTE: TranslationsByMediaType is now calculated dynamically in GetStatistics()
+        // to count unique media items, not translation operations (prevents double-counting)
 
         // Update service type statistics
         var serviceStats = stats.TranslationsByService;
