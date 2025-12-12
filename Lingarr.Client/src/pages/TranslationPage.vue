@@ -200,11 +200,19 @@
 	                                    @click="reenqueueQueued">
 	                                    {{ translate('translations.reenqueueQueue') }}
 	                                </button>
+	                                <button
+	                                    v-if="queuedRequests.length"
+	                                    class="border-accent text-primary-content hover:bg-accent cursor-pointer rounded-md border px-3 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+	                                    :disabled="cancellingQueued"
+	                                    @click="cancelAllQueued">
+	                                    {{ translate('translations.cancelAll') }}
+	                                </button>
 	                                <span class="text-secondary-content text-xs">
 	                                    {{ queuedRequests.length }}
 	                                    {{ translate('common.items') }}
 	                                </span>
 	                            </div>
+
 	                        </div>
 	
 	                        <template v-if="queuedRequests.length">
@@ -449,6 +457,7 @@ const activeLogRequest = ref<ITranslationRequest | null>(null)
 	const requestLogs = ref<ITranslationRequestLog[]>([])
 	const retryingFailed = ref(false)
 	const reenqueuingQueued = ref(false)
+	const cancellingQueued = ref(false)
 	
 	const activeTab = ref<'list' | 'test'>('list')
 
@@ -541,6 +550,20 @@ const reenqueueQueued = async () => {
         console.error('Failed to re-enqueue queued translation requests', error)
     } finally {
         reenqueuingQueued.value = false
+    }
+}
+
+const cancelAllQueued = async () => {
+    if (!queuedRequests.value.length || cancellingQueued.value) return
+
+    cancellingQueued.value = true
+    try {
+        await translationRequestStore.cancelAllQueued(false)
+    } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('Failed to cancel queued translation requests', error)
+    } finally {
+        cancellingQueued.value = false
     }
 }
 

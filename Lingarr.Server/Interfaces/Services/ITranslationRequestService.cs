@@ -65,6 +65,17 @@ public interface ITranslationRequestService
 	    /// </returns>
 	    Task<(int RemovedDuplicates, int SkippedProcessing)> DedupeQueuedRequests(bool includeInProgress = false);
 
+	    /// <summary>
+	    /// Cancels all pending and optionally in-progress translation requests.
+	    /// Requests whose Hangfire job is currently processing are skipped.
+	    /// </summary>
+	    /// <param name="includeInProgress">If true, also cancels InProgress requests.</param>
+	    /// <returns>
+	    /// Tuple containing (cancelledCount, skippedProcessingCount).
+	    /// </returns>
+	    Task<(int Cancelled, int SkippedProcessing)> CancelAllQueuedRequests(bool includeInProgress = false);
+
+
     /// <summary>
     /// Retrieves a paginated list of translation requests with optional filtering and sorting.
     /// </summary>

@@ -212,4 +212,28 @@ public class TranslationRequestController : ControllerBase
 	            Message = message
 	        });
 	    }
+
+    /// <summary>
+    /// Cancels all queued translation requests.
+    /// </summary>
+    /// <param name="includeInProgress">If true, also cancels in-progress requests that are not currently processing.</param>
+    /// <response code="200">Returns counts of cancelled and skipped requests</response>
+    /// <response code="500">If there was an error while cancelling requests</response>
+    [HttpPost("cancel-all")]
+    public async Task<ActionResult<CancelAllQueuedRequestsResponse>> CancelAllQueuedRequests(
+        [FromQuery] bool includeInProgress = false)
+    {
+        var (cancelled, skippedProcessing) =
+            await _translationRequestService.CancelAllQueuedRequests(includeInProgress);
+
+        var message = $"Cancelled {cancelled} request(s). Skipped {skippedProcessing} processing job(s).";
+
+        return Ok(new CancelAllQueuedRequestsResponse
+        {
+            Cancelled = cancelled,
+            SkippedProcessing = skippedProcessing,
+            Message = message
+        });
+    }
 }
+

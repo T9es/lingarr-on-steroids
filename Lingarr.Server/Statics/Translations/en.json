@@ -125,7 +125,8 @@
     "noActiveTranslations": "No translations currently in progress.",
     "noFailedTranslations": "No failed translations.",
     "noQueuedTranslations": "No translations in queue.",
-    "reenqueueQueue": "Re-enqueue queue"
+    "reenqueueQueue": "Re-enqueue queue",
+    "cancelAll": "Cancel All"
   },
   "schedule": {
     "jobName": "Job Name",

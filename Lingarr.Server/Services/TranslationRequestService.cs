@@ -479,7 +479,56 @@ public class TranslationRequestService : ITranslationRequestService
 
         return (removedDuplicates, skippedProcessing);
     }
+
+    /// <inheritdoc />
+    public async Task<(int Cancelled, int SkippedProcessing)> CancelAllQueuedRequests(bool includeInProgress = false)
+    {
+        var statuses = includeInProgress
+            ? new[] { TranslationStatus.Pending, TranslationStatus.InProgress }
+            : new[] { TranslationStatus.Pending };
+
+        var requests = await _dbContext.TranslationRequests
+            .Where(tr => statuses.Contains(tr.Status))
+            .ToListAsync();
+
+        var cancelled = 0;
+        var skippedProcessing = 0;
+
+        foreach (var request in requests)
+        {
+            if (request.JobId != null)
+            {
+                try
+                {
+                    var stateData = JobStorage.Current.GetConnection().GetStateData(request.JobId);
+                    if (stateData?.Name == ProcessingState.StateName)
+                    {
+                        skippedProcessing++;
+                        continue;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex,
+                        "Failed to check Hangfire job state for {JobId} request {RequestId}.",
+                        request.JobId,
+                        request.Id);
+                }
+            }
+
+            await CancelTranslationRequest(request);
+            cancelled++;
+        }
+
+        _logger.LogInformation(
+            "Cancelled {CancelledCount} translation request(s). Skipped {SkippedCount} currently processing job(s).",
+            cancelled,
+            skippedProcessing);
+
+        return (cancelled, skippedProcessing);
+    }
     
+
     private async Task<List<TranslationRequest>> OrderRequestsForPriorityProcessingAsync(List<TranslationRequest> requests)
     {
         if (requests.Count == 0)
