@@ -135,6 +135,16 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
 
                 foreach (var targetLanguage in languagesToTranslate)
                 {
+                    if (await HasActiveRequestAsync(_media.Id, _mediaType, sourceLanguage, targetLanguage, sourceSubtitle.Path))
+                    {
+                        _logger.LogInformation(
+                            "Skipping enqueue for {FileName} {Source}->{Target}: translation request already active.",
+                            _media.FileName,
+                            sourceLanguage,
+                            targetLanguage);
+                        continue;
+                    }
+
                     await _translationRequestService.CreateRequest(new TranslateAbleSubtitle
                     {
                         MediaId = _media.Id,
@@ -368,6 +378,16 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
 
                 foreach (var targetLanguage in languagesToTranslate)
                 {
+                    if (await HasActiveRequestAsync(_media.Id, _mediaType, sourceLanguage, targetLanguage, sourceSubtitle.Path))
+                    {
+                        _logger.LogInformation(
+                            "Skipping enqueue for {FileName} {Source}->{Target}: translation request already active.",
+                            _media.FileName,
+                            sourceLanguage,
+                            targetLanguage);
+                        continue;
+                    }
+
                     await _translationRequestService.CreateRequest(new TranslateAbleSubtitle
                     {
                         MediaId = _media.Id,
@@ -581,6 +601,16 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         var translationsQueued = 0;
         foreach (var targetLanguage in targetLanguages)
         {
+            if (await HasActiveRequestAsync(media.Id, mediaType, selectedSourceLanguage, targetLanguage, null))
+            {
+                _logger.LogInformation(
+                    "Skipping embedded enqueue for {FileName} {Source}->{Target}: translation request already active.",
+                    media.FileName,
+                    selectedSourceLanguage,
+                    targetLanguage);
+                continue;
+            }
+
             await _translationRequestService.CreateRequest(new TranslateAbleSubtitle
             {
                 MediaId = media.Id,
@@ -600,5 +630,20 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         
         return translationsQueued;
     }
-}
 
+    private async Task<bool> HasActiveRequestAsync(
+        int mediaId,
+        MediaType mediaType,
+        string sourceLanguage,
+        string targetLanguage,
+        string? subtitlePath)
+    {
+        return await _dbContext.TranslationRequests.AnyAsync(tr =>
+            tr.MediaId == mediaId &&
+            tr.MediaType == mediaType &&
+            tr.SourceLanguage == sourceLanguage &&
+            tr.TargetLanguage == targetLanguage &&
+            tr.SubtitleToTranslate == subtitlePath &&
+            (tr.Status == TranslationStatus.Pending || tr.Status == TranslationStatus.InProgress));
+    }
+}

@@ -89,6 +89,32 @@ public class TranslationRequestService : ITranslationRequestService
 
     public async Task<int> CreateRequest(TranslationRequest translationRequest, bool forcePriority)
     {
+        if (!forcePriority)
+        {
+            var existingId = await _dbContext.TranslationRequests
+                .Where(tr =>
+                    tr.MediaId == translationRequest.MediaId &&
+                    tr.MediaType == translationRequest.MediaType &&
+                    tr.SourceLanguage == translationRequest.SourceLanguage &&
+                    tr.TargetLanguage == translationRequest.TargetLanguage &&
+                    tr.SubtitleToTranslate == translationRequest.SubtitleToTranslate &&
+                    (tr.Status == TranslationStatus.Pending || tr.Status == TranslationStatus.InProgress))
+                .Select(tr => tr.Id)
+                .FirstOrDefaultAsync();
+
+            if (existingId != 0)
+            {
+                _logger.LogInformation(
+                    "Skipping duplicate translation request for media {MediaId} {Source}->{Target} (subtitle={SubtitlePath}). Existing request {RequestId} is still active.",
+                    translationRequest.MediaId,
+                    translationRequest.SourceLanguage,
+                    translationRequest.TargetLanguage,
+                    translationRequest.SubtitleToTranslate ?? "<embedded>",
+                    existingId);
+                return existingId;
+            }
+        }
+
         // Create a new TranslationRequest to not keep ID and JobID
         var translationRequestCopy = new TranslationRequest
         {
