@@ -7,6 +7,7 @@ using Lingarr.Core.Entities;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Models.FileSystem;
 using Microsoft.EntityFrameworkCore;
+using MySqlConnector;
 
 namespace Lingarr.Server.Services.Subtitle;
 
@@ -404,8 +405,27 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 await _dbContext.SaveChangesAsync();
                 return; // Success, exit the retry loop
             }
-            catch (DbUpdateConcurrencyException ex)
+            catch (DbUpdateException ex)
             {
+                var isDuplicateEntry = false;
+                
+                // Check if the inner exception is a MySQL duplicate entry error (1062)
+                if (ex.InnerException is MySqlException mySqlEx && mySqlEx.Number == 1062)
+                {
+                    isDuplicateEntry = true;
+                }
+                // Also check for standard concurrency exception
+                else if (ex is DbUpdateConcurrencyException)
+                {
+                    isDuplicateEntry = true; // Treat concurrency conflict same as duplicate for retry purposes
+                }
+
+                if (!isDuplicateEntry)
+                {
+                    // If it's not a concurrency/duplicate issue, rethrow immediately
+                    throw;
+                }
+
                 _logger.LogWarning(
                     "Concurrency conflict syncing embedded subtitles (attempt {Attempt}/{MaxRetries}) for EpisodeId={EpisodeId}, MovieId={MovieId}: {Message}",
                     attempt, maxRetries, episodeId, movieId, ex.Message);
