@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Lingarr.Core.Entities;
 using Lingarr.Server.Services.Subtitle;
 using Xunit;

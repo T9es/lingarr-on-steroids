@@ -223,7 +223,7 @@ public static class SubtitleLanguageHelper
     /// <summary>
     /// Finds the best matching embedded subtitle from a list of candidates based on configured language priorities.
     /// Uses a quality threshold approach: higher-priority languages receive bonuses only if they meet minimum quality.
-    /// This prevents selecting partial/garbage tracks (e.g., "Signs & Songs") over complete dialogue tracks in other languages.
+    /// This prevents selecting partial/garbage tracks (e.g., "Signs &amp; Songs") over complete dialogue tracks in other languages.
     /// </summary>
     public static (EmbeddedSubtitle? Subtitle, string MatchedLanguage) FindBestMatch(
         List<EmbeddedSubtitle> candidates, 
