@@ -10,14 +10,12 @@ namespace Lingarr.Migrations.MySQL.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.InsertData(
-                table: "settings",
-                columns: new[] { "key", "value" },
-                values: new object[,]
-                {
-                    { "radarr_settings_completed", "false" },
-                    { "sonarr_settings_completed", "false" }
-                });
+            migrationBuilder.Sql(@"
+INSERT INTO `settings` (`key`, `value`) VALUES
+('radarr_settings_completed', 'false'),
+('sonarr_settings_completed', 'false')
+ON DUPLICATE KEY UPDATE `value` = VALUES(`value`);
+");
         }
 
         /// <inheritdoc />

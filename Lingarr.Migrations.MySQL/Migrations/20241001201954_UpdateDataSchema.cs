@@ -79,19 +79,17 @@ namespace Lingarr.Migrations.MySQL.Migrations
                 table: "images",
                 column: "show_id");
             
-            migrationBuilder.InsertData(
-                table: "settings",
-                columns: new[] { "key", "value" },
-                values: new object[,]
-                {
-                    { "automation_enabled", "false" },
-                    { "service_type", "localai" },
-                    { "libretranslate_url", Environment.GetEnvironmentVariable("LIBRETRANSLATE_API") ?? "http://libretranslate:5000" },
-                    { "max_translations_per_run", "10" },
-                    { "deepl_api_key", "" },
-                    { "translation_schedule", "0 4 * * *" },
-                    { "translation_cycle", "false" }
-                });
+            migrationBuilder.Sql($@"
+INSERT INTO `settings` (`key`, `value`) VALUES
+('automation_enabled', 'false'),
+('service_type', 'localai'),
+('libretranslate_url', '{Environment.GetEnvironmentVariable("LIBRETRANSLATE_API") ?? "http://libretranslate:5000"}'),
+('max_translations_per_run', '10'),
+('deepl_api_key', ''),
+('translation_schedule', '0 4 * * *'),
+('translation_cycle', 'false')
+ON DUPLICATE KEY UPDATE `value` = VALUES(`value`);
+");
             
             migrationBuilder.DropForeignKey(
                 name: "fk_images_movies_movie_id",

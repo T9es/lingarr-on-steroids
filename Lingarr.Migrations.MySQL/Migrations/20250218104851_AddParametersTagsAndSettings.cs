@@ -10,19 +10,17 @@ namespace Lingarr.Migrations.MySQL.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.InsertData(
-                table: "settings",
-                columns: new[] { "key", "value" },
-                values: new object[,]
-                {
-                    { "gemini_model", "" },
-                    { "gemini_api_key", "" },
-                    { "deepseek_model", "" },
-                    { "deepseek_api_key", "" },
-                    { "movie_age_threshold", "0" },
-                    { "show_age_threshold", "0" },
-                    { "fix_overlapping_subtitles", "false" }
-                });
+            migrationBuilder.Sql(@"
+INSERT INTO `settings` (`key`, `value`) VALUES
+('gemini_model', ''),
+('gemini_api_key', ''),
+('deepseek_model', ''),
+('deepseek_api_key', ''),
+('movie_age_threshold', '0'),
+('show_age_threshold', '0'),
+('fix_overlapping_subtitles', 'false')
+ON DUPLICATE KEY UPDATE `value` = VALUES(`value`);
+");
             
             migrationBuilder.AddColumn<bool>(
                 name: "exclude_from_translation",

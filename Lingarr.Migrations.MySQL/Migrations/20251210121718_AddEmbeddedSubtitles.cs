@@ -63,10 +63,11 @@ namespace Lingarr.Migrations.MySQL.Migrations
                 column: "movie_id");
             
             // Add the subtitle_extraction_mode setting with default value "on_demand"
-            migrationBuilder.InsertData(
-                table: "settings",
-                columns: new[] { "key", "value" },
-                values: new object[] { "subtitle_extraction_mode", "on_demand" });
+            migrationBuilder.Sql(@"
+INSERT INTO `settings` (`key`, `value`) VALUES
+('subtitle_extraction_mode', 'on_demand')
+ON DUPLICATE KEY UPDATE `value` = VALUES(`value`);
+");
         }
 
         /// <inheritdoc />

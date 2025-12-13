@@ -10,16 +10,14 @@ namespace Lingarr.Migrations.MySQL.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.InsertData(
-                table: "settings",
-                columns: new[] { "key", "value" },
-                values: new object[,]
-                {
-                    { "use_batch_translation", "false" },
-                    { "max_batch_size", "0" },
-                    { "use_subtitle_tagging", "false" },
-                    { "subtitle_tag", "lingarr" }
-                });
+            migrationBuilder.Sql(@"
+INSERT INTO `settings` (`key`, `value`) VALUES
+('use_batch_translation', 'false'),
+('max_batch_size', '0'),
+('use_subtitle_tagging', 'false'),
+('subtitle_tag', 'lingarr')
+ON DUPLICATE KEY UPDATE `value` = VALUES(`value`);
+");
             
             migrationBuilder.AddColumn<int>(
                 name: "media_id",

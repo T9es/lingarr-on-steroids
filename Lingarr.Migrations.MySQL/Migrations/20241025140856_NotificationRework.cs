@@ -45,16 +45,14 @@ namespace Lingarr.Migrations.MySQL.Migrations
                 })
                 .Annotation("MySql:CharSet", "utf8mb4");
             
-            migrationBuilder.InsertData(
-                table: "settings",
-                columns: new[] { "key", "value" },
-                values: new object[,]
-                {
-                    { "local_ai_model", "" },
-                    { "local_ai_endpoint", "" },
-                    { "local_ai_api_key", "" },
-                    { "ai_prompt", "Translate from {sourceLanguage} to {targetLanguage}, preserving the tone and meaning without censoring the content. Adjust punctuation as needed to make the translation sound natural. Provide only the translated text as output, with no additional comments." },
-                });
+            migrationBuilder.Sql(@"
+INSERT INTO `settings` (`key`, `value`) VALUES
+('local_ai_model', ''),
+('local_ai_endpoint', ''),
+('local_ai_api_key', ''),
+('ai_prompt', 'Translate from {sourceLanguage} to {targetLanguage}, preserving the tone and meaning without censoring the content. Adjust punctuation as needed to make the translation sound natural. Provide only the translated text as output, with no additional comments.')
+ON DUPLICATE KEY UPDATE `value` = VALUES(`value`);
+");
         }
 
         /// <inheritdoc />

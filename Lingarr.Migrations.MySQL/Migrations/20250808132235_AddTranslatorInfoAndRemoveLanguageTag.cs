@@ -10,16 +10,14 @@ namespace Lingarr.Migrations.MySQL.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.InsertData(
-                table: "settings",
-                columns: new[] { "key", "value" },
-                values: new object[,]
-                {
-                    { "add_translator_info", "false" },
-                    { "remove_language_tag", "false" },
-                    { "api_key_enabled", "false" },
-                    { "api_key", "" }
-                });
+            migrationBuilder.Sql(@"
+INSERT INTO `settings` (`key`, `value`) VALUES
+('add_translator_info', 'false'),
+('remove_language_tag', 'false'),
+('api_key_enabled', 'false'),
+('api_key', '')
+ON DUPLICATE KEY UPDATE `value` = VALUES(`value`);
+");
             
             migrationBuilder.AlterColumn<string>(
                     name: "subtitle_to_translate",

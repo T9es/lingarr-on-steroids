@@ -10,17 +10,15 @@ namespace Lingarr.Migrations.MySQL.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.InsertData(
-                table: "settings",
-                columns: new[] { "key", "value" },
-                values: new object[,]
-                {
-                    { "ignore_captions", "false" },
-                    { "request_timeout", "5" },
-                    { "max_retries", "5" },
-                    { "retry_delay", "1" },
-                    { "retry_delay_multiplier", "2" }
-                });
+            migrationBuilder.Sql(@"
+INSERT INTO `settings` (`key`, `value`) VALUES
+('ignore_captions', 'false'),
+('request_timeout', '5'),
+('max_retries', '5'),
+('retry_delay', '1'),
+('retry_delay_multiplier', '2')
+ON DUPLICATE KEY UPDATE `value` = VALUES(`value`);
+");
         }
 
         /// <inheritdoc />

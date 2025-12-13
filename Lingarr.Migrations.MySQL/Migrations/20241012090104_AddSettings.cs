@@ -10,17 +10,15 @@ namespace Lingarr.Migrations.MySQL.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.InsertData(
-                table: "settings",
-                columns: new[] { "key", "value" },
-                values: new object[,]
-                {
-                    { "openai_model", "" },
-                    { "openai_api_key", "" },
-                    { "anthropic_api_key", "" },
-                    { "anthropic_model", "" },
-                    { "anthropic_version", "" }
-                });
+            migrationBuilder.Sql(@"
+INSERT INTO `settings` (`key`, `value`) VALUES
+('openai_model', ''),
+('openai_api_key', ''),
+('anthropic_api_key', ''),
+('anthropic_model', ''),
+('anthropic_version', '')
+ON DUPLICATE KEY UPDATE `value` = VALUES(`value`);
+");
         }
 
         /// <inheritdoc />

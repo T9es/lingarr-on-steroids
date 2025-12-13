@@ -10,24 +10,22 @@ namespace Lingarr.Migrations.MySQL.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.InsertData(
-                table: "settings",
-                columns: new[] { "key", "value" },
-                values: new object[,]
-                {
-                    { "custom_ai_parameters", "[]" },
-                    { "strip_subtitle_formatting", "false" },
-                    { "subtitle_validation_enabled", "false" },
-                    { "subtitle_validation_maxfilesizebytes", "1048576" },
-                    { "subtitle_validation_maxsubtitlelength", "500" },
-                    { "subtitle_validation_minsubtitlelength", "2" },
-                    { "subtitle_validation_mindurationms", "500" },
-                    { "subtitle_validation_maxdurationsecs", "10" },
-                    { "ai_context_prompt_enabled", "false" },
-                    { "ai_context_prompt", "Use the CONTEXT to translate the TARGET line.\n\n[TARGET] {lineToTranslate}\n\n[CONTEXT]\n{contextBefore}\n{lineToTranslate}\n{contextAfter}\n[/CONTEXT]" },
-                    { "ai_context_before", "2" },
-                    { "ai_context_after", "2" }
-                });
+            migrationBuilder.Sql(@"
+INSERT INTO `settings` (`key`, `value`) VALUES
+('custom_ai_parameters', '[]'),
+('strip_subtitle_formatting', 'false'),
+('subtitle_validation_enabled', 'false'),
+('subtitle_validation_maxfilesizebytes', '1048576'),
+('subtitle_validation_maxsubtitlelength', '500'),
+('subtitle_validation_minsubtitlelength', '2'),
+('subtitle_validation_mindurationms', '500'),
+('subtitle_validation_maxdurationsecs', '10'),
+('ai_context_prompt_enabled', 'false'),
+('ai_context_prompt', 'Use the CONTEXT to translate the TARGET line.\n\n[TARGET] {lineToTranslate}\n\n[CONTEXT]\n{contextBefore}\n{lineToTranslate}\n{contextAfter}\n[/CONTEXT]'),
+('ai_context_before', '2'),
+('ai_context_after', '2')
+ON DUPLICATE KEY UPDATE `value` = VALUES(`value`);
+");
             
             migrationBuilder.AlterColumn<string>(
                 name: "path",

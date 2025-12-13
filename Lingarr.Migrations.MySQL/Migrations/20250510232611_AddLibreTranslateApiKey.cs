@@ -10,13 +10,11 @@ namespace Lingarr.Migrations.MySQL.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.InsertData(
-                table: "settings",
-                columns: new[] { "key", "value" },
-                values: new object[,]
-                {
-                    { "libretranslate_api_key", Environment.GetEnvironmentVariable("LIBRETRANSLATE_API_KEY") ?? "" },
-                });
+            migrationBuilder.Sql($@"
+INSERT INTO `settings` (`key`, `value`) VALUES
+('libretranslate_api_key', '{Environment.GetEnvironmentVariable("LIBRETRANSLATE_API_KEY") ?? ""}')
+ON DUPLICATE KEY UPDATE `value` = VALUES(`value`);
+");
         }
 
         /// <inheritdoc />

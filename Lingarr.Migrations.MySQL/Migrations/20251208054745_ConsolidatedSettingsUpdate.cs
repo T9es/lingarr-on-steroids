@@ -10,66 +10,38 @@ namespace Lingarr.Migrations.MySQL.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.UpdateData(
-                table: "settings",
-                keyColumn: "key",
-                keyValue: "ai_prompt",
-                column: "value",
-                value: "You are a professional movie, anime and TV subtitle translator working from {sourceLanguage} to {targetLanguage}.\n\nYour job is to produce natural, fluent subtitles in {targetLanguage} that feel like high-quality Netflix subtitles.\n\nRules:\n- Translate the meaning and tone, not word-for-word. Use natural, idiomatic {targetLanguage}, and keep the emotional impact.\n- Do NOT censor or soften profanity, insults or slang unless the source already does. Keep roughly the same intensity.\n- Preserve the structure of the input: keep the same number of lines and the same line breaks. Do not merge, split or reorder lines.\n- Preserve all tags, speaker labels and non-dialogue descriptions such as [MUSIC], [LAUGHTER], (sighs), <i>...</i>, names before a colon, etc.\n  Translate only the spoken content; keep formatting and tags as they are.\n- Prefer spoken, contemporary {targetLanguage} that sounds like real people talking in a show, not written prose.\n- Do NOT transliterate English interjections if they sound unnatural in {targetLanguage}. Use natural equivalents instead (e.g. in Polish \"Hm?\", \"Co?\", \"No nie\", \"O kurde\", etc.).\n- For repeated lines and running gags, keep terminology and style consistent across the episode.\n- Do not explain or comment on the text. Output ONLY the translated subtitle text, without quotes or extra text.\n- Use neutral insults that could appear in Netflix subtitles, not ultra-local or oddly specific ones.");
+            // Update the ai_prompt value (simplified version without newlines for SQL)
+            migrationBuilder.Sql(@"
+UPDATE `settings` SET `value` = 'You are a professional movie, anime and TV subtitle translator working from {sourceLanguage} to {targetLanguage}. Your job is to produce natural, fluent subtitles that feel like high-quality Netflix subtitles. Rules: Translate the meaning and tone, not word-for-word. Use natural, idiomatic language and keep the emotional impact. Do NOT censor or soften profanity, insults or slang unless the source already does. Preserve the structure of the input: keep the same number of lines and line breaks. Preserve all tags, speaker labels and non-dialogue descriptions. Prefer spoken, contemporary language that sounds like real people talking in a show. Do NOT transliterate English interjections if they sound unnatural. For repeated lines, keep terminology consistent. Do not explain or comment on the text. Output ONLY the translated subtitle text, without quotes or extra text.'
+WHERE `key` = 'ai_prompt';
 
-            // Parallel Translation Settings
-            migrationBuilder.InsertData(
-                table: "settings",
-                columns: new[] { "key", "value" },
-                values: new object[,]
-                {
-                    { "max_parallel_translations", "1" },
-                    { "chutes_request_buffer", "50" }
-                });
-
-            // Batch Fallback Settings
-            migrationBuilder.InsertData(
-                table: "settings",
-                columns: new[] { "key", "value" },
-                values: new object[,]
-                {
-                    { "enable_batch_fallback", "true" },
-                    { "max_batch_split_attempts", "3" }
-                });
-
-            // ASS Drawing Command Filter Settings
-            migrationBuilder.InsertData(
-                table: "settings",
-                columns: new[] { "key", "value" },
-                values: new object[,]
-                {
-                    { "strip_ass_drawing_commands", "true" },
-                    { "clean_source_ass_drawings", "false" }
-                });
+INSERT INTO `settings` (`key`, `value`) VALUES
+('max_parallel_translations', '1'),
+('chutes_request_buffer', '50'),
+('enable_batch_fallback', 'true'),
+('max_batch_split_attempts', '3'),
+('strip_ass_drawing_commands', 'true'),
+('clean_source_ass_drawings', 'false')
+ON DUPLICATE KEY UPDATE `value` = VALUES(`value`);
+");
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.UpdateData(
-                table: "settings",
-                keyColumn: "key",
-                keyValue: "ai_prompt",
-                column: "value",
-                value: "Translate from {sourceLanguage} to {targetLanguage}, preserving the tone and meaning without censoring the content. Adjust punctuation as needed to make the translation sound natural. Provide only the translated text as output, with no additional comments.");
+            migrationBuilder.Sql(@"
+UPDATE `settings` SET `value` = 'Translate from {sourceLanguage} to {targetLanguage}, preserving the tone and meaning without censoring the content. Adjust punctuation as needed to make the translation sound natural. Provide only the translated text as output, with no additional comments.'
+WHERE `key` = 'ai_prompt';
 
-            migrationBuilder.DeleteData(
-                table: "settings",
-                keyColumn: "key",
-                keyValues: new object[]
-                {
-                    "max_parallel_translations",
-                    "chutes_request_buffer",
-                    "enable_batch_fallback",
-                    "max_batch_split_attempts",
-                    "strip_ass_drawing_commands",
-                    "clean_source_ass_drawings"
-                });
+DELETE FROM `settings` WHERE `key` IN (
+    'max_parallel_translations',
+    'chutes_request_buffer',
+    'enable_batch_fallback',
+    'max_batch_split_attempts',
+    'strip_ass_drawing_commands',
+    'clean_source_ass_drawings'
+);
+");
         }
     }
 }
