@@ -184,6 +184,45 @@ Use **Tailwind CSS** utility classes.
   - To create: `../create-migrations.ps1 "MigrationName"` (powershell script helper)
   - **IMPORTANT**: If creating migrations manually or if the script fails, you **MUST** ensure the `*.Designer.cs` file is created and includes the `[Migration("...")]` attribute. Without this file, Entity Framework will **silently ignore** the migration.
 
+## 7. Migration Pitfall: `settings` Table
+
+### The Problem
+The `Setting` entity uses a non-standard configuration:
+- Uses `Key` as the primary key (not `Id`)
+- Does not inherit from `BaseEntity`
+- Has no explicit `ToTable()` configuration
+
+When using `InsertData()`, `UpdateData()`, or `DeleteData()` on the `settings` table in migrations, EF Core attempts to resolve the entity mapping at runtime. This **fails on fresh databases** with the error:
+```
+System.InvalidOperationException: There is no entity type mapped to the table 'settings' which is used in a data operation.
+```
+
+### The Solution
+**Always use raw SQL for data operations on the `settings` table:**
+
+```csharp
+// ❌ DON'T DO THIS - Will fail on fresh databases
+migrationBuilder.InsertData(
+    table: "settings",
+    columns: new[] { "key", "value" },
+    values: new object[] { "my_setting", "my_value" });
+
+// ✅ DO THIS INSTEAD - Always works
+migrationBuilder.Sql(@"
+INSERT INTO `settings` (`key`, `value`) VALUES
+('my_setting', 'my_value')
+ON DUPLICATE KEY UPDATE `value` = VALUES(`value`);
+");
+```
+
+### Why This Happens
+EF Core's `InsertData()` requires a valid model mapping at migration execution time. The `Setting` entity's unconventional setup (string PK, no base class) causes the migration runner to fail to resolve the mapping when applying migrations from scratch.
+
+Raw SQL bypasses this entirely and is:
+- More robust (works regardless of model configuration)
+- Faster at runtime (no model validation overhead)
+- Future-proof (won't break if the model changes)
+
 Before any coding starts, the user must confirm that you can code. If they don't, your task is to investigate deeply the issue or feature they currently want to do or implement. YOU CAN and SHOULD use any mcp tools at your disposal and web search too to ensure you are up to date with the best practices and implementations.
 
 After you are done fixing or implementing a feature, you should remove any trace files, logs etc that you produced during that process, just so you don't leak any information.
