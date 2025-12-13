@@ -1,7 +1,10 @@
+using Lingarr.Core.Enum;
+
 namespace Lingarr.Server.Interfaces.Services.Translation;
 
 /// <summary>
-/// Manages concurrent translation job limits using a semaphore-based approach.
+/// Manages concurrent translation job limits using a priority-aware waiting mechanism.
+/// Priority jobs are processed before non-priority jobs when a slot becomes available.
 /// </summary>
 public interface IParallelTranslationLimiter
 {
@@ -20,6 +23,30 @@ public interface IParallelTranslationLimiter
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>An IDisposable that releases the slot when disposed</returns>
     Task<IDisposable> AcquireAsync(bool isPriority, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Acquires a slot for a translation request, automatically looking up priority from DB.
+    /// This is the preferred method for the unified queue system - priority is determined
+    /// at acquire time, ensuring priority changes take effect immediately.
+    /// </summary>
+    /// <param name="requestId">The translation request ID</param>
+    /// <param name="mediaType">The media type (Movie or Episode)</param>
+    /// <param name="mediaId">The media ID</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>An IDisposable that releases the slot when disposed</returns>
+    Task<IDisposable> AcquireForRequestAsync(
+        int requestId, 
+        MediaType mediaType, 
+        int? mediaId, 
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Notifies the limiter that a media item's priority has changed.
+    /// Any waiting jobs for this media will be reordered in the queue.
+    /// </summary>
+    /// <param name="mediaType">The type of media (Movie, Show)</param>
+    /// <param name="mediaId">The media ID</param>
+    void NotifyPriorityChanged(MediaType mediaType, int mediaId);
 
     /// <summary>
     /// Reconfigures the maximum concurrency limit.

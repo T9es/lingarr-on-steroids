@@ -189,7 +189,8 @@ public static class ServiceCollectionExtensions
         builder.Services.AddHangfireServer(options =>
         {
             options.ServerName = "translation-server";
-            options.Queues = ["translation-priority", "translation"];
+            // Single queue for all translations - priority ordering handled by ParallelTranslationLimiter at runtime
+            options.Queues = ["translation"];
             options.WorkerCount = translationWorkers;
         });
         

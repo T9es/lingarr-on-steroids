@@ -58,8 +58,10 @@ public class TranslationRequestServiceTests
     }
 
     [Fact]
-    public async Task ReenqueueQueuedRequests_EnqueuesPriorityRequestsFirst()
+    public async Task ReenqueueQueuedRequests_UsesSingleQueueForAllRequests()
     {
+        // With unified queue system, all jobs go to "translation" queue
+        // Priority ordering is handled at runtime by ParallelTranslationLimiter
         await using var context = BuildContext();
 
         var now = DateTime.UtcNow;
@@ -118,9 +120,10 @@ public class TranslationRequestServiceTests
 
         await service.ReenqueueQueuedRequests();
 
+        // With unified queue, all jobs go to "translation" queue
+        // Priority ordering is handled by ParallelTranslationLimiter at runtime
         Assert.Equal(2, createdQueues.Count);
-        Assert.Equal("translation-priority", createdQueues[0]);
-        Assert.Equal("translation", createdQueues[1]);
+        Assert.All(createdQueues, q => Assert.Equal("translation", q));
     }
 
     private static LingarrDbContext BuildContext()
@@ -173,6 +176,8 @@ public class TranslationRequestServiceTests
         var hubContextMock = new Mock<IHubContext<TranslationRequestsHub>>();
         hubContextMock.SetupGet(h => h.Clients).Returns(hubClientsMock.Object);
 
+        var parallelLimiterMock = new Mock<IParallelTranslationLimiter>();
+
         return new TranslationRequestService(
             context,
             backgroundJobClientMock.Object,
@@ -184,6 +189,7 @@ public class TranslationRequestServiceTests
             new Mock<ISettingService>().Object,
             new Mock<IBatchFallbackService>().Object,
             NullLogger<TranslationRequestService>.Instance,
-            new Mock<ITranslationCancellationService>().Object);
+            new Mock<ITranslationCancellationService>().Object,
+            parallelLimiterMock.Object);
     }
 }

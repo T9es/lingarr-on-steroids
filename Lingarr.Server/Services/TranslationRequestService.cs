@@ -2,7 +2,6 @@
 using Hangfire;
 using Hangfire.Common;
 using Hangfire.States;
-using Hangfire.Storage;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
@@ -21,8 +20,7 @@ namespace Lingarr.Server.Services;
 
 public class TranslationRequestService : ITranslationRequestService
 {
-    private const string DefaultTranslationQueue = "translation";
-    private const string PriorityTranslationQueue = "translation-priority";
+    private const string TranslationQueue = "translation";
 
     private static bool IsActiveStatus(TranslationStatus status) =>
         status == TranslationStatus.Pending || status == TranslationStatus.InProgress;
@@ -38,6 +36,7 @@ public class TranslationRequestService : ITranslationRequestService
     private readonly IBatchFallbackService _batchFallbackService;
     private readonly ILogger<TranslationRequestService> _logger;
     private readonly ITranslationCancellationService _cancellationService;
+    private readonly IParallelTranslationLimiter _parallelLimiter;
     static private Dictionary<int, CancellationTokenSource> _asyncTranslationJobs = new Dictionary<int, CancellationTokenSource>();
 
     public TranslationRequestService(
@@ -51,7 +50,8 @@ public class TranslationRequestService : ITranslationRequestService
         ISettingService settingService,
         IBatchFallbackService batchFallbackService,
         ILogger<TranslationRequestService> logger,
-        ITranslationCancellationService cancellationService)
+        ITranslationCancellationService cancellationService,
+        IParallelTranslationLimiter parallelLimiter)
     {
         _dbContext = dbContext;
         _hubContext = hubContext;
@@ -64,6 +64,7 @@ public class TranslationRequestService : ITranslationRequestService
         _batchFallbackService = batchFallbackService;
         _logger = logger;
         _cancellationService = cancellationService;
+        _parallelLimiter = parallelLimiter;
     }
 
     /// <inheritdoc />
@@ -616,125 +617,18 @@ public class TranslationRequestService : ITranslationRequestService
     }
 
     /// <inheritdoc />
-    public async Task<int> RefreshPriorityForMedia(MediaType mediaType, int mediaId)
+    public Task<int> RefreshPriorityForMedia(MediaType mediaType, int mediaId)
     {
-        // Find relevant requests based on media type
-        List<TranslationRequest> requests;
+        // With the unified queue system, we don't need to move jobs between queues.
+        // Instead, notify the limiter that priority has changed - it will reorder waiting jobs.
+        // Jobs already in progress will continue, but future slot acquisitions will respect the new priority.
+        _parallelLimiter.NotifyPriorityChanged(mediaType, mediaId);
         
-        switch (mediaType)
-        {
-            case MediaType.Movie:
-                requests = await _dbContext.TranslationRequests
-                    .Where(r => r.MediaType == MediaType.Movie && r.MediaId == mediaId)
-                    .Where(r => r.Status == TranslationStatus.Pending || r.Status == TranslationStatus.InProgress)
-                    .ToListAsync();
-                break;
-                
-            case MediaType.Show:
-                // For a show, get all requests for episodes of that show
-                requests = await _dbContext.TranslationRequests
-                    .Where(r => r.MediaType == MediaType.Episode)
-                    .Where(r => _dbContext.Episodes
-                        .Any(e => e.Id == r.MediaId && e.Season.ShowId == mediaId))
-                    .Where(r => r.Status == TranslationStatus.Pending || r.Status == TranslationStatus.InProgress)
-                    .ToListAsync();
-                break;
-                
-            default:
-                _logger.LogWarning("Unsupported media type for priority refresh: {MediaType}", mediaType);
-                return 0;
-        }
-
-        if (requests.Count == 0)
-        {
-            return 0;
-        }
-
         _logger.LogInformation(
-            "Refreshing priority for {Count} requests for {MediaType} {MediaId}",
-            requests.Count, mediaType, mediaId);
-
-        var movedCount = 0;
-        var skippedProcessing = 0;
+            "Priority changed for {MediaType} {MediaId} - limiter notified for reordering",
+            mediaType, mediaId);
         
-        // Use a single connection for all job state checks (performance optimization)
-        using var hangfireConnection = JobStorage.Current.GetConnection();
-
-        foreach (var request in requests)
-        {
-            if (request.JobId == null)
-            {
-                _logger.LogDebug(
-                    "Skipping request {RequestId} - no Hangfire JobId (async or interrupted job)",
-                    request.Id);
-                continue;
-            }
-
-            try
-            {
-                // Check if job is already processing (we can't safely move those)
-                var stateData = hangfireConnection.GetStateData(request.JobId);
-                var currentState = stateData?.Name;
-                
-                if (currentState == ProcessingState.StateName)
-                {
-                    skippedProcessing++;
-                    _logger.LogDebug(
-                        "Skipping request {RequestId} - job {JobId} is currently processing",
-                        request.Id, request.JobId);
-                    continue;
-                }
-
-                // Determine what the new queue should be based on current DB state
-                var newQueueName = await GetQueueForTranslationRequestAsync(request, forcePriority: false);
-                
-                // Get the current queue from the existing job state
-                string? currentQueueName = null;
-                if (stateData?.Data.TryGetValue("Queue", out var queueValue) == true)
-                {
-                    currentQueueName = queueValue;
-                }
-                
-                // Only re-enqueue if the queue actually changes
-                if (currentQueueName != null && currentQueueName == newQueueName)
-                {
-                    _logger.LogDebug(
-                        "Skipping request {RequestId} - already in correct queue {Queue}",
-                        request.Id, newQueueName);
-                    continue;
-                }
-
-                // Delete the old job
-                var deleted = _backgroundJobClient.Delete(request.JobId);
-                if (!deleted)
-                {
-                    _logger.LogWarning(
-                        "Failed to delete job {JobId} for request {RequestId} - it may have already completed or been deleted",
-                        request.JobId, request.Id);
-                    continue;
-                }
-
-                // Re-enqueue to the correct queue
-                await EnqueueTranslationJobAsync(request, forcePriority: false);
-                movedCount++;
-                
-                _logger.LogInformation(
-                    "Moved request {RequestId} from queue |Orange|{OldQueue}|/Orange| to |Green|{NewQueue}|/Green|",
-                    request.Id,
-                    currentQueueName ?? "unknown",
-                    newQueueName);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to refresh priority for request {RequestId}", request.Id);
-            }
-        }
-
-        _logger.LogInformation(
-            "Priority refresh complete for {MediaType} {MediaId}: {MovedCount} moved, {SkippedCount} skipped (processing)",
-            mediaType, mediaId, movedCount, skippedProcessing);
-        
-        return movedCount;
+        return Task.FromResult(0);
     }
 
 
@@ -908,69 +802,19 @@ public class TranslationRequestService : ITranslationRequestService
         }
     }
 
-    private async Task EnqueueTranslationJobAsync(TranslationRequest translationRequest, bool forcePriority)
+    private Task EnqueueTranslationJobAsync(TranslationRequest translationRequest, bool forcePriority)
     {
-        var queueName = await GetQueueForTranslationRequestAsync(translationRequest, forcePriority);
-
-        var job = queueName == PriorityTranslationQueue
-            ? Job.FromExpression<TranslationJob>(job =>
-                job.ExecutePriority(translationRequest, CancellationToken.None))
-            : Job.FromExpression<TranslationJob>(job =>
-                job.ExecuteNormal(translationRequest, CancellationToken.None));
-
-        var jobId = _backgroundJobClient.Create(job, new EnqueuedState(queueName));
-        await UpdateTranslationRequest(translationRequest, TranslationStatus.Pending, jobId);
+        // With unified queue, all jobs go to the same queue.
+        // Priority ordering is handled at runtime by the ParallelTranslationLimiter.
+        var job = Job.FromExpression<TranslationJob>(j => j.Execute(translationRequest, CancellationToken.None));
+        var jobId = _backgroundJobClient.Create(job, new EnqueuedState(TranslationQueue));
         
         _logger.LogInformation(
-            "Enqueued translation request {RequestId} to Hangfire queue |Green|{Queue}|/Green| (forcePriority={ForcePriority})",
+            "Enqueued translation request {RequestId} to queue |Green|{Queue}|/Green|",
             translationRequest.Id,
-            queueName,
-            forcePriority);
-    }
-
-    private async Task<string> GetQueueForTranslationRequestAsync(
-        TranslationRequest translationRequest,
-        bool forcePriority)
-    {
-        if (forcePriority)
-        {
-            return PriorityTranslationQueue;
-        }
-
-        if (!translationRequest.MediaId.HasValue)
-        {
-            return DefaultTranslationQueue;
-        }
-
-        try
-        {
-            switch (translationRequest.MediaType)
-            {
-                case MediaType.Movie:
-                    var moviePriority = await _dbContext.Movies
-                        .Where(m => m.Id == translationRequest.MediaId.Value)
-                        .Select(m => m.IsPriority)
-                        .FirstOrDefaultAsync();
-                    return moviePriority ? PriorityTranslationQueue : DefaultTranslationQueue;
-
-                case MediaType.Episode:
-                    var showPriority = await _dbContext.Episodes
-                        .Where(e => e.Id == translationRequest.MediaId.Value)
-                        .Select(e => e.Season.Show.IsPriority)
-                        .FirstOrDefaultAsync();
-                    return showPriority ? PriorityTranslationQueue : DefaultTranslationQueue;
-
-                default:
-                    return DefaultTranslationQueue;
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex,
-                "Error determining queue for translation request {RequestId}. Falling back to default queue.",
-                translationRequest.Id);
-            return DefaultTranslationQueue;
-        }
+            TranslationQueue);
+        
+        return UpdateTranslationRequest(translationRequest, TranslationStatus.Pending, jobId);
     }
 
     /// <inheritdoc />

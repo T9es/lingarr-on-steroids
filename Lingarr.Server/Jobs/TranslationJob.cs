@@ -32,8 +32,7 @@ public class TranslationJob
     private readonly ISubtitleExtractionService _extractionService;
     private readonly ITranslationCancellationService _cancellationService;
 
-    private const string DefaultTranslationQueue = "translation";
-    private const string PriorityTranslationQueue = "translation-priority";
+    private const string TranslationQueue = "translation";
 
     public TranslationJob(
         ILogger<TranslationJob> logger,
@@ -65,18 +64,13 @@ public class TranslationJob
         _cancellationService = cancellationService;
     }
 
+    /// <summary>
+    /// Executes a translation job. Priority ordering is handled at runtime by the limiter.
+    /// All jobs go to the same queue - priority is looked up from the database when acquiring a slot.
+    /// </summary>
+    [Queue(TranslationQueue)]
     [AutomaticRetry(Attempts = 0)]
     public Task Execute(TranslationRequest translationRequest, CancellationToken cancellationToken)
-        => ExecuteCore(translationRequest, cancellationToken);
-
-    [Queue(PriorityTranslationQueue)]
-    [AutomaticRetry(Attempts = 0)]
-    public Task ExecutePriority(TranslationRequest translationRequest, CancellationToken cancellationToken)
-        => ExecuteCore(translationRequest, cancellationToken);
-
-    [Queue(DefaultTranslationQueue)]
-    [AutomaticRetry(Attempts = 0)]
-    public Task ExecuteNormal(TranslationRequest translationRequest, CancellationToken cancellationToken)
         => ExecuteCore(translationRequest, cancellationToken);
 
     private async Task ExecuteCore(
@@ -104,13 +98,15 @@ public class TranslationJob
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, jobCancellationToken);
         var effectiveCancellationToken = linkedCts.Token;
         
-        // Determine if this is a priority translation for limiter ordering
-        var isPriority = await IsPriorityMediaAsync(translationRequest);
         
-        // Acquire a parallel translation slot
-        // With dedicated translation workers, priority is now enforced at Hangfire queue level
-        // The limiter still provides additional priority ordering when jobs are waiting
-        using var slot = await _parallelLimiter.AcquireAsync(isPriority, effectiveCancellationToken);
+        // Acquire a parallel translation slot with runtime priority lookup
+        // Priority is determined from the database NOW, not at enqueue time
+        // This ensures priority changes take effect immediately
+        using var slot = await _parallelLimiter.AcquireForRequestAsync(
+            translationRequest.Id, 
+            translationRequest.MediaType, 
+            translationRequest.MediaId, 
+            effectiveCancellationToken);
 
 
         
@@ -542,43 +538,6 @@ public class TranslationJob
             await _translationRequestService.UpdateActiveCount();
             await _progressService.Emit(translationRequest, 0);
             await _scheduleService.UpdateJobState(jobName, JobStatus.Cancelled.GetDisplayName());
-        }
-    }
-    
-    /// <summary>
-    /// Determines if this translation request is for priority media.
-    /// </summary>
-    private async Task<bool> IsPriorityMediaAsync(TranslationRequest request)
-    {
-        if (!request.MediaId.HasValue)
-        {
-            return false;
-        }
-
-        try
-        {
-            switch (request.MediaType)
-            {
-                case MediaType.Movie:
-                    return await _dbContext.Movies
-                        .Where(m => m.Id == request.MediaId.Value)
-                        .Select(m => m.IsPriority)
-                        .FirstOrDefaultAsync();
-
-                case MediaType.Episode:
-                    return await _dbContext.Episodes
-                        .Where(e => e.Id == request.MediaId.Value)
-                        .Select(e => e.Season.Show.IsPriority)
-                        .FirstOrDefaultAsync();
-
-                default:
-                    return false;
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Error determining priority status for request {RequestId}", request.Id);
-            return false;
         }
     }
     
