@@ -50,7 +50,9 @@ public class TestTranslationLogEntry
 /// </summary>
 public class TestTranslationRequest
 {
-    public required string SubtitlePath { get; set; }
+    public string? SubtitlePath { get; set; }
+    public int? MediaId { get; set; }
+    public Lingarr.Core.Enum.MediaType? MediaType { get; set; }
     public required string SourceLanguage { get; set; }
     public required string TargetLanguage { get; set; }
 }

@@ -306,7 +306,7 @@
                             <div class="flex items-center gap-1">
                                 <!-- Run Test Button -->
                                 <button
-                                    v-if="item.subtitleToTranslate"
+                                    v-if="item.subtitleToTranslate || (item.mediaId && item.mediaType)"
                                     class="border-accent hover:bg-accent cursor-pointer rounded border p-1 transition-colors"
                                     :title="translate('translations.runTest')"
                                     @click.stop="runTestForItem(item)">
@@ -568,17 +568,27 @@ const cancelAllQueued = async () => {
 }
 
 function runTestForItem(item: ITranslationRequest) {
-    if (!item.subtitleToTranslate) return
+    if (!item.subtitleToTranslate && !(item.mediaId && item.mediaType)) return
+
+    // Pass null for subtitlePath if it doesn't exist (embedded)
+    const subtitlePath = item.subtitleToTranslate || null
 
     testStore.setActiveTest({
-        subtitlePath: item.subtitleToTranslate,
+        subtitlePath: subtitlePath,
+        mediaId: item.mediaId,
+        mediaType: item.mediaType,
         sourceLanguage: item.sourceLanguage,
-        targetLanguage: item.targetLanguage,
-        title: item.title
+        targetLanguage: item.targetLanguage
     })
 
     activeTab.value = 'test'
-    testStore.startTest()
+    testStore.startTest(
+        subtitlePath, 
+        item.sourceLanguage, 
+        item.targetLanguage,
+        item.mediaId,
+        item.mediaType
+    )
 }
 
 onMounted(async () => {

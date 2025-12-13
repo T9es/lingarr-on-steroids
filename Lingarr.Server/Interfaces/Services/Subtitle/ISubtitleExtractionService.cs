@@ -1,4 +1,5 @@
 using Lingarr.Core.Entities;
+using Lingarr.Core.Enum;
 
 namespace Lingarr.Server.Interfaces.Services.Subtitle;
 
@@ -31,6 +32,7 @@ public interface ISubtitleExtractionService
     /// </summary>
     /// <param name="episode">The episode to sync</param>
     Task SyncEmbeddedSubtitles(Episode episode);
+    Task<string?> TryExtractEmbeddedSubtitle(int mediaId, MediaType mediaType, string sourceLanguage);
 
     /// <summary>
     /// Syncs embedded subtitle information for a movie.
