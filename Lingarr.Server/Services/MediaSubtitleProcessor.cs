@@ -195,6 +195,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 
                 // Add corrupt languages to the translation queue
                 languagesToTranslate = languagesToTranslate.Union(corruptLanguages).ToList();
+                var foundCorruption = corruptLanguages.Count > 0;
                 
                 if (ignoreCaptions == "true")
                 {
@@ -224,7 +225,10 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                            // If all targets are skipped, return.
                            if (!languagesToTranslate.Except(skipped).Any())
                            {
-                               await UpdateHash();
+                               if (!foundCorruption)
+                               {
+                                   await UpdateHash();
+                               }
                                return false;
                            }
                         }
@@ -262,7 +266,15 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                         sourceSubtitle.Path);
                 }
 
-                await UpdateHash();
+                // Only update hash if no corruption was found - ensures re-validation if translation fails
+                if (!foundCorruption)
+                {
+                    await UpdateHash();
+                }
+                else
+                {
+                    _logger.LogDebug("Skipping hash update for {FileName} due to corruption found - will re-validate next run", _media.FileName);
+                }
                 return true;
             }
 
@@ -481,8 +493,41 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             {
                 // When forceTranslation is true, translate to all target languages even if they exist
                 var languagesToTranslate = forceTranslation 
-                    ? targetLanguages.AsEnumerable()
-                    : targetLanguages.Except(existingLanguages);
+                    ? targetLanguages.ToList()
+                    : targetLanguages.Except(existingLanguages).ToList();
+                
+                // Check integrity of existing target subtitles and add corrupt ones for re-translation
+                var foundCorruption = false;
+                if (!forceTranslation)
+                {
+                    var corruptLanguages = new List<string>();
+                    foreach (var targetLang in targetLanguages.Intersect(existingLanguages))
+                    {
+                        var targetSubtitle = subtitles.FirstOrDefault(s => s.Language == targetLang);
+                        if (targetSubtitle != null)
+                        {
+                            var isValid = await _integrityService.ValidateIntegrityAsync(
+                                sourceSubtitle.Path, 
+                                targetSubtitle.Path);
+                            if (!isValid)
+                            {
+                                _logger.LogWarning(
+                                    "Integrity check failed for {TargetLang} subtitle: {Path} - scheduling re-translation",
+                                    targetLang, targetSubtitle.Path);
+                                corruptLanguages.Add(targetLang);
+                            }
+                        }
+                    }
+                    
+                    if (corruptLanguages.Count > 0)
+                    {
+                        foundCorruption = true;
+                    }
+                    
+                    // Add corrupt languages to the translation queue
+                    languagesToTranslate = languagesToTranslate.Union(corruptLanguages).ToList();
+                }
+                
                 if (ignoreCaptions == "true")
                 {
                     var targetLanguagesWithCaptions = subtitles
@@ -496,7 +541,10 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                         _logger.LogInformation(
                             "Translation skipped because captions exist for target languages: |Green|{CaptionLanguages}|/Green|",
                             string.Join(", ", targetLanguagesWithCaptions));
-                        await UpdateHash();
+                        if (!foundCorruption)
+                        {
+                            await UpdateHash();
+                        }
                         return 0;
                     }
                 }
@@ -530,7 +578,15 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                         sourceSubtitle.Path);
                 }
 
-                await UpdateHash();
+                // Only update hash if no corruption was found - ensures re-validation if translation fails
+                if (!foundCorruption)
+                {
+                    await UpdateHash();
+                }
+                else
+                {
+                    _logger.LogDebug("Skipping hash update for {FileName} due to corruption found - will re-validate next run", _media.FileName);
+                }
                 return translationsQueued;
             }
 
@@ -761,39 +817,126 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             selectedSubtitle.Title ?? "<none>",
             selectedSubtitle.CodecName);
 
-        // Create translation requests for each target language (with empty subtitle path - TranslationJob will extract)
-        var translationsQueued = 0;
-	        foreach (var targetLanguage in targetLanguages)
-	        {
-            if (await HasActiveRequestAsync(media.Id, mediaType, selectedSourceLanguage, targetLanguage))
+        // Get external subtitles to check which target languages already exist and validate them
+        var allExternalSubtitles = await _subtitleService.GetAllSubtitles(media.Path);
+        var matchingExternalSubtitles = allExternalSubtitles
+            .Where(s => s.FileName.StartsWith(media.FileName + ".") || s.FileName == media.FileName)
+            .ToList();
+        var existingExternalLanguages = matchingExternalSubtitles
+            .Select(s => s.Language.ToLowerInvariant())
+            .ToHashSet();
+
+        // Determine which languages need translation (missing or corrupt)
+        var languagesToTranslate = forceProcess
+            ? targetLanguages.ToList()
+            : targetLanguages.Except(existingExternalLanguages).ToList();
+
+        // For integrity validation, we need to extract temp source and check existing targets
+        string? tempSourcePath = null;
+        var foundCorruption = false;
+        try
+        {
+            if (!forceProcess && existingExternalLanguages.Any(lang => targetLanguages.Contains(lang)))
             {
-                _logger.LogInformation(
-                    "Skipping embedded enqueue for {FileName} {Source}->{Target}: translation request already active.",
-                    media.FileName,
-                    selectedSourceLanguage,
-                    targetLanguage);
-                continue;
+                // Extract temp source for validation
+                var tempDir = Path.GetTempPath();
+                tempSourcePath = await _extractionService.ExtractSubtitle(
+                    media.Path,
+                    selectedSubtitle.StreamIndex,
+                    tempDir,
+                    "srt",
+                    selectedSourceLanguage);
+
+                if (tempSourcePath != null)
+                {
+                    var corruptLanguages = new List<string>();
+                    foreach (var targetLang in targetLanguages.Intersect(existingExternalLanguages))
+                    {
+                        var targetSubtitle = matchingExternalSubtitles.FirstOrDefault(s => 
+                            s.Language.Equals(targetLang, StringComparison.OrdinalIgnoreCase));
+                        if (targetSubtitle != null)
+                        {
+                            var isValid = await _integrityService.ValidateIntegrityAsync(
+                                tempSourcePath,
+                                targetSubtitle.Path);
+                            if (!isValid)
+                            {
+                                _logger.LogWarning(
+                                    "Integrity check failed for {TargetLang} subtitle: {Path} - scheduling re-translation (embedded source)",
+                                    targetLang, targetSubtitle.Path);
+                                corruptLanguages.Add(targetLang);
+                            }
+                        }
+                    }
+
+                    if (corruptLanguages.Count > 0)
+                    {
+                        foundCorruption = true;
+                    }
+
+                    // Add corrupt languages to the translation queue
+                    languagesToTranslate = languagesToTranslate.Union(corruptLanguages).ToList();
+                }
             }
 
-            await _translationRequestService.CreateRequest(new TranslateAbleSubtitle
+            // Create translation requests for each target language (with empty subtitle path - TranslationJob will extract)
+            var translationsQueued = 0;
+            foreach (var targetLanguage in languagesToTranslate)
             {
-                MediaId = media.Id,
-                MediaType = mediaType,
-                SubtitlePath = null, // Will trigger embedded extraction in TranslationJob
-                TargetLanguage = targetLanguage,
-                SourceLanguage = selectedSourceLanguage,
-                SubtitleFormat = null
-            }, forcePriority);
-            translationsQueued++;
-	            _logger.LogInformation(
-	                "Queued embedded subtitle translation from |Orange|{sourceLanguage}|/Orange| to |Orange|{targetLanguage}|/Orange| for |Green|{FileName}|/Green|",
-	                selectedSourceLanguage,
-	                targetLanguage,
-	                media.FileName);
-	        }
+                if (await HasActiveRequestAsync(media.Id, mediaType, selectedSourceLanguage, targetLanguage))
+                {
+                    _logger.LogInformation(
+                        "Skipping embedded enqueue for {FileName} {Source}->{Target}: translation request already active.",
+                        media.FileName,
+                        selectedSourceLanguage,
+                        targetLanguage);
+                    continue;
+                }
 
-	        await UpdateHash();
-	        return translationsQueued;
+                await _translationRequestService.CreateRequest(new TranslateAbleSubtitle
+                {
+                    MediaId = media.Id,
+                    MediaType = mediaType,
+                    SubtitlePath = null, // Will trigger embedded extraction in TranslationJob
+                    TargetLanguage = targetLanguage,
+                    SourceLanguage = selectedSourceLanguage,
+                    SubtitleFormat = null
+                }, forcePriority);
+                translationsQueued++;
+                _logger.LogInformation(
+                    "Queued embedded subtitle translation from |Orange|{sourceLanguage}|/Orange| to |Orange|{targetLanguage}|/Orange| for |Green|{FileName}|/Green|",
+                    selectedSourceLanguage,
+                    targetLanguage,
+                    media.FileName);
+            }
+
+            // Only update hash if no corruption was found - this ensures re-validation on next run
+            // if translation job fails or app crashes before completing
+            if (!foundCorruption)
+            {
+                await UpdateHash();
+            }
+            else
+            {
+                _logger.LogDebug("Skipping hash update for {FileName} due to corruption found - will re-validate next run", media.FileName);
+            }
+            return translationsQueued;
+        }
+        finally
+        {
+            if (tempSourcePath != null && File.Exists(tempSourcePath))
+            {
+                try
+                {
+                    File.Delete(tempSourcePath);
+                    _logger.LogDebug("Deleted temporary validation subtitle: {TempPath}", tempSourcePath);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to delete temporary validation subtitle: {TempPath}", tempSourcePath);
+                }
+            }
+        }
 	    }
 
 	    /// <summary>

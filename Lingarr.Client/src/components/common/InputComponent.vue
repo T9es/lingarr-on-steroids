@@ -72,8 +72,11 @@ const emit = defineEmits<{
     (e: 'blur', event: FocusEvent): void
     (e: 'keydown', event: KeyboardEvent): void
 }>()
-const { isValid, isInvalid, error, validate } = useValidation(props)
+const { isValid, isInvalid: rawIsInvalid, error, validate } = useValidation(props)
 const hasInteracted = ref(false)
+const hasBlurred = ref(false)
+// Only show red error state after the user has blurred (left the field), not during active typing
+const isInvalid = computed(() => hasBlurred.value && rawIsInvalid.value)
 const showValidIndicator = computed(() => hasInteracted.value && isValid.value && !isInvalid.value)
 
 // Validate initial value on mount so pre-populated fields are properly validated
@@ -114,10 +117,18 @@ const handleInput = (event: Event) => {
 
 const handleBlur = (event: FocusEvent) => {
     hasInteracted.value = true
+    hasBlurred.value = true
     const value = (event.target as HTMLInputElement).value
     validate(value)
     emit('update:validation', isValid.value)
+    // Immediately emit the value on blur to prevent data loss from debounce delay
+    emit('update:modelValue', value)
+    emit('update:value', value)
     emit('blur', event)
+    // Reset the green glow after a short delay so it doesn't stay forever
+    setTimeout(() => {
+        hasInteracted.value = false
+    }, 2000)
 }
 
 const togglePassword = () => {

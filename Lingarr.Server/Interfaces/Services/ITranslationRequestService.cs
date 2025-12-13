@@ -78,9 +78,13 @@ public interface ITranslationRequestService
 
     /// <summary>
     /// Refreshes the queue priority for all pending requests associated with the given media.
-    /// deletes existing jobs and re-enqueues them to respect the new priority.
+    /// Deletes existing Hangfire jobs and re-enqueues them to respect the new priority.
+    /// Jobs that are currently processing are skipped.
     /// </summary>
-    Task RefreshPriorityForMedia(MediaType mediaType, int mediaId);
+    /// <param name="mediaType">Type of media (Movie or Show)</param>
+    /// <param name="mediaId">The ID of the movie or show</param>
+    /// <returns>The number of translation requests that were moved to a different queue</returns>
+    Task<int> RefreshPriorityForMedia(MediaType mediaType, int mediaId);
 
 
     /// <summary>

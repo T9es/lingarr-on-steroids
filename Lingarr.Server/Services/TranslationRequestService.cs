@@ -616,7 +616,7 @@ public class TranslationRequestService : ITranslationRequestService
     }
 
     /// <inheritdoc />
-    public async Task RefreshPriorityForMedia(MediaType mediaType, int mediaId)
+    public async Task<int> RefreshPriorityForMedia(MediaType mediaType, int mediaId)
     {
         // Find relevant requests based on media type
         List<TranslationRequest> requests;
@@ -642,53 +642,101 @@ public class TranslationRequestService : ITranslationRequestService
                 
             default:
                 _logger.LogWarning("Unsupported media type for priority refresh: {MediaType}", mediaType);
-                return;
+                return 0;
         }
 
         if (requests.Count == 0)
         {
-            return;
+            return 0;
         }
 
-        _logger.LogInformation("Refreshing priority for {Count} requests for {MediaType} {MediaId}", requests.Count, mediaType, mediaId);
+        _logger.LogInformation(
+            "Refreshing priority for {Count} requests for {MediaType} {MediaId}",
+            requests.Count, mediaType, mediaId);
+
+        var movedCount = 0;
+        var skippedProcessing = 0;
+        
+        // Use a single connection for all job state checks (performance optimization)
+        using var hangfireConnection = JobStorage.Current.GetConnection();
 
         foreach (var request in requests)
         {
-            if (request.Status == TranslationStatus.Pending && request.JobId != null)
+            if (request.JobId == null)
             {
-                try
-                {
-                    // Check if job is already processing
-                    var isProcessing = false;
-                    try
-                    {
-                        var stateData = JobStorage.Current.GetConnection().GetStateData(request.JobId);
-                        isProcessing = stateData?.Name == ProcessingState.StateName;
-                    }
-                    catch
-                    {
-                        // Ignore check failure, assume not processing
-                    }
-
-                    if (!isProcessing)
-                    {
-                        // Delete the old job
-                        _backgroundJobClient.Delete(request.JobId);
-                        
-                        // Re-enqueue (this will recalculate priority based on the updated DB state)
-                        await EnqueueTranslationJobAsync(request, false);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to refresh priority for request {RequestId}", request.Id);
-                }
+                _logger.LogDebug(
+                    "Skipping request {RequestId} - no Hangfire JobId (async or interrupted job)",
+                    request.Id);
+                continue;
             }
-            // For InProgress jobs, we can't easily move them between queues without restarting
-            // But the TranslationJob itself checks priority for the ParallelLimiter
-            // So we just log.
+
+            try
+            {
+                // Check if job is already processing (we can't safely move those)
+                var stateData = hangfireConnection.GetStateData(request.JobId);
+                var currentState = stateData?.Name;
+                
+                if (currentState == ProcessingState.StateName)
+                {
+                    skippedProcessing++;
+                    _logger.LogDebug(
+                        "Skipping request {RequestId} - job {JobId} is currently processing",
+                        request.Id, request.JobId);
+                    continue;
+                }
+
+                // Determine what the new queue should be based on current DB state
+                var newQueueName = await GetQueueForTranslationRequestAsync(request, forcePriority: false);
+                
+                // Get the current queue from the existing job state
+                string? currentQueueName = null;
+                if (stateData?.Data.TryGetValue("Queue", out var queueValue) == true)
+                {
+                    currentQueueName = queueValue;
+                }
+                
+                // Only re-enqueue if the queue actually changes
+                if (currentQueueName != null && currentQueueName == newQueueName)
+                {
+                    _logger.LogDebug(
+                        "Skipping request {RequestId} - already in correct queue {Queue}",
+                        request.Id, newQueueName);
+                    continue;
+                }
+
+                // Delete the old job
+                var deleted = _backgroundJobClient.Delete(request.JobId);
+                if (!deleted)
+                {
+                    _logger.LogWarning(
+                        "Failed to delete job {JobId} for request {RequestId} - it may have already completed or been deleted",
+                        request.JobId, request.Id);
+                    continue;
+                }
+
+                // Re-enqueue to the correct queue
+                await EnqueueTranslationJobAsync(request, forcePriority: false);
+                movedCount++;
+                
+                _logger.LogInformation(
+                    "Moved request {RequestId} from queue |Orange|{OldQueue}|/Orange| to |Green|{NewQueue}|/Green|",
+                    request.Id,
+                    currentQueueName ?? "unknown",
+                    newQueueName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to refresh priority for request {RequestId}", request.Id);
+            }
         }
+
+        _logger.LogInformation(
+            "Priority refresh complete for {MediaType} {MediaId}: {MovedCount} moved, {SkippedCount} skipped (processing)",
+            mediaType, mediaId, movedCount, skippedProcessing);
+        
+        return movedCount;
     }
+
 
     
 

@@ -37,6 +37,7 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
         var enabled = await _settingService.GetSetting(SettingKeys.SubtitleValidation.IntegrityValidationEnabled);
         if (enabled != "true")
         {
+            _logger.LogDebug("Integrity validation is disabled, skipping check for {TargetPath}", targetSubtitlePath);
             return true; // Validation disabled, treat as valid
         }
 
