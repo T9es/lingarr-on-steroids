@@ -56,6 +56,7 @@ export interface ITranslationRequest {
     subtitleToTranslate?: string
     translatedSubtitle?: string
     mediaType: MediaType
+    mediaId?: number | null
     status: TranslationStatus
     progress: number
     completedAt?: string | null

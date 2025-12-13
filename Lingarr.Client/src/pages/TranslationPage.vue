@@ -574,6 +574,7 @@ function runTestForItem(item: ITranslationRequest) {
     const subtitlePath = item.subtitleToTranslate || null
 
     testStore.setActiveTest({
+        title: item.title,
         subtitlePath: subtitlePath,
         mediaId: item.mediaId,
         mediaType: item.mediaType,
