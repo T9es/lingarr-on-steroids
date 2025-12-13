@@ -397,6 +397,12 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 // Add new records
                 foreach (var sub in embeddedSubs)
                 {
+                    // Reset entity state to prevent graph re-attachment issues during retries
+                    // (e.g. preventing the Movie entity from being re-inserted if it satisfied a fixup previously)
+                    sub.Id = 0; 
+                    sub.Movie = null;
+                    sub.Episode = null;
+
                     sub.EpisodeId = episodeId;
                     sub.MovieId = movieId;
                     _dbContext.EmbeddedSubtitles.Add(sub);
