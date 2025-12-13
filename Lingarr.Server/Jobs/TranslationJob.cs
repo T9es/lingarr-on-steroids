@@ -276,8 +276,59 @@ public class TranslationJob
                 _logger,
                 _progressService,
                 _batchFallbackService);
-            var subtitles = await _subtitleService.ReadSubtitles(request.SubtitleToTranslate);
-            AddRequestLog("Information", $"Loaded subtitle file with {subtitles.Count} entries for translation");
+            List<SubtitleItem> subtitles;
+            var attempt = 0;
+            const int maxAttempts = 3;
+            var excludedPaths = new List<string>();
+
+            while (true)
+            {
+                subtitles = await _subtitleService.ReadSubtitles(request.SubtitleToTranslate);
+                AddRequestLog("Information", $"Loaded subtitle file with {subtitles.Count} entries for translation");
+
+                if (subtitles.Count > 0)
+                {
+                    break;
+                }
+
+                attempt++;
+                if (attempt > maxAttempts || !request.MediaId.HasValue)
+                {
+                    _logger.LogError("Translation failed: Subtitle file is empty ({Entries} entries) after {Attempt} attempts", subtitles.Count, attempt);
+                    throw new InvalidOperationException($"Translation failed: Subtitle file is empty ({subtitles.Count} entries). " +
+                                                        (request.MediaId.HasValue 
+                                                            ? "Exhausted fallback attempts." 
+                                                            : "No MediaId available for fallback."));
+                }
+
+                _logger.LogWarning("Loaded 0 entries from {Path}. Attempting fallback extraction (Attempt {Attempt}/{Max})...", 
+                    request.SubtitleToTranslate, attempt, maxAttempts);
+                AddRequestLog("Warning", $"Loaded 0 entries. Attempting embedded subtitle fallback (Attempt {attempt}/{maxAttempts})...");
+
+                if (!string.IsNullOrEmpty(request.SubtitleToTranslate))
+                {
+                    excludedPaths.Add(request.SubtitleToTranslate);
+                }
+
+                var newSubtitlePath = await _extractionService.TryExtractEmbeddedSubtitle(
+                    request.MediaId.Value,
+                    request.MediaType,
+                    request.SourceLanguage,
+                    excludedPaths);
+
+                if (string.IsNullOrEmpty(newSubtitlePath))
+                {
+                    _logger.LogError("Fallback failed: No alternative embedded subtitles found");
+                    throw new InvalidOperationException("Translation failed: Subtitle file is empty and no alternative embedded subtitles found.");
+                }
+
+                // Update request to point to new file
+                request.SubtitleToTranslate = newSubtitlePath;
+                temporaryFilePath = newSubtitlePath; // Mark for deletion
+                
+                _logger.LogInformation("Fallback successful, switching to: {Path}", newSubtitlePath);
+                AddRequestLog("Information", $"Fallback successful, switching to: {newSubtitlePath}");
+            }
             
             // Parse batch fallback settings
             var enableBatchFallback = settings[SettingKeys.Translation.EnableBatchFallback] == "true";

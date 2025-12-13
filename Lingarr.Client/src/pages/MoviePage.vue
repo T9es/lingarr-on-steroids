@@ -68,13 +68,16 @@
                                 </BadgeComponent>
                             </ContextMenu>
                             <!-- Embedded subtitles (amber badges with 📦 icon) -->
-                            <div
+                            <ContextMenu
                                 v-for="embeddedSub in getEmbeddedSubtitles(item)"
                                 :key="`emb-${item.id}-${embeddedSub.id}`"
-                                class="relative">
+                                :embeddedSubtitle="embeddedSub"
+                                :media="item"
+                                :media-type="MEDIA_TYPE.MOVIE"
+                                @update:toggle="toggleMovie(item)"
+                                v-slot="{ isExtracting }">
                                 <BadgeComponent
-                                    :classes="getEmbeddedBadgeClasses(embeddedSub)"
-                                    @click="handleEmbeddedClick(item, embeddedSub)">
+                                    :classes="getEmbeddedBadgeClasses(embeddedSub)">
                                     <span class="mr-1">📦</span>
                                     {{ formatEmbeddedLanguage(embeddedSub) }}
                                     <span v-if="embeddedSub.title" class="text-amber-200/70 ml-1">
@@ -83,10 +86,10 @@
                                     <span v-if="embeddedSub.isForced" class="ml-1 text-xs opacity-70">F</span>
                                     <span v-if="embeddedSub.isDefault" class="ml-1 text-xs opacity-70">D</span>
                                     <LoaderCircleIcon
-                                        v-if="extractingStreams[`${item.id}-${embeddedSub.streamIndex}`]"
+                                        v-if="isExtracting"
                                         class="ml-1 h-3 w-3 animate-spin" />
                                 </BadgeComponent>
-                            </div>
+                            </ContextMenu>
                         </div>
                         <div class="col-span-1 flex flex-wrap items-center gap-2 px-4 py-2">
                             <ToggleButton
@@ -171,7 +174,7 @@ const settingStore = useSettingStore()
 const instanceStore = useInstanceStore()
 
 const translatingMovies = reactive<Record<number, boolean>>({})
-const extractingStreams = reactive<Record<string, boolean>>({})
+
 
 interface TranslateMediaResponse {
     translationsQueued: number
@@ -271,41 +274,7 @@ const getEmbeddedBadgeClasses = (sub: IEmbeddedSubtitle): string => {
     return 'cursor-pointer text-amber-300 border-amber-500 bg-amber-900/30'
 }
 
-const handleEmbeddedClick = async (movie: IMovie, sub: IEmbeddedSubtitle) => {
-    // Don't allow extraction of image-based subtitles
-    if (!sub.isTextBased) {
-        alert(translate('embedded.imageBased'))
-        return
-    }
-    
-    // If already extracted, just show info
-    if (sub.isExtracted) {
-        alert(`${translate('embedded.extracted')}: ${sub.extractedPath}`)
-        return
-    }
-    
-    const key = `${movie.id}-${sub.streamIndex}`
-    if (extractingStreams[key]) return
-    
-    try {
-        extractingStreams[key] = true
-        const result = await services.subtitle.extractSubtitle('movie', movie.id, sub.streamIndex)
-        
-        if (result.success) {
-            // Update the local state
-            sub.isExtracted = true
-            sub.extractedPath = result.extractedPath
-            alert(translate('embedded.extractSuccess'))
-        } else {
-            alert(`${translate('embedded.extractFailed')}: ${result.error}`)
-        }
-    } catch (error) {
-        console.error('Extraction failed:', error)
-        alert(translate('embedded.extractFailed'))
-    } finally {
-        extractingStreams[key] = false
-    }
-}
+
 
 onMounted(async () => {
     await movieStore.fetch()

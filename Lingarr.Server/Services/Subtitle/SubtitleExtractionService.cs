@@ -683,11 +683,15 @@ public class SubtitleExtractionService : ISubtitleExtractionService
     }
 
     /// <inheritdoc />
-    public async Task<string?> TryExtractEmbeddedSubtitle(int mediaId, MediaType mediaType, string sourceLanguage)
+    public async Task<string?> TryExtractEmbeddedSubtitle(
+        int mediaId, 
+        MediaType mediaType, 
+        string sourceLanguage, 
+        List<string>? excludedPaths = null)
     {
         try
         {
-            EmbeddedSubtitle? bestCandidate = null;
+            List<EmbeddedSubtitle>? embeddedSubtitles = null;
             string? mediaPath = null;
             string? outputDir = null;
 
@@ -717,7 +721,7 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                     await _dbContext.Entry(episode).Collection(e => e.EmbeddedSubtitles).LoadAsync();
                 }
 
-                bestCandidate = FindBestEmbeddedSubtitle(episode.EmbeddedSubtitles, sourceLanguage);
+                embeddedSubtitles = episode.EmbeddedSubtitles;
                 mediaPath = Path.Combine(episode.Path, episode.FileName);
                 outputDir = episode.Path;
             }
@@ -746,7 +750,7 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                     await _dbContext.Entry(movie).Collection(m => m.EmbeddedSubtitles).LoadAsync();
                 }
 
-                bestCandidate = FindBestEmbeddedSubtitle(movie.EmbeddedSubtitles, sourceLanguage);
+                embeddedSubtitles = movie.EmbeddedSubtitles;
                 mediaPath = Path.Combine(movie.Path, movie.FileName);
                 outputDir = movie.Path;
             }
@@ -756,36 +760,70 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 return null;
             }
 
-            if (bestCandidate == null)
+            // Get all candidates sorted by quality
+            var candidates = GetSortedEmbeddedSubtitles(embeddedSubtitles, sourceLanguage);
+
+            if (candidates.Count == 0)
             {
                 _logger.LogInformation("No suitable embedded subtitle found for source language: {Language}", sourceLanguage);
                 return null;
             }
 
-            _logger.LogInformation(
-                "Found embedded subtitle candidate: Stream {StreamIndex}, Language: {Language}, Codec: {Codec}",
-                bestCandidate.StreamIndex, bestCandidate.Language ?? "unknown", bestCandidate.CodecName);
-
-            // Extract the subtitle
-            var extractedPath = await ExtractSubtitle(
-                mediaPath!,
-                bestCandidate.StreamIndex,
-                outputDir!,
-                bestCandidate.CodecName,
-                bestCandidate.Language);
-
-            if (string.IsNullOrEmpty(extractedPath))
+            // Iterate through candidates to find one that isn't excluded
+            foreach (var candidate in candidates)
             {
-                _logger.LogError("Failed to extract embedded subtitle stream {StreamIndex}", bestCandidate.StreamIndex);
-                throw new InvalidOperationException($"Embedded subtitle extraction failed for stream {bestCandidate.StreamIndex}");
+                // Predict the output path to see if it should be excluded
+                // Note: This logic must match ExtractSubtitle's naming convention
+                var languageTag = !string.IsNullOrEmpty(candidate.Language) 
+                    ? candidate.Language 
+                    : $"stream{candidate.StreamIndex}";
+                
+                var extension = CodecToExtension.GetValueOrDefault(candidate.CodecName, ".srt");
+                var baseFileName = Path.GetFileNameWithoutExtension(mediaPath!);
+                var outputFileName = $"{baseFileName}.{languageTag}{extension}";
+                var predictedPath = Path.Combine(outputDir!, outputFileName);
+
+                if (excludedPaths != null && excludedPaths.Contains(predictedPath))
+                {
+                    _logger.LogInformation(
+                        "Skipping candidate Stream {StreamIndex} ({Language}) as its output path is excluded: {Path}",
+                        candidate.StreamIndex, candidate.Language, predictedPath);
+                    continue;
+                }
+
+                _logger.LogInformation(
+                    "Attempting extraction of Stream {StreamIndex}, Language: {Language}, Codec: {Codec}",
+                    candidate.StreamIndex, candidate.Language ?? "unknown", candidate.CodecName);
+
+                try
+                {
+                    // Extract the subtitle
+                    var extractedPath = await ExtractSubtitle(
+                        mediaPath!,
+                        candidate.StreamIndex,
+                        outputDir!,
+                        candidate.CodecName,
+                        candidate.Language);
+
+                    if (!string.IsNullOrEmpty(extractedPath))
+                    {
+                        // Update the database record
+                        candidate.IsExtracted = true;
+                        candidate.ExtractedPath = extractedPath;
+                        await _dbContext.SaveChangesAsync();
+
+                        return extractedPath;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to extract candidate Stream {StreamIndex}", candidate.StreamIndex);
+                    // Continue to next candidate
+                }
             }
-
-            // Update the database record
-            bestCandidate.IsExtracted = true;
-            bestCandidate.ExtractedPath = extractedPath;
-            await _dbContext.SaveChangesAsync();
-
-            return extractedPath;
+            
+            _logger.LogWarning("All suitable embedded subtitle candidates failed extraction or were excluded");
+            return null;
         }
         catch (InvalidOperationException)
         {
@@ -799,21 +837,21 @@ public class SubtitleExtractionService : ISubtitleExtractionService
     }
 
     /// <summary>
-    /// Finds the best embedded subtitle candidate for translation.
-    /// Prioritizes: text-based > matching source language > full/dialogue tracks > defaults > first available.
+    /// Returns a list of embedded subtitle candidates sorted by suitability for translation.
+    /// Prioritizes: text-based > matching source language > full/dialogue tracks > defaults.
     /// </summary>
-    private static EmbeddedSubtitle? FindBestEmbeddedSubtitle(List<EmbeddedSubtitle>? embeddedSubtitles, string sourceLanguage)
+    private static List<EmbeddedSubtitle> GetSortedEmbeddedSubtitles(List<EmbeddedSubtitle>? embeddedSubtitles, string sourceLanguage)
     {
         if (embeddedSubtitles == null || embeddedSubtitles.Count == 0)
         {
-            return null;
+            return [];
         }
 
         // Only consider text-based subtitles
         var textBased = embeddedSubtitles.Where(s => s.IsTextBased).ToList();
         if (textBased.Count == 0)
         {
-            return null;
+            return [];
         }
 
         // Prefer subtitles whose language matches the configured source language.
@@ -824,36 +862,12 @@ public class SubtitleExtractionService : ISubtitleExtractionService
 
         var candidates = languageMatched.Count > 0 ? languageMatched : textBased;
 
-        // Score candidates using title and flag heuristics to avoid "Signs & Songs"/karaoke-only tracks
-        // and favor full dialogue tracks.
-        EmbeddedSubtitle? best = null;
-        var bestScore = int.MinValue;
-
-        foreach (var subtitle in candidates)
-        {
-            var score = SubtitleLanguageHelper.ScoreSubtitleCandidate(subtitle, sourceLanguage);
-
-            if (score > bestScore ||
-                (score == bestScore && best != null && subtitle.StreamIndex < best.StreamIndex))
-            {
-                bestScore = score;
-                best = subtitle;
-            }
-        }
-
-        if (best != null)
-        {
-            return best;
-        }
-
-        // Fallback: prefer a default text-based subtitle if scoring failed for some reason
-        var defaultSub = candidates.FirstOrDefault(s => s.IsDefault);
-        if (defaultSub != null)
-        {
-            return defaultSub;
-        }
-
-        // Final fallback: first text-based candidate
-        return candidates.First();
+        // Score candidates and sort
+        return candidates
+            .Select(s => new { Subtitle = s, Score = SubtitleLanguageHelper.ScoreSubtitleCandidate(s, sourceLanguage) })
+            .OrderByDescending(x => x.Score)
+            .ThenBy(x => x.Subtitle.StreamIndex) // Stability
+            .Select(x => x.Subtitle)
+            .ToList();
     }
 }

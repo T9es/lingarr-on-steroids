@@ -32,7 +32,7 @@ public interface ISubtitleExtractionService
     /// </summary>
     /// <param name="episode">The episode to sync</param>
     Task SyncEmbeddedSubtitles(Episode episode);
-    Task<string?> TryExtractEmbeddedSubtitle(int mediaId, MediaType mediaType, string sourceLanguage);
+    Task<string?> TryExtractEmbeddedSubtitle(int mediaId, MediaType mediaType, string sourceLanguage, List<string>? excludedPaths = null);
 
     /// <summary>
     /// Syncs embedded subtitle information for a movie.

@@ -50,13 +50,15 @@
                         </BadgeComponent>
                     </ContextMenu>
                     <!-- Embedded subtitles (amber badges with 📦 icon) -->
-                    <div
+                    <ContextMenu
                         v-for="embeddedSub in getEmbeddedSubtitles(episode)"
                         :key="`emb-${episode.id}-${embeddedSub.id}`"
-                        class="relative">
+                        :embeddedSubtitle="embeddedSub"
+                        :media="episode"
+                        :media-type="MEDIA_TYPE.EPISODE"
+                        v-slot="{ isExtracting }">
                         <BadgeComponent
-                            :classes="getEmbeddedBadgeClasses(embeddedSub)"
-                            @click="handleEmbeddedClick(episode, embeddedSub)">
+                            :classes="getEmbeddedBadgeClasses(embeddedSub)">
                             <span class="mr-1">📦</span>
                             {{ formatEmbeddedLanguage(embeddedSub) }}
                             <span v-if="embeddedSub.title" class="text-amber-200/70 ml-1">
@@ -65,10 +67,10 @@
                             <span v-if="embeddedSub.isForced" class="ml-1 text-xs opacity-70">F</span>
                             <span v-if="embeddedSub.isDefault" class="ml-1 text-xs opacity-70">D</span>
                             <LoaderCircleIcon
-                                v-if="extractingStreams[`${episode.id}-${embeddedSub.streamIndex}`]"
+                                v-if="isExtracting"
                                 class="ml-1 h-3 w-3 animate-spin" />
                         </BadgeComponent>
-                    </div>
+                    </ContextMenu>
                 </div>
             </div>
             <div class="col-span-1 flex items-center justify-center py-2 md:col-span-2">
@@ -110,8 +112,7 @@ const props = defineProps<{
 }>()
 const showStore = useShowStore()
 
-// Track which streams are currently being extracted
-const extractingStreams = reactive<Record<string, boolean>>({})
+
 
 // Track which episodes are currently being translated
 const translatingEpisode = reactive<Record<number, boolean>>({})
@@ -207,39 +208,5 @@ const getEmbeddedBadgeClasses = (sub: IEmbeddedSubtitle): string => {
     return 'cursor-pointer text-amber-300 border-amber-500 bg-amber-900/30'
 }
 
-const handleEmbeddedClick = async (episode: IEpisode, sub: IEmbeddedSubtitle) => {
-    // Don't allow extraction of image-based subtitles
-    if (!sub.isTextBased) {
-        alert(translate('embedded.imageBased'))
-        return
-    }
-    
-    // If already extracted, just show info
-    if (sub.isExtracted) {
-        alert(`${translate('embedded.extracted')}: ${sub.extractedPath}`)
-        return
-    }
-    
-    const key = `${episode.id}-${sub.streamIndex}`
-    if (extractingStreams[key]) return
-    
-    try {
-        extractingStreams[key] = true
-        const result = await services.subtitle.extractSubtitle('episode', episode.id, sub.streamIndex)
-        
-        if (result.success) {
-            // Update the local state
-            sub.isExtracted = true
-            sub.extractedPath = result.extractedPath
-            alert(translate('embedded.extractSuccess'))
-        } else {
-            alert(`${translate('embedded.extractFailed')}: ${result.error}`)
-        }
-    } catch (error) {
-        console.error('Extraction failed:', error)
-        alert(translate('embedded.extractFailed'))
-    } finally {
-        extractingStreams[key] = false
-    }
-}
+
 </script>
