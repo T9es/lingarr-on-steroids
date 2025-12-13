@@ -133,7 +133,39 @@ public class TranslationRequestService : ITranslationRequestService
         };
 
         _dbContext.TranslationRequests.Add(translationRequestCopy);
-        await _dbContext.SaveChangesAsync();
+        
+        try
+        {
+            await _dbContext.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (IsDuplicateKeyViolation(ex))
+        {
+            // Race condition: another process created the same request between our check and insert.
+            // This is expected behavior - the dedupe constraint did its job. Return the existing request ID.
+            _logger.LogDebug(
+                "Race condition avoided: translation request for {Title} ({MediaType} {MediaId}) {Source}->{Target} already created by another process.",
+                translationRequest.Title,
+                translationRequest.MediaType,
+                translationRequest.MediaId,
+                translationRequest.SourceLanguage,
+                translationRequest.TargetLanguage);
+            
+            // Clear the failed entity from the change tracker
+            _dbContext.ChangeTracker.Clear();
+            
+            // Find and return the existing request
+            var existingRequest = await _dbContext.TranslationRequests
+                .Where(tr =>
+                    tr.MediaId == translationRequest.MediaId &&
+                    tr.MediaType == translationRequest.MediaType &&
+                    tr.SourceLanguage == translationRequest.SourceLanguage &&
+                    tr.TargetLanguage == translationRequest.TargetLanguage &&
+                    tr.IsActive)
+                .Select(tr => tr.Id)
+                .FirstOrDefaultAsync();
+            
+            return existingRequest;
+        }
 
         await EnqueueTranslationJobAsync(translationRequestCopy, forcePriority);
 
@@ -1168,5 +1200,28 @@ public class TranslationRequestService : ITranslationRequestService
             default:
                 throw new ArgumentException($"Unsupported media type: {translateAbleSubtitle.MediaType}");
         }
+    }
+    
+    /// <summary>
+    /// Checks if a DbUpdateException is caused by a duplicate key constraint violation.
+    /// </summary>
+    /// <param name="ex">The exception to check</param>
+    /// <returns>True if this is a duplicate key violation, false otherwise</returns>
+    private static bool IsDuplicateKeyViolation(DbUpdateException ex)
+    {
+        // MySQL error code 1062 = Duplicate entry for unique key
+        // SQLite error code 19 = UNIQUE constraint failed
+        if (ex.InnerException is MySqlConnector.MySqlException mysqlEx)
+        {
+            return mysqlEx.Number == 1062;
+        }
+        
+        // For SQLite (used in testing/development)
+        if (ex.InnerException?.Message?.Contains("UNIQUE constraint failed") == true)
+        {
+            return true;
+        }
+        
+        return false;
     }
 }
