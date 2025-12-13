@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # Lingarr on Steroids - AI Agent Documentation
 
 This file documents the `Lingarr` project for AI agents. It describes the tech stack, project structure, build commands, and coding conventions.

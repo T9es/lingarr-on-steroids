@@ -45,8 +45,10 @@ WHERE is_active = 0 AND status IN (0,1);
 ");
 
             // Prefer INPLACE to avoid table rebuilds that can fail with foreign key constraints.
+            // Update: INPLACE failed for user with "INPLACE ADD or DROP of virtual columns cannot be combined...".
+            // Falling back to standard ADD UNIQUE INDEX (likely COPY).
             migrationBuilder.Sql(
-                "ALTER TABLE `translation_requests` ADD UNIQUE INDEX `ux_translation_requests_active_dedupe` (`media_id`, `media_type`, `source_language`, `target_language`, `is_active`), ALGORITHM=INPLACE, LOCK=NONE;");
+                "ALTER TABLE `translation_requests` ADD UNIQUE INDEX `ux_translation_requests_active_dedupe` (`media_id`, `media_type`, `source_language`, `target_language`, `is_active`);");
         }
 
         /// <inheritdoc />
