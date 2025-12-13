@@ -191,3 +191,5 @@ Use **Tailwind CSS** utility classes.
 Before any coding starts, the user must confirm that you can code. If they don't, your task is to investigate deeply the issue or feature they currently want to do or implement. YOU CAN and SHOULD use any mcp tools at your disposal and web search too to ensure you are up to date with the best practices and implementations.
 
 After you are done fixing or implementing a feature, you should remove any trace files, logs etc that you produced during that process, just so you don't leak any information.
+
+Your fixes and implementations should be full. They should not cause other features to break or degrade. Bugfixing doesn't get an option, the features or fixes should be final, so it is very important you dig deep into the code to understand the issue at play, and not find the very first issue and decide that it is the core problem.

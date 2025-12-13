@@ -102,17 +102,20 @@ const inputClasses = computed(() => [
     { 'pr-10': props.type === 'password' }
 ])
 
-const handleInputDebounced = useDebounce((event: Event) => {
-    const value = (event.target as HTMLInputElement).value
+// Debounce only the validation and save logic, not the model update
+const handleDebouncedValidation = useDebounce((value: string) => {
     validate(value)
     emit('update:validation', isValid.value)
-    emit('update:modelValue', value)
-    emit('update:value', value)
+    emit('update:value', value) // This triggers the save/persist
 }, 1000)
 
 const handleInput = (event: Event) => {
     hasInteracted.value = true
-    handleInputDebounced(event)
+    const value = (event.target as HTMLInputElement).value
+    // Immediately update the model so the input displays the typed character
+    emit('update:modelValue', value)
+    // Debounce only the validation and save logic
+    handleDebouncedValidation(value)
 }
 
 const handleBlur = (event: FocusEvent) => {
