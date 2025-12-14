@@ -825,7 +825,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         try
         {
             // Debug logging to trace validation check
-            _logger.LogDebug(
+            _logger.LogInformation(
                 "Validation check - forceTranslation={ForceTranslation}, matchingExternalSubtitles=[{Subtitles}], existingExternalLanguages=[{ExistingLangs}], targetLanguages=[{TargetLangs}]",
                 forceTranslation,
                 string.Join(", ", matchingExternalSubtitles.Select(s => $"{s.FileName}:{s.Language}")),
@@ -833,7 +833,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 string.Join(", ", targetLanguages));
             
             var hasMatchingTarget = existingExternalLanguages.Any(lang => targetLanguages.Contains(lang));
-            _logger.LogDebug("Validation gate check: !forceTranslation={NotForce}, hasMatchingTarget={HasMatch}, willValidate={WillValidate}",
+            _logger.LogInformation("Validation gate check: !forceTranslation={NotForce}, hasMatchingTarget={HasMatch}, willValidate={WillValidate}",
                 !forceTranslation, hasMatchingTarget, !forceTranslation && hasMatchingTarget);
                 
             if (!forceTranslation && hasMatchingTarget)
