@@ -63,26 +63,59 @@ Lingarr provides multi-architecture Docker images that automatically select the 
 **Note:** As of 1.0.3 all images support both AMD64 (Intel/AMD) and ARM64 (Raspberry Pi, Apple Silicon) architectures. Docker will automatically pull the correct architecture for your system.
 
 ## Setting up Lingarr
+
+> ⚠️ **Note**: This fork is optimized for use with MySQL/MariaDB. SQLite is supported but not recommended for heavy usage or parallel processing.
+
 ```yaml
 services:
   lingarr:
     image: ree0/lingarr-on-steroids:latest
     container_name: lingarr
-    restart: unless-stopped
     environment:
-      - ASPNETCORE_URLS=http://+:9876
-    ports:
-      - "9876:9876"
+      - TZ=Europe/London # Replace with your timezone
+      - PUID=1000 # Replace with your User ID
+      - PGID=1000 # Replace with your Group ID
+      - DB_CONNECTION=mysql
+      - DB_HOST=lingarr-mysql
+      - DB_PORT=3306
+      - DB_DATABASE=lingarr
+      - DB_USERNAME=lingarr
+      - DB_PASSWORD=your_password # ⚠️ CHANGE THIS
     volumes:
-      - /path/to/media/movies:/movies
-      - /path/to/media/tv:/tv
+      - /path/to/media/movies:/media/movies
+      - /path/to/media/shows:/media/shows
       - /path/to/config:/app/config
-    networks:
-      - lingarr
+    ports:
+      - "9876:8080"
+    restart: unless-stopped
+    depends_on:
+      lingarr-mysql:
+        condition: service_healthy
+    # gpus: all # Uncomment if you want to pass GPU to the container (e.g. for LocalAI)
 
-networks:
-  lingarr:
-    external: true
+  lingarr-mysql:
+    image: mariadb:10.5
+    container_name: lingarr-mysql
+    environment:
+      MYSQL_DATABASE: lingarr
+      MYSQL_USER: lingarr
+      MYSQL_PASSWORD: your_password # ⚠️ CHANGE THIS (Must match above)
+      MYSQL_ROOT_PASSWORD: your_root_password # ⚠️ CHANGE THIS
+    volumes:
+      - lingarr_mysql_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    restart: unless-stopped
+    command: mysqld --sql_mode=""
+    healthcheck:
+      test: ["CMD-SHELL", "mysql -ulingarr -pyour_password -e 'SELECT 1' lingarr"] # ⚠️ Be sure to update the password here too
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+volumes:
+  lingarr_mysql_data:
 ```
 
 ### Setting up Lingarr using Docker CLI
