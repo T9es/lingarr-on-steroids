@@ -37,7 +37,7 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
         var enabled = await _settingService.GetSetting(SettingKeys.SubtitleValidation.IntegrityValidationEnabled);
         if (enabled != "true")
         {
-            _logger.LogDebug("Integrity validation is disabled, skipping check for {TargetPath}", targetSubtitlePath);
+            _logger.LogInformation("Integrity validation is disabled (setting={Setting}), skipping check for {TargetPath}", enabled ?? "null", targetSubtitlePath);
             return true; // Validation disabled, treat as valid
         }
 
@@ -50,7 +50,7 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
 
         if (!File.Exists(targetSubtitlePath))
         {
-            _logger.LogDebug("Target subtitle not found for integrity check: {Path}", targetSubtitlePath);
+            _logger.LogInformation("Target subtitle not found for integrity check: {Path}", targetSubtitlePath);
             return true; // No target to validate
         }
 
@@ -65,7 +65,7 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
 
             if (sourceCount == 0)
             {
-                _logger.LogDebug("Source subtitle has no lines, skipping integrity check");
+                _logger.LogInformation("Source subtitle has no lines, skipping integrity check");
                 return true;
             }
 
@@ -81,8 +81,8 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
                 return false;
             }
 
-            _logger.LogDebug(
-                "Subtitle integrity check passed: {TargetCount}/{SourceCount} lines in {Path}",
+            _logger.LogInformation(
+                "Subtitle integrity check PASSED: {TargetCount}/{SourceCount} lines in {Path}",
                 targetCount, sourceCount, targetSubtitlePath);
             return true;
         }
