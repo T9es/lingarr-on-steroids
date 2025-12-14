@@ -9,22 +9,25 @@
 
 While staying true to the core mission of seamless **Radarr** and **Sonarr** subtitle translation, this fork introduces significant architectural improvements for power users.
 
-## Key Enhancements vs Original
-*   **Parallel Translation Engine**: Processes multiple files simultaneously using a semaphore-based concurrency system (configurable limits), drastically reducing library scan times.
-    > ⚠️ **MySQL/MariaDB is required** for parallel translations. SQLite cannot handle the concurrent database access and will cause locking issues.
-*   **Chutes.ai Integration**: First-class support for Chutes.ai, enabling high-quality LLM translations at a fraction of the cost of OpenAI/Anthropic.
-*   **Resilient Batching**: Implements a "Graduated Retry" system. If a large batch fails, it automatically splits into smaller chunks (and eventually single items) to ensure successful translation without wasting tokens.
-*   **Simplified Automation**: Replaces raw cron expressions with a user-friendly, preset-based scheduler UI.
-*   **Advanced Subtitle Cleaning**: Intelligent "ASS stripper" that removes drawing commands, karaoke tags, and garbage characters (like vertical text remnants) from translated subtitles, ensuring clean, readable output even from complex source files.
-*   **Embedded Subtitle Extraction**: Automatically detect and extract text-based subtitles embedded in video files (MKV, MP4, etc.), then translate them as if they were external files.
-*   **Translation Test Panel**: Debug your translation setup with a dedicated test panel that shows real-time logs and verbose output without saving files.
-*   **Job Cancellation**: Cancel running translation jobs at any time. Jobs respond to cancellation cooperatively and stop gracefully.
-*   **Priority Queue**: Prioritize specific movies or series to move them to the front of the translation queue.
-*   **Manual Translation Trigger**: Trigger translations for specific media on-demand from the UI, instead of waiting for the automated scheduler.
-*   **MySQL Database Support**: Use MySQL/MariaDB as an alternative to SQLite for improved reliability and performance in larger deployments.
-*   **Enhanced Stability**: Improved error handling, better Radarr/Sonarr connectivity checks, and a polished UI for clearer status visibility.
+## Feature Comparison
 
-Supports all major translation services including LibreTranslate, DeepL, OpenAI, Anthropic, Chutes.ai, LocalAI, and more.
+| Feature | Original Lingarr | Lingarr on Steroids |
+| :--- | :--- | :--- |
+| **Translation Engine** | Serial execution (one file at a time). | **Parallel Semaphore-Based Processing**<br>Configurable concurrency limits allow processing multiple media files simultaneously without overloading providers. |
+| **Resilience Strategy** | Basic retry on failure. | **Graduated Batch Recovery**<br>Smartly detects batch failures and recursively splits them into smaller chunks to isolate problematic lines vs failing the whole job. |
+| **Subtitle Sources** | External subtitle files only. | **Deep Embedded Extraction**<br>Uses FFmpeg to probe and extract subtitles (SRT, ASS, MOV_TEXT) directly from MKV/MP4 containers. Automatically merges concurrent layers and dedupes overlapping timeframes. |
+| **Cleaning Logic** | Basic HTML tag stripping. | **Advanced ASS/SSA Sanitation**<br>Heuristic algorithms detect and remove vector drawing commands, karaoke tags, and positioning artifacts that confuse LLMs. |
+| **Quality Control** | None. | **Integrity Validation**<br>Line-count verification (95% tolerance) ensures the translated file matches the structure of the source, protecting against hallucinations. |
+| **Database** | SQLite only. | **Hybrid Storage**<br>Full MySQL/MariaDB support for high-concurrency environments, alongside SQLite for simple setups. |
+| **Cost Efficiency** | Standard pay-per-token. | **Chutes.ai Integration**<br>Usage-tracking capable implementation for Chutes.ai, enabling high-quality open-source models at fraction of the cost. |
+| **Workflow Control** | Fire-and-forget. | **Cooperative Cancellation & Priorities**<br>Jobs can be elegantly cancelled mid-stream. Priority queue allows bumping specific media to the front. |
+| **Automation** | Basic Cron strings. | **Visual Schedule Builder**<br>User-friendly UI for scheduling automated tasks without needing cron syntax knowledge. |
+| **Debugging** | Server logs only. | **Live Test Panel**<br>Dedicated "Dry Run" interface to test translation settings and prompts on specific text samples without modifying files. |
+
+## Improvements
+This fork focuses on **reliability at scale**. It transforms Lingarr from a simple script-runner into a robust background worker capable of handling TB-sized libraries.
+
+It supports all major translation services including LibreTranslate, DeepL, OpenAI, Anthropic, Chutes.ai, LocalAI, and more.
 
 https://github.com/user-attachments/assets/be753d77-ca53-4867-adea-363145613d2b
 
