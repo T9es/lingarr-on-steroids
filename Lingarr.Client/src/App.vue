@@ -33,6 +33,8 @@ onMounted(async () => {
     requestHubConnection.value.on('RequestActive', (request: { count: number }) => {
         translationRequestStore.setActiveCount(request.count)
     })
+
+    await translationRequestStore.getActiveCount()
 })
 
 onUnmounted(async () => {

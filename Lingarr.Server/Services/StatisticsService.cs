@@ -5,26 +5,30 @@ using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Models.Batch.Response;
 using Lingarr.Server.Models.FileSystem;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Lingarr.Server.Services;
 
 public class StatisticsService : IStatisticsService
 {
-    private readonly LingarrDbContext _dbContext;
+    private readonly IServiceScopeFactory _scopeFactory;
 
     public StatisticsService(
-        LingarrDbContext dbContext)
+        IServiceScopeFactory scopeFactory)
     {
-        _dbContext = dbContext;
+        _scopeFactory = scopeFactory;
     }
 
     public async Task<Statistics> GetStatistics()
     {
-        var stats = await GetOrCreateStatistics();
+        using var scope = _scopeFactory.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<LingarrDbContext>();
+
+        var stats = await GetOrCreateStatistics(dbContext);
         
         // Calculate unique translated media counts dynamically from completed translation requests
         // This prevents double-counting when media is re-translated
-        var translatedMovies = await _dbContext.TranslationRequests
+        var translatedMovies = await dbContext.TranslationRequests
             .Where(r => r.Status == TranslationStatus.Completed && 
                         r.MediaType == MediaType.Movie && 
                         r.MediaId != null)
@@ -32,7 +36,7 @@ public class StatisticsService : IStatisticsService
             .Distinct()
             .CountAsync();
 
-        var translatedEpisodes = await _dbContext.TranslationRequests
+        var translatedEpisodes = await dbContext.TranslationRequests
             .Where(r => r.Status == TranslationStatus.Completed && 
                         r.MediaType == MediaType.Episode && 
                         r.MediaId != null)
@@ -52,8 +56,11 @@ public class StatisticsService : IStatisticsService
 
     public async Task<IEnumerable<DailyStatistics>> GetDailyStatistics(int days = 30)
     {
+        using var scope = _scopeFactory.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<LingarrDbContext>();
+
         var startDate = DateTime.UtcNow.Date.AddDays(-days + 1); // +1 to include today
-        var stats = await _dbContext.DailyStatistics
+        var stats = await dbContext.DailyStatistics
             .Where(d => d.Date >= startDate)
             .OrderBy(d => d.Date)
             .ToListAsync();
@@ -61,29 +68,31 @@ public class StatisticsService : IStatisticsService
         return stats;
     }
 
-    private async Task<Statistics> GetOrCreateStatistics()
+    private static async Task<Statistics> GetOrCreateStatistics(LingarrDbContext dbContext)
     {
-        var stats = await _dbContext.Statistics.SingleOrDefaultAsync();
+        var stats = await dbContext.Statistics.SingleOrDefaultAsync();
         if (stats == null)
         {
             stats = new Statistics();
-            _dbContext.Statistics.Add(stats);
-            await _dbContext.SaveChangesAsync();
+            dbContext.Statistics.Add(stats);
+            await dbContext.SaveChangesAsync();
         }
 
         return stats;
     }
 
-    private async Task<DailyStatistics> GetOrCreateDailyStatistics(DateTime today)
+    private static async Task<DailyStatistics> GetOrCreateDailyStatistics(
+        LingarrDbContext dbContext,
+        DateTime today)
     {
-        var dailyStats = await _dbContext.DailyStatistics
+        var dailyStats = await dbContext.DailyStatistics
             .Where(d => d.Date >= today)
             .FirstOrDefaultAsync();
 
         if (dailyStats == null)
         {
             dailyStats = new DailyStatistics { Date = today };
-            _dbContext.DailyStatistics.Add(dailyStats);
+            dbContext.DailyStatistics.Add(dailyStats);
         }
 
         return dailyStats;
@@ -119,7 +128,10 @@ public class StatisticsService : IStatisticsService
         int totalLines,
         int totalCharacters)
     {
-        var stats = await GetOrCreateStatistics();
+        using var scope = _scopeFactory.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<LingarrDbContext>();
+
+        var stats = await GetOrCreateStatistics(dbContext);
         var today = DateTime.UtcNow.Date;
 
         // Update total counts
@@ -141,9 +153,9 @@ public class StatisticsService : IStatisticsService
         stats.SubtitlesByLanguage = languageStats;
 
         // Update daily statistics
-        var dailyStats = await GetOrCreateDailyStatistics(today);
+        var dailyStats = await GetOrCreateDailyStatistics(dbContext, today);
         dailyStats.TranslationCount++;
 
-        return await _dbContext.SaveChangesAsync();
+        return await dbContext.SaveChangesAsync();
     }
 }
