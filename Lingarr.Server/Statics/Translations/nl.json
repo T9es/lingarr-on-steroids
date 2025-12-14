@@ -16,6 +16,7 @@
   "embedded": {
     "title": "Ingebedde Ondertitels",
     "extract": "Uitpakken",
+    "justExtract": "Alleen uitpakken",
     "extracting": "Bezig met uitpakken...",
     "textBased": "Tekstgebaseerd",
     "imageBased": "Afbeeldingsondertitel (PGS/VobSub). Kan niet worden uitgepakt zonder OCR.",

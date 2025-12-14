@@ -60,6 +60,7 @@ public class MediaServiceTests
             });
 
         var showSyncServiceMock = new Mock<IShowSyncService>();
+        var mediaSubtitleProcessorMock = new Mock<IMediaSubtitleProcessor>();
 
         var mediaService = new MediaService(context,
             subtitleMock.Object,
@@ -67,6 +68,7 @@ public class MediaServiceTests
             showSyncServiceMock.Object,
             radarrMock.Object,
             movieSyncMock.Object,
+            mediaSubtitleProcessorMock.Object,
             logger);
 
         // Act

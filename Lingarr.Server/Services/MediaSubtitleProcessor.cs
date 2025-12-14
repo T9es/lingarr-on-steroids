@@ -390,6 +390,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         IMedia media, 
         MediaType mediaType,
         bool forceProcess = true,
+        bool forceTranslation = true,
         bool forcePriority = false)
     {
         if (media.Path == null)
@@ -413,7 +414,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 media.FileName);
             
             // Try to queue translation jobs for embedded subtitle extraction
-            return await TryQueueEmbeddedSubtitleTranslation(media, mediaType, forceProcess, forcePriority);
+            return await TryQueueEmbeddedSubtitleTranslation(media, mediaType, forceTranslation, forceProcess, forcePriority);
         }
 
         var sourceLanguages = await GetLanguagesSetting<SourceLanguage>(SettingKeys.Translation.SourceLanguages);
@@ -443,8 +444,9 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             return 0;
         }
         
-        _logger.LogInformation("Initiating manual subtitle processing for {FileName} (forceProcess={Force}, forcePriority={Priority}).", media.FileName, forceProcess, forcePriority);
-        return await ProcessSubtitlesWithCount(matchingSubtitles, sourceLanguages, targetLanguages, ignoreCaptions ?? "", forceProcess, forcePriority);
+        _logger.LogInformation("Initiating manual subtitle processing for {FileName} (forceProcess={Force}, forceTranslation={ForceTrans}, forcePriority={Priority}).", media.FileName, forceProcess, forceTranslation, forcePriority);
+        return await ProcessSubtitlesWithCount(media, mediaType, matchingSubtitles, sourceLanguages, targetLanguages, ignoreCaptions ?? "", forceTranslation, forceProcess, forcePriority);
+        // return 0;
     }
     
     /// <summary>
@@ -452,11 +454,14 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
     /// </summary>
     /// <param name="forceTranslation">If true, translates to all target languages even if they already exist.</param>
     private async Task<int> ProcessSubtitlesWithCount(
+        IMedia media,
+        MediaType mediaType,
         List<Subtitles> subtitles,
         HashSet<string> sourceLanguages,
         HashSet<string> targetLanguages,
         string ignoreCaptions,
         bool forceTranslation = false,
+        bool forceProcess = false,
         bool forcePriority = false)
     {
         var existingLanguages = ExtractLanguageCodes(subtitles);
@@ -551,11 +556,11 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
 
                 foreach (var targetLanguage in languagesToTranslate)
                 {
-                    if (await HasActiveRequestAsync(_media.Id, _mediaType, sourceLanguage, targetLanguage))
+                    if (await HasActiveRequestAsync(media.Id, mediaType, sourceLanguage, targetLanguage))
                     {
                         _logger.LogInformation(
                             "Skipping enqueue for {FileName} {Source}->{Target}: translation request already active.",
-                            _media.FileName,
+                            media.FileName,
                             sourceLanguage,
                             targetLanguage);
                         continue;
@@ -563,8 +568,8 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
 
                     await _translationRequestService.CreateRequest(new TranslateAbleSubtitle
                     {
-                        MediaId = _media.Id,
-                        MediaType = _mediaType,
+                        MediaId = media.Id,
+                        MediaType = mediaType,
                         SubtitlePath = sourceSubtitle.Path,
                         TargetLanguage = targetLanguage,
                         SourceLanguage = sourceLanguage,
@@ -585,7 +590,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 }
                 else
                 {
-                    _logger.LogDebug("Skipping hash update for {FileName} due to corruption found - will re-validate next run", _media.FileName);
+                    _logger.LogDebug("Skipping hash update for {FileName} due to corruption found - will re-validate next run", media.FileName);
                 }
                 return translationsQueued;
             }
@@ -595,30 +600,11 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
 
             _logger.LogInformation(
                 "No external source subtitle found for {FileName}. Checking for embedded subtitles...",
-                _media.FileName);
-            
-            // Try to queue translation jobs for embedded subtitle extraction as fallback
-            return await TryQueueEmbeddedSubtitleTranslation(_media, _mediaType, forceTranslation, forcePriority);
+                media.FileName);
         }
 
-        _logger.LogWarning(
-            "No valid source language or target languages found for media |Green|{FileName}|/Green|. " +
-            "Existing languages: |Red|{ExistingLanguages}|/Red|, " +
-            "Source languages: |Red|{SourceLanguages}|/Red|, " +
-            "Target languages: |Red|{TargetLanguages}|/Red|",
-            _media?.FileName ?? "Unknown",
-            string.Join(", ", existingLanguages),
-            string.Join(", ", sourceLanguages),
-            string.Join(", ", targetLanguages));
-
-
-
-        _logger.LogInformation(
-            "No valid external processing path for {FileName}. Checking for embedded subtitles...",
-            _media?.FileName ?? "Unknown");
-            
         // Final fallback: try embedded
-        return await TryQueueEmbeddedSubtitleTranslation(_media, _mediaType, forceTranslation, forcePriority);
+        return await TryQueueEmbeddedSubtitleTranslation(media, mediaType, forceTranslation, forceProcess, forcePriority);
     }
     
     /// <summary>
@@ -629,7 +615,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
     /// <param name="forceProcess">If true, bypasses the media hash check</param>
     /// <param name="forcePriority">If true, forces jobs to use the priority queue</param>
     /// <returns>The number of translation requests queued</returns>
-    private async Task<int> TryQueueEmbeddedSubtitleTranslation(IMedia media, MediaType mediaType, bool forceProcess, bool forcePriority = false)
+    private async Task<int> TryQueueEmbeddedSubtitleTranslation(IMedia media, MediaType mediaType, bool forceTranslation, bool forceProcess, bool forcePriority = false)
     {
         // Preserve the order of configured source languages so we can treat
         // them as a priority list (e.g. [en, ja] => prefer English when both
@@ -827,16 +813,16 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             .ToHashSet();
 
         // Determine which languages need translation (missing or corrupt)
-        var languagesToTranslate = forceProcess
+        var languagesToTranslate = forceTranslation
             ? targetLanguages.ToList()
             : targetLanguages.Except(existingExternalLanguages).ToList();
 
-        // For integrity validation, we need to extract temp source and check existing targets
+        // For integrity validation (forceTranslation=false), we need to extract temp source and check existing targets
         string? tempSourcePath = null;
         var foundCorruption = false;
         try
         {
-            if (!forceProcess && existingExternalLanguages.Any(lang => targetLanguages.Contains(lang)))
+            if (!forceTranslation && existingExternalLanguages.Any(lang => targetLanguages.Contains(lang)))
             {
                 // Extract temp source for validation
                 var tempDir = Path.GetTempPath();

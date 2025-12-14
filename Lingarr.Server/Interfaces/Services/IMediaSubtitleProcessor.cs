@@ -26,5 +26,10 @@ public interface IMediaSubtitleProcessor
     /// <returns>
     /// The number of translation requests that were queued.
     /// </returns>
-    Task<int> ProcessMediaForceAsync(IMedia media, MediaType mediaType, bool forceProcess = true, bool forcePriority = false);
+    Task<int> ProcessMediaForceAsync(
+        IMedia media, 
+        MediaType mediaType,
+        bool forceProcess = true, 
+        bool forceTranslation = true, 
+        bool forcePriority = false);
 }

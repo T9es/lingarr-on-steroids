@@ -16,6 +16,7 @@
   "embedded": {
     "title": "Embedded Subtitles",
     "extract": "Extract",
+    "justExtract": "Just Extract",
     "extracting": "Extracting...",
     "textBased": "Text-based",
     "imageBased": "Image-based subtitle (PGS/VobSub). Cannot be extracted without OCR.",

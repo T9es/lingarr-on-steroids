@@ -109,4 +109,14 @@ public class MediaController : ControllerBase
         }
         return Ok(value);
     }
+    /// <summary>
+    /// Triggers an integrity check for the specified media item.
+    /// </summary>
+    /// <param name="request">The request object containing the media type and id.</param>
+    [HttpPost("integrity-check")]
+    public async Task<ActionResult<int>> IntegrityCheck([FromBody] ExcludeRequest request)
+    {
+        var queuedCount = await _mediaService.IntegrityCheck(request.MediaType, request.Id);
+        return Ok(queuedCount);
+    }
 }

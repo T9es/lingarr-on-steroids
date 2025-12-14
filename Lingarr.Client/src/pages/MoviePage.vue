@@ -21,7 +21,7 @@
             </div>
 
             <div class="w-full px-4">
-                <div class="border-accent grid grid-cols-12 border-b font-bold">
+                <div class="border-accent grid grid-cols-13 border-b font-bold">
                     <div class="col-span-4 px-4 py-2">{{ translate('movies.title') }}</div>
                     <div class="col-span-3 px-4 py-2">{{ translate('movies.subtitles') }}</div>
                     <div class="col-span-1 px-4 py-2">
@@ -39,6 +39,12 @@
                         </span>
                         <span class="block md:hidden">⚡</span>
                     </div>
+                    <div class="col-span-1 px-4 py-2 text-center">
+                        <span class="hidden md:block">
+                            {{ translate('movies.integrityCheck') }}
+                        </span>
+                        <span class="block md:hidden">✔</span>
+                    </div>
                     <div class="col-span-2 px-4 py-2">
                         {{ translate('movies.ageThreshold') }}
                         <span class="float-right">
@@ -47,7 +53,7 @@
                     </div>
                 </div>
                 <div v-for="item in movies.items" :key="item.id">
-                    <div class="border-accent grid grid-cols-12 border-b">
+                    <div class="border-accent grid grid-cols-13 border-b">
                         <div class="col-span-4 px-4 py-2">
                             {{ item.title }}
                         </div>
@@ -117,6 +123,16 @@
                                 <LanguageIcon v-else class="h-4 w-4" />
                             </button>
                         </div>
+                        <div class="col-span-1 flex items-center justify-center px-4 py-2" @click.stop>
+                            <button
+                                class="border-accent hover:bg-accent cursor-pointer rounded border p-1 transition-colors"
+                                :disabled="integrityCheckingMovies[item.id]"
+                                :title="translate('movies.integrityCheck')"
+                                @click="checkIntegrityMovie(item)">
+                                <LoaderCircleIcon v-if="integrityCheckingMovies[item.id]" class="h-4 w-4 animate-spin" />
+                                <CheckMarkCicleIcon v-else class="h-4 w-4" />
+                            </button>
+                        </div>
                         <div class="col-span-2 flex items-center px-4 py-2" @click.stop>
                             <InputComponent
                                 :model-value="item?.translationAgeThreshold"
@@ -167,6 +183,7 @@ import ToggleButton from '@/components/common/ToggleButton.vue'
 import InputComponent from '@/components/common/InputComponent.vue'
 import LanguageIcon from '@/components/icons/LanguageIcon.vue'
 import LoaderCircleIcon from '@/components/icons/LoaderCircleIcon.vue'
+import CheckMarkCicleIcon from '@/components/icons/CheckMarkCicleIcon.vue'
 
 const { translate } = useI18n()
 const movieStore = useMovieStore()
@@ -174,6 +191,7 @@ const settingStore = useSettingStore()
 const instanceStore = useInstanceStore()
 
 const translatingMovies = reactive<Record<number, boolean>>({})
+const integrityCheckingMovies = reactive<Record<number, boolean>>({})
 
 
 interface TranslateMediaResponse {
@@ -229,6 +247,25 @@ const translateMovie = async (movie: IMovie) => {
         console.error('Failed to translate movie:', error)
     } finally {
         translatingMovies[movie.id] = false
+    }
+}
+
+const checkIntegrityMovie = async (movie: IMovie) => {
+    integrityCheckingMovies[movie.id] = true
+    try {
+        const count = await services.media.integrityCheck<number>(
+            MEDIA_TYPE.MOVIE,
+            movie.id
+        )
+        if (count > 0) {
+            console.log(`Integrity check failed. Queued ${count} repair translations.`)
+        } else {
+            console.log('Integrity check passed or no repairs needed.')
+        }
+    } catch (error) {
+        console.error('Failed to check integrity for movie:', error)
+    } finally {
+        integrityCheckingMovies[movie.id] = false
     }
 }
 

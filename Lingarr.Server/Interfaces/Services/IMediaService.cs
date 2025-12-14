@@ -101,4 +101,13 @@ public interface IMediaService
     /// - false if the item was not found or an error occurred
     /// </returns>
     Task<bool> TogglePriority(MediaType mediaType, int id);
+    /// <summary>
+    /// Performs an integrity check on the subtitles of a media item without re-translating if valid.
+    /// </summary>
+    /// <param name="mediaType">The type of media (Movie, Show, Season, or Episode).</param>
+    /// <param name="id">The unique identifier of the media item.</param>
+    /// <returns>
+    /// A task result containing an integer indicating the number of repair translations queued.
+    /// </returns>
+    Task<int> IntegrityCheck(MediaType mediaType, int id);
 }

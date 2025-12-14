@@ -14,6 +14,7 @@
             <div class="px-3 py-1" role="menu" aria-orientation="vertical">
                 <!-- Embedded Options -->
                 <div v-if="embeddedSubtitle" class="border-accent border-b pb-1 mb-1">
+                    <span class="text-xs" role="menuitem">{{ translate('embedded.title') }}</span>
                      <div
                         v-if="!embeddedSubtitle.isExtracted"
                         class="flex text-sm"

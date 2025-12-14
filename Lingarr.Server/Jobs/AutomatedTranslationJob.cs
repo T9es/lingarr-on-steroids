@@ -182,7 +182,7 @@ public class AutomatedTranslationJob
                     }
 
                     var translationsQueued =
-                        await _mediaSubtitleProcessor.ProcessMediaForceAsync(movie, MediaType.Movie, forceProcess: false);
+                        await _mediaSubtitleProcessor.ProcessMediaForceAsync(movie, MediaType.Movie, forceProcess: false, forceTranslation: false);
                     if (translationsQueued > 0)
                     {
                         translationsInitiated++;
@@ -247,7 +247,7 @@ public class AutomatedTranslationJob
                 }
 
                 var translationsQueued =
-                    await _mediaSubtitleProcessor.ProcessMediaForceAsync(movie, MediaType.Movie, forceProcess: false);
+                    await _mediaSubtitleProcessor.ProcessMediaForceAsync(movie, MediaType.Movie, forceProcess: false, forceTranslation: false);
                 if (translationsQueued > 0)
                 {
                     translationsInitiated++;
@@ -331,7 +331,7 @@ public class AutomatedTranslationJob
 
                     var translationsQueued =
                         await _mediaSubtitleProcessor.ProcessMediaForceAsync(episode, MediaType.Episode,
-                            forceProcess: false);
+                            forceProcess: false, forceTranslation: false);
                     if (translationsQueued > 0)
                     {
                         translationsInitiated++;
@@ -397,7 +397,7 @@ public class AutomatedTranslationJob
 
                 var translationsQueued =
                     await _mediaSubtitleProcessor.ProcessMediaForceAsync(episode, MediaType.Episode,
-                        forceProcess: false);
+                        forceProcess: false, forceTranslation: false);
                 if (translationsQueued > 0)
                 {
                     translationsInitiated++;

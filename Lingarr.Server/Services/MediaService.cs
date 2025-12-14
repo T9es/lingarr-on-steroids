@@ -7,6 +7,8 @@ using Lingarr.Server.Models.Api;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Sync;
 using Lingarr.Server.Interfaces.Services.Integration;
+using Lingarr.Server.Interfaces.Services.Subtitle;
+using Lingarr.Core.Interfaces;
 
 namespace Lingarr.Server.Services;
 
@@ -19,6 +21,7 @@ public class MediaService : IMediaService
     private readonly IRadarrService _radarrService;
     private readonly IMovieSyncService _movieSyncService;
     private readonly ILogger<MediaService> _logger;
+    private readonly IMediaSubtitleProcessor _mediaSubtitleProcessor;
 
     public MediaService(LingarrDbContext dbContext, 
         ISubtitleService subtitleService,
@@ -26,6 +29,7 @@ public class MediaService : IMediaService
         IShowSyncService showSyncService,
         IRadarrService radarrService,
         IMovieSyncService movieSyncService,
+        IMediaSubtitleProcessor mediaSubtitleProcessor,
         ILogger<MediaService> logger)
     {
         _dbContext = dbContext;
@@ -34,6 +38,7 @@ public class MediaService : IMediaService
         _showSyncService = showSyncService;
         _radarrService = radarrService;
         _movieSyncService = movieSyncService;
+        _mediaSubtitleProcessor = mediaSubtitleProcessor;
         _logger = logger;
     }
     
@@ -407,6 +412,42 @@ public class MediaService : IMediaService
         {
             _logger.LogError(ex, "Error toggling priority for media item. Type: {MediaType}, Id: {Id}", mediaType, id);
             return false;
+        }
+    }
+    /// <inheritdoc />
+    public async Task<int> IntegrityCheck(
+        MediaType mediaType,
+        int id)
+    {
+        try
+        {
+            IMedia? media = null;
+            switch (mediaType)
+            {
+                case MediaType.Movie:
+                    media = await _dbContext.Movies.FindAsync(id);
+                    break;
+                case MediaType.Episode:
+                    media = await _dbContext.Episodes.FindAsync(id);
+                    break;
+                default:
+                    _logger.LogWarning("Unsupported media type for integrity check: {MediaType}", mediaType);
+                    return 0;
+            }
+
+            if (media != null)
+            {
+                 // forceProcess: true (skip hash), forceTranslation: false (validate integrity, don't force all targets)
+                 return await _mediaSubtitleProcessor.ProcessMediaForceAsync((IMedia)media, mediaType, forceProcess: true, forceTranslation: false);
+            }
+
+            _logger.LogWarning("Media item not found for integrity check. Type: {MediaType}, Id: {Id}", mediaType, id);
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error performing integrity check for media item. Type: {MediaType}, Id: {Id}", mediaType, id);
+            return 0;
         }
     }
 }

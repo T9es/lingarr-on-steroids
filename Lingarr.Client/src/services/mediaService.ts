@@ -90,6 +90,20 @@ const service = (http: AxiosStatic, resource = '/api/media'): IMediaService => (
                     reject(error.response)
                 })
         })
+    },
+    integrityCheck<T>(mediaType: MediaType, id: number): Promise<T> {
+        return new Promise((resolve, reject) => {
+            http.post(`${resource}/integrity-check`, {
+                mediaType: mediaType,
+                id: id
+            })
+                .then((response: AxiosResponse<T>) => {
+                    resolve(response.data)
+                })
+                .catch((error: AxiosError) => {
+                    reject(error.response)
+                })
+        })
     }
 })
 

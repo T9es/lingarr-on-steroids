@@ -40,6 +40,7 @@ export interface IMediaService {
     exclude<T>(mediaType: MediaType, id: number): Promise<T>
     threshold<T>(mediaType: MediaType, id: number, hours: string): Promise<T>
     priority<T>(mediaType: MediaType, id: number): Promise<T>
+    integrityCheck<T>(mediaType: MediaType, id: number): Promise<T>
 }
 
 export interface ISettingService {

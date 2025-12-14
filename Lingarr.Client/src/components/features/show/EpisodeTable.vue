@@ -1,6 +1,6 @@
 ﻿<template>
     <div class="bg-tertiary text-tertiary-content w-full">
-        <div class="border-primary grid grid-cols-12 border-b-2 font-bold">
+        <div class="border-primary grid grid-cols-13 border-b-2 font-bold">
             <div class="col-span-1 px-4 py-2">
                 <span class="hidden lg:block">
                     {{ translate('tvShows.episode') }}
@@ -13,11 +13,17 @@
             <div class="col-span-4 py-2 pr-4 md:col-span-4">
                 <span>{{ translate('tvShows.episodeSubtitles') }}</span>
             </div>
-            <div class="col-span-1 py-2 text-center md:col-span-2">
+            <div class="col-span-1 py-2 text-center md:col-span-1">
                 <span class="hidden md:block">
                     {{ translate('tvShows.translateNow') }}
                 </span>
                 <span class="block md:hidden">⚡</span>
+            </div>
+             <div class="col-span-1 py-2 text-center md:col-span-1">
+                <span class="hidden md:block">
+                    {{ translate('tvShows.integrityCheck') }}
+                </span>
+                <span class="block md:hidden">✔</span>
             </div>
             <div class="col-span-1 py-2 pr-4 text-right">
                 <span class="hidden md:block">
@@ -26,7 +32,7 @@
                 <span class="block md:hidden">⊘</span>
             </div>
         </div>
-        <div v-for="episode in episodes" :key="episode.id" class="grid grid-cols-12">
+        <div v-for="episode in episodes" :key="episode.id" class="grid grid-cols-13">
             <div class="col-span-1 px-4 py-2">
                 {{ episode.episodeNumber }}
             </div>
@@ -73,7 +79,7 @@
                     </ContextMenu>
                 </div>
             </div>
-            <div class="col-span-1 flex items-center justify-center py-2 md:col-span-2">
+            <div class="col-span-1 flex items-center justify-center py-2 md:col-span-1">
                 <button
                     class="border-accent hover:bg-accent cursor-pointer rounded border p-1 transition-colors"
                     :disabled="translatingEpisode[episode.id]"
@@ -81,6 +87,16 @@
                     @click="translateEpisode(episode)">
                     <LoaderCircleIcon v-if="translatingEpisode[episode.id]" class="h-4 w-4 animate-spin" />
                     <LanguageIcon v-else class="h-4 w-4" />
+                </button>
+            </div>
+            <div class="col-span-1 flex items-center justify-center py-2 md:col-span-1">
+                <button
+                    class="border-accent hover:bg-accent cursor-pointer rounded border p-1 transition-colors"
+                    :disabled="integrityCheckingEpisode[episode.id]"
+                    :title="translate('tvShows.integrityCheck')"
+                    @click="checkIntegrityEpisode(episode)">
+                    <LoaderCircleIcon v-if="integrityCheckingEpisode[episode.id]" class="h-4 w-4 animate-spin" />
+                    <CheckMarkCicleIcon v-else class="h-4 w-4" />
                 </button>
             </div>
             <div class="col-span-1 flex items-center justify-end px-1 py-2 pr-4">
@@ -101,6 +117,7 @@ import ContextMenu from '@/components/layout/ContextMenu.vue'
 import ToggleButton from '@/components/common/ToggleButton.vue'
 import LoaderCircleIcon from '@/components/icons/LoaderCircleIcon.vue'
 import LanguageIcon from '@/components/icons/LanguageIcon.vue'
+import CheckMarkCicleIcon from '@/components/icons/CheckMarkCicleIcon.vue'
 import { useShowStore } from '@/store/show'
 import services from '@/services'
 
@@ -116,6 +133,7 @@ const showStore = useShowStore()
 
 // Track which episodes are currently being translated
 const translatingEpisode = reactive<Record<number, boolean>>({})
+const integrityCheckingEpisode = reactive<Record<number, boolean>>({})
 
 interface TranslateMediaResponse {
     translationsQueued: number
@@ -134,6 +152,25 @@ const translateEpisode = async (episode: IEpisode) => {
         console.error('Failed to translate episode:', error)
     } finally {
         translatingEpisode[episode.id] = false
+    }
+}
+
+const checkIntegrityEpisode = async (episode: IEpisode) => {
+    integrityCheckingEpisode[episode.id] = true
+    try {
+        const count = await services.media.integrityCheck<number>(
+            MEDIA_TYPE.EPISODE,
+            episode.id
+        )
+         if (count > 0) {
+            console.log(`Integrity check failed. Queued ${count} repair translations.`)
+        } else {
+            console.log('Integrity check passed or no repairs needed.')
+        }
+    } catch (error) {
+        console.error('Failed to check integrity for episode:', error)
+    } finally {
+        integrityCheckingEpisode[episode.id] = false
     }
 }
 
