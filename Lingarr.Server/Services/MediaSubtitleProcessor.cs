@@ -145,7 +145,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                          var tempFileName = $"lingarr_temp_source_{Guid.NewGuid()}.{bestMatch.MatchedLanguage}.srt";
                          
                          tempSourcePath = await _extractionService.ExtractSubtitle(
-                             _media.Path, 
+                             Path.Combine(_media.Path!, _media.FileName!), 
                              bestMatch.Subtitle.StreamIndex, 
                              tempDir, 
                              "srt", 

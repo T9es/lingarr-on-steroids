@@ -76,6 +76,7 @@
     "hours": "hours",
     "priority": "Prioritize",
     "translateNow": "Translate",
+    "integrityCheck": "Integrity Check",
     "translationQueued": "{count} translation(s) queued",
     "noTranslationsNeeded": "No translations needed"
   },
