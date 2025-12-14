@@ -370,7 +370,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
     {
         var languages = await _settingService.GetSettingAsJson<T>(settingName);
         return languages
-            .Select(lang => lang.Code)
+            .Select(lang => lang.Code.ToLowerInvariant())
             .ToHashSet();
     }
 
@@ -624,14 +624,14 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         var sourceLanguageModels =
             await _settingService.GetSettingAsJson<SourceLanguage>(SettingKeys.Translation.SourceLanguages);
         var configuredSourceLanguages = sourceLanguageModels
-            .Select(lang => lang.Code)
+            .Select(lang => lang.Code.ToLowerInvariant())
             .Where(code => !string.IsNullOrWhiteSpace(code))
             .ToList();
 
         var targetLanguageModels =
             await _settingService.GetSettingAsJson<TargetLanguage>(SettingKeys.Translation.TargetLanguages);
         var targetLanguages = targetLanguageModels
-            .Select(lang => lang.Code)
+            .Select(lang => lang.Code.ToLowerInvariant())
             .Where(code => !string.IsNullOrWhiteSpace(code))
             .ToHashSet();
         
@@ -649,8 +649,9 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         
         if (mediaType == MediaType.Episode)
         {
+            // Don't use Include here - we're syncing immediately after, and Include+ExecuteDeleteAsync
+            // causes duplication because ExecuteDeleteAsync bypasses the change tracker
             var episode = await _dbContext.Episodes
-                .Include(e => e.EmbeddedSubtitles)
                 .FirstOrDefaultAsync(e => e.Id == media.Id);
                 
             if (episode != null)
@@ -664,8 +665,9 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         }
         else if (mediaType == MediaType.Movie)
         {
+            // Don't use Include here - we're syncing immediately after, and Include+ExecuteDeleteAsync
+            // causes duplication because ExecuteDeleteAsync bypasses the change tracker
             var movie = await _dbContext.Movies
-                .Include(m => m.EmbeddedSubtitles)
                 .FirstOrDefaultAsync(m => m.Id == media.Id);
                 
             if (movie != null)
@@ -822,7 +824,19 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         var foundCorruption = false;
         try
         {
-            if (!forceTranslation && existingExternalLanguages.Any(lang => targetLanguages.Contains(lang)))
+            // Debug logging to trace validation check
+            _logger.LogDebug(
+                "Validation check - forceTranslation={ForceTranslation}, matchingExternalSubtitles=[{Subtitles}], existingExternalLanguages=[{ExistingLangs}], targetLanguages=[{TargetLangs}]",
+                forceTranslation,
+                string.Join(", ", matchingExternalSubtitles.Select(s => $"{s.FileName}:{s.Language}")),
+                string.Join(", ", existingExternalLanguages),
+                string.Join(", ", targetLanguages));
+            
+            var hasMatchingTarget = existingExternalLanguages.Any(lang => targetLanguages.Contains(lang));
+            _logger.LogDebug("Validation gate check: !forceTranslation={NotForce}, hasMatchingTarget={HasMatch}, willValidate={WillValidate}",
+                !forceTranslation, hasMatchingTarget, !forceTranslation && hasMatchingTarget);
+                
+            if (!forceTranslation && hasMatchingTarget)
             {
                 // Extract temp source for validation
                 var tempDir = Path.GetTempPath();
@@ -935,8 +949,9 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
 
         if (_mediaType == MediaType.Episode)
         {
+            // Don't use Include here - we're syncing immediately after, and Include+ExecuteDeleteAsync
+            // causes duplication because ExecuteDeleteAsync bypasses the change tracker
             var episode = await _dbContext.Episodes
-                .Include(e => e.EmbeddedSubtitles)
                 .FirstOrDefaultAsync(e => e.Id == _media.Id);
                 
             if (episode != null)
@@ -948,8 +963,9 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         }
         else if (_mediaType == MediaType.Movie)
         {
+            // Don't use Include here - we're syncing immediately after, and Include+ExecuteDeleteAsync
+            // causes duplication because ExecuteDeleteAsync bypasses the change tracker
             var movie = await _dbContext.Movies
-                .Include(m => m.EmbeddedSubtitles)
                 .FirstOrDefaultAsync(m => m.Id == _media.Id);
                 
             if (movie != null)
