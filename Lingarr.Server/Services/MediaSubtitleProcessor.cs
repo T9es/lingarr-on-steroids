@@ -827,7 +827,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 // Extract temp source for validation
                 var tempDir = Path.GetTempPath();
                 tempSourcePath = await _extractionService.ExtractSubtitle(
-                    media.Path,
+                    Path.Combine(media.Path!, media.FileName!),
                     selectedSubtitle.StreamIndex,
                     tempDir,
                     "srt",
