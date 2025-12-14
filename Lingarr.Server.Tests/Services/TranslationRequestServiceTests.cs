@@ -185,7 +185,7 @@ public class TranslationRequestServiceTests
             new Mock<ITranslationServiceFactory>().Object,
             new Mock<IProgressService>().Object,
             new Mock<IStatisticsService>().Object,
-            new Mock<IMediaService>().Object,
+            new Lazy<IMediaService>(() => new Mock<IMediaService>().Object),
             new Mock<ISettingService>().Object,
             new Mock<IBatchFallbackService>().Object,
             NullLogger<TranslationRequestService>.Instance,

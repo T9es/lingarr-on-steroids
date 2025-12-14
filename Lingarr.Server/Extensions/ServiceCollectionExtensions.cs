@@ -100,6 +100,9 @@ public static class ServiceCollectionExtensions
 
     private static void ConfigureServices(this WebApplicationBuilder builder)
     {
+        // Register generic Lazy<T> support for breaking circular dependencies
+        builder.Services.AddTransient(typeof(Lazy<>), typeof(LazyServiceWrapper<>));
+        
         builder.Services.AddScoped<ISettingService, SettingService>();
         builder.Services.AddSingleton<SettingChangedListener>();
 

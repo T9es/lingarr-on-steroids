@@ -31,7 +31,7 @@ public class TranslationRequestService : ITranslationRequestService
     private readonly ITranslationServiceFactory _translationServiceFactory;
     private readonly IProgressService _progressService;
     private readonly IStatisticsService _statisticsService;
-    private readonly IMediaService _mediaService;
+    private readonly Lazy<IMediaService> _mediaServiceLazy;
     private readonly ISettingService _settingService;
     private readonly IBatchFallbackService _batchFallbackService;
     private readonly ILogger<TranslationRequestService> _logger;
@@ -46,7 +46,7 @@ public class TranslationRequestService : ITranslationRequestService
         ITranslationServiceFactory translationServiceFactory,
         IProgressService progressService,
         IStatisticsService statisticsService,
-        IMediaService mediaService,
+        Lazy<IMediaService> mediaServiceLazy,
         ISettingService settingService,
         IBatchFallbackService batchFallbackService,
         ILogger<TranslationRequestService> logger,
@@ -59,7 +59,7 @@ public class TranslationRequestService : ITranslationRequestService
         _translationServiceFactory = translationServiceFactory;
         _progressService = progressService;
         _statisticsService = statisticsService;
-        _mediaService = mediaService;
+        _mediaServiceLazy = mediaServiceLazy;
         _settingService = settingService;
         _batchFallbackService = batchFallbackService;
         _logger = logger;
@@ -1051,9 +1051,9 @@ public class TranslationRequestService : ITranslationRequestService
         switch (mediaType)
         {
             case MediaType.Episode:
-                return await _mediaService.GetEpisodeIdOrSyncFromSonarrEpisodeId(arrMediaId);
+                return await _mediaServiceLazy.Value.GetEpisodeIdOrSyncFromSonarrEpisodeId(arrMediaId);
             case MediaType.Movie:
-                return await _mediaService.GetMovieIdOrSyncFromRadarrMovieId(arrMediaId);
+                return await _mediaServiceLazy.Value.GetMovieIdOrSyncFromRadarrMovieId(arrMediaId);
             default:
                 _logger.LogWarning("Unsupported media type: {MediaType} for translate content async", mediaType);
                 return 0;
