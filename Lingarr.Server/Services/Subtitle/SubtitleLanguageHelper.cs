@@ -191,6 +191,18 @@ public static class SubtitleLanguageHelper
             score -= 40;
         }
 
+        // Penalize SDH/Hearing Impaired/CC tracks as they often contain "poison" content (sound effects, lyrics)
+        if (title.Contains("sdh") || title.Contains("hearing impaired") || title.Contains("cc") || title.Contains("closed caption"))
+        {
+            score -= 10;
+        }
+
+        // Commentary tracks are almost never suitable for translation
+        if (title.Contains("commentary"))
+        {
+            score -= 20;
+        }
+
         // Prefer non-forced tracks for full dialogue; forced tracks are often partial or effect-only.
         if (subtitle.IsForced)
         {
@@ -213,7 +225,7 @@ public static class SubtitleLanguageHelper
     /// Minimum quality threshold for a subtitle track to be considered "acceptable".
     /// Tracks below this threshold will not receive language priority bonuses.
     /// </summary>
-    private const int QualityThreshold = 40;
+    private const int QualityThreshold = 30;
     
     /// <summary>
     /// Priority bonus per language rank position (earlier languages get higher bonuses).

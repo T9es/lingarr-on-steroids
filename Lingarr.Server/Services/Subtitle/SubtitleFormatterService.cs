@@ -29,7 +29,48 @@ public class SubtitleFormatterService : ISubtitleFormatterService
         // Collapse multiple whitespace into a single space
         cleaned = Regex.Replace(cleaned, @"\s{2,}", " ");
 
+        // Strip poison content (Music, Credits, Sound Effects)
+        cleaned = StripPoisonContent(cleaned);
+
         return cleaned.Trim();
+    }
+
+    /// <summary>
+    /// Strips specific "poison" content that often causes translation failures or is undesirable.
+    /// Includes musical symbols, sound effects in brackets, and credit lines.
+    /// </summary>
+    private static string StripPoisonContent(string input)
+    {
+        if (string.IsNullOrWhiteSpace(input)) return input;
+
+        // 1. Strip musical symbols
+        // Symbols: ♪ ♫ ♬ ♭ ♮ ♯
+        string stripped = Regex.Replace(input, @"[♪♫♬♭♮♯]", string.Empty);
+
+        // 2. Strip sound effects in brackets or parentheses
+        // e.g. [groans], (music plays), [laughter]
+        // We use a non-greedy match.
+        // NOTE: This might strip (parenthetical dialogue), but for translation stability it is safer.
+        stripped = Regex.Replace(stripped, @"\[.*?\]|\(.*?\)", string.Empty);
+
+        // 3. Strip URL-only lines (e.g. www.site.com)
+        // If the remaining text is just a URL, clear it.
+        // Simple heuristic: contains "www." or ".com" or "http" and has no spaces?
+        // Actually, let's just look for lines that *start* with www/http
+        if (Regex.IsMatch(stripped.Trim(), @"^(?:https?:\/\/|www\.)", RegexOptions.IgnoreCase))
+        {
+            return string.Empty;
+        }
+
+        // 4. Strip credit lines
+        // e.g., "Captioning by...", "Synced by..."
+        // Regex matches lines starting with these phrases (case insensitive)
+        if (Regex.IsMatch(stripped.Trim(), @"^(?:captioning|synced|subtitle|translat|encoded).{0,10}by", RegexOptions.IgnoreCase))
+        {
+            return string.Empty;
+        }
+
+        return stripped;
     }
     
     /// <summary>

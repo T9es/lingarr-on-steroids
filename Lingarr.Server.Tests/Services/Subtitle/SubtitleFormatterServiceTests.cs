@@ -71,12 +71,25 @@ public class SubtitleFormatterServiceTests
     [InlineData("   ")]
     public void IsAssDrawingCommand_ShouldReturnTrue_ForEmptyOrTagOnlyContent(string input)
     {
-        // We want to filter these out to avoid empty lines in the output.
-        // Current implementation returns false. After fix, it should return true.
-        // For reproduction phase, we assert FALSE to confirm current behavior, 
-        // OR we can assert TRUE and expect failure (red test).
-        // Let's assert TRUE to see it fail, confirming the need for fix.
         var result = SubtitleFormatterService.IsAssDrawingCommand(input);
         Assert.True(result, $"Should identify empty/tag-only content as removable: '{input}'"); 
+    }
+
+    [Theory]
+    [InlineData("♪ Jingle Bells ♪", "Jingle Bells")]  // Strip music symbols
+    [InlineData("♪", "")]                            // Strip pure music
+    [InlineData("[groans]", "")]                     // Strip sound effects
+    [InlineData("(laughter)", "")]                   // Strip sound effects
+    [InlineData("Hello [groans] World", "Hello  World")] // Strip inline effects
+    [InlineData("Captioning by CaptionMax", "")]     // Strip credits
+    [InlineData("Synced by JohnDoe", "")]            // Strip credits
+    [InlineData("www.google.com", "")]               // Strip URLs
+    [InlineData("https://foo.com", "")]              // Strip URLs
+    [InlineData("Regular text", "Regular text")]     // Preserve normal text
+    [InlineData("Hello. (Note: this might be stripped)", "Hello.")] // Parenthetical stripped
+    public void RemoveMarkup_ShouldStripPoisonContent(string input, string expected)
+    {
+        var result = SubtitleFormatterService.RemoveMarkup(input);
+        Assert.Equal(expected, result);
     }
 }
