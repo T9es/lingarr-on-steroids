@@ -191,7 +191,9 @@ public static class ServiceCollectionExtensions
         
         builder.Services.AddHangfireServer(options =>
         {
-            options.ServerName = "translation-server";
+            // Remove hardcoded ServerName to allow Hangfire to generate unique IDs (hostname:pid)
+            // This prevents "zombie server" issues where dead processes hold onto queues
+            
             // Single queue for all translations - priority ordering handled by ParallelTranslationLimiter at runtime
             options.Queues = ["translation"];
             options.WorkerCount = translationWorkers;
@@ -206,7 +208,7 @@ public static class ServiceCollectionExtensions
         
         builder.Services.AddHangfireServer(options =>
         {
-            options.ServerName = "sync-server";
+            // Remove hardcoded ServerName
             options.Queues = ["movies", "shows", "system", "default"];
             options.WorkerCount = syncWorkers;
         });
