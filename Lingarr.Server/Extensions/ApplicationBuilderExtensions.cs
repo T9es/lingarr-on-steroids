@@ -14,12 +14,14 @@ public static class ApplicationBuilderExtensions
         app.MapHubs();
         await app.ApplyMigrations();
 
+        // Hangfire Dashboard enabled in all environments for debugging job status
+        app.UseHangfireDashboard("/hangfire", new DashboardOptions
+        {
+            Authorization = [new LingarrAuthorizationFilter()]
+        });
+        
         if (app.Environment.IsDevelopment())
         {
-            app.UseHangfireDashboard("/hangfire", new DashboardOptions
-            {
-                Authorization = [new LingarrAuthorizationFilter()]
-            });
             app.UseSwagger();
             app.UseSwaggerUI(options =>
             {
