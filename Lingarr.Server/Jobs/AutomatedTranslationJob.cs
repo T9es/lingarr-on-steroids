@@ -42,7 +42,7 @@ public class AutomatedTranslationJob
         _memoryCache = memoryCache;
     }
 
-    [DisableConcurrentExecution(timeoutInSeconds: 10 * 60)]
+    [DisableConcurrentExecution(timeoutInSeconds: 0)]
     [AutomaticRetry(Attempts = 0)]
     [Queue("translation")]
     public async Task Execute()
