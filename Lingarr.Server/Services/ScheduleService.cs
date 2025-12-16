@@ -61,6 +61,7 @@ public class ScheduleService : IScheduleService
                     if (setting.Value == "true")
                     {
                         var translationSchedule = await settingService.GetSetting("translation_schedule");
+                        _logger.LogError("AutomatedTranslationJob schedule: '{Schedule}'", translationSchedule);
                         RecurringJob.AddOrUpdate<AutomatedTranslationJob>(
                             "AutomatedTranslationJob",
                             job => job.Execute(),
