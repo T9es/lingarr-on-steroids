@@ -38,7 +38,9 @@ public static class LingarrVersion
         try
         {
             var release = await HttpClient.GetFromJsonAsync<GitHubReleaseInfo>(GitHubApiUrl);
-            var latestVersion = release?.Name ?? Number;
+            var latestVersion = !string.IsNullOrWhiteSpace(release?.TagName) 
+                ? release.TagName 
+                : release?.Name ?? Number;
 
             var cacheEntryOptions = new MemoryCacheEntryOptions()
                 .SetAbsoluteExpiration(TimeSpan.FromHours(24));
@@ -55,5 +57,13 @@ public static class LingarrVersion
     }
 
     private static bool IsNewVersionAvailable(string latestVersion, string currentVersion)
-        => Version.Parse(latestVersion.TrimStart('v')) > Version.Parse(currentVersion);
+    {
+        if (Version.TryParse(latestVersion.TrimStart('v'), out var latest) &&
+            Version.TryParse(currentVersion.TrimStart('v'), out var current))
+        {
+            return latest > current;
+        }
+        
+        return false;
+    }
 }
