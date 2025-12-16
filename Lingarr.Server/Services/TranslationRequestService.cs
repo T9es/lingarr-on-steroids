@@ -160,7 +160,7 @@ public class TranslationRequestService : ITranslationRequestService
                     tr.MediaType == translationRequest.MediaType &&
                     tr.SourceLanguage == translationRequest.SourceLanguage &&
                     tr.TargetLanguage == translationRequest.TargetLanguage &&
-                    tr.IsActive)
+                    tr.IsActive == true)
                 .Select(tr => tr.Id)
                 .FirstOrDefaultAsync();
             
@@ -265,7 +265,7 @@ public class TranslationRequestService : ITranslationRequestService
         {
             translationRequest.CompletedAt = DateTime.UtcNow;
             translationRequest.Status = TranslationStatus.Cancelled;
-            translationRequest.IsActive = false;
+            translationRequest.IsActive = null;
             await _dbContext.SaveChangesAsync();
             await ClearMediaHash(translationRequest);
             await UpdateActiveCount();
@@ -336,7 +336,7 @@ public class TranslationRequestService : ITranslationRequestService
         }
 
         request.Status = status;
-        request.IsActive = IsActiveStatus(status);
+        request.IsActive = IsActiveStatus(status) ? true : null;
         await _dbContext.SaveChangesAsync();
         await UpdateActiveCount();
 
@@ -606,7 +606,7 @@ public class TranslationRequestService : ITranslationRequestService
                 .Where(r => requestIds.Contains(r.Id))
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(r => r.Status, TranslationStatus.Cancelled)
-                    .SetProperty(r => r.IsActive, false)
+                    .SetProperty(r => r.IsActive, (bool?)null) // Use explicit cast for ExecuteUpdate
                     .SetProperty(r => r.CompletedAt, DateTime.UtcNow));
             
             // Bulk clear media hashes
@@ -1021,7 +1021,7 @@ public class TranslationRequestService : ITranslationRequestService
         {
             translationRequest.CompletedAt = DateTime.UtcNow;
             translationRequest.Status = TranslationStatus.Cancelled;
-            translationRequest.IsActive = false;
+            translationRequest.IsActive = null;
             await _dbContext.SaveChangesAsync();
             await UpdateActiveCount();
             await _progressService.Emit(translationRequest, 0);
@@ -1032,7 +1032,7 @@ public class TranslationRequestService : ITranslationRequestService
             _logger.LogError(ex, "Error translating subtitle content");
             translationRequest.CompletedAt = DateTime.UtcNow;
             translationRequest.Status = TranslationStatus.Failed;
-            translationRequest.IsActive = false;
+            translationRequest.IsActive = null;
             await _dbContext.SaveChangesAsync();
             await UpdateActiveCount();
             await _progressService.Emit(translationRequest, 0);
@@ -1075,7 +1075,7 @@ public class TranslationRequestService : ITranslationRequestService
 
         translationRequest.CompletedAt = DateTime.UtcNow;
         translationRequest.Status = TranslationStatus.Completed;
-        translationRequest.IsActive = false;
+        translationRequest.IsActive = null;
         await _dbContext.SaveChangesAsync(cancellationToken);
         await UpdateActiveCount();
         await _progressService.Emit(translationRequest, 100); // Tells the frontend to update translation request to a finished state

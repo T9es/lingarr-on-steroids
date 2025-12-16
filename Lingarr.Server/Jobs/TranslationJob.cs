@@ -571,7 +571,7 @@ public class TranslationJob
     {
 	        translationRequest.CompletedAt = DateTime.UtcNow;
 	        translationRequest.Status = TranslationStatus.Completed;
-	        translationRequest.IsActive = false;
+	        translationRequest.IsActive = null;
 	        await _dbContext.SaveChangesAsync(cancellationToken);
 	        await _translationRequestService.UpdateActiveCount();
 	        await _progressService.Emit(translationRequest, 100);
@@ -590,7 +590,7 @@ public class TranslationJob
 	        {
 	            translationRequest.CompletedAt = DateTime.UtcNow;
 	            translationRequest.Status = TranslationStatus.Cancelled;
-	            translationRequest.IsActive = false;
+	            translationRequest.IsActive = null;
 	
 	            await _dbContext.SaveChangesAsync();
 	            await _translationRequestService.ClearMediaHash(translationRequest);
