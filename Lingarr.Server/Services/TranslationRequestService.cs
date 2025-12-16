@@ -287,6 +287,7 @@ public class TranslationRequestService : ITranslationRequestService
         
         _dbContext.TranslationRequests.Remove(translationRequest);
         await _dbContext.SaveChangesAsync();
+        await UpdateActiveCount();
         
         return $"Translation request with id {cancelRequest.Id} has been removed";
     }
@@ -337,6 +338,7 @@ public class TranslationRequestService : ITranslationRequestService
         request.Status = status;
         request.IsActive = IsActiveStatus(status);
         await _dbContext.SaveChangesAsync();
+        await UpdateActiveCount();
 
         return request;
     }

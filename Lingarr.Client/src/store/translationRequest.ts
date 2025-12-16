@@ -210,6 +210,11 @@ export const useTranslationRequestStore = defineStore('translateRequest', {
                 this.selectedRequests.splice(index, 1)
             }
             this.selectAll = this.selectedRequests.length === this.translationRequests.items.length
+        },
+        async handleRequestActive({ count }: { count: number }) {
+            this.activeTranslationRequests = count
+            // Refresh lists to ensure UI reflects the new state (e.g. queue movement)
+            await this.fetchAllSections()
         }
     }
 })
