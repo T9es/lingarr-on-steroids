@@ -44,7 +44,7 @@ public class AutomatedTranslationJob
 
     [DisableConcurrentExecution(timeoutInSeconds: 0)]
     [AutomaticRetry(Attempts = 0)]
-    [Queue("translation")]
+    [Queue("system")]
     public async Task Execute()
     {
         var jobName = JobContextFilter.GetCurrentJobTypeName();
