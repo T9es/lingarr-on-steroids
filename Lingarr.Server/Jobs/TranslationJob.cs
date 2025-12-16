@@ -70,13 +70,24 @@ public class TranslationJob
     /// </summary>
     [Queue(TranslationQueue)]
     [AutomaticRetry(Attempts = 0)]
-    public Task Execute(TranslationRequest translationRequest, CancellationToken cancellationToken)
-        => ExecuteCore(translationRequest, cancellationToken);
+    public Task Execute(int translationRequestId, CancellationToken cancellationToken)
+        => ExecuteCore(translationRequestId, cancellationToken);
 
     private async Task ExecuteCore(
-        TranslationRequest translationRequest,
+        int translationRequestId,
         CancellationToken cancellationToken)
     {
+        // Fetch the fresh request from the database
+        // This ensures we have the latest state and avoids serialization issues with Hangfire
+        var translationRequest = await _dbContext.TranslationRequests
+            .FirstOrDefaultAsync(r => r.Id == translationRequestId, cancellationToken);
+
+        if (translationRequest == null)
+        {
+            _logger.LogWarning("Translation request {RequestId} not found - it may have been deleted. Aborting job.", translationRequestId);
+            return;
+        }
+
         var requestLogs = new List<TranslationRequestLog>();
 
         void AddRequestLog(string level, string message, string? details = null)

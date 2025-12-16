@@ -371,7 +371,7 @@ public class TranslationRequestService : ITranslationRequestService
                      stateData.Name == EnqueuedState.StateName ||
                      stateData.Name == ScheduledState.StateName))
                 {
-                    _logger.LogInformation("Skipping resume for request {RequestId} as it is already active in Hangfire (State: {State})", request.Id, stateData.Name);
+                    _logger.LogInformation("Skipping resume for request {RequestId} (Job: {JobId}) as it is already active in Hangfire (State: {State})", request.Id, request.JobId, stateData.Name);
                     continue;
                 }
             }
@@ -840,13 +840,15 @@ public class TranslationRequestService : ITranslationRequestService
     {
         // With unified queue, all jobs go to the same queue.
         // Priority ordering is handled at runtime by the ParallelTranslationLimiter.
-        var job = Job.FromExpression<TranslationJob>(j => j.Execute(translationRequest, CancellationToken.None));
+        // Pass ID only to avoid serialization issues and stale data
+        var job = Job.FromExpression<TranslationJob>(j => j.Execute(translationRequest.Id, CancellationToken.None));
         var jobId = _backgroundJobClient.Create(job, new EnqueuedState(TranslationQueue));
         
         _logger.LogInformation(
-            "Enqueued translation request {RequestId} to queue |Green|{Queue}|/Green|",
+            "Enqueued translation request {RequestId} to queue |Green|{Queue}|/Green| (JobId: {JobId})",
             translationRequest.Id,
-            TranslationQueue);
+            TranslationQueue,
+            jobId);
         
         return UpdateTranslationRequest(translationRequest, TranslationStatus.Pending, jobId);
     }
