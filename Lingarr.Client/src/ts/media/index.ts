@@ -45,6 +45,7 @@ export interface IMovie extends IBaseEntity {
     translationAgeThreshold: string
     isPriority: boolean
     priorityDate?: Date | null
+    translationState?: TranslationStateType
 }
 
 export interface ITranslationRequest {
@@ -144,3 +145,15 @@ export enum TRANSLATION_ACTIONS {
     REMOVE,
     RETRY,
 }
+
+export const TRANSLATION_STATE = {
+    UNKNOWN: 0,
+    NOT_APPLICABLE: 1,
+    PENDING: 2,
+    IN_PROGRESS: 3,
+    COMPLETE: 4,
+    STALE: 5
+} as const
+
+export type TranslationStateType = (typeof TRANSLATION_STATE)[keyof typeof TRANSLATION_STATE]
+

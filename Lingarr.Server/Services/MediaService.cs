@@ -96,7 +96,8 @@ public class MediaService : IMediaService
                 ExcludeFromTranslation = movie.ExcludeFromTranslation,
                 TranslationAgeThreshold = movie.TranslationAgeThreshold,
                 IsPriority = movie.IsPriority,
-                PriorityDate = movie.PriorityDate
+                PriorityDate = movie.PriorityDate,
+                TranslationState = (int)movie.TranslationState
             };
             enrichedMovies.Add(enrichedMovie);
         }

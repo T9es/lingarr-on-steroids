@@ -18,4 +18,5 @@ public class MovieResponse
     public int? TranslationAgeThreshold { get; set; }
     public bool IsPriority { get; set; }
     public DateTime? PriorityDate { get; set; }
+    public int TranslationState { get; set; }
 }

@@ -402,6 +402,18 @@
       "autoScroll": "Auto-scroll",
       "enabled": "Enabled",
       "disabled": "Disabled"
+    },
+    "translationState": {
+      "complete": "Complete",
+      "inProgress": "Translating",
+      "pending": "Pending",
+      "stale": "Stale",
+      "unknown": "Unknown",
+      "tooltipComplete": "All translations complete",
+      "tooltipInProgress": "Translation in progress",
+      "tooltipPending": "Awaiting translation",
+      "tooltipStale": "Needs re-analysis",
+      "tooltipUnknown": "Not yet analyzed"
     }
   }
 }
