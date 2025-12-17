@@ -370,6 +370,16 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
 
         if (!response.IsSuccessStatusCode)
         {
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                throw new HttpRequestException("Rate limit exceeded", null, HttpStatusCode.TooManyRequests);
+            }
+
+            if (response.StatusCode == HttpStatusCode.ServiceUnavailable)
+            {
+                throw new HttpRequestException("OpenAI temporary unavailable", null, HttpStatusCode.ServiceUnavailable);
+            }
+
             var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
             _logger.LogError(
                 "Batch translation API failed. Status: {StatusCode}, BatchSize: {BatchSize}, Endpoint: {Endpoint}",

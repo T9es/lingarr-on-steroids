@@ -7,6 +7,7 @@ using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Models;
 using Lingarr.Server.Models.FileSystem;
+using Lingarr.Server.Services.Subtitle;
 using Microsoft.EntityFrameworkCore;
 
 namespace Lingarr.Server.Services;
@@ -125,9 +126,12 @@ public class MediaStateService : IMediaStateService
             try
             {
                 var allSubs = await _subtitleService.GetAllSubtitles(media.Path);
+                var mediaNameNoExt = Path.GetFileNameWithoutExtension(media.FileName);
                 externalSubtitles = allSubs
                     .Where(s => !string.IsNullOrEmpty(media.FileName) && 
-                               (s.FileName.StartsWith(media.FileName + ".") || s.FileName == media.FileName))
+                               (s.FileName.StartsWith(media.FileName + ".") || 
+                                s.FileName == media.FileName ||
+                                (!string.IsNullOrEmpty(mediaNameNoExt) && s.FileName.StartsWith(mediaNameNoExt + "."))))
                     .ToList();
             }
             catch (Exception ex)
@@ -138,11 +142,11 @@ public class MediaStateService : IMediaStateService
 
         // 5. Check for source subtitle
         var hasExternalSource = externalSubtitles
-            .Any(s => sourceLanguages.Contains(s.Language.ToLowerInvariant()));
+            .Any(s => sourceLanguages.Any(sl => SubtitleLanguageHelper.LanguageMatches(s.Language, sl)));
         var hasEmbeddedSource = embeddedSubtitles
             .Any(e => e.IsTextBased && 
                      !string.IsNullOrEmpty(e.Language) && 
-                     sourceLanguages.Contains(e.Language.ToLowerInvariant()));
+                     sourceLanguages.Any(sl => SubtitleLanguageHelper.LanguageMatches(e.Language, sl)));
 
         if (!hasExternalSource && !hasEmbeddedSource)
         {
