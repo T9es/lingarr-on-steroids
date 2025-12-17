@@ -93,6 +93,12 @@ public static class SettingKeys
         public const string MaxBatchSplitAttempts = "max_batch_split_attempts";
         public const string StripAssDrawingCommands = "strip_ass_drawing_commands";
         public const string CleanSourceAssDrawings = "clean_source_ass_drawings";
+        
+        /// <summary>
+        /// Integer version that increments when source/target languages or ignore_captions change.
+        /// Media with StateSettingsVersion != this value need re-analysis.
+        /// </summary>
+        public const string LanguageSettingsVersion = "language_settings_version";
     }
 
     public static class Automation

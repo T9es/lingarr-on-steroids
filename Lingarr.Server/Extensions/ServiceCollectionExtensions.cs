@@ -168,6 +168,9 @@ public static class ServiceCollectionExtensions
         // Test translation service (scoped to match ISettingService lifetime)
         builder.Services.AddScoped<ITestTranslationService, TestTranslationService>();
         
+        // Media state service for intelligent translation automation
+        builder.Services.AddScoped<IMediaStateService, MediaStateService>();
+        
     }
 
     private static void ConfigureSignalR(this WebApplicationBuilder builder)

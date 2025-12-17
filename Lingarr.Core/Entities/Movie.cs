@@ -1,4 +1,5 @@
-﻿using Lingarr.Core.Interfaces;
+﻿using Lingarr.Core.Enum;
+using Lingarr.Core.Interfaces;
 
 namespace Lingarr.Core.Entities;
 
@@ -16,4 +17,22 @@ public class Movie : BaseEntity, IMedia
     public bool IsPriority { get; set; }
     public DateTime? PriorityDate { get; set; }
     public List<EmbeddedSubtitle> EmbeddedSubtitles { get; set; } = new();
+    
+    /// <summary>
+    /// Current translation state for efficient querying.
+    /// Updated by MediaStateService when subtitles or settings change.
+    /// </summary>
+    public TranslationState TranslationState { get; set; } = TranslationState.Unknown;
+    
+    /// <summary>
+    /// When embedded subtitles were last indexed via ffprobe.
+    /// Null means never indexed - will be indexed during next sync.
+    /// </summary>
+    public DateTime? IndexedAt { get; set; }
+    
+    /// <summary>
+    /// The language settings version when TranslationState was computed.
+    /// If this doesn't match current version, state is stale.
+    /// </summary>
+    public int StateSettingsVersion { get; set; }
 }

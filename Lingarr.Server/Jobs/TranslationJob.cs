@@ -31,6 +31,7 @@ public class TranslationJob
     private readonly IBatchFallbackService _batchFallbackService;
     private readonly ISubtitleExtractionService _extractionService;
     private readonly ITranslationCancellationService _cancellationService;
+    private readonly IMediaStateService _mediaStateService;
 
     private const string TranslationQueue = "translation";
 
@@ -47,7 +48,8 @@ public class TranslationJob
         IParallelTranslationLimiter parallelLimiter,
         IBatchFallbackService batchFallbackService,
         ISubtitleExtractionService extractionService,
-        ITranslationCancellationService cancellationService)
+        ITranslationCancellationService cancellationService,
+        IMediaStateService mediaStateService)
     {
         _logger = logger;
         _settings = settings;
@@ -62,6 +64,7 @@ public class TranslationJob
         _batchFallbackService = batchFallbackService;
         _extractionService = extractionService;
         _cancellationService = cancellationService;
+        _mediaStateService = mediaStateService;
     }
 
     /// <summary>
@@ -587,6 +590,37 @@ public class TranslationJob
 	        await _translationRequestService.UpdateActiveCount();
 	        await _progressService.Emit(translationRequest, 100);
 	        await _scheduleService.UpdateJobState(jobName, JobStatus.Succeeded.GetDisplayName());
+	        
+	        // Update translation state to reflect completion
+	        if (translationRequest.MediaId.HasValue)
+	        {
+	            try
+	            {
+	                if (translationRequest.MediaType == MediaType.Movie)
+	                {
+	                    var movie = await _dbContext.Movies.FindAsync(translationRequest.MediaId.Value);
+	                    if (movie != null)
+	                    {
+	                        await _mediaStateService.UpdateStateAsync(movie, MediaType.Movie);
+	                    }
+	                }
+	                else
+	                {
+	                    var episode = await _dbContext.Episodes
+	                        .Include(e => e.Season)
+	                        .ThenInclude(s => s.Show)
+	                        .FirstOrDefaultAsync(e => e.Id == translationRequest.MediaId.Value, cancellationToken);
+	                    if (episode != null)
+	                    {
+	                        await _mediaStateService.UpdateStateAsync(episode, MediaType.Episode);
+	                    }
+	                }
+	            }
+	            catch (Exception ex)
+	            {
+	                _logger.LogWarning(ex, "Failed to update translation state after completion");
+	            }
+	        }
     }
 
     private async Task HandleCancellation(string jobName, TranslationRequest request)

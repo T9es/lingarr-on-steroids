@@ -170,11 +170,28 @@ namespace Lingarr.Migrations.SQLite.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("updated_at");
 
+                    // New Fields
+                    b.Property<DateTime?>("IndexedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("indexed_at");
+
+                    b.Property<int>("StateSettingsVersion")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("state_settings_version");
+
+                    b.Property<int>("TranslationState")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("translation_state");
+
                     b.HasKey("Id")
                         .HasName("pk_episodes");
 
                     b.HasIndex("SeasonId")
                         .HasDatabaseName("ix_episodes_season_id");
+                        
+                    // New Index
+                    b.HasIndex("TranslationState")
+                        .HasDatabaseName("IX_Episodes_TranslationState");
 
                     b.ToTable("episodes", (string)null);
                 });
@@ -272,8 +289,25 @@ namespace Lingarr.Migrations.SQLite.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("updated_at");
 
+                    // New Fields
+                    b.Property<DateTime?>("IndexedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("indexed_at");
+
+                    b.Property<int>("StateSettingsVersion")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("state_settings_version");
+
+                    b.Property<int>("TranslationState")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("translation_state");
+
                     b.HasKey("Id")
                         .HasName("pk_movies");
+
+                    // New Index
+                    b.HasIndex("TranslationState")
+                        .HasDatabaseName("IX_Movies_TranslationState");
 
                     b.ToTable("movies", (string)null);
                 });

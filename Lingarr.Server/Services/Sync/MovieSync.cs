@@ -1,6 +1,8 @@
 ﻿using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
+using Lingarr.Server.Interfaces.Services;
+using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Interfaces.Services.Sync;
 using Lingarr.Server.Models.Integrations;
 using Microsoft.EntityFrameworkCore;
@@ -13,17 +15,23 @@ public class MovieSync : IMovieSync
     private readonly PathConversionService _pathConversionService;
     private readonly ILogger<MovieSync> _logger;
     private readonly IImageSync _imageSync;
+    private readonly ISubtitleExtractionService _extractionService;
+    private readonly IMediaStateService _mediaStateService;
 
     public MovieSync(
         LingarrDbContext dbContext,
         PathConversionService pathConversionService,
         ILogger<MovieSync> logger,
-        IImageSync imageSync)
+        IImageSync imageSync,
+        ISubtitleExtractionService extractionService,
+        IMediaStateService mediaStateService)
     {
         _dbContext = dbContext;
         _pathConversionService = pathConversionService;
         _logger = logger;
         _imageSync = imageSync;
+        _extractionService = extractionService;
+        _mediaStateService = mediaStateService;
     }
 
     /// <inheritdoc />
@@ -37,12 +45,17 @@ public class MovieSync : IMovieSync
 
         var movieEntity = await _dbContext.Movies
             .Include(m => m.Images)
+            .Include(m => m.EmbeddedSubtitles)
             .FirstOrDefaultAsync(m => m.RadarrId == movie.Id);
 
         var moviePath = _pathConversionService.ConvertAndMapPath(
             movie.MovieFile.Path ?? string.Empty,
             MediaType.Movie
         );
+
+        var isNew = movieEntity == null;
+        var oldPath = movieEntity?.Path;
+        var oldFileName = movieEntity?.FileName;
 
         if (movieEntity == null)
         {
@@ -69,6 +82,41 @@ public class MovieSync : IMovieSync
         if (movie.Images?.Any() == true)
         {
             _imageSync.SyncImages(movieEntity.Images, movie.Images);
+        }
+
+        // Determine if we need to re-index embedded subtitles
+        var fileChanged = !isNew && (
+            oldPath != movieEntity.Path ||
+            oldFileName != movieEntity.FileName);
+
+        var needsIndexing = isNew || fileChanged || movieEntity.IndexedAt == null;
+
+        if (needsIndexing)
+        {
+            try
+            {
+                // Save first so the entity has an ID for the extraction service
+                await _dbContext.SaveChangesAsync();
+                
+                await _extractionService.SyncEmbeddedSubtitles(movieEntity);
+                movieEntity.IndexedAt = DateTime.UtcNow;
+                
+                _logger.LogDebug("Indexed embedded subtitles for movie {Title}", movieEntity.Title);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to index embedded subtitles for movie {Title}", movieEntity.Title);
+            }
+        }
+
+        // Update translation state
+        try
+        {
+            await _mediaStateService.UpdateStateAsync(movieEntity, MediaType.Movie);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to update translation state for movie {Title}", movieEntity.Title);
         }
 
         return movieEntity;
