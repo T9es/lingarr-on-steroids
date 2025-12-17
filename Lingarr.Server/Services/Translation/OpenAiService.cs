@@ -93,7 +93,7 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
             var requestTimeout = int.TryParse(settings[SettingKeys.Translation.RequestTimeout],
                 out var timeOut)
                 ? timeOut
-                : 5;
+                : 15;
             _httpClient.Timeout = TimeSpan.FromMinutes(requestTimeout);
             _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
             _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
