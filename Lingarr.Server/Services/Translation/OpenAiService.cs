@@ -276,6 +276,21 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
                 delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
             }
+            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable)
+            {
+                if (attempt == _maxRetries)
+                {
+                    _logger.LogError(ex, "Service unavailable. Max retries exhausted for batch translation");
+                    throw new TranslationException("OpenAI is temporarily unavailable. Retry limit reached.", ex);
+                }
+
+                _logger.LogWarning(
+                    "503 Service Unavailable. Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})",
+                    delay, attempt, _maxRetries);
+
+                await Task.Delay(delay, linked.Token).ConfigureAwait(false);
+                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Unexpected error during batch translation attempt {Attempt}", attempt);
