@@ -32,6 +32,7 @@ public class TranslationJob
     private readonly ISubtitleExtractionService _extractionService;
     private readonly ITranslationCancellationService _cancellationService;
     private readonly IMediaStateService _mediaStateService;
+    private readonly IDeferredRepairService _deferredRepairService;
 
     private const string TranslationQueue = "translation";
 
@@ -49,7 +50,8 @@ public class TranslationJob
         IBatchFallbackService batchFallbackService,
         ISubtitleExtractionService extractionService,
         ITranslationCancellationService cancellationService,
-        IMediaStateService mediaStateService)
+        IMediaStateService mediaStateService,
+        IDeferredRepairService deferredRepairService)
     {
         _logger = logger;
         _settings = settings;
@@ -65,6 +67,7 @@ public class TranslationJob
         _extractionService = extractionService;
         _cancellationService = cancellationService;
         _mediaStateService = mediaStateService;
+        _deferredRepairService = deferredRepairService;
     }
 
     /// <summary>
@@ -292,7 +295,8 @@ public class TranslationJob
                 translationService,
                 _logger,
                 _progressService,
-                _batchFallbackService);
+                _batchFallbackService,
+                _deferredRepairService);
             List<SubtitleItem> subtitles;
             var attempt = 0;
             const int maxAttempts = 3;
