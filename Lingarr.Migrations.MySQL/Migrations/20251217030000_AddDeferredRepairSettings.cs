@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace Lingarr.Migrations.MySQL.Migrations
 {
+    [Migration("20251217030000_AddDeferredRepairSettings")]
     public partial class AddDeferredRepairSettings : Migration
     {
         /// <inheritdoc />
@@ -11,7 +12,10 @@ namespace Lingarr.Migrations.MySQL.Migrations
 INSERT INTO `settings` (`key`, `value`) VALUES
 ('batch_retry_mode', 'deferred'),
 ('repair_context_radius', '10'),
-('repair_max_retries', '1')
+('repair_max_retries', '1'),
+('chutes_model', ''),
+('chutes_api_key', ''),
+('chutes_usage_limit_override', '')
 ON DUPLICATE KEY UPDATE `value` = VALUES(`value`);
 ");
         }
@@ -26,7 +30,10 @@ ON DUPLICATE KEY UPDATE `value` = VALUES(`value`);
                 {
                     "batch_retry_mode",
                     "repair_context_radius",
-                    "repair_max_retries"
+                    "repair_max_retries",
+                    "chutes_model",
+                    "chutes_api_key",
+                    "chutes_usage_limit_override"
                 });
         }
     }

@@ -419,10 +419,12 @@
     "pending": "Pending",
     "stale": "Stale",
     "unknown": "Unknown",
+    "notApplicable": "N/A",
     "tooltipComplete": "All translations complete",
     "tooltipInProgress": "Translation in progress",
     "tooltipPending": "Awaiting translation",
     "tooltipStale": "Needs re-analysis",
-    "tooltipUnknown": "Not yet analyzed"
+    "tooltipUnknown": "Not yet analyzed",
+    "tooltipNotApplicable": "Not applicable / No source"
   }
 }
