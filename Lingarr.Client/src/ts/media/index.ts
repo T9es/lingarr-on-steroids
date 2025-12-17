@@ -111,6 +111,7 @@ export interface IEpisode extends IBaseEntity {
     season: ISeason
     excludeFromTranslation: string
     embeddedSubtitles?: IEmbeddedSubtitle[]
+    translationState?: TranslationStateType
 }
 
 export interface IPagedResult<T> {

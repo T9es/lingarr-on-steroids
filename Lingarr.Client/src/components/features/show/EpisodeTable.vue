@@ -1,15 +1,16 @@
 ﻿<template>
     <div class="bg-tertiary text-tertiary-content w-full">
-        <div class="border-primary grid grid-cols-13 border-b-2 font-bold">
+        <div class="border-primary grid grid-cols-14 border-b-2 font-bold">
             <div class="col-span-1 px-4 py-2">
                 <span class="hidden lg:block">
                     {{ translate('tvShows.episode') }}
                 </span>
                 <span class="block lg:hidden">#</span>
             </div>
-            <div class="col-span-5 px-4 py-2 md:col-span-4">
+            <div class="col-span-4 px-4 py-2 md:col-span-3">
                 {{ translate('tvShows.episodeTitle') }}
             </div>
+            <div class="col-span-1 flex items-center justify-center py-2" title="Translation Status">📊</div>
             <div class="col-span-4 py-2 pr-4 md:col-span-4">
                 <span>{{ translate('tvShows.episodeSubtitles') }}</span>
             </div>
@@ -32,12 +33,15 @@
                 <span class="block md:hidden">⊘</span>
             </div>
         </div>
-        <div v-for="episode in episodes" :key="episode.id" class="grid grid-cols-13">
+        <div v-for="episode in episodes" :key="episode.id" class="grid grid-cols-14">
             <div class="col-span-1 px-4 py-2">
                 {{ episode.episodeNumber }}
             </div>
-            <div class="col-span-5 px-4 py-2 md:col-span-4">
+            <div class="col-span-4 px-4 py-2 md:col-span-3">
                 {{ episode.title }}
+            </div>
+            <div class="col-span-1 flex items-center justify-center py-2">
+                <TranslationStateBadge :state="episode.translationState ?? TRANSLATION_STATE.UNKNOWN" />
             </div>
             <div class="col-span-4 pr-4 md:col-span-4">
                 <div v-if="episode?.fileName" class="flex flex-wrap items-center gap-2 py-2">
@@ -110,7 +114,7 @@
 </template>
 <script setup lang="ts">
 import { reactive, onMounted } from 'vue'
-import { IEpisode, ISubtitle, IEmbeddedSubtitle, MEDIA_TYPE } from '@/ts'
+import { IEpisode, ISubtitle, IEmbeddedSubtitle, MEDIA_TYPE, TRANSLATION_STATE } from '@/ts'
 import { useI18n } from '@/plugins/i18n'
 import BadgeComponent from '@/components/common/BadgeComponent.vue'
 import ContextMenu from '@/components/layout/ContextMenu.vue'
@@ -118,6 +122,7 @@ import ToggleButton from '@/components/common/ToggleButton.vue'
 import LoaderCircleIcon from '@/components/icons/LoaderCircleIcon.vue'
 import LanguageIcon from '@/components/icons/LanguageIcon.vue'
 import CheckMarkCicleIcon from '@/components/icons/CheckMarkCicleIcon.vue'
+import TranslationStateBadge from '@/components/common/TranslationStateBadge.vue'
 import { useShowStore } from '@/store/show'
 import services from '@/services'
 
