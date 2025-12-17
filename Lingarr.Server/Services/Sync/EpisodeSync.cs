@@ -1,4 +1,5 @@
-﻿using Lingarr.Core.Entities;
+﻿using Lingarr.Core.Data;
+using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Integration;
@@ -18,18 +19,22 @@ public class EpisodeSync : IEpisodeSync
     private readonly IMediaStateService _mediaStateService;
     private readonly ILogger<EpisodeSync> _logger;
 
+    private readonly LingarrDbContext _dbContext;
+
     public EpisodeSync(
         ISonarrService sonarrService,
         PathConversionService pathConversionService,
         ISubtitleExtractionService extractionService,
         IMediaStateService mediaStateService,
-        ILogger<EpisodeSync> logger)
+        ILogger<EpisodeSync> logger,
+        LingarrDbContext dbContext)
     {
         _sonarrService = sonarrService;
         _pathConversionService = pathConversionService;
         _extractionService = extractionService;
         _mediaStateService = mediaStateService;
         _logger = logger;
+        _dbContext = dbContext;
     }
 
     /// <inheritdoc />
@@ -98,6 +103,9 @@ public class EpisodeSync : IEpisodeSync
         {
             try
             {
+                // Save first so the entity has an ID for the extraction service
+                await _dbContext.SaveChangesAsync();
+
                 await _extractionService.SyncEmbeddedSubtitles(episodeEntity);
                 episodeEntity.IndexedAt = DateTime.UtcNow;
                 
@@ -119,6 +127,9 @@ public class EpisodeSync : IEpisodeSync
         // Update translation state
         try
         {
+             // If we saved above, we have an ID. If we didn't save above (needsIndexing=false), we assume it's an existing entity (has ID).
+             // However, just to be safe (e.g. if logic changes), we might want to ensure ID exists?
+             // But existing entities are fetched from DB so they have IDs.
             await _mediaStateService.UpdateStateAsync(episodeEntity, MediaType.Episode);
         }
         catch (Exception ex)
