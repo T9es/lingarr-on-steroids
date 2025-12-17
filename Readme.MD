@@ -18,7 +18,7 @@ While staying true to the core mission of seamless **Radarr** and **Sonarr** sub
 | **Subtitle Sources** | External subtitle files only. | **Deep Embedded Extraction**<br>Uses FFmpeg to probe and extract subtitles (SRT, ASS, MOV_TEXT) directly from MKV/MP4 containers. Automatically merges concurrent layers and dedupes overlapping timeframes. |
 | **Cleaning Logic** | Basic HTML tag stripping. | **Advanced ASS/SSA Sanitation**<br>Heuristic algorithms detect and remove vector drawing commands, karaoke tags, and positioning artifacts that confuse LLMs. |
 | **Quality Control** | None. | **Integrity Validation**<br>Line-count verification (95% tolerance) ensures the translated file matches the structure of the source, protecting against hallucinations. |
-| **Database** | SQLite only. | **Hybrid Storage**<br>Full MySQL/MariaDB support for high-concurrency environments, alongside SQLite for simple setups. |
+| **Database** | SQLite only. | **PostgreSQL + SQLite**<br>PostgreSQL (recommended) for high-concurrency environments with MVCC for zero lock contention. SQLite for simple setups. |
 | **Cost Efficiency** | Standard pay-per-token. | **Chutes.ai Integration**<br>Usage-tracking capable implementation for Chutes.ai, enabling high-quality open-source models at fraction of the cost. |
 | **Workflow Control** | Fire-and-forget. | **Cooperative Cancellation & Priorities**<br>Jobs can be elegantly cancelled mid-stream. Priority queue allows bumping specific media to the front. |
 | **Automation** | Basic Cron strings. | **Visual Schedule Builder**<br>User-friendly UI for scheduling automated tasks without needing cron syntax knowledge. |
@@ -64,58 +64,84 @@ Lingarr provides multi-architecture Docker images that automatically select the 
 
 ## Setting up Lingarr
 
-> ⚠️ **Note**: This fork is optimized for use with MySQL/MariaDB. SQLite is supported but not recommended for heavy usage or parallel processing.
+> ✅ **Recommended**: PostgreSQL is the recommended database for this fork. It uses MVCC (Multi-Version Concurrency Control) which eliminates lock contention issues during heavy parallel processing.
+
+### PostgreSQL Setup (Recommended)
 
 ```yaml
+version: "3.8"
+
+networks:
+  lingarr:
+
 services:
   lingarr:
     image: ree0/lingarr-on-steroids:latest
     container_name: lingarr
     environment:
       - TZ=Europe/London # Replace with your timezone
-      - PUID=1000 # Replace with your User ID
-      - PGID=1000 # Replace with your Group ID
-      - DB_CONNECTION=mysql
-      - DB_HOST=lingarr-mysql
-      - DB_PORT=3306
+      - DB_CONNECTION=postgresql
+      - DB_HOST=lingarr-postgres
+      - DB_PORT=5432
       - DB_DATABASE=lingarr
       - DB_USERNAME=lingarr
-      - DB_PASSWORD=your_password # ⚠️ CHANGE THIS
+      - DB_PASSWORD=CHANGE_ME_SECURE_PASSWORD # ⚠️ CHANGE THIS
     volumes:
-      - /path/to/media/movies:/media/movies
-      - /path/to/media/shows:/media/shows
+      - /path/to/media/movies:/movies
+      - /path/to/media/tv:/tv
       - /path/to/config:/app/config
     ports:
-      - "9876:8080"
+      - "9876:9876"
     restart: unless-stopped
+    networks:
+      - lingarr
     depends_on:
-      lingarr-mysql:
+      lingarr-postgres:
         condition: service_healthy
-    # gpus: all # Uncomment if you want to pass GPU to the container (e.g. for LocalAI)
 
-  lingarr-mysql:
-    image: mariadb:10.5
-    container_name: lingarr-mysql
+  lingarr-postgres:
+    image: postgres:16-alpine
+    container_name: lingarr-postgres
     environment:
-      MYSQL_DATABASE: lingarr
-      MYSQL_USER: lingarr
-      MYSQL_PASSWORD: your_password # ⚠️ CHANGE THIS (Must match above)
-      MYSQL_ROOT_PASSWORD: your_root_password # ⚠️ CHANGE THIS
+      POSTGRES_DB: lingarr
+      POSTGRES_USER: lingarr
+      POSTGRES_PASSWORD: CHANGE_ME_SECURE_PASSWORD # ⚠️ CHANGE THIS (Must match above)
     volumes:
-      - lingarr_mysql_data:/var/lib/mysql
-    ports:
-      - "3306:3306"
-    restart: unless-stopped
-    command: mysqld --sql_mode=""
+      - lingarr_postgres_data:/var/lib/postgresql/data
+    networks:
+      - lingarr
     healthcheck:
-      test: ["CMD-SHELL", "mysql -ulingarr -pyour_password -e 'SELECT 1' lingarr"] # ⚠️ Be sure to update the password here too
+      test: ["CMD-SHELL", "pg_isready -U lingarr -d lingarr"]
       interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 30s
+      retries: 5
+    restart: unless-stopped
 
 volumes:
-  lingarr_mysql_data:
+  lingarr_postgres_data:
+```
+
+### SQLite Setup (Simple)
+
+For simple setups or testing, you can use SQLite which requires no additional containers:
+
+```yaml
+version: "3.8"
+
+services:
+  lingarr:
+    image: ree0/lingarr-on-steroids:latest
+    container_name: lingarr
+    environment:
+      - TZ=Europe/London # Replace with your timezone
+      - DB_CONNECTION=sqlite
+    volumes:
+      - /path/to/media/movies:/movies
+      - /path/to/media/tv:/tv
+      - /path/to/config:/app/config
+    ports:
+      - "9876:9876"
+    restart: unless-stopped
 ```
 
 ### Setting up Lingarr using Docker CLI
@@ -141,12 +167,12 @@ These variables can be used
 |---------------------------------------------------|-----------------------------------------------------------------------------------|
 | `ASPNETCORE_URLS=http://+:9876`                   | The internal port that Lingarr will listen on inside the container.               |
 | `MAX_CONCURRENT_JOBS`                             | Hangfire worker pool size (default: 20). The UI setting "Concurrent file translations" controls actual translation concurrency. |
-| `DB_CONNECTION=mysql`                             | Specifies the database connection type. Options are `mysql` or `sqlite`.          |
-| `DB_HOST=Lingarr.Mysql`                           | The hostname for the MySQL database (required when using `mysql`).                |
-| `DB_PORT=3306`                                    | The port for the MySQL database (required when using `mysql`).                    |
-| `DB_DATABASE=LingarrMysql`                        | The name of the database (required when using `mysql`).                           |
-| `DB_USERNAME=LingarrMysql`                        | The username for the database (required when using `mysql`).                      |
-| `DB_PASSWORD=LingarrMysql`                        | The password for the database (required when using `mysql`).                      |
+| `DB_CONNECTION=postgresql`                        | Specifies the database type. Options are `postgresql` (default) or `sqlite`.      |
+| `DB_HOST=lingarr-postgres`                        | The hostname for the PostgreSQL database (required when using `postgresql`).      |
+| `DB_PORT=5432`                                    | The port for the PostgreSQL database (required when using `postgresql`).          |
+| `DB_DATABASE=lingarr`                             | The name of the database (required when using `postgresql`).                      |
+| `DB_USERNAME=lingarr`                             | The username for the database (required when using `postgresql`).                 |
+| `DB_PASSWORD=lingarr`                             | The password for the database (required when using `postgresql`).                 |
 | `DB_HANGFIRE_SQLITE_PATH=/app/config/Hangfire.db` | The path of the sqlite database file for Hangfire, when sqlite connection is used |
 
 Additional [settings](Settings.MD) can be found here that can be set as environment variables to persist settings for each reinstall

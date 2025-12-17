@@ -11,7 +11,7 @@ Project("{54A90642-561A-4BB1-A94E-469ADEE60C69}") = "Lingarr.Client", "Lingarr.C
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lingarr.Core", "Lingarr.Core\Lingarr.Core.csproj", "{18055307-F7D6-4C8A-9641-C0EE34852553}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lingarr.Migrations.MySQL", "Lingarr.Migrations.MySQL\Lingarr.Migrations.MySQL.csproj", "{8E64AF17-DAE5-4D94-A203-596161E3082F}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lingarr.Migrations.PostgreSQL", "Lingarr.Migrations.PostgreSQL\Lingarr.Migrations.PostgreSQL.csproj", "{8E64AF17-DAE5-4D94-A203-596161E3082F}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lingarr.Migrations.SQLite", "Lingarr.Migrations.SQLite\Lingarr.Migrations.SQLite.csproj", "{F8D79D22-4419-4AB7-913A-08BE282777B8}"
 EndProject

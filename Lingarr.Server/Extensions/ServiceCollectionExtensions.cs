@@ -3,7 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using GTranslate.Translators;
 using Hangfire;
-using Hangfire.MySql;
+using Hangfire.PostgreSql;
 using Hangfire.Storage.SQLite;
 using Lingarr.Core;
 using Lingarr.Core.Configuration;
@@ -228,27 +228,8 @@ public static class ServiceCollectionExtensions
                 .UseSimpleAssemblyNameTypeSerializer()
                 .UseRecommendedSerializerSettings();
 
-            var dbConnection = Environment.GetEnvironmentVariable("DB_CONNECTION")?.ToLower() ?? "sqlite";
-            if (dbConnection == "mysql")
-            {
-                var variables = new Dictionary<string, string>
-                {
-                    { "DB_HOST", Environment.GetEnvironmentVariable("DB_HOST") ?? "Lingarr.Mysql" },
-                    { "DB_PORT", Environment.GetEnvironmentVariable("DB_PORT") ?? "3306" },
-                    { "DB_DATABASE", Environment.GetEnvironmentVariable("DB_DATABASE") ?? "LingarrMysql" },
-                    { "DB_USERNAME", Environment.GetEnvironmentVariable("DB_USERNAME") ?? "LingarrMysql" },
-                    { "DB_PASSWORD", Environment.GetEnvironmentVariable("DB_PASSWORD") ?? "Secret1234" }
-                };
-
-                var connectionString =
-                    $"Server={variables["DB_HOST"]};Port={variables["DB_PORT"]};Database={variables["DB_DATABASE"]};Uid={variables["DB_USERNAME"]};Pwd={variables["DB_PASSWORD"]};Allow User Variables=True";
-
-                configuration.UseStorage(new MySqlStorage(connectionString, new MySqlStorageOptions
-                {
-                    TablesPrefix = tablePrefix
-                }));
-            }
-            else
+            var dbConnection = Environment.GetEnvironmentVariable("DB_CONNECTION")?.ToLower() ?? "postgresql";
+            if (dbConnection == "sqlite")
             {
                 var sqliteDbPath = Environment.GetEnvironmentVariable("DB_HANGFIRE_SQLITE_PATH") ?? "/app/config/Hangfire.db";
 
@@ -256,6 +237,19 @@ public static class ServiceCollectionExtensions
                     .UseSimpleAssemblyNameTypeSerializer()
                     .UseRecommendedSerializerSettings()
                     .UseSQLiteStorage(sqliteDbPath, new SQLiteStorageOptions());
+            }
+            else // Default: PostgreSQL
+            {
+                var host = Environment.GetEnvironmentVariable("DB_HOST") ?? "lingarr-postgres";
+                var port = Environment.GetEnvironmentVariable("DB_PORT") ?? "5432";
+                var database = Environment.GetEnvironmentVariable("DB_DATABASE") ?? "lingarr";
+                var username = Environment.GetEnvironmentVariable("DB_USERNAME") ?? "lingarr";
+                var password = Environment.GetEnvironmentVariable("DB_PASSWORD") ?? "lingarr";
+
+                var connectionString = $"Host={host};Port={port};Database={database};Username={username};Password={password}";
+
+                configuration.UsePostgreSqlStorage(opts => opts
+                    .UseNpgsqlConnection(connectionString));
             }
 
             configuration.UseFilter(new JobContextFilter());
@@ -279,16 +273,16 @@ public static class ServiceCollectionExtensions
         // Try reading from database
         try
         {
-            var dbConnection = Environment.GetEnvironmentVariable("DB_CONNECTION")?.ToLower() ?? "sqlite";
+            var dbConnection = Environment.GetEnvironmentVariable("DB_CONNECTION")?.ToLower() ?? "postgresql";
             string? settingValue = null;
             
-            if (dbConnection == "mysql")
-            {
-                settingValue = ReadSettingFromMySql("max_parallel_translations");
-            }
-            else
+            if (dbConnection == "sqlite")
             {
                 settingValue = ReadSettingFromSqlite("max_parallel_translations");
+            }
+            else // Default: PostgreSQL
+            {
+                settingValue = ReadSettingFromPostgreSql("max_parallel_translations");
             }
             
             if (int.TryParse(settingValue, out int dbValue) && dbValue > 0)
@@ -320,21 +314,21 @@ public static class ServiceCollectionExtensions
         return result?.ToString();
     }
     
-    private static string? ReadSettingFromMySql(string settingKey)
+    private static string? ReadSettingFromPostgreSql(string settingKey)
     {
-        var host = Environment.GetEnvironmentVariable("DB_HOST") ?? "Lingarr.Mysql";
-        var port = Environment.GetEnvironmentVariable("DB_PORT") ?? "3306";
-        var database = Environment.GetEnvironmentVariable("DB_DATABASE") ?? "LingarrMysql";
-        var username = Environment.GetEnvironmentVariable("DB_USERNAME") ?? "LingarrMysql";
-        var password = Environment.GetEnvironmentVariable("DB_PASSWORD") ?? "Secret1234";
+        var host = Environment.GetEnvironmentVariable("DB_HOST") ?? "lingarr-postgres";
+        var port = Environment.GetEnvironmentVariable("DB_PORT") ?? "5432";
+        var database = Environment.GetEnvironmentVariable("DB_DATABASE") ?? "lingarr";
+        var username = Environment.GetEnvironmentVariable("DB_USERNAME") ?? "lingarr";
+        var password = Environment.GetEnvironmentVariable("DB_PASSWORD") ?? "lingarr";
         
-        var connectionString = $"Server={host};Port={port};Database={database};Uid={username};Pwd={password}";
+        var connectionString = $"Host={host};Port={port};Database={database};Username={username};Password={password}";
         
-        using var connection = new MySqlConnector.MySqlConnection(connectionString);
+        using var connection = new Npgsql.NpgsqlConnection(connectionString);
         connection.Open();
         
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT value FROM settings WHERE `key` = @key LIMIT 1";
+        command.CommandText = "SELECT value FROM settings WHERE key = @key LIMIT 1";
         command.Parameters.AddWithValue("@key", settingKey);
         
         var result = command.ExecuteScalar();

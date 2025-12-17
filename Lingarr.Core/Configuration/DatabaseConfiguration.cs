@@ -6,41 +6,30 @@ public static class DatabaseConfiguration
 {
     public static void ConfigureDbContext(DbContextOptionsBuilder options, string? dbConnection = null)
     {
-        dbConnection ??= Environment.GetEnvironmentVariable("DB_CONNECTION")?.ToLower() ?? "sqlite";
+        dbConnection ??= Environment.GetEnvironmentVariable("DB_CONNECTION")?.ToLower() ?? "postgresql";
 
-        if (dbConnection == "mysql")
-        {
-            ConfigureMySql(options);
-        }
-        else
+        if (dbConnection == "sqlite")
         {
             ConfigureSqlite(options);
         }
+        else // Default: PostgreSQL
+        {
+            ConfigurePostgreSQL(options);
+        }
     }
 
-    private static void ConfigureMySql(DbContextOptionsBuilder options)
+    private static void ConfigurePostgreSQL(DbContextOptionsBuilder options)
     {
-        var variables = new Dictionary<string, string>
-        {
-            { "DB_HOST", Environment.GetEnvironmentVariable("DB_HOST") ?? "Lingarr.Mysql" },
-            { "DB_PORT", Environment.GetEnvironmentVariable("DB_PORT") ?? "3306" },
-            { "DB_DATABASE", Environment.GetEnvironmentVariable("DB_DATABASE") ?? "LingarrMysql" },
-            { "DB_USERNAME", Environment.GetEnvironmentVariable("DB_USERNAME") ?? "LingarrMysql" },
-            { "DB_PASSWORD", Environment.GetEnvironmentVariable("DB_PASSWORD") ?? "Secret1234" }
-        };
+        var host = Environment.GetEnvironmentVariable("DB_HOST") ?? "lingarr-postgres";
+        var port = Environment.GetEnvironmentVariable("DB_PORT") ?? "5432";
+        var database = Environment.GetEnvironmentVariable("DB_DATABASE") ?? "lingarr";
+        var username = Environment.GetEnvironmentVariable("DB_USERNAME") ?? "lingarr";
+        var password = Environment.GetEnvironmentVariable("DB_PASSWORD") ?? "lingarr";
 
-        var missingVariables = variables.Where(kv => string.IsNullOrEmpty(kv.Value)).Select(kv => kv.Key).ToList();
-        if (missingVariables.Any())
-        {
-            throw new InvalidOperationException(
-                $"MySQL connection environment variable(s) '{string.Join(", ", missingVariables)}' is missing or empty.");
-        }
+        var connectionString = $"Host={host};Port={port};Database={database};Username={username};Password={password};CommandTimeout=120";
 
-        var connectionString =
-            $"Server={variables["DB_HOST"]};Port={variables["DB_PORT"]};Database={variables["DB_DATABASE"]};Uid={variables["DB_USERNAME"]};Pwd={variables["DB_PASSWORD"]};Allow User Variables=True;DefaultCommandTimeout=120";
-
-        options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString),
-                mysqlOptions => mysqlOptions.MigrationsAssembly("Lingarr.Migrations.MySQL")
+        options.UseNpgsql(connectionString,
+                npgsqlOptions => npgsqlOptions.MigrationsAssembly("Lingarr.Migrations.PostgreSQL")
                     .UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery)
                     .EnableRetryOnFailure())
             .UseSnakeCaseNamingConvention();

@@ -11,7 +11,7 @@ using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Models.FileSystem;
 
 using Microsoft.EntityFrameworkCore;
-using MySqlConnector;
+using Npgsql;
 
 namespace Lingarr.Server.Services.Subtitle;
 
@@ -423,14 +423,14 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 var isDuplicateEntry = false;
                 var isDeadlock = false;
                 
-                // Check if the inner exception is a MySQL duplicate entry error (1062) or Deadlock (1213)
-                if (ex.InnerException is MySqlException mySqlEx)
+                // Check if the inner exception is a PostgreSQL duplicate entry error (23505) or Deadlock (40P01)
+                if (ex.InnerException is PostgresException pgEx)
                 {
-                    if (mySqlEx.Number == 1062)
+                    if (pgEx.SqlState == "23505") // unique_violation
                     {
                         isDuplicateEntry = true;
                     }
-                    else if (mySqlEx.Number == 1213)
+                    else if (pgEx.SqlState == "40P01" || pgEx.SqlState == "40001") // deadlock_detected or serialization_failure
                     {
                         isDeadlock = true;
                     }

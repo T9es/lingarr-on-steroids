@@ -1326,11 +1326,11 @@ public class TranslationRequestService : ITranslationRequestService
     /// <returns>True if this is a duplicate key violation, false otherwise</returns>
     private static bool IsDuplicateKeyViolation(DbUpdateException ex)
     {
-        // MySQL error code 1062 = Duplicate entry for unique key
+        // PostgreSQL error code 23505 = unique_violation
         // SQLite error code 19 = UNIQUE constraint failed
-        if (ex.InnerException is MySqlConnector.MySqlException mysqlEx)
+        if (ex.InnerException is Npgsql.PostgresException pgEx)
         {
-            if (mysqlEx.Number == 1062)
+            if (pgEx.SqlState == "23505")
             {
                 return true;
             }
@@ -1339,7 +1339,7 @@ public class TranslationRequestService : ITranslationRequestService
         // Fallback: Check message string for common duplicate key error messages
         // This handles cases where the error code might not be propagated correctly or for other DB providers
         var message = ex.InnerException?.Message ?? ex.Message;
-        if (message.Contains("Duplicate entry") || message.Contains("UNIQUE constraint failed"))
+        if (message.Contains("duplicate key") || message.Contains("UNIQUE constraint failed") || message.Contains("23505"))
         {
             return true;
         }

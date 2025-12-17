@@ -7,7 +7,7 @@ using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Interfaces.Services.Sync;
 using Lingarr.Server.Models.Integrations;
 using Microsoft.EntityFrameworkCore;
-using MySqlConnector;
+using Npgsql;
 
 namespace Lingarr.Server.Services.Sync;
 
@@ -113,10 +113,12 @@ public class EpisodeSync : IEpisodeSync
             }
             catch (Exception ex)
             {
-                // Check if this is a deadlock that we should let bubble up
-                if (ex is DbUpdateException dbEx && dbEx.InnerException is MySqlException mySqlEx && mySqlEx.Number == 1213)
+                // Check if this is a deadlock/serialization failure that we should let bubble up
+                // PostgreSQL: 40001 = serialization_failure, 40P01 = deadlock_detected
+                if (ex is DbUpdateException dbEx && dbEx.InnerException is PostgresException pgEx && 
+                    (pgEx.SqlState == "40001" || pgEx.SqlState == "40P01"))
                 {
-                    _logger.LogWarning("Deadlock detected during embedded subtitle sync for episode {Title}. Rethrowing to utilize execution strategy.", episodeEntity.Title);
+                    _logger.LogWarning("Deadlock/serialization failure detected during embedded subtitle sync for episode {Title}. Rethrowing to utilize execution strategy.", episodeEntity.Title);
                     throw;
                 }
 
