@@ -19,6 +19,7 @@ public class TestTranslationService : ITestTranslationService
     private readonly ISubtitleService _subtitleService;
     private readonly ITranslationServiceFactory _translationServiceFactory;
     private readonly IBatchFallbackService _batchFallbackService;
+    private readonly IDeferredRepairService _deferredRepairService;
     private readonly ISubtitleExtractionService _extractionService;
     
     private CancellationTokenSource? _cancellationTokenSource;
@@ -33,6 +34,7 @@ public class TestTranslationService : ITestTranslationService
         ISubtitleService subtitleService,
         ITranslationServiceFactory translationServiceFactory,
         IBatchFallbackService batchFallbackService,
+        IDeferredRepairService deferredRepairService,
         ISubtitleExtractionService extractionService)
     {
         _logger = logger;
@@ -40,6 +42,7 @@ public class TestTranslationService : ITestTranslationService
         _subtitleService = subtitleService;
         _translationServiceFactory = translationServiceFactory;
         _batchFallbackService = batchFallbackService;
+        _deferredRepairService = deferredRepairService;
         _extractionService = extractionService;
     }
     
@@ -133,7 +136,8 @@ public class TestTranslationService : ITestTranslationService
                     translationService, 
                     _logger, 
                     progressService, 
-                    _batchFallbackService);
+                    _batchFallbackService,
+                    _deferredRepairService);
                 
                 // Build translation request (using test-only values for required db fields)
                 var translationRequest = new CoreTranslationRequest
@@ -156,17 +160,22 @@ public class TestTranslationService : ITestTranslationService
                     var enableFallback = settings[SettingKeys.Translation.EnableBatchFallback] == "true";
                     var splitAttempts = int.TryParse(settings[SettingKeys.Translation.MaxBatchSplitAttempts], out var sa) ? sa : 3;
                     
-                    Log("INFORMATION", $"Starting batch translation: batchSize={maxSize}, fallback={enableFallback}, splitAttempts={splitAttempts}");
+                    // For test mode, use immediate fallback (legacy behavior) for simpler debugging
+                    var batchRetryMode = enableFallback ? "immediate" : "deferred";
+                    
+                    Log("INFORMATION", $"Starting batch translation: batchSize={maxSize}, retryMode={batchRetryMode}, splitAttempts={splitAttempts}");
                     
                     translated = await translator.TranslateSubtitlesBatch(
                         subtitles,
                         translationRequest,
                         stripFormatting,
                         maxSize,
-                        enableFallback,
+                        batchRetryMode,
                         splitAttempts,
+                        repairContextRadius: 10,
+                        repairMaxRetries: 1,
                         fileIdentifier: "Test Translation",
-                        _cancellationTokenSource.Token);
+                        cancellationToken: _cancellationTokenSource.Token);
                 }
                 else
                 {

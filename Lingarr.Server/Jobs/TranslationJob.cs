@@ -164,6 +164,9 @@ public class TranslationJob
                 SettingKeys.Translation.SubtitleTag,
                 SettingKeys.Translation.EnableBatchFallback,
                 SettingKeys.Translation.MaxBatchSplitAttempts,
+                SettingKeys.Translation.BatchRetryMode,
+                SettingKeys.Translation.RepairContextRadius,
+                SettingKeys.Translation.RepairMaxRetries,
                 SettingKeys.Translation.StripAssDrawingCommands,
                 SettingKeys.Translation.CleanSourceAssDrawings
             ]);
@@ -344,11 +347,23 @@ public class TranslationJob
                 AddRequestLog("Information", $"Fallback successful, switching to: {newSubtitlePath}");
             }
             
-            // Parse batch fallback settings
-            var enableBatchFallback = settings[SettingKeys.Translation.EnableBatchFallback] == "true";
+            // Parse batch retry mode settings
+            // "deferred" = collect failures and repair at end (default)
+            // "immediate" = use immediate chunk splitting on failure (legacy)
+            var batchRetryMode = settings.TryGetValue(SettingKeys.Translation.BatchRetryMode, out var modeVal) 
+                ? modeVal ?? "deferred" 
+                : "deferred";
             var maxBatchSplitAttempts = int.TryParse(settings[SettingKeys.Translation.MaxBatchSplitAttempts], out var splitAttempts)
                 ? splitAttempts
                 : 3;
+            var repairContextRadius = int.TryParse(
+                settings.TryGetValue(SettingKeys.Translation.RepairContextRadius, out var radiusVal) ? radiusVal : null, out var radius)
+                ? radius
+                : 10;
+            var repairMaxRetries = int.TryParse(
+                settings.TryGetValue(SettingKeys.Translation.RepairMaxRetries, out var retriesVal) ? retriesVal : null, out var retries)
+                ? retries
+                : 1;
             
             // Generate a short, readable identifier from the filename for logging
             // e.g., "S02E23" or "Movie Name (2024)"
@@ -400,20 +415,22 @@ public class TranslationJob
                 var totalBatches = (int)Math.Ceiling((double)subtitles.Count / effectiveBatchSize);
 
                 _logger.LogInformation(
-                    "[{FileId}] Starting batch translation: {SubtitleCount} subtitles, {TotalBatches} batch(es) of {BatchSize}, fallback: {EnableFallback} ({SplitAttempts} attempts)",
-                    fileIdentifier, subtitles.Count, totalBatches, effectiveBatchSize, enableBatchFallback, maxBatchSplitAttempts);
+                    "[{FileId}] Starting batch translation: {SubtitleCount} subtitles, {TotalBatches} batch(es) of {BatchSize}, retryMode: {RetryMode}",
+                    fileIdentifier, subtitles.Count, totalBatches, effectiveBatchSize, batchRetryMode);
 
                 AddRequestLog(
                     "Information",
-                    $"[{fileIdentifier}] Starting batch translation: subtitles={subtitles.Count}, totalBatches={totalBatches}, batchSize={effectiveBatchSize}, fallback={enableBatchFallback}, maxSplitAttempts={maxBatchSplitAttempts}");
+                    $"[{fileIdentifier}] Starting batch translation: subtitles={subtitles.Count}, totalBatches={totalBatches}, batchSize={effectiveBatchSize}, retryMode={batchRetryMode}");
 
                 translatedSubtitles = await translator.TranslateSubtitlesBatch(
                     subtitles,
                     request,
                     stripSubtitleFormatting,
                     maxSize,
-                    enableBatchFallback,
+                    batchRetryMode,
                     maxBatchSplitAttempts,
+                    repairContextRadius,
+                    repairMaxRetries,
                     fileIdentifier,
                     effectiveCancellationToken);
             }

@@ -16,17 +16,20 @@ public class SubtitleTranslationService
     private readonly ITranslationService _translationService;
     private readonly IProgressService? _progressService;
     private readonly IBatchFallbackService? _batchFallbackService;
+    private readonly IDeferredRepairService? _deferredRepairService;
     private readonly ILogger _logger;
 
     public SubtitleTranslationService(
         ITranslationService translationService,
         ILogger logger,
         IProgressService? progressService = null,
-        IBatchFallbackService? batchFallbackService = null)
+        IBatchFallbackService? batchFallbackService = null,
+        IDeferredRepairService? deferredRepairService = null)
     {
         _translationService = translationService;
         _progressService = progressService;
         _batchFallbackService = batchFallbackService;
+        _deferredRepairService = deferredRepairService;
         _logger = logger;
     }
 
@@ -133,8 +136,10 @@ public class SubtitleTranslationService
     /// <param name="translationRequest">Contains the source and target language specifications.</param>
     /// <param name="stripSubtitleFormatting">Boolean used for indicating that styles need to be stripped from the subtitle</param>
     /// <param name="batchSize">Number of subtitles to process in each batch (0 for all)</param>
-    /// <param name="enableFallback">Whether to use graduated chunk splitting on failure</param>
-    /// <param name="maxSplitAttempts">Maximum number of chunk split attempts (only used if enableFallback is true)</param>
+    /// <param name="batchRetryMode">Retry mode: "immediate" for chunk splitting, "deferred" for end-of-job repair</param>
+    /// <param name="maxSplitAttempts">Maximum number of chunk split attempts (only used if batchRetryMode is "immediate")</param>
+    /// <param name="repairContextRadius">Context radius for deferred repair (only used if batchRetryMode is "deferred")</param>
+    /// <param name="repairMaxRetries">Max retries for repair batch (only used if batchRetryMode is "deferred")</param>
     /// <param name="fileIdentifier">Short identifier for logging (e.g., episode name)</param>
     /// <param name="cancellationToken">Token to support cancellation of the translation operation.</param>
     public async Task<List<SubtitleItem>> TranslateSubtitlesBatch(
@@ -142,8 +147,10 @@ public class SubtitleTranslationService
         TranslationRequest translationRequest,
         bool stripSubtitleFormatting,
         int batchSize = 0,
-        bool enableFallback = false,
+        string batchRetryMode = "deferred",
         int maxSplitAttempts = 3,
+        int repairContextRadius = 10,
+        int repairMaxRetries = 1,
         string fileIdentifier = "",
         CancellationToken cancellationToken = default)
     {
@@ -165,6 +172,14 @@ public class SubtitleTranslationService
 
         var totalBatches = (int)Math.Ceiling((double)subtitles.Count / batchSize);
         var processedSubtitles = 0;
+        
+        // Determine if we're using deferred repair mode
+        var useDeferredRepair = batchRetryMode.Equals("deferred", StringComparison.OrdinalIgnoreCase) 
+                                && _deferredRepairService != null;
+        var useImmediateFallback = batchRetryMode.Equals("immediate", StringComparison.OrdinalIgnoreCase);
+        
+        // Collect failures for deferred repair
+        var globalFailures = new List<RepairItem>();
 
         for (int batchIndex = 0; batchIndex < totalBatches; batchIndex++)
         {
@@ -179,24 +194,103 @@ public class SubtitleTranslationService
                 .Take(batchSize)
                 .ToList();
             
-            await ProcessSubtitleBatch(currentBatch,
+            var batchFailures = await ProcessSubtitleBatch(
+                currentBatch,
                 batchTranslationService,
                 translationRequest.SourceLanguage,
                 translationRequest.TargetLanguage,
                 stripSubtitleFormatting,
-                enableFallback,
+                useImmediateFallback,
                 maxSplitAttempts,
+                useDeferredRepair,  // collectFailures
                 fileIdentifier,
                 batchIndex + 1,  // 1-indexed batch number
                 totalBatches,
                 cancellationToken);
+            
+            // Collect failures for deferred repair
+            if (useDeferredRepair && batchFailures.Count > 0)
+            {
+                foreach (var failure in batchFailures)
+                {
+                    globalFailures.Add(new RepairItem
+                    {
+                        Position = failure.Position,
+                        OriginalLine = failure.Line,
+                        OriginalBatchIndex = batchIndex + 1
+                    });
+                }
+            }
 
             processedSubtitles += currentBatch.Count;
-            await EmitProgress(translationRequest, processedSubtitles, subtitles.Count);
+            
+            // Progress: 0-95% for batches, 95-100% for repair phase
+            var progressPercent = useDeferredRepair 
+                ? (double)processedSubtitles / subtitles.Count * 0.95
+                : (double)processedSubtitles / subtitles.Count;
+            await EmitProgressDirect(translationRequest, progressPercent);
+        }
+        
+        // Deferred repair phase
+        if (useDeferredRepair && globalFailures.Count > 0 && _deferredRepairService != null)
+        {
+            _logger.LogInformation(
+                "[{FileId}] Deferred repair: {FailedCount} items collected from {BatchCount} batches. Starting repair with context radius {Radius}.",
+                fileIdentifier, globalFailures.Count, totalBatches, repairContextRadius);
+            
+            var repairBatch = _deferredRepairService.BuildContextualRepairBatch(
+                globalFailures,
+                subtitles,
+                repairContextRadius,
+                stripSubtitleFormatting);
+            
+            var repairResults = await _deferredRepairService.ExecuteRepairAsync(
+                repairBatch,
+                batchTranslationService,
+                translationRequest.SourceLanguage,
+                translationRequest.TargetLanguage,
+                repairMaxRetries,
+                fileIdentifier,
+                cancellationToken);
+            
+            // Apply repaired translations back to subtitles
+            foreach (var (position, translatedText) in repairResults)
+            {
+                var subtitle = subtitles.FirstOrDefault(s => s.Position == position);
+                if (subtitle != null)
+                {
+                    var cleaned = stripSubtitleFormatting 
+                        ? SubtitleFormatterService.RemoveMarkup(translatedText)
+                        : translatedText;
+                    subtitle.TranslatedLines = cleaned.SplitIntoLines(MaxLineLength);
+                }
+            }
+            
+            _logger.LogInformation(
+                "[{FileId}] Deferred repair completed: {RepairedCount} items repaired.",
+                fileIdentifier, repairResults.Count);
+            
+            // Progress: 100% after repair
+            await EmitProgressDirect(translationRequest, 1.0);
         }
 
         _lastProgression = -1;
         return subtitles;
+    }
+    
+    /// <summary>
+    /// Emits progress directly as a percentage (0.0 to 1.0)
+    /// </summary>
+    private async Task EmitProgressDirect(TranslationRequest translationRequest, double progressPercent)
+    {
+        if (_progressService == null) return;
+        
+        var percentage = (int)(progressPercent * 100);
+        if (percentage != _lastProgression)
+        {
+            _lastProgression = percentage;
+            await _progressService.Emit(translationRequest, percentage);
+        }
     }
 
     /// <summary>
@@ -209,11 +303,13 @@ public class SubtitleTranslationService
     /// <param name="stripSubtitleFormatting">Boolean used for indicating that styles need to be stripped from the subtitle</param>
     /// <param name="enableFallback">Whether to use graduated chunk splitting on failure</param>
     /// <param name="maxSplitAttempts">Maximum number of chunk split attempts (only used if enableFallback is true)</param>
+    /// <param name="collectFailures">If true, collect failures instead of throwing; returns failed items for deferred repair</param>
     /// <param name="fileIdentifier">Short identifier for the file being translated (for logging)</param>
     /// <param name="batchNumber">Current batch number (1-indexed)</param>
     /// <param name="totalBatches">Total number of batches for this file</param>
     /// <param name="cancellationToken">Token to support cancellation of the translation operation</param>
-    public async Task ProcessSubtitleBatch(
+    /// <returns>List of failed BatchSubtitleItems (empty if all succeeded or collectFailures is false)</returns>
+    public async Task<List<BatchSubtitleItem>> ProcessSubtitleBatch(
         List<SubtitleItem> currentBatch,
         IBatchTranslationService batchTranslationService,
         string sourceLanguage,
@@ -221,6 +317,7 @@ public class SubtitleTranslationService
         bool stripSubtitleFormatting,
         bool enableFallback = false,
         int maxSplitAttempts = 3,
+        bool collectFailures = false,
         string fileIdentifier = "",
         int batchNumber = 1,
         int totalBatches = 1,
@@ -292,6 +389,20 @@ public class SubtitleTranslationService
             
         if (missingSubtitles.Count > 0)
         {
+            // If collecting failures for deferred repair, return them instead of throwing
+            if (collectFailures)
+            {
+                _logger.LogWarning(
+                    "[{FileId}] Batch {BatchNum}/{TotalBatches}: {Count} item(s) failed, collecting for deferred repair",
+                    fileIdentifier, batchNumber, totalBatches, missingSubtitles.Count);
+                
+                return missingSubtitles.Select(s => new BatchSubtitleItem
+                {
+                    Position = s.Position,
+                    Line = string.Join(" ", stripSubtitleFormatting ? s.PlaintextLines : s.Lines)
+                }).ToList();
+            }
+            
             // Log detailed info about each missing translation
             _logger.LogError("═══════════════════════════════════════════════════════════════");
             _logger.LogError("MISSING TRANSLATIONS DETECTED: {Count} subtitle(s) failed", missingSubtitles.Count);
@@ -344,6 +455,8 @@ public class SubtitleTranslationService
                 
             throw new TranslationException(message);
         }
+        
+        return new List<BatchSubtitleItem>(); // No failures
     }
     
     /// <summary>

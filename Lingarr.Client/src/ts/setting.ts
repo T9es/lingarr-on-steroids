@@ -67,6 +67,9 @@ export const SETTINGS = {
     CHUTES_REQUEST_BUFFER: 'chutes_request_buffer',
     ENABLE_BATCH_FALLBACK: 'enable_batch_fallback',
     MAX_BATCH_SPLIT_ATTEMPTS: 'max_batch_split_attempts',
+    BATCH_RETRY_MODE: 'batch_retry_mode',
+    REPAIR_CONTEXT_RADIUS: 'repair_context_radius',
+    REPAIR_MAX_RETRIES: 'repair_max_retries',
     STRIP_ASS_DRAWING_COMMANDS: 'strip_ass_drawing_commands',
     CLEAN_SOURCE_ASS_DRAWINGS: 'clean_source_ass_drawings'
 } as const
@@ -137,6 +140,9 @@ export interface ISettings {
     chutes_request_buffer: string
     enable_batch_fallback: string
     max_batch_split_attempts: string
+    batch_retry_mode: string
+    repair_context_radius: string
+    repair_max_retries: string
     strip_ass_drawing_commands: string
     clean_source_ass_drawings: string
 }

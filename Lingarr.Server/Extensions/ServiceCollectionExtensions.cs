@@ -154,6 +154,9 @@ public static class ServiceCollectionExtensions
         
         // Batch fallback service for graduated retry with chunk splitting
         builder.Services.AddScoped<IBatchFallbackService, BatchFallbackService>();
+        
+        // Deferred repair service for collecting failed items and retrying with context at the end
+        builder.Services.AddScoped<IDeferredRepairService, DeferredRepairService>();
 
         // Add Sync services
         builder.Services.AddScoped<IShowSyncService, ShowSyncService>();
