@@ -305,36 +305,45 @@ public class TranslationRequestService : ITranslationRequestService
             return 0;
         }
 
-        var newRequests = new List<TranslationRequest>();
+        var totalRetried = 0;
+        const int batchSize = 10;
 
-        foreach (var request in failedRequests)
+        // Process in batches to prevent database timeouts
+        foreach (var batch in failedRequests.Chunk(batchSize))
         {
-            var translationRequestCopy = new TranslationRequest
+            var newRequests = new List<TranslationRequest>();
+
+            foreach (var request in batch)
             {
-                MediaId = request.MediaId,
-                Title = request.Title,
-                SourceLanguage = request.SourceLanguage,
-                TargetLanguage = request.TargetLanguage,
-                SubtitleToTranslate = request.SubtitleToTranslate,
-                MediaType = request.MediaType,
-                Status = TranslationStatus.Pending,
-                IsActive = true
-            };
-            newRequests.Add(translationRequestCopy);
-        }
+                var translationRequestCopy = new TranslationRequest
+                {
+                    MediaId = request.MediaId,
+                    Title = request.Title,
+                    SourceLanguage = request.SourceLanguage,
+                    TargetLanguage = request.TargetLanguage,
+                    SubtitleToTranslate = request.SubtitleToTranslate,
+                    MediaType = request.MediaType,
+                    Status = TranslationStatus.Pending,
+                    IsActive = true
+                };
+                newRequests.Add(translationRequestCopy);
+            }
 
-        // Add all new requests
-        _dbContext.TranslationRequests.AddRange(newRequests);
-        
-        // Remove old failed requests
-        _dbContext.TranslationRequests.RemoveRange(failedRequests);
+            // Add new requests
+            _dbContext.TranslationRequests.AddRange(newRequests);
+            
+            // Remove old failed requests
+            _dbContext.TranslationRequests.RemoveRange(batch);
 
-        await _dbContext.SaveChangesAsync();
+            await _dbContext.SaveChangesAsync();
 
-        // Enqueue jobs for new requests
-        foreach (var request in newRequests)
-        {
-            await EnqueueTranslationJobAsync(request, true);
+            // Enqueue jobs for new requests
+            foreach (var request in newRequests)
+            {
+                await EnqueueTranslationJobAsync(request, true);
+            }
+
+            totalRetried += newRequests.Count;
         }
 
         var count = await GetActiveCount();
@@ -343,7 +352,7 @@ public class TranslationRequestService : ITranslationRequestService
             count
         });
 
-        return newRequests.Count;
+        return totalRetried;
     }
 
     /// <inheritdoc />

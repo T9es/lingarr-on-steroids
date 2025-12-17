@@ -226,3 +226,40 @@ Raw SQL bypasses this entirely and is:
 Before any coding starts, the user must confirm that you can code. If they don't, your task is to investigate deeply the issue or feature they currently want to do or implement. YOU CAN and SHOULD use any mcp tools at your disposal and web search too to ensure you are up to date with the best practices and implementations.
 
 After you are done fixing or implementing a feature, you should remove any trace files, logs etc that you produced during that process, just so you don't leak any information.
+
+Your fixes and implementations should be full. They should not cause other features to break or degrade. Bugfixing doesn't get an option, the features or fixes should be final, so it is very important you dig deep into the code to understand the issue at play, and not find the very first issue and decide that it is the core problem.
+
+## 8. User's Deployment Environment
+
+### Docker Stack
+```yaml
+services:
+  lingarr:
+    image: ree0/lingarr-on-steroids:main
+    container_name: lingarr
+    ports:
+      - "6060:8080"
+    gpus: all
+
+  lingarr-mysql:
+    image: mariadb:10.5
+    container_name: lingarr-mysql
+    ports:
+      - "25599:3306"
+```
+
+### Database Access
+- **Host**: `192.168.1.13`
+- **Port**: `25599`
+- **Database**: `lingarr`
+- **Username**: `lingarr`
+- **Password**: `123456789`
+- **Type**: MariaDB 10.5
+
+### Quick MySQL Access Command
+```bash
+docker run --rm mariadb:10.5 mysql -h 192.168.1.13 -P 25599 -u lingarr -p123456789 lingarr -e "QUERY_HERE"
+```
+
+### Application URL
+- **Base URL**: `http://192.168.1.13:6060`
