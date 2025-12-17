@@ -79,7 +79,7 @@ public class EpisodeSync : IEpisodeSync
                 FileName = Path.GetFileNameWithoutExtension(episodePath),
                 Path = Path.GetDirectoryName(episodePath),
                 Season = season,
-                DateAdded = dateAdded
+                DateAdded = dateAdded?.ToUniversalTime()
             };
             season.Episodes.Add(episodeEntity);
         }
@@ -89,7 +89,7 @@ public class EpisodeSync : IEpisodeSync
             episodeEntity.Title = episode.Title;
             episodeEntity.FileName = Path.GetFileNameWithoutExtension(episodePath);
             episodeEntity.Path = Path.GetDirectoryName(episodePath);
-            episodeEntity.DateAdded = dateAdded;
+            episodeEntity.DateAdded = dateAdded?.ToUniversalTime();
         }
 
         // Determine if we need to re-index embedded subtitles

@@ -34,7 +34,7 @@ public class ShowSync : IShowSync
                 SonarrId = sonarrShow.Id,
                 Title = sonarrShow.Title,
                 Path = sonarrShow.Path,
-                DateAdded = !string.IsNullOrEmpty(sonarrShow.Added) ? DateTime.Parse(sonarrShow.Added) : DateTime.UtcNow
+                DateAdded = !string.IsNullOrEmpty(sonarrShow.Added) ? DateTime.Parse(sonarrShow.Added).ToUniversalTime() : DateTime.UtcNow
             };
             _dbContext.Shows.Add(showEntity);
         }
@@ -42,7 +42,7 @@ public class ShowSync : IShowSync
         {
             showEntity.Title = sonarrShow.Title;
             showEntity.Path = sonarrShow.Path;
-            showEntity.DateAdded = !string.IsNullOrEmpty(sonarrShow.Added) ? DateTime.Parse(sonarrShow.Added) : DateTime.UtcNow;
+            showEntity.DateAdded = !string.IsNullOrEmpty(sonarrShow.Added) ? DateTime.Parse(sonarrShow.Added).ToUniversalTime() : DateTime.UtcNow;
         }
 
         if (sonarrShow.Images?.Any() == true)
