@@ -4,6 +4,7 @@ using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Listener;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using Lingarr.Core.Entities;
 
 namespace Lingarr.Server.Services;
 
