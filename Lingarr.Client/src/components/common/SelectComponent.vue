@@ -133,6 +133,7 @@ const setLoadingState = async (loading: boolean) => {
 const selectOption = (option: ISelectOption) => {
     emit('update:selected', option.value)
     isOpen.value = false
+    searchQuery.value = ''
 }
 
 const isSelected = (option: string) => {
@@ -143,6 +144,7 @@ useClickOutside(
     clickOutside,
     () => {
         isOpen.value = false
+        searchQuery.value = ''
     },
     excludeClickOutside
 )

@@ -70,9 +70,10 @@ public class SettingService : ISettingService
     public async Task<Dictionary<string, string>> GetSettings(IEnumerable<string> keys)
     {
         var result = new Dictionary<string, string>();
+        var keysList = keys.ToList();
         var keysToFetch = new List<string>();
 
-        foreach (var key in keys)
+        foreach (var key in keysList)
         {
             if (_cache.TryGetValue(key, out string? cachedValue))
             {
@@ -97,6 +98,15 @@ public class SettingService : ISettingService
             {
                 result[setting.Key] = setting.Value;
                 _cache.Set(setting.Key, setting.Value, _cacheOptions);
+            }
+        }
+        
+        // Ensure every requested key is present in the result
+        foreach (var key in keysList)
+        {
+            if (!result.ContainsKey(key))
+            {
+                result[key] = string.Empty;
             }
         }
         

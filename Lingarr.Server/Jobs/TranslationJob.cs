@@ -158,7 +158,6 @@ public class TranslationJob
 
                 SettingKeys.Translation.AiContextPromptEnabled,
                 SettingKeys.Translation.AiContextBefore,
-                SettingKeys.Translation.AiContextBefore,
                 SettingKeys.Translation.AiContextAfter,
                 SettingKeys.Translation.UseBatchTranslation,
                 SettingKeys.Translation.MaxBatchSize,

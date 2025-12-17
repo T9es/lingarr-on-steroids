@@ -30,11 +30,74 @@ public class StartupService : IHostedService
         await ApplySettingsFromEnvironment(dbContext);
         await EnsureSettingsExist(dbContext, new Dictionary<string, string>
         {
-            { SettingKeys.Translation.Chutes.Model, string.Empty },
-            { SettingKeys.Translation.Chutes.ApiKey, string.Empty },
-            { SettingKeys.Translation.Chutes.UsageLimitOverride, string.Empty },
+            // Integration Status
+            { SettingKeys.Integration.RadarrSettingsCompleted, "false" },
+            { SettingKeys.Integration.SonarrSettingsCompleted, "false" },
+
+            // Translation Core
+            { SettingKeys.Translation.ServiceType, "localai" },
+            { SettingKeys.Translation.MaxParallelTranslations, "1" },
+            { SettingKeys.Translation.SourceLanguages, "[]" },
+            { SettingKeys.Translation.TargetLanguages, "[]" },
+            { SettingKeys.Translation.FixOverlappingSubtitles, "false" },
+            { SettingKeys.Translation.StripSubtitleFormatting, "false" },
+            { SettingKeys.Translation.AddTranslatorInfo, "false" },
+            { SettingKeys.Translation.IgnoreCaptions, "false" },
+            { SettingKeys.Translation.LanguageSettingsVersion, "1" },
+
+            // Batch Translation
+            { SettingKeys.Translation.UseBatchTranslation, "true" },
+            { SettingKeys.Translation.MaxBatchSize, "10" },
+            { SettingKeys.Translation.EnableBatchFallback, "true" },
+            { SettingKeys.Translation.MaxBatchSplitAttempts, "3" },
+            { SettingKeys.Translation.BatchRetryMode, "deferred" },
+            { SettingKeys.Translation.RepairContextRadius, "10" },
+            { SettingKeys.Translation.RepairMaxRetries, "1" },
+
+            // Tagging
+            { SettingKeys.Translation.UseSubtitleTagging, "false" },
+            { SettingKeys.Translation.RemoveLanguageTag, "false" },
+            { SettingKeys.Translation.SubtitleTag, "[Lingarr]" },
+
+            // Request/Retry
+            { SettingKeys.Translation.RequestTimeout, "15" },
+            { SettingKeys.Translation.MaxRetries, "20" },
+            { SettingKeys.Translation.RetryDelay, "120" },
+            { SettingKeys.Translation.RetryDelayMultiplier, "1" },
+
+            // AI Context
+            { SettingKeys.Translation.AiContextPromptEnabled, "false" },
+            { SettingKeys.Translation.AiContextBefore, "2" },
+            { SettingKeys.Translation.AiContextAfter, "2" },
+
+            // ASS/SSA Drawing cleanup
             { SettingKeys.Translation.StripAssDrawingCommands, "false" },
-            { SettingKeys.Translation.CleanSourceAssDrawings, "false" }
+            { SettingKeys.Translation.CleanSourceAssDrawings, "false" },
+
+            // Provider specific defaults
+            { SettingKeys.Translation.Chutes.RequestBuffer, "50" },
+            { SettingKeys.Translation.Anthropic.Version, "2023-06-01" },
+
+            // Automation
+            { SettingKeys.Automation.AutomationEnabled, "false" },
+            { SettingKeys.Automation.TranslationSchedule, "0 * * * *" },
+            { SettingKeys.Automation.MaxTranslationsPerRun, "100" },
+            { SettingKeys.Automation.MovieSchedule, "0 4 * * *" },
+            { SettingKeys.Automation.ShowSchedule, "0 4 * * *" },
+            { SettingKeys.Automation.MovieAgeThreshold, "0" },
+            { SettingKeys.Automation.ShowAgeThreshold, "0" },
+
+            // Subtitle Extraction
+            { SettingKeys.SubtitleExtraction.ExtractionMode, "on_demand" },
+
+            // Validation
+            { SettingKeys.SubtitleValidation.ValidateSubtitles, "false" },
+            { SettingKeys.SubtitleValidation.IntegrityValidationEnabled, "false" },
+            { SettingKeys.SubtitleValidation.MaxFileSizeBytes, "1048576" },
+            { SettingKeys.SubtitleValidation.MaxSubtitleLength, "500" },
+            { SettingKeys.SubtitleValidation.MinSubtitleLength, "2" },
+            { SettingKeys.SubtitleValidation.MinDurationMs, "500" },
+            { SettingKeys.SubtitleValidation.MaxDurationSecs, "10" }
         });
 
         await CheckAndUpdateIntegrationSettings(dbContext, "radarr", [

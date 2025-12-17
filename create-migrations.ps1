@@ -47,7 +47,7 @@ function Create-Migrations {
 # Create migrations for SQLite
 Create-Migrations -Provider "sqlite" -ContextName "LingarrDbContext" -MigrationsProject "Lingarr.Migrations.SQLite" -OutputDir "Migrations"
 
-# Create migrations for MySQL
-Create-Migrations -Provider "mysql" -ContextName "LingarrDbContext" -MigrationsProject "Lingarr.Migrations.MySQL" -OutputDir "Migrations"
+# Create migrations for PostgreSQL
+Create-Migrations -Provider "postgresql" -ContextName "LingarrDbContext" -MigrationsProject "Lingarr.Migrations.PostgreSQL" -OutputDir "Migrations"
 
 Write-Host "Migrations '$MigrationName' created successfully." -ForegroundColor Green
