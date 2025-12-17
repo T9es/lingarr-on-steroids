@@ -37,7 +37,7 @@ public static class DatabaseConfiguration
         }
 
         var connectionString =
-            $"Server={variables["DB_HOST"]};Port={variables["DB_PORT"]};Database={variables["DB_DATABASE"]};Uid={variables["DB_USERNAME"]};Pwd={variables["DB_PASSWORD"]};Allow User Variables=True";
+            $"Server={variables["DB_HOST"]};Port={variables["DB_PORT"]};Database={variables["DB_DATABASE"]};Uid={variables["DB_USERNAME"]};Pwd={variables["DB_PASSWORD"]};Allow User Variables=True;DefaultCommandTimeout=120";
 
         options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString),
                 mysqlOptions => mysqlOptions.MigrationsAssembly("Lingarr.Migrations.MySQL")

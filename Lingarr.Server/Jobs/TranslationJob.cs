@@ -511,10 +511,26 @@ public class TranslationJob
 
             try 
             {
-                translationRequest = await _translationRequestService.UpdateTranslationRequest(
-                    translationRequest,
-                    TranslationStatus.Failed,
-                    jobId);
+                // Retry logic for status update - prevents jobs getting stuck in InProgress
+                // when database is temporarily unavailable
+                for (int attempt = 0; attempt < 3; attempt++)
+                {
+                    try
+                    {
+                        translationRequest = await _translationRequestService.UpdateTranslationRequest(
+                            translationRequest,
+                            TranslationStatus.Failed,
+                            jobId);
+                        break; // Success, exit retry loop
+                    }
+                    catch (Exception retryEx) when (attempt < 2)
+                    {
+                        _logger.LogWarning(retryEx, 
+                            "Attempt {Attempt}/3 failed to update job status. Retrying in {Delay}s...", 
+                            attempt + 1, attempt + 1);
+                        await Task.Delay(TimeSpan.FromSeconds(attempt + 1)); // 1s, 2s backoff
+                    }
+                }
 
                 // Persist collected logs for failed translations
                 if (requestLogs.Count > 0)

@@ -211,7 +211,7 @@ public static class ServiceCollectionExtensions
         var syncWorkers = int.TryParse(
             Environment.GetEnvironmentVariable("MAX_CONCURRENT_JOBS"), out int maxConcurrent)
             ? maxConcurrent
-            : 20;
+            : 5;
         
         builder.Services.AddHangfireServer(options =>
         {

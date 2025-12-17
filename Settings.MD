@@ -1,6 +1,15 @@
 ## Settings
 These settings can be configured as environment variables to persist configurations across reinstallations.
 
+### **Performance Configuration**
+
+| **Environment Variable** | **Description**                                                                 | **Default** |
+|--------------------------|---------------------------------------------------------------------------------|-------------|
+| `MAX_PARALLEL_TRANSLATIONS` | Maximum number of concurrent translation jobs.                                | `4`         |
+| `MAX_CONCURRENT_JOBS`    | Maximum number of concurrent sync/background workers (Radarr/Sonarr sync, etc.). Higher values may cause database contention. | `5`         |
+
+---
+
 ### **Radarr Configuration**
 
 | **Environment Variable** | **Description**                                                                 |
