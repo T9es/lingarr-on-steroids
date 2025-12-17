@@ -13,10 +13,9 @@ public interface IMediaStateService
     /// Computes and persists the TranslationState for a media item.
     /// Call after: indexing, translation completion, settings change, or manual request.
     /// </summary>
-    /// <param name="media">The media item to update</param>
-    /// <param name="mediaType">Type of media (Movie or Episode)</param>
+    /// <param name="saveChanges">If true, SaveChangesAsync will be called after updating</param>
     /// <returns>The computed translation state</returns>
-    Task<TranslationState> UpdateStateAsync(IMedia media, MediaType mediaType);
+    Task<TranslationState> UpdateStateAsync(IMedia media, MediaType mediaType, bool saveChanges = true);
     
     /// <summary>
     /// Marks all media as Stale. Used when language settings change.

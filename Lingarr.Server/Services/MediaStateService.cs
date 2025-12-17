@@ -36,7 +36,7 @@ public class MediaStateService : IMediaStateService
     }
 
     /// <inheritdoc />
-    public async Task<TranslationState> UpdateStateAsync(IMedia media, MediaType mediaType)
+    public async Task<TranslationState> UpdateStateAsync(IMedia media, MediaType mediaType, bool saveChanges = true)
     {
         var currentVersion = await GetSettingsVersionAsync();
         
@@ -60,7 +60,7 @@ public class MediaStateService : IMediaStateService
                 .FirstOrDefaultAsync(e => e.Id == media.Id);
             if (episode == null) return TranslationState.Unknown;
         }
-
+    
         var state = await ComputeStateAsync(
             movie as IMedia ?? episode!, 
             mediaType,
@@ -68,7 +68,7 @@ public class MediaStateService : IMediaStateService
             movie?.ExcludeFromTranslation ?? episode!.ExcludeFromTranslation,
             episode?.Season?.ExcludeFromTranslation ?? false,
             episode?.Season?.Show?.ExcludeFromTranslation ?? false);
-
+    
         // Update entity
         if (movie != null)
         {
@@ -80,8 +80,11 @@ public class MediaStateService : IMediaStateService
             episode.TranslationState = state;
             episode.StateSettingsVersion = currentVersion;
         }
-
-        await _dbContext.SaveChangesAsync();
+    
+        if (saveChanges)
+        {
+            await _dbContext.SaveChangesAsync();
+        }
         
         _logger.LogDebug(
             "Updated state for {Type} {Id} ({Title}): {State}",

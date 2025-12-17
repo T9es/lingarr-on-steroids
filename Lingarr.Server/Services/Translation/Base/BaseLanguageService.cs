@@ -18,6 +18,34 @@ public abstract class BaseLanguageService : BaseTranslationService
         ILogger logger,
         string languageFilePath) : base(settings, logger)
     {
+        // Resolve absolute Docker paths (/app/...) relative to application base directory if they don't exist
+        // This ensures local development works when hardcoded absolute Docker paths are passed.
+        if (languageFilePath.StartsWith("/app/") && !File.Exists(languageFilePath))
+        {
+            var fileName = Path.GetFileName(languageFilePath);
+            var relativePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Statics", fileName);
+            if (File.Exists(relativePath))
+            {
+                languageFilePath = relativePath;
+            }
+            else
+            {
+                // Fallback: search for Statics directory in parents (for local dev)
+                var currentDir = new DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
+                while (currentDir != null)
+                {
+                    var staticsDir = Path.Combine(currentDir.FullName, "Statics");
+                    var potentialPath = Path.Combine(staticsDir, fileName);
+                    if (File.Exists(potentialPath))
+                    {
+                        languageFilePath = potentialPath;
+                        break;
+                    }
+                    currentDir = currentDir.Parent;
+                }
+            }
+        }
+
         _languageFilePath = languageFilePath;
         _replacements = new Dictionary<string, string>();
     }

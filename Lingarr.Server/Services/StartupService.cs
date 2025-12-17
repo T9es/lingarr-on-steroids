@@ -46,6 +46,19 @@ public class StartupService : IHostedService
             SettingKeys.Integration.SonarrUrl,
             SettingKeys.Integration.SonarrApiKey
         ]);
+
+        // Ensure service_type is not empty
+        var serviceType = await dbContext.Settings.FirstOrDefaultAsync(s => s.Key == SettingKeys.Translation.ServiceType);
+        if (serviceType == null)
+        {
+            dbContext.Settings.Add(new Setting { Key = SettingKeys.Translation.ServiceType, Value = "localai" });
+            await dbContext.SaveChangesAsync();
+        }
+        else if (string.IsNullOrWhiteSpace(serviceType.Value))
+        {
+            serviceType.Value = "localai";
+            await dbContext.SaveChangesAsync();
+        }
     }
 
     /// <summary>

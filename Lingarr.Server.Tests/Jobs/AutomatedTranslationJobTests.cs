@@ -163,7 +163,7 @@ public class AutomatedTranslationJobTests : IDisposable
             .ReturnsAsync(new List<(IMedia, MediaType)> { (movie, MediaType.Movie) });
 
         _mediaStateServiceMock
-            .Setup(m => m.UpdateStateAsync(It.IsAny<IMedia>(), It.IsAny<MediaType>()))
+            .Setup(m => m.UpdateStateAsync(It.IsAny<IMedia>(), It.IsAny<MediaType>(), It.IsAny<bool>()))
             .ReturnsAsync(TranslationState.Pending);
 
         _processorMock
@@ -180,7 +180,7 @@ public class AutomatedTranslationJobTests : IDisposable
 
         // Assert - should refresh state before processing
         _mediaStateServiceMock.Verify(
-            m => m.UpdateStateAsync(movie, MediaType.Movie),
+            m => m.UpdateStateAsync(movie, MediaType.Movie, It.IsAny<bool>()),
             Times.AtLeastOnce);
     }
 
@@ -208,7 +208,7 @@ public class AutomatedTranslationJobTests : IDisposable
 
         // Refreshing state shows it's actually complete
         _mediaStateServiceMock
-            .Setup(m => m.UpdateStateAsync(It.IsAny<IMedia>(), It.IsAny<MediaType>()))
+            .Setup(m => m.UpdateStateAsync(It.IsAny<IMedia>(), It.IsAny<MediaType>(), It.IsAny<bool>()))
             .ReturnsAsync(TranslationState.Complete);
 
         // Act

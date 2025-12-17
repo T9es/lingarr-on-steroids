@@ -57,7 +57,7 @@ public class MediaService : IMediaService
 
         if (!string.IsNullOrEmpty(searchQuery))
         {
-            query = query.Where(m => m.Title.ToLower().Contains(searchQuery.ToLower()));
+            query = query.Where(m => EF.Functions.ILike(m.Title, $"%{searchQuery}%"));
         }
 
         query = orderBy switch
@@ -235,7 +235,7 @@ public class MediaService : IMediaService
 
         if (!string.IsNullOrEmpty(searchQuery))
         {
-            query = query.Where(s => s.Title.ToLower().Contains(searchQuery.ToLower()));
+            query = query.Where(s => EF.Functions.ILike(s.Title, $"%{searchQuery}%"));
         }
 
         query = orderBy switch

@@ -113,7 +113,11 @@ public class TranslateController : ControllerBase
     [HttpGet("languages")]
     public async Task<List<SourceLanguage>> GetLanguages()
     {
-        var serviceType = await _settings.GetSetting("service_type") ?? "localai";
+        var serviceType = await _settings.GetSetting("service_type");
+        if (string.IsNullOrWhiteSpace(serviceType))
+        {
+            serviceType = "localai";
+        }
         var translationService = _translationServiceFactory.CreateTranslationService(serviceType);
 
         return await translationService.GetLanguages();

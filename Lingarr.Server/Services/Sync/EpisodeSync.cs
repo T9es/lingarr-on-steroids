@@ -43,6 +43,8 @@ public class EpisodeSync : IEpisodeSync
         var episodes = await _sonarrService.GetEpisodes(show.Id, season.SeasonNumber);
         if (episodes == null) return;
 
+        var syncedEpisodes = new List<(Episode Entity, bool NeedsIndexing)>();
+
         foreach (var episode in episodes.Where(e => e.HasFile))
         {
             var episodePathResult = await _sonarrService.GetEpisodePath(episode.Id);
@@ -51,17 +53,42 @@ public class EpisodeSync : IEpisodeSync
                 MediaType.Show
             );
             
-            await SyncEpisode(episode, episodePath, season, episodePathResult?.EpisodeFile.DateAdded);
+            var (entity, needsIndexing) = await UpdateEpisodeMetadata(episode, episodePath, season, episodePathResult?.EpisodeFile.DateAdded);
+            syncedEpisodes.Add((entity, needsIndexing));
+        }
+
+        // Batch save all metadata updates/additions
+        if (_dbContext.ChangeTracker.HasChanges())
+        {
+            await _dbContext.SaveChangesAsync();
+        }
+
+        // Now that IDs are assigned for new entities, perform indexing and state updates
+        foreach (var (entity, needsIndexing) in syncedEpisodes)
+        {
+            if (needsIndexing)
+            {
+                await IndexEmbeddedSubtitles(entity);
+            }
+
+            try
+            {
+                // Update state without immediate save - parent ShowSyncService will save at its BatchSize
+                await _mediaStateService.UpdateStateAsync(entity, MediaType.Episode, saveChanges: false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to update translation state for episode {Title}", entity.Title);
+            }
         }
 
         RemoveNonExistentEpisodes(season, episodes);
     }
 
     /// <summary>
-    /// Synchronizes a single episode with the database, creating or updating the episode entity as needed.
-    /// Also indexes embedded subtitles and updates translation state.
+    /// Updates or creates the episode entity metadata without saving to DB.
     /// </summary>
-    private async Task SyncEpisode(SonarrEpisode episode, string episodePath, Season season, DateTime? dateAdded)
+    private async Task<(Episode Entity, bool NeedsIndexing)> UpdateEpisodeMetadata(SonarrEpisode episode, string episodePath, Season season, DateTime? dateAdded)
     {
         var episodeEntity = season.Episodes.FirstOrDefault(se => se.SonarrId == episode.Id);
         
@@ -92,51 +119,35 @@ public class EpisodeSync : IEpisodeSync
             episodeEntity.DateAdded = dateAdded?.ToUniversalTime();
         }
 
-        // Determine if we need to re-index embedded subtitles
         var fileChanged = !isNew && (
             oldPath != episodeEntity.Path ||
             oldFileName != episodeEntity.FileName);
 
         var needsIndexing = isNew || fileChanged || episodeEntity.IndexedAt == null;
+        return (episodeEntity, needsIndexing);
+    }
 
-        if (needsIndexing)
-        {
-            try
-            {
-                // Save first so the entity has an ID for the extraction service
-                await _dbContext.SaveChangesAsync();
-
-                await _extractionService.SyncEmbeddedSubtitles(episodeEntity);
-                episodeEntity.IndexedAt = DateTime.UtcNow;
-                
-                _logger.LogDebug("Indexed embedded subtitles for episode {Title}", episodeEntity.Title);
-            }
-            catch (Exception ex)
-            {
-                // Check if this is a deadlock/serialization failure that we should let bubble up
-                // PostgreSQL: 40001 = serialization_failure, 40P01 = deadlock_detected
-                if (ex is DbUpdateException dbEx && dbEx.InnerException is PostgresException pgEx && 
-                    (pgEx.SqlState == "40001" || pgEx.SqlState == "40P01"))
-                {
-                    _logger.LogWarning("Deadlock/serialization failure detected during embedded subtitle sync for episode {Title}. Rethrowing to utilize execution strategy.", episodeEntity.Title);
-                    throw;
-                }
-
-                _logger.LogWarning(ex, "Failed to index embedded subtitles for episode {Title}", episodeEntity.Title);
-            }
-        }
-
-        // Update translation state
+    private async Task IndexEmbeddedSubtitles(Episode episodeEntity)
+    {
         try
         {
-             // If we saved above, we have an ID. If we didn't save above (needsIndexing=false), we assume it's an existing entity (has ID).
-             // However, just to be safe (e.g. if logic changes), we might want to ensure ID exists?
-             // But existing entities are fetched from DB so they have IDs.
-            await _mediaStateService.UpdateStateAsync(episodeEntity, MediaType.Episode);
+            await _extractionService.SyncEmbeddedSubtitles(episodeEntity);
+            episodeEntity.IndexedAt = DateTime.UtcNow;
+            
+            // Persist the indexing status immediately
+            await _dbContext.SaveChangesAsync();
+            _logger.LogDebug("Indexed embedded subtitles for episode {Title}", episodeEntity.Title);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to update translation state for episode {Title}", episodeEntity.Title);
+            if (ex is DbUpdateException dbEx && dbEx.InnerException is PostgresException pgEx && 
+                (pgEx.SqlState == "40001" || pgEx.SqlState == "40P01"))
+            {
+                _logger.LogWarning("Deadlock/serialization failure detected during embedded subtitle sync for episode {Title}. Rethrowing to utilize execution strategy.", episodeEntity.Title);
+                throw;
+            }
+
+            _logger.LogWarning(ex, "Failed to index embedded subtitles for episode {Title}", episodeEntity.Title);
         }
     }
 
