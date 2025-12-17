@@ -348,6 +348,110 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                 table: "translation_requests",
                 columns: new[] { "media_id", "media_type", "source_language", "target_language", "is_active" },
                 unique: true);
+
+            // Seed default settings (consolidated from all SQLite migrations)
+            migrationBuilder.InsertData(
+                table: "settings",
+                columns: new[] { "key", "value" },
+                values: new object[,]
+                {
+                    // From PopulateSettings
+                    { "radarr_api_key", "" },
+                    { "radarr_url", "" },
+                    { "sonarr_api_key", "" },
+                    { "sonarr_url", "" },
+                    { "source_languages", "[]" },
+                    { "target_languages", "[]" },
+                    { "theme", "lingarr" },
+                    { "movie_schedule", "0 4 * * *" },
+                    { "show_schedule", "0 4 * * *" },
+                    
+                    // From AddCompletedSettings
+                    { "radarr_settings_completed", "false" },
+                    { "sonarr_settings_completed", "false" },
+                    
+                    // From UpdateDataSchema
+                    { "service_type", "" },
+                    { "openai_model", "" },
+                    { "openai_api_key", "" },
+                    { "anthropic_model", "" },
+                    { "anthropic_api_key", "" },
+                    { "anthropic_version", "" },
+                    { "deepl_api_key", "" },
+                    { "libre_translate_url", "" },
+                    
+                    // From AddSettings
+                    { "translation_batch_size", "10" },
+                    
+                    // From NotificationRework
+                    { "local_ai_model", "" },
+                    { "local_ai_endpoint", "" },
+                    { "local_ai_api_key", "" },
+                    
+                    // From AddParametersTagsAndSettings
+                    { "gemini_model", "" },
+                    { "gemini_api_key", "" },
+                    { "deepseek_model", "" },
+                    { "deepseek_api_key", "" },
+                    { "movie_age_threshold", "0" },
+                    { "show_age_threshold", "0" },
+                    { "fix_overlapping_subtitles", "false" },
+                    
+                    // From AddLocalAiParameters
+                    { "custom_ai_parameters", "[]" },
+                    { "strip_subtitle_formatting", "false" },
+                    { "subtitle_validation_enabled", "false" },
+                    { "subtitle_validation_maxfilesizebytes", "1048576" },
+                    { "subtitle_validation_maxsubtitlelength", "500" },
+                    { "subtitle_validation_minsubtitlelength", "2" },
+                    { "subtitle_validation_mindurationms", "500" },
+                    { "subtitle_validation_maxdurationsecs", "10" },
+                    { "ai_context_prompt_enabled", "false" },
+                    { "ai_context_prompt", "Use the CONTEXT to translate the TARGET line.\n\n[TARGET] {lineToTranslate}\n\n[CONTEXT]\n{contextBefore}\n{lineToTranslate}\n{contextAfter}\n[/CONTEXT]" },
+                    { "ai_context_before", "2" },
+                    { "ai_context_after", "2" },
+                    
+                    // From AddLibreTranslateApiKey
+                    { "libre_translate_api_key", "" },
+                    
+                    // From BatchTranslationAndTagging
+                    { "ignore_captions_in_source_file", "false" },
+                    
+                    // From IgnoreCaptionsCustomRateLimitAndTimout
+                    { "custom_request_limit", "" },
+                    { "custom_timeout", "" },
+                    
+                    // From ConsolidatedSettingsUpdate
+                    { "max_parallel_translations", "1" },
+                    { "chutes_request_buffer", "50" },
+                    { "enable_batch_fallback", "true" },
+                    { "max_batch_split_attempts", "3" },
+                    { "strip_ass_drawing_commands", "true" },
+                    { "clean_source_ass_drawings", "false" },
+                    
+                    // From AddEmbeddedSubtitles
+                    { "extract_embedded_subtitles", "false" },
+                    
+                    // From AddSubtitleIntegrityValidation
+                    { "subtitle_integrity_validation_enabled", "false" },
+                    
+                    // From AddTranslationStateTracking
+                    { "translation.language_settings_version", "1" },
+                    
+                    // From AddDeferredRepairSettings
+                    { "batch_retry_mode", "deferred" },
+                    { "repair_context_radius", "10" },
+                    { "repair_max_retries", "1" },
+                    { "chutes_model", "" },
+                    { "chutes_api_key", "" },
+                    { "chutes_usage_limit_override", "" }
+                });
+
+            // AI prompt (separate because of the long value)
+            migrationBuilder.InsertData(
+                table: "settings",
+                columns: new[] { "key", "value" },
+                values: new object[] { "ai_prompt", "You are a professional movie, anime and TV subtitle translator working from {sourceLanguage} to {targetLanguage}.\n\nYour job is to produce natural, fluent subtitles in {targetLanguage} that feel like high-quality Netflix subtitles.\n\nRules:\n- Translate the meaning and tone, not word-for-word. Use natural, idiomatic {targetLanguage}, and keep the emotional impact.\n- Do NOT censor or soften profanity, insults or slang unless the source already does. Keep roughly the same intensity.\n- Preserve the structure of the input: keep the same number of lines and the same line breaks. Do not merge, split or reorder lines.\n- Preserve all tags, speaker labels and non-dialogue descriptions such as [MUSIC], [LAUGHTER], (sighs), <i>...</i>, names before a colon, etc.\n  Translate only the spoken content; keep formatting and tags as they are.\n- Prefer spoken, contemporary {targetLanguage} that sounds like real people talking in a show, not written prose.\n- Do NOT transliterate English interjections if they sound unnatural in {targetLanguage}. Use natural equivalents instead (e.g. in Polish \"Hm?\", \"Co?\", \"No nie\", \"O kurde\", etc.).\n- For repeated lines and running gags, keep terminology and style consistent across the episode.\n- Do not explain or comment on the text. Output ONLY the translated subtitle text, without quotes or extra text.\n- Use neutral insults that could appear in Netflix subtitles, not ultra-local or oddly specific ones." });
         }
 
         /// <inheritdoc />

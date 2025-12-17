@@ -292,7 +292,8 @@ public static class ServiceCollectionExtensions
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[Hangfire] Could not read max_parallel_translations from database: {ex.Message}. Using default.");
+            // This is expected on first run before migrations create the settings table
+            Console.WriteLine($"[Hangfire] Could not read max_parallel_translations from database (table may not exist yet): {ex.Message}. Using default.");
         }
         
         return defaultWorkers;
