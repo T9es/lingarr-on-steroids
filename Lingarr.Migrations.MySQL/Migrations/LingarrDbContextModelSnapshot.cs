@@ -556,7 +556,7 @@ namespace Lingarr.Migrations.MySQL.Migrations
                         .HasColumnType("datetime(6)")
                         .HasColumnName("created_at");
 
-                    b.Property<bool>("IsActive")
+                    b.Property<bool?>("IsActive")
                         .HasColumnType("tinyint(1)")
                         .HasColumnName("is_active");
 
