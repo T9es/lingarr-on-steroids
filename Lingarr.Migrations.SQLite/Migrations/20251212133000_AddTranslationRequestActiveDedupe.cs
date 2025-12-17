@@ -24,15 +24,14 @@ WITH ranked AS (
 DELETE FROM translation_requests WHERE id IN (SELECT id FROM ranked WHERE rn > 1);
 ");
 
-            migrationBuilder.AddColumn<bool>(
+            migrationBuilder.AddColumn<bool?>(
                 name: "is_active",
                 table: "translation_requests",
                 type: "INTEGER",
-                nullable: false,
-                defaultValue: false);
+                nullable: true);
 
             migrationBuilder.Sql(
-                "UPDATE translation_requests SET is_active = CASE WHEN status IN (0,1) THEN 1 ELSE 0 END;");
+                "UPDATE translation_requests SET is_active = 1 WHERE status IN (0,1);");
 
             migrationBuilder.CreateIndex(
                 name: "ux_translation_requests_active_dedupe",
