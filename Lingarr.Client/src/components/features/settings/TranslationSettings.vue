@@ -44,7 +44,7 @@
             <select
                 v-if="useBatchTranslation == 'true'"
                 v-model="batchRetryMode"
-                class="bg-secondary text-primary-content rounded-md px-4 py-2 focus:outline-none focus:ring-2 w-full">
+                class="border-accent bg-primary text-primary-content h-12 w-full cursor-pointer rounded-md border px-4 py-2 focus:ring-2 focus:ring-accent focus:outline-none">
                 <option value="deferred">{{ translate('settings.translation.batchRetryModeDeferred') }}</option>
                 <option value="immediate">{{ translate('settings.translation.batchRetryModeImmediate') }}</option>
             </select>
