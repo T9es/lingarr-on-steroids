@@ -117,6 +117,12 @@ public interface ITranslationRequestService
     );
 
     /// <summary>
+    /// Retries all translation requests with Failed status
+    /// </summary>
+    /// <returns>Int representing number of retried requests</returns>
+    Task<int> RetryAllFailedRequests();
+    
+    /// <summary>
     /// Retries an existing translation request
     /// </summary>
     /// <param name="retryRequest">The translation request to retry</param>

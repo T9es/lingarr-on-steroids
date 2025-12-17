@@ -96,6 +96,12 @@ export const useTranslationRequestStore = defineStore('translateRequest', {
                 (request) => request.id !== translationRequest.id
             )
         },
+        async retryAllFailed() {
+            const count = await services.translationRequest.retryAllFailed<number>()
+            // Optimistically clear all failed requests as they are now being retried
+            this.failedRequests = []
+            return count
+        },
         async reenqueueQueued(includeInProgress = false) {
             const result = await services.translationRequest.reenqueueQueued<{
                 reenqueued: number

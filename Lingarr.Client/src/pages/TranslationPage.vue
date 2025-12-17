@@ -528,11 +528,7 @@ const retryAllFailed = async () => {
 
     retryingFailed.value = true
     try {
-        const snapshot = [...failedRequests.value]
-        for (const request of snapshot) {
-            await translationRequestStore.retry(request)
-            await translationRequestStore.remove(request)
-        }
+        await translationRequestStore.retryAllFailed()
         await translationRequestStore.fetch()
     } finally {
         retryingFailed.value = false

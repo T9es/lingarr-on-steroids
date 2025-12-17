@@ -293,6 +293,60 @@ public class TranslationRequestService : ITranslationRequestService
     }
 
     /// <inheritdoc />
+    public async Task<int> RetryAllFailedRequests()
+    {
+        var failedRequests = await _dbContext.TranslationRequests
+            .Where(tr => tr.Status == TranslationStatus.Failed)
+            .OrderByDescending(tr => tr.CompletedAt)
+            .ToListAsync();
+
+        if (!failedRequests.Any())
+        {
+            return 0;
+        }
+
+        var newRequests = new List<TranslationRequest>();
+
+        foreach (var request in failedRequests)
+        {
+            var translationRequestCopy = new TranslationRequest
+            {
+                MediaId = request.MediaId,
+                Title = request.Title,
+                SourceLanguage = request.SourceLanguage,
+                TargetLanguage = request.TargetLanguage,
+                SubtitleToTranslate = request.SubtitleToTranslate,
+                MediaType = request.MediaType,
+                Status = TranslationStatus.Pending,
+                IsActive = true
+            };
+            newRequests.Add(translationRequestCopy);
+        }
+
+        // Add all new requests
+        _dbContext.TranslationRequests.AddRange(newRequests);
+        
+        // Remove old failed requests
+        _dbContext.TranslationRequests.RemoveRange(failedRequests);
+
+        await _dbContext.SaveChangesAsync();
+
+        // Enqueue jobs for new requests
+        foreach (var request in newRequests)
+        {
+            await EnqueueTranslationJobAsync(request, true);
+        }
+
+        var count = await GetActiveCount();
+        await _hubContext.Clients.Group("TranslationRequests").SendAsync("RequestActive", new
+        {
+            count
+        });
+
+        return newRequests.Count;
+    }
+
+    /// <inheritdoc />
     public async Task<string?> RetryTranslationRequest(TranslationRequest retryRequest)
     {
         var translationRequest = await _dbContext.TranslationRequests.FirstOrDefaultAsync(
@@ -304,6 +358,12 @@ public class TranslationRequestService : ITranslationRequestService
 
         // Retries are treated as priority so they jump ahead of existing backlog
         int newTranslationRequestId = await CreateRequest(translationRequest, true);
+        
+        // Remove the old failed request to clean up
+        _dbContext.TranslationRequests.Remove(translationRequest);
+        await _dbContext.SaveChangesAsync();
+        await UpdateActiveCount();
+
         return $"Translation request with id {retryRequest.Id} has been restarted, new job id {newTranslationRequestId}";
     }
     
