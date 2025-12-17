@@ -2,7 +2,6 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace Lingarr.Migrations.SQLite.Migrations
 {
-    [Migration("20251217030000_AddDeferredRepairSettings")]
     public partial class AddDeferredRepairSettings : Migration
     {
         /// <inheritdoc />
