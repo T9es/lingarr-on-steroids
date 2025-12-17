@@ -156,7 +156,17 @@ public class StartupService : IHostedService
             if (!string.IsNullOrEmpty(value))
             {
                 var setting = await dbContext.Settings.FirstOrDefaultAsync(s => s.Key == settingKey);
-                if (setting != null)
+                if (setting == null)
+                {
+                    setting = new Setting
+                    {
+                        Key = settingKey,
+                        Value = value
+                    };
+                    dbContext.Settings.Add(setting);
+                    await dbContext.SaveChangesAsync();
+                }
+                else if (setting.Value != value)
                 {
                     setting.Value = value;
                     await dbContext.SaveChangesAsync();
