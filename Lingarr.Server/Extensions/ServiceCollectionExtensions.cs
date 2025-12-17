@@ -183,7 +183,7 @@ public static class ServiceCollectionExtensions
 
     private static void ConfigureHangfire(this WebApplicationBuilder builder)
     {
-        var tablePrefix = "_hangfire";
+
         
         // Translation server: dedicated workers for translation jobs only
         // Worker count is read from: database setting -> env var -> default (4)
