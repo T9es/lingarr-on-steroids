@@ -10,12 +10,12 @@
                     {{ translate('settings.services.serviceSelect') }}
                 </span>
                 <SelectComponent v-model:selected="serviceType" :options="serviceOptions" />
-        <component
-            :is="serviceConfigComponent"
-            v-if="serviceConfigComponent"
-            @save="saveNotification?.show()" />
+                <component
+                    :is="serviceConfigComponent"
+                    v-if="serviceConfigComponent"
+                    @save="saveNotification?.show()" />
 
-        <ChutesUsageCard v-if="serviceType === SERVICE_TYPE.CHUTES" />
+                <ChutesUsageCard v-if="serviceType === SERVICE_TYPE.CHUTES" />
             </div>
 
             <SourceAndTarget @save="saveNotification?.show()" />

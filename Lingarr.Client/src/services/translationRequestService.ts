@@ -1,9 +1,5 @@
 import { AxiosError, AxiosResponse, AxiosStatic } from 'axios'
-import {
-    ITranslationRequest,
-    ITranslationRequestLog,
-    ITranslationRequestService
-} from '@/ts'
+import { ITranslationRequest, ITranslationRequestLog, ITranslationRequestService } from '@/ts'
 
 const service = (
     http: AxiosStatic,
@@ -111,10 +107,7 @@ const service = (
     },
     reenqueueQueued<T>(includeInProgress = false): Promise<T> {
         return new Promise((resolve, reject) => {
-            http.post(
-                `${resource}/reenqueue`.addParams({ includeInProgress }),
-                null
-            )
+            http.post(`${resource}/reenqueue`.addParams({ includeInProgress }), null)
                 .then((response: AxiosResponse<T>) => {
                     resolve(response.data)
                 })
@@ -125,10 +118,7 @@ const service = (
     },
     cancelAll<T>(includeInProgress = false): Promise<T> {
         return new Promise((resolve, reject) => {
-            http.post(
-                `${resource}/cancel-all`.addParams({ includeInProgress }),
-                null
-            )
+            http.post(`${resource}/cancel-all`.addParams({ includeInProgress }), null)
                 .then((response: AxiosResponse<T>) => {
                     resolve(response.data)
                 })
@@ -154,4 +144,3 @@ const service = (
 export const translationRequestService = (axios: AxiosStatic): ITranslationRequestService => {
     return service(axios)
 }
-

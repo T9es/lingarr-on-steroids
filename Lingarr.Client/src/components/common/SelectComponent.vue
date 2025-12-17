@@ -25,11 +25,11 @@
             v-show="isOpen"
             ref="clickOutside"
             class="border-accent bg-primary absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md border shadow-lg">
-            <li v-if="enableSearch" class="border-b border-border p-2">
+            <li v-if="enableSearch" class="border-border border-b p-2">
                 <input
                     v-model="searchQuery"
                     type="text"
-                    class="w-full rounded border border-border bg-transparent px-2 py-1 text-sm outline-hidden"
+                    class="border-border w-full rounded border bg-transparent px-2 py-1 text-sm outline-hidden"
                     :placeholder="translate('settings.services.modelSearchPlaceholder')" />
             </li>
             <li v-if="!filteredOptions.length" class="p-3">{{ noOptions }}</li>

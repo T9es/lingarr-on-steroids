@@ -4,18 +4,20 @@
             <!-- Header -->
             <div class="bg-tertiary mb-4 rounded-lg p-4">
                 <h1 class="text-2xl font-bold">{{ translate('translationTest.title') }}</h1>
-                <p class="text-secondary-content text-sm mt-1">
+                <p class="text-secondary-content mt-1 text-sm">
                     {{ translate('translationTest.description') }}
                 </p>
             </div>
 
             <!-- Configuration Panel -->
-            <div class="bg-secondary rounded-lg p-4 mb-4">
-                <h2 class="text-lg font-semibold mb-3">{{ translate('translationTest.configuration') }}</h2>
+            <div class="bg-secondary mb-4 rounded-lg p-4">
+                <h2 class="mb-3 text-lg font-semibold">
+                    {{ translate('translationTest.configuration') }}
+                </h2>
 
                 <!-- Media Search -->
                 <div class="mb-4">
-                    <label class="block text-sm font-medium mb-1">
+                    <label class="mb-1 block text-sm font-medium">
                         {{ translate('translationTest.searchMedia') }}
                     </label>
                     <input
@@ -33,15 +35,17 @@
                 </div>
 
                 <!-- Search Results -->
-                <div v-if="searchResults.length" class="mb-4 rounded border border-accent/40 bg-tertiary">
+                <div
+                    v-if="searchResults.length"
+                    class="border-accent/40 bg-tertiary mb-4 rounded border">
                     <div
-                        class="border-secondary/40 flex items-center justify-between border-b px-3 py-2 text-xs text-secondary-content">
+                        class="border-secondary/40 text-secondary-content flex items-center justify-between border-b px-3 py-2 text-xs">
                         <span>{{ translate('translationTest.searchResultsTitle') }}</span>
-                        <span v-if="isSearching" class="text-[10px] uppercase tracking-wide">
+                        <span v-if="isSearching" class="text-[10px] tracking-wide uppercase">
                             {{ translate('common.loading') }}
                         </span>
                     </div>
-                    <div class="max-h-64 divide-y divide-secondary/40 overflow-y-auto">
+                    <div class="divide-secondary/40 max-h-64 divide-y overflow-y-auto">
                         <div
                             v-for="result in searchResults"
                             :key="`${result.mediaType}-${result.mediaId}`"
@@ -61,12 +65,10 @@
                                     v-for="subtitle in result.subtitles"
                                     :key="subtitle.path"
                                     type="button"
-                                    class="border-accent hover:bg-accent cursor-pointer rounded border px-2 py-1 text-xs text-primary-content transition-colors"
+                                    class="border-accent hover:bg-accent text-primary-content cursor-pointer rounded border px-2 py-1 text-xs transition-colors"
                                     @click="applySubtitleFromSearch(result, subtitle)">
                                     {{ subtitle.language.toUpperCase() || '??' }}
-                                    <span
-                                        v-if="subtitle.caption"
-                                        class="text-primary-content/70">
+                                    <span v-if="subtitle.caption" class="text-primary-content/70">
                                         - {{ subtitle.caption.toUpperCase() }}
                                     </span>
                                 </button>
@@ -76,13 +78,13 @@
                 </div>
                 <div
                     v-else-if="searchQuery.trim().length >= 2 && !isSearching"
-                    class="mb-4 text-xs text-secondary-content">
+                    class="text-secondary-content mb-4 text-xs">
                     {{ translate('translationTest.noSearchResults') }}
                 </div>
 
                 <!-- Subtitle File Path -->
                 <div class="mb-4">
-                    <label class="block text-sm font-medium mb-1">
+                    <label class="mb-1 block text-sm font-medium">
                         {{ translate('translationTest.subtitlePath') }}
                     </label>
                     <input
@@ -92,14 +94,15 @@
                         class="bg-primary border-accent w-full rounded border px-3 py-2 text-sm"
                         :disabled="isRunning" />
                     <p v-if="selectedFromSearch" class="text-secondary-content mt-1 text-xs">
-                        {{ translate('translationTest.selectedFromSearch') }} {{ selectedFromSearch }}
+                        {{ translate('translationTest.selectedFromSearch') }}
+                        {{ selectedFromSearch }}
                     </p>
                 </div>
 
                 <!-- Languages -->
-                <div class="grid grid-cols-2 gap-4 mb-4">
+                <div class="mb-4 grid grid-cols-2 gap-4">
                     <div>
-                        <label class="block text-sm font-medium mb-1">
+                        <label class="mb-1 block text-sm font-medium">
                             {{ translate('translationTest.sourceLanguage') }}
                         </label>
                         <input
@@ -110,7 +113,7 @@
                             :disabled="isRunning" />
                     </div>
                     <div>
-                        <label class="block text-sm font-medium mb-1">
+                        <label class="mb-1 block text-sm font-medium">
                             {{ translate('translationTest.targetLanguage') }}
                         </label>
                         <input
@@ -143,24 +146,34 @@
             <!-- Results Panel (shown after completion) -->
             <div
                 v-if="result"
-                class="rounded-lg p-4 mb-4"
-                :class="result.success ? 'bg-success/20 border border-success' : 'bg-error/20 border border-error'">
-                <h2 class="text-lg font-semibold mb-2">
-                    {{ result.success ? translate('translationTest.success') : translate('translationTest.failed') }}
+                class="mb-4 rounded-lg p-4"
+                :class="
+                    result.success
+                        ? 'bg-success/20 border-success border'
+                        : 'bg-error/20 border-error border'
+                ">
+                <h2 class="mb-2 text-lg font-semibold">
+                    {{
+                        result.success
+                            ? translate('translationTest.success')
+                            : translate('translationTest.failed')
+                    }}
                 </h2>
                 <div class="text-sm">
                     <p v-if="result.errorMessage" class="text-error">{{ result.errorMessage }}</p>
                     <p v-if="result.totalSubtitles">
-                        {{ translate('translationTest.translated') }}: {{ result.translatedCount }}/{{ result.totalSubtitles }}
+                        {{ translate('translationTest.translated') }}:
+                        {{ result.translatedCount }}/{{ result.totalSubtitles }}
                     </p>
                     <p v-if="result.duration">
-                        {{ translate('translationTest.duration') }}: {{ result.duration.toFixed(1) }}s
+                        {{ translate('translationTest.duration') }}:
+                        {{ result.duration.toFixed(1) }}s
                     </p>
                 </div>
             </div>
 
             <!-- Log Console -->
-            <div class="bg-secondary rounded-lg overflow-hidden">
+            <div class="bg-secondary overflow-hidden rounded-lg">
                 <div class="bg-tertiary flex items-center justify-between px-4 py-2">
                     <h2 class="text-sm font-semibold">{{ translate('translationTest.logs') }}</h2>
                     <button
@@ -169,26 +182,28 @@
                         {{ translate('translationTest.clearLogs') }}
                     </button>
                 </div>
-                
+
                 <div
                     ref="logContainer"
-                    class="bg-primary h-[40vh] overflow-y-auto font-mono text-xs p-2">
-                    <div v-if="logs.length === 0" class="flex h-full items-center justify-center text-gray-500">
+                    class="bg-primary h-[40vh] overflow-y-auto p-2 font-mono text-xs">
+                    <div
+                        v-if="logs.length === 0"
+                        class="flex h-full items-center justify-center text-gray-500">
                         {{ translate('translationTest.waitingForLogs') }}
                     </div>
-                    
+
                     <div
                         v-for="(log, index) in logs"
                         :key="index"
-                        class="py-1 border-b border-secondary/30">
-                        <span class="text-gray-400 mr-2">{{ formatTime(log.timestamp) }}</span>
-                        <span
-                            :class="getLogLevelClass(log.level)"
-                            class="mr-2 font-semibold">
+                        class="border-secondary/30 border-b py-1">
+                        <span class="mr-2 text-gray-400">{{ formatTime(log.timestamp) }}</span>
+                        <span :class="getLogLevelClass(log.level)" class="mr-2 font-semibold">
                             [{{ log.level }}]
                         </span>
                         <span>{{ log.message }}</span>
-                        <div v-if="log.details" class="text-xs text-gray-500 ml-4 whitespace-pre-wrap">
+                        <div
+                            v-if="log.details"
+                            class="ml-4 text-xs whitespace-pre-wrap text-gray-500">
                             {{ log.details }}
                         </div>
                     </div>
@@ -245,9 +260,11 @@ const selectedFromSearch = ref<string | null>(null)
 let lastSearchToken = ''
 
 const canStart = computed(() => {
-    return subtitlePath.value.trim() !== '' && 
-           sourceLanguage.value.trim() !== '' && 
-           targetLanguage.value.trim() !== ''
+    return (
+        subtitlePath.value.trim() !== '' &&
+        sourceLanguage.value.trim() !== '' &&
+        targetLanguage.value.trim() !== ''
+    )
 })
 
 function formatTime(timestamp: string): string {
@@ -353,11 +370,11 @@ async function scrollToBottom() {
 
 async function startTest() {
     if (!canStart.value || isRunning.value) return
-    
+
     isRunning.value = true
     result.value = null
     logs.value = []
-    
+
     try {
         const response = await fetch('/api/test-translation/start', {
             method: 'POST',
@@ -370,25 +387,25 @@ async function startTest() {
                 targetLanguage: targetLanguage.value
             })
         })
-        
+
         const reader = response.body?.getReader()
         const decoder = new TextDecoder()
-        
+
         if (!reader) {
             throw new Error('Failed to get response reader')
         }
-        
+
         while (true) {
             const { done, value } = await reader.read()
             if (done) break
-            
+
             const text = decoder.decode(value)
-            const lines = text.split('\n').filter(line => line.startsWith('data: '))
-            
+            const lines = text.split('\n').filter((line) => line.startsWith('data: '))
+
             for (const line of lines) {
                 try {
                     const data = JSON.parse(line.substring(6))
-                    
+
                     if (data.type === 'log') {
                         logs.value.push({
                             level: data.Level,

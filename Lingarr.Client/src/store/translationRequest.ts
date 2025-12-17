@@ -59,10 +59,12 @@ export const useTranslationRequestStore = defineStore('translateRequest', {
             )
         },
         async fetchFailedRequests() {
-            this.failedRequests = await services.translationRequest.getFailedRequests<ITranslationRequest[]>()
+            this.failedRequests =
+                await services.translationRequest.getFailedRequests<ITranslationRequest[]>()
         },
         async fetchInProgressRequests() {
-            this.inProgressRequests = await services.translationRequest.getInProgressRequests<ITranslationRequest[]>()
+            this.inProgressRequests =
+                await services.translationRequest.getInProgressRequests<ITranslationRequest[]>()
         },
         async fetchAllSections() {
             await Promise.all([
@@ -122,7 +124,9 @@ export const useTranslationRequestStore = defineStore('translateRequest', {
         },
 
         async getLogs(translationRequestId: number): Promise<ITranslationRequestLog[]> {
-            return await services.translationRequest.logs<ITranslationRequestLog[]>(translationRequestId)
+            return await services.translationRequest.logs<ITranslationRequestLog[]>(
+                translationRequestId
+            )
         },
         async updateProgress(requestProgress: IRequestProgress) {
             const updatedRequest: Partial<ITranslationRequest> = {
@@ -142,12 +146,16 @@ export const useTranslationRequestStore = defineStore('translateRequest', {
             )
 
             // Handle status transitions for inProgressRequests
-            const inProgressIndex = this.inProgressRequests.findIndex(r => r.id === requestProgress.id)
+            const inProgressIndex = this.inProgressRequests.findIndex(
+                (r) => r.id === requestProgress.id
+            )
             if (requestProgress.status === 'InProgress') {
                 // Should be in inProgressRequests
                 if (inProgressIndex === -1) {
                     // Find the full request data from main list or create minimal entry
-                    const existingRequest = this.translationRequests.items.find(r => r.id === requestProgress.id)
+                    const existingRequest = this.translationRequests.items.find(
+                        (r) => r.id === requestProgress.id
+                    )
                     if (existingRequest) {
                         this.inProgressRequests.push({ ...existingRequest, ...updatedRequest })
                     }
@@ -164,11 +172,13 @@ export const useTranslationRequestStore = defineStore('translateRequest', {
             }
 
             // Handle status transitions for failedRequests
-            const failedIndex = this.failedRequests.findIndex(r => r.id === requestProgress.id)
+            const failedIndex = this.failedRequests.findIndex((r) => r.id === requestProgress.id)
             if (requestProgress.status === 'Failed') {
                 // Should be in failedRequests
                 if (failedIndex === -1) {
-                    const existingRequest = this.translationRequests.items.find(r => r.id === requestProgress.id)
+                    const existingRequest = this.translationRequests.items.find(
+                        (r) => r.id === requestProgress.id
+                    )
                     if (existingRequest) {
                         this.failedRequests.push({ ...existingRequest, ...updatedRequest })
                     }
@@ -188,10 +198,13 @@ export const useTranslationRequestStore = defineStore('translateRequest', {
             if (requestProgress.status === 'Completed' || requestProgress.status === 'Cancelled') {
                 const initialLength = this.translationRequests.items.length
                 this.translationRequests.items = this.translationRequests.items.filter(
-                    r => r.id !== requestProgress.id
+                    (r) => r.id !== requestProgress.id
                 )
                 if (this.translationRequests.items.length < initialLength) {
-                    this.translationRequests.totalCount = Math.max(0, this.translationRequests.totalCount - 1)
+                    this.translationRequests.totalCount = Math.max(
+                        0,
+                        this.translationRequests.totalCount - 1
+                    )
                 }
             }
         },

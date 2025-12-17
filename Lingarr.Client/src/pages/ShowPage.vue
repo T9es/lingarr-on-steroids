@@ -80,7 +80,9 @@
                                     }
                                 " />
                         </div>
-                        <div class="col-span-1 flex items-center justify-center px-4 py-2" @click.stop>
+                        <div
+                            class="col-span-1 flex items-center justify-center px-4 py-2"
+                            @click.stop>
                             <ToggleButton
                                 v-model="item.isPriority"
                                 size="small"
@@ -88,13 +90,17 @@
                                     () => showStore.priority(MEDIA_TYPE.SHOW, item.id)
                                 " />
                         </div>
-                        <div class="col-span-1 flex items-center justify-center px-4 py-2" @click.stop>
+                        <div
+                            class="col-span-1 flex items-center justify-center px-4 py-2"
+                            @click.stop>
                             <button
                                 class="border-accent hover:bg-accent cursor-pointer rounded border p-1 transition-colors"
                                 :disabled="translatingShows[item.id]"
                                 :title="translate('tvShows.translateNow')"
                                 @click="translateShow(item)">
-                                <LoaderCircleIcon v-if="translatingShows[item.id]" class="h-4 w-4 animate-spin" />
+                                <LoaderCircleIcon
+                                    v-if="translatingShows[item.id]"
+                                    class="h-4 w-4 animate-spin" />
                                 <LanguageIcon v-else class="h-4 w-4" />
                             </button>
                         </div>

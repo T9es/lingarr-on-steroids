@@ -122,7 +122,7 @@ export const useTestTranslationStore = defineStore('testTranslation', () => {
             const response = await fetch('/api/test-translation/start', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(request),
                 signal: abortController.signal

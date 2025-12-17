@@ -7,7 +7,7 @@
                     class="px-6 py-3 font-medium transition-colors"
                     :class="
                         activeTab === 'list'
-                            ? 'border-accent border-b-2 text-accent'
+                            ? 'border-accent text-accent border-b-2'
                             : 'text-secondary-content hover:text-primary-content'
                     "
                     @click="activeTab = 'list'">
@@ -17,14 +17,14 @@
                     class="relative px-6 py-3 font-medium transition-colors"
                     :class="
                         activeTab === 'test'
-                            ? 'border-accent border-b-2 text-accent'
+                            ? 'border-accent text-accent border-b-2'
                             : 'text-secondary-content hover:text-primary-content'
                     "
                     @click="activeTab = 'test'">
                     {{ translate('translations.tabRunTest') }}
                     <span
                         v-if="testStore.isRunning"
-                        class="bg-accent absolute -right-1 -top-1 h-2 w-2 animate-pulse rounded-full"></span>
+                        class="bg-accent absolute -top-1 -right-1 h-2 w-2 animate-pulse rounded-full"></span>
                 </button>
             </div>
 
@@ -74,7 +74,7 @@
                     <!-- Active translations -->
                     <div class="border-accent bg-secondary rounded-md border p-4 shadow-sm">
                         <div class="mb-3 flex items-center justify-between">
-                            <h2 class="text-sm font-semibold uppercase tracking-wide">
+                            <h2 class="text-sm font-semibold tracking-wide uppercase">
                                 {{ translate('common.statusInProgress') }}
                             </h2>
                             <span class="text-secondary-content text-xs">
@@ -97,7 +97,8 @@
                                             classes="border-accent bg-accent text-xs text-primary-content">
                                             {{ translate('translations.priority') }}
                                         </BadgeComponent>
-                                        <BadgeComponent classes="text-primary-content border-accent bg-secondary text-xs">
+                                        <BadgeComponent
+                                            classes="text-primary-content border-accent bg-secondary text-xs">
                                             {{ item.sourceLanguage.toUpperCase() }} →
                                             {{ item.targetLanguage.toUpperCase() }}
                                         </BadgeComponent>
@@ -108,7 +109,8 @@
                                 </div>
                                 <div class="flex w-full items-center gap-2 md:w-1/2">
                                     <TranslationProgress :progress="item.progress ?? 0" />
-                                    <span class="text-secondary-content text-xs min-w-[3rem] text-right">
+                                    <span
+                                        class="text-secondary-content min-w-[3rem] text-right text-xs">
                                         {{ (item.progress ?? 0).toString() }}%
                                     </span>
                                     <TranslationAction
@@ -125,7 +127,7 @@
                     <!-- Failed translations -->
                     <div class="border-accent bg-secondary rounded-md border p-4 shadow-sm">
                         <div class="mb-3 flex items-center justify-between">
-                            <h2 class="text-sm font-semibold uppercase tracking-wide">
+                            <h2 class="text-sm font-semibold tracking-wide uppercase">
                                 {{ translate('common.statusFailed') }}
                             </h2>
                             <button
@@ -140,7 +142,9 @@
                                 0 {{ translate('common.items') }}
                             </span>
                         </div>
-                        <div v-if="failedRequests.length" class="max-h-64 space-y-3 overflow-y-auto pr-1">
+                        <div
+                            v-if="failedRequests.length"
+                            class="max-h-64 space-y-3 overflow-y-auto pr-1">
                             <div
                                 v-for="item in failedRequests"
                                 :key="`failed-${item.id}`"
@@ -157,7 +161,8 @@
                                         </BadgeComponent>
                                     </div>
                                     <div class="mt-1 flex flex-wrap items-center gap-2 text-xs">
-                                        <BadgeComponent classes="text-primary-content border-accent bg-secondary">
+                                        <BadgeComponent
+                                            classes="text-primary-content border-accent bg-secondary">
                                             {{ item.sourceLanguage.toUpperCase() }} →
                                             {{ item.targetLanguage.toUpperCase() }}
                                         </BadgeComponent>
@@ -187,156 +192,168 @@
                     </div>
 
                     <!-- Queued translations -->
-	                    <div class="border-accent bg-secondary rounded-md border p-4 shadow-sm">
-	                        <div class="mb-3 flex items-center justify-between">
-	                            <h2 class="text-sm font-semibold uppercase tracking-wide">
-	                                {{ translate('common.statusPending') }}
-	                            </h2>
-	                            <div class="flex items-center gap-2">
-	                                <button
-	                                    v-if="queuedRequests.length"
-	                                    class="border-accent text-primary-content hover:bg-accent cursor-pointer rounded-md border px-3 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-60"
-	                                    :disabled="reenqueuingQueued"
-	                                    @click="reenqueueQueued">
-	                                    {{ translate('translations.reenqueueQueue') }}
-	                                </button>
-	                                <button
-	                                    v-if="queuedRequests.length"
-	                                    class="border-accent text-primary-content hover:bg-accent cursor-pointer rounded-md border px-3 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-60"
-	                                    :disabled="cancellingQueued"
-	                                    @click="cancelAllQueued">
-	                                    {{ translate('translations.cancelAll') }}
-	                                </button>
-	                                <span class="text-secondary-content text-xs">
-	                                    {{ queuedRequests.length }}
-	                                    {{ translate('common.items') }}
-	                                </span>
-	                            </div>
-
-	                        </div>
-	
-	                        <template v-if="queuedRequests.length">
-                        <!-- Queue table header -->
-                        <div class="border-accent hidden border-b font-bold md:grid md:grid-cols-12">
-                            <div class="col-span-5 px-4 py-2">
-                                {{ translate('translations.title') }}
-                            </div>
-                            <div class="col-span-1 px-4 py-2">{{ translate('translations.source') }}</div>
-                            <div class="col-span-1 px-4 py-2">{{ translate('translations.target') }}</div>
-                            <div class="col-span-1 px-4 py-2">{{ translate('translations.status') }}</div>
-                            <div class="col-span-2 px-4 py-2">
-                                {{ translate('translations.completed') }}
-                            </div>
-                            <div class="col-span-1 flex justify-end px-4 py-2">
-                                <ReloadComponent @toggle:update="translationRequestStore.fetch()" />
-                            </div>
-                            <div
-                                v-if="isSelectMode"
-                                class="col-span-1 flex items-center justify-center px-4 py-2">
-                                <CheckboxComponent
-                                    :model-value="translationRequestStore.selectAll"
-                                    @change="translationRequestStore.toggleSelectAll()" />
-                            </div>
-                        </div>
-
-                        <!-- Queue table rows -->
-                        <div
-                            v-for="item in queuedRequests"
-                            :key="item.id"
-                            class="md:border-accent rounded-lg py-4 shadow-sm md:grid md:grid-cols-12 md:rounded-none md:border-b md:bg-transparent md:p-0 md:shadow-none">
-                        <div class="deletable float-right w-5 md:hidden">
-                            <TranslationAction
-                                :status="item.status"
-                                :on-action="(action) => handleAction(item, action)" />
-                        </div>
-                        <div class="mb-2 md:col-span-5 md:mb-0 md:px-4 md:py-2">
-                            <span :id="`deletable-${item.id}`" class="font-bold md:hidden">
-                                {{ translate('translations.title') }}:&nbsp;
-                            </span>
+                    <div class="border-accent bg-secondary rounded-md border p-4 shadow-sm">
+                        <div class="mb-3 flex items-center justify-between">
+                            <h2 class="text-sm font-semibold tracking-wide uppercase">
+                                {{ translate('common.statusPending') }}
+                            </h2>
                             <div class="flex items-center gap-2">
-                                <span
-                                    v-if="item.mediaType === MEDIA_TYPE.EPISODE"
-                                    v-show-title
-                                    class="block cursor-help"
-                                    :title="item.title">
-                                    {{ item.title }}
+                                <button
+                                    v-if="queuedRequests.length"
+                                    class="border-accent text-primary-content hover:bg-accent cursor-pointer rounded-md border px-3 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+                                    :disabled="reenqueuingQueued"
+                                    @click="reenqueueQueued">
+                                    {{ translate('translations.reenqueueQueue') }}
+                                </button>
+                                <button
+                                    v-if="queuedRequests.length"
+                                    class="border-accent text-primary-content hover:bg-accent cursor-pointer rounded-md border px-3 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+                                    :disabled="cancellingQueued"
+                                    @click="cancelAllQueued">
+                                    {{ translate('translations.cancelAll') }}
+                                </button>
+                                <span class="text-secondary-content text-xs">
+                                    {{ queuedRequests.length }}
+                                    {{ translate('common.items') }}
                                 </span>
-                                <span v-else>
-                                    {{ item.title }}
-                                </span>
-                                <BadgeComponent
-                                    v-if="item.isPriorityMedia"
-                                    classes="border-accent bg-accent text-xs text-primary-content">
-                                    {{ translate('translations.priority') }}
-                                </BadgeComponent>
                             </div>
                         </div>
-                        <div class="mb-2 md:col-span-1 md:mb-0 md:px-4 md:py-2">
-                            <span class="font-bold md:hidden">
-                                {{ translate('translations.source') }}:&nbsp;
-                            </span>
-                            <BadgeComponent classes="text-primary-content border-accent bg-secondary">
-                                {{ item.sourceLanguage.toUpperCase() }}
-                            </BadgeComponent>
-                        </div>
-                        <div class="mb-2 md:col-span-1 md:mb-0 md:px-4 md:py-2">
-                            <span class="font-bold md:hidden">
-                                {{ translate('translations.target') }}:&nbsp;
-                            </span>
-                            <BadgeComponent classes="text-primary-content border-accent bg-secondary">
-                                {{ item.targetLanguage.toUpperCase() }}
-                            </BadgeComponent>
-                        </div>
-                        <div class="mb-2 md:col-span-1 md:mb-0 md:px-4 md:py-2">
-                            <span class="font-bold md:hidden">
-                                {{ translate('translations.status') }}:&nbsp;
-                            </span>
-                            <TranslationStatus :translation-status="item.status" />
-                        </div>
-                        <div class="mb-2 md:col-span-2 md:mb-0 md:px-4 md:py-2">
-                            <span class="font-bold md:hidden">
-                                {{ translate('translations.completed') }}:&nbsp;
-                            </span>
-                            <TranslationCompletedAt
-                                v-if="item.completedAt"
-                                :completed-at="item.completedAt" />
-                        </div>
-                        <div
-                            class="hidden items-center justify-between md:col-span-1 md:flex md:justify-end md:py-2">
-                            <div class="flex items-center gap-1">
-                                <!-- Run Test Button -->
-                                <button
-                                    v-if="item.subtitleToTranslate || (item.mediaId && item.mediaType)"
-                                    class="border-accent hover:bg-accent cursor-pointer rounded border p-1 transition-colors"
-                                    :title="translate('translations.runTest')"
-                                    @click.stop="runTestForItem(item)">
-                                    <TestIcon class="h-4 w-4" />
-                                </button>
-                                <!-- View Logs Button (failed translations only) -->
-                                <button
-                                    v-if="item.status === TRANSLATION_STATUS.FAILED"
-                                    class="border-accent hover:bg-accent cursor-pointer rounded border px-2 py-1 text-xs transition-colors"
-                                    :title="translate('translations.viewLogs')"
-                                    @click.stop="openLogs(item)">
-                                    {{ translate('translations.logs') }}
-                                </button>
-                                <TranslationAction
-                                    :status="item.status"
-                                    :on-action="(action) => handleAction(item, action)" />
+
+                        <template v-if="queuedRequests.length">
+                            <!-- Queue table header -->
+                            <div
+                                class="border-accent hidden border-b font-bold md:grid md:grid-cols-12">
+                                <div class="col-span-5 px-4 py-2">
+                                    {{ translate('translations.title') }}
+                                </div>
+                                <div class="col-span-1 px-4 py-2">
+                                    {{ translate('translations.source') }}
+                                </div>
+                                <div class="col-span-1 px-4 py-2">
+                                    {{ translate('translations.target') }}
+                                </div>
+                                <div class="col-span-1 px-4 py-2">
+                                    {{ translate('translations.status') }}
+                                </div>
+                                <div class="col-span-2 px-4 py-2">
+                                    {{ translate('translations.completed') }}
+                                </div>
+                                <div class="col-span-1 flex justify-end px-4 py-2">
+                                    <ReloadComponent
+                                        @toggle:update="translationRequestStore.fetch()" />
+                                </div>
+                                <div
+                                    v-if="isSelectMode"
+                                    class="col-span-1 flex items-center justify-center px-4 py-2">
+                                    <CheckboxComponent
+                                        :model-value="translationRequestStore.selectAll"
+                                        @change="translationRequestStore.toggleSelectAll()" />
+                                </div>
                             </div>
-                        </div>
-                        <div
-                            v-if="isSelectMode"
-                            class="col-span-1 flex items-center justify-end py-2 md:justify-center md:px-4">
-                            <CheckboxComponent
-                                :model-value="
-                                    translationRequestStore.selectedRequests.some(
-                                        (request) => request.id === item.id
-                                    )
-                                "
-                                @change="translationRequestStore.toggleSelect(item)" />
-                        </div>
-                    </div>
+
+                            <!-- Queue table rows -->
+                            <div
+                                v-for="item in queuedRequests"
+                                :key="item.id"
+                                class="md:border-accent rounded-lg py-4 shadow-sm md:grid md:grid-cols-12 md:rounded-none md:border-b md:bg-transparent md:p-0 md:shadow-none">
+                                <div class="deletable float-right w-5 md:hidden">
+                                    <TranslationAction
+                                        :status="item.status"
+                                        :on-action="(action) => handleAction(item, action)" />
+                                </div>
+                                <div class="mb-2 md:col-span-5 md:mb-0 md:px-4 md:py-2">
+                                    <span :id="`deletable-${item.id}`" class="font-bold md:hidden">
+                                        {{ translate('translations.title') }}:&nbsp;
+                                    </span>
+                                    <div class="flex items-center gap-2">
+                                        <span
+                                            v-if="item.mediaType === MEDIA_TYPE.EPISODE"
+                                            v-show-title
+                                            class="block cursor-help"
+                                            :title="item.title">
+                                            {{ item.title }}
+                                        </span>
+                                        <span v-else>
+                                            {{ item.title }}
+                                        </span>
+                                        <BadgeComponent
+                                            v-if="item.isPriorityMedia"
+                                            classes="border-accent bg-accent text-xs text-primary-content">
+                                            {{ translate('translations.priority') }}
+                                        </BadgeComponent>
+                                    </div>
+                                </div>
+                                <div class="mb-2 md:col-span-1 md:mb-0 md:px-4 md:py-2">
+                                    <span class="font-bold md:hidden">
+                                        {{ translate('translations.source') }}:&nbsp;
+                                    </span>
+                                    <BadgeComponent
+                                        classes="text-primary-content border-accent bg-secondary">
+                                        {{ item.sourceLanguage.toUpperCase() }}
+                                    </BadgeComponent>
+                                </div>
+                                <div class="mb-2 md:col-span-1 md:mb-0 md:px-4 md:py-2">
+                                    <span class="font-bold md:hidden">
+                                        {{ translate('translations.target') }}:&nbsp;
+                                    </span>
+                                    <BadgeComponent
+                                        classes="text-primary-content border-accent bg-secondary">
+                                        {{ item.targetLanguage.toUpperCase() }}
+                                    </BadgeComponent>
+                                </div>
+                                <div class="mb-2 md:col-span-1 md:mb-0 md:px-4 md:py-2">
+                                    <span class="font-bold md:hidden">
+                                        {{ translate('translations.status') }}:&nbsp;
+                                    </span>
+                                    <TranslationStatus :translation-status="item.status" />
+                                </div>
+                                <div class="mb-2 md:col-span-2 md:mb-0 md:px-4 md:py-2">
+                                    <span class="font-bold md:hidden">
+                                        {{ translate('translations.completed') }}:&nbsp;
+                                    </span>
+                                    <TranslationCompletedAt
+                                        v-if="item.completedAt"
+                                        :completed-at="item.completedAt" />
+                                </div>
+                                <div
+                                    class="hidden items-center justify-between md:col-span-1 md:flex md:justify-end md:py-2">
+                                    <div class="flex items-center gap-1">
+                                        <!-- Run Test Button -->
+                                        <button
+                                            v-if="
+                                                item.subtitleToTranslate ||
+                                                (item.mediaId && item.mediaType)
+                                            "
+                                            class="border-accent hover:bg-accent cursor-pointer rounded border p-1 transition-colors"
+                                            :title="translate('translations.runTest')"
+                                            @click.stop="runTestForItem(item)">
+                                            <TestIcon class="h-4 w-4" />
+                                        </button>
+                                        <!-- View Logs Button (failed translations only) -->
+                                        <button
+                                            v-if="item.status === TRANSLATION_STATUS.FAILED"
+                                            class="border-accent hover:bg-accent cursor-pointer rounded border px-2 py-1 text-xs transition-colors"
+                                            :title="translate('translations.viewLogs')"
+                                            @click.stop="openLogs(item)">
+                                            {{ translate('translations.logs') }}
+                                        </button>
+                                        <TranslationAction
+                                            :status="item.status"
+                                            :on-action="(action) => handleAction(item, action)" />
+                                    </div>
+                                </div>
+                                <div
+                                    v-if="isSelectMode"
+                                    class="col-span-1 flex items-center justify-end py-2 md:justify-center md:px-4">
+                                    <CheckboxComponent
+                                        :model-value="
+                                            translationRequestStore.selectedRequests.some(
+                                                (request) => request.id === item.id
+                                            )
+                                        "
+                                        @change="translationRequestStore.toggleSelect(item)" />
+                                </div>
+                            </div>
                         </template>
                         <div v-else class="text-secondary-content py-4 text-center text-sm">
                             {{ translate('translations.noQueuedTranslations') }}
@@ -358,8 +375,9 @@
             <!-- Logs Modal -->
             <div
                 v-if="logsModalOpen"
-                class="bg-black/60 fixed inset-0 z-40 flex items-center justify-center">
-                <div class="bg-tertiary max-h-[80vh] w-full max-w-3xl overflow-hidden rounded-lg shadow-lg">
+                class="fixed inset-0 z-40 flex items-center justify-center bg-black/60">
+                <div
+                    class="bg-tertiary max-h-[80vh] w-full max-w-3xl overflow-hidden rounded-lg shadow-lg">
                     <div class="border-accent flex items-center justify-between border-b px-4 py-2">
                         <div>
                             <h2 class="text-lg font-semibold">
@@ -376,7 +394,9 @@
                         </button>
                     </div>
                     <div class="bg-secondary h-[60vh] overflow-y-auto p-3 font-mono text-xs">
-                        <div v-if="logsLoading" class="flex h-full items-center justify-center text-gray-400">
+                        <div
+                            v-if="logsLoading"
+                            class="flex h-full items-center justify-center text-gray-400">
                             {{ translate('translations.waitingForLogs') }}
                         </div>
                         <div v-else-if="logsError" class="text-error">
@@ -395,13 +415,15 @@
                                 <span class="mr-2 text-gray-400">
                                     {{ new Date(log.createdAt).toLocaleTimeString() }}
                                 </span>
-                                <span class="mr-2 font-semibold" :class="getLogLevelClass(log.level)">
+                                <span
+                                    class="mr-2 font-semibold"
+                                    :class="getLogLevelClass(log.level)">
                                     [{{ log.level }}]
                                 </span>
                                 <span>{{ log.message }}</span>
                                 <div
                                     v-if="log.details"
-                                    class="ml-4 whitespace-pre-wrap text-[0.7rem] text-gray-500">
+                                    class="ml-4 text-[0.7rem] whitespace-pre-wrap text-gray-500">
                                     {{ log.details }}
                                 </div>
                             </div>
@@ -454,12 +476,12 @@ const logsModalOpen = ref(false)
 const logsLoading = ref(false)
 const logsError = ref<string | null>(null)
 const activeLogRequest = ref<ITranslationRequest | null>(null)
-	const requestLogs = ref<ITranslationRequestLog[]>([])
-	const retryingFailed = ref(false)
-	const reenqueuingQueued = ref(false)
-	const cancellingQueued = ref(false)
-	
-	const activeTab = ref<'list' | 'test'>('list')
+const requestLogs = ref<ITranslationRequestLog[]>([])
+const retryingFailed = ref(false)
+const reenqueuingQueued = ref(false)
+const cancellingQueued = ref(false)
+
+const activeTab = ref<'list' | 'test'>('list')
 
 const translationRequests: ComputedRef<IPagedResult<ITranslationRequest>> = computed(
     () => translationRequestStore.getTranslationRequests
@@ -580,8 +602,8 @@ function runTestForItem(item: ITranslationRequest) {
 
     activeTab.value = 'test'
     testStore.startTest(
-        subtitlePath, 
-        item.sourceLanguage, 
+        subtitlePath,
+        item.sourceLanguage,
         item.targetLanguage,
         item.mediaId,
         item.mediaType

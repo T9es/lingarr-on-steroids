@@ -3,22 +3,22 @@
         <LoaderCircleIcon class="h-5 w-5 animate-spin" />
     </div>
     <div v-else-if="cancelable">
-        <button 
-            :disabled="loading" 
+        <button
+            :disabled="loading"
             class="md:px-4"
             @click="executeAction(TRANSLATION_ACTIONS.CANCEL)">
             <TimesIcon class="h-5 w-5 cursor-pointer" />
         </button>
     </div>
     <div v-else-if="removable" class="md:space-x-2">
-        <button 
-            :disabled="loading" 
+        <button
+            :disabled="loading"
             class="cursor-pointer"
             @click="executeAction(TRANSLATION_ACTIONS.RETRY)">
-                <RetryIcon class="h-5 w-5" />
-                </button>
-        <button 
-            :disabled="loading" 
+            <RetryIcon class="h-5 w-5" />
+        </button>
+        <button
+            :disabled="loading"
             class="cursor-pointer"
             @click="executeAction(TRANSLATION_ACTIONS.REMOVE)">
             <TrashIcon class="h-5 w-5" />
@@ -41,9 +41,10 @@ const props = defineProps<{
 
 const loading = ref(false)
 
-const cancelable = computed(() => 
-    props.status === TRANSLATION_STATUS.INPROGRESS || 
-    props.status === TRANSLATION_STATUS.PENDING
+const cancelable = computed(
+    () =>
+        props.status === TRANSLATION_STATUS.INPROGRESS ||
+        props.status === TRANSLATION_STATUS.PENDING
 )
 
 const removable = computed(() => {

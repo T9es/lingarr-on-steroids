@@ -24,37 +24,64 @@
                     :label="translate('settings.integrations.radarrApiKey')"
                     :error-message="translate('settings.integrations.radarrApiKeyError')"
                     @update:validation="(val) => (isValid.radarrApiKey = val)" />
-                
+
                 <!-- Connection Status -->
                 <div class="flex items-center gap-3 pt-2">
                     <button
                         type="button"
-                        class="px-3 py-1.5 text-sm rounded-md bg-primary-600 hover:bg-primary-700 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        :disabled="radarrStatus.testing || !isValid.radarrUrl || !isValid.radarrApiKey"
+                        class="bg-primary-600 hover:bg-primary-700 rounded-md px-3 py-1.5 text-sm text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                        :disabled="
+                            radarrStatus.testing || !isValid.radarrUrl || !isValid.radarrApiKey
+                        "
                         @click="testRadarrConnection">
                         <span v-if="radarrStatus.testing" class="flex items-center gap-2">
-                            <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            <svg
+                                class="h-4 w-4 animate-spin"
+                                xmlns="http://www.w3.org/2000/svg"
+                                fill="none"
+                                viewBox="0 0 24 24">
+                                <circle
+                                    class="opacity-25"
+                                    cx="12"
+                                    cy="12"
+                                    r="10"
+                                    stroke="currentColor"
+                                    stroke-width="4"></circle>
+                                <path
+                                    class="opacity-75"
+                                    fill="currentColor"
+                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                             </svg>
                             {{ translate('settings.integrations.testing') }}
                         </span>
                         <span v-else>{{ translate('settings.integrations.testConnection') }}</span>
                     </button>
-                    
+
                     <div v-if="radarrStatus.tested" class="flex items-center gap-2 text-sm">
-                        <span v-if="radarrStatus.connected" class="flex items-center gap-1 text-green-500">
-                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                        <span
+                            v-if="radarrStatus.connected"
+                            class="flex items-center gap-1 text-green-500">
+                            <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                                <path
+                                    fill-rule="evenodd"
+                                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                                    clip-rule="evenodd" />
                             </svg>
                             {{ translate('settings.integrations.connectionSuccess') }}
-                            <span v-if="radarrStatus.version" class="text-gray-500">({{ translate('settings.integrations.version') }}: {{ radarrStatus.version }})</span>
+                            <span v-if="radarrStatus.version" class="text-gray-500">
+                                ({{ translate('settings.integrations.version') }}:
+                                {{ radarrStatus.version }})
+                            </span>
                         </span>
                         <span v-else class="flex items-center gap-1 text-red-500">
-                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                            <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                                <path
+                                    fill-rule="evenodd"
+                                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                                    clip-rule="evenodd" />
                             </svg>
-                            {{ translate('settings.integrations.connectionFailed') }}: {{ radarrStatus.message }}
+                            {{ translate('settings.integrations.connectionFailed') }}:
+                            {{ radarrStatus.message }}
                         </span>
                     </div>
                 </div>
@@ -87,37 +114,64 @@
                     :label="translate('settings.integrations.sonarrApiKey')"
                     :error-message="translate('settings.integrations.sonarrApiKeyError')"
                     @update:validation="(val) => (isValid.sonarrApiKey = val)" />
-                
+
                 <!-- Connection Status -->
                 <div class="flex items-center gap-3 pt-2">
                     <button
                         type="button"
-                        class="px-3 py-1.5 text-sm rounded-md bg-primary-600 hover:bg-primary-700 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        :disabled="sonarrStatus.testing || !isValid.sonarrUrl || !isValid.sonarrApiKey"
+                        class="bg-primary-600 hover:bg-primary-700 rounded-md px-3 py-1.5 text-sm text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                        :disabled="
+                            sonarrStatus.testing || !isValid.sonarrUrl || !isValid.sonarrApiKey
+                        "
                         @click="testSonarrConnection">
                         <span v-if="sonarrStatus.testing" class="flex items-center gap-2">
-                            <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            <svg
+                                class="h-4 w-4 animate-spin"
+                                xmlns="http://www.w3.org/2000/svg"
+                                fill="none"
+                                viewBox="0 0 24 24">
+                                <circle
+                                    class="opacity-25"
+                                    cx="12"
+                                    cy="12"
+                                    r="10"
+                                    stroke="currentColor"
+                                    stroke-width="4"></circle>
+                                <path
+                                    class="opacity-75"
+                                    fill="currentColor"
+                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                             </svg>
                             {{ translate('settings.integrations.testing') }}
                         </span>
                         <span v-else>{{ translate('settings.integrations.testConnection') }}</span>
                     </button>
-                    
+
                     <div v-if="sonarrStatus.tested" class="flex items-center gap-2 text-sm">
-                        <span v-if="sonarrStatus.connected" class="flex items-center gap-1 text-green-500">
-                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                        <span
+                            v-if="sonarrStatus.connected"
+                            class="flex items-center gap-1 text-green-500">
+                            <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                                <path
+                                    fill-rule="evenodd"
+                                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                                    clip-rule="evenodd" />
                             </svg>
                             {{ translate('settings.integrations.connectionSuccess') }}
-                            <span v-if="sonarrStatus.version" class="text-gray-500">({{ translate('settings.integrations.version') }}: {{ sonarrStatus.version }})</span>
+                            <span v-if="sonarrStatus.version" class="text-gray-500">
+                                ({{ translate('settings.integrations.version') }}:
+                                {{ sonarrStatus.version }})
+                            </span>
                         </span>
                         <span v-else class="flex items-center gap-1 text-red-500">
-                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                            <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                                <path
+                                    fill-rule="evenodd"
+                                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                                    clip-rule="evenodd" />
                             </svg>
-                            {{ translate('settings.integrations.connectionFailed') }}: {{ sonarrStatus.message }}
+                            {{ translate('settings.integrations.connectionFailed') }}:
+                            {{ sonarrStatus.message }}
                         </span>
                     </div>
                 </div>

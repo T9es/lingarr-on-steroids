@@ -86,13 +86,15 @@
                     </span>
                 </ToggleButton>
 
-                <div v-if="stripAssDrawingCommands == 'true'" class="flex flex-col space-x-2 ml-4">
+                <div v-if="stripAssDrawingCommands == 'true'" class="ml-4 flex flex-col space-x-2">
                     <span class="font-semibold">
                         {{ translate('settings.subtitle.cleanSourceAssDrawings') }}
                     </span>
                     {{ translate('settings.subtitle.cleanSourceAssDrawingsDescription') }}
                 </div>
-                <ToggleButton v-if="stripAssDrawingCommands == 'true'" v-model="cleanSourceAssDrawings">
+                <ToggleButton
+                    v-if="stripAssDrawingCommands == 'true'"
+                    v-model="cleanSourceAssDrawings">
                     <span class="text-primary-content text-sm font-medium">
                         {{
                             cleanSourceAssDrawings == 'true'
@@ -118,7 +120,7 @@
                     </span>
                 </ToggleButton>
 
-            <div class="flex flex-col space-y-4">
+                <div class="flex flex-col space-y-4">
                     <div class="flex flex-col space-x-2">
                         <span class="font-semibold">
                             {{ translate('settings.subtitle.useSubtitleTagging') }}
@@ -141,7 +143,6 @@
                         :label="translate('settings.subtitle.subtitleTag')"
                         @update:validation="(val) => (isValid.subtitleTag = val)" />
                 </div>
-                
             </div>
         </template>
     </CardComponent>
@@ -220,7 +221,8 @@ const subtitleTag = computed({
 })
 
 const stripAssDrawingCommands = computed({
-    get: (): string => settingsStore.getSetting(SETTINGS.STRIP_ASS_DRAWING_COMMANDS) as string ?? 'true',
+    get: (): string =>
+        (settingsStore.getSetting(SETTINGS.STRIP_ASS_DRAWING_COMMANDS) as string) ?? 'true',
     set: (newValue: string): void => {
         settingsStore.updateSetting(SETTINGS.STRIP_ASS_DRAWING_COMMANDS, newValue, true)
         // If disabling, also disable the dependent setting
@@ -232,7 +234,8 @@ const stripAssDrawingCommands = computed({
 })
 
 const cleanSourceAssDrawings = computed({
-    get: (): string => settingsStore.getSetting(SETTINGS.CLEAN_SOURCE_ASS_DRAWINGS) as string ?? 'false',
+    get: (): string =>
+        (settingsStore.getSetting(SETTINGS.CLEAN_SOURCE_ASS_DRAWINGS) as string) ?? 'false',
     set: (newValue: string): void => {
         settingsStore.updateSetting(SETTINGS.CLEAN_SOURCE_ASS_DRAWINGS, newValue, true)
         saveNotification.value?.show()

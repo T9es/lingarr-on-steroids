@@ -3,7 +3,10 @@
         :class="badgeClasses"
         :title="tooltip"
         class="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium">
-        <component :is="iconComponent" class="h-3 w-3" :class="{ 'animate-spin': state === TRANSLATION_STATE.IN_PROGRESS }" />
+        <component
+            :is="iconComponent"
+            class="h-3 w-3"
+            :class="{ 'animate-spin': state === TRANSLATION_STATE.IN_PROGRESS }" />
         <span v-if="showLabel">{{ label }}</span>
     </span>
 </template>
@@ -21,12 +24,15 @@ import TimesCircleIcon from '@/components/icons/TimesCircleIcon.vue'
 
 const { translate } = useI18n()
 
-const props = withDefaults(defineProps<{
-    state: TranslationStateType
-    showLabel?: boolean
-}>(), {
-    showLabel: false
-})
+const props = withDefaults(
+    defineProps<{
+        state: TranslationStateType
+        showLabel?: boolean
+    }>(),
+    {
+        showLabel: false
+    }
+)
 
 const badgeClasses = computed(() => {
     switch (props.state) {

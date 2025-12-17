@@ -18,7 +18,7 @@
             <span
                 aria-hidden="true"
                 :class="[
-                    'bg-accent pointer-events-none inline-block transform ring-0 shadow-sm transition duration-200 ease-in-out',
+                    'bg-accent pointer-events-none inline-block transform shadow-sm ring-0 transition duration-200 ease-in-out',
                     size === 'small' ? 'h-[0.83rem] w-[0.83rem] rounded-sm' : 'h-5 w-5 rounded-md',
                     String(modelValue) === 'true'
                         ? size === 'small'

@@ -44,13 +44,19 @@
             <select
                 v-if="useBatchTranslation == 'true'"
                 v-model="batchRetryMode"
-                class="border-accent bg-primary text-primary-content h-12 w-full cursor-pointer rounded-md border px-4 py-2 focus:ring-2 focus:ring-accent focus:outline-none">
-                <option value="deferred">{{ translate('settings.translation.batchRetryModeDeferred') }}</option>
-                <option value="immediate">{{ translate('settings.translation.batchRetryModeImmediate') }}</option>
+                class="border-accent bg-primary text-primary-content focus:ring-accent h-12 w-full cursor-pointer rounded-md border px-4 py-2 focus:ring-2 focus:outline-none">
+                <option value="deferred">
+                    {{ translate('settings.translation.batchRetryModeDeferred') }}
+                </option>
+                <option value="immediate">
+                    {{ translate('settings.translation.batchRetryModeImmediate') }}
+                </option>
             </select>
-            
+
             <!-- Deferred Repair Settings (only when mode = deferred) -->
-            <div v-if="useBatchTranslation == 'true' && batchRetryMode == 'deferred'" class="flex flex-col space-x-2">
+            <div
+                v-if="useBatchTranslation == 'true' && batchRetryMode == 'deferred'"
+                class="flex flex-col space-x-2">
                 <span class="font-semibold">
                     {{ translate('settings.translation.repairContextRadius') }}
                 </span>
@@ -62,8 +68,10 @@
                 validation-type="number"
                 placeholder="10"
                 @update:validation="(val) => (isValid.repairContextRadius = val)" />
-            
-            <div v-if="useBatchTranslation == 'true' && batchRetryMode == 'deferred'" class="flex flex-col space-x-2">
+
+            <div
+                v-if="useBatchTranslation == 'true' && batchRetryMode == 'deferred'"
+                class="flex flex-col space-x-2">
                 <span class="font-semibold">
                     {{ translate('settings.translation.repairMaxRetries') }}
                 </span>
@@ -75,9 +83,11 @@
                 validation-type="number"
                 placeholder="1"
                 @update:validation="(val) => (isValid.repairMaxRetries = val)" />
-            
+
             <!-- Immediate Fallback Settings (only when mode = immediate) -->
-            <div v-if="useBatchTranslation == 'true' && batchRetryMode == 'immediate'" class="flex flex-col space-x-2">
+            <div
+                v-if="useBatchTranslation == 'true' && batchRetryMode == 'immediate'"
+                class="flex flex-col space-x-2">
                 <span class="font-semibold">
                     {{ translate('settings.translation.maxBatchSplitAttempts') }}
                 </span>
@@ -128,8 +138,12 @@
                     {{ translate('settings.translation.maxParallelTranslations') }}
                 </span>
                 {{ translate('settings.translation.maxParallelTranslationsDescription') }}
-                <span v-if="maxConcurrentLimit" class="text-xs text-secondary-content/60">
-                    {{ translate('settings.translation.maxParallelTranslationsLimit').format({ max: maxConcurrentLimit }) }}
+                <span v-if="maxConcurrentLimit" class="text-secondary-content/60 text-xs">
+                    {{
+                        translate('settings.translation.maxParallelTranslationsLimit').format({
+                            max: maxConcurrentLimit
+                        })
+                    }}
                 </span>
             </div>
             <InputComponent
@@ -170,7 +184,9 @@ const isValid = reactive({
 
 onMounted(async () => {
     try {
-        const response = await axios.get<{ maxConcurrentTranslations: number }>('/api/setting/system/limits')
+        const response = await axios.get<{ maxConcurrentTranslations: number }>(
+            '/api/setting/system/limits'
+        )
         maxConcurrentLimit.value = response.data.maxConcurrentTranslations
     } catch (error) {
         console.error('Failed to fetch system limits:', error)
@@ -234,7 +250,8 @@ const maxParallelTranslations = computed({
 })
 
 const maxBatchSplitAttempts = computed({
-    get: (): string => settingsStore.getSetting(SETTINGS.MAX_BATCH_SPLIT_ATTEMPTS) as string ?? '3',
+    get: (): string =>
+        (settingsStore.getSetting(SETTINGS.MAX_BATCH_SPLIT_ATTEMPTS) as string) ?? '3',
     set: (newValue: string): void => {
         settingsStore.updateSetting(
             SETTINGS.MAX_BATCH_SPLIT_ATTEMPTS,
@@ -246,7 +263,8 @@ const maxBatchSplitAttempts = computed({
 })
 
 const batchRetryMode = computed({
-    get: (): string => settingsStore.getSetting(SETTINGS.BATCH_RETRY_MODE) as string ?? 'deferred',
+    get: (): string =>
+        (settingsStore.getSetting(SETTINGS.BATCH_RETRY_MODE) as string) ?? 'deferred',
     set: (newValue: string): void => {
         settingsStore.updateSetting(SETTINGS.BATCH_RETRY_MODE, newValue, true)
         saveNotification.value?.show()
@@ -254,7 +272,7 @@ const batchRetryMode = computed({
 })
 
 const repairContextRadius = computed({
-    get: (): string => settingsStore.getSetting(SETTINGS.REPAIR_CONTEXT_RADIUS) as string ?? '10',
+    get: (): string => (settingsStore.getSetting(SETTINGS.REPAIR_CONTEXT_RADIUS) as string) ?? '10',
     set: (newValue: string): void => {
         settingsStore.updateSetting(
             SETTINGS.REPAIR_CONTEXT_RADIUS,
@@ -266,13 +284,9 @@ const repairContextRadius = computed({
 })
 
 const repairMaxRetries = computed({
-    get: (): string => settingsStore.getSetting(SETTINGS.REPAIR_MAX_RETRIES) as string ?? '1',
+    get: (): string => (settingsStore.getSetting(SETTINGS.REPAIR_MAX_RETRIES) as string) ?? '1',
     set: (newValue: string): void => {
-        settingsStore.updateSetting(
-            SETTINGS.REPAIR_MAX_RETRIES,
-            newValue,
-            isValid.repairMaxRetries
-        )
+        settingsStore.updateSetting(SETTINGS.REPAIR_MAX_RETRIES, newValue, isValid.repairMaxRetries)
         saveNotification.value?.show()
     }
 })

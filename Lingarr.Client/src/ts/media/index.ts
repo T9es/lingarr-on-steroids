@@ -144,7 +144,7 @@ export type TranslationStatus = (typeof TRANSLATION_STATUS)[keyof typeof TRANSLA
 export enum TRANSLATION_ACTIONS {
     CANCEL,
     REMOVE,
-    RETRY,
+    RETRY
 }
 
 export const TRANSLATION_STATE = {
@@ -157,4 +157,3 @@ export const TRANSLATION_STATE = {
 } as const
 
 export type TranslationStateType = (typeof TRANSLATION_STATE)[keyof typeof TRANSLATION_STATE]
-

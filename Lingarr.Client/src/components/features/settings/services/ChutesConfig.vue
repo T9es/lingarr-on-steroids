@@ -35,8 +35,6 @@
             :placeholder="translate('settings.services.selectModel')"
             :no-options="errorMessage || translate('settings.services.loadingModels')"
             @fetch-options="loadOptions" />
-
-
     </div>
 </template>
 

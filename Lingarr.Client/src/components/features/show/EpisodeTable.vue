@@ -10,7 +10,11 @@
             <div class="col-span-4 px-4 py-2 md:col-span-3">
                 {{ translate('tvShows.episodeTitle') }}
             </div>
-            <div class="col-span-1 flex items-center justify-center py-2" title="Translation Status">📊</div>
+            <div
+                class="col-span-1 flex items-center justify-center py-2"
+                title="Translation Status">
+                📊
+            </div>
             <div class="col-span-4 py-2 pr-4 md:col-span-4">
                 <span>{{ translate('tvShows.episodeSubtitles') }}</span>
             </div>
@@ -20,7 +24,7 @@
                 </span>
                 <span class="block md:hidden">⚡</span>
             </div>
-             <div class="col-span-1 py-2 text-center md:col-span-1">
+            <div class="col-span-1 py-2 text-center md:col-span-1">
                 <span class="hidden md:block">
                     {{ translate('tvShows.integrityCheck') }}
                 </span>
@@ -41,7 +45,8 @@
                 {{ episode.title }}
             </div>
             <div class="col-span-1 flex items-center justify-center py-2">
-                <TranslationStateBadge :state="episode.translationState ?? TRANSLATION_STATE.UNKNOWN" />
+                <TranslationStateBadge
+                    :state="episode.translationState ?? TRANSLATION_STATE.UNKNOWN" />
             </div>
             <div class="col-span-4 pr-4 md:col-span-4">
                 <div v-if="episode?.fileName" class="flex flex-wrap items-center gap-2 py-2">
@@ -67,15 +72,18 @@
                         :media="episode"
                         :media-type="MEDIA_TYPE.EPISODE"
                         v-slot="{ isExtracting }">
-                        <BadgeComponent
-                            :classes="getEmbeddedBadgeClasses(embeddedSub)">
+                        <BadgeComponent :classes="getEmbeddedBadgeClasses(embeddedSub)">
                             <span class="mr-1">📦</span>
                             {{ formatEmbeddedLanguage(embeddedSub) }}
-                            <span v-if="embeddedSub.title" class="text-amber-200/70 ml-1">
+                            <span v-if="embeddedSub.title" class="ml-1 text-amber-200/70">
                                 ({{ truncate(embeddedSub.title, 10) }})
                             </span>
-                            <span v-if="embeddedSub.isForced" class="ml-1 text-xs opacity-70">F</span>
-                            <span v-if="embeddedSub.isDefault" class="ml-1 text-xs opacity-70">D</span>
+                            <span v-if="embeddedSub.isForced" class="ml-1 text-xs opacity-70">
+                                F
+                            </span>
+                            <span v-if="embeddedSub.isDefault" class="ml-1 text-xs opacity-70">
+                                D
+                            </span>
                             <LoaderCircleIcon
                                 v-if="isExtracting"
                                 class="ml-1 h-3 w-3 animate-spin" />
@@ -89,7 +97,9 @@
                     :disabled="translatingEpisode[episode.id]"
                     :title="translate('tvShows.translateNow')"
                     @click="translateEpisode(episode)">
-                    <LoaderCircleIcon v-if="translatingEpisode[episode.id]" class="h-4 w-4 animate-spin" />
+                    <LoaderCircleIcon
+                        v-if="translatingEpisode[episode.id]"
+                        class="h-4 w-4 animate-spin" />
                     <LanguageIcon v-else class="h-4 w-4" />
                 </button>
             </div>
@@ -99,7 +109,9 @@
                     :disabled="integrityCheckingEpisode[episode.id]"
                     :title="translate('tvShows.integrityCheck')"
                     @click="checkIntegrityEpisode(episode)">
-                    <LoaderCircleIcon v-if="integrityCheckingEpisode[episode.id]" class="h-4 w-4 animate-spin" />
+                    <LoaderCircleIcon
+                        v-if="integrityCheckingEpisode[episode.id]"
+                        class="h-4 w-4 animate-spin" />
                     <CheckMarkCicleIcon v-else class="h-4 w-4" />
                 </button>
             </div>
@@ -134,8 +146,6 @@ const props = defineProps<{
 }>()
 const showStore = useShowStore()
 
-
-
 // Track which episodes are currently being translated
 const translatingEpisode = reactive<Record<number, boolean>>({})
 const integrityCheckingEpisode = reactive<Record<number, boolean>>({})
@@ -163,11 +173,8 @@ const translateEpisode = async (episode: IEpisode) => {
 const checkIntegrityEpisode = async (episode: IEpisode) => {
     integrityCheckingEpisode[episode.id] = true
     try {
-        const count = await services.media.integrityCheck<number>(
-            MEDIA_TYPE.EPISODE,
-            episode.id
-        )
-         if (count > 0) {
+        const count = await services.media.integrityCheck<number>(MEDIA_TYPE.EPISODE, episode.id)
+        if (count > 0) {
             console.log(`Integrity check failed. Queued ${count} repair translations.`)
         } else {
             console.log('Integrity check passed or no repairs needed.')
@@ -184,12 +191,14 @@ onMounted(async () => {
     for (const episode of props.episodes) {
         if (!episode.embeddedSubtitles || episode.embeddedSubtitles.length === 0) {
             try {
-                episode.embeddedSubtitles = await services.subtitle.getEmbeddedSubtitles<IEmbeddedSubtitle[]>(
-                    'episode',
-                    episode.id
-                )
+                episode.embeddedSubtitles = await services.subtitle.getEmbeddedSubtitles<
+                    IEmbeddedSubtitle[]
+                >('episode', episode.id)
             } catch (error) {
-                console.error(`Failed to fetch embedded subtitles for episode ${episode.id}:`, error)
+                console.error(
+                    `Failed to fetch embedded subtitles for episode ${episode.id}:`,
+                    error
+                )
             }
         }
     }
@@ -210,14 +219,14 @@ const getSubtitle = (fileName: string | null) => {
 
 const getEmbeddedSubtitles = (episode: IEpisode): IEmbeddedSubtitle[] => {
     if (!episode.embeddedSubtitles) return []
-    
+
     // Get external subtitle languages for deduplication
     const externalLanguages = new Set(
-        (getSubtitle(episode.fileName ?? null) || []).map(s => s.language?.toLowerCase())
+        (getSubtitle(episode.fileName ?? null) || []).map((s) => s.language?.toLowerCase())
     )
-    
+
     // Filter out embedded subs that have already been extracted AND have a matching external subtitle
-    return episode.embeddedSubtitles.filter(embSub => {
+    return episode.embeddedSubtitles.filter((embSub) => {
         // Always show if not extracted
         if (!embSub.isExtracted) return true
         // If extracted, hide if an external subtitle with matching language exists
@@ -249,6 +258,4 @@ const getEmbeddedBadgeClasses = (sub: IEmbeddedSubtitle): string => {
     // Text-based, not extracted - amber
     return 'cursor-pointer text-amber-300 border-amber-500 bg-amber-900/30'
 }
-
-
 </script>

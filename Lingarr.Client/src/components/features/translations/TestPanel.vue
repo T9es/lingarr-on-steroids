@@ -48,8 +48,8 @@
             class="mb-4 rounded-lg p-4"
             :class="
                 testStore.result.success
-                    ? 'bg-success/20 border border-success'
-                    : 'bg-error/20 border border-error'
+                    ? 'bg-success/20 border-success border'
+                    : 'bg-error/20 border-error border'
             ">
             <h2 class="mb-2 text-lg font-semibold">
                 {{
@@ -84,7 +84,9 @@
                 </button>
             </div>
 
-            <div ref="logContainer" class="bg-primary h-[50vh] overflow-y-auto p-2 font-mono text-xs">
+            <div
+                ref="logContainer"
+                class="bg-primary h-[50vh] overflow-y-auto p-2 font-mono text-xs">
                 <div
                     v-if="testStore.logs.length === 0"
                     class="flex h-full items-center justify-center text-gray-500">
@@ -100,7 +102,7 @@
                         [{{ log.level }}]
                     </span>
                     <span>{{ log.message }}</span>
-                    <div v-if="log.details" class="ml-4 whitespace-pre-wrap text-xs text-gray-500">
+                    <div v-if="log.details" class="ml-4 text-xs whitespace-pre-wrap text-gray-500">
                         {{ log.details }}
                     </div>
                 </div>

@@ -54,13 +54,17 @@
                             " />
                     </span>
                 </div>
-                <div class="col-span-2 flex items-center justify-center px-4 py-2 md:col-span-2" @click.stop>
+                <div
+                    class="col-span-2 flex items-center justify-center px-4 py-2 md:col-span-2"
+                    @click.stop>
                     <button
                         class="border-accent hover:bg-accent cursor-pointer rounded border p-1 transition-colors"
                         :disabled="translatingSeason[season.id]"
                         :title="translate('tvShows.translateNow')"
                         @click="translateSeason(season)">
-                        <LoaderCircleIcon v-if="translatingSeason[season.id]" class="h-4 w-4 animate-spin" />
+                        <LoaderCircleIcon
+                            v-if="translatingSeason[season.id]"
+                            class="h-4 w-4 animate-spin" />
                         <LanguageIcon v-else class="h-4 w-4" />
                     </button>
                 </div>

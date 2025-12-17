@@ -293,11 +293,12 @@ public class TranslationRequestService : ITranslationRequestService
     }
 
     /// <inheritdoc />
+    /// <inheritdoc />
     public async Task<int> RetryAllFailedRequests()
     {
+        // 1. Fetch all failed requests
         var failedRequests = await _dbContext.TranslationRequests
             .Where(tr => tr.Status == TranslationStatus.Failed)
-            .OrderByDescending(tr => tr.CompletedAt)
             .ToListAsync();
 
         if (!failedRequests.Any())
@@ -306,44 +307,87 @@ public class TranslationRequestService : ITranslationRequestService
         }
 
         var totalRetried = 0;
-        const int batchSize = 10;
+        var newRequestsToEnqueue = new List<TranslationRequest>();
 
-        // Process in batches to prevent database timeouts
-        foreach (var batch in failedRequests.Chunk(batchSize))
+        // 2. Group by unique key to prevent duplicates
+        var groups = failedRequests.GroupBy(tr => new
         {
-            var newRequests = new List<TranslationRequest>();
+            tr.MediaId,
+            tr.MediaType,
+            tr.SourceLanguage,
+            tr.TargetLanguage
+        });
 
-            foreach (var request in batch)
+        using var transaction = await _dbContext.Database.BeginTransactionAsync();
+
+        try
+        {
+            foreach (var group in groups)
             {
+                // We pick the most recent one as the "template" for the retry
+                // ensuring we have the latest subtitle path/info if it changed
+                var template = group.OrderByDescending(x => x.CreatedAt).First();
+
                 var translationRequestCopy = new TranslationRequest
                 {
-                    MediaId = request.MediaId,
-                    Title = request.Title,
-                    SourceLanguage = request.SourceLanguage,
-                    TargetLanguage = request.TargetLanguage,
-                    SubtitleToTranslate = request.SubtitleToTranslate,
-                    MediaType = request.MediaType,
+                    MediaId = template.MediaId,
+                    Title = template.Title,
+                    SourceLanguage = template.SourceLanguage,
+                    TargetLanguage = template.TargetLanguage,
+                    SubtitleToTranslate = template.SubtitleToTranslate,
+                    MediaType = template.MediaType,
                     Status = TranslationStatus.Pending,
                     IsActive = true
                 };
-                newRequests.Add(translationRequestCopy);
+
+                // Add the single new request
+                _dbContext.TranslationRequests.Add(translationRequestCopy);
+                newRequestsToEnqueue.Add(translationRequestCopy);
+
+                // Remove ALL failed requests for this group
+                _dbContext.TranslationRequests.RemoveRange(group);
+                
+                totalRetried += group.Count();
             }
 
-            // Add new requests
-            _dbContext.TranslationRequests.AddRange(newRequests);
-            
-            // Remove old failed requests
-            _dbContext.TranslationRequests.RemoveRange(batch);
-
+            // 3. Save everything in one go
             await _dbContext.SaveChangesAsync();
+            await transaction.CommitAsync();
 
-            // Enqueue jobs for new requests
-            foreach (var request in newRequests)
-            {
-                await EnqueueTranslationJobAsync(request, true);
-            }
+            _logger.LogInformation(
+                "Successfully retried {TotalRetried} failed requests, consolidated into {NewCount} new active requests", 
+                totalRetried, 
+                newRequestsToEnqueue.Count);
+        }
+        catch (DbUpdateException ex) when (IsDuplicateKeyViolation(ex))
+        {
+            // This happens if a NEW active request came in while we were processing this.
+            // In that case, we should roll back and maybe try safe individual processing, 
+            // but for now, logging and rethrowing (or returning 0) is safer than crashing 
+            // without explanation.
+            await transaction.RollbackAsync();
+            _logger.LogError(ex, "Failed to batch retry requests due to a concurrent underlying change. Aborting batch retry.");
+            
+            // Optional: We could implement a fallback here to try one-by-one, 
+            // but it's complex to mix with the group remove logic. 
+            // Let's return 500-ish behavior but logged safely? 
+            // Actually, responding with 0 and a log is better than 500.
+            return 0; 
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            _logger.LogError(ex, "Unexpected error during batch retry of failed requests");
+            throw; // Let the controller handle 500 for unexpected general errors
+        }
 
-            totalRetried += newRequests.Count;
+        // 4. Enqueue jobs (MUST be after Commit)
+        foreach (var request in newRequestsToEnqueue)
+        {
+            // We use false for forcePriority because these are "retries" but mass-retries.
+            // Using true might flood the priority lane. Let's stick to normal queue unless specific requirement.
+            // Actually, the previous implementation used 'true'. Let's stick to that to be consistent with "Retry" intent.
+            await EnqueueTranslationJobAsync(request, true);
         }
 
         var count = await GetActiveCount();

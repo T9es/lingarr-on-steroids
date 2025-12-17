@@ -52,12 +52,12 @@
             </div>
             <div class="bg-border relative mt-2 h-2 overflow-hidden rounded-full">
                 <div
-                    class="bg-primary absolute left-0 top-0 h-full transition-all"
+                    class="bg-primary absolute top-0 left-0 h-full transition-all"
                     :style="{ width: progress + '%' }"></div>
             </div>
             <div class="mt-3 grid gap-2 text-sm md:grid-cols-2">
                 <div>
-                     <InputComponent
+                    <InputComponent
                         v-model="limitOverride"
                         validation-type="number"
                         type="number"
@@ -66,11 +66,10 @@
                         @update:validation="(val) => (limitOverrideIsValid = val)"
                         class="w-full"
                         @blur="saveLimitOverride"
-                        @keydown.enter.prevent="saveLimitOverride"
-                    />
+                        @keydown.enter.prevent="saveLimitOverride" />
                 </div>
                 <div>
-                     <InputComponent
+                    <InputComponent
                         v-model="requestBuffer"
                         validation-type="number"
                         type="number"
@@ -80,8 +79,7 @@
                         @update:validation="(val) => (requestBufferIsValid = val)"
                         class="w-full"
                         @blur="saveRequestBuffer"
-                        @keydown.enter.prevent="saveRequestBuffer"
-                    />
+                        @keydown.enter.prevent="saveRequestBuffer" />
                 </div>
             </div>
             <div class="mt-2 text-sm">
@@ -118,26 +116,28 @@ const requestBuffer = ref('')
 
 onMounted(() => {
     loadUsage()
-    limitOverride.value = (settingsStore.getSetting(SETTINGS.CHUTES_USAGE_LIMIT_OVERRIDE) as string) || ''
-    requestBuffer.value = (settingsStore.getSetting(SETTINGS.CHUTES_REQUEST_BUFFER) as string) || '50'
+    limitOverride.value =
+        (settingsStore.getSetting(SETTINGS.CHUTES_USAGE_LIMIT_OVERRIDE) as string) || ''
+    requestBuffer.value =
+        (settingsStore.getSetting(SETTINGS.CHUTES_REQUEST_BUFFER) as string) || '50'
 })
 
 const saveLimitOverride = async () => {
     if (limitOverrideIsValid.value) {
         await settingsStore.updateSetting(
-            SETTINGS.CHUTES_USAGE_LIMIT_OVERRIDE, 
-            limitOverride.value, 
+            SETTINGS.CHUTES_USAGE_LIMIT_OVERRIDE,
+            limitOverride.value,
             limitOverrideIsValid.value
         )
-        loadUsage() 
+        loadUsage()
     }
 }
 
 const saveRequestBuffer = async () => {
     if (requestBufferIsValid.value) {
         await settingsStore.updateSetting(
-            SETTINGS.CHUTES_REQUEST_BUFFER, 
-            requestBuffer.value, 
+            SETTINGS.CHUTES_REQUEST_BUFFER,
+            requestBuffer.value,
             requestBufferIsValid.value
         )
     }
@@ -174,6 +174,4 @@ const loadUsage = async (forceRefresh = false) => {
         loading.value = false
     }
 }
-
-
 </script>

@@ -13,22 +13,21 @@
             class="border-accent bg-primary absolute top-8 right-0 z-10 w-56 rounded-md border bg-clip-border shadow-lg">
             <div class="px-3 py-1" role="menu" aria-orientation="vertical">
                 <!-- Embedded Options -->
-                <div v-if="embeddedSubtitle" class="border-accent border-b pb-1 mb-1">
+                <div v-if="embeddedSubtitle" class="border-accent mb-1 border-b pb-1">
                     <span class="text-xs" role="menuitem">{{ translate('embedded.title') }}</span>
-                     <div
+                    <div
                         v-if="!embeddedSubtitle.isExtracted"
                         class="flex text-sm"
                         role="menuitem"
                         @click="handleJustExtract">
                         <span class="h-full w-full cursor-pointer py-2 hover:brightness-150">
                             {{ translate('embedded.justExtract') || 'Just Extract' }}
-                            <LoaderCircleIcon v-if="isExtracting" class="inline ml-2 h-3 w-3 animate-spin"/>
+                            <LoaderCircleIcon
+                                v-if="isExtracting"
+                                class="ml-2 inline h-3 w-3 animate-spin" />
                         </span>
                     </div>
-                     <div
-                        v-else
-                        class="flex text-sm text-green-400"
-                        role="menuitem">
+                    <div v-else class="flex text-sm text-green-400" role="menuitem">
                         <span class="h-full w-full py-2">
                             {{ translate('embedded.extracted') }} ✓
                         </span>
@@ -91,7 +90,7 @@ function toggle() {
 async function extractSubtitle(): Promise<boolean> {
     const sub = props.embeddedSubtitle
     if (!sub || sub.isExtracted) return true
-    
+
     // Don't allow extraction of image-based subtitles
     if (!sub.isTextBased) {
         alert(translate('embedded.imageBased'))
@@ -103,9 +102,15 @@ async function extractSubtitle(): Promise<boolean> {
 
     try {
         isExtracting.value = true
-        const typeStr = (props.mediaType.toLowerCase() === 'movie' ? 'movie' : 'episode') as 'movie' | 'episode'
-        const result = await services.subtitle.extractSubtitle(typeStr, props.media.id, sub.streamIndex)
-        
+        const typeStr = (props.mediaType.toLowerCase() === 'movie' ? 'movie' : 'episode') as
+            | 'movie'
+            | 'episode'
+        const result = await services.subtitle.extractSubtitle(
+            typeStr,
+            props.media.id,
+            sub.streamIndex
+        )
+
         if (result.success) {
             sub.isExtracted = true
             sub.extractedPath = result.extractedPath
@@ -143,13 +148,14 @@ async function selectOption(target: ILanguage) {
                 return // Extraction failed, abort translation
             }
         }
-        
+
         // Create a temporary ISubtitle for the store
         if (props.embeddedSubtitle.extractedPath) {
-             subToTranslate = {
+            subToTranslate = {
                 path: props.embeddedSubtitle.extractedPath,
                 language: props.embeddedSubtitle.language || 'unknown',
-                fileName: props.embeddedSubtitle.title || `Stream ${props.embeddedSubtitle.streamIndex}`,
+                fileName:
+                    props.embeddedSubtitle.title || `Stream ${props.embeddedSubtitle.streamIndex}`,
                 format: props.embeddedSubtitle.codecName,
                 caption: props.embeddedSubtitle.title || ''
             }
@@ -157,7 +163,13 @@ async function selectOption(target: ILanguage) {
     }
 
     if (subToTranslate) {
-        translateStore.translateSubtitle(props.media.id, subToTranslate, subToTranslate.language, target, props.mediaType)
+        translateStore.translateSubtitle(
+            props.media.id,
+            subToTranslate,
+            subToTranslate.language,
+            target,
+            props.mediaType
+        )
         toggle()
         tooltip.value?.showTooltip()
     }

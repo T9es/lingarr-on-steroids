@@ -112,7 +112,7 @@
                 </InputComponent>
 
                 <!-- Integrity Validation Section -->
-                <div class="mt-6 border-t border-base-300 pt-4">
+                <div class="border-base-300 mt-6 border-t pt-4">
                     <div class="flex flex-col space-y-4">
                         <div class="flex flex-col space-y-2">
                             <span class="font-semibold">
@@ -239,7 +239,8 @@ const maxFileSizeBytes = computed({
 
 const integrityValidationEnabled = computed({
     get: (): string =>
-        (settingsStore.getSetting(SETTINGS.SUBTITLE_INTEGRITY_VALIDATION_ENABLED) as string) ?? 'false',
+        (settingsStore.getSetting(SETTINGS.SUBTITLE_INTEGRITY_VALIDATION_ENABLED) as string) ??
+        'false',
     set: (newValue: string): void => {
         settingsStore.updateSetting(SETTINGS.SUBTITLE_INTEGRITY_VALIDATION_ENABLED, newValue, true)
         saveNotification.value?.show()
