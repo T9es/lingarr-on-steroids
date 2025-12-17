@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -93,7 +93,7 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
             var requestTimeout = int.TryParse(settings[SettingKeys.Translation.RequestTimeout],
                 out var timeOut)
                 ? timeOut
-                : 5;
+                : 15;
             _httpClient.Timeout = TimeSpan.FromMinutes(requestTimeout);
             _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
             _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
@@ -276,6 +276,21 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
                 delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
             }
+            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable)
+            {
+                if (attempt == _maxRetries)
+                {
+                    _logger.LogError(ex, "Service unavailable. Max retries exhausted for batch translation");
+                    throw new TranslationException("OpenAI is temporarily unavailable. Retry limit reached.", ex);
+                }
+
+                _logger.LogWarning(
+                    "503 Service Unavailable. Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})",
+                    delay, attempt, _maxRetries);
+
+                await Task.Delay(delay, linked.Token).ConfigureAwait(false);
+                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Unexpected error during batch translation attempt {Attempt}", attempt);
@@ -370,10 +385,27 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
 
         if (!response.IsSuccessStatusCode)
         {
-            _logger.LogError("Response Status Code: {StatusCode}", response.StatusCode);
-            _logger.LogError("Response Content: {ResponseContent}",
-                await response.Content.ReadAsStringAsync(cancellationToken));
-            throw new TranslationException("Batch translation using OpenAI API failed.");
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                throw new HttpRequestException("Rate limit exceeded", null, HttpStatusCode.TooManyRequests);
+            }
+
+            if (response.StatusCode == HttpStatusCode.ServiceUnavailable)
+            {
+                throw new HttpRequestException("OpenAI temporary unavailable", null, HttpStatusCode.ServiceUnavailable);
+            }
+
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogError(
+                "Batch translation API failed. Status: {StatusCode}, BatchSize: {BatchSize}, Endpoint: {Endpoint}",
+                response.StatusCode, subtitleBatch.Count, requestUrl);
+            _logger.LogError("API Response Body: {ResponseContent}", responseBody);
+            
+            // Log a sample of the request for debugging (first 3 items)
+            var sampleItems = subtitleBatch.Take(3).Select(i => $"[{i.Position}] {i.Line.Substring(0, Math.Min(50, i.Line.Length))}...");
+            _logger.LogDebug("Request sample (first 3 items): {Sample}", string.Join("; ", sampleItems));
+            
+            throw new TranslationException($"Batch translation using OpenAI API failed. Status: {response.StatusCode}");
         }
 
         var completionResponse = await response.Content.ReadFromJsonAsync<ChatCompletionResponse>(cancellationToken);
@@ -398,13 +430,31 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
                 throw new TranslationException("Failed to deserialize translated subtitles");
             }
 
+            // Log success with counts for diagnostics
+            _logger.LogDebug(
+                "Batch translation successful. Requested: {RequestedCount}, Received: {ReceivedCount}",
+                subtitleBatch.Count, translatedItems.Count);
+
+            // Warn if we received fewer translations than requested
+            if (translatedItems.Count < subtitleBatch.Count)
+            {
+                var requestedPositions = subtitleBatch.Select(i => i.Position).ToHashSet();
+                var receivedPositions = translatedItems.Select(i => i.Position).ToHashSet();
+                var missingPositions = requestedPositions.Except(receivedPositions).ToList();
+                
+                _logger.LogWarning(
+                    "Partial translation received. Missing {MissingCount} items at positions: {Positions}",
+                    missingPositions.Count, string.Join(", ", missingPositions.Take(10)));
+            }
+
             return translatedItems
                 .GroupBy(item => item.Position)
                 .ToDictionary(group => group.Key, group => group.First().Line);
         }
         catch (JsonException ex)
         {
-            _logger.LogError(ex, "Failed to parse translated JSON: {Json}", translatedJson);
+            _logger.LogError(ex, "Failed to parse translated JSON. BatchSize: {BatchSize}, Response: {Json}", 
+                subtitleBatch.Count, translatedJson?.Substring(0, Math.Min(500, translatedJson?.Length ?? 0)));
             throw new TranslationException("Failed to parse translated subtitles", ex);
         }
     }

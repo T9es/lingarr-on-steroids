@@ -154,6 +154,9 @@ public static class ServiceCollectionExtensions
         
         // Batch fallback service for graduated retry with chunk splitting
         builder.Services.AddScoped<IBatchFallbackService, BatchFallbackService>();
+        
+        // Deferred repair service for collecting failed items and retrying with context at the end
+        builder.Services.AddScoped<IDeferredRepairService, DeferredRepairService>();
 
         // Add Sync services
         builder.Services.AddScoped<IShowSyncService, ShowSyncService>();
@@ -167,6 +170,9 @@ public static class ServiceCollectionExtensions
         
         // Test translation service (scoped to match ISettingService lifetime)
         builder.Services.AddScoped<ITestTranslationService, TestTranslationService>();
+        
+        // Media state service for intelligent translation automation
+        builder.Services.AddScoped<IMediaStateService, MediaStateService>();
         
     }
 
@@ -191,7 +197,10 @@ public static class ServiceCollectionExtensions
         
         builder.Services.AddHangfireServer(options =>
         {
-            options.ServerName = "translation-server";
+            // Use a unique name for this server instance to prevent collision with the sync server
+            // keeping the same hostname:pid prefix so it identifies as the same machine.
+            options.ServerName = $"{Environment.MachineName}:{Environment.ProcessId}:translation";
+            
             // Single queue for all translations - priority ordering handled by ParallelTranslationLimiter at runtime
             options.Queues = ["translation"];
             options.WorkerCount = translationWorkers;
@@ -206,7 +215,9 @@ public static class ServiceCollectionExtensions
         
         builder.Services.AddHangfireServer(options =>
         {
-            options.ServerName = "sync-server";
+            // Use a unique name for this server instance
+            options.ServerName = $"{Environment.MachineName}:{Environment.ProcessId}:sync";
+            
             options.Queues = ["movies", "shows", "system", "default"];
             options.WorkerCount = syncWorkers;
         });

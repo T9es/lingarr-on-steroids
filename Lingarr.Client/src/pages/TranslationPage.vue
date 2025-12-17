@@ -528,11 +528,7 @@ const retryAllFailed = async () => {
 
     retryingFailed.value = true
     try {
-        const snapshot = [...failedRequests.value]
-        for (const request of snapshot) {
-            await translationRequestStore.retry(request)
-            await translationRequestStore.remove(request)
-        }
+        await translationRequestStore.retryAllFailed()
         await translationRequestStore.fetch()
     } finally {
         retryingFailed.value = false
@@ -601,10 +597,12 @@ onMounted(async () => {
 
     await hubConnection.value.joinGroup({ group: 'TranslationRequests' })
     hubConnection.value.on('RequestProgress', translationRequestStore.updateProgress)
+    hubConnection.value.on('RequestActive', translationRequestStore.handleRequestActive)
 })
 
 onUnmounted(async () => {
     hubConnection.value?.off('RequestProgress', translationRequestStore.updateProgress)
+    hubConnection.value?.off('RequestActive', translationRequestStore.handleRequestActive)
 })
 
 const isSelectMode = ref(false)

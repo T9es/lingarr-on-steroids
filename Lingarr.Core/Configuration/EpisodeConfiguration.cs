@@ -15,5 +15,8 @@ public class EpisodeConfiguration : IEntityTypeConfiguration<Episode>
             .OnDelete(DeleteBehavior.Cascade);
 
         builder.Navigation(e => e.Season).AutoInclude();
+
+        builder.HasIndex(e => e.TranslationState)
+            .HasDatabaseName("IX_Episodes_TranslationState");
     }
 }

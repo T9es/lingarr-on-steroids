@@ -94,6 +94,7 @@
     "hours": "hours",
     "priority": "Prioritize",
     "translateNow": "Translate",
+    "integrityCheck": "Integrity Check",
     "translationQueued": "{count} translation(s) queued",
     "noTranslationsNeeded": "No translations needed"
   },
@@ -266,7 +267,15 @@
       "enableBatchFallback": "Retry failed batches:",
       "enableBatchFallbackDescription": "When a batch translation fails, automatically retry with smaller chunks before failing the entire file.",
       "maxBatchSplitAttempts": "Batch split levels:",
-      "maxBatchSplitAttemptsDescription": "If a batch is too large, split it into smaller chunks. Level 1 = full batch, 2 = halves, 3 = thirds."
+      "maxBatchSplitAttemptsDescription": "If a batch is too large, split it into smaller chunks. Level 1 = full batch, 2 = halves, 3 = thirds.",
+      "batchRetryMode": "Batch retry mode:",
+      "batchRetryModeDescription": "Choose how to handle failed translations within a batch.",
+      "batchRetryModeDeferred": "Deferred Repair (recommended)",
+      "batchRetryModeImmediate": "Immediate Split (legacy)",
+      "repairContextRadius": "Context radius:",
+      "repairContextRadiusDescription": "Number of surrounding lines to include with each failed line for better translation quality (deferred mode only).",
+      "repairMaxRetries": "Repair retries:",
+      "repairMaxRetriesDescription": "How many times to retry the repair batch if it fails (deferred mode only)."
     },
     "subtitle": {
       "title": "Subtitle",
@@ -403,5 +412,19 @@
       "enabled": "Enabled",
       "disabled": "Disabled"
     }
+  },
+  "translationState": {
+    "complete": "Complete",
+    "inProgress": "Translating",
+    "pending": "Pending",
+    "stale": "Stale",
+    "unknown": "Unknown",
+    "notApplicable": "N/A",
+    "tooltipComplete": "All translations complete",
+    "tooltipInProgress": "Translation in progress",
+    "tooltipPending": "Awaiting translation",
+    "tooltipStale": "Needs re-analysis",
+    "tooltipUnknown": "Not yet analyzed",
+    "tooltipNotApplicable": "Not applicable / No source"
   }
 }

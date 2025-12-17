@@ -145,6 +145,10 @@ namespace Lingarr.Migrations.SQLite.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("file_name");
 
+                    b.Property<DateTime?>("IndexedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("indexed_at");
+
                     b.Property<string>("MediaHash")
                         .HasColumnType("TEXT")
                         .HasColumnName("media_hash");
@@ -161,10 +165,18 @@ namespace Lingarr.Migrations.SQLite.Migrations
                         .HasColumnType("INTEGER")
                         .HasColumnName("sonarr_id");
 
+                    b.Property<int>("StateSettingsVersion")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("state_settings_version");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasColumnType("TEXT")
                         .HasColumnName("title");
+
+                    b.Property<int>("TranslationState")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("translation_state");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("TEXT")
@@ -175,6 +187,9 @@ namespace Lingarr.Migrations.SQLite.Migrations
 
                     b.HasIndex("SeasonId")
                         .HasDatabaseName("ix_episodes_season_id");
+
+                    b.HasIndex("TranslationState")
+                        .HasDatabaseName("IX_Episodes_TranslationState");
 
                     b.ToTable("episodes", (string)null);
                 });
@@ -239,6 +254,10 @@ namespace Lingarr.Migrations.SQLite.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("file_name");
 
+                    b.Property<DateTime?>("IndexedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("indexed_at");
+
                     b.Property<bool>("IsPriority")
                         .HasColumnType("INTEGER")
                         .HasColumnName("is_priority");
@@ -259,6 +278,10 @@ namespace Lingarr.Migrations.SQLite.Migrations
                         .HasColumnType("INTEGER")
                         .HasColumnName("radarr_id");
 
+                    b.Property<int>("StateSettingsVersion")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("state_settings_version");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasColumnType("TEXT")
@@ -268,12 +291,19 @@ namespace Lingarr.Migrations.SQLite.Migrations
                         .HasColumnType("INTEGER")
                         .HasColumnName("translation_age_threshold");
 
+                    b.Property<int>("TranslationState")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("translation_state");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("TEXT")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
                         .HasName("pk_movies");
+
+                    b.HasIndex("TranslationState")
+                        .HasDatabaseName("IX_Movies_TranslationState");
 
                     b.ToTable("movies", (string)null);
                 });
@@ -501,7 +531,7 @@ namespace Lingarr.Migrations.SQLite.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("created_at");
 
-                    b.Property<bool>("IsActive")
+                    b.Property<bool?>("IsActive")
                         .HasColumnType("INTEGER")
                         .HasColumnName("is_active");
 

@@ -34,30 +34,57 @@
                 placeholder="50"
                 @update:validation="(val) => (isValid.maxBatchSize = val)" />
 
-            <!-- Batch Fallback Settings -->
+            <!-- Batch Retry Mode Selector -->
             <div v-if="useBatchTranslation == 'true'" class="flex flex-col space-x-2">
                 <span class="font-semibold">
-                    {{ translate('settings.translation.enableBatchFallback') }}
+                    {{ translate('settings.translation.batchRetryMode') }}
                 </span>
-                {{ translate('settings.translation.enableBatchFallbackDescription') }}
+                {{ translate('settings.translation.batchRetryModeDescription') }}
             </div>
-            <ToggleButton v-if="useBatchTranslation == 'true'" v-model="enableBatchFallback">
-                <span class="text-primary-content text-sm font-medium">
-                    {{
-                        enableBatchFallback == 'true'
-                            ? translate('common.enabled')
-                            : translate('common.disabled')
-                    }}
+            <select
+                v-if="useBatchTranslation == 'true'"
+                v-model="batchRetryMode"
+                class="border-accent bg-primary text-primary-content h-12 w-full cursor-pointer rounded-md border px-4 py-2 focus:ring-2 focus:ring-accent focus:outline-none">
+                <option value="deferred">{{ translate('settings.translation.batchRetryModeDeferred') }}</option>
+                <option value="immediate">{{ translate('settings.translation.batchRetryModeImmediate') }}</option>
+            </select>
+            
+            <!-- Deferred Repair Settings (only when mode = deferred) -->
+            <div v-if="useBatchTranslation == 'true' && batchRetryMode == 'deferred'" class="flex flex-col space-x-2">
+                <span class="font-semibold">
+                    {{ translate('settings.translation.repairContextRadius') }}
                 </span>
-            </ToggleButton>
-            <div v-if="useBatchTranslation == 'true' && enableBatchFallback == 'true'" class="flex flex-col space-x-2">
+                {{ translate('settings.translation.repairContextRadiusDescription') }}
+            </div>
+            <InputComponent
+                v-if="useBatchTranslation == 'true' && batchRetryMode == 'deferred'"
+                v-model="repairContextRadius"
+                validation-type="number"
+                placeholder="10"
+                @update:validation="(val) => (isValid.repairContextRadius = val)" />
+            
+            <div v-if="useBatchTranslation == 'true' && batchRetryMode == 'deferred'" class="flex flex-col space-x-2">
+                <span class="font-semibold">
+                    {{ translate('settings.translation.repairMaxRetries') }}
+                </span>
+                {{ translate('settings.translation.repairMaxRetriesDescription') }}
+            </div>
+            <InputComponent
+                v-if="useBatchTranslation == 'true' && batchRetryMode == 'deferred'"
+                v-model="repairMaxRetries"
+                validation-type="number"
+                placeholder="1"
+                @update:validation="(val) => (isValid.repairMaxRetries = val)" />
+            
+            <!-- Immediate Fallback Settings (only when mode = immediate) -->
+            <div v-if="useBatchTranslation == 'true' && batchRetryMode == 'immediate'" class="flex flex-col space-x-2">
                 <span class="font-semibold">
                     {{ translate('settings.translation.maxBatchSplitAttempts') }}
                 </span>
                 {{ translate('settings.translation.maxBatchSplitAttemptsDescription') }}
             </div>
             <InputComponent
-                v-if="useBatchTranslation == 'true' && enableBatchFallback == 'true'"
+                v-if="useBatchTranslation == 'true' && batchRetryMode == 'immediate'"
                 v-model="maxBatchSplitAttempts"
                 validation-type="number"
                 placeholder="3"
@@ -136,7 +163,9 @@ const isValid = reactive({
     retryDelay: true,
     retryDelayMultiplier: true,
     maxParallelTranslations: true,
-    maxBatchSplitAttempts: true
+    maxBatchSplitAttempts: true,
+    repairContextRadius: true,
+    repairMaxRetries: true
 })
 
 onMounted(async () => {
@@ -204,14 +233,6 @@ const maxParallelTranslations = computed({
     }
 })
 
-const enableBatchFallback = computed({
-    get: (): string => settingsStore.getSetting(SETTINGS.ENABLE_BATCH_FALLBACK) as string ?? 'true',
-    set: (newValue: string): void => {
-        settingsStore.updateSetting(SETTINGS.ENABLE_BATCH_FALLBACK, newValue, true)
-        saveNotification.value?.show()
-    }
-})
-
 const maxBatchSplitAttempts = computed({
     get: (): string => settingsStore.getSetting(SETTINGS.MAX_BATCH_SPLIT_ATTEMPTS) as string ?? '3',
     set: (newValue: string): void => {
@@ -219,6 +240,38 @@ const maxBatchSplitAttempts = computed({
             SETTINGS.MAX_BATCH_SPLIT_ATTEMPTS,
             newValue,
             isValid.maxBatchSplitAttempts
+        )
+        saveNotification.value?.show()
+    }
+})
+
+const batchRetryMode = computed({
+    get: (): string => settingsStore.getSetting(SETTINGS.BATCH_RETRY_MODE) as string ?? 'deferred',
+    set: (newValue: string): void => {
+        settingsStore.updateSetting(SETTINGS.BATCH_RETRY_MODE, newValue, true)
+        saveNotification.value?.show()
+    }
+})
+
+const repairContextRadius = computed({
+    get: (): string => settingsStore.getSetting(SETTINGS.REPAIR_CONTEXT_RADIUS) as string ?? '10',
+    set: (newValue: string): void => {
+        settingsStore.updateSetting(
+            SETTINGS.REPAIR_CONTEXT_RADIUS,
+            newValue,
+            isValid.repairContextRadius
+        )
+        saveNotification.value?.show()
+    }
+})
+
+const repairMaxRetries = computed({
+    get: (): string => settingsStore.getSetting(SETTINGS.REPAIR_MAX_RETRIES) as string ?? '1',
+    set: (newValue: string): void => {
+        settingsStore.updateSetting(
+            SETTINGS.REPAIR_MAX_RETRIES,
+            newValue,
+            isValid.repairMaxRetries
         )
         saveNotification.value?.show()
     }

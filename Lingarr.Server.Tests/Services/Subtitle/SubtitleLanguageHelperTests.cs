@@ -197,4 +197,54 @@ public class SubtitleLanguageHelperTests
         Assert.Equal("en", result.MatchedLanguage);
         Assert.Equal(1, result.Subtitle?.StreamIndex);
     }
+
+    [Fact]
+    public void ScoreSubtitleCandidate_ShouldPenalizeSDH()
+    {
+        var subtitle = new EmbeddedSubtitle { Language = "eng", Title = "English SDH", IsForced = false };
+        // Base 50 (match) + 5 (not forced) + 5 (default? no) - 10 (SDH) = 45
+        var score = SubtitleLanguageHelper.ScoreSubtitleCandidate(subtitle, "en");
+        
+        // Compare with Clean: 50 + 5 = 55. SDH should be lower.
+        Assert.Equal(45, score);
+    }
+
+    [Fact]
+    public void FindBestMatch_ShouldPreferClean_OverSDH()
+    {
+        // Arrange: "English SDH" vs "English Clean"
+        var candidates = new List<EmbeddedSubtitle>
+        {
+            new() { Language = "eng", Title = "English SDH", StreamIndex = 0 },
+            new() { Language = "eng", Title = "English", StreamIndex = 1 }
+        };
+
+        var result = SubtitleLanguageHelper.FindBestMatch(candidates, new List<string> { "en" });
+        
+        // Clean track should win because SDH is penalized (-10)
+        Assert.Equal("en", result.MatchedLanguage);
+        Assert.Equal(1, result.Subtitle?.StreamIndex);
+    }
+
+    [Fact]
+    public void FindBestMatch_ShouldStillSelectSDH_IfLanguagePriorityRequiresIt()
+    {
+        // Arrange: English SDH (Forced & SDH) vs Japanese Clean
+        // English is P1, Japanese P2.
+        // English score: 50 (match) - 10 (SDH) - 10 (Forced) = 30
+        // Because 30 >= QualityThreshold(30), it gets PriorityBonus(80 * 2 = 160). Total 190.
+        // Japanese score: 50 (match) + 5 (clean) = 55. PriorityBonus(80 * 1 = 80). Total 135.
+        // English should win.
+        
+        var candidates = new List<EmbeddedSubtitle>
+        {
+            new() { Language = "eng", Title = "English SDH", IsForced = true, StreamIndex = 0 },
+            new() { Language = "ja", Title = "Japanese", IsForced = false, StreamIndex = 1 }
+        };
+
+        var result = SubtitleLanguageHelper.FindBestMatch(candidates, new List<string> { "en", "ja" });
+        
+        Assert.Equal("en", result.MatchedLanguage);
+        Assert.Equal(0, result.Subtitle?.StreamIndex);
+    }
 }

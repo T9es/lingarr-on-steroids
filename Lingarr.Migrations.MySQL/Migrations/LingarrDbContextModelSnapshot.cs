@@ -181,11 +181,26 @@ namespace Lingarr.Migrations.MySQL.Migrations
                         .HasColumnType("datetime(6)")
                         .HasColumnName("updated_at");
 
+                    b.Property<DateTime?>("IndexedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("indexed_at");
+
+                    b.Property<int>("StateSettingsVersion")
+                        .HasColumnType("int")
+                        .HasColumnName("state_settings_version");
+
+                    b.Property<int>("TranslationState")
+                        .HasColumnType("int")
+                        .HasColumnName("translation_state");
+
                     b.HasKey("Id")
                         .HasName("pk_episodes");
 
                     b.HasIndex("SeasonId")
                         .HasDatabaseName("ix_episodes_season_id");
+
+                    b.HasIndex("TranslationState")
+                        .HasDatabaseName("IX_Episodes_TranslationState");
 
                     b.ToTable("episodes", (string)null);
                 });
@@ -287,8 +302,23 @@ namespace Lingarr.Migrations.MySQL.Migrations
                         .HasColumnType("datetime(6)")
                         .HasColumnName("updated_at");
 
+                    b.Property<DateTime?>("IndexedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("indexed_at");
+
+                    b.Property<int>("StateSettingsVersion")
+                        .HasColumnType("int")
+                        .HasColumnName("state_settings_version");
+
+                    b.Property<int>("TranslationState")
+                        .HasColumnType("int")
+                        .HasColumnName("translation_state");
+
                     b.HasKey("Id")
                         .HasName("pk_movies");
+
+                    b.HasIndex("TranslationState")
+                        .HasDatabaseName("IX_Movies_TranslationState");
 
                     b.ToTable("movies", (string)null);
                 });
@@ -526,7 +556,7 @@ namespace Lingarr.Migrations.MySQL.Migrations
                         .HasColumnType("datetime(6)")
                         .HasColumnName("created_at");
 
-                    b.Property<bool>("IsActive")
+                    b.Property<bool?>("IsActive")
                         .HasColumnType("tinyint(1)")
                         .HasColumnName("is_active");
 

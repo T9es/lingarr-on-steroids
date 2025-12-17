@@ -643,6 +643,51 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             return 0;
         }
         
+        // ============================================================================
+        // OPTIMISTIC SKIP: Check if we already have cached embedded subtitle data
+        // from the sync job. If hash matches, skip the expensive ffprobe call entirely.
+        // This is the key optimization that prevents the automation job from scanning
+        // all media files every run.
+        // ============================================================================
+        if (!forceProcess)
+        {
+            List<EmbeddedSubtitle>? cachedEmbedded = null;
+            Movie? cachedMovie = null;
+            Episode? cachedEpisode = null;
+            
+            if (mediaType == MediaType.Episode)
+            {
+                cachedEpisode = await _dbContext.Episodes
+                    .Include(e => e.EmbeddedSubtitles)
+                    .FirstOrDefaultAsync(e => e.Id == media.Id);
+                cachedEmbedded = cachedEpisode?.EmbeddedSubtitles;
+            }
+            else
+            {
+                cachedMovie = await _dbContext.Movies
+                    .Include(m => m.EmbeddedSubtitles)
+                    .FirstOrDefaultAsync(m => m.Id == media.Id);
+                cachedEmbedded = cachedMovie?.EmbeddedSubtitles;
+            }
+            
+            // If we have cached data AND media was indexed, use optimistic hash check
+            var indexedAt = cachedMovie?.IndexedAt ?? cachedEpisode?.IndexedAt;
+            if (cachedEmbedded != null && indexedAt != null)
+            {
+                var optimisticHash = CreateEmbeddedHash(cachedEmbedded, configuredSourceLanguages, targetLanguages);
+                var existingHash = cachedMovie?.MediaHash ?? cachedEpisode?.MediaHash;
+                
+                if (!string.IsNullOrEmpty(existingHash) && existingHash == optimisticHash)
+                {
+                    _logger.LogDebug(
+                        "Optimistic skip for {FileName}: already indexed and hash matches",
+                        media.FileName);
+                    return 0;
+                }
+            }
+        }
+        // ============================================================================
+        
         // Sync embedded subtitles from the media file
         List<EmbeddedSubtitle>? embeddedSubtitles = null;
         IMedia? trackedMedia = null;

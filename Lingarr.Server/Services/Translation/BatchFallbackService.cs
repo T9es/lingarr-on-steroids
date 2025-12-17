@@ -143,6 +143,13 @@ public class BatchFallbackService : IBatchFallbackService
                 "{BatchProgress}[{FileId}] Exhausted after {Attempts} split attempts. {Count} items failed permanently.",
                 batchProgress, fileIdentifier, maxSplitAttempts, failedItems.Count);
 
+            // Log sample of failed items for diagnosis
+            var sampleFailed = string.Join("; ", failedItems.Take(3).Select(i => 
+                $"[{i.Position}] {(i.Line.Length > 40 ? i.Line.Substring(0, 40) + "..." : i.Line)}"));
+            _logger.LogError(
+                "{BatchProgress}[{FileId}] Sample of failed items: {SampleItems}",
+                batchProgress, fileIdentifier, sampleFailed);
+
             throw new TranslationException(
                 $"Translation failed after {maxSplitAttempts} fallback attempts. {failedItems.Count} items could not be translated.");
         }

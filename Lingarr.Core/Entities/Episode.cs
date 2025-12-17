@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel.DataAnnotations.Schema;
+using Lingarr.Core.Enum;
 using Lingarr.Core.Interfaces;
 
 namespace Lingarr.Core.Entities;
@@ -18,4 +19,19 @@ public class Episode : BaseEntity, IMedia
     public required Season Season { get; set; }
     public bool ExcludeFromTranslation { get; set; }
     public List<EmbeddedSubtitle> EmbeddedSubtitles { get; set; } = new();
+    
+    /// <summary>
+    /// Current translation state for efficient querying.
+    /// </summary>
+    public TranslationState TranslationState { get; set; } = TranslationState.Unknown;
+    
+    /// <summary>
+    /// When embedded subtitles were last indexed via ffprobe.
+    /// </summary>
+    public DateTime? IndexedAt { get; set; }
+    
+    /// <summary>
+    /// The language settings version when TranslationState was computed.
+    /// </summary>
+    public int StateSettingsVersion { get; set; }
 }

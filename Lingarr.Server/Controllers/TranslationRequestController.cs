@@ -153,6 +153,19 @@ public class TranslationRequestController : ControllerBase
     }
 
     /// <summary>
+    /// Retries all translation requests with Failed status
+    /// </summary>
+    /// <response code="200">Returns the count of retried requests</response>
+    /// <response code="500">If there was an error processing the retries</response>
+    /// <returns>ActionResult containing the number of retried requests</returns>
+    [HttpPost("retry-all-failed")]
+    public async Task<ActionResult<int>> RetryAllFailedRequests()
+    {
+        var count = await _translationRequestService.RetryAllFailedRequests();
+        return Ok(count);
+    }
+    
+    /// <summary>
     /// Retries an existing translation request
     /// Does not delete the current one, just reques
     /// The request with the same information

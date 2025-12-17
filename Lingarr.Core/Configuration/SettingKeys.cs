@@ -93,6 +93,27 @@ public static class SettingKeys
         public const string MaxBatchSplitAttempts = "max_batch_split_attempts";
         public const string StripAssDrawingCommands = "strip_ass_drawing_commands";
         public const string CleanSourceAssDrawings = "clean_source_ass_drawings";
+        
+        /// <summary>
+        /// Batch retry mode: "immediate" (split and retry now) or "deferred" (collect failures, repair at end)
+        /// </summary>
+        public const string BatchRetryMode = "batch_retry_mode";
+        
+        /// <summary>
+        /// Number of surrounding lines to include as context when repairing failed translations
+        /// </summary>
+        public const string RepairContextRadius = "repair_context_radius";
+        
+        /// <summary>
+        /// Maximum number of retries for the repair batch (default: 1)
+        /// </summary>
+        public const string RepairMaxRetries = "repair_max_retries";
+        
+        /// <summary>
+        /// Integer version that increments when source/target languages or ignore_captions change.
+        /// Media with StateSettingsVersion != this value need re-analysis.
+        /// </summary>
+        public const string LanguageSettingsVersion = "language_settings_version";
     }
 
     public static class Automation

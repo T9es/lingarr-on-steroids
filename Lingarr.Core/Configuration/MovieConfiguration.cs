@@ -16,5 +16,8 @@ public class MovieConfiguration : IEntityTypeConfiguration<Movie>
         
         builder.Navigation(m => m.Images)
             .AutoInclude();
+
+        builder.HasIndex(m => m.TranslationState)
+            .HasDatabaseName("IX_Movies_TranslationState");
     }
 }

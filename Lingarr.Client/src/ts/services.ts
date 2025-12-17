@@ -98,6 +98,7 @@ export interface ITranslationRequestService {
     cancel<T>(translationRequest: ITranslationRequest): Promise<T>
     remove<T>(translationRequest: ITranslationRequest): Promise<T>
     retry<T>(translationRequest: ITranslationRequest): Promise<T>
+    retryAllFailed<T>(): Promise<T>
     reenqueueQueued<T>(includeInProgress?: boolean): Promise<T>
     cancelAll<T>(includeInProgress?: boolean): Promise<T>
     logs<T extends ITranslationRequestLog[]>(translationRequestId: number): Promise<T>

@@ -78,6 +78,13 @@ public class SettingChangedListener
                 "parallelTranslations", ("Action", "ParallelTranslations", [
                     SettingKeys.Translation.MaxParallelTranslations
                 ])
+            },
+            {
+                "languageSettings", ("Action", "InvalidateTranslationState", [
+                    SettingKeys.Translation.SourceLanguages,
+                    SettingKeys.Translation.TargetLanguages,
+                    SettingKeys.Translation.IgnoreCaptions
+                ])
             }
         };
 
@@ -239,6 +246,14 @@ public class SettingChangedListener
                     _logger.LogInformation(
                         "Settings changed for |Green|ParallelTranslations|/Green|. Reconfigured to |Orange|{MaxParallel}|/Orange| concurrent translations.",
                         maxParallel);
+                    break;
+                    
+                case "InvalidateTranslationState":
+                    var mediaStateService = scope.ServiceProvider.GetRequiredService<IMediaStateService>();
+                    await mediaStateService.IncrementSettingsVersionAsync();
+                    await mediaStateService.MarkAllStaleAsync();
+                    _logger.LogInformation(
+                        "Language settings changed - incremented version and marked all media as stale");
                     break;
             }
         }

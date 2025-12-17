@@ -45,6 +45,8 @@ public class LingarrDbContext : DbContext
                 })
                 .IsUnique()
                 .HasDatabaseName("ux_translation_requests_active_dedupe");
+
+            b.Property(tr => tr.IsActive).HasColumnName("is_active");
         });
     }
 

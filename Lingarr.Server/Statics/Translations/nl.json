@@ -60,6 +60,7 @@
     "hours": "uren",
     "priority": "Prioriteren",
     "translateNow": "Vertalen",
+    "integrityCheck": "Integriteitscontrole",
     "translationQueued": "{count} vertaling(en) in wachtrij",
     "noTranslationsNeeded": "Geen vertalingen nodig"
   },
@@ -77,6 +78,7 @@
     "hours": "uren",
     "priority": "Prioriteren",
     "translateNow": "Vertalen",
+    "integrityCheck": "Integriteitscontrole",
     "translationQueued": "{count} vertaling(en) in wachtrij",
     "noTranslationsNeeded": "Geen vertalingen nodig"
   },
@@ -267,7 +269,15 @@
       "enableBatchFallback": "Mislukte batches opnieuw proberen:",
       "enableBatchFallbackDescription": "Wanneer een batch vertaling mislukt, automatisch opnieuw proberen met kleinere delen voordat het hele bestand als mislukt wordt gemarkeerd.",
       "maxBatchSplitAttempts": "Batch-splitsingsniveaus:",
-      "maxBatchSplitAttemptsDescription": "Als een batch te groot is, splits in kleinere delen. Niveau 1 = volledige batch, 2 = helften, 3 = derden."
+      "maxBatchSplitAttemptsDescription": "Als een batch te groot is, splits in kleinere delen. Niveau 1 = volledige batch, 2 = helften, 3 = derden.",
+      "batchRetryMode": "Batch herhaalmodus:",
+      "batchRetryModeDescription": "Kies hoe mislukte vertalingen binnen een batch worden afgehandeld.",
+      "batchRetryModeDeferred": "Uitgestelde reparatie (aanbevolen)",
+      "batchRetryModeImmediate": "Directe opsplitsing (legacy)",
+      "repairContextRadius": "Contextradius:",
+      "repairContextRadiusDescription": "Aantal omliggende regels om mee te nemen bij elke mislukte regel voor betere vertaalkwaliteit (alleen uitgestelde modus).",
+      "repairMaxRetries": "Reparatiepogingen:",
+      "repairMaxRetriesDescription": "Hoe vaak de reparatiebatch opnieuw geprobeerd wordt als deze mislukt (alleen uitgestelde modus)."
     },
     "subtitle": {
       "title": "Ondertiteling",
@@ -404,5 +414,17 @@
       "enabled": "Ingeschakeld",
       "disabled": "Uitgeschakeld"
     }
+  },
+  "translationState": {
+    "complete": "Voltooid",
+    "inProgress": "Bezig met vertalen",
+    "pending": "In afwachting",
+    "stale": "Verouderd",
+    "unknown": "Onbekend",
+    "tooltipComplete": "Alle vertalingen voltooid",
+    "tooltipInProgress": "Vertaling bezig",
+    "tooltipPending": "Wacht op vertaling",
+    "tooltipStale": "Heranalyse nodig",
+    "tooltipUnknown": "Nog niet geanalyseerd"
   }
 }

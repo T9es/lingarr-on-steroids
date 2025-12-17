@@ -17,26 +17,38 @@ public class JobContextFilter : IClientFilter, IServerFilter, IElectStateFilter
 
     public void OnCreated(CreatedContext context)
     {
-        JobTypeName.Value = context.BackgroundJob.Job.Type.Name;
-        JobId.Value = context.BackgroundJob.Id;
+        if (context.BackgroundJob?.Job != null)
+        {
+            JobTypeName.Value = context.BackgroundJob.Job.Type.Name;
+        }
+        JobId.Value = context.BackgroundJob?.Id ?? string.Empty;
     }
 
     public void OnPerforming(PerformingContext context)
     {
-        JobTypeName.Value = context.BackgroundJob.Job.Type.Name;
-        JobId.Value = context.BackgroundJob.Id;
+        if (context.BackgroundJob?.Job != null)
+        {
+            JobTypeName.Value = context.BackgroundJob.Job.Type.Name;
+        }
+        JobId.Value = context.BackgroundJob?.Id ?? string.Empty;
     }
 
     public void OnPerformed(PerformedContext context)
     {
-        JobTypeName.Value = context.BackgroundJob.Job.Type.Name;
-        JobId.Value = context.BackgroundJob.Id;
+        if (context.BackgroundJob?.Job != null)
+        {
+            JobTypeName.Value = context.BackgroundJob.Job.Type.Name;
+        }
+        JobId.Value = context.BackgroundJob?.Id ?? string.Empty;
     }
 
     public void OnStateElection(ElectStateContext context)
     {
-        JobTypeName.Value = context.BackgroundJob.Job.Type.Name;
-        JobId.Value = context.BackgroundJob.Id;
+        if (context.BackgroundJob?.Job != null)
+        {
+            JobTypeName.Value = context.BackgroundJob.Job.Type.Name;
+        }
+        JobId.Value = context.BackgroundJob?.Id ?? string.Empty;
     }
     
     public static string GetCurrentJobTypeName()

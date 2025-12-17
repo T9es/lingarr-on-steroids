@@ -11,10 +11,10 @@ namespace Lingarr.Migrations.MySQL.Migrations
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.Sql(
-                "ALTER TABLE `translation_requests` ADD COLUMN IF NOT EXISTS `is_active` tinyint(1) NOT NULL DEFAULT 0;");
+                "ALTER TABLE `translation_requests` ADD COLUMN IF NOT EXISTS `is_active` tinyint(1) NULL DEFAULT NULL;");
 
             migrationBuilder.Sql(
-                "UPDATE translation_requests SET is_active = CASE WHEN status IN (0,1) THEN 1 ELSE 0 END;");
+                "UPDATE translation_requests SET is_active = 1 WHERE status IN (0,1);");
 
             // Ensure only one active request exists per (media_id, media_type, source_language, target_language)
             // without deleting rows (some installations may have restrictive FK constraints).
@@ -31,17 +31,17 @@ JOIN (
  AND tr.media_type = d.media_type
  AND tr.source_language = d.source_language
  AND tr.target_language = d.target_language
-SET tr.is_active = 0
+SET tr.is_active = NULL
 WHERE tr.status IN (0,1) AND tr.id <> d.keep_id;
 
 -- Delete logs associated with inactive duplicate requests to avoid FK issues
 DELETE l FROM translation_request_logs l
 INNER JOIN translation_requests tr ON l.translation_request_id = tr.id
-WHERE tr.is_active = 0 AND tr.status IN (0,1);
+WHERE tr.is_active IS NULL AND tr.status IN (0,1);
 
 -- Delete the inactive duplicate requests themselves
 DELETE FROM translation_requests 
-WHERE is_active = 0 AND status IN (0,1);
+WHERE is_active IS NULL AND status IN (0,1);
 ");
 
             // Prefer INPLACE to avoid table rebuilds that can fail with foreign key constraints.

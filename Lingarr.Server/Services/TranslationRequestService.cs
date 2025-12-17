@@ -160,7 +160,7 @@ public class TranslationRequestService : ITranslationRequestService
                     tr.MediaType == translationRequest.MediaType &&
                     tr.SourceLanguage == translationRequest.SourceLanguage &&
                     tr.TargetLanguage == translationRequest.TargetLanguage &&
-                    tr.IsActive)
+                    tr.IsActive == true)
                 .Select(tr => tr.Id)
                 .FirstOrDefaultAsync();
             
@@ -265,7 +265,7 @@ public class TranslationRequestService : ITranslationRequestService
         {
             translationRequest.CompletedAt = DateTime.UtcNow;
             translationRequest.Status = TranslationStatus.Cancelled;
-            translationRequest.IsActive = false;
+            translationRequest.IsActive = null;
             await _dbContext.SaveChangesAsync();
             await ClearMediaHash(translationRequest);
             await UpdateActiveCount();
@@ -287,8 +287,63 @@ public class TranslationRequestService : ITranslationRequestService
         
         _dbContext.TranslationRequests.Remove(translationRequest);
         await _dbContext.SaveChangesAsync();
+        await UpdateActiveCount();
         
         return $"Translation request with id {cancelRequest.Id} has been removed";
+    }
+
+    /// <inheritdoc />
+    public async Task<int> RetryAllFailedRequests()
+    {
+        var failedRequests = await _dbContext.TranslationRequests
+            .Where(tr => tr.Status == TranslationStatus.Failed)
+            .OrderByDescending(tr => tr.CompletedAt)
+            .ToListAsync();
+
+        if (!failedRequests.Any())
+        {
+            return 0;
+        }
+
+        var newRequests = new List<TranslationRequest>();
+
+        foreach (var request in failedRequests)
+        {
+            var translationRequestCopy = new TranslationRequest
+            {
+                MediaId = request.MediaId,
+                Title = request.Title,
+                SourceLanguage = request.SourceLanguage,
+                TargetLanguage = request.TargetLanguage,
+                SubtitleToTranslate = request.SubtitleToTranslate,
+                MediaType = request.MediaType,
+                Status = TranslationStatus.Pending,
+                IsActive = true
+            };
+            newRequests.Add(translationRequestCopy);
+        }
+
+        // Add all new requests
+        _dbContext.TranslationRequests.AddRange(newRequests);
+        
+        // Remove old failed requests
+        _dbContext.TranslationRequests.RemoveRange(failedRequests);
+
+        await _dbContext.SaveChangesAsync();
+
+        // Enqueue jobs for new requests
+        foreach (var request in newRequests)
+        {
+            await EnqueueTranslationJobAsync(request, true);
+        }
+
+        var count = await GetActiveCount();
+        await _hubContext.Clients.Group("TranslationRequests").SendAsync("RequestActive", new
+        {
+            count
+        });
+
+        return newRequests.Count;
     }
 
     /// <inheritdoc />
@@ -303,6 +358,12 @@ public class TranslationRequestService : ITranslationRequestService
 
         // Retries are treated as priority so they jump ahead of existing backlog
         int newTranslationRequestId = await CreateRequest(translationRequest, true);
+        
+        // Remove the old failed request to clean up
+        _dbContext.TranslationRequests.Remove(translationRequest);
+        await _dbContext.SaveChangesAsync();
+        await UpdateActiveCount();
+
         return $"Translation request with id {retryRequest.Id} has been restarted, new job id {newTranslationRequestId}";
     }
     
@@ -335,8 +396,9 @@ public class TranslationRequestService : ITranslationRequestService
         }
 
         request.Status = status;
-        request.IsActive = IsActiveStatus(status);
+        request.IsActive = IsActiveStatus(status) ? true : null;
         await _dbContext.SaveChangesAsync();
+        await UpdateActiveCount();
 
         return request;
     }
@@ -369,7 +431,7 @@ public class TranslationRequestService : ITranslationRequestService
                      stateData.Name == EnqueuedState.StateName ||
                      stateData.Name == ScheduledState.StateName))
                 {
-                    _logger.LogInformation("Skipping resume for request {RequestId} as it is already active in Hangfire (State: {State})", request.Id, stateData.Name);
+                    _logger.LogInformation("Skipping resume for request {RequestId} (Job: {JobId}) as it is already active in Hangfire (State: {State})", request.Id, request.JobId, stateData.Name);
                     continue;
                 }
             }
@@ -604,7 +666,7 @@ public class TranslationRequestService : ITranslationRequestService
                 .Where(r => requestIds.Contains(r.Id))
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(r => r.Status, TranslationStatus.Cancelled)
-                    .SetProperty(r => r.IsActive, false)
+                    .SetProperty(r => r.IsActive, (bool?)null) // Use explicit cast for ExecuteUpdate
                     .SetProperty(r => r.CompletedAt, DateTime.UtcNow));
             
             // Bulk clear media hashes
@@ -838,13 +900,15 @@ public class TranslationRequestService : ITranslationRequestService
     {
         // With unified queue, all jobs go to the same queue.
         // Priority ordering is handled at runtime by the ParallelTranslationLimiter.
-        var job = Job.FromExpression<TranslationJob>(j => j.Execute(translationRequest, CancellationToken.None));
+        // Pass ID only to avoid serialization issues and stale data
+        var job = Job.FromExpression<TranslationJob>(j => j.Execute(translationRequest.Id, CancellationToken.None));
         var jobId = _backgroundJobClient.Create(job, new EnqueuedState(TranslationQueue));
         
         _logger.LogInformation(
-            "Enqueued translation request {RequestId} to queue |Green|{Queue}|/Green|",
+            "Enqueued translation request {RequestId} to queue |Green|{Queue}|/Green| (JobId: {JobId})",
             translationRequest.Id,
-            TranslationQueue);
+            TranslationQueue,
+            jobId);
         
         return UpdateTranslationRequest(translationRequest, TranslationStatus.Pending, jobId);
     }
@@ -1019,7 +1083,7 @@ public class TranslationRequestService : ITranslationRequestService
         {
             translationRequest.CompletedAt = DateTime.UtcNow;
             translationRequest.Status = TranslationStatus.Cancelled;
-            translationRequest.IsActive = false;
+            translationRequest.IsActive = null;
             await _dbContext.SaveChangesAsync();
             await UpdateActiveCount();
             await _progressService.Emit(translationRequest, 0);
@@ -1030,7 +1094,7 @@ public class TranslationRequestService : ITranslationRequestService
             _logger.LogError(ex, "Error translating subtitle content");
             translationRequest.CompletedAt = DateTime.UtcNow;
             translationRequest.Status = TranslationStatus.Failed;
-            translationRequest.IsActive = false;
+            translationRequest.IsActive = null;
             await _dbContext.SaveChangesAsync();
             await UpdateActiveCount();
             await _progressService.Emit(translationRequest, 0);
@@ -1073,7 +1137,7 @@ public class TranslationRequestService : ITranslationRequestService
 
         translationRequest.CompletedAt = DateTime.UtcNow;
         translationRequest.Status = TranslationStatus.Completed;
-        translationRequest.IsActive = false;
+        translationRequest.IsActive = null;
         await _dbContext.SaveChangesAsync(cancellationToken);
         await UpdateActiveCount();
         await _progressService.Emit(translationRequest, 100); // Tells the frontend to update translation request to a finished state

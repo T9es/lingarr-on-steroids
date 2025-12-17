@@ -1,8 +1,13 @@
-﻿using Lingarr.Core.Entities;
+﻿using Lingarr.Core.Data;
+using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
+using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Integration;
+using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Interfaces.Services.Sync;
 using Lingarr.Server.Models.Integrations;
+using Microsoft.EntityFrameworkCore;
+using MySqlConnector;
 
 namespace Lingarr.Server.Services.Sync;
 
@@ -10,13 +15,26 @@ public class EpisodeSync : IEpisodeSync
 {
     private readonly ISonarrService _sonarrService;
     private readonly PathConversionService _pathConversionService;
+    private readonly ISubtitleExtractionService _extractionService;
+    private readonly IMediaStateService _mediaStateService;
+    private readonly ILogger<EpisodeSync> _logger;
+
+    private readonly LingarrDbContext _dbContext;
 
     public EpisodeSync(
         ISonarrService sonarrService,
-        PathConversionService pathConversionService)
+        PathConversionService pathConversionService,
+        ISubtitleExtractionService extractionService,
+        IMediaStateService mediaStateService,
+        ILogger<EpisodeSync> logger,
+        LingarrDbContext dbContext)
     {
         _sonarrService = sonarrService;
         _pathConversionService = pathConversionService;
+        _extractionService = extractionService;
+        _mediaStateService = mediaStateService;
+        _logger = logger;
+        _dbContext = dbContext;
     }
 
     /// <inheritdoc />
@@ -33,22 +51,24 @@ public class EpisodeSync : IEpisodeSync
                 MediaType.Show
             );
             
-            SyncEpisode(episode, episodePath, season, episodePathResult?.EpisodeFile.DateAdded);
+            await SyncEpisode(episode, episodePath, season, episodePathResult?.EpisodeFile.DateAdded);
         }
 
         RemoveNonExistentEpisodes(season, episodes);
     }
 
     /// <summary>
-    /// Synchronizes a single episode with the database, creating or updating the episode entity as needed
+    /// Synchronizes a single episode with the database, creating or updating the episode entity as needed.
+    /// Also indexes embedded subtitles and updates translation state.
     /// </summary>
-    /// <param name="episode">The Sonarr episode containing the source data</param>
-    /// <param name="episodePath">The converted and mapped file path for the episode</param>
-    /// <param name="season">The season entity that owns this episode</param>
-    /// <param name="dateAdded">The date the episode file was added</param>
-    private static void SyncEpisode(SonarrEpisode episode, string episodePath, Season season, DateTime? dateAdded)
+    private async Task SyncEpisode(SonarrEpisode episode, string episodePath, Season season, DateTime? dateAdded)
     {
         var episodeEntity = season.Episodes.FirstOrDefault(se => se.SonarrId == episode.Id);
+        
+        var isNew = episodeEntity == null;
+        var oldPath = episodeEntity?.Path;
+        var oldFileName = episodeEntity?.FileName;
+        
         if (episodeEntity == null)
         {
             episodeEntity = new Episode
@@ -71,13 +91,56 @@ public class EpisodeSync : IEpisodeSync
             episodeEntity.Path = Path.GetDirectoryName(episodePath);
             episodeEntity.DateAdded = dateAdded;
         }
+
+        // Determine if we need to re-index embedded subtitles
+        var fileChanged = !isNew && (
+            oldPath != episodeEntity.Path ||
+            oldFileName != episodeEntity.FileName);
+
+        var needsIndexing = isNew || fileChanged || episodeEntity.IndexedAt == null;
+
+        if (needsIndexing)
+        {
+            try
+            {
+                // Save first so the entity has an ID for the extraction service
+                await _dbContext.SaveChangesAsync();
+
+                await _extractionService.SyncEmbeddedSubtitles(episodeEntity);
+                episodeEntity.IndexedAt = DateTime.UtcNow;
+                
+                _logger.LogDebug("Indexed embedded subtitles for episode {Title}", episodeEntity.Title);
+            }
+            catch (Exception ex)
+            {
+                // Check if this is a deadlock that we should let bubble up
+                if (ex is DbUpdateException dbEx && dbEx.InnerException is MySqlException mySqlEx && mySqlEx.Number == 1213)
+                {
+                    _logger.LogWarning("Deadlock detected during embedded subtitle sync for episode {Title}. Rethrowing to utilize execution strategy.", episodeEntity.Title);
+                    throw;
+                }
+
+                _logger.LogWarning(ex, "Failed to index embedded subtitles for episode {Title}", episodeEntity.Title);
+            }
+        }
+
+        // Update translation state
+        try
+        {
+             // If we saved above, we have an ID. If we didn't save above (needsIndexing=false), we assume it's an existing entity (has ID).
+             // However, just to be safe (e.g. if logic changes), we might want to ensure ID exists?
+             // But existing entities are fetched from DB so they have IDs.
+            await _mediaStateService.UpdateStateAsync(episodeEntity, MediaType.Episode);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to update translation state for episode {Title}", episodeEntity.Title);
+        }
     }
 
     /// <summary>
     /// Removes episodes from the season that no longer exist in Sonarr
     /// </summary>
-    /// <param name="season">The season entity containing the episodes to check</param>
-    /// <param name="currentEpisodes">The list of currently existing Sonarr episodes</param>
     private static void RemoveNonExistentEpisodes(Season season, List<SonarrEpisode> currentEpisodes)
     {
         var episodesToRemove = season.Episodes

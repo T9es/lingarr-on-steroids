@@ -12,13 +12,16 @@ public class ScheduleController : ControllerBase
 {
     private readonly IScheduleService _scheduleService;
     private readonly IBackgroundJobClient _backgroundJobClient;
+    private readonly ILogger<ScheduleController> _logger;
 
     public ScheduleController(
         IScheduleService scheduleService,
-        IBackgroundJobClient backgroundJobClient)
+        IBackgroundJobClient backgroundJobClient,
+        ILogger<ScheduleController> logger)
     {
         _backgroundJobClient = backgroundJobClient;
         _scheduleService = scheduleService;
+        _logger = logger;
     }
 
     /// <summary>
@@ -50,6 +53,7 @@ public class ScheduleController : ControllerBase
     [HttpGet("job/automation")]
     public IActionResult StartAutomationJob()
     {
+        _logger.LogWarning("Manual trigger of AutomatedTranslationJob via API");
         _backgroundJobClient.Enqueue<AutomatedTranslationJob>(job => job.Execute());
         return Ok();
     }

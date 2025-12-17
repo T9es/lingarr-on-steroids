@@ -96,6 +96,12 @@ export const useTranslationRequestStore = defineStore('translateRequest', {
                 (request) => request.id !== translationRequest.id
             )
         },
+        async retryAllFailed() {
+            const count = await services.translationRequest.retryAllFailed<number>()
+            // Optimistically clear all failed requests as they are now being retried
+            this.failedRequests = []
+            return count
+        },
         async reenqueueQueued(includeInProgress = false) {
             const result = await services.translationRequest.reenqueueQueued<{
                 reenqueued: number
@@ -210,6 +216,11 @@ export const useTranslationRequestStore = defineStore('translateRequest', {
                 this.selectedRequests.splice(index, 1)
             }
             this.selectAll = this.selectedRequests.length === this.translationRequests.items.length
+        },
+        async handleRequestActive({ count }: { count: number }) {
+            this.activeTranslationRequests = count
+            // Refresh lists to ensure UI reflects the new state (e.g. queue movement)
+            await this.fetchAllSections()
         }
     }
 })

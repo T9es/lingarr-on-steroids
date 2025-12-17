@@ -21,8 +21,9 @@
             </div>
 
             <div class="w-full px-4">
-                <div class="border-accent grid grid-cols-13 border-b font-bold">
-                    <div class="col-span-4 px-4 py-2">{{ translate('movies.title') }}</div>
+                <div class="border-accent grid grid-cols-14 border-b font-bold">
+                    <div class="col-span-3 px-4 py-2">{{ translate('movies.title') }}</div>
+                    <div class="col-span-1 flex items-center justify-center px-2 py-2" title="Translation Status">📊</div>
                     <div class="col-span-3 px-4 py-2">{{ translate('movies.subtitles') }}</div>
                     <div class="col-span-1 px-4 py-2">
                         {{ translate('movies.exclude') }}
@@ -53,9 +54,12 @@
                     </div>
                 </div>
                 <div v-for="item in movies.items" :key="item.id">
-                    <div class="border-accent grid grid-cols-13 border-b">
-                        <div class="col-span-4 px-4 py-2">
+                    <div class="border-accent grid grid-cols-14 border-b">
+                        <div class="col-span-3 px-4 py-2">
                             {{ item.title }}
+                        </div>
+                        <div class="col-span-1 flex items-center justify-center px-2 py-2">
+                            <TranslationStateBadge :state="item.translationState ?? TRANSLATION_STATE.UNKNOWN" />
                         </div>
                         <div class="col-span-3 flex flex-wrap items-center gap-2 px-4 py-2">
                             <!-- External subtitles (blue badges) -->
@@ -164,7 +168,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ComputedRef, reactive, watch } from 'vue'
-import { IFilter, IMovie, IPagedResult, IEmbeddedSubtitle, MEDIA_TYPE, SETTINGS } from '@/ts'
+import { IFilter, IMovie, IPagedResult, IEmbeddedSubtitle, MEDIA_TYPE, SETTINGS, TRANSLATION_STATE } from '@/ts'
 import useDebounce from '@/composables/useDebounce'
 import { useMovieStore } from '@/store/movie'
 import { useSettingStore } from '@/store/setting'
@@ -184,6 +188,7 @@ import InputComponent from '@/components/common/InputComponent.vue'
 import LanguageIcon from '@/components/icons/LanguageIcon.vue'
 import LoaderCircleIcon from '@/components/icons/LoaderCircleIcon.vue'
 import CheckMarkCicleIcon from '@/components/icons/CheckMarkCicleIcon.vue'
+import TranslationStateBadge from '@/components/common/TranslationStateBadge.vue'
 
 const { translate } = useI18n()
 const movieStore = useMovieStore()

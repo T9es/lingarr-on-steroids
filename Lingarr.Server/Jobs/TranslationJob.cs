@@ -31,6 +31,8 @@ public class TranslationJob
     private readonly IBatchFallbackService _batchFallbackService;
     private readonly ISubtitleExtractionService _extractionService;
     private readonly ITranslationCancellationService _cancellationService;
+    private readonly IMediaStateService _mediaStateService;
+    private readonly IDeferredRepairService _deferredRepairService;
 
     private const string TranslationQueue = "translation";
 
@@ -47,7 +49,9 @@ public class TranslationJob
         IParallelTranslationLimiter parallelLimiter,
         IBatchFallbackService batchFallbackService,
         ISubtitleExtractionService extractionService,
-        ITranslationCancellationService cancellationService)
+        ITranslationCancellationService cancellationService,
+        IMediaStateService mediaStateService,
+        IDeferredRepairService deferredRepairService)
     {
         _logger = logger;
         _settings = settings;
@@ -62,6 +66,8 @@ public class TranslationJob
         _batchFallbackService = batchFallbackService;
         _extractionService = extractionService;
         _cancellationService = cancellationService;
+        _mediaStateService = mediaStateService;
+        _deferredRepairService = deferredRepairService;
     }
 
     /// <summary>
@@ -70,13 +76,24 @@ public class TranslationJob
     /// </summary>
     [Queue(TranslationQueue)]
     [AutomaticRetry(Attempts = 0)]
-    public Task Execute(TranslationRequest translationRequest, CancellationToken cancellationToken)
-        => ExecuteCore(translationRequest, cancellationToken);
+    public Task Execute(int translationRequestId, CancellationToken cancellationToken)
+        => ExecuteCore(translationRequestId, cancellationToken);
 
     private async Task ExecuteCore(
-        TranslationRequest translationRequest,
+        int translationRequestId,
         CancellationToken cancellationToken)
     {
+        // Fetch the fresh request from the database
+        // This ensures we have the latest state and avoids serialization issues with Hangfire
+        var translationRequest = await _dbContext.TranslationRequests
+            .FirstOrDefaultAsync(r => r.Id == translationRequestId, cancellationToken);
+
+        if (translationRequest == null)
+        {
+            _logger.LogWarning("Translation request {RequestId} not found - it may have been deleted. Aborting job.", translationRequestId);
+            return;
+        }
+
         var requestLogs = new List<TranslationRequestLog>();
 
         void AddRequestLog(string level, string message, string? details = null)
@@ -150,6 +167,9 @@ public class TranslationJob
                 SettingKeys.Translation.SubtitleTag,
                 SettingKeys.Translation.EnableBatchFallback,
                 SettingKeys.Translation.MaxBatchSplitAttempts,
+                SettingKeys.Translation.BatchRetryMode,
+                SettingKeys.Translation.RepairContextRadius,
+                SettingKeys.Translation.RepairMaxRetries,
                 SettingKeys.Translation.StripAssDrawingCommands,
                 SettingKeys.Translation.CleanSourceAssDrawings
             ]);
@@ -275,7 +295,8 @@ public class TranslationJob
                 translationService,
                 _logger,
                 _progressService,
-                _batchFallbackService);
+                _batchFallbackService,
+                _deferredRepairService);
             List<SubtitleItem> subtitles;
             var attempt = 0;
             const int maxAttempts = 3;
@@ -330,11 +351,23 @@ public class TranslationJob
                 AddRequestLog("Information", $"Fallback successful, switching to: {newSubtitlePath}");
             }
             
-            // Parse batch fallback settings
-            var enableBatchFallback = settings[SettingKeys.Translation.EnableBatchFallback] == "true";
+            // Parse batch retry mode settings
+            // "deferred" = collect failures and repair at end (default)
+            // "immediate" = use immediate chunk splitting on failure (legacy)
+            var batchRetryMode = settings.TryGetValue(SettingKeys.Translation.BatchRetryMode, out var modeVal) 
+                ? modeVal ?? "deferred" 
+                : "deferred";
             var maxBatchSplitAttempts = int.TryParse(settings[SettingKeys.Translation.MaxBatchSplitAttempts], out var splitAttempts)
                 ? splitAttempts
                 : 3;
+            var repairContextRadius = int.TryParse(
+                settings.TryGetValue(SettingKeys.Translation.RepairContextRadius, out var radiusVal) ? radiusVal : null, out var radius)
+                ? radius
+                : 10;
+            var repairMaxRetries = int.TryParse(
+                settings.TryGetValue(SettingKeys.Translation.RepairMaxRetries, out var retriesVal) ? retriesVal : null, out var retries)
+                ? retries
+                : 1;
             
             // Generate a short, readable identifier from the filename for logging
             // e.g., "S02E23" or "Movie Name (2024)"
@@ -386,20 +419,22 @@ public class TranslationJob
                 var totalBatches = (int)Math.Ceiling((double)subtitles.Count / effectiveBatchSize);
 
                 _logger.LogInformation(
-                    "[{FileId}] Starting batch translation: {SubtitleCount} subtitles, {TotalBatches} batch(es) of {BatchSize}, fallback: {EnableFallback} ({SplitAttempts} attempts)",
-                    fileIdentifier, subtitles.Count, totalBatches, effectiveBatchSize, enableBatchFallback, maxBatchSplitAttempts);
+                    "[{FileId}] Starting batch translation: {SubtitleCount} subtitles, {TotalBatches} batch(es) of {BatchSize}, retryMode: {RetryMode}",
+                    fileIdentifier, subtitles.Count, totalBatches, effectiveBatchSize, batchRetryMode);
 
                 AddRequestLog(
                     "Information",
-                    $"[{fileIdentifier}] Starting batch translation: subtitles={subtitles.Count}, totalBatches={totalBatches}, batchSize={effectiveBatchSize}, fallback={enableBatchFallback}, maxSplitAttempts={maxBatchSplitAttempts}");
+                    $"[{fileIdentifier}] Starting batch translation: subtitles={subtitles.Count}, totalBatches={totalBatches}, batchSize={effectiveBatchSize}, retryMode={batchRetryMode}");
 
                 translatedSubtitles = await translator.TranslateSubtitlesBatch(
                     subtitles,
                     request,
                     stripSubtitleFormatting,
                     maxSize,
-                    enableBatchFallback,
+                    batchRetryMode,
                     maxBatchSplitAttempts,
+                    repairContextRadius,
+                    repairMaxRetries,
                     fileIdentifier,
                     effectiveCancellationToken);
             }
@@ -571,11 +606,42 @@ public class TranslationJob
     {
 	        translationRequest.CompletedAt = DateTime.UtcNow;
 	        translationRequest.Status = TranslationStatus.Completed;
-	        translationRequest.IsActive = false;
+	        translationRequest.IsActive = null;
 	        await _dbContext.SaveChangesAsync(cancellationToken);
 	        await _translationRequestService.UpdateActiveCount();
 	        await _progressService.Emit(translationRequest, 100);
 	        await _scheduleService.UpdateJobState(jobName, JobStatus.Succeeded.GetDisplayName());
+	        
+	        // Update translation state to reflect completion
+	        if (translationRequest.MediaId.HasValue)
+	        {
+	            try
+	            {
+	                if (translationRequest.MediaType == MediaType.Movie)
+	                {
+	                    var movie = await _dbContext.Movies.FindAsync(translationRequest.MediaId.Value);
+	                    if (movie != null)
+	                    {
+	                        await _mediaStateService.UpdateStateAsync(movie, MediaType.Movie);
+	                    }
+	                }
+	                else
+	                {
+	                    var episode = await _dbContext.Episodes
+	                        .Include(e => e.Season)
+	                        .ThenInclude(s => s.Show)
+	                        .FirstOrDefaultAsync(e => e.Id == translationRequest.MediaId.Value, cancellationToken);
+	                    if (episode != null)
+	                    {
+	                        await _mediaStateService.UpdateStateAsync(episode, MediaType.Episode);
+	                    }
+	                }
+	            }
+	            catch (Exception ex)
+	            {
+	                _logger.LogWarning(ex, "Failed to update translation state after completion");
+	            }
+	        }
     }
 
     private async Task HandleCancellation(string jobName, TranslationRequest request)
@@ -590,7 +656,7 @@ public class TranslationJob
 	        {
 	            translationRequest.CompletedAt = DateTime.UtcNow;
 	            translationRequest.Status = TranslationStatus.Cancelled;
-	            translationRequest.IsActive = false;
+	            translationRequest.IsActive = null;
 	
 	            await _dbContext.SaveChangesAsync();
 	            await _translationRequestService.ClearMediaHash(translationRequest);
