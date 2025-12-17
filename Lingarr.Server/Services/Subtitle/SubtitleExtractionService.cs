@@ -421,11 +421,19 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             catch (DbUpdateException ex)
             {
                 var isDuplicateEntry = false;
+                var isDeadlock = false;
                 
-                // Check if the inner exception is a MySQL duplicate entry error (1062)
-                if (ex.InnerException is MySqlException mySqlEx && mySqlEx.Number == 1062)
+                // Check if the inner exception is a MySQL duplicate entry error (1062) or Deadlock (1213)
+                if (ex.InnerException is MySqlException mySqlEx)
                 {
-                    isDuplicateEntry = true;
+                    if (mySqlEx.Number == 1062)
+                    {
+                        isDuplicateEntry = true;
+                    }
+                    else if (mySqlEx.Number == 1213)
+                    {
+                        isDeadlock = true;
+                    }
                 }
                 // Also check for standard concurrency exception
                 else if (ex is DbUpdateConcurrencyException)
@@ -433,14 +441,22 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                     isDuplicateEntry = true; // Treat concurrency conflict same as duplicate for retry purposes
                 }
 
-                if (!isDuplicateEntry)
+                // If deadlock occurs within an active transaction, we cannot retry locally as the transaction is aborted.
+                // We must throw to let the ExecutionStrategy retry the entire transaction.
+                if (isDeadlock && _dbContext.Database.CurrentTransaction != null)
                 {
-                    // If it's not a concurrency/duplicate issue, rethrow immediately
+                    _logger.LogWarning(ex, "Deadlock detected in active transaction for EpisodeId={EpisodeId}, MovieId={MovieId}. Rethrowing to trigger transaction retry.", episodeId, movieId);
+                    throw;
+                }
+
+                if (!isDuplicateEntry && !isDeadlock)
+                {
+                    // If it's not a concurrency/duplicate/deadlock issue, rethrow immediately
                     throw;
                 }
 
                 _logger.LogWarning(
-                    "Concurrency conflict syncing embedded subtitles (attempt {Attempt}/{MaxRetries}) for EpisodeId={EpisodeId}, MovieId={MovieId}: {Message}",
+                    "Concurrency/Deadlock conflict syncing embedded subtitles (attempt {Attempt}/{MaxRetries}) for EpisodeId={EpisodeId}, MovieId={MovieId}: {Message}",
                     attempt, maxRetries, episodeId, movieId, ex.Message);
 
                 if (attempt == maxRetries)

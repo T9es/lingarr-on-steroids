@@ -5,6 +5,8 @@ using Lingarr.Server.Interfaces.Services.Integration;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Interfaces.Services.Sync;
 using Lingarr.Server.Models.Integrations;
+using Microsoft.EntityFrameworkCore;
+using MySqlConnector;
 
 namespace Lingarr.Server.Services.Sync;
 
@@ -103,6 +105,13 @@ public class EpisodeSync : IEpisodeSync
             }
             catch (Exception ex)
             {
+                // Check if this is a deadlock that we should let bubble up
+                if (ex is DbUpdateException dbEx && dbEx.InnerException is MySqlException mySqlEx && mySqlEx.Number == 1213)
+                {
+                    _logger.LogWarning("Deadlock detected during embedded subtitle sync for episode {Title}. Rethrowing to utilize execution strategy.", episodeEntity.Title);
+                    throw;
+                }
+
                 _logger.LogWarning(ex, "Failed to index embedded subtitles for episode {Title}", episodeEntity.Title);
             }
         }
