@@ -200,12 +200,7 @@ public class SubtitleExtractionService : ISubtitleExtractionService
 
         // Determine output extension
         var extension = CodecToExtension.GetValueOrDefault(codecName, ".srt");
-        var baseFileName = Path.GetFileNameWithoutExtension(mediaFilePath);
-        
-        // Use language tag if available (e.g., ".eng.srt"), otherwise fall back to stream index
-        var languageTag = !string.IsNullOrEmpty(language) ? language : $"stream{streamIndex}";
-        var outputFileName = $"{baseFileName}.{languageTag}{extension}";
-        var outputPath = Path.Combine(outputDirectory, outputFileName);
+        var outputPath = GetExtractedSubtitlePath(outputDirectory, mediaFilePath, codecName, language, streamIndex);
 
         try
         {
@@ -306,6 +301,21 @@ public class SubtitleExtractionService : ISubtitleExtractionService
         await SyncEmbeddedSubtitlesInternal(mediaPath, null, movie.Id);
     }
     
+    /// <summary>
+    /// Generates the predicted output path for an extracted subtitle.
+    /// </summary>
+    private static string GetExtractedSubtitlePath(string outputDirectory, string mediaFilePath, string codecName, string? language, int streamIndex)
+    {
+        // Determine output extension
+        var extension = CodecToExtension.GetValueOrDefault(codecName, ".srt");
+        var baseFileName = Path.GetFileNameWithoutExtension(mediaFilePath);
+
+        // Use language tag if available (e.g., ".eng.srt"), otherwise fall back to stream index
+        var languageTag = !string.IsNullOrEmpty(language) ? language : $"stream{streamIndex}";
+        var outputFileName = $"{baseFileName}.{languageTag}{extension}";
+        return Path.Combine(outputDirectory, outputFileName);
+    }
+
     /// <summary>
     /// Finds the actual media file by searching for files that match the base filename.
     /// This is needed because FileName in the database may not include the extension.
@@ -789,15 +799,12 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             foreach (var candidate in candidates)
             {
                 // Predict the output path to see if it should be excluded
-                // Note: This logic must match ExtractSubtitle's naming convention
-                var languageTag = !string.IsNullOrEmpty(candidate.Language) 
-                    ? candidate.Language 
-                    : $"stream{candidate.StreamIndex}";
-                
-                var extension = CodecToExtension.GetValueOrDefault(candidate.CodecName, ".srt");
-                var baseFileName = Path.GetFileNameWithoutExtension(mediaPath!);
-                var outputFileName = $"{baseFileName}.{languageTag}{extension}";
-                var predictedPath = Path.Combine(outputDir!, outputFileName);
+                var predictedPath = GetExtractedSubtitlePath(
+                    outputDir!,
+                    mediaPath!,
+                    candidate.CodecName,
+                    candidate.Language,
+                    candidate.StreamIndex);
 
                 if (excludedPaths != null && excludedPaths.Contains(predictedPath))
                 {
