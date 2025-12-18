@@ -156,10 +156,6 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                         .HasColumnType("text")
                         .HasColumnName("file_name");
 
-                    b.Property<string>("ImdbId")
-                        .HasColumnType("text")
-                        .HasColumnName("imdb_id");
-
                     b.Property<DateTime?>("IndexedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("indexed_at");
@@ -188,10 +184,6 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("title");
-
-                    b.Property<string>("TmdbId")
-                        .HasColumnType("text")
-                        .HasColumnName("tmdb_id");
 
                     b.Property<int>("TranslationState")
                         .HasColumnType("integer")
@@ -277,10 +269,6 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                         .HasColumnType("text")
                         .HasColumnName("file_name");
 
-                    b.Property<string>("ImdbId")
-                        .HasColumnType("text")
-                        .HasColumnName("imdb_id");
-
                     b.Property<DateTime?>("IndexedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("indexed_at");
@@ -313,10 +301,6 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("title");
-
-                    b.Property<string>("TmdbId")
-                        .HasColumnType("text")
-                        .HasColumnName("tmdb_id");
 
                     b.Property<int?>("TranslationAgeThreshold")
                         .HasColumnType("integer")
@@ -457,10 +441,6 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("exclude_from_translation");
 
-                    b.Property<string>("ImdbId")
-                        .HasColumnType("text")
-                        .HasColumnName("imdb_id");
-
                     b.Property<bool>("IsPriority")
                         .HasColumnType("boolean")
                         .HasColumnName("is_priority");
@@ -483,17 +463,9 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                         .HasColumnType("text")
                         .HasColumnName("title");
 
-                    b.Property<string>("TmdbId")
-                        .HasColumnType("text")
-                        .HasColumnName("tmdb_id");
-
                     b.Property<int?>("TranslationAgeThreshold")
                         .HasColumnType("integer")
                         .HasColumnName("translation_age_threshold");
-
-                    b.Property<string>("TvdbId")
-                        .HasColumnType("text")
-                        .HasColumnName("tvdb_id");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -565,57 +537,6 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                         .HasName("pk_statistics");
 
                     b.ToTable("statistics", (string)null);
-                });
-
-            modelBuilder.Entity("Lingarr.Core.Entities.SubtitleProviderLog", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("Details")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("details");
-
-                    b.Property<string>("Level")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("level");
-
-                    b.Property<int?>("MediaId")
-                        .HasColumnType("integer")
-                        .HasColumnName("media_id");
-
-                    b.Property<string>("MediaType")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("media_type");
-
-                    b.Property<string>("Message")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("message");
-
-                    b.Property<string>("ProviderName")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("provider_name");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.HasKey("Id")
-                        .HasName("pk_subtitle_provider_logs");
-
-                    b.ToTable("subtitle_provider_logs", (string)null);
                 });
 
             modelBuilder.Entity("Lingarr.Core.Entities.TranslationRequest", b =>
