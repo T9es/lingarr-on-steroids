@@ -49,14 +49,15 @@ public class SyncMovieJob
 
             _logger.LogInformation("Fetched {Count} movies from Radarr", movies.Count());
 
+            // Sync movies incrementally - each batch commits independently for UI visibility
+            await _movieSyncService.SyncMovies(movies);
+
+            // Deletion is the risky operation - wrap in transaction for atomicity
             var strategy = _dbContext.Database.CreateExecutionStrategy();
             await strategy.ExecuteAsync(async () =>
             {
                 await using var transaction = await _dbContext.Database.BeginTransactionAsync();
-
-                await _movieSyncService.SyncMovies(movies);
                 await _movieSyncService.RemoveNonExistentMovies(movies.Select(m => m.Id));
-
                 await transaction.CommitAsync();
             });
             await _scheduleService.UpdateJobState(jobName, JobStatus.Succeeded.GetDisplayName());

@@ -49,14 +49,15 @@ public class SyncShowJob
 
             _logger.LogInformation("Fetched {ShowCount} shows from Sonarr", shows.Count);
 
+            // Sync shows incrementally - each batch commits independently for UI visibility
+            await _showSyncService.SyncShows(shows);
+
+            // Deletion is the risky operation - wrap in transaction for atomicity
             var strategy = _dbContext.Database.CreateExecutionStrategy();
             await strategy.ExecuteAsync(async () =>
             {
                 await using var transaction = await _dbContext.Database.BeginTransactionAsync();
-
-                await _showSyncService.SyncShows(shows);
                 await _showSyncService.RemoveNonExistentShows(shows.Select(s => s.Id).ToHashSet());
-
                 await transaction.CommitAsync();
             });
             await _scheduleService.UpdateJobState(jobName, JobStatus.Succeeded.GetDisplayName());
