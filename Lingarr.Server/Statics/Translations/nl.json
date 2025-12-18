@@ -283,11 +283,6 @@
     "subtitle": {
       "title": "Ondertiteling",
       "description": "Configureer hoe ondertitels worden opgeschoond en getimed om overlappingen te voorkomen en ongewenste opmaak te verwijderen.",
-      "subdlDescription": "Subdl is een gratis ondertitelprovider met een grote database. API-sleutel vereist.",
-      "opensubtitlesDescription": "OpenSubtitles is een populaire ondertitelprovider. API-sleutel en account vereist.",
-      "generalProviderSettings": "Algemene Provider Instellingen",
-      "dailyLimit": "Dagelijkse downloadlimiet",
-      "minScore": "Minimale matchscore",
       "ignoreCaptions": "Vertaling overslaan als ondertitels met bijschrift-tags bestaan:",
       "ignoreCaptionsDescription": "Vertaling overslaan als er al een tags met bijschriften zoals Gehoorbeperkt of Geforceerd bestaat.",
       "fixOverlappingSubtitles": "Overlappende ondertitels verbeteren:",
