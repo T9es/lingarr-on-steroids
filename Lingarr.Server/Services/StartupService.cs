@@ -47,7 +47,7 @@ public class StartupService : IHostedService
 
             // Batch Translation
             { SettingKeys.Translation.UseBatchTranslation, "true" },
-            { SettingKeys.Translation.MaxBatchSize, "180" },
+            { SettingKeys.Translation.MaxBatchSize, "120" },
             { SettingKeys.Translation.EnableBatchFallback, "true" },
             { SettingKeys.Translation.MaxBatchSplitAttempts, "3" },
             { SettingKeys.Translation.BatchRetryMode, "deferred" },

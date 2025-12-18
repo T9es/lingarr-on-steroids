@@ -347,11 +347,29 @@ public class SubtitleTranslationService
         }
         else
         {
-            batchResults = await batchTranslationService.TranslateBatchAsync(
-                batchItems,
-                sourceLanguage,
-                targetLanguage,
-                cancellationToken);
+            try
+            {
+                batchResults = await batchTranslationService.TranslateBatchAsync(
+                    batchItems,
+                    sourceLanguage,
+                    targetLanguage,
+                    cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                if (collectFailures)
+                {
+                    _logger.LogError(ex, 
+                        "[{FileId}] Batch {BatchNum} failed completely (likely JSON truncation or API error). Marking all {Count} items for deferred repair.", 
+                        fileIdentifier, batchNumber, batchItems.Count);
+                    
+                    // Return all items as failures
+                    return batchItems;
+                }
+                
+                // If we're not collecting failures (i.e. not using deferred mode), rethrow
+                throw;
+            }
         }
         
         foreach (var subtitle in currentBatch)
