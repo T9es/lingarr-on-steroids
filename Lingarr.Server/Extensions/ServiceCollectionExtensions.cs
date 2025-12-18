@@ -236,7 +236,11 @@ public static class ServiceCollectionExtensions
                 configuration
                     .UseSimpleAssemblyNameTypeSerializer()
                     .UseRecommendedSerializerSettings()
-                    .UseSQLiteStorage(sqliteDbPath, new SQLiteStorageOptions());
+                    .UseSQLiteStorage(sqliteDbPath, new SQLiteStorageOptions
+                    {
+                        // Increase lock timeout for long-running jobs
+                        DistributedLockLifetime = TimeSpan.FromHours(24)
+                    });
             }
             else // Default: PostgreSQL
             {
@@ -249,7 +253,12 @@ public static class ServiceCollectionExtensions
                 var connectionString = $"Host={host};Port={port};Database={database};Username={username};Password={password}";
 
                 configuration.UsePostgreSqlStorage(opts => opts
-                    .UseNpgsqlConnection(connectionString));
+                    .UseNpgsqlConnection(connectionString), new PostgreSqlStorageOptions
+                    {
+                        // Increase lock timeout for long-running jobs (e.g., BulkIntegrityCheck, SyncJobs)
+                        // Default is 10 minutes which causes premature lock expiration
+                        DistributedLockTimeout = TimeSpan.FromHours(24)
+                    });
             }
 
             configuration.UseFilter(new JobContextFilter());
