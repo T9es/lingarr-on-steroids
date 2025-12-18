@@ -64,6 +64,8 @@ public class MovieSync : IMovieSync
             {
                 RadarrId = movie.Id,
                 Title = movie.Title,
+                ImdbId = movie.ImdbId,
+                TmdbId = movie.TmdbId?.ToString(),
                 DateAdded = DateTime.Parse(movie.Added).ToUniversalTime(),
                 FileName = Path.GetFileNameWithoutExtension(moviePath),
                 Path = Path.GetDirectoryName(moviePath) ?? string.Empty
@@ -73,6 +75,8 @@ public class MovieSync : IMovieSync
         else
         {
             movieEntity.Title = movie.Title;
+            movieEntity.ImdbId = movie.ImdbId;
+            movieEntity.TmdbId = movie.TmdbId?.ToString();
             movieEntity.DateAdded = DateTime.Parse(movie.Added).ToUniversalTime();
             movieEntity.FileName = Path.GetFileNameWithoutExtension(moviePath);
             movieEntity.Path = Path.GetDirectoryName(moviePath) ?? string.Empty;

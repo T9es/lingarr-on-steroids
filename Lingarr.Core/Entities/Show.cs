@@ -3,6 +3,9 @@
 public class Show : BaseEntity
 {
     public required int SonarrId { get; set; }
+    public string? ImdbId { get; set; }
+    public string? TmdbId { get; set; }
+    public string? TvdbId { get; set; }
     public required string Title { get; set; }
     public required string Path { get; set; }
     public required DateTime? DateAdded { get; set; }

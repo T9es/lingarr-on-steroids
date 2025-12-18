@@ -6,6 +6,12 @@ public class SonarrShow
 {
     [JsonPropertyName("id")]
     public required int Id { get; set; }
+    [JsonPropertyName("imdbId")]
+    public string? ImdbId { get; set; }
+    [JsonPropertyName("tvdbId")]
+    public int? TvdbId { get; set; }
+    [JsonPropertyName("tvMazeId")]
+    public int? TvMazeId { get; set; }
     [JsonPropertyName("title")]
     public required string Title { get; set; }
     [JsonPropertyName("path")]

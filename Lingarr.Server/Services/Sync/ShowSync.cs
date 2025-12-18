@@ -33,6 +33,8 @@ public class ShowSync : IShowSync
             {
                 SonarrId = sonarrShow.Id,
                 Title = sonarrShow.Title,
+                ImdbId = sonarrShow.ImdbId,
+                TvdbId = sonarrShow.TvdbId?.ToString(),
                 Path = sonarrShow.Path,
                 DateAdded = !string.IsNullOrEmpty(sonarrShow.Added) ? DateTime.Parse(sonarrShow.Added).ToUniversalTime() : DateTime.UtcNow
             };
@@ -41,6 +43,8 @@ public class ShowSync : IShowSync
         else
         {
             showEntity.Title = sonarrShow.Title;
+            showEntity.ImdbId = sonarrShow.ImdbId;
+            showEntity.TvdbId = sonarrShow.TvdbId?.ToString();
             showEntity.Path = sonarrShow.Path;
             showEntity.DateAdded = !string.IsNullOrEmpty(sonarrShow.Added) ? DateTime.Parse(sonarrShow.Added).ToUniversalTime() : DateTime.UtcNow;
         }
