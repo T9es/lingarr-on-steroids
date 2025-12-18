@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Lingarr.Core.Configuration;
@@ -70,26 +71,65 @@ public class SubdlService : ISubtitleProvider
 
     public async Task<string?> DownloadSubtitleAsync(string downloadLink, CancellationToken cancellationToken)
     {
-        // Subdl download links usually redirect to a zip file.
-        // Logic: Download zip -> Extract -> Return path to best SRT.
-        // For now, return the link? No, manager expects file path (or content?). 
-        // Manager will likely handle download to temp.
-        // But Interface says "DownloadSubtitleAsync" returns string? (Likely content or path).
-        // Let's assume it returns the file path of the downloaded (and extracted) subtitle.
+        // Subdl download links return ZIP files containing subtitle files
+        // Logic: Download zip -> Extract to temp -> Return path to best SRT/ASS file
         
         try 
         {
-             var response = await _httpClient.GetAsync(downloadLink, cancellationToken);
-             if (!response.IsSuccessStatusCode) return null;
-             
-             // ... handling zip logic ...
-             // For MVP, just returning null to indicate "Not Implemented Full Download Yet"
-             // But I should implement it.
-             
-             // TODO: Extract Zip logic.
-             return null; 
+            // Subdl URLs need the base domain prepended
+            var fullUrl = downloadLink.StartsWith("http") 
+                ? downloadLink 
+                : $"https://dl.subdl.com{downloadLink}";
+            
+            _logger.LogDebug("Downloading subtitle ZIP from: {Url}", fullUrl);
+            
+            var response = await _httpClient.GetAsync(fullUrl, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Failed to download from Subdl: {StatusCode}", response.StatusCode);
+                return null;
+            }
+            
+            // Create temp directory for extraction
+            var tempDir = Path.Combine(Path.GetTempPath(), $"subdl_{Guid.NewGuid()}");
+            Directory.CreateDirectory(tempDir);
+            
+            var zipPath = Path.Combine(tempDir, "subtitle.zip");
+            
+            // Save ZIP file
+            await using (var fs = File.Create(zipPath))
+            {
+                await response.Content.CopyToAsync(fs, cancellationToken);
+            }
+            
+            // Extract ZIP
+            ZipFile.ExtractToDirectory(zipPath, tempDir);
+            
+            // Find the best subtitle file (prefer SRT, then ASS)
+            var subtitleFiles = Directory.GetFiles(tempDir, "*.*", SearchOption.AllDirectories)
+                .Where(f => f.EndsWith(".srt", StringComparison.OrdinalIgnoreCase) ||
+                           f.EndsWith(".ass", StringComparison.OrdinalIgnoreCase) ||
+                           f.EndsWith(".ssa", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(f => f.EndsWith(".srt", StringComparison.OrdinalIgnoreCase) ? 0 : 1) // Prefer SRT
+                .ToList();
+            
+            if (subtitleFiles.Count == 0)
+            {
+                _logger.LogWarning("No subtitle files found in downloaded ZIP from Subdl");
+                // Cleanup temp directory
+                try { Directory.Delete(tempDir, true); } catch { /* ignore */ }
+                return null;
+            }
+            
+            var bestFile = subtitleFiles.First();
+            _logger.LogInformation("Extracted subtitle from Subdl: {File}", Path.GetFileName(bestFile));
+            
+            // Clean up the zip file but keep the extracted subtitle
+            try { File.Delete(zipPath); } catch { /* ignore */ }
+            
+            return bestFile;
         }
-        catch(Exception ex)
+        catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to download subtitle from Subdl");
             return null;

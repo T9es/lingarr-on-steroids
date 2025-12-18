@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
@@ -11,15 +12,15 @@ using Microsoft.Extensions.Logging;
 
 namespace Lingarr.Server.Services.Subtitle;
 
-public class SubtitleProviderService
+public class SubtitleProviderService : ISubtitleProviderService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<SubtitleProviderService> _logger;
     private readonly ISettingService _settingService;
     private readonly IServiceScopeFactory _scopeFactory;
 
-    // In-memory circuit breaker cache (ProviderName -> CooldownUntil)
-    private static readonly Dictionary<string, DateTime> CircuitBreaker = new();
+    // In-memory circuit breaker cache (ProviderName -> CooldownUntil) - thread-safe
+    private static readonly ConcurrentDictionary<string, DateTime> CircuitBreaker = new();
 
     public SubtitleProviderService(
         IServiceProvider serviceProvider,
@@ -97,11 +98,110 @@ public class SubtitleProviderService
              // ImdbId on Episode is usually for the episode itself. OpenSubtitles might need Show ID.
         }
 
-        // 2. Execute Search (Tiered)
-        // ... Implementation of tiered search ...
+        // 2. Execute Tiered Search
+        List<SubtitleSearchResult> results = new();
         
-        // For MVP, just return null as placeholder till implementation is complete.
-        return null;
+        foreach (var provider in validProviders)
+        {
+            try
+            {
+                // Tier 1: Search by IMDB ID (most accurate)
+                if (!string.IsNullOrEmpty(imdbId))
+                {
+                    _logger.LogDebug("Searching {Provider} by IMDB ID: {ImdbId}", provider.Name, imdbId);
+                    var imdbResults = await provider.SearchByImdbAsync(imdbId, seasonNumber, episodeNumber, cancellationToken);
+                    if (imdbResults.Any())
+                    {
+                        results.AddRange(imdbResults.Where(r => r.Language.Equals(language, StringComparison.OrdinalIgnoreCase)));
+                    }
+                }
+                
+                // Tier 2: Search by TMDB ID if IMDB didn't yield results
+                if (!results.Any() && tmdbId.HasValue)
+                {
+                    _logger.LogDebug("Searching {Provider} by TMDB ID: {TmdbId}", provider.Name, tmdbId);
+                    var tmdbResults = await provider.SearchByTmdbAsync(tmdbId.Value, mediaType, seasonNumber, episodeNumber, cancellationToken);
+                    if (tmdbResults.Any())
+                    {
+                        results.AddRange(tmdbResults.Where(r => r.Language.Equals(language, StringComparison.OrdinalIgnoreCase)));
+                    }
+                }
+                
+                // Tier 3: Search by title query as fallback
+                if (!results.Any() && !string.IsNullOrEmpty(title))
+                {
+                    _logger.LogDebug("Searching {Provider} by title: {Title}", provider.Name, title);
+                    var queryResults = await provider.SearchByQueryAsync(title, seasonNumber, episodeNumber, cancellationToken);
+                    if (queryResults.Any())
+                    {
+                        results.AddRange(queryResults.Where(r => r.Language.Equals(language, StringComparison.OrdinalIgnoreCase)));
+                    }
+                }
+                
+                if (results.Any())
+                {
+                    _logger.LogInformation("Found {Count} subtitle results from {Provider}", results.Count, provider.Name);
+                    break; // Use first provider that returns results
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error searching {Provider}, trying next provider", provider.Name);
+            }
+        }
+        
+        if (!results.Any())
+        {
+            _logger.LogInformation("No subtitle results found for {Title} in language {Language}", title, language);
+            return null;
+        }
+        
+        // 3. Score and select best result
+        var minScoreSetting = await _settingService.GetSetting(SettingKeys.SubtitleProvider.MinimumMatchScore);
+        var minScore = int.TryParse(minScoreSetting, out var ms) ? ms : 0;
+        
+        var bestResult = results
+            .Where(r => r.Score >= minScore)
+            .OrderByDescending(r => r.Score)
+            .ThenBy(r => r.IsHearingImpaired ? 1 : 0) // Prefer non-HI
+            .FirstOrDefault();
+            
+        if (bestResult == null)
+        {
+            _logger.LogInformation("No subtitle results met minimum score {MinScore}", minScore);
+            return null;
+        }
+        
+        // 4. Download the subtitle
+        var provider2 = validProviders.FirstOrDefault(p => p.Name == bestResult.Provider);
+        if (provider2 == null)
+        {
+            _logger.LogError("Provider {Provider} not found for download", bestResult.Provider);
+            return null;
+        }
+        
+        _logger.LogInformation("Downloading subtitle from {Provider}: {Title}", bestResult.Provider, bestResult.Title);
+        
+        var downloadedPath = await provider2.DownloadSubtitleAsync(bestResult.DownloadLink, cancellationToken);
+        
+        if (!string.IsNullOrEmpty(downloadedPath))
+        {
+            // Log the successful download
+            dbContext.SubtitleProviderLogs.Add(new SubtitleProviderLog
+            {
+                MediaId = media.Id,
+                MediaType = mediaType.ToString(),
+                ProviderName = bestResult.Provider,
+                Message = $"Downloaded subtitle: {bestResult.Title}",
+                Level = "Info",
+                CreatedAt = DateTime.UtcNow
+            });
+            await dbContext.SaveChangesAsync(cancellationToken);
+            
+            _logger.LogInformation("Successfully downloaded subtitle to: {Path}", downloadedPath);
+        }
+        
+        return downloadedPath;
     }
 
     private bool IsCoolingDown(string providerName)
@@ -109,7 +209,7 @@ public class SubtitleProviderService
         if (CircuitBreaker.TryGetValue(providerName, out var cooldownUntil))
         {
             if (DateTime.UtcNow < cooldownUntil) return true;
-            CircuitBreaker.Remove(providerName);
+            CircuitBreaker.TryRemove(providerName, out _);
         }
         return false;
     }
