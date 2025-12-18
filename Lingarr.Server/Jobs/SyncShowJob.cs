@@ -32,7 +32,7 @@ public class SyncShowJob
         _showSyncService = showSyncService;
     }
 
-    [DisableConcurrentExecution(timeoutInSeconds: 5 * 60)]
+    [DisableConcurrentExecution(timeoutInSeconds: 60 * 60)]
     [AutomaticRetry(Attempts = 0)]
     [Queue("movies")]
     public async Task Execute()

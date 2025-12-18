@@ -32,7 +32,7 @@ public class SyncMovieJob
         _dbContext = dbContext;
     }
 
-    [DisableConcurrentExecution(timeoutInSeconds: 5 * 60)]
+    [DisableConcurrentExecution(timeoutInSeconds: 60 * 60)]
     [AutomaticRetry(Attempts = 0)]
     [Queue("shows")]
     public async Task Execute()
