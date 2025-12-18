@@ -153,7 +153,8 @@ export const TRANSLATION_STATE = {
     PENDING: 2,
     IN_PROGRESS: 3,
     COMPLETE: 4,
-    STALE: 5
+    STALE: 5,
+    NO_SUITABLE_SUBTITLES: 6
 } as const
 
 export type TranslationStateType = (typeof TRANSLATION_STATE)[keyof typeof TRANSLATION_STATE]

@@ -119,6 +119,31 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                     : subtitles.FirstOrDefault(s => s.Language == sourceLanguage);
             }
 
+            // Check if the found external subtitle is sparse (likely Signs/Songs from previous extraction)
+            // If it was extracted by Lingarr and is sparse, skip it and fall back to embedded extraction
+            if (sourceSubtitle != null)
+            {
+                var isSparse = SubtitleExtractionService.IsSparseSubtitle(sourceSubtitle.Path);
+                var isExtracted = SubtitleExtractionService.IsLingarrExtracted(sourceSubtitle.Path);
+                
+                if (isSparse)
+                {
+                    var entryCount = SubtitleExtractionService.CountSubtitleEntries(sourceSubtitle.Path);
+                    _logger.LogWarning(
+                        "External subtitle {Path} is sparse ({Count} entries, minimum: {Min}). {Action}",
+                        sourceSubtitle.Path, 
+                        entryCount, 
+                        SubtitleExtractionService.MinimumDialogueEntries,
+                        isExtracted ? "Lingarr-extracted file will be skipped, trying embedded fallback..." : "User-provided file will still be used.");
+                    
+                    // Only skip Lingarr-extracted sparse files; user-provided sparse files may be intentional
+                    if (isExtracted)
+                    {
+                        sourceSubtitle = null;
+                    }
+                }
+            }
+
             // Fallback: If no external source found (even if sourceLanguage was detected but file missing?)
             // Actually, existingLanguages comes from files. So if sourceLanguage != null, the file exists.
             // But if existingLanguages DOES NOT contain sourceLanguage, sourceLanguage is null.

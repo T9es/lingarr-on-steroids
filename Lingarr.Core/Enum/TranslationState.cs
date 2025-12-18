@@ -40,5 +40,11 @@ public enum TranslationState
     /// Needs re-analysis.
     /// Language settings changed since last state computation.
     /// </summary>
-    Stale = 5
+    Stale = 5,
+    
+    /// <summary>
+    /// No suitable subtitle tracks available.
+    /// All embedded subtitle tracks have fewer than the minimum required entries (sparse/Signs/Songs only).
+    /// </summary>
+    NoSuitableSubtitles = 6
 }

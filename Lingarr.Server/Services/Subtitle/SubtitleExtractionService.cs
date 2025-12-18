@@ -49,6 +49,18 @@ public class SubtitleExtractionService : ISubtitleExtractionService
         { "text", ".srt" }
     };
 
+    /// <summary>
+    /// Comment marker added to extracted subtitle files to identify them as Lingarr-extracted.
+    /// This allows distinguishing extracted files from user-provided external subtitles.
+    /// </summary>
+    public const string ExtractionMarkerPrefix = "; Lingarr-Extracted:";
+    
+    /// <summary>
+    /// Minimum number of subtitle entries required for a track to be considered valid.
+    /// Tracks below this threshold are likely Signs/Songs or otherwise incomplete.
+    /// </summary>
+    public const int MinimumDialogueEntries = 100;
+
     public SubtitleExtractionService(
         ILogger<SubtitleExtractionService> logger,
         LingarrDbContext dbContext,
@@ -585,8 +597,14 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 finalItems.Add(current);
             }
 
-            // Write back to file
+            // Write back to file with extraction marker
             var sb = new System.Text.StringBuilder();
+            
+            // Add extraction marker comment at the top
+            // SRT format allows comments starting with ; before the first entry
+            sb.AppendLine($"{ExtractionMarkerPrefix} StreamIndex={0}, Entries={finalItems.Count}");
+            sb.AppendLine();
+            
             for (int i = 0; i < finalItems.Count; i++)
             {
                 var item = finalItems[i];
@@ -613,6 +631,56 @@ public class SubtitleExtractionService : ISubtitleExtractionService
     {
         var ts = TimeSpan.FromMilliseconds(totalMs);
         return $"{ts.Hours:D2}:{ts.Minutes:D2}:{ts.Seconds:D2},{ts.Milliseconds:D3}";
+    }
+
+    /// <summary>
+    /// Checks if a subtitle file was extracted by Lingarr (has extraction marker).
+    /// </summary>
+    public static bool IsLingarrExtracted(string filePath)
+    {
+        try
+        {
+            if (!File.Exists(filePath)) return false;
+            
+            // Read just the first line to check for marker
+            using var reader = new StreamReader(filePath);
+            var firstLine = reader.ReadLine();
+            return firstLine?.StartsWith(ExtractionMarkerPrefix) == true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Counts the number of dialogue entries in a subtitle file (SRT format).
+    /// Returns -1 if the file cannot be read.
+    /// </summary>
+    public static int CountSubtitleEntries(string filePath)
+    {
+        try
+        {
+            if (!File.Exists(filePath)) return -1;
+            
+            var content = File.ReadAllText(filePath);
+            // SRT: Count lines that are just numbers (entry markers)
+            var lines = content.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            return lines.Count(line => int.TryParse(line.Trim(), out _) && line.Trim().All(char.IsDigit));
+        }
+        catch
+        {
+            return -1;
+        }
+    }
+
+    /// <summary>
+    /// Checks if a subtitle file is sparse (below minimum entries threshold).
+    /// </summary>
+    public static bool IsSparseSubtitle(string filePath)
+    {
+        var count = CountSubtitleEntries(filePath);
+        return count >= 0 && count < MinimumDialogueEntries;
     }
 
     private async Task<string?> RunFfprobe(string mediaFilePath)

@@ -438,11 +438,13 @@
     "stale": "Stale",
     "unknown": "Unknown",
     "notApplicable": "N/A",
+    "noSuitableSubtitles": "No Source",
     "tooltipComplete": "All translations complete",
     "tooltipInProgress": "Translation in progress",
     "tooltipPending": "Awaiting translation",
     "tooltipStale": "Needs re-analysis",
     "tooltipUnknown": "Not yet analyzed",
-    "tooltipNotApplicable": "Not applicable / No source"
+    "tooltipNotApplicable": "Not applicable / No source",
+    "tooltipNoSuitableSubtitles": "No suitable subtitle tracks found (all are sparse/Signs & Songs)"
   }
 }
