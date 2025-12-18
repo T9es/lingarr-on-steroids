@@ -64,6 +64,13 @@ Lingarr provides multi-architecture Docker images that automatically select the 
 
 ## Setting up Lingarr
 
+> [!WARNING]
+> **Upgrading from v1.x?** Version 2.0.0 introduces breaking changes:
+> - **MySQL/MariaDB support has been removed.** You must migrate to PostgreSQL (recommended) or SQLite.
+> - **Settings are NOT migrated.** You will need to reconfigure your settings after upgrading (~5 minutes).
+> - **Media library re-syncs automatically** from Radarr/Sonarr - no action needed for your media.
+> - Your previous database cannot be migrated; this is a fresh start.
+
 > ✅ **Recommended**: PostgreSQL is the recommended database for this fork. It uses MVCC (Multi-Version Concurrency Control) which eliminates lock contention issues during heavy parallel processing.
 
 ### PostgreSQL Setup (Recommended)
@@ -209,7 +216,7 @@ Run LibreTranslate Docker container:
 docker run -d \
   --name LibreTranslate \
   -p 5000:5000 \
-  -v /path/to/libretranslate/db:/app/db \[Settings.MD](Settings.MD)
+  -v /path/to/libretranslate/db:/app/db \
   -v /path/to/libretranslate/local:/home/libretranslate/.local \
   libretranslate/libretranslate \
   --disable-web-ui \
