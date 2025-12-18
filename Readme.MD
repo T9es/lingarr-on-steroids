@@ -14,7 +14,7 @@ While staying true to the core mission of seamless **Radarr** and **Sonarr** sub
 | Feature | Original Lingarr | Lingarr on Steroids |
 | :--- | :--- | :--- |
 | **Translation Engine** | Serial execution (one file at a time). | **Parallel Semaphore-Based Processing**<br>Configurable concurrency limits allow processing multiple media files simultaneously without overloading providers. |
-| **Resilience Strategy** | Basic retry on failure. | **Graduated Batch Recovery**<br>Smartly detects batch failures and recursively splits them into smaller chunks to isolate problematic lines vs failing the whole job. |
+| **Resilience Strategy** | Basic retry on failure. | **Deferred Contextual Repair**<br>Collects failed translations during processing, then retries them together at the end with surrounding context lines. The LLM sees what came before/after, dramatically improving recovery success. |
 | **Subtitle Sources** | External subtitle files only. | **Deep Embedded Extraction**<br>Uses FFmpeg to probe and extract subtitles (SRT, ASS, MOV_TEXT) directly from MKV/MP4 containers. Automatically merges concurrent layers and dedupes overlapping timeframes. |
 | **Cleaning Logic** | Basic HTML tag stripping. | **Advanced ASS/SSA Sanitation**<br>Heuristic algorithms detect and remove vector drawing commands, karaoke tags, and positioning artifacts that confuse LLMs. |
 | **Quality Control** | None. | **Integrity Validation**<br>Line-count verification (95% tolerance) ensures the translated file matches the structure of the source, protecting against hallucinations. |

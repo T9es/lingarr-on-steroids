@@ -1,0 +1,41 @@
+## Release v2.0.0 - PostgreSQL Migration & Reliability Improvements
+
+### ⚠️ Breaking Change
+
+**MySQL/MariaDB support has been removed.** PostgreSQL is now the default database.
+
+### Migration Notes
+
+> **Upgrading from v1.x?**
+> - Data is NOT automatically migrated from MySQL
+> - Settings need reconfiguration (~5 min)
+> - Media re-syncs from Radarr/Sonarr automatically
+> - Review updated docker-compose examples in README
+
+### 🗄️ Database
+
+- PostgreSQL 16 is now the recommended and default database backend
+- SQLite remains available for simple setups
+- MVCC eliminates lock contention issues during parallel processing
+- MySQL/MariaDB support has been completely removed
+
+### ✨ New Features
+
+- **Deferred Contextual Repair**: Smarter batch recovery - collects failed translations during processing, then retries them together at the end with surrounding context lines. The LLM sees what came before/after, dramatically improving recovery success.
+- **Bulk Integrity Check**: New settings page for batch subtitle validation
+- **Sparse Subtitle Validation**: Extraction markers and NoSuitableSubtitles state
+- **Throttled Progress Signals**: Efficient batch operation updates via SignalR
+- **Self-Healing Hangfire Locks**: Automatic cleanup of orphaned locks on startup
+
+### 🐛 Bug Fixes
+
+- Robust batch retry for translation requests (prevents 500 errors)
+- Settings KeyNotFoundException resolved with harmonized database keys
+- PostgreSQL performance optimizations and language retrieval fixes
+- Connection resiliency with execution strategy support
+- Increased Hangfire DistributedLockTimeout to 24 hours
+- Incremental visibility during sync jobs
+
+### 🚧 Reverted (Planned for Future)
+
+- Subtitle provider integration (pending further work)
