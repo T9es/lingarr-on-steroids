@@ -40,4 +40,40 @@ public class ProgressService : IProgressService
             Progress = progress
         });
     }
+
+    /// <inheritdoc />
+    public async Task EmitBatch(List<TranslationRequest> translationRequests, int progress)
+    {
+        if (!translationRequests.Any())
+        {
+            return;
+        }
+
+        var ids = translationRequests.Select(tr => tr.Id).ToList();
+
+        // Bulk update Progress in DB
+        await _dbContext.TranslationRequests
+            .Where(tr => ids.Contains(tr.Id))
+            .ExecuteUpdateAsync(setters => setters.SetProperty(tr => tr.Progress, progress));
+
+        // Throttled SignalR updates
+        const int batchSize = 10;
+        const int delayMs = 50;
+
+        foreach (var batch in translationRequests.Chunk(batchSize))
+        {
+            foreach (var request in batch)
+            {
+                await _hubContext.Clients.Group("TranslationRequests").SendAsync("RequestProgress", new
+                {
+                    Id = request.Id,
+                    JobId = request.JobId,
+                    CompletedAt = request.CompletedAt,
+                    Status = request.Status.GetDisplayName(),
+                    Progress = progress
+                });
+            }
+            await Task.Delay(delayMs);
+        }
+    }
 }
