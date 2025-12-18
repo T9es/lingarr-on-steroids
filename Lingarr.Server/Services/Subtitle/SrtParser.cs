@@ -65,7 +65,6 @@ public class SrtParser : ISubtitleParser
 
     /// <summary>
     /// Reads the next non-empty line from the subtitle.
-    /// Skips comment lines (starting with ';') as used by Lingarr extraction markers.
     /// </summary>
     /// <param name="reader">The text reader to read from.</param>
     /// <returns>The next non-empty line, or null if none remain.</returns>
@@ -75,12 +74,10 @@ public class SrtParser : ISubtitleParser
         while ((line = reader.ReadLine()) != null)
         {
             var trimmed = line.Trim();
-            // Skip empty lines and comment lines (SRT allows ; as comment prefix)
-            if (string.IsNullOrWhiteSpace(trimmed) || trimmed.StartsWith(';'))
+            if (!string.IsNullOrWhiteSpace(trimmed))
             {
-                continue;
+                return trimmed;
             }
-            return trimmed;
         }
         return null;
     }
