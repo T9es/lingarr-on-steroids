@@ -49,6 +49,7 @@ deployment/
 # Logs
 nas_logs.txt
 nas_logs_window.txt
+system-logs*.txt
 *.log
 
 # Local DB
