@@ -146,25 +146,4 @@ public static class SettingKeys
         /// </summary>
         public const string ExtractionMode = "subtitle_extraction_mode";
     }
-    public static class SubtitleProvider
-    {
-        public const string MinimumMatchScore = "subtitle_provider_min_score";
-        public const string DownloadSourceLanguages = "subtitle_provider_source_languages";
-        public const string DailyLimit = "subtitle_provider_daily_limit";
-
-        public static class OpenSubtitles
-        {
-            public const string Enabled = "opensubtitles_enabled";
-            public const string Username = "opensubtitles_username";
-            public const string Password = "opensubtitles_password";
-            public const string ApiKey = "opensubtitles_api_key";
-        }
-
-        public static class Subdl
-        {
-            public const string Enabled = "subdl_enabled";
-            public const string ApiKey = "subdl_api_key";
-            public const string Vip = "subdl_vip";
-        }
-    }
 }

@@ -6,8 +6,6 @@ namespace Lingarr.Core.Entities;
 public class Movie : BaseEntity, IMedia
 {
     public required int RadarrId { get; set; }
-    public string? ImdbId { get; set; }
-    public string? TmdbId { get; set; }
     public required string Title { get; set; }
     public required string? FileName { get; set; }
     public required string? Path { get; set; }

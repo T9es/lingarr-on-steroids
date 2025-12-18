@@ -6,10 +6,6 @@ public class RadarrMovie
 {
     [JsonPropertyName("id")]
     public required int Id { get; set; }
-    [JsonPropertyName("imdbId")]
-    public string? ImdbId { get; set; }
-    [JsonPropertyName("tmdbId")]
-    public int? TmdbId { get; set; }
     [JsonPropertyName("title")]
     public required string Title { get; set; }
     [JsonPropertyName("path")]

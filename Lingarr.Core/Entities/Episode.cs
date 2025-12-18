@@ -7,8 +7,6 @@ namespace Lingarr.Core.Entities;
 public class Episode : BaseEntity, IMedia
 {
     public required int SonarrId { get; set; }
-    public string? ImdbId { get; set; }
-    public string? TmdbId { get; set; }
     public required int EpisodeNumber { get; set; }
     public required string Title { get; set; }
     public string? FileName { get; set; } = string.Empty;

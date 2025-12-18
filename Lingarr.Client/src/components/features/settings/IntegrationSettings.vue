@@ -179,8 +179,6 @@
             <div v-translate="'settings.integrations.reindexTask'" class="pt-2" />
         </template>
     </CardComponent>
-
-    <SubtitleProviderSettings />
 </template>
 
 <script setup lang="ts">
@@ -192,7 +190,6 @@ import CardComponent from '@/components/common/CardComponent.vue'
 import InputComponent from '@/components/common/InputComponent.vue'
 import RadarrIcon from '@/components/icons/RadarrIcon.vue'
 import SonarrIcon from '@/components/icons/SonarrIcon.vue'
-import SubtitleProviderSettings from '@/components/features/settings/SubtitleProviderSettings.vue'
 import services from '@/services'
 import { useI18n } from '@/plugins/i18n'
 

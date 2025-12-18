@@ -71,17 +71,7 @@ export const SETTINGS = {
     REPAIR_CONTEXT_RADIUS: 'repair_context_radius',
     REPAIR_MAX_RETRIES: 'repair_max_retries',
     STRIP_ASS_DRAWING_COMMANDS: 'strip_ass_drawing_commands',
-    CLEAN_SOURCE_ASS_DRAWINGS: 'clean_source_ass_drawings',
-    SUBTITLE_PROVIDER_MIN_SCORE: 'subtitle_provider_min_score',
-    SUBTITLE_PROVIDER_SOURCE_LANGUAGES: 'subtitle_provider_source_languages',
-    SUBTITLE_PROVIDER_DAILY_LIMIT: 'subtitle_provider_daily_limit',
-    OPENSUBTITLES_ENABLED: 'opensubtitles_enabled',
-    OPENSUBTITLES_USERNAME: 'opensubtitles_username',
-    OPENSUBTITLES_PASSWORD: 'opensubtitles_password',
-    OPENSUBTITLES_API_KEY: 'opensubtitles_api_key',
-    SUBDL_ENABLED: 'subdl_enabled',
-    SUBDL_API_KEY: 'subdl_api_key',
-    SUBDL_VIP: 'subdl_vip'
+    CLEAN_SOURCE_ASS_DRAWINGS: 'clean_source_ass_drawings'
 } as const
 
 export interface ISettings {
@@ -155,16 +145,6 @@ export interface ISettings {
     repair_max_retries: string
     strip_ass_drawing_commands: string
     clean_source_ass_drawings: string
-    subtitle_provider_min_score: string
-    subtitle_provider_source_languages: string
-    subtitle_provider_daily_limit: string
-    opensubtitles_enabled: string
-    opensubtitles_username: string
-    opensubtitles_password: string
-    opensubtitles_api_key: string
-    subdl_enabled: string
-    subdl_api_key: string
-    subdl_vip: string
 }
 
 export interface ICustomAiParams {
