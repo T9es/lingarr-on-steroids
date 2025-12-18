@@ -44,6 +44,7 @@ import AutomationIcon from '@/components/icons/AutomationIcon.vue'
 import TaskIcon from '@/components/icons/TaskIcon.vue'
 import LanguageIcon from '@/components/icons/LanguageIcon.vue'
 import LogIcon from '@/components/icons/LogIcon.vue'
+import CheckMarkIcon from '@/components/icons/CheckMarkIcon.vue'
 
 const { translate } = useI18n()
 
@@ -64,6 +65,12 @@ const menuItems: MenuItem[] = [
         label: translate('navigation.subtitle'),
         icon: LanguageIcon,
         route: 'subtitle-settings',
+        children: []
+    },
+    {
+        label: translate('navigation.integrity'),
+        icon: CheckMarkIcon,
+        route: 'integrity-settings',
         children: []
     },
     {

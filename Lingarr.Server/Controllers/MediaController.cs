@@ -119,4 +119,15 @@ public class MediaController : ControllerBase
         var queuedCount = await _mediaService.IntegrityCheck(request.MediaType, request.Id);
         return Ok(queuedCount);
     }
+    
+    /// <summary>
+    /// Triggers a bulk integrity check for all Complete-state media items.
+    /// Returns the job ID for tracking progress.
+    /// </summary>
+    [HttpPost("bulk-integrity-check")]
+    public ActionResult<string> BulkIntegrityCheck()
+    {
+        var jobId = _mediaService.StartBulkIntegrityCheck();
+        return Ok(new { jobId });
+    }
 }

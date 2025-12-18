@@ -110,4 +110,10 @@ public interface IMediaService
     /// A task result containing an integer indicating the number of repair translations queued.
     /// </returns>
     Task<int> IntegrityCheck(MediaType mediaType, int id);
+    
+    /// <summary>
+    /// Starts a bulk integrity check for all Complete-state media items.
+    /// </summary>
+    /// <returns>The Hangfire job ID for tracking progress.</returns>
+    string StartBulkIntegrityCheck();
 }

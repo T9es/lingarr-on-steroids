@@ -451,4 +451,12 @@ public class MediaService : IMediaService
             return 0;
         }
     }
+    
+    /// <inheritdoc />
+    public string StartBulkIntegrityCheck()
+    {
+        var jobId = Hangfire.BackgroundJob.Enqueue<Jobs.BulkIntegrityCheckJob>(job => job.Execute());
+        _logger.LogInformation("Started bulk integrity check job: {JobId}", jobId);
+        return jobId;
+    }
 }

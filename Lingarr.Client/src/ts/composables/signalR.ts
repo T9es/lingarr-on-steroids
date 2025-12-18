@@ -23,6 +23,19 @@ export type EventCallbacks = {
     RequestActive: (request: { count: number }) => void
     JobProgressUpdated: (jobId: string, progress: number) => void
     JobStateUpdated: (jobId: string, state: string) => void
+    BulkIntegrityProgress: (stats: {
+        total: number
+        totalMovies: number
+        totalEpisodes: number
+        processedCount: number
+        validCount: number
+        corruptCount: number
+        queuedCount: number
+        errorCount: number
+        isComplete: boolean
+        error: string | null
+        progressPercent: number
+    }) => void
 }
 
 export interface Hub {

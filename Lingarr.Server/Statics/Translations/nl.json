@@ -9,6 +9,7 @@
     "integrations": "Integraties",
     "services": "Diensten",
     "subtitle": "Ondertiteling",
+    "integrity": "Integriteit",
     "automation": "Automatisering",
     "tasks": "Taken",
     "logs": "Logs"
@@ -413,6 +414,23 @@
       "autoScroll": "Auto-scroll",
       "enabled": "Ingeschakeld",
       "disabled": "Uitgeschakeld"
+    },
+    "integrity": {
+      "title": "Bulk Integriteitscontrole",
+      "description": "Valideer alle media met status 'Voltooid' om gedeeltelijke of corrupte ondertitelvertalingen te detecteren. Gevonden corrupte ondertitels worden automatisch in de wachtrij gezet voor hervertaling.",
+      "startButton": "Start Integriteitscontrole",
+      "running": "Controleren...",
+      "progress": "Voortgang",
+      "completed": "Integriteitscontrole succesvol voltooid!",
+      "stats": {
+        "processed": "Verwerkt",
+        "valid": "Geldig",
+        "corrupt": "Corrupt",
+        "queued": "In wachtrij",
+        "total": "Totaal",
+        "movies": "films",
+        "episodes": "afleveringen"
+      }
     }
   },
   "translationState": {

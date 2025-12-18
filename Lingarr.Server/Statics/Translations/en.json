@@ -9,6 +9,7 @@
     "integrations": "Integrations",
     "services": "Services",
     "subtitle": "Subtitle",
+    "integrity": "Integrity",
     "automation": "Automation",
     "tasks": "Tasks",
     "logs": "Logs"
@@ -411,6 +412,23 @@
       "autoScroll": "Auto-scroll",
       "enabled": "Enabled",
       "disabled": "Disabled"
+    },
+    "integrity": {
+      "title": "Bulk Integrity Check",
+      "description": "Validate all Complete-state media to detect partial or corrupted subtitle translations. Any corrupt subtitles found will be automatically queued for re-translation.",
+      "startButton": "Start Integrity Check",
+      "running": "Checking...",
+      "progress": "Progress",
+      "completed": "Integrity check completed successfully!",
+      "stats": {
+        "processed": "Processed",
+        "valid": "Valid",
+        "corrupt": "Corrupt",
+        "queued": "Queued",
+        "total": "Total",
+        "movies": "movies",
+        "episodes": "episodes"
+      }
     }
   },
   "translationState": {

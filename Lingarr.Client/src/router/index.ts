@@ -47,6 +47,11 @@ const routes: RouteRecordRaw[] = [
                 component: () => import('@/pages/settings/SubtitlePage.vue')
             },
             {
+                name: 'integrity-settings',
+                path: 'integrity',
+                component: () => import('@/pages/settings/IntegrityCheckPage.vue')
+            },
+            {
                 name: 'automation-settings',
                 path: 'automation',
                 component: () => import('@/pages/settings/AutomationPage.vue')
