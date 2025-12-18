@@ -281,6 +281,11 @@
     "subtitle": {
       "title": "Subtitle",
       "description": "Configure how subtitles are cleaned, and timed to prevent overlaps and remove unwanted formatting.",
+      "subdlDescription": "Subdl is a free subtitle provider with a large database. API key required.",
+      "opensubtitlesDescription": "OpenSubtitles is a popular subtitle provider. API key and account required.",
+      "generalProviderSettings": "General Provider Settings",
+      "dailyLimit": "Daily download limit",
+      "minScore": "Minimum match score",
       "ignoreCaptions": "Skip translation if subtitles with caption tags exist:",
       "ignoreCaptionsDescription": "Skip translation if a target subtitle with captions such as Hearing Impaired or Forced already exists.",
       "fixOverlappingSubtitles": "Fix overlapping subtitles:",
