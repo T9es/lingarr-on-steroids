@@ -294,101 +294,161 @@ public class TranslationRequestService : ITranslationRequestService
 
     /// <inheritdoc />
     /// <inheritdoc />
+    /// <inheritdoc />
     public async Task<int> RetryAllFailedRequests()
     {
-        // 1. Fetch all failed requests
-        var failedRequests = await _dbContext.TranslationRequests
-            .Where(tr => tr.Status == TranslationStatus.Failed)
-            .ToListAsync();
-
-        if (!failedRequests.Any())
-        {
-            return 0;
-        }
-
+        var batchSize = 50;
         var totalRetried = 0;
-        var newRequestsToEnqueue = new List<TranslationRequest>();
+        var newRequestsCount = 0;
 
-        // 2. Group by unique key to prevent duplicates
-        var groups = failedRequests.GroupBy(tr => new
+        _logger.LogInformation("Starting batch retry of failed requests...");
+
+        // Loop until we have processed all failed requests
+        while (true)
         {
-            tr.MediaId,
-            tr.MediaType,
-            tr.SourceLanguage,
-            tr.TargetLanguage
-        });
+            // 1. Fetch a small batch of failed requests
+            // We order by CreatedAt to ensure deterministic processing
+            var batch = await _dbContext.TranslationRequests
+                .Where(tr => tr.Status == TranslationStatus.Failed)
+                .OrderBy(tr => tr.CreatedAt)
+                .Take(batchSize)
+                .ToListAsync();
 
-        using var transaction = await _dbContext.Database.BeginTransactionAsync();
-
-        try
-        {
-            foreach (var group in groups)
+            if (!batch.Any())
             {
-                // We pick the most recent one as the "template" for the retry
-                // ensuring we have the latest subtitle path/info if it changed
-                var template = group.OrderByDescending(x => x.CreatedAt).First();
-
-                var translationRequestCopy = new TranslationRequest
-                {
-                    MediaId = template.MediaId,
-                    Title = template.Title,
-                    SourceLanguage = template.SourceLanguage,
-                    TargetLanguage = template.TargetLanguage,
-                    SubtitleToTranslate = template.SubtitleToTranslate,
-                    MediaType = template.MediaType,
-                    Status = TranslationStatus.Pending,
-                    IsActive = true
-                };
-
-                // Add the single new request
-                _dbContext.TranslationRequests.Add(translationRequestCopy);
-                newRequestsToEnqueue.Add(translationRequestCopy);
-
-                // Remove ALL failed requests for this group
-                _dbContext.TranslationRequests.RemoveRange(group);
-                
-                totalRetried += group.Count();
+                break;
             }
 
-            // 3. Save everything in one go
-            await _dbContext.SaveChangesAsync();
-            await transaction.CommitAsync();
+            var batchNewRequests = new List<TranslationRequest>();
+            var idsToDelete = new List<int>();
 
-            _logger.LogInformation(
-                "Successfully retried {TotalRetried} failed requests, consolidated into {NewCount} new active requests", 
-                totalRetried, 
-                newRequestsToEnqueue.Count);
-        }
-        catch (DbUpdateException ex) when (IsDuplicateKeyViolation(ex))
-        {
-            // This happens if a NEW active request came in while we were processing this.
-            // In that case, we should roll back and maybe try safe individual processing, 
-            // but for now, logging and rethrowing (or returning 0) is safer than crashing 
-            // without explanation.
-            await transaction.RollbackAsync();
-            _logger.LogError(ex, "Failed to batch retry requests due to a concurrent underlying change. Aborting batch retry.");
+            // 2. Identify potentially conflicting active requests
+            var mediaIds = batch
+                .Where(x => x.MediaId.HasValue)
+                .Select(x => x.MediaId!.Value)
+                .Distinct()
+                .ToList();
+
+            var activeRequestsKeys = new HashSet<(int?, MediaType, string, string)>();
             
-            // Optional: We could implement a fallback here to try one-by-one, 
-            // but it's complex to mix with the group remove logic. 
-            // Let's return 500-ish behavior but logged safely? 
-            // Actually, responding with 0 and a log is better than 500.
-            return 0; 
-        }
-        catch (Exception ex)
-        {
-            await transaction.RollbackAsync();
-            _logger.LogError(ex, "Unexpected error during batch retry of failed requests");
-            throw; // Let the controller handle 500 for unexpected general errors
+            if (mediaIds.Any())
+            {
+                var activeRequests = await _dbContext.TranslationRequests
+                    .Where(tr => (tr.Status == TranslationStatus.Pending || tr.Status == TranslationStatus.InProgress)
+                                 && tr.MediaId != null && mediaIds.Contains(tr.MediaId.Value))
+                    .Select(tr => new { tr.MediaId, tr.MediaType, tr.SourceLanguage, tr.TargetLanguage })
+                    .ToListAsync();
+                
+                foreach (var r in activeRequests)
+                {
+                    activeRequestsKeys.Add((r.MediaId, r.MediaType, r.SourceLanguage, r.TargetLanguage));
+                }
+            }
+
+            // 3. Process the batch in a transaction
+            using var transaction = await _dbContext.Database.BeginTransactionAsync();
+
+            try
+            {
+                // Clear tracker so we don't have conflicts with the loaded batch entities
+                // when we do bulk deletes or inserts.
+                _dbContext.ChangeTracker.Clear();
+                
+                var groups = batch.GroupBy(tr => new
+                {
+                    tr.MediaId,
+                    tr.MediaType,
+                    tr.SourceLanguage,
+                    tr.TargetLanguage
+                });
+
+                foreach (var group in groups)
+                {
+                    var key = (group.Key.MediaId, group.Key.MediaType, group.Key.SourceLanguage, group.Key.TargetLanguage);
+                    
+                    // If no active request exists for this key, create a new one
+                    if (!activeRequestsKeys.Contains(key))
+                    {
+                        var template = group.OrderByDescending(x => x.CreatedAt).First();
+                        var newRequest = new TranslationRequest
+                        {
+                            MediaId = template.MediaId,
+                            Title = template.Title,
+                            SourceLanguage = template.SourceLanguage,
+                            TargetLanguage = template.TargetLanguage,
+                            SubtitleToTranslate = template.SubtitleToTranslate,
+                            MediaType = template.MediaType,
+                            Status = TranslationStatus.Pending,
+                            IsActive = true
+                        };
+                        
+                        batchNewRequests.Add(newRequest);
+                        
+                        // Prevent duplicates within the same batch
+                        activeRequestsKeys.Add(key);
+                    }
+                    
+                    // Always delete the failed requests in this group (deduplication/cleanup)
+                    idsToDelete.AddRange(group.Select(g => g.Id));
+                }
+
+                // Execute Deletes
+                if (idsToDelete.Any())
+                {
+                    await _dbContext.TranslationRequests
+                        .Where(tr => idsToDelete.Contains(tr.Id))
+                        .ExecuteDeleteAsync();
+                }
+
+                // Execute Inserts
+                if (batchNewRequests.Any())
+                {
+                    _dbContext.TranslationRequests.AddRange(batchNewRequests);
+                    await _dbContext.SaveChangesAsync();
+                }
+
+                await transaction.CommitAsync();
+                
+                totalRetried += idsToDelete.Count;
+                newRequestsCount += batchNewRequests.Count;
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                
+                // If it's a unique constraint violation, it means a race condition occurred.
+                // We shouldn't crash just because of one batch.
+                // However, we need to make sure we don't infinite loop on this batch.
+                // Since we couldn't delete the failed requests, they will still be there.
+                // To avoid infinite loop, we should simply break and stop processing.
+                // The user can try "Retry" again later.
+                
+                if (ex is DbUpdateException dbEx && IsDuplicateKeyViolation(dbEx)) 
+                {
+                     _logger.LogWarning("Race condition detected during batch retry (Duplicate Key). Aborting remaining batches.");
+                }
+                else
+                {
+                    _logger.LogError(ex, "Unexpected error during batch retry. Aborting remaining batches.");
+                }
+                
+                break;
+            }
+            
+            // 4. Enqueue Jobs for successful batch (must be outside transaction commit)
+            foreach (var request in batchNewRequests)
+            {
+                await EnqueueTranslationJobAsync(request, true);
+            }
+            
+            // Small delay to allow other threads/requests to acquire locks if needed
+            await Task.Delay(10);
         }
 
-        // 4. Enqueue jobs (MUST be after Commit)
-        foreach (var request in newRequestsToEnqueue)
-        {
-            // We use false for forcePriority because these are "retries" but mass-retries.
-            // Using true might flood the priority lane. Let's stick to normal queue unless specific requirement.
-            // Actually, the previous implementation used 'true'. Let's stick to that to be consistent with "Retry" intent.
-            await EnqueueTranslationJobAsync(request, true);
-        }
+        _logger.LogInformation(
+            "Successfully retried {TotalRetried} failed requests, creating {NewCount} new active requests", 
+            totalRetried, 
+            newRequestsCount);
 
         var count = await GetActiveCount();
         await _hubContext.Clients.Group("TranslationRequests").SendAsync("RequestActive", new
@@ -1339,7 +1399,11 @@ public class TranslationRequestService : ITranslationRequestService
         // Fallback: Check message string for common duplicate key error messages
         // This handles cases where the error code might not be propagated correctly or for other DB providers
         var message = ex.InnerException?.Message ?? ex.Message;
-        if (message.Contains("duplicate key") || message.Contains("UNIQUE constraint failed") || message.Contains("23505"))
+        
+        if (message.Contains("duplicate key", StringComparison.OrdinalIgnoreCase) || 
+            message.Contains("UNIQUE constraint failed", StringComparison.OrdinalIgnoreCase) || 
+            message.Contains("23505") ||
+            message.Contains("duplicate entry", StringComparison.OrdinalIgnoreCase)) // MySQL standard error
         {
             return true;
         }
