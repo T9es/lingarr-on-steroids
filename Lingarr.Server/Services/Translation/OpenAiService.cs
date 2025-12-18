@@ -2,6 +2,9 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.IO;
+using System.Net.Sockets;
+using System.Threading.Tasks;
 using Lingarr.Core.Configuration;
 using Lingarr.Server.Exceptions;
 using Lingarr.Server.Interfaces.Services;
@@ -206,7 +209,7 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
                     "OpenAI rate limit hit. Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})",
                     delay, attempt, _maxRetries);
             }
-            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable)
+            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable || ex.StatusCode == HttpStatusCode.GatewayTimeout || ex.StatusCode == HttpStatusCode.BadGateway)
             {
                 if (attempt == _maxRetries)
                 {
@@ -224,6 +227,19 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 throw;
+            }
+            catch (Exception ex) when (ex is IOException || ex is SocketException || ex is TaskCanceledException || (ex is HttpRequestException && ex.InnerException is IOException))
+            {
+                if (attempt == _maxRetries)
+                {
+                    _logger.LogError(ex, "Network error during translation. Max retries exhausted for text: {Text}", text);
+                    throw new TranslationException("Network error occurred during translation.", ex);
+                }
+
+                await Task.Delay(delay, linked.Token).ConfigureAwait(false);
+                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+                
+                _logger.LogWarning(ex, "Network error (Transient). Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})", delay, attempt, _maxRetries);
             }
             catch (Exception ex)
             {
@@ -276,7 +292,7 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
                 delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
             }
-            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable)
+            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable || ex.StatusCode == HttpStatusCode.GatewayTimeout || ex.StatusCode == HttpStatusCode.BadGateway)
             {
                 if (attempt == _maxRetries)
                 {
@@ -285,7 +301,28 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
                 }
 
                 _logger.LogWarning(
-                    "503 Service Unavailable. Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})",
+                    "{StatusCode} Service Unavailable. Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})",
+                    ex.StatusCode, delay, attempt, _maxRetries);
+
+                await Task.Delay(delay, linked.Token).ConfigureAwait(false);
+                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                 // Ensure we respect the user's cancellation immediately
+                 throw;
+            }
+            catch (Exception ex) when (ex is IOException || ex is SocketException || ex is TaskCanceledException || (ex is HttpRequestException && ex.InnerException is IOException))
+            {
+                // This block catches network-level errors (connection reset, timeout, etc.)
+                if (attempt == _maxRetries)
+                {
+                    _logger.LogError(ex, "Network error during batch translation. Max retries exhausted");
+                    throw new TranslationException("Network error occurred during batch translation.", ex);
+                }
+
+                _logger.LogWarning(ex,
+                    "Network error (Transient). Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})",
                     delay, attempt, _maxRetries);
 
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
@@ -294,6 +331,9 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Unexpected error during batch translation attempt {Attempt}", attempt);
+                // For truly unexpected errors (parsing, logic), we might not want to retry, or maybe we do?
+                // Current behavior: Abort.
+                // Let's stick to aborting for non-network errors to avoid wasting API credits on bad requests.
                 throw new TranslationException("Unexpected error occurred during batch translation.", ex);
             }
         }
