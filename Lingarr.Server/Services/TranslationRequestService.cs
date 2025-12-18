@@ -346,75 +346,91 @@ public class TranslationRequestService : ITranslationRequestService
             }
 
             // 3. Process the batch in a transaction
-            using var transaction = await _dbContext.Database.BeginTransactionAsync();
-
-            try
+            // We use an explicit execution strategy because the DbContext is configured with resiliency (retries),
+            // which requires manual transactions to be executed within an execution strategy block.
+            var strategy = _dbContext.Database.CreateExecutionStrategy();
+            
+            try 
             {
-                // Clear tracker so we don't have conflicts with the loaded batch entities
-                // when we do bulk deletes or inserts.
-                _dbContext.ChangeTracker.Clear();
-                
-                var groups = batch.GroupBy(tr => new
+                await strategy.ExecuteAsync(async () =>
                 {
-                    tr.MediaId,
-                    tr.MediaType,
-                    tr.SourceLanguage,
-                    tr.TargetLanguage
-                });
+                    using var transaction = await _dbContext.Database.BeginTransactionAsync();
 
-                foreach (var group in groups)
-                {
-                    var key = (group.Key.MediaId, group.Key.MediaType, group.Key.SourceLanguage, group.Key.TargetLanguage);
-                    
-                    // If no active request exists for this key, create a new one
-                    if (!activeRequestsKeys.Contains(key))
+                    try
                     {
-                        var template = group.OrderByDescending(x => x.CreatedAt).First();
-                        var newRequest = new TranslationRequest
+                        // Clear tracker so we don't have conflicts with the loaded batch entities
+                        // when we do bulk deletes or inserts.
+                        _dbContext.ChangeTracker.Clear();
+                        
+                        var groups = batch.GroupBy(tr => new
                         {
-                            MediaId = template.MediaId,
-                            Title = template.Title,
-                            SourceLanguage = template.SourceLanguage,
-                            TargetLanguage = template.TargetLanguage,
-                            SubtitleToTranslate = template.SubtitleToTranslate,
-                            MediaType = template.MediaType,
-                            Status = TranslationStatus.Pending,
-                            IsActive = true
-                        };
+                            tr.MediaId,
+                            tr.MediaType,
+                            tr.SourceLanguage,
+                            tr.TargetLanguage
+                        });
+
+                        foreach (var group in groups)
+                        {
+                            var key = (group.Key.MediaId, group.Key.MediaType, group.Key.SourceLanguage, group.Key.TargetLanguage);
+                            
+                            // If no active request exists for this key, create a new one
+                            if (!activeRequestsKeys.Contains(key))
+                            {
+                                var template = group.OrderByDescending(x => x.CreatedAt).First();
+                                var newRequest = new TranslationRequest
+                                {
+                                    MediaId = template.MediaId,
+                                    Title = template.Title,
+                                    SourceLanguage = template.SourceLanguage,
+                                    TargetLanguage = template.TargetLanguage,
+                                    SubtitleToTranslate = template.SubtitleToTranslate,
+                                    MediaType = template.MediaType,
+                                    Status = TranslationStatus.Pending,
+                                    IsActive = true
+                                };
+                                
+                                batchNewRequests.Add(newRequest);
+                                
+                                // Prevent duplicates within the same batch
+                                activeRequestsKeys.Add(key);
+                            }
+                            
+                            // Always delete the failed requests in this group (deduplication/cleanup)
+                            idsToDelete.AddRange(group.Select(g => g.Id));
+                        }
+
+                        // Execute Deletes
+                        if (idsToDelete.Any())
+                        {
+                            await _dbContext.TranslationRequests
+                                .Where(tr => idsToDelete.Contains(tr.Id))
+                                .ExecuteDeleteAsync();
+                        }
+
+                        // Execute Inserts
+                        if (batchNewRequests.Any())
+                        {
+                            _dbContext.TranslationRequests.AddRange(batchNewRequests);
+                            await _dbContext.SaveChangesAsync();
+                        }
+
+                        await transaction.CommitAsync();
                         
-                        batchNewRequests.Add(newRequest);
-                        
-                        // Prevent duplicates within the same batch
-                        activeRequestsKeys.Add(key);
+                        totalRetried += idsToDelete.Count;
+                        newRequestsCount += batchNewRequests.Count;
                     }
-                    
-                    // Always delete the failed requests in this group (deduplication/cleanup)
-                    idsToDelete.AddRange(group.Select(g => g.Id));
-                }
-
-                // Execute Deletes
-                if (idsToDelete.Any())
-                {
-                    await _dbContext.TranslationRequests
-                        .Where(tr => idsToDelete.Contains(tr.Id))
-                        .ExecuteDeleteAsync();
-                }
-
-                // Execute Inserts
-                if (batchNewRequests.Any())
-                {
-                    _dbContext.TranslationRequests.AddRange(batchNewRequests);
-                    await _dbContext.SaveChangesAsync();
-                }
-
-                await transaction.CommitAsync();
-                
-                totalRetried += idsToDelete.Count;
-                newRequestsCount += batchNewRequests.Count;
+                    catch (Exception)
+                    {
+                        await transaction.RollbackAsync();
+                        // Re-throw to be caught by the outer loop handler or strategy
+                        throw; 
+                    }
+                });
             }
             catch (Exception ex)
             {
-                await transaction.RollbackAsync();
+                // Transaction rollback already happened inside the execution strategy if needed.
                 
                 // If it's a unique constraint violation, it means a race condition occurred.
                 // We shouldn't crash just because of one batch.
