@@ -790,13 +790,14 @@ public class TranslationRequestService : ITranslationRequestService
         if (requests.Count > 0)
         {
             var requestIds = requests.Select(r => r.Id).ToList();
+            var now = DateTime.UtcNow;
             
             await _dbContext.TranslationRequests
                 .Where(r => requestIds.Contains(r.Id))
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(r => r.Status, TranslationStatus.Cancelled)
                     .SetProperty(r => r.IsActive, (bool?)null) // Use explicit cast for ExecuteUpdate
-                    .SetProperty(r => r.CompletedAt, DateTime.UtcNow));
+                    .SetProperty(r => r.CompletedAt, now));
             
             // Bulk clear media hashes
             var movieIds = requests
@@ -826,9 +827,16 @@ public class TranslationRequestService : ITranslationRequestService
             }
             
             await UpdateActiveCount();
-            
-            // Note: We are NOT emitting individual Progress signals here to avoid flooding SignalR
-            // The frontend is expected to refresh the list after this operation
+
+            // Update in-memory objects to reflect the new state
+            foreach (var req in requests)
+            {
+                req.Status = TranslationStatus.Cancelled;
+                req.CompletedAt = now;
+            }
+
+            // Emit throttled progress signals
+            await _progressService.EmitBatch(requests, 0);
         }
 
         _logger.LogInformation(

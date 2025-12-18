@@ -11,4 +11,12 @@ public interface IProgressService
     /// <param name="progress">The current progress of the job (0-100).</param>
     /// <returns>A task that represents the asynchronous operation.</returns>
     Task Emit(TranslationRequest translationRequest, int progress);
+
+    /// <summary>
+    /// Emits progress updates for a batch of requests with throttling.
+    /// </summary>
+    /// <param name="translationRequests">The list of requests to update.</param>
+    /// <param name="progress">The progress value to set.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
+    Task EmitBatch(List<TranslationRequest> translationRequests, int progress);
 }

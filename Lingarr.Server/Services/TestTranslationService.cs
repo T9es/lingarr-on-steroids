@@ -321,5 +321,11 @@ public class TestTranslationService : ITestTranslationService
             }
             return Task.CompletedTask;
         }
+
+        public Task EmitBatch(List<CoreTranslationRequest> requests, int progress)
+        {
+            _parent.Log("INFORMATION", $"Batch translation progress: {progress}% for {requests.Count} requests");
+            return Task.CompletedTask;
+        }
     }
 }
