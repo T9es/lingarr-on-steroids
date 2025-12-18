@@ -40,7 +40,8 @@ public class BulkIntegrityCheckJob
         var jobName = JobContextFilter.GetCurrentJobTypeName();
         _logger.LogInformation("Bulk integrity check job initiated");
 
-        var stats = new BulkIntegrityStats();
+        var stats = new BulkIntegrityStats { IsRunning = true };
+        BulkIntegrityStats.Current = stats;
 
         try
         {
@@ -155,6 +156,7 @@ public class BulkIntegrityCheckJob
             }
 
             stats.IsComplete = true;
+            stats.IsRunning = false;
             await SendProgress(stats);
 
             _logger.LogInformation(
@@ -165,6 +167,7 @@ public class BulkIntegrityCheckJob
         {
             _logger.LogError(ex, "Bulk integrity check job failed");
             stats.IsComplete = true;
+            stats.IsRunning = false;
             stats.Error = ex.Message;
             await SendProgress(stats);
             throw;
@@ -190,6 +193,11 @@ public class BulkIntegrityCheckJob
 /// </summary>
 public class BulkIntegrityStats
 {
+    /// <summary>
+    /// Static tracker for current job progress - persists across page navigations.
+    /// </summary>
+    public static BulkIntegrityStats? Current { get; set; }
+    
     public int Total { get; set; }
     public int TotalMovies { get; set; }
     public int TotalEpisodes { get; set; }
@@ -199,7 +207,9 @@ public class BulkIntegrityStats
     public int QueuedCount { get; set; }
     public int ErrorCount { get; set; }
     public bool IsComplete { get; set; }
+    public bool IsRunning { get; set; }
     public string? Error { get; set; }
     
     public double ProgressPercent => Total > 0 ? (double)ProcessedCount / Total * 100 : 0;
 }
+

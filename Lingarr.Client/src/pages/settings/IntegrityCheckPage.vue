@@ -5,9 +5,9 @@
                 {{ translate('settings.integrity.description') }}
             </template>
             <template #content>
-                <div class="flex flex-col space-y-6">
+                <div class="flex flex-col items-center space-y-6">
                     <!-- Action Button -->
-                    <div class="flex items-center space-x-4">
+                    <div class="flex items-center justify-center">
                         <button
                             :disabled="isRunning"
                             class="bg-accent hover:bg-accent/80 disabled:bg-base-300 rounded px-6 py-3 font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:text-gray-500"
@@ -39,7 +39,7 @@
                     </div>
 
                     <!-- Progress Section -->
-                    <div v-if="hasStarted" class="space-y-4">
+                    <div v-if="hasStarted" class="w-full max-w-2xl space-y-4">
                         <!-- Progress Bar -->
                         <div class="w-full">
                             <div class="mb-2 flex justify-between text-sm">
@@ -88,7 +88,7 @@
                         </div>
 
                         <!-- Totals -->
-                        <div class="text-sm opacity-70">
+                        <div class="text-center text-sm opacity-70">
                             {{ translate('settings.integrity.stats.total') }}: {{ stats.total }} ({{
                                 stats.totalMovies
                             }}
@@ -99,14 +99,14 @@
                         <!-- Completion Message -->
                         <div
                             v-if="stats.isComplete"
-                            class="rounded border border-green-500/30 bg-green-500/10 p-4 text-green-400">
+                            class="rounded border border-green-500/30 bg-green-500/10 p-4 text-center text-green-400">
                             {{ translate('settings.integrity.completed') }}
                         </div>
 
                         <!-- Error Message -->
                         <div
                             v-if="stats.error"
-                            class="rounded border border-red-500/30 bg-red-500/10 p-4 text-red-400">
+                            class="rounded border border-red-500/30 bg-red-500/10 p-4 text-center text-red-400">
                             {{ stats.error }}
                         </div>
                     </div>
@@ -194,6 +194,23 @@ const handleProgress = (newStats: BulkIntegrityStats) => {
 }
 
 onMounted(async () => {
+    // Check if a job is already running and restore state
+    try {
+        const response = await axios.get('/api/media/bulk-integrity-status')
+        if (response.data && response.data.isRunning) {
+            hasStarted.value = true
+            isRunning.value = true
+            Object.assign(stats, response.data)
+        } else if (response.data && response.data.isComplete) {
+            // Show completed state if job finished while page was closed
+            hasStarted.value = true
+            isRunning.value = false
+            Object.assign(stats, response.data)
+        }
+    } catch (error) {
+        console.debug('No existing integrity check status')
+    }
+    
     hubConnection.value = await signalR.connect('JobProgress', '/signalr/JobProgress')
     await hubConnection.value.joinGroup({ group: 'JobProgress' })
     hubConnection.value.on('BulkIntegrityProgress', handleProgress)

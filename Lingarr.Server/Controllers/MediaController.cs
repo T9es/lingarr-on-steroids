@@ -130,4 +130,18 @@ public class MediaController : ControllerBase
         var jobId = _mediaService.StartBulkIntegrityCheck();
         return Ok(new { jobId });
     }
+    
+    /// <summary>
+    /// Gets the current status of the bulk integrity check job.
+    /// </summary>
+    [HttpGet("bulk-integrity-status")]
+    public ActionResult GetBulkIntegrityStatus()
+    {
+        var current = Jobs.BulkIntegrityStats.Current;
+        if (current == null)
+        {
+            return Ok(new { isRunning = false });
+        }
+        return Ok(current);
+    }
 }
