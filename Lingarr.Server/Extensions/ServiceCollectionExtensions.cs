@@ -134,6 +134,9 @@ public static class ServiceCollectionExtensions
 
         // Added startup service to validate new settings
         builder.Services.AddHostedService<StartupService>();
+        
+        // Added startup service to clean up orphaned Hangfire locks
+        builder.Services.AddHostedService<HangfireLockCleanupService>();
 
         // Add translation services
         builder.Services.AddTransient<GoogleTranslator>();

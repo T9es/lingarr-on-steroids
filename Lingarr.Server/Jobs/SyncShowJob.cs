@@ -34,7 +34,7 @@ public class SyncShowJob
 
     [DisableConcurrentExecution(timeoutInSeconds: 60 * 60)]
     [AutomaticRetry(Attempts = 0)]
-    [Queue("movies")]
+    [Queue("shows")]
     public async Task Execute()
     {
         var jobName = JobContextFilter.GetCurrentJobTypeName();

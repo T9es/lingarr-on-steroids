@@ -40,7 +40,7 @@ public class AutomatedTranslationJob
         _mediaStateService = mediaStateService;
     }
 
-    [DisableConcurrentExecution(timeoutInSeconds: 0)]
+    [DisableConcurrentExecution(timeoutInSeconds: 30 * 60)]
     [AutomaticRetry(Attempts = 0)]
     [Queue("system")]
     public async Task Execute()

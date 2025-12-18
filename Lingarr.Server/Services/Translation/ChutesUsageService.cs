@@ -166,17 +166,23 @@ public class ChutesUsageService : IChutesUsageService
             // Force a fresh snapshot from Chutes to see if credits have reset
             var refreshed = await GetUsageSnapshotAsync(modelId, forceRefresh: true, cancellationToken);
 
-            // If Chutes is now reporting no limit, or we have positive remaining headroom,
+            // Get buffer setting using same logic as outer loop
+            var bufferSetting = await _settings.GetSetting(SettingKeys.Translation.Chutes.RequestBuffer);
+            var buffer = int.TryParse(bufferSetting, out var b) && b >= 0 ? b : 50;
+            var headroom = refreshed.AllowedRequestsPerDay - refreshed.RequestsUsed;
+
+            // If Chutes is now reporting no limit, or we have positive headroom beyond the buffer,
             // we can exit the pause loop and let EnsureRequestAllowedAsync re-evaluate.
             if (!refreshed.HasApiKey ||
                 refreshed.AllowedRequestsPerDay <= 0 ||
-                refreshed.RequestsRemaining > 0)
+                headroom > buffer)
             {
                 _logger.LogInformation(
-                    "Chutes credits appear to be available again (allowedPerDay: {Allowed}, used: {Used}, remaining: {Remaining}). Resuming translations.",
+                    "Chutes credits appear to be available again (allowedPerDay: {Allowed}, used: {Used}, remaining: {Remaining}, headroom: {Headroom}). Resuming translations.",
                     refreshed.AllowedRequestsPerDay,
                     refreshed.RequestsUsed,
-                    refreshed.RequestsRemaining);
+                    refreshed.RequestsRemaining,
+                    headroom);
                 return;
             }
 
