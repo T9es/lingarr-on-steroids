@@ -132,7 +132,7 @@ public static class ServiceCollectionExtensions
         // Register Subtitle Providers
         builder.Services.AddScoped<ISubtitleProvider, SubdlService>();
         builder.Services.AddScoped<ISubtitleProvider, OpenSubtitlesService>();
-        builder.Services.AddScoped<ISubtitleProviderService, SubtitleProviderService>();
+        builder.Services.AddScoped<SubtitleProviderService>();
 
         // Register translate services
         builder.Services.AddScoped<ITranslationServiceFactory, TranslationFactory>();

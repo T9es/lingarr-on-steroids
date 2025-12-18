@@ -262,7 +262,7 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             // to ensure meaningful content for translation or viewing.
             if (extension == ".srt")
             {
-                await CleanupSubtitleFile(outputPath, streamIndex);
+                await CleanupSubtitleFile(outputPath);
             }
 
             return outputPath;
@@ -498,7 +498,7 @@ public class SubtitleExtractionService : ISubtitleExtractionService
         }
     }
 
-    private async Task CleanupSubtitleFile(string filePath, int streamIndex)
+    private async Task CleanupSubtitleFile(string filePath)
     {
         try
         {
@@ -602,7 +602,7 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             
             // Add extraction marker comment at the top
             // SRT format allows comments starting with ; before the first entry
-            sb.AppendLine($"{ExtractionMarkerPrefix} StreamIndex={streamIndex}, Entries={finalItems.Count}");
+            sb.AppendLine($"{ExtractionMarkerPrefix} StreamIndex={0}, Entries={finalItems.Count}");
             sb.AppendLine();
             
             for (int i = 0; i < finalItems.Count; i++)
