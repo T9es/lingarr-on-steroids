@@ -219,6 +219,7 @@ public class DeepSeekService : OpenAiService
                     ["content"] = userContent
                 }
             },
+            ["max_tokens"] = 8192,
             ["response_format"] = responseFormat
         };
 
