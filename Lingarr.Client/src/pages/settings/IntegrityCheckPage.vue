@@ -120,7 +120,7 @@
                 Scans translated subtitles for vector drawing artifacts. Run after major updates.
             </template>
             <template #content>
-                <div class="flex flex-col items-center space-y-6">
+                <div class="flex flex-col space-y-6">
                     <!-- Action Button -->
                     <div class="flex items-center justify-center">
                         <button
@@ -154,9 +154,9 @@
                     </div>
 
                     <!-- Persistent Results -->
-                    <div v-if="assResult" class="w-full max-w-2xl space-y-4">
+                    <div v-if="assResult" class="w-full space-y-4">
                         <!-- Stats Grid -->
-                        <div class="grid grid-cols-2 gap-4">
+                        <div class="grid grid-cols-2 gap-4 w-full">
                             <div class="bg-base-200 rounded p-4 text-center">
                                 <div class="text-2xl font-bold">{{ assResult.totalFilesScanned }}</div>
                                 <div class="text-sm opacity-70">Files Scanned</div>
@@ -170,7 +170,7 @@
                         </div>
 
                         <!-- Flagged Items List -->
-                        <div v-if="assResult.flaggedItems && assResult.flaggedItems.length > 0" class="space-y-3">
+                        <div v-if="assResult.flaggedItems && assResult.flaggedItems.length > 0" class="space-y-3 w-full">
                             <div class="flex items-center justify-between">
                                 <h4 class="font-semibold">Flagged Files</h4>
                                 <button
@@ -179,7 +179,7 @@
                                     Requeue All for Translation
                                 </button>
                             </div>
-                            <div class="bg-base-200 max-h-64 overflow-y-auto rounded">
+                            <div class="bg-base-200 max-h-64 overflow-y-auto rounded w-full">
                                 <div
                                     v-for="item in assResult.flaggedItems"
                                     :key="item.subtitlePath"
@@ -201,7 +201,7 @@
                         <!-- Success Message -->
                         <div
                             v-if="assResult.filesWithDrawings === 0"
-                            class="rounded border border-green-500/30 bg-green-500/10 p-4 text-center text-green-400">
+                            class="rounded border border-green-500/30 bg-green-500/10 p-4 text-center text-green-400 w-full">
                             All files passed verification!
                         </div>
                     </div>
