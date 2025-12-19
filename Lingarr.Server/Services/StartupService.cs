@@ -62,8 +62,8 @@ public class StartupService : IHostedService
             // Request/Retry
             { SettingKeys.Translation.RequestTimeout, "15" },
             { SettingKeys.Translation.MaxRetries, "20" },
-            { SettingKeys.Translation.RetryDelay, "120" },
-            { SettingKeys.Translation.RetryDelayMultiplier, "1" },
+            { SettingKeys.Translation.RetryDelay, "5" },
+            { SettingKeys.Translation.RetryDelayMultiplier, "2" },
 
             // AI Context
             { SettingKeys.Translation.AiContextPromptEnabled, "false" },
@@ -73,6 +73,11 @@ public class StartupService : IHostedService
             // ASS/SSA Drawing cleanup
             { SettingKeys.Translation.StripAssDrawingCommands, "false" },
             { SettingKeys.Translation.CleanSourceAssDrawings, "false" },
+
+            // Batch Context Wrapper
+            { SettingKeys.Translation.BatchContextEnabled, "false" },
+            { SettingKeys.Translation.BatchContextBefore, "3" },
+            { SettingKeys.Translation.BatchContextAfter, "3" },
 
             // Provider specific defaults
             { SettingKeys.Translation.Chutes.RequestBuffer, "50" },
