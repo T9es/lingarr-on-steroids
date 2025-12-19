@@ -36,8 +36,10 @@ public class BatchFallbackServiceTests
                 It.Is<List<BatchSubtitleItem>>(b => b.Count == 4),
                 It.IsAny<string>(),
                 It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync((List<BatchSubtitleItem> b, string _, string _, CancellationToken _) =>
+            .ReturnsAsync((List<BatchSubtitleItem> b, string _, string _, List<string>? _, List<string>? _, CancellationToken _) =>
                 new Dictionary<int, string>
                 {
                     { b[0].Position, "T1" },
@@ -51,8 +53,10 @@ public class BatchFallbackServiceTests
                 It.Is<List<BatchSubtitleItem>>(b => b.Count == 1 && b[0].Position == 3),
                 It.IsAny<string>(),
                 It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync((List<BatchSubtitleItem> b, string _, string _, CancellationToken _) =>
+            .ReturnsAsync((List<BatchSubtitleItem> b, string _, string _, List<string>? _, List<string>? _, CancellationToken _) =>
                 new Dictionary<int, string> { { b[0].Position, "T3" } });
 
         batchServiceMock
@@ -60,8 +64,10 @@ public class BatchFallbackServiceTests
                 It.Is<List<BatchSubtitleItem>>(b => b.Count == 1 && b[0].Position == 4),
                 It.IsAny<string>(),
                 It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync((List<BatchSubtitleItem> b, string _, string _, CancellationToken _) =>
+            .ReturnsAsync((List<BatchSubtitleItem> b, string _, string _, List<string>? _, List<string>? _, CancellationToken _) =>
                 new Dictionary<int, string> { { b[0].Position, "T4" } });
 
         var service = new BatchFallbackService(_loggerMock.Object);
@@ -90,6 +96,8 @@ public class BatchFallbackServiceTests
                 It.Is<List<BatchSubtitleItem>>(b => b.Count == 4),
                 It.IsAny<string>(),
                 It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
                 It.IsAny<CancellationToken>()),
             Times.Once);
 
@@ -97,6 +105,8 @@ public class BatchFallbackServiceTests
                 It.Is<List<BatchSubtitleItem>>(b => b.Count == 1 && (b[0].Position == 3 || b[0].Position == 4)),
                 It.IsAny<string>(),
                 It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
                 It.IsAny<CancellationToken>()),
             Times.Exactly(2));
     }
@@ -120,8 +130,10 @@ public class BatchFallbackServiceTests
                 It.IsAny<List<BatchSubtitleItem>>(),
                 It.IsAny<string>(),
                 It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync((List<BatchSubtitleItem> chunk, string _, string _, CancellationToken _) =>
+            .ReturnsAsync((List<BatchSubtitleItem> chunk, string _, string _, List<string>? _, List<string>? _, CancellationToken _) =>
             {
                 return chunk.ToDictionary(item => item.Position, _ => string.Empty);
             });
@@ -145,6 +157,8 @@ public class BatchFallbackServiceTests
                 It.IsAny<List<BatchSubtitleItem>>(),
                 It.IsAny<string>(),
                 It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
                 It.IsAny<CancellationToken>()),
             Times.AtLeastOnce);
     }

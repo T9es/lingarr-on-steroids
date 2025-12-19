@@ -391,6 +391,10 @@
           "description": "Subtitle line to translate"
         }
       },
+      "batchContextToggle": "Enable batch context:",
+      "batchContextDescription": "Include surrounding subtitle lines as context wrapper when sending batches to the AI. This helps the AI understand the narrative flow for more accurate translations.",
+      "batchContextBefore": "Lines of context before the batch:",
+      "batchContextAfter": "Lines of context after the batch:",
       "notSupported": "Context prompt is not supported and has been disabled when sending subtitles in batch."
     },
     "logs": {

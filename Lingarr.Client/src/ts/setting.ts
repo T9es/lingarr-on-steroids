@@ -71,7 +71,10 @@ export const SETTINGS = {
     REPAIR_CONTEXT_RADIUS: 'repair_context_radius',
     REPAIR_MAX_RETRIES: 'repair_max_retries',
     STRIP_ASS_DRAWING_COMMANDS: 'strip_ass_drawing_commands',
-    CLEAN_SOURCE_ASS_DRAWINGS: 'clean_source_ass_drawings'
+    CLEAN_SOURCE_ASS_DRAWINGS: 'clean_source_ass_drawings',
+    BATCH_CONTEXT_ENABLED: 'batch_context_enabled',
+    BATCH_CONTEXT_BEFORE: 'batch_context_before',
+    BATCH_CONTEXT_AFTER: 'batch_context_after'
 } as const
 
 export interface ISettings {

@@ -148,7 +148,10 @@ public class TranslationJob
                 SettingKeys.Translation.RepairContextRadius,
                 SettingKeys.Translation.RepairMaxRetries,
                 SettingKeys.Translation.StripAssDrawingCommands,
-                SettingKeys.Translation.CleanSourceAssDrawings
+                SettingKeys.Translation.CleanSourceAssDrawings,
+                SettingKeys.Translation.BatchContextEnabled,
+                SettingKeys.Translation.BatchContextBefore,
+                SettingKeys.Translation.BatchContextAfter
             ]);
             var serviceType = settings[SettingKeys.Translation.ServiceType];
             var stripSubtitleFormatting = settings[SettingKeys.Translation.StripSubtitleFormatting] == "true";
@@ -403,6 +406,17 @@ public class TranslationJob
                     "Information",
                     $"[{fileIdentifier}] Starting batch translation: subtitles={subtitles.Count}, totalBatches={totalBatches}, batchSize={effectiveBatchSize}, retryMode={batchRetryMode}");
 
+                // Parse batch context settings
+                var batchContextEnabled = settings.TryGetValue(SettingKeys.Translation.BatchContextEnabled, out var ctxEnabled) && ctxEnabled == "true";
+                var batchContextBefore = int.TryParse(
+                    settings.TryGetValue(SettingKeys.Translation.BatchContextBefore, out var ctxBefore) ? ctxBefore : null, out var beforeLines)
+                    ? beforeLines
+                    : 3;
+                var batchContextAfter = int.TryParse(
+                    settings.TryGetValue(SettingKeys.Translation.BatchContextAfter, out var ctxAfter) ? ctxAfter : null, out var afterLines)
+                    ? afterLines
+                    : 3;
+
                 translatedSubtitles = await translator.TranslateSubtitlesBatch(
                     subtitles,
                     request,
@@ -412,6 +426,9 @@ public class TranslationJob
                     maxBatchSplitAttempts,
                     repairContextRadius,
                     repairMaxRetries,
+                    batchContextEnabled,
+                    batchContextBefore,
+                    batchContextAfter,
                     fileIdentifier,
                     effectiveCancellationToken);
             }

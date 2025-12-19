@@ -127,10 +127,14 @@ public class DeferredRepairService : IDeferredRepairService
                     "[{FileId}] Repair attempt {Attempt}/{MaxAttempts}",
                     fileIdentifier, attempt, maxRetries + 1);
                 
+                // Note: Deferred repair includes context in the batch items themselves,
+                // so we don't use wrapper context here
                 var batchResults = await batchService.TranslateBatchAsync(
                     repairBatch.Items,
                     sourceLanguage,
                     targetLanguage,
+                    null,  // preContext - context is already in batch items
+                    null,  // postContext - context is already in batch items
                     cancellationToken);
                 
                 // Extract only the translations for failed positions

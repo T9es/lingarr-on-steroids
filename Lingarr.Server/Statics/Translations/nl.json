@@ -393,6 +393,10 @@
           "description": "ndertitelregel om te vertalen"
         }
       },
+      "batchContextToggle": "Batch context activeren:",
+      "batchContextDescription": "Voeg omringende ondertitelregels toe als context bij het verzenden van batches naar de AI. Dit helpt de AI de verhaallijn te begrijpen voor nauwkeurigere vertalingen.",
+      "batchContextBefore": "Regels context voor de batch:",
+      "batchContextAfter": "Regels context na de batch:",
       "notSupported": "Context prompt wordt niet ondersteund en is uitgeschakeld bij het verzenden van ondertitels in batch."
     },
     "logs": {

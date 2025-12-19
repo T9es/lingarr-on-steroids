@@ -63,8 +63,9 @@ public class BatchFallbackService : IBatchFallbackService
 
                 try
                 {
+                    // Note: BatchFallbackService doesn't use wrapper context (only for chunk splitting retries)
                     var chunkResults = await batchService.TranslateBatchAsync(
-                        chunk, sourceLanguage, targetLanguage, cancellationToken);
+                        chunk, sourceLanguage, targetLanguage, null, null, cancellationToken);
 
                     // Record successful translations
                     foreach (var kvp in chunkResults)

@@ -114,6 +114,21 @@ public static class SettingKeys
         /// Media with StateSettingsVersion != this value need re-analysis.
         /// </summary>
         public const string LanguageSettingsVersion = "language_settings_version";
+        
+        /// <summary>
+        /// Enable wrapper context for batch translations (pre/post context around entire batch)
+        /// </summary>
+        public const string BatchContextEnabled = "batch_context_enabled";
+        
+        /// <summary>
+        /// Number of context lines to include before the first item in each batch
+        /// </summary>
+        public const string BatchContextBefore = "batch_context_before";
+        
+        /// <summary>
+        /// Number of context lines to include after the last item in each batch
+        /// </summary>
+        public const string BatchContextAfter = "batch_context_after";
     }
 
     public static class Automation
