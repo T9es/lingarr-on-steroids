@@ -142,6 +142,13 @@
                         validation-type="string"
                         :label="translate('settings.subtitle.subtitleTag')"
                         @update:validation="(val) => (isValid.subtitleTag = val)" />
+                    <InputComponent
+                        v-if="useSubtitleTagging == 'true'"
+                        v-model="subtitleTagShort"
+                        validation-type="string"
+                        :label="translate('settings.subtitle.subtitleTagShort')"
+                        :description="translate('settings.subtitle.subtitleTagShortDescription')"
+                        @update:validation="(val) => (isValid.subtitleTagShort = val)" />
                 </div>
             </div>
         </template>
@@ -161,7 +168,8 @@ import InputComponent from '@/components/common/InputComponent.vue'
 const saveNotification = ref<InstanceType<typeof SaveNotification> | null>(null)
 const settingsStore = useSettingStore()
 const isValid = reactive({
-    subtitleTag: true
+    subtitleTag: true,
+    subtitleTagShort: true
 })
 
 const ignoreCaptions = computed({
@@ -216,6 +224,18 @@ const subtitleTag = computed({
     get: (): string => settingsStore.getSetting(SETTINGS.SUBTITLE_TAG) as string,
     set: (newValue: string): void => {
         settingsStore.updateSetting(SETTINGS.SUBTITLE_TAG, newValue, isValid.subtitleTag)
+        saveNotification.value?.show()
+    }
+})
+
+const subtitleTagShort = computed({
+    get: (): string => settingsStore.getSetting(SETTINGS.SUBTITLE_TAG_SHORT) as string,
+    set: (newValue: string): void => {
+        settingsStore.updateSetting(
+            SETTINGS.SUBTITLE_TAG_SHORT,
+            newValue,
+            isValid.subtitleTagShort
+        )
         saveNotification.value?.show()
     }
 })

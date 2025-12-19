@@ -142,6 +142,7 @@ public class TranslationJob
                 SettingKeys.Translation.RemoveLanguageTag,
                 SettingKeys.Translation.UseSubtitleTagging,
                 SettingKeys.Translation.SubtitleTag,
+                SettingKeys.Translation.SubtitleTagShort,
                 SettingKeys.Translation.EnableBatchFallback,
                 SettingKeys.Translation.MaxBatchSplitAttempts,
                 SettingKeys.Translation.BatchRetryMode,
@@ -473,13 +474,14 @@ public class TranslationJob
             // statistics tracking
             await _statisticsService.UpdateTranslationStatisticsFromSubtitles(request, serviceType, translatedSubtitles);
 
-            var subtitleTag = "";
-            if (settings[SettingKeys.Translation.UseSubtitleTagging] == "true")
-            {
-                subtitleTag = settings[SettingKeys.Translation.SubtitleTag];
-            }
+            var subtitleTag = settings[SettingKeys.Translation.UseSubtitleTagging] == "true"
+                ? settings[SettingKeys.Translation.SubtitleTag]
+                : null;
+            var subtitleTagShort = settings[SettingKeys.Translation.UseSubtitleTagging] == "true"
+                ? settings[SettingKeys.Translation.SubtitleTagShort]
+                : null;
 
-            await WriteSubtitles(request, translatedSubtitles, stripSubtitleFormatting, subtitleTag, removeLanguageTag);
+            await WriteSubtitles(request, translatedSubtitles, stripSubtitleFormatting, subtitleTag ?? "", subtitleTagShort ?? "", removeLanguageTag);
             AddRequestLog("Information", "Translation completed successfully and subtitle file was written");
             await HandleCompletion(request, effectiveCancellationToken);
         }
@@ -585,21 +587,55 @@ public class TranslationJob
         List<SubtitleItem> translatedSubtitles,
         bool stripSubtitleFormatting,
         string subtitleTag,
+        string subtitleTagShort,
         bool removeLanguageTag)
     {
         try
         {
             var targetLanguage = removeLanguageTag ? "" : translationRequest.TargetLanguage;
 
-            var outputPath = _subtitleService.CreateFilePath(
+            var paths = _subtitleService.CreateFallbackPaths(
                 translationRequest.SubtitleToTranslate,
                 targetLanguage,
-                subtitleTag);
+                subtitleTag,
+                subtitleTagShort);
+            
+            Exception? lastException = null;
+            bool success = false;
+            string usedPath = "";
 
-            await _subtitleService.WriteSubtitles(outputPath, translatedSubtitles, stripSubtitleFormatting);
+            foreach (var path in paths)
+            {
+                try
+                {
+                    await _subtitleService.WriteSubtitles(path, translatedSubtitles, stripSubtitleFormatting);
+                    success = true;
+                    usedPath = path;
+                    break;
+                }
+                catch (PathTooLongException ex)
+                {
+                    _logger.LogWarning("Path too long: {Path}. Trying fallback...", path);
+                    lastException = ex;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to write subtitle to {Path}. Trying fallback...", path);
+                    lastException = ex;
+                }
+            }
+
+            if (!success)
+            {
+                if (lastException != null)
+                {
+                    throw lastException;
+                }
+                throw new Exception("Failed to write subtitle to any of the fallback paths.");
+            }
 
             _logger.LogInformation("TranslateJob completed and created subtitle: |Green|{filePath}|/Green|",
-                outputPath);
+                usedPath);
         }
         catch (Exception e)
         {

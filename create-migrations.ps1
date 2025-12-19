@@ -20,6 +20,8 @@ function Create-Migrations {
         $env:DB_DATABASE = "LingarrMysql"
         $env:DB_USERNAME = "LingarrMysql"
         $env:DB_PASSWORD = "Secret1234"
+    } elseif ($Provider -eq "sqlite") {
+        $env:DB_CONNECTION = "sqlite"
     } else {
         Remove-Item Env:\DB_CONNECTION -ErrorAction SilentlyContinue
         Remove-Item Env:\DB_HOST -ErrorAction SilentlyContinue

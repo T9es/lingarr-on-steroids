@@ -120,6 +120,41 @@ public class SubtitleService : ISubtitleService
     /// <inheritdoc />
     public string CreateFilePath(string originalPath, string targetLanguage, string subtitleTag)
     {
+        return CreateFilePathInternal(originalPath, targetLanguage, subtitleTag);
+    }
+
+    /// <inheritdoc />
+    public IEnumerable<string> CreateFallbackPaths(string originalPath, string targetLanguage, string subtitleTag, string subtitleTagShort)
+    {
+        var paths = new List<string>();
+
+        // 1. Full Tag
+        paths.Add(CreateFilePathInternal(originalPath, targetLanguage, subtitleTag));
+
+        // 2. Short Tag (if provided and different)
+        if (!string.IsNullOrEmpty(subtitleTagShort) && 
+            !string.Equals(subtitleTagShort, subtitleTag, StringComparison.OrdinalIgnoreCase))
+        {
+            paths.Add(CreateFilePathInternal(originalPath, targetLanguage, subtitleTagShort));
+        }
+
+        // 3. No Tag (if different from previous)
+        var noTagPath = CreateFilePathInternal(originalPath, targetLanguage, null);
+        if (!paths.Contains(noTagPath))
+        {
+            paths.Add(noTagPath);
+        }
+
+        // 4. Truncated Path (Last Resort) using Short Tag (or no tag if short is empty)
+        // We truncate the base filename to ensure proper length
+        var tagForTruncation = !string.IsNullOrEmpty(subtitleTagShort) ? subtitleTagShort : null;
+        paths.Add(CreateTruncatedFilePath(originalPath, targetLanguage, tagForTruncation));
+
+        return paths.Distinct();
+    }
+
+    private string CreateFilePathInternal(string originalPath, string targetLanguage, string? subtitleTag)
+    {
         var extension = Path.GetExtension(originalPath);
         var fileNameWithoutExtension = Path.GetFileNameWithoutExtension(originalPath);
         var parts = fileNameWithoutExtension.Split('.');
@@ -174,6 +209,48 @@ public class SubtitleService : ISubtitleService
         var newFileName = string.Join(".", newParts) + extension;
         var directory = Path.GetDirectoryName(originalPath) ?? string.Empty;
         return Path.Combine(directory, newFileName);
+    }
+
+    private string CreateTruncatedFilePath(string originalPath, string targetLanguage, string? subtitleTag)
+    {
+        // Calculate max filename length (255)
+        // Reserve space for extension, language, tag, separators
+        const int maxFilenameLength = 250; // Safety margin
+        var extension = Path.GetExtension(originalPath); // e.g. .srt
+        
+        // Resolve target language code
+        string? targetLanguageCode = null;
+        if (!string.IsNullOrEmpty(targetLanguage)
+            && !TryGetLanguageByPart(targetLanguage, out targetLanguageCode))
+        {
+            targetLanguageCode = targetLanguage;
+        }
+
+        // Build suffix: .[code].[tag].srt
+        var suffixParts = new List<string>();
+        if (targetLanguageCode != null) suffixParts.Add(targetLanguageCode.ToLowerInvariant());
+        if (!string.IsNullOrEmpty(subtitleTag)) suffixParts.Add(subtitleTag.ToLowerInvariant());
+        
+        var suffix = (suffixParts.Any() ? "." + string.Join(".", suffixParts) : "") + extension;
+
+        // Calculate maximum allowed length for base name
+        // BaseName + Suffix <= 255
+        var maxBaseLength = maxFilenameLength - suffix.Length;
+        if (maxBaseLength < 10) maxBaseLength = 10; // Ensure at least some characters
+
+        // Get original base name (without language parts)
+        var pathWithoutLang = CreateFilePathInternal(originalPath, "", null); // Abuse internal method to strip lang
+        var dir = Path.GetDirectoryName(pathWithoutLang) ?? "";
+        var nameOnly = Path.GetFileNameWithoutExtension(pathWithoutLang);
+
+        if (nameOnly.Length > maxBaseLength)
+        {
+            nameOnly = nameOnly.Substring(0, maxBaseLength);
+        }
+
+        // We can't use CreateFilePathInternal here because we manually truncated the name
+        // And we already constructed the suffix
+        return Path.Combine(dir, nameOnly + suffix);
     }
 
     /// <inheritdoc />

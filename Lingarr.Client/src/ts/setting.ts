@@ -59,6 +59,7 @@ export const SETTINGS = {
     USE_SUBTITLE_TAGGING: 'use_subtitle_tagging',
     REMOVE_LANGUAGE_TAG: 'remove_language_tag',
     SUBTITLE_TAG: 'subtitle_tag',
+    SUBTITLE_TAG_SHORT: 'subtitle_tag_short',
     IGNORE_CAPTIONS: 'ignore_captions',
     MAX_RETRIES: 'max_retries',
     RETRY_DELAY: 'retry_delay',
@@ -135,6 +136,7 @@ export interface ISettings {
     use_subtitle_tagging: string
     remove_language_tag: string
     subtitle_tag: string
+    subtitle_tag_short: string
     ignore_captions: string
     max_retries: string
     retry_delay: string
