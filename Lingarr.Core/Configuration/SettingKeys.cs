@@ -153,6 +153,10 @@ public static class SettingKeys
         public const string MaxDurationSecs = "subtitle_validation_maxdurationsecs";
         public const string ValidateSubtitles = "subtitle_validation_enabled";
         public const string IntegrityValidationEnabled = "subtitle_integrity_validation_enabled";
+        
+        // Persistent scan results
+        public const string LastIntegrityCheckResult = "subtitle_integrity_last_result";
+        public const string LastAssVerificationResult = "subtitle_ass_verification_last_result";
     }
 
     public static class SubtitleExtraction

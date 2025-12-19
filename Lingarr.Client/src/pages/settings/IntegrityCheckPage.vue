@@ -113,6 +113,101 @@
                 </div>
             </template>
         </CardComponent>
+
+        <!-- Verify ASS Integrity Section -->
+        <CardComponent title="Verify ASS Integrity">
+            <template #description>
+                Scans translated subtitles for vector drawing artifacts. Run after major updates.
+            </template>
+            <template #content>
+                <div class="flex flex-col items-center space-y-6">
+                    <!-- Action Button -->
+                    <div class="flex items-center justify-center">
+                        <button
+                            :disabled="assIsRunning"
+                            class="bg-accent hover:bg-accent/80 disabled:bg-base-300 rounded px-6 py-3 font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:text-gray-500"
+                            @click="startAssVerification">
+                            <span v-if="assIsRunning" class="flex items-center">
+                                <svg
+                                    class="mr-2 h-5 w-5 animate-spin"
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    fill="none"
+                                    viewBox="0 0 24 24">
+                                    <circle
+                                        class="opacity-25"
+                                        cx="12"
+                                        cy="12"
+                                        r="10"
+                                        stroke="currentColor"
+                                        stroke-width="4"></circle>
+                                    <path
+                                        class="opacity-75"
+                                        fill="currentColor"
+                                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Scanning...
+                            </span>
+                            <span v-else>
+                                Verify ASS Integrity
+                            </span>
+                        </button>
+                    </div>
+
+                    <!-- Persistent Results -->
+                    <div v-if="assResult" class="w-full max-w-2xl space-y-4">
+                        <!-- Stats Grid -->
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="bg-base-200 rounded p-4 text-center">
+                                <div class="text-2xl font-bold">{{ assResult.totalFilesScanned }}</div>
+                                <div class="text-sm opacity-70">Files Scanned</div>
+                            </div>
+                            <div class="bg-base-200 rounded p-4 text-center">
+                                <div class="text-2xl font-bold" :class="assResult.filesWithDrawings > 0 ? 'text-yellow-500' : 'text-green-500'">
+                                    {{ assResult.filesWithDrawings }}
+                                </div>
+                                <div class="text-sm opacity-70">Files with Issues</div>
+                            </div>
+                        </div>
+
+                        <!-- Flagged Items List -->
+                        <div v-if="assResult.flaggedItems && assResult.flaggedItems.length > 0" class="space-y-3">
+                            <div class="flex items-center justify-between">
+                                <h4 class="font-semibold">Flagged Files</h4>
+                                <button
+                                    class="bg-accent hover:bg-accent/80 rounded px-4 py-2 text-sm font-semibold text-white"
+                                    @click="requeueAll">
+                                    Requeue All for Translation
+                                </button>
+                            </div>
+                            <div class="bg-base-200 max-h-64 overflow-y-auto rounded">
+                                <div
+                                    v-for="item in assResult.flaggedItems"
+                                    :key="item.subtitlePath"
+                                    class="flex items-center justify-between border-b border-base-300 p-3 last:border-0">
+                                    <div class="flex-1 overflow-hidden">
+                                        <div class="font-medium truncate">{{ item.mediaTitle }}</div>
+                                        <div class="text-xs opacity-50 truncate">{{ item.subtitlePath }}</div>
+                                        <div class="text-xs text-yellow-500">{{ item.suspiciousLineCount }} suspicious lines</div>
+                                    </div>
+                                    <button
+                                        class="ml-2 text-sm opacity-50 hover:opacity-100"
+                                        @click="dismissItem(item)">
+                                        Dismiss
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Success Message -->
+                        <div
+                            v-if="assResult.filesWithDrawings === 0"
+                            class="rounded border border-green-500/30 bg-green-500/10 p-4 text-center text-green-400">
+                            All files passed verification!
+                        </div>
+                    </div>
+                </div>
+            </template>
+        </CardComponent>
     </div>
 </template>
 
@@ -210,6 +305,16 @@ onMounted(async () => {
     } catch (error) {
         console.debug('No existing integrity check status')
     }
+
+    // Load persisted ASS verification result
+    try {
+        const assResponse = await axios.get('/api/setting/subtitle_ass_verification_last_result')
+        if (assResponse.data && assResponse.data.value) {
+            assResult.value = JSON.parse(assResponse.data.value)
+        }
+    } catch (error) {
+        console.debug('No existing ASS verification result')
+    }
     
     hubConnection.value = await signalR.connect('JobProgress', '/signalr/JobProgress')
     await hubConnection.value.joinGroup({ group: 'JobProgress' })
@@ -219,4 +324,81 @@ onMounted(async () => {
 onUnmounted(() => {
     hubConnection.value?.off('BulkIntegrityProgress', handleProgress)
 })
+
+// ASS Verification
+interface AssVerificationItem {
+    mediaId: number
+    mediaType: string
+    mediaTitle: string
+    subtitlePath: string
+    suspiciousLineCount: number
+    dismissed: boolean
+}
+
+interface AssVerificationResult {
+    totalFilesScanned: number
+    filesWithDrawings: number
+    flaggedItems: AssVerificationItem[]
+}
+
+const assIsRunning = ref(false)
+const assResult = ref<AssVerificationResult | null>(null)
+
+const startAssVerification = async () => {
+    try {
+        assIsRunning.value = true
+        const response = await axios.post('/api/subtitle/verify-ass')
+        assResult.value = response.data
+
+        // Persist result
+        await axios.post('/api/setting', {
+            key: 'subtitle_ass_verification_last_result',
+            value: JSON.stringify(response.data)
+        })
+    } catch (error) {
+        console.error('Failed to start ASS verification:', error)
+    } finally {
+        assIsRunning.value = false
+    }
+}
+
+const requeueAll = async () => {
+    if (!assResult.value?.flaggedItems) return
+    
+    try {
+        for (const item of assResult.value.flaggedItems) {
+            await axios.post('/api/translation-request/create', {
+                mediaId: item.mediaId,
+                mediaType: item.mediaType
+            })
+        }
+        // Clear the list after requeue
+        assResult.value.flaggedItems = []
+        assResult.value.filesWithDrawings = 0
+        
+        // Update persisted result
+        await axios.post('/api/setting', {
+            key: 'subtitle_ass_verification_last_result',
+            value: JSON.stringify(assResult.value)
+        })
+    } catch (error) {
+        console.error('Failed to requeue items:', error)
+    }
+}
+
+const dismissItem = async (item: AssVerificationItem) => {
+    if (!assResult.value?.flaggedItems) return
+    
+    // Remove from list
+    assResult.value.flaggedItems = assResult.value.flaggedItems.filter(
+        i => i.subtitlePath !== item.subtitlePath
+    )
+    assResult.value.filesWithDrawings = assResult.value.flaggedItems.length
+    
+    // Update persisted result
+    await axios.post('/api/setting', {
+        key: 'subtitle_ass_verification_last_result',
+        value: JSON.stringify(assResult.value)
+    })
+}
 </script>

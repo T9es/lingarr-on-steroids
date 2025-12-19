@@ -92,4 +92,39 @@ public class SubtitleFormatterServiceTests
         var result = SubtitleFormatterService.RemoveMarkup(input);
         Assert.Equal(expected, result);
     }
+
+    [Theory]
+    [InlineData("m 0 0 l 1 0 l 1 -1 l 0 -1 l 0 0y")] // The specific "weird string" crash case (high density)
+    [InlineData("m 0 0 l 1 0 n 50 50 l 40 40 0o")]    // Another corrupted case
+    public void IsAssDrawingCommand_ShouldReturnTrue_ForHighDensityDrawingWithGarbage(string input)
+    {
+        // These strings contain "0y" or "0o" which are NOT valid commands/numbers.
+        // But the density of valid commands/numbers is > 80%, so it should be detected as a drawing.
+        var result = SubtitleFormatterService.IsAssDrawingCommand(input);
+        Assert.True(result, $"Failed to identify high-density drawing with garbage: {input}");
+    }
+
+    [Theory]
+    [InlineData("m 100 people live here")]     // "m"(cmd), "100"(num), tokens=5. Ratio=0.4. Safe.
+    [InlineData("Room 101")]                   // "Room", "101"(num). Ratio=0.5. Safe.
+    [InlineData("Plan 9 from Outer Space")]    // "Plan", "9"(num). Ratio=0.2. Safe.
+    [InlineData("m is a letter")]              // "m"(cmd). Ratio=0.25 (1/4). Safe.
+    [InlineData("100 years ago")]              // "100"(num). Ratio=0.33. Safe.
+    [InlineData("1 2 3 go")]                   // 1,2,3(num). Ratio=0.75. Safe (Threshold > 0.8).
+    public void IsAssDrawingCommand_ShouldReturnFalse_ForDialogueResemblingCommands(string input)
+    {
+        var result = SubtitleFormatterService.IsAssDrawingCommand(input);
+        Assert.False(result, $"Incorrectly identified dialogue as drawing: {input}");
+    }
+
+    [Theory]
+    [InlineData("{\\p1}m 0 0 l 100 100{\\p0}", "")]  // Pure drawing block → empty
+    [InlineData("Hello {\\p1}m 0 0{\\p0} World", "Hello World")]  // Mixed → dialogue preserved
+    [InlineData("{\\p2}m 50 50 b 100 100{\\p0}", "")]  // Scale 2 drawing → empty
+    [InlineData("{\\p1}drawing{\\p0}{\\p1}another{\\p0}", "")]  // Multiple blocks → empty
+    public void RemoveMarkup_ShouldStripDrawingBlocks(string input, string expected)
+    {
+        var result = SubtitleFormatterService.RemoveMarkup(input);
+        Assert.Equal(expected, result);
+    }
 }

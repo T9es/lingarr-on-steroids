@@ -103,7 +103,10 @@ public class StartupService : IHostedService
             { SettingKeys.SubtitleValidation.MaxSubtitleLength, "500" },
             { SettingKeys.SubtitleValidation.MinSubtitleLength, "2" },
             { SettingKeys.SubtitleValidation.MinDurationMs, "500" },
-            { SettingKeys.SubtitleValidation.MaxDurationSecs, "10" }
+            { SettingKeys.SubtitleValidation.MaxDurationSecs, "10" },
+
+            // Default AI Prompt Safeguard
+            { SettingKeys.Translation.AiPrompt, "If you encounter ASS/SSA vector drawing commands (patterns like 'm 0 0 l 100 100 b...'), ignore them and translate only the surrounding dialogue. Do NOT remove valid short dialogue like 'I...', 'No!', or single words." }
         });
 
         await CheckAndUpdateIntegrationSettings(dbContext, "radarr", [
