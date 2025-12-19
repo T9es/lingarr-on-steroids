@@ -395,9 +395,11 @@ const requeueAll = async () => {
     
     try {
         for (const item of assResult.value.flaggedItems) {
-            await axios.post('/api/translation-request/create', {
+            // MediaType enum: Movie=0, Episode=2
+            const mediaType = item.mediaType === 'Movie' ? 0 : 2
+            await axios.post('/api/translate/media', {
                 mediaId: item.mediaId,
-                mediaType: item.mediaType
+                mediaType: mediaType
             })
         }
         // Clear the list after requeue
