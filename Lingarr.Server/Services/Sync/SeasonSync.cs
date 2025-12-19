@@ -74,7 +74,7 @@ public class SeasonSync : ISeasonSync
         var episodePathResult = await _sonarrService.GetEpisodePath(episode.Id);
         var normalizePath = _pathConversionService.NormalizePath(episodePathResult?.EpisodeFile.Path ?? string.Empty);
         var seasonPath = Path.GetDirectoryName(normalizePath);
-        _logger.LogInformation("Syncing episode: {episode.Id} with Path: {seasonPath}", episode.Id, seasonPath);
+        _logger.LogInformation("Resolved season path from episode {EpisodeId}: {SeasonPath}", episode.Id, seasonPath);
 
         if (seasonPath != null)
         {

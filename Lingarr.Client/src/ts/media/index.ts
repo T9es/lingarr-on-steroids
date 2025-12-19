@@ -61,7 +61,7 @@ export interface ITranslationRequest {
     status: TranslationStatus
     progress: number
     completedAt?: string | null
-    isPriorityMedia?: boolean
+    isPriority?: boolean
     isActive?: boolean
 }
 

@@ -3,9 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Hangfire;
-using Hangfire.Common;
-using Hangfire.States;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
@@ -58,10 +55,10 @@ public class TranslationRequestServiceTests
     }
 
     [Fact]
-    public async Task ReenqueueQueuedRequests_UsesSingleQueueForAllRequests()
+    public async Task ReenqueueQueuedRequests_SignalsWorkerService()
     {
-        // With unified queue system, all jobs go to "translation" queue
-        // Priority ordering is handled at runtime by ParallelTranslationLimiter
+        // With the new worker-based system, ReenqueueQueuedRequests signals the worker
+        // to pick up pending jobs
         await using var context = BuildContext();
 
         var now = DateTime.UtcNow;
@@ -93,7 +90,6 @@ public class TranslationRequestServiceTests
 
         var requests = new List<TranslationRequest>
         {
-            // Insert normal first to ensure ordering logic is exercised
             CreateRequest(1, normalMovie.Id, MediaType.Movie, "en", "ro", "/movies/normal.en.srt",
                 TranslationStatus.Pending, now),
             CreateRequest(2, priorityMovie.Id, MediaType.Movie, "en", "ro", "/movies/priority.en.srt",
@@ -103,27 +99,21 @@ public class TranslationRequestServiceTests
         context.TranslationRequests.AddRange(requests);
         await context.SaveChangesAsync();
 
-        var createdQueues = new List<string>();
-        var backgroundJobClientMock = new Mock<IBackgroundJobClient>();
-        backgroundJobClientMock
-            .Setup(c => c.Create(It.IsAny<Job>(), It.IsAny<IState>()))
-            .Callback<Job, IState>((_, state) =>
-            {
-                if (state is EnqueuedState enqueued)
-                {
-                    createdQueues.Add(enqueued.Queue);
-                }
-            })
-            .Returns(Guid.NewGuid().ToString());
+        var workerServiceMock = new Mock<ITranslationWorkerService>();
+        var signalCallCount = 0;
+        workerServiceMock.Setup(w => w.Signal()).Callback(() => signalCallCount++);
 
-        var service = CreateService(context, backgroundJobClientMock);
+        var service = CreateService(context, workerServiceMock);
 
         await service.ReenqueueQueuedRequests();
 
-        // With unified queue, all jobs go to "translation" queue
-        // Priority ordering is handled by ParallelTranslationLimiter at runtime
-        Assert.Equal(2, createdQueues.Count);
-        Assert.All(createdQueues, q => Assert.Equal("translation", q));
+        // Verify Signal was called
+        Assert.True(signalCallCount >= 1, "Worker service Signal should be called");
+        
+        // Verify all requests are still pending
+        var pendingCount = await context.TranslationRequests
+            .CountAsync(tr => tr.Status == TranslationStatus.Pending);
+        Assert.Equal(2, pendingCount);
     }
 
     private static LingarrDbContext BuildContext()
@@ -161,9 +151,9 @@ public class TranslationRequestServiceTests
 
     private static TranslationRequestService CreateService(
         LingarrDbContext context,
-        Mock<IBackgroundJobClient>? backgroundJobClientMock = null)
+        Mock<ITranslationWorkerService>? workerServiceMock = null)
     {
-        backgroundJobClientMock ??= new Mock<IBackgroundJobClient>();
+        workerServiceMock ??= new Mock<ITranslationWorkerService>();
 
         var clientProxyMock = new Mock<IClientProxy>();
         clientProxyMock
@@ -176,11 +166,9 @@ public class TranslationRequestServiceTests
         var hubContextMock = new Mock<IHubContext<TranslationRequestsHub>>();
         hubContextMock.SetupGet(h => h.Clients).Returns(hubClientsMock.Object);
 
-        var parallelLimiterMock = new Mock<IParallelTranslationLimiter>();
-
         return new TranslationRequestService(
             context,
-            backgroundJobClientMock.Object,
+            workerServiceMock.Object,
             hubContextMock.Object,
             new Mock<ITranslationServiceFactory>().Object,
             new Mock<IProgressService>().Object,
@@ -189,7 +177,6 @@ public class TranslationRequestServiceTests
             new Mock<ISettingService>().Object,
             new Mock<IBatchFallbackService>().Object,
             NullLogger<TranslationRequestService>.Instance,
-            new Mock<ITranslationCancellationService>().Object,
-            parallelLimiterMock.Object);
+            new Mock<ITranslationCancellationService>().Object);
     }
 }
