@@ -535,6 +535,10 @@ namespace Lingarr.Migrations.SQLite.Migrations
                         .HasColumnType("INTEGER")
                         .HasColumnName("is_active");
 
+                    b.Property<bool>("IsPriority")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("is_priority");
+
                     b.Property<string>("JobId")
                         .HasColumnType("TEXT")
                         .HasColumnName("job_id");

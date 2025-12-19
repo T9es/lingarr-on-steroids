@@ -93,7 +93,7 @@
                                             {{ item.title }}
                                         </span>
                                         <BadgeComponent
-                                            v-if="item.isPriorityMedia"
+                                            v-if="item.isPriority"
                                             classes="border-accent bg-accent text-xs text-primary-content">
                                             {{ translate('translations.priority') }}
                                         </BadgeComponent>
@@ -155,7 +155,7 @@
                                             {{ item.title }}
                                         </span>
                                         <BadgeComponent
-                                            v-if="item.isPriorityMedia"
+                                            v-if="item.isPriority"
                                             classes="border-accent bg-accent text-xs text-primary-content">
                                             {{ translate('translations.priority') }}
                                         </BadgeComponent>
@@ -277,7 +277,7 @@
                                             {{ item.title }}
                                         </span>
                                         <BadgeComponent
-                                            v-if="item.isPriorityMedia"
+                                            v-if="item.isPriority"
                                             classes="border-accent bg-accent text-xs text-primary-content">
                                             {{ translate('translations.priority') }}
                                         </BadgeComponent>

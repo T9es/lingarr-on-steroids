@@ -239,10 +239,10 @@ public class SettingChangedListener
                     break;
                     
                 case "ParallelTranslations":
-                    var parallelLimiter = _serviceProvider.GetRequiredService<IParallelTranslationLimiter>();
+                    var workerService = _serviceProvider.GetRequiredService<ITranslationWorkerService>();
                     var maxParallelSetting = await settingService.GetSetting(SettingKeys.Translation.MaxParallelTranslations);
                     var maxParallel = int.TryParse(maxParallelSetting, out var val) && val > 0 ? val : 1;
-                    await parallelLimiter.ReconfigureAsync(maxParallel);
+                    await workerService.ReconfigureWorkersAsync(maxParallel);
                     _logger.LogInformation(
                         "Settings changed for |Green|ParallelTranslations|/Green|. Reconfigured to |Orange|{MaxParallel}|/Orange| concurrent translations.",
                         maxParallel);

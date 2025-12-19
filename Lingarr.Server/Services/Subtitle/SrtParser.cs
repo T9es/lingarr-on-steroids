@@ -44,6 +44,19 @@ public class SrtParser : ISubtitleParser
         var currentBlock = new List<string>();
         string? line;
 
+        // Skip leading comment lines (e.g., Lingarr extraction markers) before the first block
+        while ((line = ReadNonEmptyLine(reader)) != null)
+        {
+            if (!line.StartsWith(';'))
+            {
+                // Found a non-comment line, this is the start of actual content
+                currentBlock.Add(line);
+                break;
+            }
+            // Skip comment lines at the start of the file
+        }
+
+        // Parse the rest of the file normally (no comment skipping)
         while ((line = ReadNonEmptyLine(reader)) != null)
         {
             if (IsBlockSeparator(line, currentBlock, reader))
