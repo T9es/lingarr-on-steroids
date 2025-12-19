@@ -22,18 +22,18 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
     protected virtual string ApiKeySettingKey => SettingKeys.Translation.OpenAi.ApiKey;
     protected virtual string EndpointBase => "https://api.openai.com/v1/";
 
-    private readonly string _endpoint;
-    private string? _prompt;
-    private string? _model;
-    private string? _apiKey;
-    private readonly HttpClient _httpClient;
-    private bool _initialized;
-    private readonly SemaphoreSlim _initLock = new(1, 1);
+    protected readonly string _endpoint;
+    protected string? _prompt;
+    protected string? _model;
+    protected string? _apiKey;
+    protected readonly HttpClient _httpClient;
+    protected bool _initialized;
+    protected readonly SemaphoreSlim _initLock = new(1, 1);
 
     // retry settings
-    private int _maxRetries;
-    private TimeSpan _retryDelay;
-    private int _retryDelayMultiplier;
+    protected int _maxRetries;
+    protected TimeSpan _retryDelay;
+    protected int _retryDelayMultiplier;
 
     public OpenAiService(
         ISettingService settings,
@@ -53,7 +53,7 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
     /// <param name="targetLanguage">The target language code for translation</param>
     /// <returns>A task that represents the asynchronous initialization operation</returns>
     /// <exception cref="InvalidOperationException">Thrown when required configuration settings are missing or invalid</exception>
-    private async Task InitializeAsync(string sourceLanguage, string targetLanguage)
+    protected async Task InitializeAsync(string sourceLanguage, string targetLanguage)
     {
         if (_initialized) return;
 
