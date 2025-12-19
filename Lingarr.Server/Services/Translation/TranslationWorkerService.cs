@@ -304,26 +304,32 @@ public class TranslationWorkerService : BackgroundService, ITranslationWorkerSer
             var dbContext = scope.ServiceProvider.GetRequiredService<LingarrDbContext>();
             
             var now = DateTime.UtcNow;
-            await dbContext.TranslationRequests
+            
+            // Only update if still InProgress - TranslationJob may have already marked it Failed
+            var rowsUpdated = await dbContext.TranslationRequests
                 .Where(r => r.Id == requestId && r.Status == TranslationStatus.InProgress)
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(r => r.Status, TranslationStatus.Failed)
                     .SetProperty(r => r.IsActive, (bool?)null)
                     .SetProperty(r => r.CompletedAt, now));
             
-            // Add a log entry explaining the failure
-            dbContext.TranslationRequestLogs.Add(new TranslationRequestLog
+            // Only add log entry if we actually changed the status
+            // (avoids duplicate logs when TranslationJob already handled the failure)
+            if (rowsUpdated > 0)
             {
-                TranslationRequestId = requestId,
-                Level = "Error",
-                Message = "Worker service failed to process request",
-                Details = errorMessage
-            });
-            await dbContext.SaveChangesAsync();
-            
-            _logger.LogWarning(
-                "Marked request {RequestId} as Failed due to worker error: {Error}",
-                requestId, errorMessage);
+                dbContext.TranslationRequestLogs.Add(new TranslationRequestLog
+                {
+                    TranslationRequestId = requestId,
+                    Level = "Error",
+                    Message = "Worker service failed to process request",
+                    Details = errorMessage
+                });
+                await dbContext.SaveChangesAsync();
+                
+                _logger.LogWarning(
+                    "Marked request {RequestId} as Failed due to worker error: {Error}",
+                    requestId, errorMessage);
+            }
         }
         catch (Exception ex)
         {
