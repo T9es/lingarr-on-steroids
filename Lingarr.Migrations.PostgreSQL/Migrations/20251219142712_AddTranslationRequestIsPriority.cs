@@ -1,8 +1,8 @@
-using Microsoft.EntityFrameworkCore.Migrations;
+﻿using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace Lingarr.Migrations.PostgreSql.Migrations
+namespace Lingarr.Migrations.PostgreSQL.Migrations
 {
     /// <inheritdoc />
     public partial class AddTranslationRequestIsPriority : Migration
