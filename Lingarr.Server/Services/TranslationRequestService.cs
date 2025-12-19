@@ -991,19 +991,23 @@ public class TranslationRequestService : ITranslationRequestService
             .Distinct()
             .ToList();
 
+        // Optimization: Use projection to fetch only the IsPriority flag.
+        // This avoids fetching the entire Movie entity and tracking it.
         var moviePriorityMap = movieIds.Count == 0
             ? new Dictionary<int, bool>()
             : await _dbContext.Movies
                 .Where(m => movieIds.Contains(m.Id))
+                .Select(m => new { m.Id, m.IsPriority })
                 .ToDictionaryAsync(m => m.Id, m => m.IsPriority);
 
+        // Optimization: Use projection to fetch only the Show's IsPriority flag.
+        // This avoids joining and fetching full Episode, Season, and Show entities.
         var episodePriorityMap = episodeIds.Count == 0
             ? new Dictionary<int, bool>()
             : await _dbContext.Episodes
-                .Include(e => e.Season)
-                .ThenInclude(s => s.Show)
                 .Where(e => episodeIds.Contains(e.Id))
-                .ToDictionaryAsync(e => e.Id, e => e.Season.Show.IsPriority);
+                .Select(e => new { e.Id, Priority = e.Season.Show.IsPriority })
+                .ToDictionaryAsync(e => e.Id, e => e.Priority);
 
         foreach (var request in requests)
         {
