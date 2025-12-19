@@ -148,6 +148,9 @@ export interface ISettings {
     repair_max_retries: string
     strip_ass_drawing_commands: string
     clean_source_ass_drawings: string
+    batch_context_enabled: string
+    batch_context_before: string
+    batch_context_after: string
 }
 
 export interface ICustomAiParams {
