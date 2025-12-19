@@ -179,21 +179,37 @@
                                     Requeue All for Translation
                                 </button>
                             </div>
-                            <div class="bg-base-200 max-h-64 overflow-y-auto rounded w-full">
+                            <div class="bg-base-200 max-h-96 overflow-y-auto rounded w-full">
                                 <div
                                     v-for="item in assResult.flaggedItems"
                                     :key="item.subtitlePath"
-                                    class="flex items-center justify-between border-b border-base-300 p-3 last:border-0">
-                                    <div class="flex-1 overflow-hidden">
-                                        <div class="font-medium truncate">{{ item.mediaTitle }}</div>
-                                        <div class="text-xs opacity-50 truncate">{{ item.subtitlePath }}</div>
-                                        <div class="text-xs text-yellow-500">{{ item.suspiciousLineCount }} suspicious lines</div>
+                                    class="border-b border-base-300 last:border-0">
+                                    <div 
+                                        class="flex items-center justify-between p-3 cursor-pointer hover:bg-base-300/50"
+                                        @click="toggleExpand(item.subtitlePath)">
+                                        <div class="flex-1 overflow-hidden">
+                                            <div class="font-medium truncate">{{ item.mediaTitle }}</div>
+                                            <div class="text-xs opacity-50 truncate">{{ item.subtitlePath }}</div>
+                                            <div class="text-xs text-yellow-500">{{ item.suspiciousLineCount }} suspicious lines (click to view)</div>
+                                        </div>
+                                        <button
+                                            class="ml-2 text-sm opacity-50 hover:opacity-100"
+                                            @click.stop="dismissItem(item)">
+                                            Dismiss
+                                        </button>
                                     </div>
-                                    <button
-                                        class="ml-2 text-sm opacity-50 hover:opacity-100"
-                                        @click="dismissItem(item)">
-                                        Dismiss
-                                    </button>
+                                    <!-- Expandable suspicious lines -->
+                                    <div 
+                                        v-if="expandedItems.includes(item.subtitlePath) && item.suspiciousLines"
+                                        class="bg-base-300/30 p-3 border-t border-base-300 text-xs">
+                                        <div class="font-semibold mb-2 opacity-70">Suspicious lines:</div>
+                                        <div 
+                                            v-for="(line, idx) in item.suspiciousLines" 
+                                            :key="idx"
+                                            class="font-mono text-yellow-400 truncate py-1">
+                                            {{ line }}
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -309,10 +325,12 @@ onMounted(async () => {
     // Load persisted ASS verification result
     try {
         const assResponse = await axios.get('/api/setting/subtitle_ass_verification_last_result')
-        if (assResponse.data && assResponse.data.value) {
-            assResult.value = JSON.parse(assResponse.data.value)
+        // API returns the value directly as a string, not as {value: ...}
+        if (assResponse.data) {
+            assResult.value = JSON.parse(assResponse.data)
         }
     } catch (error) {
+        // 400 is expected when no scan has been run yet
         console.debug('No existing ASS verification result')
     }
     
@@ -332,6 +350,7 @@ interface AssVerificationItem {
     mediaTitle: string
     subtitlePath: string
     suspiciousLineCount: number
+    suspiciousLines: string[]
     dismissed: boolean
 }
 
@@ -343,6 +362,15 @@ interface AssVerificationResult {
 
 const assIsRunning = ref(false)
 const assResult = ref<AssVerificationResult | null>(null)
+const expandedItems = ref<string[]>([])
+
+const toggleExpand = (path: string) => {
+    if (expandedItems.value.includes(path)) {
+        expandedItems.value = expandedItems.value.filter(p => p !== path)
+    } else {
+        expandedItems.value.push(path)
+    }
+}
 
 const startAssVerification = async () => {
     try {

@@ -139,9 +139,9 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
             foreach (var subPath in subtitleFiles)
             {
                 result.TotalFilesScanned++;
-                var suspiciousCount = await CountSuspiciousLines(subPath, drawingPattern);
+                var (count, lines) = await GetSuspiciousLines(subPath, drawingPattern);
                 
-                if (suspiciousCount >= suspiciousThreshold)
+                if (count >= suspiciousThreshold)
                 {
                     result.FilesWithDrawings++;
                     result.FlaggedItems.Add(new Models.AssVerificationItem
@@ -150,7 +150,8 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
                         MediaType = "Movie",
                         MediaTitle = movie.Title ?? "Unknown",
                         SubtitlePath = subPath,
-                        SuspiciousLineCount = suspiciousCount,
+                        SuspiciousLineCount = count,
+                        SuspiciousLines = lines,
                         Dismissed = false
                     });
                 }
@@ -166,9 +167,9 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
             foreach (var subPath in subtitleFiles)
             {
                 result.TotalFilesScanned++;
-                var suspiciousCount = await CountSuspiciousLines(subPath, drawingPattern);
+                var (count, lines) = await GetSuspiciousLines(subPath, drawingPattern);
                 
-                if (suspiciousCount >= suspiciousThreshold)
+                if (count >= suspiciousThreshold)
                 {
                     result.FilesWithDrawings++;
                     result.FlaggedItems.Add(new Models.AssVerificationItem
@@ -177,7 +178,8 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
                         MediaType = "Episode",
                         MediaTitle = episode.Title,
                         SubtitlePath = subPath,
-                        SuspiciousLineCount = suspiciousCount,
+                        SuspiciousLineCount = count,
+                        SuspiciousLines = lines,
                         Dismissed = false
                     });
                 }
@@ -210,17 +212,22 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
         return subtitleFiles;
     }
 
-    private async Task<int> CountSuspiciousLines(string subtitlePath, System.Text.RegularExpressions.Regex pattern)
+    private async Task<(int count, List<string> lines)> GetSuspiciousLines(string subtitlePath, System.Text.RegularExpressions.Regex pattern)
     {
         try
         {
             var lines = await File.ReadAllLinesAsync(subtitlePath);
-            return lines.Count(line => pattern.IsMatch(line.Trim()));
+            var suspiciousLines = lines
+                .Where(line => pattern.IsMatch(line.Trim()))
+                .Take(10) // Limit to first 10 for performance
+                .Select(line => line.Trim().Length > 80 ? line.Trim().Substring(0, 80) + "..." : line.Trim())
+                .ToList();
+            return (suspiciousLines.Count, suspiciousLines);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Error reading subtitle file {Path}", subtitlePath);
-            return 0;
+            return (0, new List<string>());
         }
     }
 }

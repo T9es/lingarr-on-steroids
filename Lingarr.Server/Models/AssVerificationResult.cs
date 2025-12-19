@@ -20,5 +20,6 @@ public class AssVerificationItem
     public string MediaTitle { get; set; } = string.Empty;
     public string SubtitlePath { get; set; } = string.Empty;
     public int SuspiciousLineCount { get; set; }
+    public List<string> SuspiciousLines { get; set; } = new();
     public bool Dismissed { get; set; }
 }
