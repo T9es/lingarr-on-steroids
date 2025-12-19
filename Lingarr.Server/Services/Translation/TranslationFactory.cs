@@ -79,8 +79,8 @@ public class TranslationFactory : ITranslationServiceFactory
 
             "deepseek" => new DeepSeekService(
                 _serviceProvider.GetRequiredService<ISettingService>(),
-                _serviceProvider.GetRequiredService<HttpClient>(),
-                _serviceProvider.GetRequiredService<ILogger<DeepSeekService>>()
+                _serviceProvider.GetRequiredService<ILogger<DeepSeekService>>(),
+                _serviceProvider.GetRequiredService<IHttpClientFactory>()
             ),
 
             "gemini" => new GoogleGeminiService(
@@ -100,4 +100,3 @@ public class TranslationFactory : ITranslationServiceFactory
         };
     }
 }
-
