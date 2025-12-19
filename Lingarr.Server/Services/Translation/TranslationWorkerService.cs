@@ -266,8 +266,12 @@ public class TranslationWorkerService : BackgroundService, ITranslationWorkerSer
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing translation request {RequestId}", requestId);
-            // The TranslationJob should handle its own error states,
-            // but log if we get an unexpected exception here
+            
+            // If we failed before TranslationJob could handle it (e.g., DI failure),
+            // we must mark the job as Failed to prevent infinite retry loops.
+            // The recovery logic resets InProgress→Pending on startup, so leaving
+            // a job in InProgress would cause it to be retried endlessly.
+            await MarkRequestAsFailedAsync(requestId, ex.Message);
         }
         finally
         {
@@ -289,6 +293,41 @@ public class TranslationWorkerService : BackgroundService, ITranslationWorkerSer
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to reset request {RequestId} to Pending", requestId);
+        }
+    }
+
+    private async Task MarkRequestAsFailedAsync(int requestId, string errorMessage)
+    {
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<LingarrDbContext>();
+            
+            var now = DateTime.UtcNow;
+            await dbContext.TranslationRequests
+                .Where(r => r.Id == requestId && r.Status == TranslationStatus.InProgress)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(r => r.Status, TranslationStatus.Failed)
+                    .SetProperty(r => r.IsActive, (bool?)null)
+                    .SetProperty(r => r.CompletedAt, now));
+            
+            // Add a log entry explaining the failure
+            dbContext.TranslationRequestLogs.Add(new TranslationRequestLog
+            {
+                TranslationRequestId = requestId,
+                Level = "Error",
+                Message = "Worker service failed to process request",
+                Details = errorMessage
+            });
+            await dbContext.SaveChangesAsync();
+            
+            _logger.LogWarning(
+                "Marked request {RequestId} as Failed due to worker error: {Error}",
+                requestId, errorMessage);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to mark request {RequestId} as Failed", requestId);
         }
     }
 
