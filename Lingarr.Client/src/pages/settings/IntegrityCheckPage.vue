@@ -395,11 +395,10 @@ const requeueAll = async () => {
     
     try {
         for (const item of assResult.value.flaggedItems) {
-            // MediaType enum: Movie=0, Episode=2
-            const mediaType = item.mediaType === 'Movie' ? 0 : 2
+            // MediaType should be string like 'Movie' or 'Episode'
             await axios.post('/api/translate/media', {
                 mediaId: item.mediaId,
-                mediaType: mediaType
+                mediaType: item.mediaType
             })
         }
         // Clear the list after requeue

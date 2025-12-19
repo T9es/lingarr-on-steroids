@@ -6,7 +6,7 @@
             </div>
             <h2 class="text-primary-content text-2xl font-bold">{{ title }}</h2>
         </div>
-        <p class="text-secondary-content/80 mb-6"><slot name="description"></slot></p>
+        <p class="text-secondary-content/80 mb-6 text-center"><slot name="description"></slot></p>
 
         <div class="space-y-4">
             <slot name="content"></slot>
