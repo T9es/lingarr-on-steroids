@@ -444,6 +444,12 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
                 throw new HttpRequestException("Rate limit exceeded", null, HttpStatusCode.TooManyRequests);
             }
 
+            if (response.StatusCode == HttpStatusCode.PaymentRequired)
+            {
+                _logger.LogWarning("402 Payment Required (Batch). Provider Message: {Content}", responseBody);
+                throw new TranslationException("Batch translation using OpenAI API failed. Status: PaymentRequired");
+            }
+
             if (response.StatusCode == HttpStatusCode.ServiceUnavailable)
             {
                 throw new HttpRequestException("OpenAI temporary unavailable", null, HttpStatusCode.ServiceUnavailable);
