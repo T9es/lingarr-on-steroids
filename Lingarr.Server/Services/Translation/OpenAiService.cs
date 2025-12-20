@@ -447,7 +447,8 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
             if (response.StatusCode == HttpStatusCode.PaymentRequired)
             {
                 _logger.LogWarning("402 Payment Required (Batch). Provider Message: {Content}", responseBody);
-                throw new TranslationException("Batch translation using OpenAI API failed. Status: PaymentRequired");
+                // Include the response body in the exception so handlers can extract reset timestamp
+                throw new TranslationException($"Batch translation using OpenAI API failed. Status: PaymentRequired. Response: {responseBody}");
             }
 
             if (response.StatusCode == HttpStatusCode.ServiceUnavailable)

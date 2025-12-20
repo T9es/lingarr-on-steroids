@@ -78,11 +78,18 @@ public class TestTranslationService : ITestTranslationService
             try
             {
                 var subtitlePath = request.SubtitlePath;
-                if (string.IsNullOrEmpty(subtitlePath))
+                
+                // AUTO-EXTRACTION: If subtitle file doesn't exist, check for embedded subtitles
+                // This mirrors the logic in TranslationJob.ExecuteCore
+                if (string.IsNullOrEmpty(subtitlePath) || !File.Exists(subtitlePath))
                 {
                     if (request.MediaId.HasValue && request.MediaType.HasValue)
                     {
-                       Log("INFORMATION", "Subtitle path not provided, attempting embedded subtitle extraction...");
+                       if (!string.IsNullOrEmpty(subtitlePath))
+                       {
+                           Log("INFORMATION", $"Subtitle file not found on disk: {subtitlePath}");
+                       }
+                       Log("INFORMATION", "Attempting embedded subtitle extraction...");
                        subtitlePath = await _extractionService.TryExtractEmbeddedSubtitle(
                            request.MediaId.Value, 
                            request.MediaType.Value, 
@@ -95,14 +102,15 @@ public class TestTranslationService : ITestTranslationService
                        }
                        else
                        {
-                           throw new InvalidOperationException("Failed to extract embedded subtitle");
+                           throw new InvalidOperationException("Failed to extract embedded subtitle - no suitable embedded subtitle found");
                        }
                     }
                     else
                     {
-                        throw new ArgumentException("Subtitle path is missing and no media ID/Type provided for extraction");
+                        throw new ArgumentException("Subtitle path is missing or file not found, and no media ID/Type provided for extraction");
                     }
                 }
+
 
                 Log("INFORMATION", $"Starting test translation for: {subtitlePath}");
                 Log("INFORMATION", $"Source language: {request.SourceLanguage}, Target language: {request.TargetLanguage}");

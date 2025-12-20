@@ -77,17 +77,50 @@ public class ChutesUsageService : IChutesUsageService
             
             if (inPaymentPause)
             {
-                _logger.LogInformation(
-                    "Chutes is in payment pause state. Waiting for credits to become available.");
-                
-                // Get a snapshot to pass to the wait method (may be stale but provides reset info)
-                var pauseSnapshot = await GetUsageSnapshotAsync(modelId, forceRefresh: true, cancellationToken);
-                await WaitForQuotaResetAsync(modelId, pauseSnapshot, cancellationToken, isPaymentPause: true);
-                
-                // After waiting, clear the payment pause and re-evaluate
+                // For payment pauses, we DON'T trust the quota API (it may return false data).
+                // Instead, just wait until the pause expires (the reset timestamp from 402 response).
+                DateTime pauseUntil;
                 lock (_paymentPauseLock)
                 {
-                    _paymentPausedUntil = DateTime.MinValue;
+                    pauseUntil = _paymentPausedUntil;
+                }
+                
+                var waitTime = pauseUntil - DateTime.UtcNow;
+                if (waitTime > TimeSpan.Zero)
+                {
+                    _logger.LogInformation(
+                        "Chutes is in payment pause state until {PauseUntil} UTC. Waiting {WaitMinutes:F1} minutes before allowing requests.",
+                        pauseUntil,
+                        waitTime.TotalMinutes);
+                    
+                    // Cap wait time to max 10 minutes per iteration to allow cancellation checks
+                    var maxWait = TimeSpan.FromMinutes(10);
+                    var actualWait = waitTime > maxWait ? maxWait : waitTime;
+                    
+                    try
+                    {
+                        await Task.Delay(actualWait, cancellationToken);
+                    }
+                    catch (TaskCanceledException)
+                    {
+                        throw;
+                    }
+                    
+                    // Check if we've passed the pause time
+                    if (DateTime.UtcNow < pauseUntil)
+                    {
+                        continue; // Still in pause, loop back
+                    }
+                }
+                
+                // Pause time has passed, clear the payment pause and re-evaluate
+                lock (_paymentPauseLock)
+                {
+                    if (DateTime.UtcNow >= _paymentPausedUntil)
+                    {
+                        _paymentPausedUntil = DateTime.MinValue;
+                        _logger.LogInformation("Chutes payment pause has expired. Resuming translations.");
+                    }
                 }
                 continue;
             }
@@ -145,16 +178,19 @@ public class ChutesUsageService : IChutesUsageService
     }
 
     /// <inheritdoc />
-    public void NotifyPaymentRequired()
+    public void NotifyPaymentRequired(DateTime? resetTimestamp = null)
     {
         lock (_paymentPauseLock)
         {
-            // Only extend the pause if not already set (avoid resetting on subsequent failures)
-            if (_paymentPausedUntil < DateTime.UtcNow)
+            // Determine pause end time: use reset timestamp if provided, otherwise use default duration
+            var proposedPauseUntil = resetTimestamp ?? DateTime.UtcNow.Add(PaymentPauseDuration);
+            
+            // Only update if the new pause time is later than the current one
+            if (proposedPauseUntil > _paymentPausedUntil)
             {
-                _paymentPausedUntil = DateTime.UtcNow.Add(PaymentPauseDuration);
+                _paymentPausedUntil = proposedPauseUntil;
                 _logger.LogWarning(
-                    "Chutes returned PaymentRequired (402). Pausing all Chutes translations until {PauseUntil} or until credits are available.",
+                    "Chutes returned PaymentRequired (402). Pausing all Chutes translations until {PauseUntil} UTC.",
                     _paymentPausedUntil);
             }
         }
