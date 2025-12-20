@@ -1325,23 +1325,31 @@ public class TranslationRequestService : ITranslationRequestService
         switch (translateAbleSubtitle.MediaType)
         {
             case MediaType.Movie:
-                var movie = await _dbContext.Movies
-                    .FirstOrDefaultAsync(m => m.Id == translateAbleSubtitle.MediaId);
-                return movie?.Title ?? "Unknown Movie";
+                var movieTitle = await _dbContext.Movies
+                    .Where(m => m.Id == translateAbleSubtitle.MediaId)
+                    .Select(m => m.Title)
+                    .FirstOrDefaultAsync();
+                return movieTitle ?? "Unknown Movie";
 
             case MediaType.Episode:
-                var episode = await _dbContext.Episodes
-                    .Include(e => e.Season)
-                    .ThenInclude(s => s.Show)
-                    .FirstOrDefaultAsync(e => e.Id == translateAbleSubtitle.MediaId);
+                var episodeInfo = await _dbContext.Episodes
+                    .Where(e => e.Id == translateAbleSubtitle.MediaId)
+                    .Select(e => new
+                    {
+                        EpisodeTitle = e.Title,
+                        EpisodeNumber = e.EpisodeNumber,
+                        SeasonNumber = e.Season.SeasonNumber,
+                        ShowTitle = e.Season.Show.Title
+                    })
+                    .FirstOrDefaultAsync();
 
-                if (episode == null)
+                if (episodeInfo == null)
                     return "Unknown Episode";
 
                 // Format: "Show Title - S01E02 - Episode Title"
-                return $"{episode.Season.Show.Title} - " +
-                       $"S{episode.Season.SeasonNumber:D2}E{episode.EpisodeNumber:D2} - " +
-                       $"{episode.Title}";
+                return $"{episodeInfo.ShowTitle} - " +
+                       $"S{episodeInfo.SeasonNumber:D2}E{episodeInfo.EpisodeNumber:D2} - " +
+                       $"{episodeInfo.EpisodeTitle}";
 
             default:
                 throw new ArgumentException($"Unsupported media type: {translateAbleSubtitle.MediaType}");
