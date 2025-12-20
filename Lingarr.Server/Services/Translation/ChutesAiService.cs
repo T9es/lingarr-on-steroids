@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using Lingarr.Core.Configuration;
+using Lingarr.Server.Exceptions;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models;
@@ -36,16 +37,24 @@ public class ChutesAiService : OpenAiService
         var model = await _settings.GetSetting(ModelSettingKey);
         await _usageService.EnsureRequestAllowedAsync(model, cancellationToken);
 
-        var result = await base.TranslateAsync(
-            text,
-            sourceLanguage,
-            targetLanguage,
-            contextLinesBefore,
-            contextLinesAfter,
-            cancellationToken);
+        try
+        {
+            var result = await base.TranslateAsync(
+                text,
+                sourceLanguage,
+                targetLanguage,
+                contextLinesBefore,
+                contextLinesAfter,
+                cancellationToken);
 
-        await _usageService.RecordRequestAsync(model, cancellationToken);
-        return result;
+            await _usageService.RecordRequestAsync(model, cancellationToken);
+            return result;
+        }
+        catch (TranslationException ex) when (ex.Message.Contains("PaymentRequired"))
+        {
+            _usageService.NotifyPaymentRequired();
+            throw;
+        }
     }
 
     public override async Task<Dictionary<int, string>> TranslateBatchAsync(
@@ -59,10 +68,18 @@ public class ChutesAiService : OpenAiService
         var model = await _settings.GetSetting(ModelSettingKey);
         await _usageService.EnsureRequestAllowedAsync(model, cancellationToken);
 
-        var result = await base.TranslateBatchAsync(subtitleBatch, sourceLanguage, targetLanguage, preContext, postContext, cancellationToken);
+        try
+        {
+            var result = await base.TranslateBatchAsync(subtitleBatch, sourceLanguage, targetLanguage, preContext, postContext, cancellationToken);
 
-        await _usageService.RecordRequestAsync(model, cancellationToken);
-        return result;
+            await _usageService.RecordRequestAsync(model, cancellationToken);
+            return result;
+        }
+        catch (TranslationException ex) when (ex.Message.Contains("PaymentRequired"))
+        {
+            _usageService.NotifyPaymentRequired();
+            throw;
+        }
     }
 
     public override async Task<ModelsResponse> GetModels()

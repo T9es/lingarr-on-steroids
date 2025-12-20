@@ -21,6 +21,7 @@ public class ChutesUsageService : IChutesUsageService
     private static readonly TimeSpan MinRefreshInterval = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan MinPausePollInterval = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan MaxPausePollInterval = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan PaymentPauseDuration = TimeSpan.FromMinutes(5);
 
     private readonly ISettingService _settings;
     private readonly ILogger<ChutesUsageService> _logger;
@@ -31,6 +32,10 @@ public class ChutesUsageService : IChutesUsageService
     private readonly MemoryCacheEntryOptions _modelCacheOptions;
     
     private DateTime _lastApiRefresh = DateTime.MinValue;
+    
+    // Static fields for payment pause state (shared across all service instances)
+    private static readonly object _paymentPauseLock = new();
+    private static DateTime _paymentPausedUntil = DateTime.MinValue;
 
     public ChutesUsageService(
         ISettingService settings,
@@ -63,6 +68,30 @@ public class ChutesUsageService : IChutesUsageService
     {
         while (true)
         {
+            // Check for payment pause state first
+            bool inPaymentPause;
+            lock (_paymentPauseLock)
+            {
+                inPaymentPause = DateTime.UtcNow < _paymentPausedUntil;
+            }
+            
+            if (inPaymentPause)
+            {
+                _logger.LogInformation(
+                    "Chutes is in payment pause state. Waiting for credits to become available.");
+                
+                // Get a snapshot to pass to the wait method (may be stale but provides reset info)
+                var pauseSnapshot = await GetUsageSnapshotAsync(modelId, forceRefresh: true, cancellationToken);
+                await WaitForQuotaResetAsync(modelId, pauseSnapshot, cancellationToken, isPaymentPause: true);
+                
+                // After waiting, clear the payment pause and re-evaluate
+                lock (_paymentPauseLock)
+                {
+                    _paymentPausedUntil = DateTime.MinValue;
+                }
+                continue;
+            }
+            
             // Rate-limited refresh: check API at most once per minute
             var shouldRefresh = DateTime.UtcNow - _lastApiRefresh >= MinRefreshInterval;
             var snapshot = await GetUsageSnapshotAsync(modelId, shouldRefresh, cancellationToken);
@@ -110,15 +139,32 @@ public class ChutesUsageService : IChutesUsageService
                 snapshot.AllowedRequestsPerDay,
                 snapshot.RequestsUsed);
 
-            await WaitForQuotaResetAsync(modelId, snapshot, cancellationToken);
+            await WaitForQuotaResetAsync(modelId, snapshot, cancellationToken, isPaymentPause: false);
             // Loop back and re-evaluate with a fresh snapshot after waiting.
+        }
+    }
+
+    /// <inheritdoc />
+    public void NotifyPaymentRequired()
+    {
+        lock (_paymentPauseLock)
+        {
+            // Only extend the pause if not already set (avoid resetting on subsequent failures)
+            if (_paymentPausedUntil < DateTime.UtcNow)
+            {
+                _paymentPausedUntil = DateTime.UtcNow.Add(PaymentPauseDuration);
+                _logger.LogWarning(
+                    "Chutes returned PaymentRequired (402). Pausing all Chutes translations until {PauseUntil} or until credits are available.",
+                    _paymentPausedUntil);
+            }
         }
     }
 
     private async Task WaitForQuotaResetAsync(
         string? modelId,
         ChutesUsageSnapshot snapshot,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool isPaymentPause = false)
     {
         while (true)
         {
@@ -149,8 +195,10 @@ public class ChutesUsageService : IChutesUsageService
                 }
             }
 
+            var pauseReason = isPaymentPause ? "payment required (402)" : "quota exhausted or within buffer";
             _logger.LogInformation(
-                "Chutes quota exhausted or within buffer. Waiting {DelayMinutes} minutes before re-checking usage.",
+                "Chutes paused ({Reason}). Waiting {DelayMinutes:F1} minutes before re-checking usage.",
+                pauseReason,
                 delay.TotalMinutes);
 
             try

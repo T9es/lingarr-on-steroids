@@ -18,4 +18,10 @@ public interface IChutesUsageService
     /// Retrieves a usage snapshot for the configured model.
     /// </summary>
     Task<ChutesUsageSnapshot> GetUsageSnapshotAsync(string? modelId, bool forceRefresh, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Signals that a 402 PaymentRequired error was received, triggering a pause
+    /// on all Chutes translations until credits are available again.
+    /// </summary>
+    void NotifyPaymentRequired();
 }
