@@ -81,11 +81,11 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 StartInfo = new ProcessStartInfo
                 {
                     FileName = "ffprobe",
-                    Arguments = "-version",
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
-                    CreateNoWindow = true
+                    CreateNoWindow = true,
+                    ArgumentList = { "-version" }
                 }
             };
 
@@ -219,16 +219,12 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             // ffmpeg -i input.mkv -map 0:s:{streamIndex} -c:s copy output.ass
             // If copying doesn't work for the target format, we remove -c:s copy for conversion
             var copyMode = extension is ".ass" or ".ssa";
-            var copyArgs = copyMode ? "-c:s copy" : "";
-
-            var arguments = $"-i \"{mediaFilePath}\" -map 0:s:{streamIndex} {copyArgs} \"{outputPath}\" -y";
 
             var process = new Process
             {
                 StartInfo = new ProcessStartInfo
                 {
                     FileName = "ffmpeg",
-                    Arguments = arguments,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
@@ -236,7 +232,21 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 }
             };
 
-            _logger.LogDebug("Running FFmpeg: ffmpeg {Arguments}", arguments);
+            process.StartInfo.ArgumentList.Add("-i");
+            process.StartInfo.ArgumentList.Add(mediaFilePath);
+            process.StartInfo.ArgumentList.Add("-map");
+            process.StartInfo.ArgumentList.Add($"0:s:{streamIndex}");
+
+            if (copyMode)
+            {
+                process.StartInfo.ArgumentList.Add("-c:s");
+                process.StartInfo.ArgumentList.Add("copy");
+            }
+
+            process.StartInfo.ArgumentList.Add(outputPath);
+            process.StartInfo.ArgumentList.Add("-y");
+
+            _logger.LogDebug("Running FFmpeg: ffmpeg {Arguments}", string.Join(" ", process.StartInfo.ArgumentList));
 
             process.Start();
             var stderr = await process.StandardError.ReadToEndAsync();
@@ -687,7 +697,6 @@ public class SubtitleExtractionService : ISubtitleExtractionService
     {
         try
         {
-            var arguments = $"-v quiet -print_format json -show_streams -select_streams s \"{mediaFilePath}\"";
             _logger.LogDebug("Running FFprobe on: {FullPath}", mediaFilePath);
             
             var process = new Process
@@ -695,13 +704,21 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 StartInfo = new ProcessStartInfo
                 {
                     FileName = "ffprobe",
-                    Arguments = arguments,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
                     CreateNoWindow = true
                 }
             };
+
+            process.StartInfo.ArgumentList.Add("-v");
+            process.StartInfo.ArgumentList.Add("quiet");
+            process.StartInfo.ArgumentList.Add("-print_format");
+            process.StartInfo.ArgumentList.Add("json");
+            process.StartInfo.ArgumentList.Add("-show_streams");
+            process.StartInfo.ArgumentList.Add("-select_streams");
+            process.StartInfo.ArgumentList.Add("s");
+            process.StartInfo.ArgumentList.Add(mediaFilePath);
 
             process.Start();
             var output = await process.StandardOutput.ReadToEndAsync();
