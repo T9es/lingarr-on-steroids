@@ -18,7 +18,7 @@ public class ChutesUsageService : IChutesUsageService
 
     private static readonly TimeSpan SnapshotCacheLifetime = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan ModelCacheLifetime = TimeSpan.FromHours(6);
-    private static readonly TimeSpan MinRefreshInterval = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan MinRefreshInterval = TimeSpan.FromMinutes(5); // Reduced API calls to avoid spamming
     private static readonly TimeSpan MinPausePollInterval = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan MaxPausePollInterval = TimeSpan.FromMinutes(10);
     private static readonly TimeSpan PaymentPauseDuration = TimeSpan.FromMinutes(5);
@@ -36,6 +36,11 @@ public class ChutesUsageService : IChutesUsageService
     // Static fields for payment pause state (shared across all service instances)
     private static readonly object _paymentPauseLock = new();
     private static DateTime _paymentPausedUntil = DateTime.MinValue;
+    
+    // Static counter for local request tracking (used between API refreshes)
+    private static readonly object _localCounterLock = new();
+    private static int _localRequestCount = 0;
+    private static DateTime _localCounterResetAt = DateTime.MinValue;
 
     public ChutesUsageService(
         ISettingService settings,
@@ -277,27 +282,29 @@ public class ChutesUsageService : IChutesUsageService
 
     public async Task RecordRequestAsync(string? modelId, CancellationToken cancellationToken)
     {
-        // Counter already incremented in EnsureRequestAllowedAsync
-        // Just update the LastSyncedUtc timestamp
+        // Increment local counter for accurate tracking between API refreshes
+        lock (_localCounterLock)
+        {
+            // Reset local counter at midnight UTC for new day
+            var today = DateTime.UtcNow.Date;
+            if (_localCounterResetAt.Date != today)
+            {
+                _localRequestCount = 0;
+                _localCounterResetAt = today;
+            }
+            _localRequestCount++;
+        }
+        
+        // Update the cached snapshot's last synced time
         var key = GetSnapshotCacheKey(modelId);
         if (_cache.TryGetValue(key, out ChutesUsageSnapshot? snapshot) && snapshot != null)
         {
             snapshot.LastSyncedUtc = DateTime.UtcNow;
             _cache.Set(key, snapshot, _snapshotCacheOptions);
         }
-
-        // Trigger a background refresh to get the accurate count from the server
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await GetUsageSnapshotAsync(modelId, forceRefresh: true, cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to refresh Chutes usage snapshot in background.");
-            }
-        }, cancellationToken);
+        
+        // Note: Don't trigger API refresh here to avoid spamming Chutes
+        // API is refreshed at 5-minute intervals via EnsureRequestAllowedAsync
     }
 
     public async Task<ChutesUsageSnapshot> GetUsageSnapshotAsync(
@@ -360,6 +367,13 @@ public class ChutesUsageService : IChutesUsageService
 
             snapshot.RemoteRequestsUsed = await FetchUsageCountAsync(apiKey, snapshot.ChuteId, cancellationToken) ?? 0;
             snapshot.RequestsUsed = snapshot.RemoteRequestsUsed;
+            
+            // Reset local counter since we have fresh API data
+            lock (_localCounterLock)
+            {
+                _localRequestCount = 0;
+                _localCounterResetAt = DateTime.UtcNow;
+            }
         }
         catch (Exception ex)
         {
@@ -400,14 +414,11 @@ public class ChutesUsageService : IChutesUsageService
 
     private async Task<int?> FetchUsageCountAsync(string apiKey, string? chuteId, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(chuteId))
-        {
-            return null;
-        }
-
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, $"/users/me/quota_usage/{chuteId}");
+            // Use global subscription usage endpoint (/me) instead of per-chute endpoint
+            // The per-chute endpoint only shows usage for that specific chute, not total subscription usage
+            using var request = new HttpRequestMessage(HttpMethod.Get, "/users/me/quota_usage/me");
             request.Headers.Add("Authorization", $"Bearer {apiKey}");
             var response = await _apiClient.SendAsync(request, cancellationToken);
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
