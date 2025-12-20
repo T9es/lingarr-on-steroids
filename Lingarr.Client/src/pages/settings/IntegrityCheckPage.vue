@@ -92,7 +92,8 @@
                             {{ translate('settings.integrity.stats.total') }}: {{ stats.total }} ({{
                                 stats.totalMovies
                             }}
-                            {{ translate('settings.integrity.stats.movies') }}, {{ stats.totalEpisodes }}
+                            {{ translate('settings.integrity.stats.movies') }},
+                            {{ stats.totalEpisodes }}
                             {{ translate('settings.integrity.stats.episodes') }})
                         </div>
 
@@ -210,7 +211,7 @@ onMounted(async () => {
     } catch (error) {
         console.debug('No existing integrity check status')
     }
-    
+
     hubConnection.value = await signalR.connect('JobProgress', '/signalr/JobProgress')
     await hubConnection.value.joinGroup({ group: 'JobProgress' })
     hubConnection.value.on('BulkIntegrityProgress', handleProgress)
