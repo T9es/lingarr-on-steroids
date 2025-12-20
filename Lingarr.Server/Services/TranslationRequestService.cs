@@ -1,7 +1,4 @@
 ﻿using DeepL;
-using Hangfire;
-using Hangfire.Common;
-using Hangfire.States;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
@@ -20,13 +17,12 @@ namespace Lingarr.Server.Services;
 
 public class TranslationRequestService : ITranslationRequestService
 {
-    private const string TranslationQueue = "translation";
 
     private static bool IsActiveStatus(TranslationStatus status) =>
         status == TranslationStatus.Pending || status == TranslationStatus.InProgress;
     
     private readonly LingarrDbContext _dbContext;
-    private readonly IBackgroundJobClient _backgroundJobClient;
+    private readonly ITranslationWorkerService _workerService;
     private readonly IHubContext<TranslationRequestsHub> _hubContext;
     private readonly ITranslationServiceFactory _translationServiceFactory;
     private readonly IProgressService _progressService;
@@ -36,12 +32,11 @@ public class TranslationRequestService : ITranslationRequestService
     private readonly IBatchFallbackService _batchFallbackService;
     private readonly ILogger<TranslationRequestService> _logger;
     private readonly ITranslationCancellationService _cancellationService;
-    private readonly IParallelTranslationLimiter _parallelLimiter;
     static private Dictionary<int, CancellationTokenSource> _asyncTranslationJobs = new Dictionary<int, CancellationTokenSource>();
 
     public TranslationRequestService(
         LingarrDbContext dbContext,
-        IBackgroundJobClient backgroundJobClient,
+        ITranslationWorkerService workerService,
         IHubContext<TranslationRequestsHub> hubContext,
         ITranslationServiceFactory translationServiceFactory,
         IProgressService progressService,
@@ -50,12 +45,11 @@ public class TranslationRequestService : ITranslationRequestService
         ISettingService settingService,
         IBatchFallbackService batchFallbackService,
         ILogger<TranslationRequestService> logger,
-        ITranslationCancellationService cancellationService,
-        IParallelTranslationLimiter parallelLimiter)
+        ITranslationCancellationService cancellationService)
     {
         _dbContext = dbContext;
         _hubContext = hubContext;
-        _backgroundJobClient = backgroundJobClient;
+        _workerService = workerService;
         _translationServiceFactory = translationServiceFactory;
         _progressService = progressService;
         _statisticsService = statisticsService;
@@ -64,7 +58,6 @@ public class TranslationRequestService : ITranslationRequestService
         _batchFallbackService = batchFallbackService;
         _logger = logger;
         _cancellationService = cancellationService;
-        _parallelLimiter = parallelLimiter;
     }
 
     /// <inheritdoc />
@@ -248,13 +241,9 @@ public class TranslationRequestService : ITranslationRequestService
         // This will signal the job to stop at its next cancellation check point
         _cancellationService.CancelJob(translationRequest.Id);
 
-        if (translationRequest.JobId != null)
+        // Also cancel any async translation jobs
+        if (_asyncTranslationJobs.ContainsKey(translationRequest.Id))
         {
-            _backgroundJobClient.Delete(translationRequest.JobId);
-        }
-        else if (_asyncTranslationJobs.ContainsKey(translationRequest.Id))
-        {
-            // Maybe an async translation job
             await _asyncTranslationJobs[translationRequest.Id].CancelAsync();
         }
 
@@ -535,43 +524,23 @@ public class TranslationRequestService : ITranslationRequestService
     /// <inheritdoc />
     public async Task ResumeTranslationRequests()
     {
-        var requests = await _dbContext.TranslationRequests
-            .Where(tr => tr.Status == TranslationStatus.Pending || 
-                         tr.Status == TranslationStatus.InProgress)
-            .ToListAsync();
-
-        requests = await OrderRequestsForPriorityProcessingAsync(requests);
-
-        foreach (var request in requests)
+        // With the new worker service approach, we just need to:
+        // 1. Reset InProgress jobs to Pending (they were interrupted)
+        // 2. Signal the worker service to pick up work
+        
+        var resetCount = await _dbContext.TranslationRequests
+            .Where(tr => tr.Status == TranslationStatus.InProgress)
+            .ExecuteUpdateAsync(s => s.SetProperty(tr => tr.Status, TranslationStatus.Pending));
+        
+        if (resetCount > 0)
         {
-            if (request.JobId == null)
-            {
-                // Async translation job. Set as Interrupted and don't run
-                // Those cannot be resumed
-                await UpdateTranslationRequest(request, TranslationStatus.Interrupted);
-                continue;
-            }
-
-            try 
-            {
-                var stateData = JobStorage.Current.GetConnection().GetStateData(request.JobId);
-                if (stateData != null && 
-                    (stateData.Name == ProcessingState.StateName || 
-                     stateData.Name == EnqueuedState.StateName ||
-                     stateData.Name == ScheduledState.StateName))
-                {
-                    _logger.LogInformation("Skipping resume for request {RequestId} (Job: {JobId}) as it is already active in Hangfire (State: {State})", request.Id, request.JobId, stateData.Name);
-                    continue;
-                }
-            }
-            catch (Exception ex)
-            {
-                 _logger.LogWarning(ex, "Failed to check status of job {JobId} for request {RequestId}. Proceeding with re-enqueue.", request.JobId, request.Id);
-            }
-
-            // Use the same queue selection logic as for new requests
-            await EnqueueTranslationJobAsync(request, false);
+            _logger.LogInformation(
+                "Reset {Count} interrupted translation request(s) to Pending status",
+                resetCount);
         }
+        
+        // Signal worker service that work may be available
+        _workerService.Signal();
     }
 
     /// <inheritdoc />
@@ -585,38 +554,30 @@ public class TranslationRequestService : ITranslationRequestService
             .Where(tr => statuses.Contains(tr.Status))
             .ToListAsync();
 
-        requests = await OrderRequestsForPriorityProcessingAsync(requests);
-
         var reenqueued = 0;
         var skippedProcessing = 0;
 
         foreach (var request in requests)
         {
-            if (request.JobId != null)
+            // Skip InProgress jobs - they're being actively processed by worker
+            if (request.Status == TranslationStatus.InProgress)
             {
-                try
-                {
-                    var stateData = JobStorage.Current.GetConnection().GetStateData(request.JobId);
-                    if (stateData?.Name == ProcessingState.StateName)
-                    {
-                        skippedProcessing++;
-                        continue;
-                    }
-
-                    _backgroundJobClient.Delete(request.JobId);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex,
-                        "Failed to delete existing Hangfire job {JobId} for request {RequestId} before re-enqueue.",
-                        request.JobId,
-                        request.Id);
-                }
+                skippedProcessing++;
+                continue;
             }
 
-            await EnqueueTranslationJobAsync(request, false);
+            // For Pending jobs, trigger cooperative cancellation and reset
+            _cancellationService.CancelJob(request.Id);
+            
+            // Mark as Pending to be picked up by worker
+            request.Status = TranslationStatus.Pending;
             reenqueued++;
         }
+
+        await _dbContext.SaveChangesAsync();
+        
+        // Signal worker service that work is available
+        _workerService.Signal();
 
         _logger.LogInformation(
             "Re-enqueued {ReenqueuedCount} translation request(s). Skipped {SkippedProcessingCount} currently processing job(s).",
@@ -661,25 +622,14 @@ public class TranslationRequestService : ITranslationRequestService
                 .ToList();
 
             TranslationRequest? canonical = null;
+            
+            // Find the canonical request - prefer InProgress, then oldest
             foreach (var candidate in orderedGroup)
             {
-                if (candidate.JobId == null)
+                if (candidate.Status == TranslationStatus.InProgress)
                 {
-                    continue;
-                }
-
-                try
-                {
-                    var stateData = JobStorage.Current.GetConnection().GetStateData(candidate.JobId);
-                    if (stateData?.Name == ProcessingState.StateName)
-                    {
-                        canonical = candidate;
-                        break;
-                    }
-                }
-                catch
-                {
-                    // Ignore state lookup errors and fall back to oldest request.
+                    canonical = candidate;
+                    break;
                 }
             }
 
@@ -692,27 +642,15 @@ public class TranslationRequestService : ITranslationRequestService
                     continue;
                 }
 
-                if (duplicate.JobId != null)
+                // Skip InProgress duplicates - they're being actively processed
+                if (duplicate.Status == TranslationStatus.InProgress)
                 {
-                    try
-                    {
-                        var stateData = JobStorage.Current.GetConnection().GetStateData(duplicate.JobId);
-                        if (stateData?.Name == ProcessingState.StateName)
-                        {
-                            skippedProcessing++;
-                            continue;
-                        }
-
-                        _backgroundJobClient.Delete(duplicate.JobId);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex,
-                            "Failed to delete duplicate Hangfire job {JobId} for request {RequestId}.",
-                            duplicate.JobId,
-                            duplicate.Id);
-                    }
+                    skippedProcessing++;
+                    continue;
                 }
+
+                // Cancel the job if it's running (cooperative cancellation)
+                _cancellationService.CancelJob(duplicate.Id);
 
                 duplicatesToRemove.Add(duplicate);
             }
@@ -751,32 +689,11 @@ public class TranslationRequestService : ITranslationRequestService
 
         foreach (var request in requests)
         {
-            // Check if job is currently processing (active in Hangfire worker)
-            var isProcessing = false;
+            // Check if job is currently processing (InProgress status)
+            var isProcessing = request.Status == TranslationStatus.InProgress;
             
             // Trigger cooperative cancellation for running jobs
             _cancellationService.CancelJob(request.Id);
-
-            if (request.JobId != null)
-            {
-                try
-                {
-                    // Reuse connection if possible or just accept the overhead (it's much faster than DB writes)
-                    // Optimally we would batch this too but Hangfire doesn't support bulk delete easily
-                    using var connection = JobStorage.Current.GetConnection();
-                    var stateData = connection.GetStateData(request.JobId);
-                    isProcessing = stateData?.Name == ProcessingState.StateName;
-                    
-                    _backgroundJobClient.Delete(request.JobId);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex,
-                        "Failed to check/delete Hangfire job {JobId} for request {RequestId}.",
-                        request.JobId,
-                        request.Id);
-                }
-            }
 
             if (isProcessing)
             {
@@ -848,18 +765,43 @@ public class TranslationRequestService : ITranslationRequestService
     }
 
     /// <inheritdoc />
-    public Task<int> RefreshPriorityForMedia(MediaType mediaType, int mediaId)
+    public async Task<int> RefreshPriorityForMedia(MediaType mediaType, int mediaId)
     {
-        // With the unified queue system, we don't need to move jobs between queues.
-        // Instead, notify the limiter that priority has changed - it will reorder waiting jobs.
-        // Jobs already in progress will continue, but future slot acquisitions will respect the new priority.
-        _parallelLimiter.NotifyPriorityChanged(mediaType, mediaId);
+        // Update the persisted IsPriority column on pending translation requests for this media.
+        // This ensures priority ordering is applied correctly when the worker picks up jobs.
+        bool isPriority = false;
+        
+        // Look up the media's current priority status
+        if (mediaType == MediaType.Movie)
+        {
+            isPriority = await _dbContext.Movies
+                .Where(m => m.Id == mediaId)
+                .Select(m => m.IsPriority)
+                .FirstOrDefaultAsync();
+        }
+        else if (mediaType == MediaType.Episode)
+        {
+            isPriority = await _dbContext.Episodes
+                .Where(e => e.Id == mediaId)
+                .Select(e => e.Season.Show.IsPriority)
+                .FirstOrDefaultAsync();
+        }
+        
+        // Update all pending requests for this media with the new priority
+        var updated = await _dbContext.TranslationRequests
+            .Where(tr => tr.MediaId == mediaId && 
+                         tr.MediaType == mediaType && 
+                         tr.Status == TranslationStatus.Pending)
+            .ExecuteUpdateAsync(s => s.SetProperty(tr => tr.IsPriority, isPriority));
         
         _logger.LogInformation(
-            "Priority changed for {MediaType} {MediaId} - limiter notified for reordering",
-            mediaType, mediaId);
+            "Priority changed for {MediaType} {MediaId} - updated {Count} pending request(s) to IsPriority={IsPriority}",
+            mediaType, mediaId, updated, isPriority);
         
-        return Task.FromResult(0);
+        // Signal the worker service that priority has changed (optional optimization)
+        _workerService.Signal();
+        
+        return updated;
     }
 
 
@@ -872,10 +814,9 @@ public class TranslationRequestService : ITranslationRequestService
             return requests;
         }
 
-        await PopulatePriorityFlagsAsync(requests);
-
+        // Priority is now persisted on the TranslationRequest, no need to populate
         return requests
-            .OrderByDescending(r => r.IsPriorityMedia)
+            .OrderByDescending(r => r.IsPriority)
             .ThenBy(r => r.CreatedAt)
             .ThenBy(r => r.Id)
             .ToList();
@@ -1011,7 +952,7 @@ public class TranslationRequestService : ITranslationRequestService
 
         foreach (var request in requests)
         {
-            request.IsPriorityMedia = false;
+            request.IsPriority = false;
             
             if (!request.MediaId.HasValue)
             {
@@ -1023,35 +964,35 @@ public class TranslationRequestService : ITranslationRequestService
                 case MediaType.Movie:
                     if (moviePriorityMap.TryGetValue(request.MediaId.Value, out var moviePriority) && moviePriority)
                     {
-                        request.IsPriorityMedia = true;
+                        request.IsPriority = true;
                     }
                     break;
 
                 case MediaType.Episode:
                     if (episodePriorityMap.TryGetValue(request.MediaId.Value, out var episodePriority) && episodePriority)
                     {
-                        request.IsPriorityMedia = true;
+                        request.IsPriority = true;
                     }
                     break;
             }
         }
     }
 
-    private Task EnqueueTranslationJobAsync(TranslationRequest translationRequest, bool forcePriority)
+    private async Task EnqueueTranslationJobAsync(TranslationRequest translationRequest, bool forcePriority)
     {
-        // With unified queue, all jobs go to the same queue.
-        // Priority ordering is handled at runtime by the ParallelTranslationLimiter.
-        // Pass ID only to avoid serialization issues and stale data
-        var job = Job.FromExpression<TranslationJob>(j => j.Execute(translationRequest.Id, CancellationToken.None));
-        var jobId = _backgroundJobClient.Create(job, new EnqueuedState(TranslationQueue));
+        // Simply set status to Pending - TranslationWorkerService will pick it up
+        // Priority ordering is handled by the worker service using the IsPriority column
+        translationRequest.Status = TranslationStatus.Pending;
+        translationRequest.JobId = null; // No longer using Hangfire job IDs
+        await _dbContext.SaveChangesAsync();
         
         _logger.LogInformation(
-            "Enqueued translation request {RequestId} to queue |Green|{Queue}|/Green| (JobId: {JobId})",
+            "Translation request {RequestId} enqueued for processing (Priority: {IsPriority})",
             translationRequest.Id,
-            TranslationQueue,
-            jobId);
+            translationRequest.IsPriority);
         
-        return UpdateTranslationRequest(translationRequest, TranslationStatus.Pending, jobId);
+        // Signal the worker service that new work is available
+        _workerService.Signal();
     }
 
     /// <inheritdoc />

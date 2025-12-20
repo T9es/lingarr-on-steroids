@@ -84,6 +84,7 @@ public static class SettingKeys
         public const string UseSubtitleTagging = "use_subtitle_tagging";
         public const string RemoveLanguageTag = "remove_language_tag";
         public const string SubtitleTag = "subtitle_tag";
+        public const string SubtitleTagShort = "subtitle_tag_short";
         public const string IgnoreCaptions = "ignore_captions";
         public const string RequestTimeout = "request_timeout";
         public const string MaxRetries = "max_retries";
@@ -114,6 +115,21 @@ public static class SettingKeys
         /// Media with StateSettingsVersion != this value need re-analysis.
         /// </summary>
         public const string LanguageSettingsVersion = "language_settings_version";
+        
+        /// <summary>
+        /// Enable wrapper context for batch translations (pre/post context around entire batch)
+        /// </summary>
+        public const string BatchContextEnabled = "batch_context_enabled";
+        
+        /// <summary>
+        /// Number of context lines to include before the first item in each batch
+        /// </summary>
+        public const string BatchContextBefore = "batch_context_before";
+        
+        /// <summary>
+        /// Number of context lines to include after the last item in each batch
+        /// </summary>
+        public const string BatchContextAfter = "batch_context_after";
     }
 
     public static class Automation
@@ -137,6 +153,10 @@ public static class SettingKeys
         public const string MaxDurationSecs = "subtitle_validation_maxdurationsecs";
         public const string ValidateSubtitles = "subtitle_validation_enabled";
         public const string IntegrityValidationEnabled = "subtitle_integrity_validation_enabled";
+        
+        // Persistent scan results
+        public const string LastIntegrityCheckResult = "subtitle_integrity_last_result";
+        public const string LastAssVerificationResult = "subtitle_ass_verification_last_result";
     }
 
     public static class SubtitleExtraction

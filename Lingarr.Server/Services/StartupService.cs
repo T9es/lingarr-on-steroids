@@ -58,12 +58,13 @@ public class StartupService : IHostedService
             { SettingKeys.Translation.UseSubtitleTagging, "false" },
             { SettingKeys.Translation.RemoveLanguageTag, "false" },
             { SettingKeys.Translation.SubtitleTag, "[Lingarr]" },
+            { SettingKeys.Translation.SubtitleTagShort, "-ai-" },
 
             // Request/Retry
             { SettingKeys.Translation.RequestTimeout, "15" },
             { SettingKeys.Translation.MaxRetries, "20" },
-            { SettingKeys.Translation.RetryDelay, "120" },
-            { SettingKeys.Translation.RetryDelayMultiplier, "1" },
+            { SettingKeys.Translation.RetryDelay, "5" },
+            { SettingKeys.Translation.RetryDelayMultiplier, "2" },
 
             // AI Context
             { SettingKeys.Translation.AiContextPromptEnabled, "false" },
@@ -73,6 +74,11 @@ public class StartupService : IHostedService
             // ASS/SSA Drawing cleanup
             { SettingKeys.Translation.StripAssDrawingCommands, "false" },
             { SettingKeys.Translation.CleanSourceAssDrawings, "false" },
+
+            // Batch Context Wrapper
+            { SettingKeys.Translation.BatchContextEnabled, "false" },
+            { SettingKeys.Translation.BatchContextBefore, "3" },
+            { SettingKeys.Translation.BatchContextAfter, "3" },
 
             // Provider specific defaults
             { SettingKeys.Translation.Chutes.RequestBuffer, "50" },
@@ -97,7 +103,10 @@ public class StartupService : IHostedService
             { SettingKeys.SubtitleValidation.MaxSubtitleLength, "500" },
             { SettingKeys.SubtitleValidation.MinSubtitleLength, "2" },
             { SettingKeys.SubtitleValidation.MinDurationMs, "500" },
-            { SettingKeys.SubtitleValidation.MaxDurationSecs, "10" }
+            { SettingKeys.SubtitleValidation.MaxDurationSecs, "10" },
+
+            // Default AI Prompt Safeguard
+            { SettingKeys.Translation.AiPrompt, "If you encounter ASS/SSA vector drawing commands (patterns like 'm 0 0 l 100 100 b...'), ignore them and translate only the surrounding dialogue. Do NOT remove valid short dialogue like 'I...', 'No!', or single words." }
         });
 
         await CheckAndUpdateIntegrationSettings(dbContext, "radarr", [

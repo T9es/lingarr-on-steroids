@@ -45,6 +45,16 @@ public interface ISubtitleService
     string CreateFilePath(string originalPath, string targetLanguage, string subtitleTag);
     
     /// <summary>
+    /// Creates a list of potential file paths with fallback options (Full Tag -> Short Tag -> No Tag -> Truncated).
+    /// </summary>
+    /// <param name="originalPath">The original path of the subtitle file.</param>
+    /// <param name="targetLanguage">The target language code.</param>
+    /// <param name="subtitleTag">The primary subtitle tag.</param>
+    /// <param name="subtitleTagShort">The short subtitle tag for fallback.</param>
+    /// <returns>A prioritized list of file paths.</returns>
+    System.Collections.Generic.IEnumerable<string> CreateFallbackPaths(string originalPath, string targetLanguage, string subtitleTag, string subtitleTagShort);
+    
+    /// <summary>
     /// Adjusts subtitle timings to prevent overlaps and ensure optimal duration based on content length.
     /// </summary>
     /// <param name="subtitles">The list of subtitle items to process</param>

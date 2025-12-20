@@ -1,4 +1,6 @@
 using Lingarr.Server.Interfaces.Services;
+using Lingarr.Server.Interfaces.Services.Subtitle;
+using Lingarr.Server.Models;
 using Lingarr.Server.Models.FileSystem;
 using Microsoft.AspNetCore.Mvc;
 
@@ -14,10 +16,14 @@ public class SubtitlePath
 public class SubtitleController : ControllerBase
 {
     private readonly ISubtitleService _subtitleService;
+    private readonly ISubtitleIntegrityService _integrityService;
 
-    public SubtitleController(ISubtitleService subtitleService)
+    public SubtitleController(
+        ISubtitleService subtitleService,
+        ISubtitleIntegrityService integrityService)
     {
         _subtitleService = subtitleService;
+        _integrityService = integrityService;
     }
     
     /// <summary>
@@ -31,5 +37,18 @@ public class SubtitleController : ControllerBase
     {
         var value = await _subtitleService.GetAllSubtitles(subtitlePath.Path);
         return Ok(value);
+    }
+
+    /// <summary>
+    /// Scans all translated subtitle files for ASS drawing command artifacts.
+    /// Used to detect files that may contain hallucinated vector drawing garbage.
+    /// </summary>
+    /// <param name="ct">Cancellation token</param>
+    /// <returns>Returns result containing list of flagged files</returns>
+    [HttpPost("verify-ass")]
+    public async Task<ActionResult<AssVerificationResult>> VerifyAssIntegrity(CancellationToken ct)
+    {
+        var result = await _integrityService.VerifyAssIntegrityAsync(ct);
+        return Ok(result);
     }
 }

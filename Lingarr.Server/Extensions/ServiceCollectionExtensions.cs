@@ -149,8 +149,9 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<IStatisticsService, StatisticsService>();
         builder.Services.AddScoped<IChutesUsageService, ChutesUsageService>();
         
-        // Parallel translation limiter (singleton to maintain state across jobs)
-        builder.Services.AddSingleton<IParallelTranslationLimiter, ParallelTranslationLimiter>();
+        // Translation worker service (singleton BackgroundService that manages translation workers)
+        builder.Services.AddSingleton<ITranslationWorkerService, TranslationWorkerService>();
+        builder.Services.AddHostedService(sp => (TranslationWorkerService)sp.GetRequiredService<ITranslationWorkerService>());
         
         // Translation cancellation service (singleton to allow cancelling running jobs)
         builder.Services.AddSingleton<ITranslationCancellationService, TranslationCancellationService>();
@@ -177,6 +178,9 @@ public static class ServiceCollectionExtensions
         // Media state service for intelligent translation automation
         builder.Services.AddScoped<IMediaStateService, MediaStateService>();
         
+        // Translation job (scoped to match all its dependencies like LingarrDbContext)
+        // This was previously only instantiated by Hangfire, but now TranslationWorkerService needs to resolve it
+        builder.Services.AddScoped<Jobs.TranslationJob>();
     }
 
     private static void ConfigureSignalR(this WebApplicationBuilder builder)
@@ -186,31 +190,8 @@ public static class ServiceCollectionExtensions
 
     private static void ConfigureHangfire(this WebApplicationBuilder builder)
     {
-
-        
-        // Translation server: dedicated workers for translation jobs only
-        // Worker count is read from: database setting -> env var -> default (4)
-        // Priority queue is checked first, ensuring priority jobs get processed immediately
-        var translationWorkers = GetTranslationWorkerCount();
-        
-        // Store configured value so we can detect if restart is needed later
-        Environment.SetEnvironmentVariable("CONFIGURED_TRANSLATION_WORKERS", translationWorkers.ToString());
-        
-        Console.WriteLine($"[Hangfire] Translation server configured with {translationWorkers} workers");
-        
-        builder.Services.AddHangfireServer(options =>
-        {
-            // Use a unique name for this server instance to prevent collision with the sync server
-            // keeping the same hostname:pid prefix so it identifies as the same machine.
-            options.ServerName = $"{Environment.MachineName}:{Environment.ProcessId}:translation";
-            
-            // Single queue for all translations - priority ordering handled by ParallelTranslationLimiter at runtime
-            options.Queues = ["translation"];
-            options.WorkerCount = translationWorkers;
-        });
-        
         // Sync server: handles media sync, system jobs, and other background tasks
-        // High worker count for parallel sync operations
+        // Note: Translation jobs are now handled by TranslationWorkerService (BackgroundService)
         var syncWorkers = int.TryParse(
             Environment.GetEnvironmentVariable("MAX_CONCURRENT_JOBS"), out int maxConcurrent)
             ? maxConcurrent
@@ -218,9 +199,7 @@ public static class ServiceCollectionExtensions
         
         builder.Services.AddHangfireServer(options =>
         {
-            // Use a unique name for this server instance
             options.ServerName = $"{Environment.MachineName}:{Environment.ProcessId}:sync";
-            
             options.Queues = ["movies", "shows", "system", "default"];
             options.WorkerCount = syncWorkers;
         });
@@ -266,85 +245,5 @@ public static class ServiceCollectionExtensions
 
             configuration.UseFilter(new JobContextFilter());
         });
-    }
-    
-    /// <summary>
-    /// Reads max_parallel_translations from database at startup.
-    /// Fallback chain: database -> MAX_PARALLEL_TRANSLATIONS env var -> default (4)
-    /// </summary>
-    private static int GetTranslationWorkerCount()
-    {
-        const int defaultWorkers = 4;
-        
-        // Try environment variable first (allows override without database)
-        if (int.TryParse(Environment.GetEnvironmentVariable("MAX_PARALLEL_TRANSLATIONS"), out int envValue) && envValue > 0)
-        {
-            return envValue;
-        }
-        
-        // Try reading from database
-        try
-        {
-            var dbConnection = Environment.GetEnvironmentVariable("DB_CONNECTION")?.ToLower() ?? "postgresql";
-            string? settingValue = null;
-            
-            if (dbConnection == "sqlite")
-            {
-                settingValue = ReadSettingFromSqlite("max_parallel_translations");
-            }
-            else // Default: PostgreSQL
-            {
-                settingValue = ReadSettingFromPostgreSql("max_parallel_translations");
-            }
-            
-            if (int.TryParse(settingValue, out int dbValue) && dbValue > 0)
-            {
-                return dbValue;
-            }
-        }
-        catch (Exception ex)
-        {
-            // This is expected on first run before migrations create the settings table
-            Console.WriteLine($"[Hangfire] Could not read max_parallel_translations from database (table may not exist yet): {ex.Message}. Using default.");
-        }
-        
-        return defaultWorkers;
-    }
-    
-    private static string? ReadSettingFromSqlite(string settingKey)
-    {
-        var sqliteDbPath = Environment.GetEnvironmentVariable("SQLITE_DB_PATH") ?? "local.db";
-        var connectionString = $"Data Source=/app/config/{sqliteDbPath}";
-        
-        using var connection = new Microsoft.Data.Sqlite.SqliteConnection(connectionString);
-        connection.Open();
-        
-        using var command = connection.CreateCommand();
-        command.CommandText = "SELECT value FROM settings WHERE key = @key LIMIT 1";
-        command.Parameters.AddWithValue("@key", settingKey);
-        
-        var result = command.ExecuteScalar();
-        return result?.ToString();
-    }
-    
-    private static string? ReadSettingFromPostgreSql(string settingKey)
-    {
-        var host = Environment.GetEnvironmentVariable("DB_HOST") ?? "lingarr-postgres";
-        var port = Environment.GetEnvironmentVariable("DB_PORT") ?? "5432";
-        var database = Environment.GetEnvironmentVariable("DB_DATABASE") ?? "lingarr";
-        var username = Environment.GetEnvironmentVariable("DB_USERNAME") ?? "lingarr";
-        var password = Environment.GetEnvironmentVariable("DB_PASSWORD") ?? "lingarr";
-        
-        var connectionString = $"Host={host};Port={port};Database={database};Username={username};Password={password}";
-        
-        using var connection = new Npgsql.NpgsqlConnection(connectionString);
-        connection.Open();
-        
-        using var command = connection.CreateCommand();
-        command.CommandText = "SELECT value FROM settings WHERE key = @key LIMIT 1";
-        command.Parameters.AddWithValue("@key", settingKey);
-        
-        var result = command.ExecuteScalar();
-        return result?.ToString();
     }
 }

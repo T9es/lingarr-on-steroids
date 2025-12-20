@@ -13,7 +13,7 @@ While staying true to the core mission of seamless **Radarr** and **Sonarr** sub
 
 | Feature | Original Lingarr | Lingarr on Steroids |
 | :--- | :--- | :--- |
-| **Translation Engine** | Serial execution (one file at a time). | **Parallel Semaphore-Based Processing**<br>Configurable concurrency limits allow processing multiple media files simultaneously without overloading providers. |
+| **Translation Engine** | Serial execution (one file at a time). | **Custom Translation Worker Service**<br>Database-driven job queue with dynamic worker scaling (up to 20 concurrent), priority queue support, and automatic crash recovery. |
 | **Resilience Strategy** | Basic retry on failure. | **Deferred Contextual Repair**<br>Collects failed translations during processing, then retries them together at the end with surrounding context lines. The LLM sees what came before/after, dramatically improving recovery success. |
 | **Subtitle Sources** | External subtitle files only. | **Deep Embedded Extraction**<br>Uses FFmpeg to probe and extract subtitles (SRT, ASS, MOV_TEXT) directly from MKV/MP4 containers. Automatically merges concurrent layers and dedupes overlapping timeframes. |
 | **Cleaning Logic** | Basic HTML tag stripping. | **Advanced ASS/SSA Sanitation**<br>Heuristic algorithms detect and remove vector drawing commands, karaoke tags, and positioning artifacts that confuse LLMs. |
@@ -173,7 +173,7 @@ These variables can be used
 | **Environment Variable**                          | **Description**                                                                   |
 |---------------------------------------------------|-----------------------------------------------------------------------------------|
 | `ASPNETCORE_URLS=http://+:9876`                   | The internal port that Lingarr will listen on inside the container.               |
-| `MAX_CONCURRENT_JOBS`                             | Hangfire worker pool size (default: 20). The UI setting "Concurrent file translations" controls actual translation concurrency. |
+| `MAX_CONCURRENT_JOBS`                             | Hangfire worker pool size for sync jobs only (default: 20). Translation concurrency is controlled via the UI setting "Concurrent file translations". |
 | `DB_CONNECTION=postgresql`                        | Specifies the database type. Options are `postgresql` (default) or `sqlite`.      |
 | `DB_HOST=lingarr-postgres`                        | The hostname for the PostgreSQL database (required when using `postgresql`).      |
 | `DB_PORT=5432`                                    | The port for the PostgreSQL database (required when using `postgresql`).          |

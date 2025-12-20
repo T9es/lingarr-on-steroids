@@ -1,5 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations.Schema;
-using Lingarr.Core.Enum;
+﻿using Lingarr.Core.Enum;
 
 namespace Lingarr.Core.Entities;
 
@@ -18,6 +17,10 @@ public class TranslationRequest : BaseEntity
     public DateTime? CompletedAt { get; set; }
     public int Progress { get; set; }
     
-    [NotMapped]
-    public bool IsPriorityMedia { get; set; }
+    /// <summary>
+    /// Persisted priority flag for queue ordering.
+    /// Set from Media's IsPriority when request is created.
+    /// Updated when Media priority changes via MediaService.TogglePriority().
+    /// </summary>
+    public bool IsPriority { get; set; }
 }

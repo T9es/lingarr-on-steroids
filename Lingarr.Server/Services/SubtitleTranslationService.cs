@@ -140,6 +140,9 @@ public class SubtitleTranslationService
     /// <param name="maxSplitAttempts">Maximum number of chunk split attempts (only used if batchRetryMode is "immediate")</param>
     /// <param name="repairContextRadius">Context radius for deferred repair (only used if batchRetryMode is "deferred")</param>
     /// <param name="repairMaxRetries">Max retries for repair batch (only used if batchRetryMode is "deferred")</param>
+    /// <param name="batchContextEnabled">Enable wrapper context for batch translations</param>
+    /// <param name="batchContextBefore">Number of context lines before the batch</param>
+    /// <param name="batchContextAfter">Number of context lines after the batch</param>
     /// <param name="fileIdentifier">Short identifier for logging (e.g., episode name)</param>
     /// <param name="cancellationToken">Token to support cancellation of the translation operation.</param>
     public async Task<List<SubtitleItem>> TranslateSubtitlesBatch(
@@ -151,6 +154,9 @@ public class SubtitleTranslationService
         int maxSplitAttempts = 3,
         int repairContextRadius = 10,
         int repairMaxRetries = 1,
+        bool batchContextEnabled = false,
+        int batchContextBefore = 3,
+        int batchContextAfter = 3,
         string fileIdentifier = "",
         CancellationToken cancellationToken = default)
     {
@@ -193,6 +199,29 @@ public class SubtitleTranslationService
                 .Skip(batchIndex * batchSize)
                 .Take(batchSize)
                 .ToList();
+
+            // Build batch context wrapper if enabled
+            List<string>? preContext = null;
+            List<string>? postContext = null;
+            if (batchContextEnabled)
+            {
+                var firstItemIndex = batchIndex * batchSize;
+                var lastItemIndex = Math.Min((batchIndex + 1) * batchSize - 1, subtitles.Count - 1);
+                
+                // Get N lines BEFORE the first item in this batch
+                preContext = subtitles
+                    .Take(firstItemIndex)
+                    .TakeLast(batchContextBefore)
+                    .Select(s => string.Join(" ", stripSubtitleFormatting ? s.PlaintextLines : s.Lines))
+                    .ToList();
+                
+                // Get N lines AFTER the last item in this batch  
+                postContext = subtitles
+                    .Skip(lastItemIndex + 1)
+                    .Take(batchContextAfter)
+                    .Select(s => string.Join(" ", stripSubtitleFormatting ? s.PlaintextLines : s.Lines))
+                    .ToList();
+            }
             
             var batchFailures = await ProcessSubtitleBatch(
                 currentBatch,
@@ -203,6 +232,8 @@ public class SubtitleTranslationService
                 useImmediateFallback,
                 maxSplitAttempts,
                 useDeferredRepair,  // collectFailures
+                preContext,
+                postContext,
                 fileIdentifier,
                 batchIndex + 1,  // 1-indexed batch number
                 totalBatches,
@@ -304,6 +335,8 @@ public class SubtitleTranslationService
     /// <param name="enableFallback">Whether to use graduated chunk splitting on failure</param>
     /// <param name="maxSplitAttempts">Maximum number of chunk split attempts (only used if enableFallback is true)</param>
     /// <param name="collectFailures">If true, collect failures instead of throwing; returns failed items for deferred repair</param>
+    /// <param name="preContext">Optional context lines before the batch</param>
+    /// <param name="postContext">Optional context lines after the batch</param>
     /// <param name="fileIdentifier">Short identifier for the file being translated (for logging)</param>
     /// <param name="batchNumber">Current batch number (1-indexed)</param>
     /// <param name="totalBatches">Total number of batches for this file</param>
@@ -318,6 +351,8 @@ public class SubtitleTranslationService
         bool enableFallback = false,
         int maxSplitAttempts = 3,
         bool collectFailures = false,
+        List<string>? preContext = null,
+        List<string>? postContext = null,
         string fileIdentifier = "",
         int batchNumber = 1,
         int totalBatches = 1,
@@ -353,6 +388,8 @@ public class SubtitleTranslationService
                     batchItems,
                     sourceLanguage,
                     targetLanguage,
+                    preContext,
+                    postContext,
                     cancellationToken);
             }
             catch (Exception ex)

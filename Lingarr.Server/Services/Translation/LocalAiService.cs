@@ -181,12 +181,16 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
     /// <param name="subtitleBatch">List of subtitles with position and content</param>
     /// <param name="sourceLanguage">Source language code</param>
     /// <param name="targetLanguage">Target language code</param>
+    /// <param name="preContext">Optional context lines before the batch (currently unused for LocalAI)</param>
+    /// <param name="postContext">Optional context lines after the batch (currently unused for LocalAI)</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Dictionary mapping position to translated content</returns>
     public async Task<Dictionary<int, string>> TranslateBatchAsync(
         List<BatchSubtitleItem> subtitleBatch,
         string sourceLanguage,
         string targetLanguage,
+        List<string>? preContext,
+        List<string>? postContext,
         CancellationToken cancellationToken)
     {
         await InitializeAsync(sourceLanguage, targetLanguage);
@@ -199,6 +203,7 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
         {
             try
             {
+                // Note: LocalAI batch context wrapper not yet implemented - context params unused
                 return await TranslateBatchWithLocalAiApi(subtitleBatch, linked.Token);
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)

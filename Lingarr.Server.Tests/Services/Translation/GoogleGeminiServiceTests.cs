@@ -107,7 +107,7 @@ public class GoogleGeminiServiceTests
             });
 
         // Act
-        var result = await _service.TranslateBatchAsync(batch, "en", "es", CancellationToken.None);
+        var result = await _service.TranslateBatchAsync(batch, "en", "es", null, null, CancellationToken.None);
 
         // Assert
         Assert.NotNull(result);
@@ -189,7 +189,7 @@ public class GoogleGeminiServiceTests
             });
 
         // Act
-        var result = await _service.TranslateBatchAsync(batch, "en", "es", CancellationToken.None);
+        var result = await _service.TranslateBatchAsync(batch, "en", "es", null, null, CancellationToken.None);
 
         // Assert
         Assert.NotNull(result);
@@ -254,7 +254,7 @@ public class GoogleGeminiServiceTests
 
         try 
         {
-            var result = await service.TranslateBatchAsync(batch, "en", "es", CancellationToken.None);
+            var result = await service.TranslateBatchAsync(batch, "en", "es", null, null, CancellationToken.None);
 
             // Assertions
             Assert.NotNull(result);

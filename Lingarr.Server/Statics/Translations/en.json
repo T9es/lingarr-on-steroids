@@ -299,6 +299,8 @@
       "cleanSourceAssDrawings": "Also clean source files:",
       "cleanSourceAssDrawingsDescription": "Additionally remove drawing commands from the original source subtitle file.",
       "subtitleTag": "Subtitle tag",
+      "subtitleTagShort": "Short Subtitle Tag",
+      "subtitleTagShortDescription": "A shorter tag to use if the filename with the main tag is too long (e.g. \"-ai-\"). This helps preserve media server association when the file path hits system limits.",
       "subtitleIntegrityValidationEnabled": "Validate Subtitle Integrity",
       "subtitleIntegrityValidationEnabledDescription": "Check if the translated subtitle has roughly the same number of lines as the original to detect partial translations."
     },
@@ -391,6 +393,10 @@
           "description": "Subtitle line to translate"
         }
       },
+      "batchContextToggle": "Enable batch context:",
+      "batchContextDescription": "Include surrounding subtitle lines as context wrapper when sending batches to the AI. This helps the AI understand the narrative flow for more accurate translations.",
+      "batchContextBefore": "Lines of context before the batch:",
+      "batchContextAfter": "Lines of context after the batch:",
       "notSupported": "Context prompt is not supported and has been disabled when sending subtitles in batch."
     },
     "logs": {

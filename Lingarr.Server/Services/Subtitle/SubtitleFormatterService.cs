@@ -12,9 +12,14 @@ public class SubtitleFormatterService : ISubtitleFormatterService
             return string.Empty;
         }
 
-        // Remove SSA/ASS style tags: {\...}
+        // First: Strip entire ASS drawing blocks: {\p1}...{\p0}
+        // Drawing mode is enabled by {\p1} (or {\p2}, etc.) and disabled by {\p0}
+        // Everything between these tags is vector drawing data that should not be translated
+        string cleaned = Regex.Replace(input, @"\{\\p[1-9]\d*\}.*?\{\\p0\}", string.Empty, RegexOptions.Singleline);
+
+        // Remove remaining SSA/ASS style tags: {\...}
         // Use Singleline mode to handle tags that span multiple lines
-        string cleaned = Regex.Replace(input, @"\{.*?\}", string.Empty, RegexOptions.Singleline);
+        cleaned = Regex.Replace(cleaned, @"\{.*?\}", string.Empty, RegexOptions.Singleline);
 
         // Remove HTML-style tags: <...>
         // Use Singleline mode to handle tags that span multiple lines
@@ -95,64 +100,105 @@ public class SubtitleFormatterService : ISubtitleFormatterService
         // to be filtered out.
         if (string.IsNullOrWhiteSpace(cleaned))
         {
+            // If it was only tags, effectively empty
             return true;
         }
-        
-        // Single character check
-        if (cleaned.Length == 1)
-        {
-            char c = cleaned[0];
-            if (char.IsDigit(c))
-            {
-                // Keep numbers (e.g. "1")
-                return false;
-            }
 
-            // STRICTER FILTER:
-            // Even if it is a valid word ("I", "a", "O"), if it has heavy formatting commands, 
-            // it is likely a sign or particle effect context.
-            if (input.Contains(@"{\an") || input.Contains(@"\an") || input.Contains("face=") || input.Contains(@"\fn"))
-            {
-                return true; // Single letter with alignment/font tag -> Junk
-            }
-            
-            // Standard valid 1-letter words allowed ONLY if no suspicious tags
-            // We remove 'o'/'O' as they are too rare/poetic to risk keeping noise.
-            // We keep 'I' (common pronoun).
-            if (c == 'I') 
-            {
-                return false;
-            }
-
-            // Everything else -> Garbage
-            return true;
-        }
-        
-        // ASS drawing commands logic:
+        // 2. Tokenize
         var tokens = cleaned.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        bool hasMoveCommand = false;
-        int numberCount = 0;
         
+        // 3. Count "Drawing" tokens vs "Text" tokens
+        // Drawing tokens:
+        // - Single letters commonly used in ASS drawings: m, n, l, b, s, p, c (case-insensitive)
+        // - Valid numbers
+        
+        var drawingTokensCount = 0;
+        var totalTokens = tokens.Length;
+
+        // Valid single-letter drawing commands (case-insensitive)
+        // m: move, n: move (no close), l: line, b: cubic bezier, s: spline, p: extend spline, c: close spline
+        var drawingCommands = new HashSet<string>(StringComparer.OrdinalIgnoreCase) 
+        { 
+            "m", "n", "l", "b", "s", "p", "c" 
+        };
+
         foreach (var token in tokens)
         {
-            // Check if token is a valid command letter
-            if (token.Length == 1 && "mnlbspc".Contains(char.ToLowerInvariant(token[0])))
+            bool isDrawingToken = false;
+
+            // Check if it's a command letter
+            if (drawingCommands.Contains(token))
             {
-                if (char.ToLowerInvariant(token[0]) == 'm') hasMoveCommand = true;
-                continue;
+                isDrawingToken = true;
             }
-            
-            // Check if token is a number
-            if (double.TryParse(token, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out _))
+            // Check if it's a number
+            else if (double.TryParse(token, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out _))
             {
-                numberCount++;
-                continue;
+                isDrawingToken = true;
             }
-            
-            // If it's neither a known command nor a number, it's likely text
-            return false;
+            // Check for specific garbage tokens often seen in corrupted drawings (optional heuristic)
+            // e.g. "0y", "0o", but strictly speaking these are "unknown".
+            // We will count them as NON-drawing tokens for safety, relying on the ratio to handle them.
+
+            if (isDrawingToken)
+            {
+                drawingTokensCount++;
+            }
         }
 
-        return hasMoveCommand || numberCount >= 2;
+        // 4. Density Ratio Check
+        // If > 80% of the tokens are drawing commands/numbers, assume it is a drawing.
+        // We require at least a few tokens to avoid false positives on short text like "Room 101" (2 tokens, 50-100% match depending on "Room")
+        
+        double ratio = (double)drawingTokensCount / totalTokens;
+
+        if (totalTokens > 2)
+        {
+            // Heuristic: If > 80% of tokens are drawing-like, it's a drawing.
+            // Example: "m 0 0 ... 0y" (50 tokens, 49 valid) -> 98% -> TRUE.
+            // Example: "m 100 people live here" (6 tokens, 2 valid: m, 100) -> 33% -> FALSE.
+            if (ratio > 0.8)
+            {
+                return true;
+            }
+        }
+        else
+        {
+            // Fallback for short lines (1-2 tokens)
+            // Be stricter to avoid false positives.
+            // "100" -> number (don't delete, could be "100" years)
+            // "m 100" -> valid drawing start, OR "m 100" (typo for "my 100"?) -> ambiguous.
+            // "l" -> single letter "l" (garbage? or "I" typo?) -> existing logic.
+            
+            // Existing single-letter garbage check logic
+            if (totalTokens == 1)
+            {
+                var token = tokens[0];
+                if (token.Length == 1)
+                {
+                    // "I", "a", "A" might be valid words. "m", "l", "p", etc. are likely garbage/drawings.
+                    // Ideally we only keep "I" and numbers.
+                    if (char.IsDigit(token[0])) return false; // Keep "1"
+                    if (string.Equals(token, "I", StringComparison.OrdinalIgnoreCase)) return false; // Keep "I" or "i"? Usually "I".
+                    if (string.Equals(token, "a", StringComparison.OrdinalIgnoreCase)) return false; // Keep "a" or "A"
+
+                    // If it's a single letter and not a common word/number, treat as garbage
+                    return true;
+                }
+            }
+            
+            // For 2 tokens, e.g. "m 100", checks need to be careful.
+            // Let's rely on ratio > 0.99 (basically 100%) for small lines, meaning ALL tokens must be valid.
+            if (ratio >= 0.99)
+            {
+                // But wait, "m 100" is a valid drawing.
+                // "10 20" is likely not a drawing (just numbers).
+                // A valid drawing usually has at least one COMMAND letter.
+                bool hasCommand = tokens.Any(t => drawingCommands.Contains(t));
+                if (hasCommand) return true;
+            }
+        }
+
+        return false;
     }
 }

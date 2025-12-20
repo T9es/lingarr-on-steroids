@@ -52,12 +52,14 @@ public class ChutesAiService : OpenAiService
         List<BatchSubtitleItem> subtitleBatch,
         string sourceLanguage,
         string targetLanguage,
+        List<string>? preContext,
+        List<string>? postContext,
         CancellationToken cancellationToken)
     {
         var model = await _settings.GetSetting(ModelSettingKey);
         await _usageService.EnsureRequestAllowedAsync(model, cancellationToken);
 
-        var result = await base.TranslateBatchAsync(subtitleBatch, sourceLanguage, targetLanguage, cancellationToken);
+        var result = await base.TranslateBatchAsync(subtitleBatch, sourceLanguage, targetLanguage, preContext, postContext, cancellationToken);
 
         await _usageService.RecordRequestAsync(model, cancellationToken);
         return result;

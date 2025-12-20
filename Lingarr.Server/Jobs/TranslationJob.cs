@@ -1,9 +1,7 @@
-﻿using Hangfire;
-using Lingarr.Core.Configuration;
+﻿using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
-using Lingarr.Server.Filters;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Interfaces.Services.Translation;
@@ -27,14 +25,11 @@ public class TranslationJob
     private readonly IStatisticsService _statisticsService;
     private readonly ITranslationServiceFactory _translationServiceFactory;
     private readonly ITranslationRequestService _translationRequestService;
-    private readonly IParallelTranslationLimiter _parallelLimiter;
     private readonly IBatchFallbackService _batchFallbackService;
     private readonly ISubtitleExtractionService _extractionService;
     private readonly ITranslationCancellationService _cancellationService;
     private readonly IMediaStateService _mediaStateService;
     private readonly IDeferredRepairService _deferredRepairService;
-
-    private const string TranslationQueue = "translation";
 
     public TranslationJob(
         ILogger<TranslationJob> logger,
@@ -46,7 +41,6 @@ public class TranslationJob
         IStatisticsService statisticsService,
         ITranslationServiceFactory translationServiceFactory,
         ITranslationRequestService translationRequestService,
-        IParallelTranslationLimiter parallelLimiter,
         IBatchFallbackService batchFallbackService,
         ISubtitleExtractionService extractionService,
         ITranslationCancellationService cancellationService,
@@ -62,7 +56,6 @@ public class TranslationJob
         _statisticsService = statisticsService;
         _translationServiceFactory = translationServiceFactory;
         _translationRequestService = translationRequestService;
-        _parallelLimiter = parallelLimiter;
         _batchFallbackService = batchFallbackService;
         _extractionService = extractionService;
         _cancellationService = cancellationService;
@@ -71,12 +64,10 @@ public class TranslationJob
     }
 
     /// <summary>
-    /// Executes a translation job. Priority ordering is handled at runtime by the limiter.
-    /// All jobs go to the same queue - priority is looked up from the database when acquiring a slot.
+    /// Executes a translation job. Called by TranslationWorkerService.
+    /// Concurrency is managed by the worker service, not internally.
     /// </summary>
-    [Queue(TranslationQueue)]
-    [AutomaticRetry(Attempts = 0)]
-    public Task Execute(int translationRequestId, CancellationToken cancellationToken)
+    public Task ExecuteAsync(int translationRequestId, CancellationToken cancellationToken)
         => ExecuteCore(translationRequestId, cancellationToken);
 
     private async Task ExecuteCore(
@@ -107,41 +98,28 @@ public class TranslationJob
             });
         }
 
-        var jobName = JobContextFilter.GetCurrentJobTypeName();
-        var jobId = JobContextFilter.GetCurrentJobId();
+        // Note: JobContextFilter may not be available without Hangfire context
+        // This is fine - we can skip job name/id logging for worker-invoked jobs
 
         // Register this job for cooperative cancellation and create a linked token
         var jobCancellationToken = _cancellationService.RegisterJob(translationRequest.Id);
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, jobCancellationToken);
         var effectiveCancellationToken = linkedCts.Token;
-        
-        
-        // Acquire a parallel translation slot with runtime priority lookup
-        // Priority is determined from the database NOW, not at enqueue time
-        // This ensures priority changes take effect immediately
-        using var slot = await _parallelLimiter.AcquireForRequestAsync(
-            translationRequest.Id, 
-            translationRequest.MediaType, 
-            translationRequest.MediaId, 
-            effectiveCancellationToken);
 
-
-        
         string? temporaryFilePath = null;
         try
         {
-            await _scheduleService.UpdateJobState(jobName, JobStatus.Processing.GetDisplayName());
             effectiveCancellationToken.ThrowIfCancellationRequested();
 
             var request = await _translationRequestService.UpdateTranslationRequest(
                 translationRequest,
                 TranslationStatus.InProgress,
-                jobId);
+                null); // No Hangfire job ID
 
             var subtitlePathForLog = translationRequest.SubtitleToTranslate ?? "Unknown";
             _logger.LogInformation("TranslateJob started for subtitle: |Green|{filePath}|/Green|",
                 subtitlePathForLog);
-            AddRequestLog("Information", $"TranslateJob started for subtitle: {subtitlePathForLog}");
+            AddRequestLog("Information", $"TranslateJob started for subtitle: {subtitlePathForLog}");;
 
             var settings = await _settings.GetSettings([
                 SettingKeys.Translation.ServiceType,
@@ -164,13 +142,17 @@ public class TranslationJob
                 SettingKeys.Translation.RemoveLanguageTag,
                 SettingKeys.Translation.UseSubtitleTagging,
                 SettingKeys.Translation.SubtitleTag,
+                SettingKeys.Translation.SubtitleTagShort,
                 SettingKeys.Translation.EnableBatchFallback,
                 SettingKeys.Translation.MaxBatchSplitAttempts,
                 SettingKeys.Translation.BatchRetryMode,
                 SettingKeys.Translation.RepairContextRadius,
                 SettingKeys.Translation.RepairMaxRetries,
                 SettingKeys.Translation.StripAssDrawingCommands,
-                SettingKeys.Translation.CleanSourceAssDrawings
+                SettingKeys.Translation.CleanSourceAssDrawings,
+                SettingKeys.Translation.BatchContextEnabled,
+                SettingKeys.Translation.BatchContextBefore,
+                SettingKeys.Translation.BatchContextAfter
             ]);
             var serviceType = settings[SettingKeys.Translation.ServiceType];
             var stripSubtitleFormatting = settings[SettingKeys.Translation.StripSubtitleFormatting] == "true";
@@ -425,6 +407,17 @@ public class TranslationJob
                     "Information",
                     $"[{fileIdentifier}] Starting batch translation: subtitles={subtitles.Count}, totalBatches={totalBatches}, batchSize={effectiveBatchSize}, retryMode={batchRetryMode}");
 
+                // Parse batch context settings
+                var batchContextEnabled = settings.TryGetValue(SettingKeys.Translation.BatchContextEnabled, out var ctxEnabled) && ctxEnabled == "true";
+                var batchContextBefore = int.TryParse(
+                    settings.TryGetValue(SettingKeys.Translation.BatchContextBefore, out var ctxBefore) ? ctxBefore : null, out var beforeLines)
+                    ? beforeLines
+                    : 3;
+                var batchContextAfter = int.TryParse(
+                    settings.TryGetValue(SettingKeys.Translation.BatchContextAfter, out var ctxAfter) ? ctxAfter : null, out var afterLines)
+                    ? afterLines
+                    : 3;
+
                 translatedSubtitles = await translator.TranslateSubtitlesBatch(
                     subtitles,
                     request,
@@ -434,6 +427,9 @@ public class TranslationJob
                     maxBatchSplitAttempts,
                     repairContextRadius,
                     repairMaxRetries,
+                    batchContextEnabled,
+                    batchContextBefore,
+                    batchContextAfter,
                     fileIdentifier,
                     effectiveCancellationToken);
             }
@@ -478,24 +474,25 @@ public class TranslationJob
             // statistics tracking
             await _statisticsService.UpdateTranslationStatisticsFromSubtitles(request, serviceType, translatedSubtitles);
 
-            var subtitleTag = "";
-            if (settings[SettingKeys.Translation.UseSubtitleTagging] == "true")
-            {
-                subtitleTag = settings[SettingKeys.Translation.SubtitleTag];
-            }
+            var subtitleTag = settings[SettingKeys.Translation.UseSubtitleTagging] == "true"
+                ? settings[SettingKeys.Translation.SubtitleTag]
+                : null;
+            var subtitleTagShort = settings[SettingKeys.Translation.UseSubtitleTagging] == "true"
+                ? settings[SettingKeys.Translation.SubtitleTagShort]
+                : null;
 
-            await WriteSubtitles(request, translatedSubtitles, stripSubtitleFormatting, subtitleTag, removeLanguageTag);
+            await WriteSubtitles(request, translatedSubtitles, stripSubtitleFormatting, subtitleTag ?? "", subtitleTagShort ?? "", removeLanguageTag);
             AddRequestLog("Information", "Translation completed successfully and subtitle file was written");
-            await HandleCompletion(jobName, request, effectiveCancellationToken);
+            await HandleCompletion(request, effectiveCancellationToken);
         }
         catch (TaskCanceledException)
         {
-            await HandleCancellation(jobName, translationRequest);
+            await HandleCancellation(translationRequest);
         }
         catch (OperationCanceledException)
         {
             // Also catch OperationCanceledException for cooperative cancellation
-            await HandleCancellation(jobName, translationRequest);
+            await HandleCancellation(translationRequest);
         }
         catch (Exception ex)
         {
@@ -519,7 +516,7 @@ public class TranslationJob
                         translationRequest = await _translationRequestService.UpdateTranslationRequest(
                             translationRequest,
                             TranslationStatus.Failed,
-                            jobId);
+                            null);
                         break; // Success, exit retry loop
                     }
                     catch (Exception retryEx) when (attempt < 2)
@@ -550,7 +547,6 @@ public class TranslationJob
 
                 await _dbContext.SaveChangesAsync();
 
-                await _scheduleService.UpdateJobState(jobName, JobStatus.Failed.GetDisplayName());
                 await _translationRequestService.UpdateActiveCount();
                 await _progressService.Emit(translationRequest, 0);
             }
@@ -591,21 +587,55 @@ public class TranslationJob
         List<SubtitleItem> translatedSubtitles,
         bool stripSubtitleFormatting,
         string subtitleTag,
+        string subtitleTagShort,
         bool removeLanguageTag)
     {
         try
         {
             var targetLanguage = removeLanguageTag ? "" : translationRequest.TargetLanguage;
 
-            var outputPath = _subtitleService.CreateFilePath(
+            var paths = _subtitleService.CreateFallbackPaths(
                 translationRequest.SubtitleToTranslate,
                 targetLanguage,
-                subtitleTag);
+                subtitleTag,
+                subtitleTagShort);
+            
+            Exception? lastException = null;
+            bool success = false;
+            string usedPath = "";
 
-            await _subtitleService.WriteSubtitles(outputPath, translatedSubtitles, stripSubtitleFormatting);
+            foreach (var path in paths)
+            {
+                try
+                {
+                    await _subtitleService.WriteSubtitles(path, translatedSubtitles, stripSubtitleFormatting);
+                    success = true;
+                    usedPath = path;
+                    break;
+                }
+                catch (PathTooLongException ex)
+                {
+                    _logger.LogWarning("Path too long: {Path}. Trying fallback...", path);
+                    lastException = ex;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to write subtitle to {Path}. Trying fallback...", path);
+                    lastException = ex;
+                }
+            }
+
+            if (!success)
+            {
+                if (lastException != null)
+                {
+                    throw lastException;
+                }
+                throw new Exception("Failed to write subtitle to any of the fallback paths.");
+            }
 
             _logger.LogInformation("TranslateJob completed and created subtitle: |Green|{filePath}|/Green|",
-                outputPath);
+                usedPath);
         }
         catch (Exception e)
         {
@@ -615,7 +645,6 @@ public class TranslationJob
     }
 
     private async Task HandleCompletion(
-        string jobName,
         TranslationRequest translationRequest,
         CancellationToken cancellationToken)
     {
@@ -625,7 +654,6 @@ public class TranslationJob
 	        await _dbContext.SaveChangesAsync(cancellationToken);
 	        await _translationRequestService.UpdateActiveCount();
 	        await _progressService.Emit(translationRequest, 100);
-	        await _scheduleService.UpdateJobState(jobName, JobStatus.Succeeded.GetDisplayName());
 	        
 	        // Update translation state to reflect completion
 	        if (translationRequest.MediaId.HasValue)
@@ -659,7 +687,7 @@ public class TranslationJob
 	        }
     }
 
-    private async Task HandleCancellation(string jobName, TranslationRequest request)
+    private async Task HandleCancellation(TranslationRequest request)
     {
         _logger.LogInformation("Translation cancelled for subtitle: |Orange|{subtitlePath}|/Orange|",
             request.SubtitleToTranslate);
@@ -677,7 +705,6 @@ public class TranslationJob
 	            await _translationRequestService.ClearMediaHash(translationRequest);
             await _translationRequestService.UpdateActiveCount();
             await _progressService.Emit(translationRequest, 0);
-            await _scheduleService.UpdateJobState(jobName, JobStatus.Cancelled.GetDisplayName());
         }
     }
     

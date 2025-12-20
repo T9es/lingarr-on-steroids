@@ -174,6 +174,9 @@ public class TestTranslationService : ITestTranslationService
                         splitAttempts,
                         repairContextRadius: 10,
                         repairMaxRetries: 1,
+                        batchContextEnabled: false,  // Disabled for test mode
+                        batchContextBefore: 0,
+                        batchContextAfter: 0,
                         fileIdentifier: "Test Translation",
                         cancellationToken: _cancellationTokenSource.Token);
                 }

@@ -54,8 +54,38 @@
                         :label="translate('settings.prompt.contextAfter')"
                         @update:validation="(val) => (isValid.contextAfter = val)" />
                 </div>
-                <div v-else class="text-xs">
-                    {{ translate('settings.prompt.notSupported') }}
+                <div v-else>
+                    <div class="flex flex-col space-x-2 mb-2">
+                        <span class="font-semibold">
+                            {{ translate('settings.prompt.batchContextToggle') }}
+                        </span>
+                        <span class="text-sm">
+                            {{ translate('settings.prompt.batchContextDescription') }}
+                        </span>
+                    </div>
+                    <ToggleButton v-model="batchContextEnabled">
+                        <span class="text-primary-content text-sm font-medium">
+                            {{
+                                batchContextEnabled == 'true'
+                                    ? translate('common.enabled')
+                                    : translate('common.disabled')
+                            }}
+                        </span>
+                    </ToggleButton>
+                    <div v-if="batchContextEnabled == 'true'" class="flex flex-col space-y-2 mt-4">
+                        <InputComponent
+                            v-model="batchContextBefore"
+                            type="number"
+                            validation-type="number"
+                            :label="translate('settings.prompt.batchContextBefore')"
+                            @update:validation="(val) => (isValid.batchContextBefore = val)" />
+                        <InputComponent
+                            v-model="batchContextAfter"
+                            type="number"
+                            validation-type="number"
+                            :label="translate('settings.prompt.batchContextAfter')"
+                            @update:validation="(val) => (isValid.batchContextAfter = val)" />
+                    </div>
                 </div>
             </div>
         </template>
@@ -76,7 +106,9 @@ const settingsStore = useSettingStore()
 const saveNotification = ref<InstanceType<typeof SaveNotification> | null>(null)
 const isValid = reactive({
     contextBefore: true,
-    contextAfter: true
+    contextAfter: true,
+    batchContextBefore: true,
+    batchContextAfter: true
 })
 
 const useBatchTranslation = computed(
@@ -106,6 +138,34 @@ const contextAfter = computed({
     set: (newValue: string) => {
         settingsStore.updateSetting(SETTINGS.AI_CONTEXT_AFTER, newValue, isValid.contextAfter)
         if (isValid.contextAfter) {
+            saveNotification.value?.show()
+        }
+    }
+})
+
+const batchContextEnabled = computed({
+    get: (): string => settingsStore.getSetting(SETTINGS.BATCH_CONTEXT_ENABLED) as string,
+    set: (newValue: string): void => {
+        settingsStore.updateSetting(SETTINGS.BATCH_CONTEXT_ENABLED, newValue, true)
+        saveNotification.value?.show()
+    }
+})
+
+const batchContextBefore = computed({
+    get: () => settingsStore.getSetting(SETTINGS.BATCH_CONTEXT_BEFORE) as string,
+    set: (newValue: string) => {
+        settingsStore.updateSetting(SETTINGS.BATCH_CONTEXT_BEFORE, newValue, isValid.batchContextBefore)
+        if (isValid.batchContextBefore) {
+            saveNotification.value?.show()
+        }
+    }
+})
+
+const batchContextAfter = computed({
+    get: () => settingsStore.getSetting(SETTINGS.BATCH_CONTEXT_AFTER) as string,
+    set: (newValue: string) => {
+        settingsStore.updateSetting(SETTINGS.BATCH_CONTEXT_AFTER, newValue, isValid.batchContextAfter)
+        if (isValid.batchContextAfter) {
             saveNotification.value?.show()
         }
     }

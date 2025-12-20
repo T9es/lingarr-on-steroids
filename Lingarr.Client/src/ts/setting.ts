@@ -59,6 +59,7 @@ export const SETTINGS = {
     USE_SUBTITLE_TAGGING: 'use_subtitle_tagging',
     REMOVE_LANGUAGE_TAG: 'remove_language_tag',
     SUBTITLE_TAG: 'subtitle_tag',
+    SUBTITLE_TAG_SHORT: 'subtitle_tag_short',
     IGNORE_CAPTIONS: 'ignore_captions',
     MAX_RETRIES: 'max_retries',
     RETRY_DELAY: 'retry_delay',
@@ -71,7 +72,10 @@ export const SETTINGS = {
     REPAIR_CONTEXT_RADIUS: 'repair_context_radius',
     REPAIR_MAX_RETRIES: 'repair_max_retries',
     STRIP_ASS_DRAWING_COMMANDS: 'strip_ass_drawing_commands',
-    CLEAN_SOURCE_ASS_DRAWINGS: 'clean_source_ass_drawings'
+    CLEAN_SOURCE_ASS_DRAWINGS: 'clean_source_ass_drawings',
+    BATCH_CONTEXT_ENABLED: 'batch_context_enabled',
+    BATCH_CONTEXT_BEFORE: 'batch_context_before',
+    BATCH_CONTEXT_AFTER: 'batch_context_after'
 } as const
 
 export interface ISettings {
@@ -132,6 +136,7 @@ export interface ISettings {
     use_subtitle_tagging: string
     remove_language_tag: string
     subtitle_tag: string
+    subtitle_tag_short: string
     ignore_captions: string
     max_retries: string
     retry_delay: string
@@ -145,6 +150,9 @@ export interface ISettings {
     repair_max_retries: string
     strip_ass_drawing_commands: string
     clean_source_ass_drawings: string
+    batch_context_enabled: string
+    batch_context_before: string
+    batch_context_after: string
 }
 
 export interface ICustomAiParams {

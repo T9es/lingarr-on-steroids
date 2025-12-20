@@ -311,12 +311,16 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
     /// <param name="subtitleBatch">List of subtitles with position and content</param>
     /// <param name="sourceLanguage">Source language code</param>
     /// <param name="targetLanguage">Target language code</param>
+    /// <param name="preContext">Optional context lines before the batch</param>
+    /// <param name="postContext">Optional context lines after the batch</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Dictionary mapping position to translated content</returns>
     public async Task<Dictionary<int, string>> TranslateBatchAsync(
         List<BatchSubtitleItem> subtitleBatch,
         string sourceLanguage,
         string targetLanguage,
+        List<string>? preContext,
+        List<string>? postContext,
         CancellationToken cancellationToken)
     {
         await InitializeAsync(sourceLanguage, targetLanguage);
@@ -329,7 +333,7 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
         {
             try
             {
-                return await TranslateBatchWithGeminiApi(subtitleBatch, linked.Token);
+                return await TranslateBatchWithGeminiApi(subtitleBatch, preContext, postContext, linked.Token);
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
             {
@@ -358,8 +362,13 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
 
     private async Task<Dictionary<int, string>> TranslateBatchWithGeminiApi(
         List<BatchSubtitleItem> subtitleBatch,
+        List<string>? preContext,
+        List<string>? postContext,
         CancellationToken cancellationToken)
     {
+        // Build user content with context wrapper
+        var userContent = BuildBatchUserContent(subtitleBatch, preContext, postContext);
+
         var endpoint = $"{_endpoint}/models/{_model}:generateContent?key={_apiKey}";
         var requestBody = new Dictionary<string, object>
         {
@@ -381,7 +390,7 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
                     {
                         new
                         {
-                            text = JsonSerializer.Serialize(subtitleBatch)
+                            text = userContent
                         }
                     }
                 }
@@ -501,5 +510,52 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
             }
         }
         return json;
+    }
+
+    /// <summary>
+    /// Builds the user content for batch translation, optionally including context wrapper
+    /// </summary>
+    private string BuildBatchUserContent(
+        List<BatchSubtitleItem> subtitleBatch,
+        List<string>? preContext,
+        List<string>? postContext)
+    {
+        var hasPreContext = preContext is { Count: > 0 };
+        var hasPostContext = postContext is { Count: > 0 };
+
+        if (!hasPreContext && !hasPostContext)
+        {
+            return JsonSerializer.Serialize(subtitleBatch);
+        }
+
+        var sb = new StringBuilder();
+
+        if (hasPreContext)
+        {
+            sb.AppendLine("[CONTEXT_BEFORE - Do not translate, for reference only]");
+            foreach (var line in preContext!)
+            {
+                sb.AppendLine(line);
+            }
+            sb.AppendLine("[/CONTEXT_BEFORE]");
+            sb.AppendLine();
+        }
+
+        sb.AppendLine("[SUBTITLES_TO_TRANSLATE]");
+        sb.AppendLine(JsonSerializer.Serialize(subtitleBatch));
+        sb.AppendLine("[/SUBTITLES_TO_TRANSLATE]");
+
+        if (hasPostContext)
+        {
+            sb.AppendLine();
+            sb.AppendLine("[CONTEXT_AFTER - Do not translate, for reference only]");
+            foreach (var line in postContext!)
+            {
+                sb.AppendLine(line);
+            }
+            sb.AppendLine("[/CONTEXT_AFTER]");
+        }
+
+        return sb.ToString();
     }
 }

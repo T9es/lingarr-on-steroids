@@ -22,18 +22,18 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
     protected virtual string ApiKeySettingKey => SettingKeys.Translation.OpenAi.ApiKey;
     protected virtual string EndpointBase => "https://api.openai.com/v1/";
 
-    private readonly string _endpoint;
-    private string? _prompt;
-    private string? _model;
-    private string? _apiKey;
-    private readonly HttpClient _httpClient;
-    private bool _initialized;
-    private readonly SemaphoreSlim _initLock = new(1, 1);
+    protected readonly string _endpoint;
+    protected string? _prompt;
+    protected string? _model;
+    protected string? _apiKey;
+    protected readonly HttpClient _httpClient;
+    protected bool _initialized;
+    protected readonly SemaphoreSlim _initLock = new(1, 1);
 
     // retry settings
-    private int _maxRetries;
-    private TimeSpan _retryDelay;
-    private int _retryDelayMultiplier;
+    protected int _maxRetries;
+    protected TimeSpan _retryDelay;
+    protected int _retryDelayMultiplier;
 
     public OpenAiService(
         ISettingService settings,
@@ -53,7 +53,7 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
     /// <param name="targetLanguage">The target language code for translation</param>
     /// <returns>A task that represents the asynchronous initialization operation</returns>
     /// <exception cref="InvalidOperationException">Thrown when required configuration settings are missing or invalid</exception>
-    private async Task InitializeAsync(string sourceLanguage, string targetLanguage)
+    protected async Task InitializeAsync(string sourceLanguage, string targetLanguage)
     {
         if (_initialized) return;
 
@@ -170,6 +170,8 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
                 {
                     if (response.StatusCode == HttpStatusCode.TooManyRequests)
                     {
+                        var responseBody = await response.Content.ReadAsStringAsync(linked.Token);
+                        _logger.LogWarning("429 Rate Limit Exceeded. Provider Message: {Content}", responseBody);
                         throw new HttpRequestException("Rate limit exceeded", null, HttpStatusCode.TooManyRequests);
                     }
 
@@ -252,17 +254,21 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
     }
 
     /// <summary>
-    /// Translates a batch of subtitles in a single API call using structured outputs
+    /// Translates a batch of subtitles in a single API call using OpenAI's structured output
     /// </summary>
     /// <param name="subtitleBatch">List of subtitles with position and content</param>
     /// <param name="sourceLanguage">Source language code</param>
     /// <param name="targetLanguage">Target language code</param>
+    /// <param name="preContext">Optional context lines before the batch</param>
+    /// <param name="postContext">Optional context lines after the batch</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Dictionary mapping position to translated content</returns>
     public virtual async Task<Dictionary<int, string>> TranslateBatchAsync(
         List<BatchSubtitleItem> subtitleBatch,
         string sourceLanguage,
         string targetLanguage,
+        List<string>? preContext,
+        List<string>? postContext,
         CancellationToken cancellationToken)
     {
         await InitializeAsync(sourceLanguage, targetLanguage);
@@ -275,7 +281,7 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
         {
             try
             {
-                return await TranslateBatchWithOpenAiApi(subtitleBatch, linked.Token);
+                return await TranslateBatchWithOpenAiApi(subtitleBatch, preContext, postContext, linked.Token);
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
             {
@@ -343,6 +349,8 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
 
     private async Task<Dictionary<int, string>> TranslateBatchWithOpenAiApi(
         List<BatchSubtitleItem> subtitleBatch,
+        List<string>? preContext,
+        List<string>? postContext,
         CancellationToken cancellationToken)
     {
         var requestUrl = $"{_endpoint}chat/completions";
@@ -385,6 +393,9 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
             }
         };
 
+        // Build user content with optional batch context wrapper
+        var userContent = BuildBatchUserContent(subtitleBatch, preContext, postContext);
+
         var requestBody = new Dictionary<string, object>
         {
             ["model"] = _model!,
@@ -398,7 +409,7 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
                 new Dictionary<string, string>
                 {
                     ["role"] = "user",
-                    ["content"] = JsonSerializer.Serialize(subtitleBatch)
+                    ["content"] = userContent
                 }
             },
             ["response_format"] = responseFormat
@@ -425,8 +436,11 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
 
         if (!response.IsSuccessStatusCode)
         {
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+
             if (response.StatusCode == HttpStatusCode.TooManyRequests)
             {
+                _logger.LogWarning("429 Rate Limit Exceeded (Batch). Provider Message: {Content}", responseBody);
                 throw new HttpRequestException("Rate limit exceeded", null, HttpStatusCode.TooManyRequests);
             }
 
@@ -434,8 +448,7 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
             {
                 throw new HttpRequestException("OpenAI temporary unavailable", null, HttpStatusCode.ServiceUnavailable);
             }
-
-            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            
             _logger.LogError(
                 "Batch translation API failed. Status: {StatusCode}, BatchSize: {BatchSize}, Endpoint: {Endpoint}",
                 response.StatusCode, subtitleBatch.Count, requestUrl);
@@ -569,5 +582,54 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
                 Message = $"Error fetching models from OpenAI API: {ex.Message}"
             };
         }
+    }
+
+    /// <summary>
+    /// Builds the user content for batch translation, optionally including context wrapper
+    /// </summary>
+    protected virtual string BuildBatchUserContent(
+        List<BatchSubtitleItem> subtitleBatch,
+        List<string>? preContext,
+        List<string>? postContext)
+    {
+        var hasPreContext = preContext is { Count: > 0 };
+        var hasPostContext = postContext is { Count: > 0 };
+
+        if (!hasPreContext && !hasPostContext)
+        {
+            // No context wrapper, just return the batch as JSON
+            return JsonSerializer.Serialize(subtitleBatch);
+        }
+
+        // Build content with context wrapper
+        var sb = new StringBuilder();
+
+        if (hasPreContext)
+        {
+            sb.AppendLine("[CONTEXT_BEFORE - Do not translate, for reference only]");
+            foreach (var line in preContext!)
+            {
+                sb.AppendLine(line);
+            }
+            sb.AppendLine("[/CONTEXT_BEFORE]");
+            sb.AppendLine();
+        }
+
+        sb.AppendLine("[SUBTITLES_TO_TRANSLATE]");
+        sb.AppendLine(JsonSerializer.Serialize(subtitleBatch));
+        sb.AppendLine("[/SUBTITLES_TO_TRANSLATE]");
+
+        if (hasPostContext)
+        {
+            sb.AppendLine();
+            sb.AppendLine("[CONTEXT_AFTER - Do not translate, for reference only]");
+            foreach (var line in postContext!)
+            {
+                sb.AppendLine(line);
+            }
+            sb.AppendLine("[/CONTEXT_AFTER]");
+        }
+
+        return sb.ToString();
     }
 }
