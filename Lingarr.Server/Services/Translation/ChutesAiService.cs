@@ -50,7 +50,7 @@ public class ChutesAiService : OpenAiService
             await _usageService.RecordRequestAsync(model, cancellationToken);
             return result;
         }
-        catch (TranslationException ex) when (ex.Message.Contains("PaymentRequired"))
+        catch (TranslationException ex) when (IsPaymentRequiredError(ex))
         {
             _usageService.NotifyPaymentRequired();
             throw;
@@ -75,11 +75,28 @@ public class ChutesAiService : OpenAiService
             await _usageService.RecordRequestAsync(model, cancellationToken);
             return result;
         }
-        catch (TranslationException ex) when (ex.Message.Contains("PaymentRequired"))
+        catch (TranslationException ex) when (IsPaymentRequiredError(ex))
         {
             _usageService.NotifyPaymentRequired();
             throw;
         }
+    }
+
+    /// <summary>
+    /// Checks if the exception or any of its inner exceptions indicate a PaymentRequired (402) error.
+    /// </summary>
+    private static bool IsPaymentRequiredError(Exception ex)
+    {
+        var current = ex;
+        while (current != null)
+        {
+            if (current.Message.Contains("PaymentRequired", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+            current = current.InnerException;
+        }
+        return false;
     }
 
     public override async Task<ModelsResponse> GetModels()
