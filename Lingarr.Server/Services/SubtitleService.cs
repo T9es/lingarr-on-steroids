@@ -17,13 +17,30 @@ public class SubtitleService : ISubtitleService
     private static readonly string[] SupportedCaptions = ["sdh", "cc", "forced", "hi"];
     private static readonly char[] WhitespaceCharacters = [' ', '\t', '\n', '\r'];
 
-    private static readonly CultureInfo[] Cultures = CultureInfo.GetCultures(CultureTypes.AllCultures);
+    private static readonly Dictionary<string, string> LanguageLookup = CreateLanguageLookup();
     private readonly ILogger<SubtitleService> _logger;
 
     public SubtitleService(
         ILogger<SubtitleService> logger)
     {
         _logger = logger;
+    }
+
+    private static Dictionary<string, string> CreateLanguageLookup()
+    {
+        var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var culture in CultureInfo.GetCultures(CultureTypes.AllCultures))
+        {
+            if (!string.IsNullOrEmpty(culture.Name))
+                dict.TryAdd(culture.Name, culture.TwoLetterISOLanguageName);
+
+            if (!string.IsNullOrEmpty(culture.ThreeLetterISOLanguageName))
+                dict.TryAdd(culture.ThreeLetterISOLanguageName, culture.TwoLetterISOLanguageName);
+
+            if (!string.IsNullOrEmpty(culture.TwoLetterISOLanguageName))
+                dict.TryAdd(culture.TwoLetterISOLanguageName, culture.TwoLetterISOLanguageName);
+        }
+        return dict;
     }
 
     /// <inheritdoc />
@@ -38,13 +55,20 @@ public class SubtitleService : ISubtitleService
         }
 
         var subtitles = new List<Subtitles>();
-        foreach (var extension in SupportedExtensions)
-        {
-            var files = Directory.GetFiles(path, $"*{extension}", SearchOption.AllDirectories);
 
-            var subtitleFiles = files.Select(file =>
+        try
+        {
+            var files = Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories)
+                .Where(file =>
+                {
+                    var ext = Path.GetExtension(file);
+                    return !string.IsNullOrEmpty(ext) && SupportedExtensions.Contains(ext.ToLowerInvariant());
+                });
+
+            foreach (var file in files)
             {
                 var fileName = Path.GetFileNameWithoutExtension(file);
+                var extension = Path.GetExtension(file).ToLowerInvariant();
                 var parts = fileName.Split('.').Reverse().ToList();
                 var language = "";
                 var caption = "";
@@ -71,17 +95,19 @@ public class SubtitleService : ISubtitleService
                     caption = "";
                 }
 
-                return new Subtitles
+                subtitles.Add(new Subtitles
                 {
                     Path = file,
                     FileName = fileName,
                     Language = language ?? "unknown",
                     Caption = caption,
                     Format = extension
-                };
-            });
-
-            subtitles.AddRange(subtitleFiles);
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error occurred while scanning for subtitles in {Path}", path);
         }
 
         return Task.FromResult(subtitles);
@@ -569,18 +595,13 @@ public class SubtitleService : ISubtitleService
     /// </param>
     private static bool TryGetLanguageByPart(string part, out string? languageCode)
     {
-        languageCode = null;
-        var culture = Cultures.FirstOrDefault(c =>
-            string.Equals(part, c.Name, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(part, c.ThreeLetterISOLanguageName, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(part, c.TwoLetterISOLanguageName, StringComparison.OrdinalIgnoreCase));
-
-        if (culture != null)
+        if (LanguageLookup.TryGetValue(part, out var code))
         {
-            languageCode = culture.TwoLetterISOLanguageName;
+            languageCode = code;
             return true;
         }
 
+        languageCode = null;
         return false;
     }
 }
