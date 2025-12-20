@@ -18,7 +18,7 @@ public class ChutesUsageService : IChutesUsageService
 
     private static readonly TimeSpan SnapshotCacheLifetime = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan ModelCacheLifetime = TimeSpan.FromHours(6);
-    private static readonly TimeSpan MinRefreshInterval = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan MinRefreshInterval = TimeSpan.FromMinutes(5); // Reduced API calls to avoid spamming
     private static readonly TimeSpan MinPausePollInterval = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan MaxPausePollInterval = TimeSpan.FromMinutes(10);
     private static readonly TimeSpan PaymentPauseDuration = TimeSpan.FromMinutes(5);
@@ -36,6 +36,11 @@ public class ChutesUsageService : IChutesUsageService
     // Static fields for payment pause state (shared across all service instances)
     private static readonly object _paymentPauseLock = new();
     private static DateTime _paymentPausedUntil = DateTime.MinValue;
+    
+    // Static counter for local request tracking (used between API refreshes)
+    private static readonly object _localCounterLock = new();
+    private static int _localRequestCount = 0;
+    private static DateTime _localCounterResetAt = DateTime.MinValue;
 
     public ChutesUsageService(
         ISettingService settings,
@@ -77,17 +82,50 @@ public class ChutesUsageService : IChutesUsageService
             
             if (inPaymentPause)
             {
-                _logger.LogInformation(
-                    "Chutes is in payment pause state. Waiting for credits to become available.");
-                
-                // Get a snapshot to pass to the wait method (may be stale but provides reset info)
-                var pauseSnapshot = await GetUsageSnapshotAsync(modelId, forceRefresh: true, cancellationToken);
-                await WaitForQuotaResetAsync(modelId, pauseSnapshot, cancellationToken, isPaymentPause: true);
-                
-                // After waiting, clear the payment pause and re-evaluate
+                // For payment pauses, we DON'T trust the quota API (it may return false data).
+                // Instead, just wait until the pause expires (the reset timestamp from 402 response).
+                DateTime pauseUntil;
                 lock (_paymentPauseLock)
                 {
-                    _paymentPausedUntil = DateTime.MinValue;
+                    pauseUntil = _paymentPausedUntil;
+                }
+                
+                var waitTime = pauseUntil - DateTime.UtcNow;
+                if (waitTime > TimeSpan.Zero)
+                {
+                    _logger.LogInformation(
+                        "Chutes is in payment pause state until {PauseUntil} UTC. Waiting {WaitMinutes:F1} minutes before allowing requests.",
+                        pauseUntil,
+                        waitTime.TotalMinutes);
+                    
+                    // Cap wait time to max 10 minutes per iteration to allow cancellation checks
+                    var maxWait = TimeSpan.FromMinutes(10);
+                    var actualWait = waitTime > maxWait ? maxWait : waitTime;
+                    
+                    try
+                    {
+                        await Task.Delay(actualWait, cancellationToken);
+                    }
+                    catch (TaskCanceledException)
+                    {
+                        throw;
+                    }
+                    
+                    // Check if we've passed the pause time
+                    if (DateTime.UtcNow < pauseUntil)
+                    {
+                        continue; // Still in pause, loop back
+                    }
+                }
+                
+                // Pause time has passed, clear the payment pause and re-evaluate
+                lock (_paymentPauseLock)
+                {
+                    if (DateTime.UtcNow >= _paymentPausedUntil)
+                    {
+                        _paymentPausedUntil = DateTime.MinValue;
+                        _logger.LogInformation("Chutes payment pause has expired. Resuming translations.");
+                    }
                 }
                 continue;
             }
@@ -145,16 +183,19 @@ public class ChutesUsageService : IChutesUsageService
     }
 
     /// <inheritdoc />
-    public void NotifyPaymentRequired()
+    public void NotifyPaymentRequired(DateTime? resetTimestamp = null)
     {
         lock (_paymentPauseLock)
         {
-            // Only extend the pause if not already set (avoid resetting on subsequent failures)
-            if (_paymentPausedUntil < DateTime.UtcNow)
+            // Determine pause end time: use reset timestamp if provided, otherwise use default duration
+            var proposedPauseUntil = resetTimestamp ?? DateTime.UtcNow.Add(PaymentPauseDuration);
+            
+            // Only update if the new pause time is later than the current one
+            if (proposedPauseUntil > _paymentPausedUntil)
             {
-                _paymentPausedUntil = DateTime.UtcNow.Add(PaymentPauseDuration);
+                _paymentPausedUntil = proposedPauseUntil;
                 _logger.LogWarning(
-                    "Chutes returned PaymentRequired (402). Pausing all Chutes translations until {PauseUntil} or until credits are available.",
+                    "Chutes returned PaymentRequired (402). Pausing all Chutes translations until {PauseUntil} UTC.",
                     _paymentPausedUntil);
             }
         }
@@ -241,27 +282,29 @@ public class ChutesUsageService : IChutesUsageService
 
     public async Task RecordRequestAsync(string? modelId, CancellationToken cancellationToken)
     {
-        // Counter already incremented in EnsureRequestAllowedAsync
-        // Just update the LastSyncedUtc timestamp
+        // Increment local counter for accurate tracking between API refreshes
+        lock (_localCounterLock)
+        {
+            // Reset local counter at midnight UTC for new day
+            var today = DateTime.UtcNow.Date;
+            if (_localCounterResetAt.Date != today)
+            {
+                _localRequestCount = 0;
+                _localCounterResetAt = today;
+            }
+            _localRequestCount++;
+        }
+        
+        // Update the cached snapshot's last synced time
         var key = GetSnapshotCacheKey(modelId);
         if (_cache.TryGetValue(key, out ChutesUsageSnapshot? snapshot) && snapshot != null)
         {
             snapshot.LastSyncedUtc = DateTime.UtcNow;
             _cache.Set(key, snapshot, _snapshotCacheOptions);
         }
-
-        // Trigger a background refresh to get the accurate count from the server
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await GetUsageSnapshotAsync(modelId, forceRefresh: true, cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to refresh Chutes usage snapshot in background.");
-            }
-        }, cancellationToken);
+        
+        // Note: Don't trigger API refresh here to avoid spamming Chutes
+        // API is refreshed at 5-minute intervals via EnsureRequestAllowedAsync
     }
 
     public async Task<ChutesUsageSnapshot> GetUsageSnapshotAsync(
@@ -324,6 +367,13 @@ public class ChutesUsageService : IChutesUsageService
 
             snapshot.RemoteRequestsUsed = await FetchUsageCountAsync(apiKey, snapshot.ChuteId, cancellationToken) ?? 0;
             snapshot.RequestsUsed = snapshot.RemoteRequestsUsed;
+            
+            // Reset local counter since we have fresh API data
+            lock (_localCounterLock)
+            {
+                _localRequestCount = 0;
+                _localCounterResetAt = DateTime.UtcNow;
+            }
         }
         catch (Exception ex)
         {
@@ -364,14 +414,11 @@ public class ChutesUsageService : IChutesUsageService
 
     private async Task<int?> FetchUsageCountAsync(string apiKey, string? chuteId, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(chuteId))
-        {
-            return null;
-        }
-
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, $"/users/me/quota_usage/{chuteId}");
+            // Use global subscription usage endpoint (/me) instead of per-chute endpoint
+            // The per-chute endpoint only shows usage for that specific chute, not total subscription usage
+            using var request = new HttpRequestMessage(HttpMethod.Get, "/users/me/quota_usage/me");
             request.Headers.Add("Authorization", $"Bearer {apiKey}");
             var response = await _apiClient.SendAsync(request, cancellationToken);
             var content = await response.Content.ReadAsStringAsync(cancellationToken);

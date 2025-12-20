@@ -50,9 +50,10 @@ public class ChutesAiService : OpenAiService
             await _usageService.RecordRequestAsync(model, cancellationToken);
             return result;
         }
-        catch (TranslationException ex) when (ex.Message.Contains("PaymentRequired"))
+        catch (TranslationException ex) when (IsPaymentRequiredError(ex))
         {
-            _usageService.NotifyPaymentRequired();
+            var resetTimestamp = ExtractResetTimestamp(ex);
+            _usageService.NotifyPaymentRequired(resetTimestamp);
             throw;
         }
     }
@@ -75,11 +76,60 @@ public class ChutesAiService : OpenAiService
             await _usageService.RecordRequestAsync(model, cancellationToken);
             return result;
         }
-        catch (TranslationException ex) when (ex.Message.Contains("PaymentRequired"))
+        catch (TranslationException ex) when (IsPaymentRequiredError(ex))
         {
-            _usageService.NotifyPaymentRequired();
+            var resetTimestamp = ExtractResetTimestamp(ex);
+            _usageService.NotifyPaymentRequired(resetTimestamp);
             throw;
         }
+    }
+
+    /// <summary>
+    /// Checks if the exception or any of its inner exceptions indicate a PaymentRequired (402) error.
+    /// </summary>
+    private static bool IsPaymentRequiredError(Exception ex)
+    {
+        var current = ex;
+        while (current != null)
+        {
+            if (current.Message.Contains("PaymentRequired", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+            current = current.InnerException;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Extracts the quota_reset_timestamp from the 402 response embedded in the exception chain.
+    /// </summary>
+    private static DateTime? ExtractResetTimestamp(Exception ex)
+    {
+        var current = ex;
+        while (current != null)
+        {
+            // Look for quota_reset_timestamp in the exception message
+            // Format: "quota_reset_timestamp":"2025-12-21T00:00:00+00:00"
+            var message = current.Message;
+            var marker = "\"quota_reset_timestamp\":\"";
+            var startIndex = message.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (startIndex >= 0)
+            {
+                startIndex += marker.Length;
+                var endIndex = message.IndexOf('"', startIndex);
+                if (endIndex > startIndex)
+                {
+                    var timestampStr = message.Substring(startIndex, endIndex - startIndex);
+                    if (DateTime.TryParse(timestampStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out var timestamp))
+                    {
+                        return timestamp.ToUniversalTime();
+                    }
+                }
+            }
+            current = current.InnerException;
+        }
+        return null;
     }
 
     public override async Task<ModelsResponse> GetModels()

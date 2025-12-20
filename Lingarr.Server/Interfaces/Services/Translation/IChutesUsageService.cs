@@ -21,7 +21,8 @@ public interface IChutesUsageService
 
     /// <summary>
     /// Signals that a 402 PaymentRequired error was received, triggering a pause
-    /// on all Chutes translations until credits are available again.
+    /// on all Chutes translations until the reset timestamp or credits become available.
     /// </summary>
-    void NotifyPaymentRequired();
+    /// <param name="resetTimestamp">Optional reset timestamp from the 402 response. If provided, the pause will last until this time.</param>
+    void NotifyPaymentRequired(DateTime? resetTimestamp = null);
 }
