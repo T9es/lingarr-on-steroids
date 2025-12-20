@@ -1,6 +1,5 @@
 ﻿using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
-using Lingarr.Core.Enum;
 using Lingarr.Server.Hubs;
 using Lingarr.Server.Interfaces.Services;
 using Microsoft.AspNetCore.SignalR;
@@ -9,25 +8,34 @@ using Microsoft.OpenApi.Extensions;
 
 namespace Lingarr.Server.Services;
 
+/// <summary>
+/// Service responsible for emitting translation progress updates to the database and SignalR clients.
+/// Uses IServiceScopeFactory to create isolated DbContext instances, avoiding threading conflicts
+/// during batch translation where multiple async operations may be in progress.
+/// </summary>
 public class ProgressService : IProgressService
 {
     private readonly IHubContext<TranslationRequestsHub> _hubContext;
-    private readonly LingarrDbContext _dbContext;
+    private readonly IServiceScopeFactory _scopeFactory;
 
     public ProgressService(
         IHubContext<TranslationRequestsHub> hubContext, 
-        LingarrDbContext dbContext)
+        IServiceScopeFactory scopeFactory)
     {
         _hubContext = hubContext;
-        _dbContext = dbContext;
+        _scopeFactory = scopeFactory;
     }
 
     /// <inheritdoc />
     public async Task Emit(TranslationRequest translationRequest, int progress)
     {
-        // Persist progress to the database using direct update to avoid conflicts
-        // with other tracked entities
-        await _dbContext.TranslationRequests
+        // Create isolated DbContext to avoid threading conflicts during batch translation
+        // The main TranslationJob uses a separate DbContext instance; this prevents
+        // "A second operation was started on this context instance" exceptions
+        using var scope = _scopeFactory.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<LingarrDbContext>();
+        
+        await dbContext.TranslationRequests
             .Where(tr => tr.Id == translationRequest.Id)
             .ExecuteUpdateAsync(setters => setters.SetProperty(tr => tr.Progress, progress));
 
@@ -51,8 +59,11 @@ public class ProgressService : IProgressService
 
         var ids = translationRequests.Select(tr => tr.Id).ToList();
 
-        // Bulk update Progress in DB
-        await _dbContext.TranslationRequests
+        // Create isolated DbContext for bulk update
+        using var scope = _scopeFactory.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<LingarrDbContext>();
+        
+        await dbContext.TranslationRequests
             .Where(tr => ids.Contains(tr.Id))
             .ExecuteUpdateAsync(setters => setters.SetProperty(tr => tr.Progress, progress));
 
