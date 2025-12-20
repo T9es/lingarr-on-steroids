@@ -1,25 +1,31 @@
-﻿<template>
+<template>
     <div v-if="loading" class="md:px-4">
         <LoaderCircleIcon class="h-5 w-5 animate-spin" />
     </div>
     <div v-else-if="cancelable">
         <button
             :disabled="loading"
-            class="md:px-4"
+            class="hover:bg-accent/20 focus:ring-accent cursor-pointer rounded-full p-2 transition-colors focus:ring-2 focus:outline-hidden md:px-4"
+            :aria-label="translate('translations.cancel')"
+            :title="translate('translations.cancel')"
             @click="executeAction(TRANSLATION_ACTIONS.CANCEL)">
-            <TimesIcon class="h-5 w-5 cursor-pointer" />
+            <TimesIcon class="h-5 w-5" />
         </button>
     </div>
     <div v-else-if="removable" class="md:space-x-2">
         <button
             :disabled="loading"
-            class="cursor-pointer"
+            class="hover:bg-accent/20 focus:ring-accent cursor-pointer rounded-full p-2 transition-colors focus:ring-2 focus:outline-hidden"
+            :aria-label="translate('common.retry')"
+            :title="translate('common.retry')"
             @click="executeAction(TRANSLATION_ACTIONS.RETRY)">
             <RetryIcon class="h-5 w-5" />
         </button>
         <button
             :disabled="loading"
-            class="cursor-pointer"
+            class="hover:bg-accent/20 focus:ring-accent cursor-pointer rounded-full p-2 transition-colors focus:ring-2 focus:outline-hidden"
+            :aria-label="translate('translations.delete')"
+            :title="translate('translations.delete')"
             @click="executeAction(TRANSLATION_ACTIONS.REMOVE)">
             <TrashIcon class="h-5 w-5" />
         </button>
@@ -29,6 +35,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { TRANSLATION_ACTIONS, TRANSLATION_STATUS, TranslationStatus } from '@/ts'
+import { useI18n } from '@/plugins/i18n'
 import TimesIcon from '@/components/icons/TimesIcon.vue'
 import LoaderCircleIcon from '@/components/icons/LoaderCircleIcon.vue'
 import TrashIcon from '@/components/icons/TrashIcon.vue'
@@ -39,6 +46,7 @@ const props = defineProps<{
     onAction: (action: TRANSLATION_ACTIONS) => Promise<void>
 }>()
 
+const { translate } = useI18n()
 const loading = ref(false)
 
 const cancelable = computed(
