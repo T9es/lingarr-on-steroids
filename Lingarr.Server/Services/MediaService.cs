@@ -74,16 +74,15 @@ public class MediaService : IMediaService
             .Take(pageSize)
             .ToListAsync();
 
-        var enrichedMovies = new List<MovieResponse>();
-        foreach (var movie in movies)
+        var tasks = movies.Select(async movie =>
         {
             if (movie.Path == null)
             {
-                continue;
+                return null;
             }
 
             var subtitles = await _subtitleService.GetAllSubtitles(movie.Path);
-            var enrichedMovie = new MovieResponse
+            return new MovieResponse
             {
                 Id = movie.Id,
                 RadarrId = movie.RadarrId,
@@ -99,8 +98,10 @@ public class MediaService : IMediaService
                 PriorityDate = movie.PriorityDate,
                 TranslationState = (int)movie.TranslationState
             };
-            enrichedMovies.Add(enrichedMovie);
-        }
+        });
+
+        var results = await Task.WhenAll(tasks);
+        var enrichedMovies = results.Where(m => m != null).Cast<MovieResponse>().ToList();
 
         return new PagedResult<MovieResponse>
         {

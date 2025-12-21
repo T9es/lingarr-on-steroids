@@ -38,50 +38,52 @@ public class SubtitleService : ISubtitleService
         }
 
         var subtitles = new List<Subtitles>();
-        foreach (var extension in SupportedExtensions)
+        // Optimize: Scan directory once for all files, then filter in memory
+        var allFiles = Directory.EnumerateFiles(path, "*.*", SearchOption.AllDirectories);
+
+        foreach (var file in allFiles)
         {
-            var files = Directory.GetFiles(path, $"*{extension}", SearchOption.AllDirectories);
-
-            var subtitleFiles = files.Select(file =>
+            var extension = Path.GetExtension(file).ToLowerInvariant();
+            if (!SupportedExtensions.Contains(extension))
             {
-                var fileName = Path.GetFileNameWithoutExtension(file);
-                var parts = fileName.Split('.').Reverse().ToList();
-                var language = "";
-                var caption = "";
+                continue;
+            }
 
-                // First look for caption
-                var captionPart = parts.FirstOrDefault(p => SupportedCaptions.Contains(p.ToLower()));
-                if (captionPart != null)
-                {
-                    caption = captionPart.ToLower();
-                    parts.Remove(captionPart);
-                }
+            var fileName = Path.GetFileNameWithoutExtension(file);
+            var parts = fileName.Split('.').Reverse().ToList();
+            var language = "";
+            var caption = "";
 
-                // Then look for language in remaining parts
-                var languagePart = parts.FirstOrDefault(p => TryGetLanguageByPart(p, out var code));
-                if (languagePart != null && TryGetLanguageByPart(languagePart, out var languageCode))
-                {
-                    language = languageCode;
-                    parts.Remove(languagePart);
-                }
-                // Hindi is an exception, if we didn't find a language, and we did found Hindi, We set that as language
-                else if (caption == "hi" && language == "")
-                {
-                    language = caption;
-                    caption = "";
-                }
+            // First look for caption
+            var captionPart = parts.FirstOrDefault(p => SupportedCaptions.Contains(p.ToLower()));
+            if (captionPart != null)
+            {
+                caption = captionPart.ToLower();
+                parts.Remove(captionPart);
+            }
 
-                return new Subtitles
-                {
-                    Path = file,
-                    FileName = fileName,
-                    Language = language ?? "unknown",
-                    Caption = caption,
-                    Format = extension
-                };
+            // Then look for language in remaining parts
+            var languagePart = parts.FirstOrDefault(p => TryGetLanguageByPart(p, out var code));
+            if (languagePart != null && TryGetLanguageByPart(languagePart, out var languageCode))
+            {
+                language = languageCode;
+                parts.Remove(languagePart);
+            }
+            // Hindi is an exception, if we didn't find a language, and we did found Hindi, We set that as language
+            else if (caption == "hi" && language == "")
+            {
+                language = caption;
+                caption = "";
+            }
+
+            subtitles.Add(new Subtitles
+            {
+                Path = file,
+                FileName = fileName,
+                Language = language ?? "unknown",
+                Caption = caption,
+                Format = extension
             });
-
-            subtitles.AddRange(subtitleFiles);
         }
 
         return Task.FromResult(subtitles);
