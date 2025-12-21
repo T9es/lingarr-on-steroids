@@ -146,16 +146,28 @@ const filteredLogs = computed(() => {
     })
 })
 
+const escapeHtml = (unsafe: string): string => {
+    return unsafe
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;')
+}
+
 const formatLogMessage = (message: string): string => {
+    // Escape HTML first to prevent XSS
+    let formattedMessage = escapeHtml(message)
+
     // Replace color tags
-    let formattedMessage = message
+    formattedMessage = formattedMessage
         .replace(/\|Green\|([^|]*)\|\/Green\|/g, '<span class="text-green-500">$1</span>')
         .replace(/\|Red\|([^|]*)\|\/Red\|/g, '<span class="text-red-500">$1</span>')
         .replace(/\|Orange\|([^|]*)\|\/Orange\|/g, '<span class="text-orange-500">$1</span>')
 
     // Highlight environment variables
     formattedMessage = formattedMessage.replace(
-        /'([A-Z_]+)'/g,
+        /&#039;([A-Z_]+)&#039;/g,
         '<span class="text-accent">\'$1\'</span>'
     )
 
