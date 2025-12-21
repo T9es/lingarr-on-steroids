@@ -231,11 +231,7 @@ const subtitleTag = computed({
 const subtitleTagShort = computed({
     get: (): string => settingsStore.getSetting(SETTINGS.SUBTITLE_TAG_SHORT) as string,
     set: (newValue: string): void => {
-        settingsStore.updateSetting(
-            SETTINGS.SUBTITLE_TAG_SHORT,
-            newValue,
-            isValid.subtitleTagShort
-        )
+        settingsStore.updateSetting(SETTINGS.SUBTITLE_TAG_SHORT, newValue, isValid.subtitleTagShort)
         saveNotification.value?.show()
     }
 })
