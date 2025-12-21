@@ -92,7 +92,8 @@
                             {{ translate('settings.integrity.stats.total') }}: {{ stats.total }} ({{
                                 stats.totalMovies
                             }}
-                            {{ translate('settings.integrity.stats.movies') }}, {{ stats.totalEpisodes }}
+                            {{ translate('settings.integrity.stats.movies') }},
+                            {{ stats.totalEpisodes }}
                             {{ translate('settings.integrity.stats.episodes') }})
                         </div>
 
@@ -147,22 +148,28 @@
                                 </svg>
                                 Scanning...
                             </span>
-                            <span v-else>
-                                Verify ASS Integrity
-                            </span>
+                            <span v-else>Verify ASS Integrity</span>
                         </button>
                     </div>
 
                     <!-- Persistent Results -->
                     <div v-if="assResult" class="w-full space-y-4">
                         <!-- Stats Grid -->
-                        <div class="grid grid-cols-2 gap-4 w-full">
+                        <div class="grid w-full grid-cols-2 gap-4">
                             <div class="bg-base-200 rounded p-4 text-center">
-                                <div class="text-2xl font-bold">{{ assResult.totalFilesScanned }}</div>
+                                <div class="text-2xl font-bold">
+                                    {{ assResult.totalFilesScanned }}
+                                </div>
                                 <div class="text-sm opacity-70">Files Scanned</div>
                             </div>
                             <div class="bg-base-200 rounded p-4 text-center">
-                                <div class="text-2xl font-bold" :class="assResult.filesWithDrawings > 0 ? 'text-yellow-500' : 'text-green-500'">
+                                <div
+                                    class="text-2xl font-bold"
+                                    :class="
+                                        assResult.filesWithDrawings > 0
+                                            ? 'text-yellow-500'
+                                            : 'text-green-500'
+                                    ">
                                     {{ assResult.filesWithDrawings }}
                                 </div>
                                 <div class="text-sm opacity-70">Files with Issues</div>
@@ -170,7 +177,9 @@
                         </div>
 
                         <!-- Flagged Items List -->
-                        <div v-if="assResult.flaggedItems && assResult.flaggedItems.length > 0" class="space-y-3 w-full">
+                        <div
+                            v-if="assResult.flaggedItems && assResult.flaggedItems.length > 0"
+                            class="w-full space-y-3">
                             <div class="flex items-center justify-between">
                                 <h4 class="font-semibold">Flagged Files</h4>
                                 <button
@@ -179,18 +188,25 @@
                                     Requeue All for Translation
                                 </button>
                             </div>
-                            <div class="bg-base-200 max-h-96 overflow-y-auto rounded w-full">
+                            <div class="bg-base-200 max-h-96 w-full overflow-y-auto rounded">
                                 <div
                                     v-for="item in assResult.flaggedItems"
                                     :key="item.subtitlePath"
-                                    class="border-b border-base-300 last:border-0">
-                                    <div 
-                                        class="flex items-center justify-between p-3 cursor-pointer hover:bg-base-300/50"
+                                    class="border-base-300 border-b last:border-0">
+                                    <div
+                                        class="hover:bg-base-300/50 flex cursor-pointer items-center justify-between p-3"
                                         @click="toggleExpand(item.subtitlePath)">
                                         <div class="flex-1 overflow-hidden">
-                                            <div class="font-medium truncate">{{ item.mediaTitle }}</div>
-                                            <div class="text-xs opacity-50 truncate">{{ item.subtitlePath }}</div>
-                                            <div class="text-xs text-yellow-500">{{ item.suspiciousLineCount }} suspicious lines (click to view)</div>
+                                            <div class="truncate font-medium">
+                                                {{ item.mediaTitle }}
+                                            </div>
+                                            <div class="truncate text-xs opacity-50">
+                                                {{ item.subtitlePath }}
+                                            </div>
+                                            <div class="text-xs text-yellow-500">
+                                                {{ item.suspiciousLineCount }} suspicious lines
+                                                (click to view)
+                                            </div>
                                         </div>
                                         <button
                                             class="ml-2 text-sm opacity-50 hover:opacity-100"
@@ -199,14 +215,19 @@
                                         </button>
                                     </div>
                                     <!-- Expandable suspicious lines -->
-                                    <div 
-                                        v-if="expandedItems.includes(item.subtitlePath) && item.suspiciousLines"
-                                        class="bg-base-300/30 p-3 border-t border-base-300 text-xs">
-                                        <div class="font-semibold mb-2 opacity-70">Suspicious lines:</div>
-                                        <div 
-                                            v-for="(line, idx) in item.suspiciousLines" 
+                                    <div
+                                        v-if="
+                                            expandedItems.includes(item.subtitlePath) &&
+                                            item.suspiciousLines
+                                        "
+                                        class="bg-base-300/30 border-base-300 border-t p-3 text-xs">
+                                        <div class="mb-2 font-semibold opacity-70">
+                                            Suspicious lines:
+                                        </div>
+                                        <div
+                                            v-for="(line, idx) in item.suspiciousLines"
                                             :key="idx"
-                                            class="font-mono text-yellow-400 truncate py-1">
+                                            class="truncate py-1 font-mono text-yellow-400">
                                             {{ line }}
                                         </div>
                                     </div>
@@ -217,7 +238,7 @@
                         <!-- Success Message -->
                         <div
                             v-if="assResult.filesWithDrawings === 0"
-                            class="rounded border border-green-500/30 bg-green-500/10 p-4 text-center text-green-400 w-full">
+                            class="w-full rounded border border-green-500/30 bg-green-500/10 p-4 text-center text-green-400">
                             All files passed verification!
                         </div>
                     </div>
@@ -333,7 +354,7 @@ onMounted(async () => {
         // 400 is expected when no scan has been run yet
         console.debug('No existing ASS verification result')
     }
-    
+
     hubConnection.value = await signalR.connect('JobProgress', '/signalr/JobProgress')
     await hubConnection.value.joinGroup({ group: 'JobProgress' })
     hubConnection.value.on('BulkIntegrityProgress', handleProgress)
@@ -366,7 +387,7 @@ const expandedItems = ref<string[]>([])
 
 const toggleExpand = (path: string) => {
     if (expandedItems.value.includes(path)) {
-        expandedItems.value = expandedItems.value.filter(p => p !== path)
+        expandedItems.value = expandedItems.value.filter((p) => p !== path)
     } else {
         expandedItems.value.push(path)
     }
@@ -392,7 +413,7 @@ const startAssVerification = async () => {
 
 const requeueAll = async () => {
     if (!assResult.value?.flaggedItems) return
-    
+
     try {
         for (const item of assResult.value.flaggedItems) {
             // MediaType should be string like 'Movie' or 'Episode'
@@ -404,7 +425,7 @@ const requeueAll = async () => {
         // Clear the list after requeue
         assResult.value.flaggedItems = []
         assResult.value.filesWithDrawings = 0
-        
+
         // Update persisted result
         await axios.post('/api/setting', {
             key: 'subtitle_ass_verification_last_result',
@@ -417,13 +438,13 @@ const requeueAll = async () => {
 
 const dismissItem = async (item: AssVerificationItem) => {
     if (!assResult.value?.flaggedItems) return
-    
+
     // Remove from list
     assResult.value.flaggedItems = assResult.value.flaggedItems.filter(
-        i => i.subtitlePath !== item.subtitlePath
+        (i) => i.subtitlePath !== item.subtitlePath
     )
     assResult.value.filesWithDrawings = assResult.value.flaggedItems.length
-    
+
     // Update persisted result
     await axios.post('/api/setting', {
         key: 'subtitle_ass_verification_last_result',
