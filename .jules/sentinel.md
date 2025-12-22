@@ -1,0 +1,4 @@
+## 2025-12-22 - Unsecured Hangfire Dashboard
+**Vulnerability:** The Hangfire Dashboard was exposed without authentication because `LingarrAuthorizationFilter` returned `true` for all requests.
+**Learning:** Default authorization filters in scaffolding often permit all access to ease development but become critical risks in production if not updated. The application relies on network isolation rather than application-level auth for most endpoints, but admin dashboards (Hangfire) allow destructive actions and information leakage (job parameters, file paths).
+**Prevention:** Always implement `IDashboardAuthorizationFilter` with at least Basic Authentication or restrict to local requests. In this fix, we implemented Basic Auth with support for Environment Variables and safe defaults (randomly generated password) to prevent "default password" attacks.
