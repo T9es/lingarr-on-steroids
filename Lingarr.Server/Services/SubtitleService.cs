@@ -17,8 +17,18 @@ public class SubtitleService : ISubtitleService
     private static readonly string[] SupportedCaptions = ["sdh", "cc", "forced", "hi"];
     private static readonly char[] WhitespaceCharacters = [' ', '\t', '\n', '\r'];
 
-    private static readonly CultureInfo[] Cultures = CultureInfo.GetCultures(CultureTypes.AllCultures);
+    private static readonly Dictionary<string, string> LanguageLookup = new(StringComparer.OrdinalIgnoreCase);
     private readonly ILogger<SubtitleService> _logger;
+
+    static SubtitleService()
+    {
+        foreach (var c in CultureInfo.GetCultures(CultureTypes.AllCultures))
+        {
+            if (!string.IsNullOrEmpty(c.Name)) LanguageLookup[c.Name] = c.TwoLetterISOLanguageName;
+            if (!string.IsNullOrEmpty(c.ThreeLetterISOLanguageName)) LanguageLookup[c.ThreeLetterISOLanguageName] = c.TwoLetterISOLanguageName;
+            if (!string.IsNullOrEmpty(c.TwoLetterISOLanguageName)) LanguageLookup[c.TwoLetterISOLanguageName] = c.TwoLetterISOLanguageName;
+        }
+    }
 
     public SubtitleService(
         ILogger<SubtitleService> logger)
@@ -648,18 +658,13 @@ public class SubtitleService : ISubtitleService
     /// </param>
     private static bool TryGetLanguageByPart(string part, out string? languageCode)
     {
-        languageCode = null;
-        var culture = Cultures.FirstOrDefault(c =>
-            string.Equals(part, c.Name, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(part, c.ThreeLetterISOLanguageName, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(part, c.TwoLetterISOLanguageName, StringComparison.OrdinalIgnoreCase));
-
-        if (culture != null)
+        if (LanguageLookup.TryGetValue(part, out var code))
         {
-            languageCode = culture.TwoLetterISOLanguageName;
+            languageCode = code;
             return true;
         }
 
+        languageCode = null;
         return false;
     }
 }
