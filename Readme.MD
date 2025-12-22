@@ -181,6 +181,8 @@ These variables can be used
 | `DB_USERNAME=lingarr`                             | The username for the database (required when using `postgresql`).                 |
 | `DB_PASSWORD=lingarr`                             | The password for the database (required when using `postgresql`).                 |
 | `DB_HANGFIRE_SQLITE_PATH=/app/config/Hangfire.db` | The path of the sqlite database file for Hangfire, when sqlite connection is used |
+| `HANGFIRE_USERNAME`                               | Username for the Hangfire dashboard (`/hangfire`). Defaults to `admin` if not set. |
+| `HANGFIRE_PASSWORD`                               | Password for the Hangfire dashboard. If not set, a random password is generated and printed to the console on startup. |
 
 Additional [settings](Settings.MD) can be found here that can be set as environment variables to persist settings for each reinstall
 
