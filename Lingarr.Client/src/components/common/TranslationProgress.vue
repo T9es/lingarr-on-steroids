@@ -1,5 +1,12 @@
-﻿<template>
-    <div class="relative grow select-none" :title="`${progress}%`">
+<template>
+    <div
+        class="relative grow select-none"
+        role="progressbar"
+        :aria-valuenow="progress"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        :aria-label="ariaLabel ?? 'Translation progress'"
+        :title="`${progress}%`">
         <div
             class="bg-secondary h-2 w-full overflow-hidden rounded-full brightness-125 select-none">
             <div
@@ -12,5 +19,6 @@
 <script setup lang="ts">
 defineProps<{
     progress: number
+    ariaLabel?: string
 }>()
 </script>
