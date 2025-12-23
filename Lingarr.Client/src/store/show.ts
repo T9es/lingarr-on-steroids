@@ -34,6 +34,15 @@ export const useShowStore = defineStore('show', {
                 this.filter.isAscending
             )
         },
+        async fetchShow(id: number) {
+            const show = await services.media.show<IShow>(id)
+            if (show) {
+                const index = this.shows.items.findIndex((s) => s.id === id)
+                if (index !== -1) {
+                    this.shows.items[index] = show
+                }
+            }
+        },
         async exclude(type: MediaType, id: number) {
             await services.media.exclude(type, id)
         },

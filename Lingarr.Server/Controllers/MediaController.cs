@@ -72,6 +72,22 @@ public class MediaController : ControllerBase
             pageSize);
         return Ok(value);
     }
+
+    /// <summary>
+    /// Retrieves a specific show by its ID, including its seasons and episodes.
+    /// </summary>
+    /// <param name="id">The unique identifier of the show.</param>
+    /// <returns>Returns an HTTP 200 OK response with the show if found, or 404 Not Found.</returns>
+    [HttpGet("shows/{id}")]
+    public async Task<ActionResult<Show>> GetShow(int id)
+    {
+        var value = await _mediaService.GetShow(id);
+        if (value == null)
+        {
+            return NotFound();
+        }
+        return Ok(value);
+    }
     
     /// <summary>
     /// Toggles the exclusion status of a specified media item from translation.
