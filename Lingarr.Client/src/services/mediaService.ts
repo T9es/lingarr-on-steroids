@@ -25,6 +25,17 @@ const service = (http: AxiosStatic, resource = '/api/media'): IMediaService => (
                 })
         })
     },
+    show<T>(id: number): Promise<T> {
+        return new Promise((resolve, reject) => {
+            http.get(`${resource}/shows/${id}`)
+                .then((response: AxiosResponse<T>) => {
+                    resolve(response.data)
+                })
+                .catch((error: AxiosError) => {
+                    reject(error.response)
+                })
+        })
+    },
     shows<T>(
         pageNumber: number,
         searchQuery: string,

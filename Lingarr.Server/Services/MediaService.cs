@@ -228,9 +228,8 @@ public class MediaService : IMediaService
         int pageSize)
     {
         var query = _dbContext.Shows
+            .AsNoTracking()
             .Include(s => s.Images)
-            .Include(s => s.Seasons)
-            .ThenInclude(season => season.Episodes)
             .AsSplitQuery()
             .AsQueryable();
 
@@ -260,6 +259,17 @@ public class MediaService : IMediaService
             PageNumber = pageNumber,
             PageSize = pageSize
         };
+    }
+
+    /// <inheritdoc />
+    public async Task<Show?> GetShow(int id)
+    {
+        return await _dbContext.Shows
+            .Include(s => s.Images)
+            .Include(s => s.Seasons)
+            .ThenInclude(season => season.Episodes)
+            .AsSplitQuery()
+            .FirstOrDefaultAsync(s => s.Id == id);
     }
     
     /// <inheritdoc />

@@ -49,6 +49,15 @@ public interface IMediaService
         int pageSize);
 
     /// <summary>
+    /// Retrieves a specific show by its ID, including its seasons and episodes.
+    /// </summary>
+    /// <param name="id">The unique identifier of the show.</param>
+    /// <returns>
+    /// A task result containing the show if found, or null if not found.
+    /// </returns>
+    Task<Show?> GetShow(int id);
+
+    /// <summary>
     /// Retrieves a movie id (lingarr's id) from the database with a Radarr movie id.
     /// If it is not in the database, it will try to sync the Movie with Radarr
     /// If the Movie is not found in Rdarr either, 0 will be returned
