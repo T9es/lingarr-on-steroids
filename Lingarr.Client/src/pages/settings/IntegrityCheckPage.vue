@@ -203,12 +203,20 @@
                                             <div class="truncate text-xs opacity-50">
                                                 {{ item.subtitlePath }}
                                             </div>
-                                            <div class="text-xs text-yellow-500">
-                                                {{ item.suspiciousLineCount }} suspicious lines
-                                                (click to view)
+                                            <div class="flex items-center gap-2">
+                                                <span class="text-xs text-yellow-500">
+                                                    {{ item.suspiciousLineCount }} suspicious lines
+                                                    (click to view)
+                                                </span>
+                                                <span
+                                                    v-if="item.isQueued"
+                                                    class="rounded bg-blue-500/20 px-2 py-0.5 text-xs text-blue-400">
+                                                    Already queued
+                                                </span>
                                             </div>
                                         </div>
                                         <button
+                                            v-if="!item.isQueued"
                                             class="ml-2 text-sm opacity-50 hover:opacity-100"
                                             @click.stop="dismissItem(item)">
                                             Dismiss
@@ -373,6 +381,7 @@ interface AssVerificationItem {
     suspiciousLineCount: number
     suspiciousLines: string[]
     dismissed: boolean
+    isQueued: boolean
 }
 
 interface AssVerificationResult {
@@ -415,16 +424,22 @@ const requeueAll = async () => {
     if (!assResult.value?.flaggedItems) return
 
     try {
-        for (const item of assResult.value.flaggedItems) {
+        // Only requeue items that are not already in queue
+        const itemsToRequeue = assResult.value.flaggedItems.filter((item) => !item.isQueued)
+        
+        for (const item of itemsToRequeue) {
             // MediaType should be string like 'Movie' or 'Episode'
             await axios.post('/api/translate/media', {
                 mediaId: item.mediaId,
                 mediaType: item.mediaType
             })
         }
-        // Clear the list after requeue
-        assResult.value.flaggedItems = []
-        assResult.value.filesWithDrawings = 0
+        
+        // Mark requeued items as isQueued instead of removing them
+        assResult.value.flaggedItems = assResult.value.flaggedItems.map((item) => ({
+            ...item,
+            isQueued: true
+        }))
 
         // Update persisted result
         await axios.post('/api/setting', {
