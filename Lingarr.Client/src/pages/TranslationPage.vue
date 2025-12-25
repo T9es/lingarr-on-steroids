@@ -1,4 +1,4 @@
-﻿<template>
+<template>
     <PageLayout>
         <div class="w-full">
             <!-- Tabs -->
@@ -132,11 +132,16 @@
                             </h2>
                             <button
                                 v-if="failedRequests.length"
-                                class="border-accent text-primary-content hover:bg-accent cursor-pointer rounded-md border px-3 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+                                class="border-accent text-primary-content hover:bg-accent flex cursor-pointer items-center gap-2 rounded-md border px-3 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                                 :disabled="retryingFailed"
                                 @click="retryAllFailed">
-                                {{ translate('common.retry') }}
-                                ({{ failedRequests.length }})
+                                <LoaderCircleIcon
+                                    v-if="retryingFailed"
+                                    class="h-3 w-3 animate-spin" />
+                                <span>
+                                    {{ translate('common.retry') }}
+                                    ({{ failedRequests.length }})
+                                </span>
                             </button>
                             <span v-else class="text-secondary-content text-xs">
                                 0 {{ translate('common.items') }}
@@ -177,6 +182,7 @@
                                     <button
                                         class="border-accent hover:bg-accent cursor-pointer rounded border px-2 py-1 text-xs transition-colors"
                                         :title="translate('translations.viewLogs')"
+                                        :aria-label="translate('translations.viewLogs')"
                                         @click.stop="openLogs(item)">
                                         {{ translate('translations.logs') }}
                                     </button>
@@ -326,6 +332,7 @@
                                             "
                                             class="border-accent hover:bg-accent cursor-pointer rounded border p-1 transition-colors"
                                             :title="translate('translations.runTest')"
+                                            :aria-label="translate('translations.runTest')"
                                             @click.stop="runTestForItem(item)">
                                             <TestIcon class="h-4 w-4" />
                                         </button>
@@ -334,6 +341,7 @@
                                             v-if="item.status === TRANSLATION_STATUS.FAILED"
                                             class="border-accent hover:bg-accent cursor-pointer rounded border px-2 py-1 text-xs transition-colors"
                                             :title="translate('translations.viewLogs')"
+                                            :aria-label="translate('translations.viewLogs')"
                                             @click.stop="openLogs(item)">
                                             {{ translate('translations.logs') }}
                                         </button>
@@ -465,6 +473,7 @@ import PageLayout from '@/components/layout/PageLayout.vue'
 import CheckboxComponent from '@/components/common/CheckboxComponent.vue'
 import TestPanel from '@/components/features/translations/TestPanel.vue'
 import TestIcon from '@/components/icons/TestIcon.vue'
+import LoaderCircleIcon from '@/components/icons/LoaderCircleIcon.vue'
 
 const { translate } = useI18n()
 const signalR = useSignalR()

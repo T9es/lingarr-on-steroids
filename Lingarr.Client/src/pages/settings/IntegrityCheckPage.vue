@@ -426,7 +426,7 @@ const requeueAll = async () => {
     try {
         // Only requeue items that are not already in queue
         const itemsToRequeue = assResult.value.flaggedItems.filter((item) => !item.isQueued)
-        
+
         for (const item of itemsToRequeue) {
             // MediaType should be string like 'Movie' or 'Episode'
             await axios.post('/api/translate/media', {
@@ -434,7 +434,7 @@ const requeueAll = async () => {
                 mediaType: item.mediaType
             })
         }
-        
+
         // Mark requeued items as isQueued instead of removing them
         assResult.value.flaggedItems = assResult.value.flaggedItems.map((item) => ({
             ...item,
