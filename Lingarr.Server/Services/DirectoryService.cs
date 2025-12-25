@@ -47,6 +47,12 @@ public class DirectoryService : IDirectoryService
                 continue;
             }
 
+            // Skip hidden directories (starting with .) to prevent information leakage
+            if (dir.Name.StartsWith('.'))
+            {
+                continue;
+            }
+
             items.Add(new DirectoryItem
             {
                 Name = dir.Name,
