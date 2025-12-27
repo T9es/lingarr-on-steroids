@@ -59,6 +59,7 @@ public class StartupService : IHostedService
             { SettingKeys.Translation.RemoveLanguageTag, "false" },
             { SettingKeys.Translation.SubtitleTag, "[Lingarr]" },
             { SettingKeys.Translation.SubtitleTagShort, "-ai-" },
+            { SettingKeys.Translation.CleanupOrphanedSubtitles, "false" },
 
             // Request/Retry
             { SettingKeys.Translation.RequestTimeout, "15" },

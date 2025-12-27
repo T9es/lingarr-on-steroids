@@ -301,6 +301,9 @@
       "subtitleTag": "Subtitle tag",
       "subtitleTagShort": "Short Subtitle Tag",
       "subtitleTagShortDescription": "A shorter tag to use if the filename with the main tag is too long (e.g. \"-ai-\"). This helps preserve media server association when the file path hits system limits.",
+      "cleanupOrphanedSubtitles": "Cleanup Orphaned Subtitles",
+      "cleanupOrphanedSubtitlesDescription": "Automatically delete AI-translated subtitles when media files are upgraded and the filename changes. Only removes files with your configured subtitle tag.",
+      "cleanupRequiresTagging": "Subtitle tagging must be enabled for automatic cleanup to identify Lingarr-created files.",
       "subtitleIntegrityValidationEnabled": "Validate Subtitle Integrity",
       "subtitleIntegrityValidationEnabledDescription": "Check if the translated subtitle has roughly the same number of lines as the original to detect partial translations."
     },

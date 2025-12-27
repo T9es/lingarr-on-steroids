@@ -85,6 +85,7 @@ public static class SettingKeys
         public const string RemoveLanguageTag = "remove_language_tag";
         public const string SubtitleTag = "subtitle_tag";
         public const string SubtitleTagShort = "subtitle_tag_short";
+        public const string CleanupOrphanedSubtitles = "cleanup_orphaned_subtitles";
         public const string IgnoreCaptions = "ignore_captions";
         public const string RequestTimeout = "request_timeout";
         public const string MaxRetries = "max_retries";

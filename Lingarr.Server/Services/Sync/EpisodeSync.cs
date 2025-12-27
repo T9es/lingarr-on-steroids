@@ -17,6 +17,7 @@ public class EpisodeSync : IEpisodeSync
     private readonly PathConversionService _pathConversionService;
     private readonly ISubtitleExtractionService _extractionService;
     private readonly IMediaStateService _mediaStateService;
+    private readonly IOrphanSubtitleCleanupService _orphanCleanupService;
     private readonly ILogger<EpisodeSync> _logger;
 
     private readonly LingarrDbContext _dbContext;
@@ -26,6 +27,7 @@ public class EpisodeSync : IEpisodeSync
         PathConversionService pathConversionService,
         ISubtitleExtractionService extractionService,
         IMediaStateService mediaStateService,
+        IOrphanSubtitleCleanupService orphanCleanupService,
         ILogger<EpisodeSync> logger,
         LingarrDbContext dbContext)
     {
@@ -33,6 +35,7 @@ public class EpisodeSync : IEpisodeSync
         _pathConversionService = pathConversionService;
         _extractionService = extractionService;
         _mediaStateService = mediaStateService;
+        _orphanCleanupService = orphanCleanupService;
         _logger = logger;
         _dbContext = dbContext;
     }
@@ -43,7 +46,7 @@ public class EpisodeSync : IEpisodeSync
         var episodes = await _sonarrService.GetEpisodes(show.Id, season.SeasonNumber);
         if (episodes == null) return;
 
-        var syncedEpisodes = new List<(Episode Entity, bool NeedsIndexing)>();
+        var syncedEpisodes = new List<(Episode Entity, bool NeedsIndexing, string? OldPath, string? OldFileName)>();
 
         foreach (var episode in episodes.Where(e => e.HasFile))
         {
@@ -53,8 +56,8 @@ public class EpisodeSync : IEpisodeSync
                 MediaType.Show
             );
             
-            var (entity, needsIndexing) = await UpdateEpisodeMetadata(episode, episodePath, season, episodePathResult?.EpisodeFile.DateAdded);
-            syncedEpisodes.Add((entity, needsIndexing));
+            var (entity, needsIndexing, oldPath, oldFileName) = await UpdateEpisodeMetadata(episode, episodePath, season, episodePathResult?.EpisodeFile.DateAdded);
+            syncedEpisodes.Add((entity, needsIndexing, oldPath, oldFileName));
         }
 
         // Batch save all metadata updates/additions
@@ -64,8 +67,17 @@ public class EpisodeSync : IEpisodeSync
         }
 
         // Now that IDs are assigned for new entities, perform indexing and state updates
-        foreach (var (entity, needsIndexing) in syncedEpisodes)
+        foreach (var (entity, needsIndexing, oldPath, oldFileName) in syncedEpisodes)
         {
+            // Clean up orphaned subtitles when the filename changes (e.g., media upgraded)
+            if (!string.IsNullOrEmpty(oldPath) && !string.IsNullOrEmpty(oldFileName) && oldFileName != entity.FileName)
+            {
+                await _orphanCleanupService.CleanupOrphansAsync(
+                    oldPath,
+                    oldFileName,
+                    entity.FileName!);
+            }
+
             if (needsIndexing)
             {
                 await IndexEmbeddedSubtitles(entity);
@@ -87,8 +99,9 @@ public class EpisodeSync : IEpisodeSync
 
     /// <summary>
     /// Updates or creates the episode entity metadata without saving to DB.
+    /// Returns the entity, whether it needs indexing, and old path/filename if changed.
     /// </summary>
-    private async Task<(Episode Entity, bool NeedsIndexing)> UpdateEpisodeMetadata(SonarrEpisode episode, string episodePath, Season season, DateTime? dateAdded)
+    private async Task<(Episode Entity, bool NeedsIndexing, string? OldPath, string? OldFileName)> UpdateEpisodeMetadata(SonarrEpisode episode, string episodePath, Season season, DateTime? dateAdded)
     {
         var episodeEntity = season.Episodes.FirstOrDefault(se => se.SonarrId == episode.Id);
         
@@ -124,7 +137,9 @@ public class EpisodeSync : IEpisodeSync
             oldFileName != episodeEntity.FileName);
 
         var needsIndexing = isNew || fileChanged || episodeEntity.IndexedAt == null;
-        return (episodeEntity, needsIndexing);
+        
+        // Return old values only if file actually changed
+        return (episodeEntity, needsIndexing, fileChanged ? oldPath : null, fileChanged ? oldFileName : null);
     }
 
     private async Task IndexEmbeddedSubtitles(Episode episodeEntity)

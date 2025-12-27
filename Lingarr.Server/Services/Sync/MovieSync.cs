@@ -18,6 +18,7 @@ public class MovieSync : IMovieSync
     private readonly IImageSync _imageSync;
     private readonly ISubtitleExtractionService _extractionService;
     private readonly IMediaStateService _mediaStateService;
+    private readonly IOrphanSubtitleCleanupService _orphanCleanupService;
 
     public MovieSync(
         LingarrDbContext dbContext,
@@ -25,7 +26,8 @@ public class MovieSync : IMovieSync
         ILogger<MovieSync> logger,
         IImageSync imageSync,
         ISubtitleExtractionService extractionService,
-        IMediaStateService mediaStateService)
+        IMediaStateService mediaStateService,
+        IOrphanSubtitleCleanupService orphanCleanupService)
     {
         _dbContext = dbContext;
         _pathConversionService = pathConversionService;
@@ -33,6 +35,7 @@ public class MovieSync : IMovieSync
         _imageSync = imageSync;
         _extractionService = extractionService;
         _mediaStateService = mediaStateService;
+        _orphanCleanupService = orphanCleanupService;
     }
 
     /// <inheritdoc />
@@ -89,6 +92,15 @@ public class MovieSync : IMovieSync
         var fileChanged = !isNew && (
             oldPath != movieEntity.Path ||
             oldFileName != movieEntity.FileName);
+
+        // Clean up orphaned subtitles when the filename changes (e.g., media upgraded)
+        if (fileChanged && !string.IsNullOrEmpty(oldPath) && !string.IsNullOrEmpty(oldFileName))
+        {
+            await _orphanCleanupService.CleanupOrphansAsync(
+                oldPath,
+                oldFileName,
+                movieEntity.FileName!);
+        }
 
         var needsIndexing = isNew || fileChanged || movieEntity.IndexedAt == null;
 
