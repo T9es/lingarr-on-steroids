@@ -301,6 +301,11 @@
       "cleanSourceAssDrawings": "Ook bronbestanden opschonen:",
       "cleanSourceAssDrawingsDescription": "Verwijder ook tekencommando's uit het originele bronondertitelbestand.",
       "subtitleTag": "Ondertitel tag",
+      "subtitleTagShort": "Korte ondertitel tag",
+      "subtitleTagShortDescription": "Een kortere tag om te gebruiken als de bestandsnaam met de hoofdtag te lang is (bijv. \"-ai-\"). Dit helpt om de koppeling met de mediaserver te behouden wanneer het bestandspad de systeemlimieten bereikt.",
+      "cleanupOrphanedSubtitles": "Verwijder verweesde ondertitels",
+      "cleanupOrphanedSubtitlesDescription": "Verwijder automatisch AI-vertaalde ondertitels wanneer mediabestanden worden geüpgraded en de bestandsnaam wijzigt. Verwijdert alleen bestanden met je geconfigureerde ondertitel tag.",
+      "cleanupRequiresTagging": "Ondertitel tagging moet zijn ingeschakeld zodat automatische opschoning Lingarr-gemaakte bestanden kan identificeren.",
       "subtitleIntegrityValidationEnabled": "Valideer Ondertitel Integriteit",
       "subtitleIntegrityValidationEnabledDescription": "Controleer of de vertaalde ondertitel ongeveer hetzelfde aantal regels heeft als het origineel om gedeeltelijke vertalingen te detecteren."
     },
