@@ -55,7 +55,7 @@
                         @update:validation="(val) => (isValid.contextAfter = val)" />
                 </div>
                 <div v-else>
-                    <div class="flex flex-col space-x-2 mb-2">
+                    <div class="mb-2 flex flex-col space-x-2">
                         <span class="font-semibold">
                             {{ translate('settings.prompt.batchContextToggle') }}
                         </span>
@@ -72,7 +72,7 @@
                             }}
                         </span>
                     </ToggleButton>
-                    <div v-if="batchContextEnabled == 'true'" class="flex flex-col space-y-2 mt-4">
+                    <div v-if="batchContextEnabled == 'true'" class="mt-4 flex flex-col space-y-2">
                         <InputComponent
                             v-model="batchContextBefore"
                             type="number"
@@ -154,7 +154,11 @@ const batchContextEnabled = computed({
 const batchContextBefore = computed({
     get: () => settingsStore.getSetting(SETTINGS.BATCH_CONTEXT_BEFORE) as string,
     set: (newValue: string) => {
-        settingsStore.updateSetting(SETTINGS.BATCH_CONTEXT_BEFORE, newValue, isValid.batchContextBefore)
+        settingsStore.updateSetting(
+            SETTINGS.BATCH_CONTEXT_BEFORE,
+            newValue,
+            isValid.batchContextBefore
+        )
         if (isValid.batchContextBefore) {
             saveNotification.value?.show()
         }
@@ -164,7 +168,11 @@ const batchContextBefore = computed({
 const batchContextAfter = computed({
     get: () => settingsStore.getSetting(SETTINGS.BATCH_CONTEXT_AFTER) as string,
     set: (newValue: string) => {
-        settingsStore.updateSetting(SETTINGS.BATCH_CONTEXT_AFTER, newValue, isValid.batchContextAfter)
+        settingsStore.updateSetting(
+            SETTINGS.BATCH_CONTEXT_AFTER,
+            newValue,
+            isValid.batchContextAfter
+        )
         if (isValid.batchContextAfter) {
             saveNotification.value?.show()
         }

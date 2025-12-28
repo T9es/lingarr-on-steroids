@@ -149,6 +149,28 @@
                         :label="translate('settings.subtitle.subtitleTagShort')"
                         :description="translate('settings.subtitle.subtitleTagShortDescription')"
                         @update:validation="(val) => (isValid.subtitleTagShort = val)" />
+
+                    <!-- Orphan Subtitle Cleanup -->
+                    <div class="mt-4 flex flex-col space-x-2">
+                        <span class="font-semibold">
+                            {{ translate('settings.subtitle.cleanupOrphanedSubtitles') }}
+                        </span>
+                        {{ translate('settings.subtitle.cleanupOrphanedSubtitlesDescription') }}
+                    </div>
+                    <ToggleButton v-model="cleanupOrphanedSubtitles">
+                        <span class="text-primary-content text-sm font-medium">
+                            {{
+                                cleanupOrphanedSubtitles == 'true'
+                                    ? translate('common.enabled')
+                                    : translate('common.disabled')
+                            }}
+                        </span>
+                    </ToggleButton>
+                    <div
+                        v-if="cleanupOrphanedSubtitles == 'true' && useSubtitleTagging != 'true'"
+                        class="bg-warning/20 border-warning text-warning-content rounded-md border p-3 text-sm">
+                        ⚠️ {{ translate('settings.subtitle.cleanupRequiresTagging') }}
+                    </div>
                 </div>
             </div>
         </template>
@@ -159,12 +181,14 @@
 import { ref, computed, reactive } from 'vue'
 import { SETTINGS } from '@/ts'
 import { useSettingStore } from '@/store/setting'
+import { useI18n } from '@/plugins/i18n'
 
 import CardComponent from '@/components/common/CardComponent.vue'
 import SaveNotification from '@/components/common/SaveNotification.vue'
 import ToggleButton from '@/components/common/ToggleButton.vue'
 import InputComponent from '@/components/common/InputComponent.vue'
 
+const { translate } = useI18n()
 const saveNotification = ref<InstanceType<typeof SaveNotification> | null>(null)
 const settingsStore = useSettingStore()
 const isValid = reactive({
@@ -231,11 +255,15 @@ const subtitleTag = computed({
 const subtitleTagShort = computed({
     get: (): string => settingsStore.getSetting(SETTINGS.SUBTITLE_TAG_SHORT) as string,
     set: (newValue: string): void => {
-        settingsStore.updateSetting(
-            SETTINGS.SUBTITLE_TAG_SHORT,
-            newValue,
-            isValid.subtitleTagShort
-        )
+        settingsStore.updateSetting(SETTINGS.SUBTITLE_TAG_SHORT, newValue, isValid.subtitleTagShort)
+        saveNotification.value?.show()
+    }
+})
+
+const cleanupOrphanedSubtitles = computed({
+    get: (): string => settingsStore.getSetting(SETTINGS.CLEANUP_ORPHANED_SUBTITLES) as string,
+    set: (newValue: string): void => {
+        settingsStore.updateSetting(SETTINGS.CLEANUP_ORPHANED_SUBTITLES, newValue, true)
         saveNotification.value?.show()
     }
 })

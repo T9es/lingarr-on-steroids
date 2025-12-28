@@ -516,6 +516,43 @@ namespace Lingarr.Migrations.SQLite.Migrations
                     b.ToTable("statistics", (string)null);
                 });
 
+            modelBuilder.Entity("Lingarr.Core.Entities.SubtitleCleanupLog", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("DeletedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<string>("FilePath")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnName("file_path");
+
+                    b.Property<string>("NewMediaFileName")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnName("new_media_file_name");
+
+                    b.Property<string>("OriginalMediaFileName")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnName("original_media_file_name");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnName("reason");
+
+                    b.HasKey("Id")
+                        .HasName("pk_subtitle_cleanup_logs");
+
+                    b.ToTable("subtitle_cleanup_logs", (string)null);
+                });
+
             modelBuilder.Entity("Lingarr.Core.Entities.TranslationRequest", b =>
                 {
                     b.Property<int>("Id")

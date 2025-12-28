@@ -1,9 +1,10 @@
-﻿using Hangfire;
+using Hangfire;
 using Lingarr.Core;
 using Lingarr.Core.Data;
 using Lingarr.Server.Filters;
 using Lingarr.Server.Hubs;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Cryptography;
 
 namespace Lingarr.Server.Extensions;
 
@@ -14,10 +15,38 @@ public static class ApplicationBuilderExtensions
         app.MapHubs();
         await app.ApplyMigrations();
 
+        // Hangfire Dashboard credentials
+        var hangfireUser = Environment.GetEnvironmentVariable("HANGFIRE_USERNAME");
+        var hangfirePass = Environment.GetEnvironmentVariable("HANGFIRE_PASSWORD");
+        bool credentialsDefaulted = false;
+
+        if (string.IsNullOrEmpty(hangfireUser))
+        {
+            hangfireUser = "admin";
+            credentialsDefaulted = true;
+        }
+
+        if (string.IsNullOrEmpty(hangfirePass))
+        {
+            // Generate a random password if not provided to ensure security
+            hangfirePass = Convert.ToBase64String(RandomNumberGenerator.GetBytes(12));
+            credentialsDefaulted = true;
+        }
+
+        if (credentialsDefaulted)
+        {
+            Console.WriteLine("################################################################");
+            Console.WriteLine("# WARN: Hangfire Dashboard credentials defaulted/generated!    #");
+            Console.WriteLine($"# Username: {hangfireUser}");
+            Console.WriteLine($"# Password: {hangfirePass}");
+            Console.WriteLine("# Please set HANGFIRE_USERNAME and HANGFIRE_PASSWORD env vars. #");
+            Console.WriteLine("################################################################");
+        }
+
         // Hangfire Dashboard enabled in all environments for debugging job status
         app.UseHangfireDashboard("/hangfire", new DashboardOptions
         {
-            Authorization = [new LingarrAuthorizationFilter()]
+            Authorization = [new LingarrAuthorizationFilter(hangfireUser, hangfirePass)]
         });
         
         if (app.Environment.IsDevelopment())

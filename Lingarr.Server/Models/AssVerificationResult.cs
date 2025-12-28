@@ -22,4 +22,9 @@ public class AssVerificationItem
     public int SuspiciousLineCount { get; set; }
     public List<string> SuspiciousLines { get; set; } = new();
     public bool Dismissed { get; set; }
+    
+    /// <summary>
+    /// Indicates whether this media item is already queued for translation (Pending or InProgress).
+    /// </summary>
+    public bool IsQueued { get; set; }
 }

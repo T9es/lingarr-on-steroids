@@ -112,6 +112,25 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
         // Minimum suspicious lines to flag a file
         const int suspiciousThreshold = 2;
 
+        // Get all pending/in-progress translation requests to check if media is already queued
+        var queuedRequests = await _dbContext.Set<Lingarr.Core.Entities.TranslationRequest>()
+            .Where(tr => tr.Status == Core.Enum.TranslationStatus.Pending || 
+                         tr.Status == Core.Enum.TranslationStatus.InProgress)
+            .Where(tr => tr.MediaId != null)
+            .Select(tr => new { tr.MediaId, tr.MediaType })
+            .ToListAsync(ct);
+        
+        // Build lookup sets for quick checking
+        var queuedMovieIds = queuedRequests
+            .Where(r => r.MediaType == Core.Enum.MediaType.Movie)
+            .Select(r => r.MediaId!.Value)
+            .ToHashSet();
+        
+        var queuedEpisodeIds = queuedRequests
+            .Where(r => r.MediaType == Core.Enum.MediaType.Episode)
+            .Select(r => r.MediaId!.Value)
+            .ToHashSet();
+
         // Get all movies and episodes with their subtitle paths
         var movies = await _dbContext.Movies
             .Where(m => m.Path != null)
@@ -152,7 +171,8 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
                         SubtitlePath = subPath,
                         SuspiciousLineCount = count,
                         SuspiciousLines = lines,
-                        Dismissed = false
+                        Dismissed = false,
+                        IsQueued = queuedMovieIds.Contains(movie.Id)
                     });
                 }
             }
@@ -180,7 +200,8 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
                         SubtitlePath = subPath,
                         SuspiciousLineCount = count,
                         SuspiciousLines = lines,
-                        Dismissed = false
+                        Dismissed = false,
+                        IsQueued = queuedEpisodeIds.Contains(episode.Id)
                     });
                 }
             }

@@ -171,6 +171,13 @@ async function toggleShow(show: IShow) {
         expandedShow.value = null
         return
     }
+
+    if (!show.seasons || show.seasons.length === 0) {
+        await showStore.fetchShow(show.id)
+        const updatedShow = showStore.get.items.find((s) => s.id === show.id)
+        if (updatedShow) show = updatedShow
+    }
+
     instanceStore.setPoster({ content: show, type: 'show' })
     expandedShow.value = show.id
 }

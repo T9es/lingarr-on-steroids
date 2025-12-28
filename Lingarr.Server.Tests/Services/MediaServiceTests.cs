@@ -13,6 +13,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
+using System.Linq;
 
 namespace Lingarr.Server.Tests.Services;
 
@@ -79,5 +80,73 @@ public class MediaServiceTests
         sonarrMock.Verify(s => s.GetShows(), Times.Once);
         showSyncServiceMock.Verify(s => s.SyncShows(It.IsAny<List<Lingarr.Server.Models.Integrations.SonarrShow>>()), Times.Once);
         Assert.Equal(0, result);
+    }
+
+    [Fact]
+    public async Task GetShow_ReturnsSeasonsAndEpisodes()
+    {
+        // Arrange
+        var options = new DbContextOptionsBuilder<LingarrDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        await using var context = new LingarrDbContext(options);
+
+        var show = new Show
+        {
+            Id = 2,
+            Title = "Detailed Show",
+            SonarrId = 2,
+            Path = "/tmp/show2",
+            DateAdded = DateTime.UtcNow
+        };
+
+        var season = new Season
+        {
+            Id = 2,
+            SeasonNumber = 1,
+            Show = show
+        };
+        show.Seasons.Add(season);
+
+        var episode = new Episode
+        {
+            Id = 2,
+            EpisodeNumber = 1,
+            Title = "Ep 1",
+            SonarrId = 2,
+            Season = season
+        };
+        season.Episodes.Add(episode);
+
+        context.Shows.Add(show);
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+
+        var sonarrMock = new Mock<ISonarrService>();
+        var radarrMock = new Mock<IRadarrService>();
+        var showSyncServiceMock = new Mock<IShowSyncService>();
+        var movieSyncMock = new Mock<IMovieSyncService>();
+        var subtitleMock = new Mock<ISubtitleService>();
+        var mediaSubtitleProcessorMock = new Mock<IMediaSubtitleProcessor>();
+        var logger = NullLogger<MediaService>.Instance;
+
+        var mediaService = new MediaService(context,
+            subtitleMock.Object,
+            sonarrMock.Object,
+            showSyncServiceMock.Object,
+            radarrMock.Object,
+            movieSyncMock.Object,
+            mediaSubtitleProcessorMock.Object,
+            logger);
+
+        // Act
+        var result = await mediaService.GetShow(2);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal("Detailed Show", result!.Title);
+        Assert.Single(result.Seasons);
+        Assert.Single(result.Seasons.First().Episodes);
     }
 }

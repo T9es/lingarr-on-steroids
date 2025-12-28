@@ -60,6 +60,7 @@ export const SETTINGS = {
     REMOVE_LANGUAGE_TAG: 'remove_language_tag',
     SUBTITLE_TAG: 'subtitle_tag',
     SUBTITLE_TAG_SHORT: 'subtitle_tag_short',
+    CLEANUP_ORPHANED_SUBTITLES: 'cleanup_orphaned_subtitles',
     IGNORE_CAPTIONS: 'ignore_captions',
     MAX_RETRIES: 'max_retries',
     RETRY_DELAY: 'retry_delay',
@@ -137,6 +138,7 @@ export interface ISettings {
     remove_language_tag: string
     subtitle_tag: string
     subtitle_tag_short: string
+    cleanup_orphaned_subtitles: string
     ignore_captions: string
     max_retries: string
     retry_delay: string

@@ -1,4 +1,4 @@
-﻿<template>
+<template>
     <div class="bg-primary rounded-lg p-4 shadow-sm">
         <div class="flex justify-between">
             <div>
@@ -18,7 +18,13 @@
                 </p>
             </div>
         </div>
-        <div class="bg-secondary mt-2 h-2 w-full rounded-full">
+        <div
+            role="progressbar"
+            :aria-valuenow="Math.round(calculatePercentage(translated, total))"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            :aria-label="`${title} ${translate('statistics.translated')}`"
+            class="bg-secondary mt-2 h-2 w-full rounded-full">
             <div
                 class="bg-accent h-full rounded-full transition-all duration-500"
                 :style="{ width: `${calculatePercentage(translated, total)}%` }"></div>
@@ -27,6 +33,10 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from '@/plugins/i18n'
+
+const { translate } = useI18n()
+
 interface Props {
     title: string
     total: number
@@ -43,6 +53,7 @@ const formatNumber = (num: number): string => {
 }
 
 const calculatePercentage = (value: number, total: number): number => {
+    if (total <= 0) return 0
     return (value / total) * 100
 }
 </script>
