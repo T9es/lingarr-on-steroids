@@ -517,6 +517,37 @@ public class TranslationJob
                             translationRequest,
                             TranslationStatus.Failed,
                             null);
+
+                        // Update translation state to reflect failure
+                        if (translationRequest.MediaId.HasValue)
+                        {
+                            try
+                            {
+                                if (translationRequest.MediaType == MediaType.Movie)
+                                {
+                                    var movie = await _dbContext.Movies.FindAsync(translationRequest.MediaId.Value);
+                                    if (movie != null)
+                                    {
+                                        await _mediaStateService.UpdateStateAsync(movie, MediaType.Movie);
+                                    }
+                                }
+                                else
+                                {
+                                    var episode = await _dbContext.Episodes
+                                        .Include(e => e.Season)
+                                        .ThenInclude(s => s.Show)
+                                        .FirstOrDefaultAsync(e => e.Id == translationRequest.MediaId.Value);
+                                    if (episode != null)
+                                    {
+                                        await _mediaStateService.UpdateStateAsync(episode, MediaType.Episode);
+                                    }
+                                }
+                            }
+                            catch (Exception stateEx)
+                            {
+                                _logger.LogWarning(stateEx, "Failed to update translation state after failure");
+                            }
+                        }
                         break; // Success, exit retry loop
                     }
                     catch (Exception retryEx) when (attempt < 2)

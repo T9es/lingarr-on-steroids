@@ -122,6 +122,12 @@ public class MediaStateService : IMediaStateService
             return TranslationState.InProgress;
         }
 
+        // 3b. Check for failed translation request
+        if (await HasFailedTranslationRequestAsync(media.Id, mediaType))
+        {
+            return TranslationState.Failed;
+        }
+
         // 4. Get external subtitles
         var externalSubtitles = new List<Subtitles>();
         if (!string.IsNullOrEmpty(media.Path))
@@ -272,6 +278,15 @@ public class MediaStateService : IMediaStateService
             tr.MediaId == mediaId &&
             tr.MediaType == mediaType &&
             (tr.Status == TranslationStatus.Pending || tr.Status == TranslationStatus.InProgress));
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> HasFailedTranslationRequestAsync(int mediaId, MediaType mediaType)
+    {
+        return await _dbContext.TranslationRequests.AnyAsync(tr =>
+            tr.MediaId == mediaId &&
+            tr.MediaType == mediaType &&
+            tr.Status == TranslationStatus.Failed);
     }
 
     private async Task<HashSet<string>> GetConfiguredLanguages(string settingKey)

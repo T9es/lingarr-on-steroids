@@ -107,7 +107,7 @@ public class StartupService : IHostedService
             { SettingKeys.SubtitleValidation.MaxDurationSecs, "10" },
 
             // Default AI Prompt Safeguard
-            { SettingKeys.Translation.AiPrompt, "If you encounter ASS/SSA vector drawing commands (patterns like 'm 0 0 l 100 100 b...'), ignore them and translate only the surrounding dialogue. Do NOT remove valid short dialogue like 'I...', 'No!', or single words." }
+            { SettingKeys.Translation.AiPrompt, "Translate subtitles into natural, plain text. NEVER include ASS/SSA tags ({\\...}), HTML tags, or animation/karaoke markers in your output. If a line is purely an animation syllable (e.g., 'ha', 'na', 'te') or non-dialogue fragment, return an empty string for that position. Maintain the natural flow of speech and do NOT remove valid short dialogue like 'No!', 'Stop!', or single-word meanings." }
         });
 
         await CheckAndUpdateIntegrationSettings(dbContext, "radarr", [

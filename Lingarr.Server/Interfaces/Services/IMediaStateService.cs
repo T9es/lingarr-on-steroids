@@ -51,4 +51,9 @@ public interface IMediaStateService
     /// Checks if a media item has any active (Pending/InProgress) translation requests.
     /// </summary>
     Task<bool> HasActiveTranslationRequestAsync(int mediaId, MediaType mediaType);
+
+    /// <summary>
+    /// Checks if a media item has any failed translation requests.
+    /// </summary>
+    Task<bool> HasFailedTranslationRequestAsync(int mediaId, MediaType mediaType);
 }

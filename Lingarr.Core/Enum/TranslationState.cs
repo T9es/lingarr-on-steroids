@@ -46,5 +46,11 @@ public enum TranslationState
     /// No suitable subtitle tracks available.
     /// All embedded subtitle tracks have fewer than the minimum required entries (sparse/Signs/Songs only).
     /// </summary>
-    NoSuitableSubtitles = 6
+    NoSuitableSubtitles = 6,
+
+    /// <summary>
+    /// Translation failed.
+    /// A previous translation request for this media failed and needs manual intervention.
+    /// </summary>
+    Failed = 7
 }

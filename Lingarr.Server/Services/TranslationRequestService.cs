@@ -32,6 +32,7 @@ public class TranslationRequestService : ITranslationRequestService
     private readonly IBatchFallbackService _batchFallbackService;
     private readonly ILogger<TranslationRequestService> _logger;
     private readonly ITranslationCancellationService _cancellationService;
+    private readonly IMediaStateService _mediaStateService;
     static private Dictionary<int, CancellationTokenSource> _asyncTranslationJobs = new Dictionary<int, CancellationTokenSource>();
 
     public TranslationRequestService(
@@ -45,7 +46,8 @@ public class TranslationRequestService : ITranslationRequestService
         ISettingService settingService,
         IBatchFallbackService batchFallbackService,
         ILogger<TranslationRequestService> logger,
-        ITranslationCancellationService cancellationService)
+        ITranslationCancellationService cancellationService,
+        IMediaStateService mediaStateService)
     {
         _dbContext = dbContext;
         _hubContext = hubContext;
@@ -58,6 +60,7 @@ public class TranslationRequestService : ITranslationRequestService
         _batchFallbackService = batchFallbackService;
         _logger = logger;
         _cancellationService = cancellationService;
+        _mediaStateService = mediaStateService;
     }
 
     /// <inheritdoc />
@@ -258,6 +261,7 @@ public class TranslationRequestService : ITranslationRequestService
             await _dbContext.SaveChangesAsync();
             await ClearMediaHash(translationRequest);
             await UpdateActiveCount();
+            await UpdateMediaState(translationRequest);
             await _progressService.Emit(translationRequest, 0);
         }
 
@@ -277,6 +281,7 @@ public class TranslationRequestService : ITranslationRequestService
         _dbContext.TranslationRequests.Remove(translationRequest);
         await _dbContext.SaveChangesAsync();
         await UpdateActiveCount();
+        await UpdateMediaState(translationRequest);
         
         return $"Translation request with id {cancelRequest.Id} has been removed";
     }
@@ -444,6 +449,7 @@ public class TranslationRequestService : ITranslationRequestService
             foreach (var request in batchNewRequests)
             {
                 await EnqueueTranslationJobAsync(request, true);
+                await UpdateMediaState(request);
             }
             
             // Small delay to allow other threads/requests to acquire locks if needed
@@ -481,6 +487,7 @@ public class TranslationRequestService : ITranslationRequestService
         _dbContext.TranslationRequests.Remove(translationRequest);
         await _dbContext.SaveChangesAsync();
         await UpdateActiveCount();
+        await UpdateMediaState(translationRequest);
 
         return $"Translation request with id {retryRequest.Id} has been restarted, new job id {newTranslationRequestId}";
     }
@@ -1352,12 +1359,12 @@ public class TranslationRequestService : ITranslationRequestService
                        $"{episodeInfo.EpisodeTitle}";
 
             default:
-                throw new ArgumentException($"Unsupported media type: {translateAbleSubtitle.MediaType}");
+            throw new ArgumentException($"Unsupported media type: {translateAbleSubtitle.MediaType}");
         }
     }
     
     /// <summary>
-    /// Checks if a DbUpdateException is caused by a duplicate key constraint violation.
+    /// Checks if the given exception is a duplicate key violation.
     /// </summary>
     /// <param name="ex">The exception to check</param>
     /// <returns>True if this is a duplicate key violation, false otherwise</returns>
@@ -1386,5 +1393,37 @@ public class TranslationRequestService : ITranslationRequestService
         }
         
         return false;
+    }
+
+    private async Task UpdateMediaState(TranslationRequest request)
+    {
+        if (!request.MediaId.HasValue) return;
+
+        try
+        {
+            if (request.MediaType == MediaType.Movie)
+            {
+                var movie = await _dbContext.Movies.FindAsync(request.MediaId.Value);
+                if (movie != null)
+                {
+                    await _mediaStateService.UpdateStateAsync(movie, MediaType.Movie);
+                }
+            }
+            else if (request.MediaType == MediaType.Episode)
+            {
+                var episode = await _dbContext.Episodes
+                    .Include(e => e.Season)
+                    .ThenInclude(s => s.Show)
+                    .FirstOrDefaultAsync(e => e.Id == request.MediaId.Value);
+                if (episode != null)
+                {
+                    await _mediaStateService.UpdateStateAsync(episode, MediaType.Episode);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to update media state for {MediaType} {MediaId}", request.MediaType, request.MediaId);
+        }
     }
 }

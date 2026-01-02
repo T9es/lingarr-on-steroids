@@ -49,6 +49,8 @@ const badgeClasses = computed(() => {
             return 'bg-gray-800/30 text-gray-500 border border-gray-700/30 opacity-50'
         case TRANSLATION_STATE.NO_SUITABLE_SUBTITLES:
             return 'bg-red-900/50 text-red-300 border border-red-500/50'
+        case TRANSLATION_STATE.FAILED:
+            return 'bg-red-900/70 text-red-200 border border-red-400/60'
         case TRANSLATION_STATE.UNKNOWN:
         default:
             return 'bg-gray-800/50 text-gray-400 border border-gray-600/50 opacity-60'
@@ -68,6 +70,8 @@ const iconComponent = computed(() => {
         case TRANSLATION_STATE.NOT_APPLICABLE:
             return TimesCircleIcon
         case TRANSLATION_STATE.NO_SUITABLE_SUBTITLES:
+            return ExclamationIcon
+        case TRANSLATION_STATE.FAILED:
             return ExclamationIcon
         case TRANSLATION_STATE.UNKNOWN:
         default:
@@ -89,6 +93,8 @@ const label = computed(() => {
             return translate('translationState.notApplicable')
         case TRANSLATION_STATE.NO_SUITABLE_SUBTITLES:
             return translate('translationState.noSuitableSubtitles')
+        case TRANSLATION_STATE.FAILED:
+            return translate('translationState.failed')
         case TRANSLATION_STATE.UNKNOWN:
         default:
             return translate('translationState.unknown')
@@ -109,6 +115,8 @@ const tooltip = computed(() => {
             return translate('translationState.tooltipNotApplicable')
         case TRANSLATION_STATE.NO_SUITABLE_SUBTITLES:
             return translate('translationState.tooltipNoSuitableSubtitles')
+        case TRANSLATION_STATE.FAILED:
+            return translate('translationState.tooltipFailed')
         case TRANSLATION_STATE.UNKNOWN:
         default:
             return translate('translationState.tooltipUnknown')
