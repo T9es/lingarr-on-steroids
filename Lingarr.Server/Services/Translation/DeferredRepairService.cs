@@ -98,8 +98,10 @@ public class DeferredRepairService : IDeferredRepairService
     public async Task<Dictionary<int, string>> ExecuteRepairAsync(
         ContextualRepairBatch repairBatch,
         IBatchTranslationService batchService,
+        IBatchFallbackService fallbackService,
         string sourceLanguage,
         string targetLanguage,
+        int batchSize,
         int maxRetries,
         string fileIdentifier,
         CancellationToken cancellationToken)
@@ -110,12 +112,14 @@ public class DeferredRepairService : IDeferredRepairService
         }
 
         maxRetries = Math.Max(1, maxRetries);
+        batchSize = batchSize <= 0 ? 50 : batchSize; // Default to 50 if zero or negative
+        
         var results = new Dictionary<int, string>();
         
         _logger.LogInformation(
-            "[{FileId}] Starting deferred repair: {FailedCount} failed items with {ContextCount} context items",
+            "[{FileId}] Starting deferred repair: {FailedCount} failed items with {ContextCount} context items. Using batch size {BatchSize}.",
             fileIdentifier, repairBatch.FailedPositions.Count, 
-            repairBatch.Items.Count - repairBatch.FailedPositions.Count);
+            repairBatch.Items.Count - repairBatch.FailedPositions.Count, batchSize);
 
         for (int attempt = 1; attempt <= maxRetries + 1; attempt++)
         {
@@ -127,32 +131,60 @@ public class DeferredRepairService : IDeferredRepairService
                     "[{FileId}] Repair attempt {Attempt}/{MaxAttempts}",
                     fileIdentifier, attempt, maxRetries + 1);
                 
-                // Note: Deferred repair includes context in the batch items themselves,
-                // so we don't use wrapper context here
-                var batchResults = await batchService.TranslateBatchAsync(
-                    repairBatch.Items,
-                    sourceLanguage,
-                    targetLanguage,
-                    null,  // preContext - context is already in batch items
-                    null,  // postContext - context is already in batch items
-                    cancellationToken);
+                // Identify which failed items are still missing
+                var stillMissingPositions = repairBatch.FailedPositions
+                    .Where(p => !results.ContainsKey(p) || string.IsNullOrWhiteSpace(results[p]))
+                    .ToHashSet();
+
+                if (stillMissingPositions.Count == 0) break;
+
+                // Filter repairBatch.Items to only include current ranges that contain missing failed positions
+                // However, the repairBatch already contains merged ranges. 
+                // To keep it simple and respect the user's batching request:
+                // We will split the ENTIRE repairBatch.Items (failed + context) into smaller chunks
+                // and process each chunk using the fallback service.
+
+                var chunks = SplitIntoChunks(repairBatch.Items, batchSize);
                 
-                // Extract only the translations for failed positions
-                foreach (var position in repairBatch.FailedPositions)
+                _logger.LogInformation(
+                    "[{FileId}] Repair attempt {Attempt}: Processing {ChunkCount} chunks of max size {BatchSize}",
+                    fileIdentifier, attempt, chunks.Count, batchSize);
+
+                for (int i = 0; i < chunks.Count; i++)
                 {
-                    if (batchResults.TryGetValue(position, out var translated) && 
-                        !string.IsNullOrWhiteSpace(translated))
+                    var chunk = chunks[i];
+                    
+                    // Note: Instead of direct TranslateBatchAsync, we use TranslateWithFallbackAsync
+                    // to gracefully handle any individual chunk failure (like JSON truncation)
+                    var chunkResults = await fallbackService.TranslateWithFallbackAsync(
+                        chunk,
+                        batchService,
+                        sourceLanguage,
+                        targetLanguage,
+                        3, // maxSplitAttempts for repairs
+                        fileIdentifier,
+                        i + 1,
+                        chunks.Count,
+                        cancellationToken);
+
+                    // Extract translations for failed positions that were in this chunk
+                    foreach (var item in chunk)
                     {
-                        results[position] = translated;
+                        if (repairBatch.FailedPositions.Contains(item.Position) && 
+                            chunkResults.TryGetValue(item.Position, out var translated) && 
+                            !string.IsNullOrWhiteSpace(translated))
+                        {
+                            results[item.Position] = translated;
+                        }
                     }
                 }
                 
                 // Check if all failed items were translated
-                var stillMissing = repairBatch.FailedPositions
+                var finalMissing = repairBatch.FailedPositions
                     .Where(p => !results.ContainsKey(p) || string.IsNullOrWhiteSpace(results[p]))
                     .ToList();
                 
-                if (stillMissing.Count == 0)
+                if (finalMissing.Count == 0)
                 {
                     _logger.LogInformation(
                         "[{FileId}] Deferred repair succeeded: all {Count} items translated on attempt {Attempt}",
@@ -164,24 +196,17 @@ public class DeferredRepairService : IDeferredRepairService
                 {
                     _logger.LogWarning(
                         "[{FileId}] Repair attempt {Attempt} incomplete: {MissingCount} items still missing. Retrying...",
-                        fileIdentifier, attempt, stillMissing.Count);
+                        fileIdentifier, attempt, finalMissing.Count);
                 }
                 else
                 {
                     _logger.LogError(
                         "[{FileId}] Deferred repair exhausted after {Attempts} attempts. {MissingCount} items failed permanently.",
-                        fileIdentifier, attempt, stillMissing.Count);
-                    
-                    // Log sample of failed items
-                    var sampleFailed = string.Join("; ", stillMissing.Take(5)
-                        .Select(p => $"[pos {p}]"));
-                    _logger.LogError(
-                        "[{FileId}] Sample of failed positions: {Positions}",
-                        fileIdentifier, sampleFailed);
+                        fileIdentifier, attempt, finalMissing.Count);
                     
                     throw new TranslationException(
                         $"Deferred repair failed after {attempt} attempts. " +
-                        $"{stillMissing.Count} items could not be translated.");
+                        $"{finalMissing.Count} items could not be translated.");
                 }
             }
             catch (OperationCanceledException)
@@ -192,21 +217,33 @@ public class DeferredRepairService : IDeferredRepairService
             {
                 throw;
             }
-            catch (TranslationException ex) when (attempt <= maxRetries)
+            catch (Exception ex)
             {
-                _logger.LogWarning(ex,
-                    "[{FileId}] Repair attempt {Attempt} failed with error. Retrying...",
-                    fileIdentifier, attempt);
-            }
-            catch (Exception ex) when (attempt <= maxRetries)
-            {
-                _logger.LogWarning(ex,
-                    "[{FileId}] Unexpected error during repair attempt {Attempt}. Retrying...",
-                    fileIdentifier, attempt);
+                if (attempt <= maxRetries)
+                {
+                    _logger.LogWarning(ex,
+                        "[{FileId}] Error during repair attempt {Attempt}. Retrying...",
+                        fileIdentifier, attempt);
+                }
+                else
+                {
+                    _logger.LogError(ex, "[{FileId}] Permanent error during repair attempt {Attempt}", fileIdentifier, attempt);
+                    throw;
+                }
             }
         }
         
-        throw new TranslationException("Deferred repair failed after maximum retry attempts.");
+        return results;
+    }
+
+    private static List<List<BatchSubtitleItem>> SplitIntoChunks(List<BatchSubtitleItem> items, int chunkSize)
+    {
+        var chunks = new List<List<BatchSubtitleItem>>();
+        for (int i = 0; i < items.Count; i += chunkSize)
+        {
+            chunks.Add(items.Skip(i).Take(chunkSize).ToList());
+        }
+        return chunks;
     }
 
     /// <summary>

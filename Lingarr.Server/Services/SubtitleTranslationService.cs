@@ -278,8 +278,10 @@ public class SubtitleTranslationService
             var repairResults = await _deferredRepairService.ExecuteRepairAsync(
                 repairBatch,
                 batchTranslationService,
+                _batchFallbackService ?? throw new TranslationException("Batch fallback service is required for repair."),
                 translationRequest.SourceLanguage,
                 translationRequest.TargetLanguage,
+                batchSize,
                 repairMaxRetries,
                 fileIdentifier,
                 cancellationToken);
