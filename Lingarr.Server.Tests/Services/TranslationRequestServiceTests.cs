@@ -177,6 +177,7 @@ public class TranslationRequestServiceTests
             new Mock<ISettingService>().Object,
             new Mock<IBatchFallbackService>().Object,
             NullLogger<TranslationRequestService>.Instance,
-            new Mock<ITranslationCancellationService>().Object);
+            new Mock<ITranslationCancellationService>().Object,
+            new Mock<IMediaStateService>().Object);
     }
 }

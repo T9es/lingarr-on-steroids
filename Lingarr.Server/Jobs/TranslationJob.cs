@@ -249,7 +249,7 @@ public class TranslationJob
                     StripSubtitleFormatting = stripSubtitleFormatting
                 };
 
-                if (!_subtitleService.ValidateSubtitle(request.SubtitleToTranslate, validationOptions))
+                if (string.IsNullOrEmpty(request.SubtitleToTranslate) || !_subtitleService.ValidateSubtitle(request.SubtitleToTranslate, validationOptions))
                 {
                     const string validationMessage = "Subtitle is not valid according to configured preferences.";
                     _logger.LogWarning(validationMessage);
