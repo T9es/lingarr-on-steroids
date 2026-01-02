@@ -360,11 +360,32 @@ public class SubtitleTranslationService
         int totalBatches = 1,
         CancellationToken cancellationToken = default)
     {
-        var batchItems = currentBatch.Select(subtitle => new BatchSubtitleItem
+        var batchItems = currentBatch
+            .Select(subtitle =>
+            {
+                var line = string.Join(" ", stripSubtitleFormatting ? subtitle.PlaintextLines : subtitle.Lines);
+                var plaintextLine = string.Join(" ", subtitle.PlaintextLines);
+                
+                return new 
+                { 
+                    Original = subtitle, 
+                    Line = line, 
+                    Plaintext = plaintextLine 
+                };
+            })
+            // Skip items that have no meaningful plaintext content even if we are preserving formatting
+            // This prevents graphical flares (like 'z' with 50 tags) from being sent to the AI
+            .Where(x => !SubtitleFormatterService.IsMeaningless(x.Plaintext))
+            .Select(x => new BatchSubtitleItem
+            {
+                Position = x.Original.Position,
+                Line = x.Line
+            }).ToList();
+
+        if (batchItems.Count == 0)
         {
-            Position = subtitle.Position,
-            Line = string.Join(" ", stripSubtitleFormatting ? subtitle.PlaintextLines : subtitle.Lines)
-        }).ToList();
+            return new List<BatchSubtitleItem>();
+        }
 
         Dictionary<int, string> batchResults;
         

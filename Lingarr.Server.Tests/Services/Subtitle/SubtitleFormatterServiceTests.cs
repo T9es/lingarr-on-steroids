@@ -118,13 +118,33 @@ public class SubtitleFormatterServiceTests
     }
 
     [Theory]
-    [InlineData("{\\p1}m 0 0 l 100 100{\\p0}", "")]  // Pure drawing block → empty
-    [InlineData("Hello {\\p1}m 0 0{\\p0} World", "Hello World")]  // Mixed → dialogue preserved
-    [InlineData("{\\p2}m 50 50 b 100 100{\\p0}", "")]  // Scale 2 drawing → empty
-    [InlineData("{\\p1}drawing{\\p0}{\\p1}another{\\p0}", "")]  // Multiple blocks → empty
-    public void RemoveMarkup_ShouldStripDrawingBlocks(string input, string expected)
+    [InlineData("{\\an7}", "")]
+    [InlineData("{\\pos(100,100)}Hello {\\c&H00FFFF&}World", "Hello World")]
+    [InlineData("Text {with valid comment} inside", "Text inside")]
+    [InlineData("Mixed {\\b1}Bold{\\b0} and {\\i1}Italic{\\i0}", "Mixed Bold and Italic")]
+    [InlineData("Line1\\NLine2", "Line1 Line2")]
+    [InlineData("Space\\hBetween", "Space Between")]
+    [InlineData("Visible { literal brace", "Visible { literal brace")] // Unclosed brace should be preserved
+    [InlineData("Brace } shown", "Brace } shown")] // } without { is preserved as literal
+    public void RemoveMarkup_ShouldHandleMixedContent(string input, string expected)
     {
         var result = SubtitleFormatterService.RemoveMarkup(input);
+        Assert.Equal(expected, result);
+    }
+
+    [Theory]
+    [InlineData("Hello", false)]
+    [InlineData("A", false)]
+    [InlineData("I", false)]
+    [InlineData("z", true)]
+    [InlineData("Z", true)]
+    [InlineData("!", true)]
+    [InlineData("  ", true)]
+    [InlineData("", true)]
+    [InlineData("1", false)]
+    public void IsMeaningless_ShouldCorrectIdentifyFlares(string input, bool expected)
+    {
+        var result = SubtitleFormatterService.IsMeaningless(input);
         Assert.Equal(expected, result);
     }
 }

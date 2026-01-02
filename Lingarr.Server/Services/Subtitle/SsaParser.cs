@@ -30,6 +30,7 @@ public class SsaParser : ISubtitleParser
         var ssaFormat = new SsaFormat();
         Dictionary<string, int>? columnIndexes = null;
 
+        var positionCounter = 1;
         string? line;
         while ((line = reader.ReadLine()) != null)
         {
@@ -95,6 +96,7 @@ public class SsaParser : ISubtitleParser
                         var dialogue = ParseDialogueLine(line, columnIndexes, ssaFormat);
                         if (dialogue != null)
                         {
+                            dialogue.Position = positionCounter++;
                             dialogue.SsaFormat = ssaFormat;
                             items.Add(dialogue);
                         }

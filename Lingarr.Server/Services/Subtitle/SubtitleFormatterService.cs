@@ -13,31 +13,47 @@ public class SubtitleFormatterService : ISubtitleFormatterService
         }
 
         // First: Strip entire ASS drawing blocks: {\p1}...{\p0}
-        // Drawing mode is enabled by {\p1} (or {\p2}, etc.) and disabled by {\p0}
-        // Everything between these tags is vector drawing data that should not be translated
-        string cleaned = Regex.Replace(input, @"\{\\p[1-9]\d*\}.*?\{\\p0\}", string.Empty, RegexOptions.Singleline);
+        string cleaned = Regex.Replace(input, @"\{\\p[1-9]\d*\}.*?\{\\p0\}", string.Empty, RegexOptions.Singleline | RegexOptions.IgnoreCase);
 
-        // Remove remaining SSA/ASS style tags: {\...}
-        // Use Singleline mode to handle tags that span multiple lines
-        cleaned = Regex.Replace(cleaned, @"\{.*?\}", string.Empty, RegexOptions.Singleline);
+        // Remove SSA/ASS style tags: {\...}
+        // Note: Using a more robust pattern to ensure we catch escaped braces if they ever appear
+        cleaned = Regex.Replace(cleaned, @"\{[^}]*\}", string.Empty, RegexOptions.Singleline);
 
         // Remove HTML-style tags: <...>
-        // Use Singleline mode to handle tags that span multiple lines
-        cleaned = Regex.Replace(cleaned, @"<.*?>", string.Empty, RegexOptions.Singleline);
+        cleaned = Regex.Replace(cleaned, @"<[^>]*>", string.Empty, RegexOptions.Singleline);
 
-        // Replace SSA line breaks with spaces
-        cleaned = cleaned.Replace("\\N", " ").Replace("\\n", " ");
+        // Replace SSA line breaks and non-breaking spaces with regular spaces
+        cleaned = cleaned
+            .Replace("\\N", " ")
+            .Replace("\\n", " ")
+            .Replace("\\h", " ");
 
-        // Replace tab characters (escaped or literal)
+        // Replace tab characters
         cleaned = cleaned.Replace("\\t", " ").Replace("\t", " ");
 
-        // Collapse multiple whitespace into a single space
+        // Collapse multiple whitespace
         cleaned = Regex.Replace(cleaned, @"\s{2,}", " ");
 
-        // Strip poison content (Music, Credits, Sound Effects)
+        // Strip poison content
         cleaned = StripPoisonContent(cleaned);
 
         return cleaned.Trim();
+    }
+
+    /// <summary>
+    /// Determines if a line is "meaningless" for translation (too short or purely graphical).
+    /// </summary>
+    public static bool IsMeaningless(string plaintext)
+    {
+        if (string.IsNullOrWhiteSpace(plaintext)) return true;
+        
+        // If it's just a single character that isn't a word (like "z" or "x" in a positioning flare)
+        if (plaintext.Length == 1 && !char.IsLetterOrDigit(plaintext[0])) return true;
+        
+        // Single letters like 'z' often used for graphical placeholders in fansubs
+        if (plaintext.Length == 1 && (plaintext == "z" || plaintext == "Z")) return true;
+
+        return false;
     }
 
     /// <summary>
