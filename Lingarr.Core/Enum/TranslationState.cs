@@ -52,5 +52,12 @@ public enum TranslationState
     /// Translation failed.
     /// A previous translation request for this media failed and needs manual intervention.
     /// </summary>
-    Failed = 7
+    Failed = 7,
+
+    /// <summary>
+    /// Waiting for source subtitle to become available.
+    /// Configured for translation but no source subtitle exists yet.
+    /// Will be re-checked during sync when directory mtime changes.
+    /// </summary>
+    AwaitingSource = 8
 }

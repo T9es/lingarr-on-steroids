@@ -159,7 +159,7 @@ public class MediaStateService : IMediaStateService
 
         if (!hasExternalSource && !hasEmbeddedSource)
         {
-            return TranslationState.NotApplicable;
+            return TranslationState.AwaitingSource;
         }
 
         // 6. Check which targets are satisfied

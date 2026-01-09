@@ -450,12 +450,16 @@
     "unknown": "Onbekend",
     "notApplicable": "N.v.t.",
     "noSuitableSubtitles": "Geen bron",
+    "failed": "Mislukt",
+    "awaitingSource": "Wachtend op bron",
     "tooltipComplete": "Alle vertalingen voltooid",
     "tooltipInProgress": "Vertaling bezig",
     "tooltipPending": "Wacht op vertaling",
     "tooltipStale": "Heranalyse nodig",
     "tooltipUnknown": "Nog niet geanalyseerd",
     "tooltipNotApplicable": "Niet van toepassing / Geen bron",
-    "tooltipNoSuitableSubtitles": "Geen geschikte ondertitelsporen gevonden (allemaal dun/Signs & Songs)"
+    "tooltipNoSuitableSubtitles": "Geen geschikte ondertitelsporen gevonden (allemaal dun/Signs & Songs)",
+    "tooltipFailed": "Vertaling mislukt. Handmatige herpoging nodig.",
+    "tooltipAwaitingSource": "Wacht tot bronondertitel beschikbaar is"
   }
 }

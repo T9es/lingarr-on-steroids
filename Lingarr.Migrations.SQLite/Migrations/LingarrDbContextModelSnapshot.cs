@@ -149,6 +149,10 @@ namespace Lingarr.Migrations.SQLite.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("indexed_at");
 
+                    b.Property<DateTime?>("LastSubtitleCheckAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("last_subtitle_check_at");
+
                     b.Property<string>("MediaHash")
                         .HasColumnType("TEXT")
                         .HasColumnName("media_hash");
@@ -261,6 +265,10 @@ namespace Lingarr.Migrations.SQLite.Migrations
                     b.Property<bool>("IsPriority")
                         .HasColumnType("INTEGER")
                         .HasColumnName("is_priority");
+
+                    b.Property<DateTime?>("LastSubtitleCheckAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("last_subtitle_check_at");
 
                     b.Property<string>("MediaHash")
                         .HasColumnType("TEXT")

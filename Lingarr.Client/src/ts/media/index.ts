@@ -155,7 +155,8 @@ export const TRANSLATION_STATE = {
     COMPLETE: 4,
     STALE: 5,
     NO_SUITABLE_SUBTITLES: 6,
-    FAILED: 7
+    FAILED: 7,
+    AWAITING_SOURCE: 8
 } as const
 
 export type TranslationStateType = (typeof TRANSLATION_STATE)[keyof typeof TRANSLATION_STATE]

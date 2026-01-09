@@ -449,6 +449,7 @@
     "notApplicable": "N/A",
     "noSuitableSubtitles": "No Source",
     "failed": "Failed",
+    "awaitingSource": "Awaiting Source",
     "tooltipComplete": "All translations complete",
     "tooltipInProgress": "Translation in progress",
     "tooltipPending": "Awaiting translation",
@@ -456,6 +457,7 @@
     "tooltipUnknown": "Not yet analyzed",
     "tooltipNotApplicable": "Not applicable / No source",
     "tooltipNoSuitableSubtitles": "No suitable subtitle tracks found (all are sparse/Signs & Songs)",
-    "tooltipFailed": "Translation failed. Needs manual retry."
+    "tooltipFailed": "Translation failed. Needs manual retry.",
+    "tooltipAwaitingSource": "Waiting for source subtitle to appear"
   }
 }

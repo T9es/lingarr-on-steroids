@@ -51,6 +51,8 @@ const badgeClasses = computed(() => {
             return 'bg-red-900/50 text-red-300 border border-red-500/50'
         case TRANSLATION_STATE.FAILED:
             return 'bg-red-900/70 text-red-200 border border-red-400/60'
+        case TRANSLATION_STATE.AWAITING_SOURCE:
+            return 'bg-blue-900/50 text-blue-300 border border-blue-500/50'
         case TRANSLATION_STATE.UNKNOWN:
         default:
             return 'bg-gray-800/50 text-gray-400 border border-gray-600/50 opacity-60'
@@ -73,6 +75,8 @@ const iconComponent = computed(() => {
             return ExclamationIcon
         case TRANSLATION_STATE.FAILED:
             return ExclamationIcon
+        case TRANSLATION_STATE.AWAITING_SOURCE:
+            return ClockIcon
         case TRANSLATION_STATE.UNKNOWN:
         default:
             return QuestionMarkCircleIcon
@@ -95,6 +99,8 @@ const label = computed(() => {
             return translate('translationState.noSuitableSubtitles')
         case TRANSLATION_STATE.FAILED:
             return translate('translationState.failed')
+        case TRANSLATION_STATE.AWAITING_SOURCE:
+            return translate('translationState.awaitingSource')
         case TRANSLATION_STATE.UNKNOWN:
         default:
             return translate('translationState.unknown')
@@ -117,6 +123,8 @@ const tooltip = computed(() => {
             return translate('translationState.tooltipNoSuitableSubtitles')
         case TRANSLATION_STATE.FAILED:
             return translate('translationState.tooltipFailed')
+        case TRANSLATION_STATE.AWAITING_SOURCE:
+            return translate('translationState.tooltipAwaitingSource')
         case TRANSLATION_STATE.UNKNOWN:
         default:
             return translate('translationState.tooltipUnknown')

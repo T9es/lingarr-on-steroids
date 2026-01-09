@@ -132,9 +132,33 @@ public class MovieSync : IMovieSync
         }
 
         // Update translation state
+        // For AwaitingSource: only re-check if directory mtime changed (reduces I/O)
         try
         {
-            await _mediaStateService.UpdateStateAsync(movieEntity, MediaType.Movie);
+            var shouldUpdateState = true;
+            
+            if (movieEntity.TranslationState == TranslationState.AwaitingSource && 
+                !string.IsNullOrEmpty(movieEntity.Path))
+            {
+                var dirInfo = new DirectoryInfo(movieEntity.Path);
+                if (dirInfo.Exists)
+                {
+                    var dirMtime = dirInfo.LastWriteTimeUtc;
+                    if (movieEntity.LastSubtitleCheckAt.HasValue && 
+                        dirMtime <= movieEntity.LastSubtitleCheckAt.Value)
+                    {
+                        // Directory unchanged, skip expensive filesystem scan
+                        shouldUpdateState = false;
+                        _logger.LogDebug("Skipping subtitle check for {Title}: directory unchanged", movieEntity.Title);
+                    }
+                }
+            }
+            
+            if (shouldUpdateState)
+            {
+                await _mediaStateService.UpdateStateAsync(movieEntity, MediaType.Movie);
+                movieEntity.LastSubtitleCheckAt = DateTime.UtcNow;
+            }
         }
         catch (Exception ex)
         {
