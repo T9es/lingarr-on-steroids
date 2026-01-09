@@ -233,7 +233,20 @@ public class TranslationWorkerService : BackgroundService, ITranslationWorkerSer
             return true; // Return true to try the next one
         }
         
-        // Step 3: Start a worker task for this request
+        // Step 3: Broadcast status change to frontend via SignalR
+        // This ensures the UI updates from Pending to InProgress
+        try
+        {
+            var translationRequestService = scope.ServiceProvider.GetRequiredService<ITranslationRequestService>();
+            await translationRequestService.UpdateActiveCount();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to broadcast status update for request {RequestId}", candidate);
+            // Continue anyway - the job should still run
+        }
+        
+        // Step 4: Start a worker task for this request
         _logger.LogInformation(
             "Claimed translation request {RequestId} - starting worker (active: {Active}/{Max})",
             candidate, ActiveWorkers + 1, _maxWorkers);

@@ -116,6 +116,9 @@ public class TranslationRequestService : ITranslationRequestService
         }
 
         // Create a new TranslationRequest to not keep ID and JobID
+        // Look up media priority to initialize IsPriority on the request
+        var isPriority = forcePriority || await GetMediaPriorityAsync(translationRequest.MediaId, translationRequest.MediaType);
+        
         var translationRequestCopy = new TranslationRequest
         {
             MediaId = translationRequest.MediaId,
@@ -125,7 +128,8 @@ public class TranslationRequestService : ITranslationRequestService
             SubtitleToTranslate = translationRequest.SubtitleToTranslate,
             MediaType = translationRequest.MediaType,
             Status = TranslationStatus.Pending,
-            IsActive = true
+            IsActive = true,
+            IsPriority = isPriority
         };
 
         _dbContext.TranslationRequests.Add(translationRequestCopy);
@@ -324,6 +328,8 @@ public class TranslationRequestService : ITranslationRequestService
                 .ToList();
 
             var activeRequestsKeys = new HashSet<(int?, MediaType, string, string)>();
+            var moviePriorityMap = new Dictionary<int, bool>();
+            var episodePriorityMap = new Dictionary<int, bool>();
             
             if (mediaIds.Any())
             {
@@ -336,6 +342,34 @@ public class TranslationRequestService : ITranslationRequestService
                 foreach (var r in activeRequests)
                 {
                     activeRequestsKeys.Add((r.MediaId, r.MediaType, r.SourceLanguage, r.TargetLanguage));
+                }
+                
+                // Look up priority status for movies in this batch
+                var movieIdsInBatch = batch
+                    .Where(x => x.MediaType == MediaType.Movie && x.MediaId.HasValue)
+                    .Select(x => x.MediaId!.Value)
+                    .Distinct()
+                    .ToList();
+                if (movieIdsInBatch.Any())
+                {
+                    moviePriorityMap = await _dbContext.Movies
+                        .Where(m => movieIdsInBatch.Contains(m.Id))
+                        .Select(m => new { m.Id, m.IsPriority })
+                        .ToDictionaryAsync(m => m.Id, m => m.IsPriority);
+                }
+                
+                // Look up priority status for episodes (inherited from Show) in this batch
+                var episodeIdsInBatch = batch
+                    .Where(x => x.MediaType == MediaType.Episode && x.MediaId.HasValue)
+                    .Select(x => x.MediaId!.Value)
+                    .Distinct()
+                    .ToList();
+                if (episodeIdsInBatch.Any())
+                {
+                    episodePriorityMap = await _dbContext.Episodes
+                        .Where(e => episodeIdsInBatch.Contains(e.Id))
+                        .Select(e => new { e.Id, Priority = e.Season.Show.IsPriority })
+                        .ToDictionaryAsync(e => e.Id, e => e.Priority);
                 }
             }
 
@@ -372,6 +406,24 @@ public class TranslationRequestService : ITranslationRequestService
                             if (!activeRequestsKeys.Contains(key))
                             {
                                 var template = group.OrderByDescending(x => x.CreatedAt).First();
+                                
+                                // Look up priority from the pre-fetched maps
+                                // Retries are treated as priority, but also respect media priority status
+                                var isPriority = true; // Default to priority for retries
+                                if (template.MediaId.HasValue)
+                                {
+                                    if (template.MediaType == MediaType.Movie)
+                                    {
+                                        moviePriorityMap.TryGetValue(template.MediaId.Value, out isPriority);
+                                        isPriority = true; // Always priority for retries
+                                    }
+                                    else if (template.MediaType == MediaType.Episode)
+                                    {
+                                        episodePriorityMap.TryGetValue(template.MediaId.Value, out isPriority);
+                                        isPriority = true; // Always priority for retries
+                                    }
+                                }
+                                
                                 var newRequest = new TranslationRequest
                                 {
                                     MediaId = template.MediaId,
@@ -381,7 +433,8 @@ public class TranslationRequestService : ITranslationRequestService
                                     SubtitleToTranslate = template.SubtitleToTranslate,
                                     MediaType = template.MediaType,
                                     Status = TranslationStatus.Pending,
-                                    IsActive = true
+                                    IsActive = true,
+                                    IsPriority = isPriority
                                 };
                                 
                                 batchNewRequests.Add(newRequest);
@@ -983,6 +1036,33 @@ public class TranslationRequestService : ITranslationRequestService
                     break;
             }
         }
+    }
+
+    /// <summary>
+    /// Looks up the priority status of the media entity (Movie or Show).
+    /// </summary>
+    /// <param name="mediaId">The ID of the media entity</param>
+    /// <param name="mediaType">The type of media (Movie or Episode)</param>
+    /// <returns>True if the media is marked as priority, false otherwise</returns>
+    private async Task<bool> GetMediaPriorityAsync(int? mediaId, MediaType mediaType)
+    {
+        if (!mediaId.HasValue) return false;
+        
+        if (mediaType == MediaType.Movie)
+        {
+            return await _dbContext.Movies
+                .Where(m => m.Id == mediaId.Value)
+                .Select(m => m.IsPriority)
+                .FirstOrDefaultAsync();
+        }
+        else if (mediaType == MediaType.Episode)
+        {
+            return await _dbContext.Episodes
+                .Where(e => e.Id == mediaId.Value)
+                .Select(e => e.Season.Show.IsPriority)
+                .FirstOrDefaultAsync();
+        }
+        return false;
     }
 
     private async Task EnqueueTranslationJobAsync(TranslationRequest translationRequest, bool forcePriority)
