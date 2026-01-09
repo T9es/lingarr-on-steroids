@@ -584,20 +584,11 @@ public class TranslationRequestService : ITranslationRequestService
     /// <inheritdoc />
     public async Task ResumeTranslationRequests()
     {
-        // With the new worker service approach, we just need to:
-        // 1. Reset InProgress jobs to Pending (they were interrupted)
-        // 2. Signal the worker service to pick up work
-        
-        var resetCount = await _dbContext.TranslationRequests
-            .Where(tr => tr.Status == TranslationStatus.InProgress)
-            .ExecuteUpdateAsync(s => s.SetProperty(tr => tr.Status, TranslationStatus.Pending));
-        
-        if (resetCount > 0)
-        {
-            _logger.LogInformation(
-                "Reset {Count} interrupted translation request(s) to Pending status",
-                resetCount);
-        }
+        // NOTE: InProgress→Pending recovery is now handled by TranslationWorkerService.RecoverInterruptedJobsAsync()
+        // on startup. We only need to signal the worker that work may be available.
+        // Previously this method also reset InProgress jobs, but that caused a race condition:
+        // the worker would claim jobs (setting them to InProgress) and then this method
+        // would reset them back to Pending, causing the UI to show "Pending" while jobs were running.
         
         // Signal worker service that work may be available
         _workerService.Signal();
