@@ -91,6 +91,11 @@ public class TranslationWorkerService : BackgroundService, ITranslationWorkerSer
                 "TranslationWorkerService started with {MaxWorkers} max workers",
                 _maxWorkers);
             
+            // Schedule a delayed re-queue to work around jobs hanging on startup
+            // Some jobs claimed immediately after restart seem to hang silently.
+            // Re-enqueueing after a short delay resets them and they process normally.
+            _ = ScheduleDelayedRequeueAsync(stoppingToken);
+            
             // Main worker management loop
             await RunWorkerLoopAsync(stoppingToken);
         }
@@ -107,6 +112,40 @@ public class TranslationWorkerService : BackgroundService, ITranslationWorkerSer
         {
             // Wait for active workers to complete gracefully
             await WaitForActiveWorkersAsync();
+        }
+    }
+    
+    private async Task ScheduleDelayedRequeueAsync(CancellationToken stoppingToken)
+    {
+        try
+        {
+            // Wait 5 seconds after startup before re-queueing
+            await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+            
+            if (stoppingToken.IsCancellationRequested) return;
+            
+            _logger.LogInformation("Performing delayed re-queue to reset any hung jobs from startup...");
+            
+            using var scope = _serviceProvider.CreateScope();
+            var translationRequestService = scope.ServiceProvider.GetRequiredService<ITranslationRequestService>();
+            
+            // Re-enqueue only pending items, don't touch in-progress (they'll be cancelled and reset)
+            var result = await translationRequestService.ReenqueueQueuedRequests(includeInProgress: true);
+            
+            if (result.Reenqueued > 0 || result.SkippedProcessing > 0)
+            {
+                _logger.LogInformation(
+                    "Delayed re-queue complete: {Reenqueued} re-enqueued, {Skipped} skipped (in-progress)",
+                    result.Reenqueued, result.SkippedProcessing);
+            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // Shutdown requested, ignore
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Delayed re-queue failed (non-fatal)");
         }
     }
 
