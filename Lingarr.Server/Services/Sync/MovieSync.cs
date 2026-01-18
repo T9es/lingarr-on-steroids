@@ -1,4 +1,4 @@
-﻿using Lingarr.Core.Data;
+using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Interfaces.Services;
@@ -171,11 +171,13 @@ public class MovieSync : IMovieSync
 
         // Update translation state
         // For AwaitingSource: only re-check if directory mtime changed (reduces I/O)
+        // Unless we just indexed it (needsIndexing), then always update
         try
         {
             var shouldUpdateState = true;
             
-            if (movieEntity.TranslationState == TranslationState.AwaitingSource && 
+            if (!needsIndexing && 
+                movieEntity.TranslationState == TranslationState.AwaitingSource && 
                 !string.IsNullOrEmpty(movieEntity.Path))
             {
                 var dirInfo = new DirectoryInfo(movieEntity.Path);

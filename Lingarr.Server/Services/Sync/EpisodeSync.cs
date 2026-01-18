@@ -1,4 +1,4 @@
-﻿using Lingarr.Core.Data;
+using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
 using Lingarr.Core.Interfaces;
@@ -119,6 +119,7 @@ public class EpisodeSync : IEpisodeSync
         var episodesToUpdateState = syncedEpisodes
             .Where(x => {
                 var entity = x.Entity;
+                if (x.NeedsIndexing) return true;
                 if (entity.TranslationState != TranslationState.AwaitingSource) return true;
                 if (string.IsNullOrEmpty(entity.Path)) return true;
                 
