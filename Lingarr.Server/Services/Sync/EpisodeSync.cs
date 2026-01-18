@@ -107,10 +107,16 @@ public class EpisodeSync : IEpisodeSync
                     entity.FileName!);
             }
 
-            if (needsIndexing)
+            // Only index if the episode has been persisted (has a real ID)
+            // New episodes will be indexed on the next sync cycle after they're saved
+            if (entity.Id > 0)
             {
-                // Fix "No Subtitles" loop: Indexing will mark it as indexed even if no subtitles found
-                await IndexEmbeddedSubtitles(entity, saveChanges: false);
+                // Re-index if: needsIndexing OR episode exists but has no embedded subtitles recorded
+                var shouldIndex = needsIndexing || !entity.EmbeddedSubtitles.Any();
+                if (shouldIndex)
+                {
+                    await IndexEmbeddedSubtitles(entity, saveChanges: false);
+                }
             }
         }
 
