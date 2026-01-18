@@ -95,7 +95,7 @@ public class AutomatedTranslationJob
 
                 processedCount++;
 
-                // For stale/unknown items, refresh state first
+                // For stale/unknown/failed items, refresh state first
                 TranslationState currentState;
                 if (mediaType == MediaType.Movie)
                 {
@@ -106,8 +106,9 @@ public class AutomatedTranslationJob
                     currentState = ((Episode)media).TranslationState;
                 }
 
-                if (currentState == TranslationState.Stale || currentState == TranslationState.Unknown)
+                if (currentState == TranslationState.Stale || currentState == TranslationState.Unknown || currentState == TranslationState.Failed)
                 {
+                    // For Failed items, we allow retry if state re-evaluation says it's Pending
                     var newState = await _mediaStateService.UpdateStateAsync(media, mediaType);
                     if (newState != TranslationState.Pending)
                     {

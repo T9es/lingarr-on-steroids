@@ -69,7 +69,7 @@ public class EpisodeSync : IEpisodeSync
         // Now that IDs are assigned for new entities, perform indexing and state updates
         foreach (var (entity, needsIndexing, oldPath, oldFileName) in syncedEpisodes)
         {
-            // Clean up orphaned subtitles when the filename changes (e.g., media upgraded)
+            // Clean up orphaned subtitles when the filename actually changes (media upgraded)
             if (!string.IsNullOrEmpty(oldPath) && !string.IsNullOrEmpty(oldFileName) && oldFileName != entity.FileName)
             {
                 await _orphanCleanupService.CleanupOrphansAsync(
@@ -80,7 +80,8 @@ public class EpisodeSync : IEpisodeSync
 
             if (needsIndexing)
             {
-                await IndexEmbeddedSubtitles(entity);
+                // We perform individual indexing for now because SyncEmbeddedSubtitles is complex and hits filesystem
+                await IndexEmbeddedSubtitles(entity, saveChanges: false);
             }
 
             // Update state - for AwaitingSource, check mtime first (reduces I/O)
@@ -114,6 +115,12 @@ public class EpisodeSync : IEpisodeSync
             {
                 _logger.LogWarning(ex, "Failed to update translation state for episode {Title}", entity.Title);
             }
+        }
+
+        // Final batch save for indexing and state updates
+        if (_dbContext.ChangeTracker.HasChanges())
+        {
+            await _dbContext.SaveChangesAsync();
         }
 
         RemoveNonExistentEpisodes(season, episodes);
@@ -158,21 +165,52 @@ public class EpisodeSync : IEpisodeSync
             oldPath != episodeEntity.Path ||
             oldFileName != episodeEntity.FileName);
 
+        if (!isNew && !fileChanged && !string.IsNullOrEmpty(episodeEntity.Path) && !string.IsNullOrEmpty(episodeEntity.FileName))
+        {
+            try 
+            {
+                var dirInfo = new DirectoryInfo(episodeEntity.Path);
+                if (dirInfo.Exists)
+                {
+                    var fileInfo = dirInfo.GetFiles(episodeEntity.FileName + ".*")
+                        .FirstOrDefault(f => !SubtitleExtensions.Contains(f.Extension.ToLowerInvariant()));
+                    
+                    if (fileInfo != null)
+                    {
+                        if (episodeEntity.IndexedAt.HasValue && fileInfo.LastWriteTimeUtc > episodeEntity.IndexedAt.Value.AddSeconds(5))
+                        {
+                            _logger.LogInformation("Episode file {Title} appears to have been refreshed (mtime changed), triggering re-index", episodeEntity.Title);
+                            fileChanged = true;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Failed to check mtime for episode {Title}", episodeEntity.Title);
+            }
+        }
+
         var needsIndexing = isNew || fileChanged || episodeEntity.IndexedAt == null;
         
         // Return old values only if file actually changed
         return (episodeEntity, needsIndexing, fileChanged ? oldPath : null, fileChanged ? oldFileName : null);
     }
 
-    private async Task IndexEmbeddedSubtitles(Episode episodeEntity)
+    private static readonly string[] SubtitleExtensions = { ".srt", ".ass", ".ssa", ".sub" };
+
+    private async Task IndexEmbeddedSubtitles(Episode episodeEntity, bool saveChanges = true)
     {
         try
         {
             await _extractionService.SyncEmbeddedSubtitles(episodeEntity);
             episodeEntity.IndexedAt = DateTime.UtcNow;
             
-            // Persist the indexing status immediately
-            await _dbContext.SaveChangesAsync();
+            // Persist the indexing status
+            if (saveChanges)
+            {
+                await _dbContext.SaveChangesAsync();
+            }
             _logger.LogDebug("Indexed embedded subtitles for episode {Title}", episodeEntity.Title);
         }
         catch (Exception ex)

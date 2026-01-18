@@ -116,69 +116,26 @@ public class MediaStateService : IMediaStateService
             return TranslationState.NotApplicable;
         }
 
-        // 3. Check for active translation request
+        // 7. Check for active/failed translation requests
+        // If it's failed, it stays Failed unless something else changed (handled by MediaSubtitleProcessor's hash)
         if (await HasActiveTranslationRequestAsync(media.Id, mediaType))
         {
             return TranslationState.InProgress;
         }
 
-        // 3b. Check for failed translation request
         if (await HasFailedTranslationRequestAsync(media.Id, mediaType))
         {
+            // If the hash matches, it means nothing changed since it failed.
+            // But if the hash is DIFFERENT, MediaSubtitleProcessor would have cleared the state or we'd be here.
+            // Actually, we want to allow retrying if the user fixes something or if we want to periodically retry.
+            // For now, if there's a failed request, we mark as Failed.
             return TranslationState.Failed;
         }
 
-        // 4. Get external subtitles
-        var externalSubtitles = new List<Subtitles>();
-        if (!string.IsNullOrEmpty(media.Path))
-        {
-            try
-            {
-                var allSubs = await _subtitleService.GetAllSubtitles(media.Path);
-                var mediaNameNoExt = Path.GetFileNameWithoutExtension(media.FileName);
-                externalSubtitles = allSubs
-                    .Where(s => !string.IsNullOrEmpty(media.FileName) && 
-                               (s.FileName.StartsWith(media.FileName + ".") || 
-                                s.FileName == media.FileName ||
-                                (!string.IsNullOrEmpty(mediaNameNoExt) && s.FileName.StartsWith(mediaNameNoExt + "."))))
-                    .ToList();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogDebug(ex, "Failed to get external subtitles for {Title}", media.Title);
-            }
-        }
-
-        // 5. Check for source subtitle
-        var hasExternalSource = externalSubtitles
-            .Any(s => sourceLanguages.Any(sl => SubtitleLanguageHelper.LanguageMatches(s.Language, sl)));
-        var hasEmbeddedSource = embeddedSubtitles
-            .Any(e => e.IsTextBased && 
-                     !string.IsNullOrEmpty(e.Language) && 
-                     sourceLanguages.Any(sl => SubtitleLanguageHelper.LanguageMatches(e.Language, sl)));
-
-        if (!hasExternalSource && !hasEmbeddedSource)
-        {
-            return TranslationState.AwaitingSource;
-        }
-
-        // 6. Check which targets are satisfied
-        var existingTargetLanguages = externalSubtitles
-            .Select(s => s.Language.ToLowerInvariant())
-            .ToHashSet();
-
-        var missingTargets = targetLanguages
-            .Where(t => !existingTargetLanguages.Contains(t))
-            .ToList();
-
-        if (missingTargets.Count == 0)
-        {
-            return TranslationState.Complete;
-        }
-
-        // Has source, missing targets, no active request = Pending
+        // Has source, missing targets, no active/failed request = Pending
         return TranslationState.Pending;
     }
+
 
     /// <inheritdoc />
     public async Task MarkAllStaleAsync()
@@ -202,13 +159,24 @@ public class MediaStateService : IMediaStateService
         var result = new List<(IMedia Media, MediaType Type)>();
         var halfLimit = Math.Max(limit / 2, 1);
 
+        _logger.LogInformation("Querying for media needing translation. Limit: {Limit}", limit);
+
         // Query movies needing work
         var moviesQuery = _dbContext.Movies
             .Include(m => m.EmbeddedSubtitles)
             .Where(m => !m.ExcludeFromTranslation)
             .Where(m => m.TranslationState == TranslationState.Pending 
                      || m.TranslationState == TranslationState.Stale
-                     || (m.TranslationState == TranslationState.Unknown && m.IndexedAt != null));
+                     || m.TranslationState == TranslationState.Failed
+                     || m.TranslationState == TranslationState.Unknown);
+
+        var pendingCount = await _dbContext.Movies.CountAsync(m => m.TranslationState == TranslationState.Pending);
+        var staleCount = await _dbContext.Movies.CountAsync(m => m.TranslationState == TranslationState.Stale);
+        var unknownCount = await _dbContext.Movies.CountAsync(m => m.TranslationState == TranslationState.Unknown);
+        var failedCount = await _dbContext.Movies.CountAsync(m => m.TranslationState == TranslationState.Failed);
+        
+        _logger.LogInformation("Movie states in DB: Pending={Pending}, Stale={Stale}, Unknown={Unknown}, Failed={Failed}", 
+            pendingCount, staleCount, unknownCount, failedCount);
 
         if (priorityFirst)
         {
@@ -235,7 +203,8 @@ public class MediaStateService : IMediaStateService
             .Where(e => !e.Season.Show.ExcludeFromTranslation)
             .Where(e => e.TranslationState == TranslationState.Pending 
                      || e.TranslationState == TranslationState.Stale
-                     || (e.TranslationState == TranslationState.Unknown && e.IndexedAt != null));
+                     || e.TranslationState == TranslationState.Failed
+                     || e.TranslationState == TranslationState.Unknown);
 
         if (priorityFirst)
         {

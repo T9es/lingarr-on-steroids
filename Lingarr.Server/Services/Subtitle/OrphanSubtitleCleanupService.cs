@@ -72,61 +72,70 @@ public class OrphanSubtitleCleanupService : IOrphanSubtitleCleanupService
 
         try
         {
-            foreach (var ext in SubtitleExtensions)
+            // First, find all subtitles matching the OLD filename (orphans from upgrade)
+            if (oldFileName != newFileName)
             {
-                var pattern = $"{oldFileName}*{ext}";
-                var files = Directory.GetFiles(directoryPath, pattern, SearchOption.TopDirectoryOnly);
-
-                foreach (var file in files)
+                var allFiles = Directory.GetFiles(directoryPath, "*.*", SearchOption.TopDirectoryOnly);
+                foreach (var file in allFiles)
                 {
                     var fileName = Path.GetFileName(file);
+                    var ext = Path.GetExtension(file).ToLowerInvariant();
                     
-                    // Check if this file has a Lingarr tag
-                    var hasTag = (!string.IsNullOrEmpty(subtitleTag) && fileName.Contains(subtitleTag)) ||
-                                 (!string.IsNullOrEmpty(shortTag) && fileName.Contains(shortTag));
-                    
-                    if (!hasTag)
-                    {
-                        _logger.LogDebug(
-                            "Subtitle file {FileName} does not contain Lingarr tag, skipping.",
-                            fileName);
-                        continue;
-                    }
+                    if (!SubtitleExtensions.Contains(ext)) continue;
 
-                    // Check if this file would match the NEW filename (if so, it's not orphaned)
-                    if (fileName.StartsWith(newFileName + ".") || fileName.StartsWith(newFileName + "["))
+                    // Match old filename specifically: starts with oldFileName and followed by . or [ or - (standard Radarr/Sonarr naming)
+                    // We avoid glob patterns like * to be more precise
+                    if (fileName.StartsWith(oldFileName) && 
+                        (fileName.Length == oldFileName.Length + ext.Length || 
+                         fileName[oldFileName.Length] == '.' || 
+                         fileName[oldFileName.Length] == '[' || 
+                         fileName[oldFileName.Length] == '-'))
                     {
-                        _logger.LogDebug(
-                            "Subtitle file {FileName} matches new media filename, keeping.",
-                            fileName);
-                        continue;
-                    }
+                        // Check if this file has a Lingarr tag
+                        var hasTag = (!string.IsNullOrEmpty(subtitleTag) && fileName.Contains(subtitleTag)) ||
+                                     (!string.IsNullOrEmpty(shortTag) && fileName.Contains(shortTag));
+                        
+                        if (!hasTag) continue;
 
-                    // This is an orphaned Lingarr-created subtitle - delete it
-                    try
-                    {
-                        File.Delete(file);
-                        cleanedCount++;
-
-                        logsToAdd.Add(new SubtitleCleanupLog
+                        // Double check it doesn't match the new filename
+                        if (fileName.StartsWith(newFileName) && 
+                            (fileName.Length == newFileName.Length + ext.Length || 
+                             fileName[newFileName.Length] == '.' || 
+                             fileName[newFileName.Length] == '[' || 
+                             fileName[newFileName.Length] == '-'))
                         {
-                            FilePath = file,
-                            OriginalMediaFileName = oldFileName,
-                            NewMediaFileName = newFileName,
-                            Reason = "media_filename_changed",
-                            DeletedAt = DateTime.UtcNow
-                        });
+                            continue;
+                        }
 
-                        _logger.LogInformation(
-                            "Deleted orphaned subtitle: {FileName} (media changed from '{OldName}' to '{NewName}')",
-                            fileName, oldFileName, newFileName);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Failed to delete orphaned subtitle: {Path}", file);
+                        // This is an orphaned Lingarr-created subtitle - delete it
+                        try
+                        {
+                            File.Delete(file);
+                            cleanedCount++;
+
+                            logsToAdd.Add(new SubtitleCleanupLog
+                            {
+                                FilePath = file,
+                                OriginalMediaFileName = oldFileName,
+                                NewMediaFileName = newFileName,
+                                Reason = "media_filename_changed",
+                                DeletedAt = DateTime.UtcNow
+                            });
+
+                            _logger.LogInformation(
+                                "Deleted orphaned subtitle: {FileName} (media changed from '{OldName}' to '{NewName}')",
+                                fileName, oldFileName, newFileName);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to delete orphaned subtitle: {Path}", file);
+                        }
                     }
                 }
             }
+
+            // Remove clean slate logic for same-filename mtime changes - MediaSubtitleProcessor handles it via hashing
+            // and only re-translates if necessary. Aggressive wipe here is dangerous.
 
             // Save cleanup logs to database
             if (logsToAdd.Count > 0)

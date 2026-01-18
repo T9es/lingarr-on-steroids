@@ -89,9 +89,40 @@ public class MovieSync : IMovieSync
         }
 
         // Determine if we need to re-index embedded subtitles
-        var fileChanged = !isNew && (
-            oldPath != movieEntity.Path ||
-            oldFileName != movieEntity.FileName);
+        // Safe detection: only trigger if the filename actually changes (media upgraded)
+        var fileChanged = !isNew && (oldFileName != movieEntity.FileName);
+
+        if (!isNew && !fileChanged && !string.IsNullOrEmpty(movieEntity.Path) && !string.IsNullOrEmpty(movieEntity.FileName))
+        {
+            // If path changed but filename is the same, it's just a move. 
+            // We update the path but don't need to re-index or clean orphans unless we're paranoid.
+            // But if mtime changed on the same file, we might need re-indexing.
+            
+            try 
+            {
+                var dirInfo = new DirectoryInfo(movieEntity.Path);
+                if (dirInfo.Exists)
+                {
+                    var fileInfo = dirInfo.GetFiles(movieEntity.FileName + ".*")
+                        .FirstOrDefault(f => !SubtitleExtensions.Contains(f.Extension.ToLowerInvariant()));
+                    
+                    if (fileInfo != null)
+                    {
+                        if (movieEntity.IndexedAt.HasValue && fileInfo.LastWriteTimeUtc > movieEntity.IndexedAt.Value.AddSeconds(5))
+                        {
+                            _logger.LogInformation("Movie file {Title} appears to have been refreshed (mtime changed), triggering re-index", movieEntity.Title);
+                            fileChanged = true;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Failed to check mtime for movie {Title}", movieEntity.Title);
+            }
+        }
+
+        private static readonly string[] SubtitleExtensions = { ".srt", ".ass", ".ssa", ".sub" };
 
         // Clean up orphaned subtitles when the filename changes (e.g., media upgraded)
         if (fileChanged && !string.IsNullOrEmpty(oldPath) && !string.IsNullOrEmpty(oldFileName))
