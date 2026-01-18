@@ -104,17 +104,9 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         if (sourceLanguage != null)
         {
             sourceSubtitle = ignoreCaptions == "true"
-                 ? matchingSubtitles.FirstOrDefault(s => s.Language == sourceLanguage && string.IsNullOrEmpty(s.Caption)) 
-                     ?? matchingSubtitles.FirstOrDefault(s => s.Language == sourceLanguage)
+                 ? (matchingSubtitles.FirstOrDefault(s => s.Language == sourceLanguage && string.IsNullOrEmpty(s.Caption)) 
+                     ?? matchingSubtitles.FirstOrDefault(s => s.Language == sourceLanguage))
                  : matchingSubtitles.FirstOrDefault(s => s.Language == sourceLanguage);
-
-            // Skip Lingarr-extracted sparse files
-            if (sourceSubtitle != null && SubtitleExtractionService.IsLingarrExtracted(sourceSubtitle.Path) && SubtitleExtractionService.IsSparseSubtitle(sourceSubtitle.Path))
-            {
-                _logger.LogInformation("External source {Path} is a sparse Lingarr-extracted file, skipping for fallback.", sourceSubtitle.Path);
-                sourceSubtitle = null;
-                sourceLanguage = null;
-            }
         }
 
         // 2. Compute Hash (Robust & Relative)
@@ -140,6 +132,20 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             ? targetLanguages.ToList()
             : targetLanguages.Except(existingLanguages).ToList();
 
+        if (ignoreCaptions == "true" && !forceTranslation)
+        {
+            var targetLanguagesWithCaptions = matchingSubtitles
+                .Where(s => targetLanguages.Contains(s.Language) && !string.IsNullOrEmpty(s.Caption))
+                .Select(s => s.Language)
+                .Distinct()
+                .ToList();
+
+            if (targetLanguagesWithCaptions.Any())
+            {
+                languagesToTranslate = languagesToTranslate.Except(targetLanguagesWithCaptions).ToList();
+            }
+        }
+
         var corruptLanguages = new List<string>();
         if (!forceTranslation)
         {
@@ -159,25 +165,10 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             languagesToTranslate = languagesToTranslate.Union(corruptLanguages).ToList();
         }
 
-        if (ignoreCaptions == "true" && !forceTranslation)
-        {
-            var targetLanguagesWithCaptions = matchingSubtitles
-                .Where(s => targetLanguages.Contains(s.Language) && !string.IsNullOrEmpty(s.Caption))
-                .Select(s => s.Language)
-                .Distinct()
-                .Except(corruptLanguages)
-                .ToList();
-
-            if (targetLanguagesWithCaptions.Any())
-            {
-                languagesToTranslate = languagesToTranslate.Except(targetLanguagesWithCaptions).ToList();
-            }
-        }
-
         var queuedCount = 0;
         foreach (var targetLanguage in languagesToTranslate)
         {
-            if (await HasActiveRequestAsync(media.Id, mediaType, sourceLanguage, targetLanguage)) continue;
+            if (await HasActiveRequestAsync(media.Id, mediaType, sourceLanguage!, targetLanguage)) continue;
 
             await _translationRequestService.CreateRequest(new TranslateAbleSubtitle
             {
@@ -185,15 +176,21 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 MediaType = mediaType,
                 SubtitlePath = sourceSubtitle.Path,
                 TargetLanguage = targetLanguage,
-                SourceLanguage = sourceLanguage,
+                SourceLanguage = sourceLanguage!,
                 SubtitleFormat = sourceSubtitle.Format
             }, forcePriority);
             queuedCount++;
         }
 
-        if (corruptLanguages.Count == 0)
+        if (corruptLanguages.Count == 0 && queuedCount > 0)
         {
             await UpdateHash();
+        }
+        else if (corruptLanguages.Count == 0 && languagesToTranslate.Count == 0)
+        {
+            // If nothing to translate and nothing corrupt, we can also update hash
+            await UpdateHash();
+            return 1; // Signal that we "processed" it (nothing needed)
         }
 
         return queuedCount;

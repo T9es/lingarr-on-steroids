@@ -122,8 +122,6 @@ public class MovieSync : IMovieSync
             }
         }
 
-        private static readonly string[] SubtitleExtensions = { ".srt", ".ass", ".ssa", ".sub" };
-
         // Clean up orphaned subtitles when the filename changes (e.g., media upgraded)
         if (fileChanged && !string.IsNullOrEmpty(oldPath) && !string.IsNullOrEmpty(oldFileName))
         {
@@ -198,4 +196,6 @@ public class MovieSync : IMovieSync
 
         return movieEntity;
     }
+
+    private static readonly string[] SubtitleExtensions = { ".srt", ".ass", ".ssa", ".sub" };
 }
