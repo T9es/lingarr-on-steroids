@@ -170,6 +170,9 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         {
             if (await HasActiveRequestAsync(media.Id, mediaType, sourceLanguage!, targetLanguage)) continue;
 
+            // Clean up any failed requests for this media/language pair before creating a new one
+            await _translationRequestService.RemoveFailedRequestsAsync(media.Id, mediaType);
+
             await _translationRequestService.CreateRequest(new TranslateAbleSubtitle
             {
                 MediaId = media.Id,
@@ -531,6 +534,9 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             foreach (var targetLanguage in languagesToTranslate)
             {
                 if (await HasActiveRequestAsync(media.Id, mediaType, selectedSourceLanguage, targetLanguage)) continue;
+
+                // Clean up any failed requests for this media/language pair before creating a new one
+                await _translationRequestService.RemoveFailedRequestsAsync(media.Id, mediaType);
 
                 await _translationRequestService.CreateRequest(new TranslateAbleSubtitle
                 {
