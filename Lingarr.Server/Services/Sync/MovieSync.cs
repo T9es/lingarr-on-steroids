@@ -48,6 +48,7 @@ public class MovieSync : IMovieSync
         }
 
         var movieEntity = await _dbContext.Movies
+            .AsSplitQuery()
             .Include(m => m.Images)
             .Include(m => m.EmbeddedSubtitles)
             .FirstOrDefaultAsync(m => m.RadarrId == movie.Id);

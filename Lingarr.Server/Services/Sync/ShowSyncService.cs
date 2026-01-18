@@ -43,6 +43,7 @@ public class ShowSyncService : IShowSyncService
 
             // Pre-load the entire hierarchy for the current batch
             var existingShows = await _dbContext.Shows
+                .AsSplitQuery()
                 .Include(s => s.Images)
                 .Include(s => s.Seasons)
                     .ThenInclude(s => s.Episodes)
@@ -89,6 +90,7 @@ public class ShowSyncService : IShowSyncService
     {
         // Pre-load hierarchy for single show
         var showEntity = await _dbContext.Shows
+            .AsSplitQuery()
             .Include(s => s.Images)
             .Include(s => s.Seasons)
                 .ThenInclude(s => s.Episodes)
