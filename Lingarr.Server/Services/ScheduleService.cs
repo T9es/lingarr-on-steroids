@@ -104,15 +104,29 @@ public class ScheduleService : IScheduleService
     {
         var monitor = JobStorage.Current.GetMonitoringApi();
 
-        // Check each possible state
-        if (monitor.SucceededJobs(0, 1).Any(j => j.Key == jobId))
+        // Check Processing first (most important)
+        if (monitor.ProcessingJobs(0, 100).Any(j => j.Key == jobId))
+            return JobStatus.Processing.GetDisplayName();
+
+        // Check Enqueued in all queues
+        var queues = monitor.Queues();
+        foreach (var queue in queues)
+        {
+            if (monitor.EnqueuedJobs(queue.Name, 0, 100).Any(j => j.Key == jobId))
+                return JobStatus.Enqueued.GetDisplayName();
+        }
+
+        // Check Succeeded (check more than 1)
+        if (monitor.SucceededJobs(0, 50).Any(j => j.Key == jobId))
             return JobStatus.Succeeded.GetDisplayName();
-        if (monitor.FailedJobs(0, 1).Any(j => j.Key == jobId))
+        
+        // Check Failed
+        if (monitor.FailedJobs(0, 50).Any(j => j.Key == jobId))
             return JobStatus.Failed.GetDisplayName();
-        if (monitor.ScheduledJobs(0, 1).Any(j => j.Key == jobId))
+
+        // Check Scheduled
+        if (monitor.ScheduledJobs(0, 50).Any(j => j.Key == jobId))
             return JobStatus.Scheduled.GetDisplayName();
-        if (monitor.EnqueuedJobs("default", 0, 1).Any(j => j.Key == jobId))
-            return JobStatus.Enqueued.GetDisplayName();
 
         return JobStatus.Planned.GetDisplayName();
     }

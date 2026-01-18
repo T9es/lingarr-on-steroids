@@ -69,14 +69,27 @@ public class EpisodeSync : IEpisodeSync
 
         foreach (var episode in episodes.Where(e => e.HasFile))
         {
-            var episodePathResult = await _sonarrService.GetEpisodePath(episode.Id);
-            var episodePath = _pathConversionService.ConvertAndMapPath(
-                episodePathResult?.EpisodeFile.Path ?? string.Empty,
-                MediaType.Show
-            );
-            
-            var (entity, needsIndexing, oldPath, oldFileName) = await UpdateEpisodeMetadata(episode, episodePath, season, episodePathResult?.EpisodeFile.DateAdded, existingEpisodes, seasonFiles);
-            syncedEpisodes.Add((entity, needsIndexing, oldPath, oldFileName));
+            try
+            {
+                var episodePathResult = await _sonarrService.GetEpisodePath(episode.Id);
+                if (episodePathResult == null)
+                {
+                    _logger.LogWarning("Failed to get episode path for episode {EpisodeId} ({Title})", episode.Id, episode.Title);
+                    continue;
+                }
+
+                var episodePath = _pathConversionService.ConvertAndMapPath(
+                    episodePathResult.EpisodeFile.Path ?? string.Empty,
+                    MediaType.Show
+                );
+
+                var (entity, needsIndexing, oldPath, oldFileName) = await UpdateEpisodeMetadata(episode, episodePath, season, episodePathResult.EpisodeFile.DateAdded, existingEpisodes, seasonFiles);
+                syncedEpisodes.Add((entity, needsIndexing, oldPath, oldFileName));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error syncing episode {EpisodeId} ({Title})", episode.Id, episode.Title);
+            }
         }
 
         // Batch save all metadata updates/additions
@@ -137,6 +150,15 @@ public class EpisodeSync : IEpisodeSync
         }
 
         RemoveNonExistentEpisodes(season, episodes);
+
+        var duplicateEpisodes = season.Episodes.GroupBy(e => e.SonarrId).Where(g => g.Count() > 1).ToList();
+        if (duplicateEpisodes.Any())
+        {
+            foreach (var dup in duplicateEpisodes)
+            {
+                _logger.LogWarning("Duplicate episode SonarrId found in DB for season {SeasonNumber}: {SonarrId}. Count: {Count}", season.SeasonNumber, dup.Key, dup.Count());
+            }
+        }
     }
 
     /// <summary>

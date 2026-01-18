@@ -8,7 +8,7 @@ namespace Lingarr.Server.Services.Sync;
 
 public class ShowSyncService : IShowSyncService
 {
-    private const int BatchSize = 100;
+    private const int BatchSize = 25;
     
     private readonly LingarrDbContext _dbContext;
     private readonly IShowSync _showSync;
@@ -42,14 +42,24 @@ public class ShowSyncService : IShowSyncService
             var sonarrIds = batch.Select(s => s.Id).ToList();
 
             // Pre-load the entire hierarchy for the current batch
-            var existingShows = await _dbContext.Shows
-                .AsSplitQuery()
-                .Include(s => s.Images)
-                .Include(s => s.Seasons)
-                    .ThenInclude(s => s.Episodes)
-                        .ThenInclude(e => e.EmbeddedSubtitles)
-                .Where(s => sonarrIds.Contains(s.SonarrId))
-                .ToListAsync();
+            List<Show> existingShows;
+            try
+            {
+                _logger.LogInformation("Pre-loading batch of {Count} shows from database (Batch start: {Index})", batch.Count, i);
+                existingShows = await _dbContext.Shows
+                    .AsSplitQuery()
+                    .Include(s => s.Images)
+                    .Include(s => s.Seasons)
+                        .ThenInclude(s => s.Episodes)
+                            .ThenInclude(e => e.EmbeddedSubtitles)
+                    .Where(s => sonarrIds.Contains(s.SonarrId))
+                    .ToListAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to pre-load batch of shows from database. Attempting to continue without pre-loading.");
+                existingShows = new List<Show>();
+            }
 
             var duplicates = existingShows.GroupBy(s => s.SonarrId).Where(g => g.Count() > 1).ToList();
             if (duplicates.Any())
@@ -66,22 +76,54 @@ public class ShowSyncService : IShowSyncService
 
             foreach (var sonarrShow in batch)
             {
-                showsBySonarrId.TryGetValue(sonarrShow.Id, out var showEntity);
-                showEntity = await _showSync.SyncShow(sonarrShow, showEntity);
-
-                foreach (var sonarrSeason in sonarrShow.Seasons)
+                try
                 {
-                    var existingSeason = showEntity.Seasons.FirstOrDefault(s => s.SeasonNumber == sonarrSeason.SeasonNumber);
-                    var seasonEntity = await _seasonSync.SyncSeason(showEntity, sonarrShow, sonarrSeason, existingSeason);
-                    
-                    await _episodeSync.SyncEpisodes(sonarrShow, seasonEntity, seasonEntity.Episodes.ToList());
+                    if (sonarrShow.Title.Equals("Jujutsu Kaisen", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _logger.LogInformation("DEBUG: Syncing Jujutsu Kaisen. SonarrId: {Id}, Path: {Path}, Seasons: {SeasonCount}",
+                            sonarrShow.Id, sonarrShow.Path, sonarrShow.Seasons?.Count ?? 0);
+                    }
+
+                    showsBySonarrId.TryGetValue(sonarrShow.Id, out var showEntity);
+                    showEntity = await _showSync.SyncShow(sonarrShow, showEntity);
+
+                    if (sonarrShow.Seasons == null)
+                    {
+                        _logger.LogWarning("Show {Title} has no seasons in Sonarr response.", sonarrShow.Title);
+                        processedCount++;
+                        continue;
+                    }
+
+                    foreach (var sonarrSeason in sonarrShow.Seasons)
+                    {
+                        var existingSeason = showEntity.Seasons.FirstOrDefault(s => s.SeasonNumber == sonarrSeason.SeasonNumber);
+                        var seasonEntity = await _seasonSync.SyncSeason(showEntity, sonarrShow, sonarrSeason, existingSeason);
+
+                        await _episodeSync.SyncEpisodes(sonarrShow, seasonEntity, seasonEntity.Episodes.ToList());
+                    }
+
+                    processedCount++;
                 }
-                
-                processedCount++;
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to sync show {Title} (SonarrId: {Id}). Skipping to next show.",
+                        sonarrShow.Title, sonarrShow.Id);
+                }
             }
 
             // Deferred saving: Save once per batch
-            await SaveChanges(processedCount, shows.Count);
+            try
+            {
+                await SaveChanges(processedCount, shows.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to save batch of shows to database. Changes for this batch may be lost.");
+            }
+            finally
+            {
+                _dbContext.ChangeTracker.Clear();
+            }
         }
     }
 

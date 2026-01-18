@@ -62,6 +62,11 @@ public class SeasonSync : ISeasonSync
     /// <returns>The converted and mapped path for the season, or an empty string if no path could be determined</returns>
     private async Task<string> GetSeasonPath(SonarrShow show, SonarrSeason season)
     {
+        if (show.Title.Equals("Jujutsu Kaisen", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogInformation("DEBUG: Getting season path for Jujutsu Kaisen Season {SeasonNumber}", season.SeasonNumber);
+        }
+
         // Optimization: Derive season path locally from show path if possible
         if (!string.IsNullOrEmpty(show.Path))
         {
@@ -78,16 +83,24 @@ public class SeasonSync : ISeasonSync
             // For now, let's try to use the local derivation as a primary source if show path is available.
         }
 
-        var episodes = await _sonarrService.GetEpisodes(show.Id, season.SeasonNumber);
-        var episode = episodes?.Where(episode => episode.HasFile).FirstOrDefault();
-        if (episode == null)
+        try
         {
-            return string.Empty;
-        }
-        
-        // Optimization: If we have the episode file path in the episode object (if Sonarr API provides it), use it.
-        // Otherwise, call GetEpisodePath.
-        var episodePathResult = await _sonarrService.GetEpisodePath(episode.Id);
+            var episodes = await _sonarrService.GetEpisodes(show.Id, season.SeasonNumber);
+            var episode = episodes?.Where(episode => episode.HasFile).FirstOrDefault();
+            if (episode == null)
+            {
+                return string.Empty;
+            }
+
+            // Optimization: If we have the episode file path in the episode object (if Sonarr API provides it), use it.
+            // Otherwise, call GetEpisodePath.
+            var episodePathResult = await _sonarrService.GetEpisodePath(episode.Id);
+            if (episodePathResult == null)
+            {
+                _logger.LogWarning("Failed to get episode path for episode {EpisodeId} in season {SeasonNumber} of show {ShowTitle}",
+                    episode.Id, season.SeasonNumber, show.Title);
+                return string.Empty;
+            }
         var normalizePath = _pathConversionService.NormalizePath(episodePathResult?.EpisodeFile.Path ?? string.Empty);
         var seasonPath = Path.GetDirectoryName(normalizePath);
         _logger.LogInformation("Resolved season path from episode {EpisodeId}: {SeasonPath}", episode.Id, seasonPath);
@@ -104,9 +117,15 @@ public class SeasonSync : ISeasonSync
             seasonPath = $"/Season {season.SeasonNumber}";
         }
 
-        return _pathConversionService.ConvertAndMapPath(
-            seasonPath,
-            MediaType.Show
-        );
+            return _pathConversionService.ConvertAndMapPath(
+                seasonPath,
+                MediaType.Show
+            );
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error resolving season path for show {ShowTitle} season {SeasonNumber}", show.Title, season.SeasonNumber);
+            return string.Empty;
+        }
     }
 }
