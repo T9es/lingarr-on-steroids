@@ -109,14 +109,9 @@ public class EpisodeSync : IEpisodeSync
 
             // Only index if the episode has been persisted (has a real ID)
             // New episodes will be indexed on the next sync cycle after they're saved
-            if (entity.Id > 0)
+            if (entity.Id > 0 && needsIndexing)
             {
-                // Re-index if: needsIndexing OR episode exists but has no embedded subtitles recorded
-                var shouldIndex = needsIndexing || !entity.EmbeddedSubtitles.Any();
-                if (shouldIndex)
-                {
-                    await IndexEmbeddedSubtitles(entity, saveChanges: false);
-                }
+                await IndexEmbeddedSubtitles(entity, saveChanges: false);
             }
         }
 
