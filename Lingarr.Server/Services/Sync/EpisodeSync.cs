@@ -41,12 +41,30 @@ public class EpisodeSync : IEpisodeSync
     }
 
     /// <inheritdoc />
-    public async Task SyncEpisodes(SonarrShow show, Season season)
+    public async Task SyncEpisodes(SonarrShow show, Season season, List<Episode>? existingEpisodes = null)
     {
         var episodes = await _sonarrService.GetEpisodes(show.Id, season.SeasonNumber);
         if (episodes == null) return;
 
         var syncedEpisodes = new List<(Episode Entity, bool NeedsIndexing, string? OldPath, string? OldFileName)>();
+        
+        // Optimization: Perform a single directory listing per season and use it in memory
+        FileInfo[]? seasonFiles = null;
+        if (!string.IsNullOrEmpty(season.Path))
+        {
+            try
+            {
+                var dirInfo = new DirectoryInfo(season.Path);
+                if (dirInfo.Exists)
+                {
+                    seasonFiles = dirInfo.GetFiles();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to list files for season directory: {Path}", season.Path);
+            }
+        }
 
         foreach (var episode in episodes.Where(e => e.HasFile))
         {
@@ -56,17 +74,14 @@ public class EpisodeSync : IEpisodeSync
                 MediaType.Show
             );
             
-            var (entity, needsIndexing, oldPath, oldFileName) = await UpdateEpisodeMetadata(episode, episodePath, season, episodePathResult?.EpisodeFile.DateAdded);
+            var (entity, needsIndexing, oldPath, oldFileName) = await UpdateEpisodeMetadata(episode, episodePath, season, episodePathResult?.EpisodeFile.DateAdded, existingEpisodes, seasonFiles);
             syncedEpisodes.Add((entity, needsIndexing, oldPath, oldFileName));
         }
 
         // Batch save all metadata updates/additions
-        if (_dbContext.ChangeTracker.HasChanges())
-        {
-            await _dbContext.SaveChangesAsync();
-        }
+        // No longer saving here, deferred to the end of the show or batch
 
-        // Now that IDs are assigned for new entities, perform indexing and state updates
+        // Now that IDs might be assigned (if already saved or existing), perform indexing and state updates
         foreach (var (entity, needsIndexing, oldPath, oldFileName) in syncedEpisodes)
         {
             // Clean up orphaned subtitles when the filename actually changes (media upgraded)
@@ -80,47 +95,44 @@ public class EpisodeSync : IEpisodeSync
 
             if (needsIndexing)
             {
-                // We perform individual indexing for now because SyncEmbeddedSubtitles is complex and hits filesystem
+                // Fix "No Subtitles" loop: Indexing will mark it as indexed even if no subtitles found
                 await IndexEmbeddedSubtitles(entity, saveChanges: false);
             }
+        }
 
-            // Update state - for AwaitingSource, check mtime first (reduces I/O)
-            try
-            {
-                var shouldUpdateState = true;
+        // Use batch state update for all synced episodes
+        var episodesToUpdateState = syncedEpisodes
+            .Where(x => {
+                var entity = x.Entity;
+                if (entity.TranslationState != TranslationState.AwaitingSource) return true;
+                if (string.IsNullOrEmpty(entity.Path)) return true;
                 
-                if (entity.TranslationState == TranslationState.AwaitingSource && 
-                    !string.IsNullOrEmpty(entity.Path))
+                // I/O Caching / Mtime check
+                try
                 {
                     var dirInfo = new DirectoryInfo(entity.Path);
                     if (dirInfo.Exists)
                     {
                         var dirMtime = dirInfo.LastWriteTimeUtc;
-                        if (entity.LastSubtitleCheckAt.HasValue && 
-                            dirMtime <= entity.LastSubtitleCheckAt.Value)
+                        if (entity.LastSubtitleCheckAt.HasValue && dirMtime <= entity.LastSubtitleCheckAt.Value)
                         {
-                            shouldUpdateState = false;
-                            _logger.LogDebug("Skipping subtitle check for {Title}: directory unchanged", entity.Title);
+                            return false;
                         }
                     }
                 }
-                
-                if (shouldUpdateState)
-                {
-                    await _mediaStateService.UpdateStateAsync(entity, MediaType.Episode, saveChanges: false);
-                    entity.LastSubtitleCheckAt = DateTime.UtcNow;
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to update translation state for episode {Title}", entity.Title);
-            }
-        }
+                catch { /* ignored */ }
+                return true;
+            })
+            .Select(x => (IMedia)x.Entity)
+            .ToList();
 
-        // Final batch save for indexing and state updates
-        if (_dbContext.ChangeTracker.HasChanges())
+        if (episodesToUpdateState.Any())
         {
-            await _dbContext.SaveChangesAsync();
+            await _mediaStateService.UpdateStatesAsync(episodesToUpdateState, MediaType.Episode, saveChanges: false);
+            foreach (var media in episodesToUpdateState)
+            {
+                if (media is Episode e) e.LastSubtitleCheckAt = DateTime.UtcNow;
+            }
         }
 
         RemoveNonExistentEpisodes(season, episodes);
@@ -130,9 +142,16 @@ public class EpisodeSync : IEpisodeSync
     /// Updates or creates the episode entity metadata without saving to DB.
     /// Returns the entity, whether it needs indexing, and old path/filename if changed.
     /// </summary>
-    private async Task<(Episode Entity, bool NeedsIndexing, string? OldPath, string? OldFileName)> UpdateEpisodeMetadata(SonarrEpisode episode, string episodePath, Season season, DateTime? dateAdded)
+    private async Task<(Episode Entity, bool NeedsIndexing, string? OldPath, string? OldFileName)> UpdateEpisodeMetadata(
+        SonarrEpisode episode,
+        string episodePath,
+        Season season,
+        DateTime? dateAdded,
+        List<Episode>? existingEpisodes = null,
+        FileInfo[]? seasonFiles = null)
     {
-        var episodeEntity = season.Episodes.FirstOrDefault(se => se.SonarrId == episode.Id);
+        var episodeEntity = existingEpisodes?.FirstOrDefault(se => se.SonarrId == episode.Id)
+                           ?? season.Episodes.FirstOrDefault(se => se.SonarrId == episode.Id);
         
         var isNew = episodeEntity == null;
         var oldPath = episodeEntity?.Path;
@@ -167,21 +186,32 @@ public class EpisodeSync : IEpisodeSync
 
         if (!isNew && !fileChanged && !string.IsNullOrEmpty(episodeEntity.Path) && !string.IsNullOrEmpty(episodeEntity.FileName))
         {
-            try 
+            try
             {
-                var dirInfo = new DirectoryInfo(episodeEntity.Path);
-                if (dirInfo.Exists)
+                // Optimization: Use pre-loaded season files if available
+                FileInfo? fileInfo = null;
+                if (seasonFiles != null)
                 {
-                    var fileInfo = dirInfo.GetFiles(episodeEntity.FileName + ".*")
-                        .FirstOrDefault(f => !SubtitleExtensions.Contains(f.Extension.ToLowerInvariant()));
-                    
-                    if (fileInfo != null)
+                    fileInfo = seasonFiles.FirstOrDefault(f =>
+                        f.Name.StartsWith(episodeEntity.FileName!) &&
+                        !SubtitleExtensions.Contains(f.Extension.ToLowerInvariant()));
+                }
+                else
+                {
+                    var dirInfo = new DirectoryInfo(episodeEntity.Path);
+                    if (dirInfo.Exists)
                     {
-                        if (episodeEntity.IndexedAt.HasValue && fileInfo.LastWriteTimeUtc > episodeEntity.IndexedAt.Value.AddSeconds(5))
-                        {
-                            _logger.LogInformation("Episode file {Title} appears to have been refreshed (mtime changed), triggering re-index", episodeEntity.Title);
-                            fileChanged = true;
-                        }
+                        fileInfo = dirInfo.GetFiles(episodeEntity.FileName + ".*")
+                            .FirstOrDefault(f => !SubtitleExtensions.Contains(f.Extension.ToLowerInvariant()));
+                    }
+                }
+                
+                if (fileInfo != null)
+                {
+                    if (episodeEntity.IndexedAt.HasValue && fileInfo.LastWriteTimeUtc > episodeEntity.IndexedAt.Value.AddSeconds(5))
+                    {
+                        _logger.LogInformation("Episode file {Title} appears to have been refreshed (mtime changed), triggering re-index", episodeEntity.Title);
+                        fileChanged = true;
                     }
                 }
             }

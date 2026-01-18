@@ -93,6 +93,66 @@ public class MediaStateService : IMediaStateService
         return state;
     }
 
+    /// <inheritdoc />
+    public async Task UpdateStatesAsync(IEnumerable<IMedia> medias, MediaType mediaType, bool saveChanges = true)
+    {
+        var currentVersion = await GetSettingsVersionAsync();
+        var sourceLanguages = await GetConfiguredLanguages(SettingKeys.Translation.SourceLanguages);
+        var targetLanguages = await GetConfiguredLanguages(SettingKeys.Translation.TargetLanguages);
+
+        if (sourceLanguages.Count == 0 || targetLanguages.Count == 0)
+        {
+            foreach (var media in medias)
+            {
+                if (media is Movie m) { m.TranslationState = TranslationState.NotApplicable; m.StateSettingsVersion = currentVersion; }
+                else if (media is Episode e) { e.TranslationState = TranslationState.NotApplicable; e.StateSettingsVersion = currentVersion; }
+            }
+            if (saveChanges) await _dbContext.SaveChangesAsync();
+            return;
+        }
+
+        foreach (var media in medias)
+        {
+            List<EmbeddedSubtitle> embeddedSubtitles;
+            bool mediaExcluded;
+            bool seasonExcluded = false;
+            bool showExcluded = false;
+
+            if (media is Movie movie)
+            {
+                embeddedSubtitles = movie.EmbeddedSubtitles;
+                mediaExcluded = movie.ExcludeFromTranslation;
+            }
+            else if (media is Episode episode)
+            {
+                embeddedSubtitles = episode.EmbeddedSubtitles;
+                mediaExcluded = episode.ExcludeFromTranslation;
+                seasonExcluded = episode.Season?.ExcludeFromTranslation ?? false;
+                showExcluded = episode.Season?.Show?.ExcludeFromTranslation ?? false;
+            }
+            else
+            {
+                continue;
+            }
+
+            var state = await ComputeStateAsync(
+                media,
+                mediaType,
+                embeddedSubtitles,
+                mediaExcluded,
+                seasonExcluded,
+                showExcluded);
+
+            if (media is Movie m) { m.TranslationState = state; m.StateSettingsVersion = currentVersion; }
+            else if (media is Episode e) { e.TranslationState = state; e.StateSettingsVersion = currentVersion; }
+        }
+
+        if (saveChanges)
+        {
+            await _dbContext.SaveChangesAsync();
+        }
+    }
+
     private async Task<TranslationState> ComputeStateAsync(
         IMedia media,
         MediaType mediaType,

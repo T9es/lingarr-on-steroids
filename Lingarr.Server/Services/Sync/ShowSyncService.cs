@@ -35,26 +35,40 @@ public class ShowSyncService : IShowSyncService
     {
         var processedCount = 0;
         
-        foreach (var show in shows)
+        // Process in batches to optimize database lookups and memory usage
+        for (int i = 0; i < shows.Count; i += BatchSize)
         {
-            var showEntity = await _showSync.SyncShow(show);
+            var batch = shows.Skip(i).Take(BatchSize).ToList();
+            var sonarrIds = batch.Select(s => s.Id).ToList();
 
-            foreach (var season in show.Seasons)
+            // Pre-load the entire hierarchy for the current batch
+            var existingShows = await _dbContext.Shows
+                .Include(s => s.Images)
+                .Include(s => s.Seasons)
+                    .ThenInclude(s => s.Episodes)
+                        .ThenInclude(e => e.EmbeddedSubtitles)
+                .Where(s => sonarrIds.Contains(s.SonarrId))
+                .ToListAsync();
+
+            var showsBySonarrId = existingShows.ToDictionary(s => s.SonarrId);
+
+            foreach (var sonarrShow in batch)
             {
-                var seasonEntity = await _seasonSync.SyncSeason(showEntity, show, season);
-                await _episodeSync.SyncEpisodes(show, seasonEntity);
-            }
-            
-            processedCount++;
+                showsBySonarrId.TryGetValue(sonarrShow.Id, out var showEntity);
+                showEntity = await _showSync.SyncShow(sonarrShow, showEntity);
 
-            if (processedCount % BatchSize == 0)
-            {
-                await SaveChanges(processedCount, shows.Count);
+                foreach (var sonarrSeason in sonarrShow.Seasons)
+                {
+                    var existingSeason = showEntity.Seasons.FirstOrDefault(s => s.SeasonNumber == sonarrSeason.SeasonNumber);
+                    var seasonEntity = await _seasonSync.SyncSeason(showEntity, sonarrShow, sonarrSeason, existingSeason);
+                    
+                    await _episodeSync.SyncEpisodes(sonarrShow, seasonEntity, seasonEntity.Episodes.ToList());
+                }
+                
+                processedCount++;
             }
-        }
 
-        if (processedCount % BatchSize != 0)
-        {
+            // Deferred saving: Save once per batch
             await SaveChanges(processedCount, shows.Count);
         }
     }
@@ -62,12 +76,21 @@ public class ShowSyncService : IShowSyncService
     /// <inheritdoc />
     public async Task<Show> SyncShow(SonarrShow show)
     {
-        var showEntity = await _showSync.SyncShow(show);
+        // Pre-load hierarchy for single show
+        var showEntity = await _dbContext.Shows
+            .Include(s => s.Images)
+            .Include(s => s.Seasons)
+                .ThenInclude(s => s.Episodes)
+                    .ThenInclude(e => e.EmbeddedSubtitles)
+            .FirstOrDefaultAsync(s => s.SonarrId == show.Id);
+
+        showEntity = await _showSync.SyncShow(show, showEntity);
 
         foreach (var season in show.Seasons)
         {
-            var seasonEntity = await _seasonSync.SyncSeason(showEntity, show, season);
-            await _episodeSync.SyncEpisodes(show, seasonEntity);
+            var existingSeason = showEntity.Seasons.FirstOrDefault(s => s.SeasonNumber == season.SeasonNumber);
+            var seasonEntity = await _seasonSync.SyncSeason(showEntity, show, season, existingSeason);
+            await _episodeSync.SyncEpisodes(show, seasonEntity, seasonEntity.Episodes.ToList());
         }
 
         await _dbContext.SaveChangesAsync();
