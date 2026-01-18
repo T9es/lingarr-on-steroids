@@ -30,6 +30,7 @@ public class TranslationJob
     private readonly ITranslationCancellationService _cancellationService;
     private readonly IMediaStateService _mediaStateService;
     private readonly IDeferredRepairService _deferredRepairService;
+    private readonly IOrphanSubtitleCleanupService _orphanCleanupService;
 
     public TranslationJob(
         ILogger<TranslationJob> logger,
@@ -45,7 +46,8 @@ public class TranslationJob
         ISubtitleExtractionService extractionService,
         ITranslationCancellationService cancellationService,
         IMediaStateService mediaStateService,
-        IDeferredRepairService deferredRepairService)
+        IDeferredRepairService deferredRepairService,
+        IOrphanSubtitleCleanupService orphanCleanupService)
     {
         _logger = logger;
         _settings = settings;
@@ -61,6 +63,7 @@ public class TranslationJob
         _cancellationService = cancellationService;
         _mediaStateService = mediaStateService;
         _deferredRepairService = deferredRepairService;
+        _orphanCleanupService = orphanCleanupService;
     }
 
     /// <summary>
@@ -267,6 +270,17 @@ public class TranslationJob
                     _logger.LogWarning(validationMessage);
                     AddRequestLog("Warning", validationMessage);
                     throw new TaskCanceledException(validationMessage);
+                }
+            }
+
+            // Clean up stale translated subtitles for this target language before starting a new translation
+            if (!string.IsNullOrEmpty(request.SubtitleToTranslate))
+            {
+                var dir = Path.GetDirectoryName(request.SubtitleToTranslate);
+                var fileName = Path.GetFileNameWithoutExtension(request.SubtitleToTranslate);
+                if (!string.IsNullOrEmpty(dir) && !string.IsNullOrEmpty(fileName))
+                {
+                    await _orphanCleanupService.CleanupStaleSubtitlesAsync(dir, fileName, request.TargetLanguage);
                 }
             }
 

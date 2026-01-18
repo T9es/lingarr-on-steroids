@@ -236,6 +236,14 @@ public class EpisodeSync : IEpisodeSync
                     {
                         _logger.LogInformation("Episode file {Title} appears to have been refreshed (mtime changed), triggering re-index", episodeEntity.Title);
                         fileChanged = true;
+
+                        // Clean up stale translated subtitles when media is refreshed
+                        if (!string.IsNullOrEmpty(episodeEntity.Path) && !string.IsNullOrEmpty(episodeEntity.FileName))
+                        {
+                            await _orphanCleanupService.CleanupStaleSubtitlesAsync(
+                                episodeEntity.Path,
+                                episodeEntity.FileName);
+                        }
                     }
                 }
             }

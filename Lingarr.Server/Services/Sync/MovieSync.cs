@@ -113,6 +113,14 @@ public class MovieSync : IMovieSync
                         {
                             _logger.LogInformation("Movie file {Title} appears to have been refreshed (mtime changed), triggering re-index", movieEntity.Title);
                             fileChanged = true;
+
+                            // Clean up stale translated subtitles when media is refreshed
+                            if (!string.IsNullOrEmpty(movieEntity.Path) && !string.IsNullOrEmpty(movieEntity.FileName))
+                            {
+                                await _orphanCleanupService.CleanupStaleSubtitlesAsync(
+                                    movieEntity.Path,
+                                    movieEntity.FileName);
+                            }
                         }
                     }
                 }

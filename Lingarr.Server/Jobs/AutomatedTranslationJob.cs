@@ -106,14 +106,28 @@ public class AutomatedTranslationJob
                     currentState = ((Episode)media).TranslationState;
                 }
 
-                if (currentState == TranslationState.Stale || currentState == TranslationState.Unknown || currentState == TranslationState.Failed)
+                if (currentState == TranslationState.Stale || currentState == TranslationState.Unknown || currentState == TranslationState.Failed || currentState == TranslationState.AwaitingSource)
                 {
-                    // For Failed items, we allow retry if state re-evaluation says it's Pending
+                    // For Failed/AwaitingSource items, we allow retry if state re-evaluation says it's Pending
                     var newState = await _mediaStateService.UpdateStateAsync(media, mediaType);
+                    
+                    // If it's still AwaitingSource, we trigger a probe/index
+                    if (newState == TranslationState.AwaitingSource)
+                    {
+                        _logger.LogInformation("Item {Title} is AwaitingSource, triggering probe/index", media.Title);
+                        await _mediaSubtitleProcessor.ProcessMediaForceAsync(
+                            media, mediaType,
+                            forceProcess: true,
+                            forceTranslation: false);
+                        
+                        // Refresh state after probe
+                        newState = await _mediaStateService.UpdateStateAsync(media, mediaType);
+                    }
+
                     if (newState != TranslationState.Pending)
                     {
                         _logger.LogDebug(
-                            "Skipping {Title}: state refreshed to {State}", 
+                            "Skipping {Title}: state refreshed to {State}",
                             media.Title, newState);
                         continue;
                     }
