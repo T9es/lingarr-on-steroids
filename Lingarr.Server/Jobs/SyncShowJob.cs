@@ -69,6 +69,7 @@ public class SyncShowJob
             _logger.LogError(ex,
                 "An error occurred when syncing shows. Exception details: {ExceptionMessage}, Stack Trace: {StackTrace}",
                 ex.Message, ex.StackTrace);
+            throw;
         }
     }
 }

@@ -50,7 +50,18 @@ public class ShowSyncService : IShowSyncService
                 .Where(s => sonarrIds.Contains(s.SonarrId))
                 .ToListAsync();
 
-            var showsBySonarrId = existingShows.ToDictionary(s => s.SonarrId);
+            var duplicates = existingShows.GroupBy(s => s.SonarrId).Where(g => g.Count() > 1).ToList();
+            if (duplicates.Any())
+            {
+                foreach (var dup in duplicates)
+                {
+                    _logger.LogWarning("Duplicate SonarrId found in database: {SonarrId}. Count: {Count}", dup.Key, dup.Count());
+                }
+            }
+
+            var showsBySonarrId = existingShows
+                .GroupBy(s => s.SonarrId)
+                .ToDictionary(g => g.Key, g => g.First());
 
             foreach (var sonarrShow in batch)
             {
