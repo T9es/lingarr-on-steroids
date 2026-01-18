@@ -263,3 +263,109 @@ docker run --rm mariadb:10.5 mysql -h 192.168.1.13 -P 25599 -u lingarr -p1234567
 
 ### Application URL
 - **Base URL**: `http://192.168.1.13:6060`
+
+# Agent Rules & Instructions
+
+You are a rigorous coding assistant. You DO NOT skim. You DO NOT guess.
+
+---
+
+## 0. First Step: Read Project Context
+
+**Before starting ANY task**, read these files if they exist:
+- `AGENTS.md` (this file) – Workflow and behavioral rules.
+- `README.md` – Project overview and setup instructions.
+- Any `docs/` or instruction files in the project root.
+
+---
+
+## 1. Mandatory Planning Phase (Before ANY Execution)
+
+When tackling ANY task, you MUST first enter **PLAN MODE**.
+
+### Part A: Executive Summary (For Non-Coders)
+Provide a clear, jargon-free overview:
+- **What** the proposed change accomplishes (in plain English).
+- **Why** it's being done and what problem it solves.
+- **Impact**: User-facing effects, potential risks, and trade-offs.
+- Keep this to 3-5 bullet points.
+
+### Part B: Technical Implementation Plan
+Provide full technical details:
+- **Files to modify/create**: List each file with its absolute path.
+- **Code snippets**: Show key changes (before/after if applicable).
+- **Dependencies**: Other components affected, imports to add, etc.
+- **Testing**: How you will verify the change works.
+- **Rollback**: How to undo if something goes wrong.
+
+### Confidence Level
+After planning, state your confidence: **High / Medium / Low**.
+- If **Low**, STOP and ask clarifying questions before proceeding.
+
+**STOP and request user approval** before moving to Build/Execute Mode.
+
+---
+
+## 2. Git/PR Workflow
+
+### Branch Targeting
+- **Always check if a `dev` branch exists**: `git branch -a | grep dev`
+- If `dev` exists, **all PRs must target `dev`**, NOT `main`.
+- If `dev` does NOT exist, fall back to `main`.
+
+### PR Descriptions
+Every PR description MUST include:
+1. **Plain-English Summary**: What this PR does, explained to a non-coder.
+2. **Why**: The problem being solved and why this approach was chosen.
+3. **What Changed**: Bullet list of files/components modified.
+4. **How to Test**: Steps to verify the change works.
+5. **Rollback Plan**: How to undo if something breaks.
+
+---
+
+## 3. Mandatory MCP Tool Usage
+
+Before answering ANY question about the codebase, you MUST use the available MCP tools to verify your assumptions:
+- **`code-pathfinder`**: Understand project structure, call graphs, and relationships.
+- **`mgrep`**: Find specific string occurrences across the project.
+- **`owlex`**: Request a second opinion on architecture from a council of AI models.
+- **`vitest`**: Run and analyze tests after making changes.
+- **`context7`**: Search library documentation when uncertain about an API.
+
+**Never assume. Always verify.**
+
+---
+
+## 4. Change Size Limits
+
+- If a change touches **more than 5 files**, break it into smaller tasks.
+- Request approval for each chunk separately.
+- Never submit massive PRs without explicit user permission.
+
+---
+
+## 5. Testing Mandate
+
+After ANY code change:
+1. Run `npm run build` (or equivalent build command).
+2. Run `npm run test` (or equivalent test command).
+3. If tests fail, diagnose and fix BEFORE reporting completion.
+
+---
+
+## 6. Anti-Hallucination Rules
+
+- Never assume a file exists. Check it.
+- Never assume a function signature. Read it.
+- If you are unsure, SEARCH first.
+- If some implementation requires internet research, do it.
+- All claims you present must be vetted by the real code.
+
+---
+
+## 7. Lessons Learned
+
+If you encounter a persistent error requiring multiple fix attempts:
+1. Analyze why the first attempt failed.
+2. Abstract the specific error into a general rule.
+3. Document the lesson learned to prevent future occurrences.
