@@ -110,7 +110,11 @@ public class AutomatedTranslationJob
                 {
                     var newState = await _mediaStateService.UpdateStateAsync(media, mediaType);
                     // Allow proceeding if Pending, OR if AwaitingSource but unindexed (needs scan)
-                    var isUnindexed = media.IndexedAt == null;
+                    DateTime? indexedAt = null;
+                    if (mediaType == MediaType.Movie && media is Movie m) indexedAt = m.IndexedAt;
+                    else if (mediaType == MediaType.Episode && media is Episode e) indexedAt = e.IndexedAt;
+
+                    var isUnindexed = indexedAt == null;
                     
                     if (newState != TranslationState.Pending && !(newState == TranslationState.AwaitingSource && isUnindexed))
                     {
