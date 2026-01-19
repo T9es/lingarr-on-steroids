@@ -45,15 +45,15 @@ public class BulkIntegrityCheckJob
 
         try
         {
-            // Get all Complete-state or AwaitingSource-state movies
+            // Get all Complete-state movies
             var completedMovieIds = await _dbContext.Movies
-                .Where(m => m.TranslationState == TranslationState.Complete || m.TranslationState == TranslationState.AwaitingSource)
+                .Where(m => m.TranslationState == TranslationState.Complete)
                 .Select(m => m.Id)
                 .ToListAsync();
 
-            // Get all Complete-state or AwaitingSource-state episodes
+            // Get all Complete-state episodes
             var completedEpisodeIds = await _dbContext.Episodes
-                .Where(e => e.TranslationState == TranslationState.Complete || e.TranslationState == TranslationState.AwaitingSource)
+                .Where(e => e.TranslationState == TranslationState.Complete)
                 .Select(e => e.Id)
                 .ToListAsync();
 
