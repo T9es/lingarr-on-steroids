@@ -109,11 +109,14 @@ public class AutomatedTranslationJob
                 if (currentState == TranslationState.Stale || currentState == TranslationState.Unknown)
                 {
                     var newState = await _mediaStateService.UpdateStateAsync(media, mediaType);
-                    if (newState != TranslationState.Pending)
+                    // Allow proceeding if Pending, OR if AwaitingSource but unindexed (needs scan)
+                    var isUnindexed = media.IndexedAt == null;
+                    
+                    if (newState != TranslationState.Pending && !(newState == TranslationState.AwaitingSource && isUnindexed))
                     {
-                        _logger.LogDebug(
-                            "Skipping {Title}: state refreshed to {State}", 
-                            media.Title, newState);
+                         _logger.LogInformation(
+                            "Skipping {Title}: state refreshed to {State} (was {OldState})", 
+                            media.Title, newState, currentState);
                         continue;
                     }
                 }
@@ -162,6 +165,10 @@ public class AutomatedTranslationJob
                         _logger.LogInformation(
                             "Queued {Count} translation(s) for {Title}",
                             count, media.Title);
+                    }
+                    else
+                    {
+                         _logger.LogInformation("Processed {Title} but no translations were queued (Count=0). MediaId: {Id}", media.Title, media.Id);
                     }
                 }
                 catch (DirectoryNotFoundException)
