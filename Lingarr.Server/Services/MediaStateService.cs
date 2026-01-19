@@ -208,7 +208,7 @@ public class MediaStateService : IMediaStateService
             .Where(m => !m.ExcludeFromTranslation)
             .Where(m => m.TranslationState == TranslationState.Pending 
                      || m.TranslationState == TranslationState.Stale
-                     || (m.TranslationState == TranslationState.Unknown && m.IndexedAt != null));
+                     || m.TranslationState == TranslationState.Unknown);
 
         if (priorityFirst)
         {
@@ -235,7 +235,7 @@ public class MediaStateService : IMediaStateService
             .Where(e => !e.Season.Show.ExcludeFromTranslation)
             .Where(e => e.TranslationState == TranslationState.Pending 
                      || e.TranslationState == TranslationState.Stale
-                     || (e.TranslationState == TranslationState.Unknown && e.IndexedAt != null));
+                     || e.TranslationState == TranslationState.Unknown);
 
         if (priorityFirst)
         {

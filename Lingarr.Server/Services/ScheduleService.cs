@@ -85,6 +85,12 @@ public class ScheduleService : IScheduleService
             Cron.Daily,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        RecurringJob.AddOrUpdate<RetryFailedRequestsJob>(
+            "RetryFailedRequestsJob",
+            job => job.Execute(),
+            Cron.Hourly,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         _logger.LogInformation("Starting pending translation requests.");
         await translationRequestService.ResumeTranslationRequests();
     }
