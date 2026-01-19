@@ -291,26 +291,6 @@ public class TranslationRequestService : ITranslationRequestService
     }
 
     /// <inheritdoc />
-    public async Task<int> RemoveFailedRequestsAsync(int mediaId, MediaType mediaType)
-    {
-        var failedRequests = await _dbContext.TranslationRequests
-            .Where(tr => tr.MediaId == mediaId && tr.MediaType == mediaType && tr.Status == TranslationStatus.Failed)
-            .ToListAsync();
-
-        if (!failedRequests.Any())
-        {
-            return 0;
-        }
-
-        _dbContext.TranslationRequests.RemoveRange(failedRequests);
-        var count = await _dbContext.SaveChangesAsync();
-        
-        _logger.LogInformation("Removed {Count} failed translation requests for {MediaType} {MediaId}", count, mediaType, mediaId);
-        
-        return count;
-    }
-
-    /// <inheritdoc />
     /// <inheritdoc />
     /// <inheritdoc />
     public async Task<int> RetryAllFailedRequests()

@@ -18,15 +18,6 @@ public interface IMediaStateService
     /// <param name="saveChanges">If true, SaveChangesAsync will be called after updating</param>
     /// <returns>The computed translation state</returns>
     Task<TranslationState> UpdateStateAsync(IMedia media, MediaType mediaType, bool saveChanges = true);
-
-    /// <summary>
-    /// Computes and updates TranslationStates for multiple media items in a single operation.
-    /// This is significantly more efficient than individual updates during sync.
-    /// </summary>
-    /// <param name="medias">The list of media items to update</param>
-    /// <param name="mediaType">Type of media (Movie or Episode)</param>
-    /// <param name="saveChanges">If true, SaveChangesAsync will be called after updating</param>
-    Task UpdateStatesAsync(IEnumerable<IMedia> medias, MediaType mediaType, bool saveChanges = true);
     
     /// <summary>
     /// Marks all media as Stale. Used when language settings change.

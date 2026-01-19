@@ -1,4 +1,4 @@
-using Lingarr.Core.Data;
+﻿using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Interfaces.Services;
@@ -48,7 +48,6 @@ public class MovieSync : IMovieSync
         }
 
         var movieEntity = await _dbContext.Movies
-            .AsSplitQuery()
             .Include(m => m.Images)
             .Include(m => m.EmbeddedSubtitles)
             .FirstOrDefaultAsync(m => m.RadarrId == movie.Id);
@@ -90,46 +89,9 @@ public class MovieSync : IMovieSync
         }
 
         // Determine if we need to re-index embedded subtitles
-        // Safe detection: only trigger if the filename actually changes (media upgraded)
-        var fileChanged = !isNew && (oldFileName != movieEntity.FileName);
-
-        if (!isNew && !fileChanged && !string.IsNullOrEmpty(movieEntity.Path) && !string.IsNullOrEmpty(movieEntity.FileName))
-        {
-            // If path changed but filename is the same, it's just a move. 
-            // We update the path but don't need to re-index or clean orphans unless we're paranoid.
-            // But if mtime changed on the same file, we might need re-indexing.
-            
-            try 
-            {
-                var dirInfo = new DirectoryInfo(movieEntity.Path);
-                if (dirInfo.Exists)
-                {
-                    var fileInfo = dirInfo.GetFiles(movieEntity.FileName + ".*")
-                        .FirstOrDefault(f => !SubtitleExtensions.Contains(f.Extension.ToLowerInvariant()));
-                    
-                    if (fileInfo != null)
-                    {
-                        if (movieEntity.IndexedAt.HasValue && fileInfo.LastWriteTimeUtc > movieEntity.IndexedAt.Value.AddSeconds(5))
-                        {
-                            _logger.LogInformation("Movie file {Title} appears to have been refreshed (mtime changed), triggering re-index", movieEntity.Title);
-                            fileChanged = true;
-
-                            // Clean up stale translated subtitles when media is refreshed
-                            if (!string.IsNullOrEmpty(movieEntity.Path) && !string.IsNullOrEmpty(movieEntity.FileName))
-                            {
-                                await _orphanCleanupService.CleanupStaleSubtitlesAsync(
-                                    movieEntity.Path,
-                                    movieEntity.FileName);
-                            }
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogDebug(ex, "Failed to check mtime for movie {Title}", movieEntity.Title);
-            }
-        }
+        var fileChanged = !isNew && (
+            oldPath != movieEntity.Path ||
+            oldFileName != movieEntity.FileName);
 
         // Clean up orphaned subtitles when the filename changes (e.g., media upgraded)
         if (fileChanged && !string.IsNullOrEmpty(oldPath) && !string.IsNullOrEmpty(oldFileName))
@@ -171,13 +133,11 @@ public class MovieSync : IMovieSync
 
         // Update translation state
         // For AwaitingSource: only re-check if directory mtime changed (reduces I/O)
-        // Unless we just indexed it (needsIndexing), then always update
         try
         {
             var shouldUpdateState = true;
             
-            if (!needsIndexing && 
-                movieEntity.TranslationState == TranslationState.AwaitingSource && 
+            if (movieEntity.TranslationState == TranslationState.AwaitingSource && 
                 !string.IsNullOrEmpty(movieEntity.Path))
             {
                 var dirInfo = new DirectoryInfo(movieEntity.Path);
@@ -207,6 +167,4 @@ public class MovieSync : IMovieSync
 
         return movieEntity;
     }
-
-    private static readonly string[] SubtitleExtensions = { ".srt", ".ass", ".ssa", ".sub" };
 }

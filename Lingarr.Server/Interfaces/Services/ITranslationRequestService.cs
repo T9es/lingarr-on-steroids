@@ -117,14 +117,6 @@ public interface ITranslationRequestService
     );
 
     /// <summary>
-    /// Removes all failed translation requests for a specific media item.
-    /// </summary>
-    /// <param name="mediaId">The ID of the media item</param>
-    /// <param name="mediaType">The type of media (Movie or Episode)</param>
-    /// <returns>The number of failed requests removed</returns>
-    Task<int> RemoveFailedRequestsAsync(int mediaId, MediaType mediaType);
-
-    /// <summary>
     /// Retries all translation requests with Failed status
     /// </summary>
     /// <returns>Int representing number of retried requests</returns>

@@ -49,16 +49,6 @@ public class SyncShowJob
 
             _logger.LogInformation("Fetched {ShowCount} shows from Sonarr", shows.Count);
 
-            var jjk = shows.FirstOrDefault(s => s.Title.Equals("Jujutsu Kaisen", StringComparison.OrdinalIgnoreCase));
-            if (jjk != null)
-            {
-                _logger.LogInformation("DEBUG: Jujutsu Kaisen found in Sonarr response. Id: {Id}, Path: {Path}", jjk.Id, jjk.Path);
-            }
-            else
-            {
-                _logger.LogWarning("DEBUG: Jujutsu Kaisen NOT found in Sonarr response!");
-            }
-
             // Sync shows incrementally - each batch commits independently for UI visibility
             await _showSyncService.SyncShows(shows);
 
@@ -79,7 +69,6 @@ public class SyncShowJob
             _logger.LogError(ex,
                 "An error occurred when syncing shows. Exception details: {ExceptionMessage}, Stack Trace: {StackTrace}",
                 ex.Message, ex.StackTrace);
-            throw;
         }
     }
 }

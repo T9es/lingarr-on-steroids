@@ -69,7 +69,6 @@ public class SyncMovieJob
             _logger.LogError(ex,
                 "An error occurred when syncing movies. Exception details: {ExceptionMessage}, Stack Trace: {StackTrace}",
                 ex.Message, ex.StackTrace);
-            throw;
         }
     }
 }

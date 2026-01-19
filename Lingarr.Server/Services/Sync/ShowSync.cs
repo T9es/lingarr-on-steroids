@@ -20,9 +20,12 @@ public class ShowSync : IShowSync
     }
 
     /// <inheritdoc />
-    public async Task<Show> SyncShow(SonarrShow sonarrShow, Show? existingShow = null)
+    public async Task<Show> SyncShow(SonarrShow sonarrShow)
     {
-        var showEntity = existingShow;
+        var showEntity = await _dbContext.Shows
+            .Include(s => s.Images)
+            .Include(s => s.Seasons)
+            .FirstOrDefaultAsync(s => s.SonarrId == sonarrShow.Id);
 
         if (showEntity == null)
         {
