@@ -1,4 +1,4 @@
-﻿import { acceptHMRUpdate, defineStore } from 'pinia'
+import { acceptHMRUpdate, defineStore } from 'pinia'
 import {
     IFilter,
     IPagedResult,
@@ -38,10 +38,26 @@ export const useTranslationRequestStore = defineStore('translateRequest', {
         getFilter: (state: IUseTranslationRequestStore): IFilter => state.filter,
         getSelectedRequests: (state: IUseTranslationRequestStore): ITranslationRequest[] =>
             state.selectedRequests,
-        getFailedRequests: (state: IUseTranslationRequestStore): ITranslationRequest[] =>
-            state.failedRequests,
-        getInProgressRequests: (state: IUseTranslationRequestStore): ITranslationRequest[] =>
-            state.inProgressRequests
+        getFailedRequests: (state: IUseTranslationRequestStore): ITranslationRequest[] => {
+            const query = state.filter.searchQuery?.toLowerCase() || ''
+            if (!query) return state.failedRequests
+            
+            return state.failedRequests.filter((req) => 
+                req.title.toLowerCase().includes(query) || 
+                req.sourceLanguage.toLowerCase().includes(query) || 
+                req.targetLanguage.toLowerCase().includes(query)
+            )
+        },
+        getInProgressRequests: (state: IUseTranslationRequestStore): ITranslationRequest[] => {
+            const query = state.filter.searchQuery?.toLowerCase() || ''
+            if (!query) return state.inProgressRequests
+
+            return state.inProgressRequests.filter((req) => 
+                req.title.toLowerCase().includes(query) || 
+                req.sourceLanguage.toLowerCase().includes(query) || 
+                req.targetLanguage.toLowerCase().includes(query)
+            )
+        }
     },
     actions: {
         async setFilter(filterVal: IFilter) {
