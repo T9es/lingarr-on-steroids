@@ -365,7 +365,15 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
             var responseWrapper = JsonSerializer.Deserialize<JsonElement>(translatedJson);
             if (!responseWrapper.TryGetProperty("translations", out var translationsElement))
             {
-                throw new TranslationException("Response does not contain 'translations' property");
+                // Fallback: maybe it returned an array directly?
+                if (responseWrapper.ValueKind == JsonValueKind.Array)
+                {
+                    translationsElement = responseWrapper;
+                }
+                else
+                {
+                    throw new TranslationException("Response does not contain 'translations' property");
+                }
             }
 
             var translatedItems =
