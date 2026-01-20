@@ -1,4 +1,4 @@
-﻿using Lingarr.Core.Configuration;
+using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
@@ -387,8 +387,14 @@ public class TranslationJob
             }
             
             List<SubtitleItem> translatedSubtitles;
-            if (settings[SettingKeys.Translation.UseBatchTranslation] == "true"
-                && translationService is IBatchTranslationService _)
+            
+            var useBatchSetting = settings.TryGetValue(SettingKeys.Translation.UseBatchTranslation, out var useBatchVal) 
+                                  ? useBatchVal 
+                                  : "false";
+            var useBatchTranslation = string.Equals(useBatchSetting, "true", StringComparison.OrdinalIgnoreCase);
+            var isBatchService = translationService is IBatchTranslationService;
+
+            if (useBatchTranslation && isBatchService)
             {
                 var maxSize = int.TryParse(settings[SettingKeys.Translation.MaxBatchSize],
                     out var batchSize)
@@ -435,6 +441,10 @@ public class TranslationJob
             }
             else
             {
+                _logger.LogInformation(
+                    "[{FileId}] Batch translation skipped. UseBatchTranslation: {UseBatch} (Value: '{Value}'), Service: {ServiceType}, IsBatchService: {IsBatchService}",
+                    fileIdentifier, useBatchTranslation, useBatchSetting ?? "null", translationService.GetType().Name, isBatchService);
+
                 _logger.LogInformation(
                     "[{FileId}] Starting individual translation: {SubtitleCount} subtitles, context (before: {ContextBefore}, after: {ContextAfter})",
                     fileIdentifier, subtitles.Count, contextBefore, contextAfter);
