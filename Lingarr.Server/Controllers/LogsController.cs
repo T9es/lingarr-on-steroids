@@ -1,4 +1,5 @@
-﻿using System.Text.Json;
+using System.Text.Json;
+using System.Threading.Channels;
 using Lingarr.Server.Providers;
 using Microsoft.AspNetCore.Mvc;
 
@@ -15,6 +16,7 @@ namespace Lingarr.Server.Controllers
             Response.Headers.Append("Cache-Control", "no-cache");
             Response.Headers.Append("Connection", "keep-alive");
             
+            // Send initial recent logs
             foreach (var log in InMemoryLogSink.GetRecentLogs(400))
             {
                 string json = JsonSerializer.Serialize(log);
@@ -22,25 +24,42 @@ namespace Lingarr.Server.Controllers
             }
             await Response.Body.FlushAsync(cancellationToken);
             
-            var logQueue = InMemoryLogSink.LogQueue;
-            var lastProcessedCount = logQueue.Count;
+            var channel = Channel.CreateUnbounded<LogEntry>();
             
-            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
-            
-            while (!cancellationToken.IsCancellationRequested && await timer.WaitForNextTickAsync(cancellationToken))
+            void Handler(object? sender, LogEntry log) 
             {
-                var currentCount = logQueue.Count;
-                if (currentCount > lastProcessedCount)
+                channel.Writer.TryWrite(log);
+            }
+            
+            InMemoryLogSink.OnLogAdded += Handler;
+            
+            try
+            {
+                while (!cancellationToken.IsCancellationRequested)
                 {
-                    var newLogs = logQueue.TakeLast(currentCount - lastProcessedCount);
-                    foreach (var log in newLogs)
+                    using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    cts.CancelAfter(TimeSpan.FromSeconds(15));
+                    
+                    try 
                     {
+                        var log = await channel.Reader.ReadAsync(cts.Token);
                         string json = JsonSerializer.Serialize(log);
                         await Response.WriteAsync($"data: {json}\n\n", cancellationToken);
+                        await Response.Body.FlushAsync(cancellationToken);
                     }
-                    await Response.Body.FlushAsync(cancellationToken);
+                    catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                    {
+                        await Response.WriteAsync(": heartbeat\n\n", cancellationToken);
+                        await Response.Body.FlushAsync(cancellationToken);
+                    }
                 }
-                lastProcessedCount = currentCount;
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            finally
+            {
+                InMemoryLogSink.OnLogAdded -= Handler;
             }
         }
     }

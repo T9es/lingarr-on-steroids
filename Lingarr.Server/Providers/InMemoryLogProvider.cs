@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Text.Json.Serialization;
 
 namespace Lingarr.Server.Providers
@@ -39,10 +39,13 @@ namespace Lingarr.Server.Providers
     {
         private static readonly ConcurrentQueue<LogEntry> Logs = new();
         private static readonly int MaxLogCount = 1000;
+        
+        public static event EventHandler<LogEntry>? OnLogAdded;
 
         public static void AddLog(LogEntry logEntry)
         {
             Logs.Enqueue(logEntry);
+            OnLogAdded?.Invoke(null, logEntry);
 
             // Trim logs if we exceed the maximum count and only keep logs for 24h
             while (Logs.Count > MaxLogCount && Logs.TryDequeue(out _))

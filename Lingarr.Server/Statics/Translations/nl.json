@@ -1,4 +1,4 @@
-﻿{
+{
   "navigation": {
     "dashboard": "Dashboard",
     "movies": "Films",
@@ -35,6 +35,7 @@
     "searchMedia": "Zoek media",
     "searchPlaceholder": "Zoek op film, serie of aflevering...",
     "searchHelp": "Typ een film-, serie- of aflevernaam en kies hieronder een ondertitel om het pad automatisch in te vullen.",
+    "searchDescription": "Zoek naar media in je bibliotheek om automatisch ondertitelbestanden te vinden.",
     "searchResultsTitle": "Zoekresultaten",
     "noSearchResults": "Geen media met ondertitels gevonden voor deze zoekopdracht.",
     "selectedFromSearch": "Geselecteerde ondertitel van",
@@ -50,7 +51,11 @@
     "success": "Vertaling geslaagd",
     "failed": "Vertaling mislukt",
     "translated": "Vertaald",
-    "duration": "Duur"
+    "duration": "Duur",
+    "preview": "Voorbeeld",
+    "original": "Origineel",
+    "downloadOriginal": "Origineel",
+    "downloadTranslated": "Vertaald"
   },
   "movies": {
     "title": "Titel",
@@ -415,12 +420,16 @@
       "enableAutoScroll": "Auto-scroll inschakelen",
       "clear": "Wissen",
       "time": "Tijd",
-      "level": "Niveau",
-      "source": "Bron",
-      "message": "Bericht",
-      "waitingForLogs": "Wachten op log...",
-      "totalEntries": "Totaal aantal vermeldingen",
-      "autoScroll": "Auto-scroll",
+    "level": "Niveau",
+    "source": "Bron",
+    "message": "Bericht",
+    "waitingForLogs": "Wachten op log...",
+    "totalEntries": "Totaal aantal vermeldingen",
+    "maxLogs": "Max Logs",
+    "searchPlaceholder": "Zoek logs...",
+    "pause": "Pauzeren",
+    "resume": "Hervatten",
+    "autoScroll": "Auto-scroll",
       "enabled": "Ingeschakeld",
       "disabled": "Uitgeschakeld"
     },

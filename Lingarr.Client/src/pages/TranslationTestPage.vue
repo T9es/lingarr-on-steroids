@@ -27,7 +27,7 @@
                         class="bg-primary border-accent w-full rounded border px-3 py-2 text-sm"
                         :disabled="isRunning" />
                     <p class="text-secondary-content mt-1 text-xs">
-                        Search for media in your library to automatically find subtitle files.
+                        {{ translate('translationTest.searchDescription') }}
                     </p>
                     <p v-if="searchError" class="text-error mt-1 text-xs">
                         {{ searchError }}

@@ -20,6 +20,14 @@
                             </option>
                             <option value="error">{{ translate('settings.logs.error') }}</option>
                         </select>
+
+                        <!-- Text Search -->
+                        <input 
+                            v-model="searchQuery"
+                            type="text"
+                            :placeholder="translate('settings.logs.searchPlaceholder')"
+                            class="bg-secondary text-accent-content border-secondary rounded border px-2 py-1 text-sm w-48 focus:w-64 transition-all"
+                        />
                     </div>
 
                     <div class="flex space-x-2">
@@ -75,7 +83,7 @@
             </div>
 
             <!-- Log Entries -->
-            <TransitionGroup name="log-list" tag="div">
+            <div class="log-list">
                 <div v-for="(log, index) in filteredLogs" :key="log.uniqueId || index" class="log-entry">
                     <div
                         class="hover:bg-secondary/20 border-secondary/30 grid grid-cols-12 border-b py-2 transition-colors">
@@ -103,7 +111,7 @@
                         <pre class="whitespace-pre-wrap">{{ log.stackTrace }}</pre>
                     </div>
                 </div>
-            </TransitionGroup>
+            </div>
         </div>
 
         <!-- Footer Stats -->
@@ -112,7 +120,7 @@
             <div class="flex items-center gap-4">
                 <div>{{ translate('settings.logs.totalEntries') }}: {{ filteredLogs.length }}</div>
                 <div class="flex items-center gap-2">
-                    <label>Max Logs:</label>
+                    <label>{{ translate('settings.logs.maxLogs') }}:</label>
                     <select v-model="maxLogs" class="bg-secondary rounded px-1">
                         <option :value="500">500</option>
                         <option :value="1000">1000</option>
@@ -149,6 +157,7 @@ const logs = ref<ILogEntryWithId[]>([])
 const autoScroll = ref(true)
 const isPaused = ref(false)
 const maxLogs = ref(1000)
+const searchQuery = ref('')
 const pendingLogs = ref<ILogEntryWithId[]>([])
 const logContainer = ref<HTMLElement | null>(null)
 const filterOptions = ref<IFilterOptions>({
@@ -158,12 +167,24 @@ let eventSource: EventSource | null = null
 
 const filteredLogs = computed(() => {
     return logs.value.filter((log) => {
+        // Filter by Level
         if (filterOptions.value.logLevel !== 'all') {
             const logLevel = log.logLevel.toLowerCase()
             if (logLevel !== filterOptions.value.logLevel.toLowerCase()) {
                 return false
             }
         }
+        
+        // Filter by Search Query
+        if (searchQuery.value) {
+            const query = searchQuery.value.toLowerCase()
+            const matchesMessage = log.message.toLowerCase().includes(query)
+            const matchesSource = log.formattedSource.toLowerCase().includes(query)
+            if (!matchesMessage && !matchesSource) {
+                return false
+            }
+        }
+        
         return true
     })
 })
