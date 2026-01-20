@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 using Lingarr.Core.Enum;
 using Lingarr.Core.Interfaces;
 
@@ -23,6 +24,7 @@ public class Episode : BaseEntity, IMedia
     /// <summary>
     /// Current translation state for efficient querying.
     /// </summary>
+    [JsonConverter(typeof(JsonNumberEnumConverter<TranslationState>))]
     public TranslationState TranslationState { get; set; } = TranslationState.Unknown;
     
     /// <summary>
