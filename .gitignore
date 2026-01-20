@@ -65,6 +65,8 @@ EXAMPLE SUBTITLES/Jujutsu Kaisen (2020) - S01E14 - Kyoto Sister School Exchange 
 EXAMPLE SUBTITLES/Jujutsu Kaisen (2020) - S01E13 - Tomorrow \[v2 Bluray-1080p Proper\]\[Opus 2.0\]\[x265\]-Vodes.English-\[Kaizoku\].pl.-ai-sztuczna-inteligencja-.srt
 EXAMPLE SUBTITLES/Jujutsu Kaisen (2020) - S01E13 - Tomorrow \[v2 Bluray-1080p Proper\]\[Opus 2.0\]\[x265\]-Vodes.eng.English-\[Kaizoku\].srt
 EXAMPLE EPISODES/Jujutsu Kaisen (2020) - S02E02 - Hidden Inventory 2 \[Bluray-1080p\]\[Opus 2.0\]\[x265\]-Vodes.mkv
-.opencode/opencode.json
-Debug.txt
-DEBUG/Debug2.txt
+# AI / Agent Generation Files
+agents.md
+*.analysis.md
+*_analysis.md
+*.plan.md
