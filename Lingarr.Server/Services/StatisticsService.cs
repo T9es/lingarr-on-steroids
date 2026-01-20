@@ -1,4 +1,4 @@
-﻿using Lingarr.Core.Data;
+using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Interfaces.Services;
@@ -25,6 +25,9 @@ public class StatisticsService : IStatisticsService
         var dbContext = scope.ServiceProvider.GetRequiredService<LingarrDbContext>();
 
         var stats = await GetOrCreateStatistics(dbContext);
+        
+        stats.TotalMovies = await dbContext.Movies.CountAsync();
+        stats.TotalEpisodes = await dbContext.Episodes.CountAsync();
         
         // Calculate unique translated media counts dynamically from completed translation requests
         // This prevents double-counting when media is re-translated

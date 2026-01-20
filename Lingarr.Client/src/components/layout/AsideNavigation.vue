@@ -1,4 +1,4 @@
-﻿<template>
+<template>
     <div class="relative">
         <!-- Backdrop -->
         <div
@@ -57,7 +57,7 @@
                             })
                         }}
                     </BadgeComponent>
-                    <BadgeComponent v-else classes="text-white border-green-200 bg-green-500/50">
+                    <BadgeComponent v-else classes="text-white border-gray-200 bg-gray-500/50">
                         {{
                             translate('common.currentVersion').format({
                                 version: instanceStore.getVersion.currentVersion

@@ -23,11 +23,11 @@
                     <input
                         v-model="searchQuery"
                         type="text"
-                        :placeholder="translate('translationTest.searchPlaceholder')"
+                        :placeholder="translate('translationTest.searchPlaceholder') + ' (e.g. Movie Title, Show Name)'"
                         class="bg-primary border-accent w-full rounded border px-3 py-2 text-sm"
                         :disabled="isRunning" />
                     <p class="text-secondary-content mt-1 text-xs">
-                        {{ translate('translationTest.searchHelp') }}
+                        Search for media in your library to automatically find subtitle files.
                     </p>
                     <p v-if="searchError" class="text-error mt-1 text-xs">
                         {{ searchError }}
@@ -170,6 +170,38 @@
                         {{ result.duration.toFixed(1) }}s
                     </p>
                 </div>
+                
+                <!-- Comparison View -->
+                <div v-if="result.preview && result.preview.length > 0" class="mt-4 border-t border-secondary/30 pt-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="text-md font-semibold">{{ translate('translationTest.preview') }}</h3>
+                        <div class="flex gap-2">
+                            <button 
+                                class="bg-secondary hover:bg-secondary/80 text-xs px-2 py-1 rounded transition"
+                                @click="downloadOriginal">
+                                ⬇ Original
+                            </button>
+                            <button 
+                                class="bg-accent hover:bg-accent/80 text-white text-xs px-2 py-1 rounded transition"
+                                @click="downloadTranslated">
+                                ⬇ Translated
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-primary border border-secondary/40 rounded-lg overflow-hidden h-96 flex flex-col">
+                        <div class="grid grid-cols-2 bg-secondary/50 font-bold text-xs p-2 border-b border-secondary/40">
+                            <div class="pl-2">Original ({{ sourceLanguage.toUpperCase() }})</div>
+                            <div class="pl-2">Translated ({{ targetLanguage.toUpperCase() }})</div>
+                        </div>
+                        <div class="overflow-y-auto flex-1 divide-y divide-secondary/20">
+                            <div v-for="item in result.preview" :key="item.position" class="grid grid-cols-2 hover:bg-secondary/10">
+                                <div class="p-2 text-xs border-r border-secondary/20 whitespace-pre-wrap">{{ item.original }}</div>
+                                <div class="p-2 text-xs whitespace-pre-wrap">{{ item.translated }}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- Log Console -->
@@ -227,12 +259,19 @@ interface LogEntry {
     details?: string
 }
 
+interface SubtitlePreview {
+    position: number
+    original: string
+    translated: string
+}
+
 interface TestResult {
     success: boolean
     errorMessage?: string
     totalSubtitles?: number
     translatedCount?: number
     duration?: number
+    preview?: SubtitlePreview[]
 }
 
 const { translate } = useI18n()
@@ -288,6 +327,34 @@ function getLogLevelClass(level: string): string {
 function clearLogs() {
     logs.value = []
     result.value = null
+}
+
+function downloadContent(content: string, filename: string) {
+    const blob = new Blob([content], { type: 'text/plain' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+}
+
+function downloadOriginal() {
+    if (!result.value?.preview) return
+    const content = result.value.preview
+        .map((p) => `${p.position}\n${p.original}\n`)
+        .join('\n')
+    downloadContent(content, `original_${Date.now()}.srt`)
+}
+
+function downloadTranslated() {
+    if (!result.value?.preview) return
+    const content = result.value.preview
+        .map((p) => `${p.position}\n${p.translated}\n`)
+        .join('\n')
+    downloadContent(content, `translated_${targetLanguage.value}_${Date.now()}.srt`)
 }
 
 const performSearch = useDebounce(async (value: string) => {
@@ -406,7 +473,7 @@ async function startTest() {
                 try {
                     const data = JSON.parse(line.substring(6))
 
-                    if (data.type === 'log') {
+                            if (data.type === 'log') {
                         logs.value.push({
                             level: data.Level,
                             message: data.Message,
@@ -420,7 +487,8 @@ async function startTest() {
                             errorMessage: data.ErrorMessage,
                             totalSubtitles: data.TotalSubtitles,
                             translatedCount: data.TranslatedCount,
-                            duration: data.Duration
+                            duration: data.Duration,
+                            preview: data.Preview
                         }
                     }
                 } catch {
