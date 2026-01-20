@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -203,8 +203,7 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
         {
             try
             {
-                // Note: LocalAI batch context wrapper not yet implemented - context params unused
-                return await TranslateBatchWithLocalAiApi(subtitleBatch, linked.Token);
+                return await TranslateBatchWithLocalAiApi(subtitleBatch, preContext, postContext, linked.Token);
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
             {
@@ -233,27 +232,31 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
 
     private async Task<Dictionary<int, string>> TranslateBatchWithLocalAiApi(
         List<BatchSubtitleItem> subtitleBatch,
+        List<string>? preContext,
+        List<string>? postContext,
         CancellationToken cancellationToken)
     {
         if (!_isChatEndpoint)
         {
-            return await TranslateBatchWithGenerateApi(subtitleBatch, cancellationToken);
+            return await TranslateBatchWithGenerateApi(subtitleBatch, preContext, postContext, cancellationToken);
         }
 
         // Try structured output first (OpenAI-compatible format)
         try
         {
-            return await TranslateBatchWithStructuredOutput(subtitleBatch, cancellationToken);
+            return await TranslateBatchWithStructuredOutput(subtitleBatch, preContext, postContext, cancellationToken);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Structured output failed, falling back to JSON parsing");
-            return await TranslateBatchWithJsonParsing(subtitleBatch, cancellationToken);
+            return await TranslateBatchWithJsonParsing(subtitleBatch, preContext, postContext, cancellationToken);
         }
     }
 
     private async Task<Dictionary<int, string>> TranslateBatchWithStructuredOutput(
         List<BatchSubtitleItem> subtitleBatch,
+        List<string>? preContext,
+        List<string>? postContext,
         CancellationToken cancellationToken)
     {
         var responseFormat = new
@@ -298,6 +301,8 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
             }
         };
 
+        var userContent = BuildBatchUserContent(subtitleBatch, preContext, postContext);
+
         var messages = new[]
         {
             new Dictionary<string, string>
@@ -308,7 +313,7 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
             new Dictionary<string, string>
             {
                 ["role"] = "user",
-                ["content"] = JsonSerializer.Serialize(subtitleBatch)
+                ["content"] = userContent
             }
         };
 
@@ -384,8 +389,12 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
 
     private async Task<Dictionary<int, string>> TranslateBatchWithJsonParsing(
         List<BatchSubtitleItem> subtitleBatch,
+        List<string>? preContext,
+        List<string>? postContext,
         CancellationToken cancellationToken)
     {
+        var userContent = BuildBatchUserContent(subtitleBatch, preContext, postContext);
+
         var messages = new[]
         {
             new Dictionary<string, string>
@@ -396,7 +405,7 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
             new Dictionary<string, string>
             {
                 ["role"] = "user",
-                ["content"] = JsonSerializer.Serialize(subtitleBatch)
+                ["content"] = userContent
             }
         };
 
@@ -464,15 +473,19 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
 
     private async Task<Dictionary<int, string>> TranslateBatchWithGenerateApi(
         List<BatchSubtitleItem> subtitleBatch,
+        List<string>? preContext,
+        List<string>? postContext,
         CancellationToken cancellationToken)
     {
         var batchPrompt = _prompt +
                           "\n\nPlease return the response as a JSON array with objects containing 'position' and 'line' fields. Example: [{\"position\": 1, \"line\": \"translated text\"}]\n\n";
 
+        var userContent = BuildBatchUserContent(subtitleBatch, preContext, postContext);
+
         var requestData = new Dictionary<string, object>
         {
             ["model"] = _model!,
-            ["prompt"] = batchPrompt + JsonSerializer.Serialize(subtitleBatch),
+            ["prompt"] = batchPrompt + userContent,
             ["stream"] = false
         };
         requestData = AddCustomParameters(requestData);
