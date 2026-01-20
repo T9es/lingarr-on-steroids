@@ -154,6 +154,10 @@ public class AutomatedTranslationJob
                 // Queue translation
                 try
                 {
+                    // Update rotation timestamp FIRST to ensure it goes to back of queue
+                    // even if processing crashes.
+                    await _mediaStateService.UpdateLastSubtitleCheckAt(media.Id, mediaType);
+                    
                     var count = await _mediaSubtitleProcessor.ProcessMediaForceAsync(
                         media, mediaType,
                         forceProcess: false,

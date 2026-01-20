@@ -56,4 +56,10 @@ public interface IMediaStateService
     /// Checks if a media item has any failed translation requests.
     /// </summary>
     Task<bool> HasFailedTranslationRequestAsync(int mediaId, MediaType mediaType);
+
+    /// <summary>
+    /// Updates the LastSubtitleCheckAt timestamp for a media item.
+    /// Used for queue rotation to prevent starvation.
+    /// </summary>
+    Task UpdateLastSubtitleCheckAt(int mediaId, MediaType mediaType);
 }
