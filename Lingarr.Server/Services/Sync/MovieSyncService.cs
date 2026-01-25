@@ -64,6 +64,7 @@ public class MovieSyncService : IMovieSyncService
     {
         var moviesToRemove = await _dbContext.Movies
             .Include(m => m.Images)
+            .Include(m => m.EmbeddedSubtitles)
             .Where(movie => !existingRadarrIds.Contains(movie.RadarrId))
             .ToListAsync();
 
@@ -71,9 +72,11 @@ public class MovieSyncService : IMovieSyncService
         {
             _logger.LogInformation("Removing {Count} movies that no longer exist in Radarr", moviesToRemove.Count);
 
-            // Bulk remove all images and movies
+            // Bulk remove all images, embedded subtitles and movies
             var imagesToRemove = moviesToRemove.SelectMany(m => m.Images).ToList();
+            var embeddedSubtitlesToRemove = moviesToRemove.SelectMany(m => m.EmbeddedSubtitles).ToList();
             _dbContext.Images.RemoveRange(imagesToRemove);
+            _dbContext.EmbeddedSubtitles.RemoveRange(embeddedSubtitlesToRemove);
             _dbContext.Movies.RemoveRange(moviesToRemove);
 
             await _dbContext.SaveChangesAsync();

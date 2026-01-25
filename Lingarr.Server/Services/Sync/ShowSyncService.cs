@@ -83,6 +83,7 @@ public class ShowSyncService : IShowSyncService
             .Include(s => s.Images)
             .Include(s => s.Seasons)
                 .ThenInclude(s => s.Episodes)
+                    .ThenInclude(e => e.EmbeddedSubtitles)
             .Where(s => !existingSonarrIds.Contains(s.SonarrId))
             .ToListAsync();
 
@@ -91,9 +92,11 @@ public class ShowSyncService : IShowSyncService
             _logger.LogInformation("Removing {Count} shows that no longer exist in Sonarr", showsToDelete.Count);
 
             var episodes = showsToDelete.SelectMany(s => s.Seasons.SelectMany(season => season.Episodes)).ToList();
+            var embeddedSubtitles = episodes.SelectMany(e => e.EmbeddedSubtitles).ToList();
             var seasons = showsToDelete.SelectMany(s => s.Seasons).ToList();
             var images = showsToDelete.SelectMany(s => s.Images).ToList();
 
+            _dbContext.EmbeddedSubtitles.RemoveRange(embeddedSubtitles);
             _dbContext.Episodes.RemoveRange(episodes);
             _dbContext.Seasons.RemoveRange(seasons);
             _dbContext.Images.RemoveRange(images);
