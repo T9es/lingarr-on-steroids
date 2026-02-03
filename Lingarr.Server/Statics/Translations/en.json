@@ -19,6 +19,8 @@
     "extract": "Extract",
     "justExtract": "Just Extract",
     "extracting": "Extracting...",
+    "extractAgain": "Extract again?",
+    "reextractConfirm": "Re-extract this subtitle? The existing file will be overwritten.",
     "textBased": "Text-based",
     "imageBased": "Image-based subtitle (PGS/VobSub). Cannot be extracted without OCR.",
     "extracted": "Extracted",

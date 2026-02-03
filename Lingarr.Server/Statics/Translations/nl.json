@@ -19,6 +19,8 @@
     "extract": "Uitpakken",
     "justExtract": "Alleen uitpakken",
     "extracting": "Bezig met uitpakken...",
+    "extractAgain": "Opnieuw uitpakken?",
+    "reextractConfirm": "Deze ondertitel opnieuw uitpakken? Het bestaande bestand wordt overschreven.",
     "textBased": "Tekstgebaseerd",
     "imageBased": "Afbeeldingsondertitel (PGS/VobSub). Kan niet worden uitgepakt zonder OCR.",
     "extracted": "Uitgepakt",
