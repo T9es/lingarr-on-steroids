@@ -169,6 +169,7 @@
     "statusInterrupted": "Interrupted",
     "updateAvailable": "Update {version} is available",
     "currentVersion": "Version: {version}",
+    "devBuild": "Dev Build",
     "basedOnLingarr": "Based on Lingarr",
     "enabled": "Enabled",
     "disabled": "Disabled",

@@ -169,6 +169,7 @@
     "statusInterrupted": "Onderbroken",
     "updateAvailable": "Update {version} is beschikbaar",
     "currentVersion": "Versie: {version}",
+    "devBuild": "Dev Build",
     "basedOnLingarr": "Gebaseerd op Lingarr",
     "enabled": "Actief",
     "disabled": "Inactief",

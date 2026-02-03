@@ -9,6 +9,7 @@ export const useInstanceStore = defineStore('instance', {
     state: (): IUseInstanceStore => ({
         version: {
             newVersion: false,
+            isDevBuild: false,
             currentVersion: '',
             latestVersion: ''
         },
