@@ -179,36 +179,48 @@ public class TranslationJob
             }
 
             // AUTO-EXTRACTION: If subtitle file doesn't exist, check for embedded subtitles
-            var subtitlePath = request.SubtitleToTranslate;
-            if (string.IsNullOrEmpty(subtitlePath) || !File.Exists(subtitlePath))
-            {
-                _logger.LogInformation("Subtitle file not found, checking for embedded subtitles...");
-                AddRequestLog("Warning", "Subtitle file not found on disk, attempting embedded subtitle extraction");
-                if (request.MediaId.HasValue)
+                var subtitlePath = request.SubtitleToTranslate;
+                if (string.IsNullOrEmpty(subtitlePath) || !File.Exists(subtitlePath))
                 {
-                    subtitlePath = await _extractionService.TryExtractEmbeddedSubtitle(request.MediaId.Value, request.MediaType, request.SourceLanguage);
+                    _logger.LogInformation("Subtitle file not found, checking for embedded subtitles...");
+                    AddRequestLog("Warning", "Subtitle file not found on disk, attempting embedded subtitle extraction");
+                    if (request.MediaId.HasValue)
+                    {
+                        subtitlePath = await _extractionService.TryExtractEmbeddedSubtitle(request.MediaId.Value, request.MediaType, request.SourceLanguage);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Cannot extract embedded subtitle: MediaId is null");
+                        subtitlePath = null;
+                    }
+                    
+                    if (string.IsNullOrEmpty(subtitlePath))
+                    {
+                        var errorMessage =
+                            $"Subtitle file not found and no extractable embedded subtitle available: {request.SubtitleToTranslate}";
+                        _logger.LogError(errorMessage);
+                        AddRequestLog("Error", errorMessage);
+                        throw new InvalidOperationException(errorMessage);
+                    }
+                    
+                    // Update the request with the extracted subtitle path
+                    request.SubtitleToTranslate = subtitlePath;
+                    _logger.LogInformation("Using extracted embedded subtitle: {Path}", subtitlePath);
+                    AddRequestLog("Information", $"Using extracted embedded subtitle: {subtitlePath}");
+                    
+                    // Check if the file was already in the database as extracted before this job started
+                    // If so, don't treat it as temporary - the user manually extracted it
+                    var wasAlreadyExtractedInDb = await WasSubtitleAlreadyExtracted(request.MediaId, request.MediaType, subtitlePath);
+                    if (!wasAlreadyExtractedInDb)
+                    {
+                        temporaryFilePath = subtitlePath;
+                        _logger.LogDebug("Marked extracted subtitle as temporary (will be cleaned up after translation): {Path}", subtitlePath);
+                    }
+                    else
+                    {
+                        _logger.LogDebug("Subtitle was already extracted before this job (found in database), preserving file: {Path}", subtitlePath);
+                    }
                 }
-                else
-                {
-                    _logger.LogWarning("Cannot extract embedded subtitle: MediaId is null");
-                    subtitlePath = null;
-                }
-                
-                if (string.IsNullOrEmpty(subtitlePath))
-                {
-                    var errorMessage =
-                        $"Subtitle file not found and no extractable embedded subtitle available: {request.SubtitleToTranslate}";
-                    _logger.LogError(errorMessage);
-                    AddRequestLog("Error", errorMessage);
-                    throw new InvalidOperationException(errorMessage);
-                }
-                
-                // Update the request with the extracted subtitle path
-                request.SubtitleToTranslate = subtitlePath;
-                _logger.LogInformation("Using extracted embedded subtitle: {Path}", subtitlePath);
-                AddRequestLog("Information", $"Using extracted embedded subtitle: {subtitlePath}");
-                temporaryFilePath = subtitlePath;
-            }
 
             // validate subtitles
             if (validateSubtitles)
@@ -326,7 +338,19 @@ public class TranslationJob
 
                 // Update request to point to new file
                 request.SubtitleToTranslate = newSubtitlePath;
-                temporaryFilePath = newSubtitlePath; // Mark for deletion
+                
+                // Only mark as temporary if this file was just extracted by this job
+                // Check if the file already existed (was manually extracted before)
+                var fallbackWasAlreadyExtracted = await WasSubtitleAlreadyExtracted(request.MediaId, request.MediaType, newSubtitlePath);
+                if (!fallbackWasAlreadyExtracted)
+                {
+                    temporaryFilePath = newSubtitlePath; // Mark for deletion
+                    _logger.LogDebug("Marked fallback extracted subtitle as temporary: {Path}", newSubtitlePath);
+                }
+                else
+                {
+                    _logger.LogDebug("Fallback subtitle was already extracted, preserving file: {Path}", newSubtitlePath);
+                }
                 
                 _logger.LogInformation("Fallback successful, switching to: {Path}", newSubtitlePath);
                 AddRequestLog("Information", $"Fallback successful, switching to: {newSubtitlePath}");
@@ -813,7 +837,55 @@ public class TranslationJob
             // Don't throw - this is a non-critical operation
         }
     }
-    
 
+    /// <summary>
+    /// Checks if a subtitle file was already extracted before this translation job started.
+    /// This is used to determine if we should preserve the file (user manually extracted it)
+    /// or clean it up (auto-extracted during translation).
+    /// </summary>
+    private async Task<bool> WasSubtitleAlreadyExtracted(int? mediaId, MediaType mediaType, string subtitlePath)
+    {
+        if (!mediaId.HasValue || string.IsNullOrEmpty(subtitlePath))
+            return false;
 
+        try
+        {
+            // Check if there's an embedded subtitle record in the database
+            // that matches this path and was marked as extracted
+            if (mediaType == MediaType.Movie)
+            {
+                var movie = await _dbContext.Movies
+                    .Include(m => m.EmbeddedSubtitles)
+                    .FirstOrDefaultAsync(m => m.Id == mediaId.Value);
+                    
+                if (movie?.EmbeddedSubtitles != null)
+                {
+                    return movie.EmbeddedSubtitles.Any(es =>
+                        es.IsExtracted &&
+                        !string.IsNullOrEmpty(es.ExtractedPath) &&
+                        es.ExtractedPath.Equals(subtitlePath, StringComparison.OrdinalIgnoreCase));
+                }
+            }
+            else if (mediaType == MediaType.Episode)
+            {
+                var episode = await _dbContext.Episodes
+                    .Include(e => e.EmbeddedSubtitles)
+                    .FirstOrDefaultAsync(e => e.Id == mediaId.Value);
+                    
+                if (episode?.EmbeddedSubtitles != null)
+                {
+                    return episode.EmbeddedSubtitles.Any(es =>
+                        es.IsExtracted &&
+                        !string.IsNullOrEmpty(es.ExtractedPath) &&
+                        es.ExtractedPath.Equals(subtitlePath, StringComparison.OrdinalIgnoreCase));
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error checking if subtitle was already extracted for {Path}", subtitlePath);
+        }
+
+        return false;
+    }
 }
