@@ -1,6 +1,7 @@
 ﻿using System.Net.Http.Json;
 using Microsoft.Extensions.Caching.Memory;
 using Lingarr.Core.Models;
+using Semver;
 
 namespace Lingarr.Core;
 
@@ -38,8 +39,8 @@ public static class LingarrVersion
         try
         {
             var release = await HttpClient.GetFromJsonAsync<GitHubReleaseInfo>(GitHubApiUrl);
-            var latestVersion = !string.IsNullOrWhiteSpace(release?.TagName) 
-                ? release.TagName 
+            var latestVersion = !string.IsNullOrWhiteSpace(release?.TagName)
+                ? release.TagName
                 : release?.Name ?? Number;
 
             var cacheEntryOptions = new MemoryCacheEntryOptions()
@@ -58,12 +59,26 @@ public static class LingarrVersion
 
     private static bool IsNewVersionAvailable(string latestVersion, string currentVersion)
     {
-        if (Version.TryParse(latestVersion.TrimStart('v'), out var latest) &&
-            Version.TryParse(currentVersion.TrimStart('v'), out var current))
+        // Trim 'v' prefix that GitHub releases often use
+        latestVersion = latestVersion?.TrimStart('v') ?? string.Empty;
+        currentVersion = currentVersion?.TrimStart('v') ?? string.Empty;
+
+        // Handle empty or null versions
+        if (string.IsNullOrWhiteSpace(latestVersion) || string.IsNullOrWhiteSpace(currentVersion))
         {
-            return latest > current;
+            return false;
         }
-        
+
+        // Use Semver library for proper semantic version comparison
+        if (SemVersion.TryParse(latestVersion, SemVersionStyles.Any, out var latest) &&
+            SemVersion.TryParse(currentVersion, SemVersionStyles.Any, out var current))
+        {
+            // Compare versions: latest > current means an update is available
+            // Pre-release versions are considered less than their release counterparts
+            // e.g., 2.2.0-beta < 2.2.0
+            return latest.ComparePrecedenceTo(current) > 0;
+        }
+
         return false;
     }
 }

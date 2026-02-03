@@ -27,9 +27,24 @@
                                 class="ml-2 inline h-3 w-3 animate-spin" />
                         </span>
                     </div>
-                    <div v-else class="flex text-sm text-green-400" role="menuitem">
-                        <span class="h-full w-full py-2">
-                            {{ translate('embedded.extracted') }} ✓
+                    <div
+                        v-else
+                        class="flex cursor-pointer text-sm text-green-400"
+                        role="menuitem"
+                        @mouseenter="isReextractHovered = true"
+                        @mouseleave="isReextractHovered = false"
+                        @click="handleReExtract">
+                        <span class="h-full w-full py-2 hover:brightness-150">
+                            <template v-if="isExtracting">
+                                {{ translate('embedded.extracting') || 'Extracting...' }}
+                                <LoaderCircleIcon class="ml-2 inline h-3 w-3 animate-spin" />
+                            </template>
+                            <template v-else-if="isReextractHovered">
+                                {{ translate('embedded.extractAgain') || 'Extract again?' }}
+                            </template>
+                            <template v-else>
+                                {{ translate('embedded.extracted') }} ✓
+                            </template>
                         </span>
                     </div>
                 </div>
@@ -77,6 +92,7 @@ const isOpen: Ref<boolean> = ref(false)
 const clickOutside: Ref = ref(null)
 const excludeClickOutside: Ref = ref(null)
 const isExtracting = ref(false)
+const isReextractHovered = ref(false)
 
 const languages: ComputedRef<ILanguage[]> = computed(
     () => settingsStore.getSetting('target_languages') as ILanguage[]
@@ -87,9 +103,12 @@ function toggle() {
     isOpen.value = !isOpen.value
 }
 
-async function extractSubtitle(): Promise<boolean> {
+async function extractSubtitle(force = false): Promise<boolean> {
     const sub = props.embeddedSubtitle
-    if (!sub || sub.isExtracted) return true
+    if (!sub) return false
+
+    // If already extracted and not forcing re-extraction, return success
+    if (sub.isExtracted && !force) return true
 
     // Don't allow extraction of image-based subtitles
     if (!sub.isTextBased) {
@@ -134,6 +153,16 @@ async function handleJustExtract() {
         alert(translate('embedded.extractSuccess'))
     }
     toggle()
+}
+
+async function handleReExtract() {
+    const confirmed = confirm(translate('embedded.reextractConfirm') || 'Re-extract this subtitle? The existing file will be overwritten.')
+    if (!confirmed) return
+
+    const success = await extractSubtitle(true) // force = true
+    if (success) {
+        alert(translate('embedded.extractSuccess'))
+    }
 }
 
 async function selectOption(target: ILanguage) {
