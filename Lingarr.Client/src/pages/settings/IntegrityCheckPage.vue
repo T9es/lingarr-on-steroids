@@ -115,6 +115,158 @@
             </template>
         </CardComponent>
 
+        <!-- Subtitle Source Issues Section -->
+        <CardComponent title="Subtitle Source Issues">
+            <template #description>
+                Detects potentially incomplete source subtitles (Forced/Signs-only) based on entry count. Subtitles with fewer than 50 entries may need re-translation with a different source.
+            </template>
+            <template #content>
+                <div class="flex flex-col space-y-6">
+                    <!-- Action Button -->
+                    <div class="flex items-center justify-center">
+                        <button
+                            :disabled="subtitleTypeIsRunning"
+                            class="bg-accent hover:bg-accent/80 disabled:bg-base-300 rounded px-6 py-3 font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:text-gray-500"
+                            @click="startSubtitleTypeValidation">
+                            <span v-if="subtitleTypeIsRunning" class="flex items-center">
+                                <svg
+                                    class="mr-2 h-5 w-5 animate-spin"
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    fill="none"
+                                    viewBox="0 0 24 24">
+                                    <circle
+                                        class="opacity-25"
+                                        cx="12"
+                                        cy="12"
+                                        r="10"
+                                        stroke="currentColor"
+                                        stroke-width="4"></circle>
+                                    <path
+                                        class="opacity-75"
+                                        fill="currentColor"
+                                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Scanning...
+                            </span>
+                            <span v-else>Check Subtitle Sources</span>
+                        </button>
+                    </div>
+
+                    <!-- Results -->
+                    <div v-if="subtitleTypeResult" class="w-full space-y-4">
+                        <!-- Stats Grid -->
+                        <div class="grid w-full grid-cols-2 gap-4">
+                            <div class="bg-base-200 rounded p-4 text-center">
+                                <div class="text-2xl font-bold">
+                                    {{ subtitleTypeResult.totalScanned }}
+                                </div>
+                                <div class="text-sm opacity-70">Translations Scanned</div>
+                            </div>
+                            <div class="bg-base-200 rounded p-4 text-center">
+                                <div
+                                    class="text-2xl font-bold"
+                                    :class="
+                                        subtitleTypeResult.incompleteCount > 0
+                                            ? 'text-yellow-500'
+                                            : 'text-green-500'
+                                    ">
+                                    {{ subtitleTypeResult.incompleteCount }}
+                                </div>
+                                <div class="text-sm opacity-70">Incomplete Subtitles</div>
+                            </div>
+                        </div>
+
+                        <!-- Flagged Items List -->
+                        <div
+                            v-if="subtitleTypeResult.flaggedItems && subtitleTypeResult.flaggedItems.length > 0"
+                            class="w-full space-y-3">
+                            <div class="flex items-center justify-between">
+                                <h4 class="font-semibold">Flagged Incomplete Subtitles</h4>
+                                <button
+                                    class="bg-accent hover:bg-accent/80 rounded px-4 py-2 text-sm font-semibold text-white"
+                                    @click="requeueAllIncomplete">
+                                    Auto-fix All
+                                </button>
+                            </div>
+                            <div class="bg-base-200 max-h-96 w-full overflow-y-auto rounded">
+                                <div
+                                    v-for="item in subtitleTypeResult.flaggedItems"
+                                    :key="item.translationId"
+                                    class="border-base-300 border-b last:border-0">
+                                    <div
+                                        class="hover:bg-base-300/50 flex cursor-pointer items-center justify-between p-3"
+                                        @click="toggleSubtitleTypeExpand(item.translationId)">
+                                        <div class="flex-1 overflow-hidden">
+                                            <div class="truncate font-medium">
+                                                {{ item.mediaTitle }}
+                                            </div>
+                                            <div class="truncate text-xs opacity-50">
+                                                {{ item.subtitlePath }}
+                                            </div>
+                                            <div class="flex items-center gap-2 mt-1">
+                                                <span class="text-xs text-yellow-500">
+                                                    {{ item.entryCount }} entries (threshold: 50)
+                                                </span>
+                                                <span
+                                                    v-if="item.isQueued"
+                                                    class="rounded bg-blue-500/20 px-2 py-0.5 text-xs text-blue-400">
+                                                    Already queued
+                                                </span>
+                                                <span
+                                                    v-if="item.dismissed"
+                                                    class="rounded bg-gray-500/20 px-2 py-0.5 text-xs text-gray-400">
+                                                    Dismissed
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div class="ml-2 flex items-center gap-1">
+                                            <button
+                                                v-if="!item.isQueued && !item.dismissed"
+                                                class="rounded bg-green-500/20 px-2 py-1 text-xs text-green-400 hover:bg-green-500/30"
+                                                @click.stop="acceptSubtitleType(item)">
+                                                Accept
+                                            </button>
+                                            <button
+                                                v-if="!item.isQueued && !item.dismissed"
+                                                class="rounded bg-accent/20 px-2 py-1 text-xs text-accent hover:bg-accent/30"
+                                                @click.stop="requeueSubtitleType(item)">
+                                                Auto-fix
+                                            </button>
+                                            <button
+                                                v-if="!item.isQueued && !item.dismissed"
+                                                class="rounded bg-gray-500/20 px-2 py-1 text-xs text-gray-400 hover:bg-gray-500/30"
+                                                @click.stop="dismissSubtitleType(item)">
+                                                Dismiss
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <!-- Expandable details -->
+                                    <div
+                                        v-if="
+                                            expandedSubtitleTypeItems.includes(item.translationId) &&
+                                            item.warning
+                                        "
+                                        class="bg-base-300/30 border-base-300 border-t p-3 text-xs">
+                                        <div class="mb-1 font-semibold opacity-70">Warning:</div>
+                                        <div class="text-yellow-400">{{ item.warning }}</div>
+                                        <div class="mt-2 mb-1 font-semibold opacity-70">Recommended Action:</div>
+                                        <div class="text-accent">{{ item.recommendedAction }}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Success Message -->
+                        <div
+                            v-if="subtitleTypeResult.incompleteCount === 0"
+                            class="w-full rounded border border-green-500/30 bg-green-500/10 p-4 text-center text-green-400">
+                            All source subtitles have sufficient entries!
+                        </div>
+                    </div>
+                </div>
+            </template>
+        </CardComponent>
+
         <!-- Verify ASS Integrity Section -->
         <CardComponent title="Verify ASS Integrity">
             <template #description>
@@ -298,6 +450,140 @@ const stats = reactive<BulkIntegrityStats>({
     progressPercent: 0
 })
 
+// Subtitle Type Validation
+interface SubtitleTypeCheckResult {
+    translationId: number
+    mediaTitle: string
+    subtitlePath: string
+    entryCount: number
+    isComplete: boolean
+    warning: string
+    recommendedAction: string
+    mediaType: string
+    mediaId: number
+    isQueued: boolean
+    dismissed: boolean
+}
+
+interface SubtitleTypeCheckSummary {
+    totalScanned: number
+    incompleteCount: number
+    flaggedItems: SubtitleTypeCheckResult[]
+}
+
+const subtitleTypeIsRunning = ref(false)
+const subtitleTypeResult = ref<SubtitleTypeCheckSummary | null>(null)
+const expandedSubtitleTypeItems = ref<number[]>([])
+
+const toggleSubtitleTypeExpand = (translationId: number) => {
+    if (expandedSubtitleTypeItems.value.includes(translationId)) {
+        expandedSubtitleTypeItems.value = expandedSubtitleTypeItems.value.filter((id) => id !== translationId)
+    } else {
+        expandedSubtitleTypeItems.value.push(translationId)
+    }
+}
+
+const startSubtitleTypeValidation = async () => {
+    try {
+        subtitleTypeIsRunning.value = true
+        const response = await axios.post('/api/subtitle/validate-subtitle-types')
+        subtitleTypeResult.value = response.data
+
+        // Persist result
+        await axios.post('/api/setting', {
+            key: 'subtitle_type_validation_last_result',
+            value: JSON.stringify(response.data)
+        })
+    } catch (error) {
+        console.error('Failed to start subtitle type validation:', error)
+    } finally {
+        subtitleTypeIsRunning.value = false
+    }
+}
+
+const dismissSubtitleType = async (item: SubtitleTypeCheckResult) => {
+    if (!subtitleTypeResult.value?.flaggedItems) return
+
+    // Mark as dismissed in the list
+    const flaggedItem = subtitleTypeResult.value.flaggedItems.find(
+        (i) => i.translationId === item.translationId
+    )
+    if (flaggedItem) {
+        flaggedItem.dismissed = true
+    }
+
+    // Update persisted result
+    await axios.post('/api/setting', {
+        key: 'subtitle_type_validation_last_result',
+        value: JSON.stringify(subtitleTypeResult.value)
+    })
+}
+
+const acceptSubtitleType = async (item: SubtitleTypeCheckResult) => {
+    // Same as dismiss - user accepts this as-is
+    await dismissSubtitleType(item)
+}
+
+const requeueSubtitleType = async (item: SubtitleTypeCheckResult) => {
+    if (!subtitleTypeResult.value?.flaggedItems) return
+
+    try {
+        // Requeue the media for translation
+        await axios.post('/api/translate/media', {
+            mediaId: item.mediaId,
+            mediaType: item.mediaType
+        })
+
+        // Mark as queued
+        const flaggedItem = subtitleTypeResult.value.flaggedItems.find(
+            (i) => i.translationId === item.translationId
+        )
+        if (flaggedItem) {
+            flaggedItem.isQueued = true
+        }
+
+        // Update persisted result
+        await axios.post('/api/setting', {
+            key: 'subtitle_type_validation_last_result',
+            value: JSON.stringify(subtitleTypeResult.value)
+        })
+    } catch (error) {
+        console.error('Failed to requeue item:', error)
+    }
+}
+
+const requeueAllIncomplete = async () => {
+    if (!subtitleTypeResult.value?.flaggedItems) return
+
+    try {
+        // Only requeue items that are not already in queue or dismissed
+        const itemsToRequeue = subtitleTypeResult.value.flaggedItems.filter(
+            (item) => !item.isQueued && !item.dismissed
+        )
+
+        for (const item of itemsToRequeue) {
+            await axios.post('/api/translate/media', {
+                mediaId: item.mediaId,
+                mediaType: item.mediaType
+            })
+        }
+
+        // Mark all as queued
+        subtitleTypeResult.value.flaggedItems = subtitleTypeResult.value.flaggedItems.map((item) => ({
+            ...item,
+            isQueued: true
+        }))
+
+        // Update persisted result
+        await axios.post('/api/setting', {
+            key: 'subtitle_type_validation_last_result',
+            value: JSON.stringify(subtitleTypeResult.value)
+        })
+    } catch (error) {
+        console.error('Failed to requeue items:', error)
+    }
+}
+
 const startBulkCheck = async () => {
     try {
         isRunning.value = true
@@ -361,6 +647,16 @@ onMounted(async () => {
     } catch (error) {
         // 400 is expected when no scan has been run yet
         console.debug('No existing ASS verification result')
+    }
+
+    // Load persisted subtitle type validation result
+    try {
+        const subtitleTypeResponse = await axios.get('/api/setting/subtitle_type_validation_last_result')
+        if (subtitleTypeResponse.data) {
+            subtitleTypeResult.value = JSON.parse(subtitleTypeResponse.data)
+        }
+    } catch (error) {
+        console.debug('No existing subtitle type validation result')
     }
 
     hubConnection.value = await signalR.connect('JobProgress', '/signalr/JobProgress')

@@ -51,4 +51,36 @@ public class SubtitleController : ControllerBase
         var result = await _integrityService.VerifyAssIntegrityAsync(ct);
         return Ok(result);
     }
+
+    /// <summary>
+    /// Scans all completed translations for potentially incomplete source subtitles.
+    /// Detects Forced or Signs-only subtitles that should be re-translated.
+    /// </summary>
+    /// <param name="ct">Cancellation token</param>
+    /// <returns>Returns summary of incomplete subtitle findings</returns>
+    [HttpPost("validate-subtitle-types")]
+    public async Task<ActionResult<SubtitleTypeCheckSummary>> ValidateSubtitleTypes(CancellationToken ct)
+    {
+        var result = await _integrityService.ValidateAllSubtitleTypesAsync(ct);
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Validates a specific translation's subtitle type.
+    /// </summary>
+    /// <param name="translationId">The translation request ID</param>
+    /// <param name="ct">Cancellation token</param>
+    /// <returns>Returns the validation result for the specified translation</returns>
+    [HttpGet("validate-subtitle-type/{translationId}")]
+    public async Task<ActionResult<SubtitleTypeCheckResult>> ValidateSubtitleType(int translationId, CancellationToken ct)
+    {
+        var result = await _integrityService.ValidateSubtitleTypeAsync(translationId, ct);
+        
+        if (result == null)
+        {
+            return NotFound($"Translation {translationId} not found or could not be validated");
+        }
+
+        return Ok(result);
+    }
 }
