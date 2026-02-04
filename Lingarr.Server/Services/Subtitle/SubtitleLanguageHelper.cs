@@ -206,7 +206,7 @@ public static class SubtitleLanguageHelper
         // Prefer non-forced tracks for full dialogue; forced tracks are often partial or effect-only.
         if (subtitle.IsForced)
         {
-            score -= 10;
+            score -= 50;
         }
         else
         {
