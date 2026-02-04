@@ -190,11 +190,30 @@ public class TranslationJob
                     AddRequestLog("Warning", "Subtitle file not found on disk, attempting embedded subtitle extraction");
                     if (request.MediaId.HasValue)
                     {
+                        // Check if there's a preferred stream index from manual selection
+                        var streamSelectionKey = $"subtitle_stream_selection_{request.MediaId.Value}_{request.MediaType}";
+                        var preferredStreamIndexSetting = await _settings.GetSetting(streamSelectionKey);
+                        int? preferredStreamIndex = null;
+                        if (!string.IsNullOrEmpty(preferredStreamIndexSetting) && int.TryParse(preferredStreamIndexSetting, out var parsedIndex))
+                        {
+                            preferredStreamIndex = parsedIndex;
+                            _logger.LogInformation("Using preferred stream index {StreamIndex} from manual selection", preferredStreamIndex);
+                            AddRequestLog("Information", $"Using preferred stream index {preferredStreamIndex} from manual selection");
+                            
+                            // Clear the setting after reading it to prevent affecting future jobs
+                            await _settings.SetSetting(streamSelectionKey, "");
+                        }
+
                         // Before extraction, predict the output path to check if file already exists
                         var predictedPath = PredictExtractionOutputPath(request.MediaId.Value, request.MediaType, request.SourceLanguage);
                         var wasFileAlreadyExisting = !string.IsNullOrEmpty(predictedPath) && File.Exists(predictedPath);
                         
-                        subtitlePath = await _extractionService.TryExtractEmbeddedSubtitle(request.MediaId.Value, request.MediaType, request.SourceLanguage);
+                        subtitlePath = await _extractionService.TryExtractEmbeddedSubtitle(
+                            request.MediaId.Value, 
+                            request.MediaType, 
+                            request.SourceLanguage,
+                            null,
+                            preferredStreamIndex);
                         
                         // Mark for cleanup only if the file didn't exist before extraction (auto-extracted)
                         // Don't check database state - the extraction service already set IsExtracted=true
@@ -369,7 +388,8 @@ public class TranslationJob
                     request.MediaId.Value,
                     request.MediaType,
                     request.SourceLanguage,
-                    excludedPaths);
+                    excludedPaths,
+                    null); // Don't use preferred stream for fallback - we want a different stream
 
                 if (string.IsNullOrEmpty(newSubtitlePath))
                 {

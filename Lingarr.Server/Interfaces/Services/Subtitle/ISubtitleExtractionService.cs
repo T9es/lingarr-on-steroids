@@ -1,5 +1,6 @@
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
+using Lingarr.Server.Models.Api;
 
 namespace Lingarr.Server.Interfaces.Services.Subtitle;
 
@@ -14,6 +15,14 @@ public interface ISubtitleExtractionService
     /// <param name="mediaFilePath">Path to the media file (MKV, MP4, etc.)</param>
     /// <returns>List of detected embedded subtitle streams</returns>
     Task<List<EmbeddedSubtitle>> ProbeEmbeddedSubtitles(string mediaFilePath);
+    
+    /// <summary>
+    /// Lists all available subtitles for a media item with entry counts.
+    /// </summary>
+    /// <param name="mediaId">The media ID</param>
+    /// <param name="mediaType">The type of media (Movie or Episode)</param>
+    /// <returns>List of available subtitles with metadata and entry counts</returns>
+    Task<List<AvailableSubtitleResponse>> ListAvailableSubtitlesAsync(int mediaId, MediaType mediaType);
 
     /// <summary>
     /// Extracts a specific subtitle stream to an external file.
@@ -32,7 +41,7 @@ public interface ISubtitleExtractionService
     /// </summary>
     /// <param name="episode">The episode to sync</param>
     Task SyncEmbeddedSubtitles(Episode episode);
-    Task<string?> TryExtractEmbeddedSubtitle(int mediaId, MediaType mediaType, string sourceLanguage, List<string>? excludedPaths = null);
+    Task<string?> TryExtractEmbeddedSubtitle(int mediaId, MediaType mediaType, string sourceLanguage, List<string>? excludedPaths = null, int? preferredStreamIndex = null);
 
     /// <summary>
     /// Syncs embedded subtitle information for a movie.

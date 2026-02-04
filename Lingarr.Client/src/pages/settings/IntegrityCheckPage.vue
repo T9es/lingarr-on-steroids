@@ -219,7 +219,7 @@
                                                 </span>
                                             </div>
                                         </div>
-                                        <div class="ml-2 flex items-center gap-1">
+                                         <div class="ml-2 flex items-center gap-1">
                                             <button
                                                 v-if="!item.isQueued && !item.dismissed"
                                                 class="rounded bg-green-500/20 px-2 py-1 text-xs text-green-400 hover:bg-green-500/30"
@@ -231,6 +231,12 @@
                                                 class="rounded bg-accent/20 px-2 py-1 text-xs text-accent hover:bg-accent/30"
                                                 @click.stop="requeueSubtitleType(item)">
                                                 Auto-fix
+                                            </button>
+                                            <button
+                                                v-if="!item.isQueued && !item.dismissed"
+                                                class="rounded bg-blue-500/20 px-2 py-1 text-xs text-blue-400 hover:bg-blue-500/30"
+                                                @click.stop="openManualSelect(item)">
+                                                Manual Select
                                             </button>
                                             <button
                                                 v-if="!item.isQueued && !item.dismissed"
@@ -406,12 +412,24 @@
             </template>
         </CardComponent>
     </div>
+
+    <!-- Subtitle Selector Modal -->
+    <SubtitleSelectorModal
+        :is-open="isSubtitleModalOpen"
+        :media-id="selectedMedia?.mediaId ?? 0"
+        :media-type="selectedMedia?.mediaType ?? ''"
+        :media-title="selectedMedia?.mediaTitle ?? ''"
+        source-language="eng"
+        @close="closeSubtitleModal"
+        @success="handleSubtitleModalSuccess"
+        @error="handleSubtitleModalError" />
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { useI18n } from '@/plugins/i18n'
 import CardComponent from '@/components/common/CardComponent.vue'
+import SubtitleSelectorModal from '@/components/features/settings/SubtitleSelectorModal.vue'
 import { useSignalR } from '@/composables/useSignalR'
 import { Hub } from '@/ts'
 import axios from 'axios'
@@ -474,6 +492,47 @@ interface SubtitleTypeCheckSummary {
 const subtitleTypeIsRunning = ref(false)
 const subtitleTypeResult = ref<SubtitleTypeCheckSummary | null>(null)
 const expandedSubtitleTypeItems = ref<number[]>([])
+
+// Subtitle Selector Modal
+const isSubtitleModalOpen = ref(false)
+const selectedMedia = ref<SubtitleTypeCheckResult | null>(null)
+
+const openManualSelect = (item: SubtitleTypeCheckResult) => {
+    selectedMedia.value = item
+    isSubtitleModalOpen.value = true
+}
+
+const closeSubtitleModal = () => {
+    isSubtitleModalOpen.value = false
+    selectedMedia.value = null
+}
+
+const handleSubtitleModalSuccess = async (message: string) => {
+    // Mark the item as queued
+    if (selectedMedia.value && subtitleTypeResult.value?.flaggedItems) {
+        const flaggedItem = subtitleTypeResult.value.flaggedItems.find(
+            (i) => i.translationId === selectedMedia.value?.translationId
+        )
+        if (flaggedItem) {
+            flaggedItem.isQueued = true
+        }
+
+        // Update persisted result
+        await axios.post('/api/setting', {
+            key: 'subtitle_type_validation_last_result',
+            value: JSON.stringify(subtitleTypeResult.value)
+        })
+    }
+
+    // Show success notification (could be implemented with a toast)
+    console.log('Translation queued:', message)
+    alert(message)
+}
+
+const handleSubtitleModalError = (message: string) => {
+    console.error('Failed to queue translation:', message)
+    alert('Error: ' + message)
+}
 
 const toggleSubtitleTypeExpand = (translationId: number) => {
     if (expandedSubtitleTypeItems.value.includes(translationId)) {

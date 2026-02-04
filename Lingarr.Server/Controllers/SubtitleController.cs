@@ -1,6 +1,8 @@
+using Lingarr.Core.Enum;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Models;
+using Lingarr.Server.Models.Api;
 using Lingarr.Server.Models.FileSystem;
 using Microsoft.AspNetCore.Mvc;
 
@@ -17,13 +19,16 @@ public class SubtitleController : ControllerBase
 {
     private readonly ISubtitleService _subtitleService;
     private readonly ISubtitleIntegrityService _integrityService;
+    private readonly ISubtitleExtractionService _extractionService;
 
     public SubtitleController(
         ISubtitleService subtitleService,
-        ISubtitleIntegrityService integrityService)
+        ISubtitleIntegrityService integrityService,
+        ISubtitleExtractionService extractionService)
     {
         _subtitleService = subtitleService;
         _integrityService = integrityService;
+        _extractionService = extractionService;
     }
     
     /// <summary>
@@ -82,5 +87,28 @@ public class SubtitleController : ControllerBase
         }
 
         return Ok(result);
+    }
+
+    /// <summary>
+    /// Lists all available embedded subtitles for a movie or episode with metadata and entry counts.
+    /// </summary>
+    /// <param name="mediaType">The type of media ('movie' or 'episode')</param>
+    /// <param name="mediaId">The media ID</param>
+    /// <returns>List of available subtitles with metadata</returns>
+    [HttpGet("available/{mediaType}/{mediaId:int}")]
+    public async Task<ActionResult<List<AvailableSubtitleResponse>>> GetAvailableSubtitles(string mediaType, int mediaId)
+    {
+        if (!mediaType.Equals("movie", StringComparison.OrdinalIgnoreCase) && 
+            !mediaType.Equals("episode", StringComparison.OrdinalIgnoreCase))
+        {
+            return BadRequest(new { Error = "Media type must be 'movie' or 'episode'" });
+        }
+
+        var type = mediaType.Equals("movie", StringComparison.OrdinalIgnoreCase) 
+            ? MediaType.Movie 
+            : MediaType.Episode;
+
+        var subtitles = await _extractionService.ListAvailableSubtitlesAsync(mediaId, type);
+        return Ok(subtitles);
     }
 }

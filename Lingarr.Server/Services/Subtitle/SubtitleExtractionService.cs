@@ -8,6 +8,7 @@ using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
+using Lingarr.Server.Models.Api;
 using Lingarr.Server.Models.FileSystem;
 
 using Microsoft.EntityFrameworkCore;
@@ -798,7 +799,8 @@ public class SubtitleExtractionService : ISubtitleExtractionService
         int mediaId, 
         MediaType mediaType, 
         string sourceLanguage, 
-        List<string>? excludedPaths = null)
+        List<string>? excludedPaths = null,
+        int? preferredStreamIndex = null)
     {
         try
         {
@@ -871,7 +873,53 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 return null;
             }
 
-            // Get all candidates sorted by quality
+            // If a preferred stream index is specified, try that first
+            if (preferredStreamIndex.HasValue)
+            {
+                var preferredSubtitle = embeddedSubtitles?.FirstOrDefault(s => 
+                    s.StreamIndex == preferredStreamIndex.Value && s.IsTextBased);
+
+                if (preferredSubtitle != null)
+                {
+                    _logger.LogInformation(
+                        "Using preferred stream index {StreamIndex} for extraction",
+                        preferredStreamIndex.Value);
+
+                    try
+                    {
+                        var extractedPath = await ExtractSubtitle(
+                            mediaPath!,
+                            preferredSubtitle.StreamIndex,
+                            outputDir!,
+                            preferredSubtitle.CodecName,
+                            preferredSubtitle.Language);
+
+                        if (!string.IsNullOrEmpty(extractedPath))
+                        {
+                            // Update the database record
+                            preferredSubtitle.IsExtracted = true;
+                            preferredSubtitle.ExtractedPath = extractedPath;
+                            await _dbContext.SaveChangesAsync();
+
+                            return extractedPath;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, 
+                            "Failed to extract preferred stream {StreamIndex}, falling back to auto-selection", 
+                            preferredStreamIndex.Value);
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning(
+                        "Preferred stream index {StreamIndex} not found or not text-based, falling back to auto-selection",
+                        preferredStreamIndex.Value);
+                }
+            }
+
+            // Get all candidates sorted by quality (fallback behavior)
             var candidates = GetSortedEmbeddedSubtitles(embeddedSubtitles, sourceLanguage);
 
             if (candidates.Count == 0)
@@ -976,6 +1024,117 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             .OrderByDescending(x => x.Score)
             .ThenBy(x => x.Subtitle.StreamIndex) // Stability
             .Select(x => x.Subtitle)
+            .ToList();
+    }
+
+    /// <inheritdoc />
+    public async Task<List<AvailableSubtitleResponse>> ListAvailableSubtitlesAsync(int mediaId, MediaType mediaType)
+    {
+        var result = new List<AvailableSubtitleResponse>();
+        List<EmbeddedSubtitle>? embeddedSubtitles = null;
+        string? mediaPath = null;
+
+        // Get media and its embedded subtitles
+        if (mediaType == MediaType.Episode)
+        {
+            var episode = await _dbContext.Episodes
+                .Include(e => e.EmbeddedSubtitles)
+                .FirstOrDefaultAsync(e => e.Id == mediaId);
+
+            if (episode == null)
+            {
+                _logger.LogWarning("Episode not found: {MediaId}", mediaId);
+                return result;
+            }
+
+            if (string.IsNullOrEmpty(episode.Path) || string.IsNullOrEmpty(episode.FileName))
+            {
+                _logger.LogWarning("Episode has no path/filename: {MediaId}", mediaId);
+                return result;
+            }
+
+            // Sync embedded subtitles if not already done
+            if (episode.EmbeddedSubtitles == null || episode.EmbeddedSubtitles.Count == 0)
+            {
+                await SyncEmbeddedSubtitles(episode);
+                await _dbContext.Entry(episode).Collection(e => e.EmbeddedSubtitles).LoadAsync();
+            }
+
+            embeddedSubtitles = episode.EmbeddedSubtitles;
+            mediaPath = Path.Combine(episode.Path, episode.FileName);
+        }
+        else if (mediaType == MediaType.Movie)
+        {
+            var movie = await _dbContext.Movies
+                .Include(m => m.EmbeddedSubtitles)
+                .FirstOrDefaultAsync(m => m.Id == mediaId);
+
+            if (movie == null)
+            {
+                _logger.LogWarning("Movie not found: {MediaId}", mediaId);
+                return result;
+            }
+
+            if (string.IsNullOrEmpty(movie.Path) || string.IsNullOrEmpty(movie.FileName))
+            {
+                _logger.LogWarning("Movie has no path/filename: {MediaId}", mediaId);
+                return result;
+            }
+
+            // Sync embedded subtitles if not already done
+            if (movie.EmbeddedSubtitles == null || movie.EmbeddedSubtitles.Count == 0)
+            {
+                await SyncEmbeddedSubtitles(movie);
+                await _dbContext.Entry(movie).Collection(m => m.EmbeddedSubtitles).LoadAsync();
+            }
+
+            embeddedSubtitles = movie.EmbeddedSubtitles;
+            mediaPath = Path.Combine(movie.Path, movie.FileName);
+        }
+        else
+        {
+            _logger.LogWarning("Unsupported media type for listing subtitles: {MediaType}", mediaType);
+            return result;
+        }
+
+        if (embeddedSubtitles == null || embeddedSubtitles.Count == 0)
+        {
+            return result;
+        }
+
+        // Build response with entry counts for extracted subtitles
+        foreach (var sub in embeddedSubtitles)
+        {
+            int? entryCount = null;
+            bool? isSparse = null;
+
+            if (sub.IsExtracted && !string.IsNullOrEmpty(sub.ExtractedPath) && File.Exists(sub.ExtractedPath))
+            {
+                entryCount = CountSubtitleEntries(sub.ExtractedPath);
+                isSparse = entryCount >= 0 && entryCount < MinimumDialogueEntries;
+            }
+
+            result.Add(new AvailableSubtitleResponse
+            {
+                Id = sub.Id,
+                StreamIndex = sub.StreamIndex,
+                Language = sub.Language,
+                Title = sub.Title,
+                CodecName = sub.CodecName,
+                IsTextBased = sub.IsTextBased,
+                IsDefault = sub.IsDefault,
+                IsForced = sub.IsForced,
+                IsExtracted = sub.IsExtracted,
+                ExtractedPath = sub.ExtractedPath,
+                EntryCount = entryCount,
+                IsSparse = isSparse
+            });
+        }
+
+        // Sort: text-based first, then by stream index
+        return result
+            .OrderByDescending(s => s.IsTextBased)
+            .ThenBy(s => s.StreamIndex)
             .ToList();
     }
 }

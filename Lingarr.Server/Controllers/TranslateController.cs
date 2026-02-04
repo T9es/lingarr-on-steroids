@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Lingarr.Server.Models.FileSystem;
 using Lingarr.Server.Interfaces.Services;
+using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models;
 using Lingarr.Server.Models.Api;
@@ -22,6 +23,7 @@ public class TranslateController : ControllerBase
     private readonly ITranslationServiceFactory _translationServiceFactory;
     private readonly ITranslationRequestService _translationRequestService;
     private readonly IMediaSubtitleProcessor _mediaSubtitleProcessor;
+    private readonly ISubtitleExtractionService _extractionService;
     private readonly LingarrDbContext _dbContext;
     private readonly ISettingService _settings;
     private readonly ILogger<TranslateController> _logger;
@@ -30,6 +32,7 @@ public class TranslateController : ControllerBase
         ITranslationServiceFactory translationServiceFactory,
         ITranslationRequestService translationRequestService,
         IMediaSubtitleProcessor mediaSubtitleProcessor,
+        ISubtitleExtractionService extractionService,
         LingarrDbContext dbContext,
         ISettingService settings,
         ILogger<TranslateController> logger)
@@ -37,6 +40,7 @@ public class TranslateController : ControllerBase
         _translationServiceFactory = translationServiceFactory;
         _translationRequestService = translationRequestService;
         _mediaSubtitleProcessor = mediaSubtitleProcessor;
+        _extractionService = extractionService;
         _dbContext = dbContext;
         _settings = settings;
         _logger = logger;
@@ -242,6 +246,133 @@ public class TranslateController : ControllerBase
         {
             _logger.LogError(ex, "Error translating media {MediaId} of type {MediaType}", request.MediaId, request.MediaType);
             return StatusCode(500, new TranslateMediaResponse { Message = "Failed to queue translations" });
+        }
+    }
+
+    /// <summary>
+    /// Queues translation jobs using a specific embedded subtitle stream.
+    /// </summary>
+    /// <param name="request">The request containing media info and stream index</param>
+    /// <returns>Result of the queuing operation</returns>
+    [HttpPost("queue-with-subtitle")]
+    public async Task<ActionResult<QueueWithSubtitleResponse>> QueueWithSubtitle([FromBody] QueueWithSubtitleRequest request)
+    {
+        try
+        {
+            _logger.LogInformation(
+                "QueueWithSubtitle request received: MediaId={MediaId}, MediaType={MediaType}, StreamIndex={StreamIndex}",
+                request.MediaId, request.MediaType, request.StreamIndex);
+
+            // Parse media type
+            if (!Enum.TryParse<MediaType>(request.MediaType, true, out var mediaType))
+            {
+                return BadRequest(new QueueWithSubtitleResponse 
+                { 
+                    Success = false, 
+                    Message = "Invalid media type. Must be 'Movie' or 'Episode'." 
+                });
+            }
+
+            // Get target languages from settings
+            var targetLanguageModels = await _settings.GetSettingAsJson<TargetLanguage>(SettingKeys.Translation.TargetLanguages);
+            var targetLanguages = targetLanguageModels
+                .Select(lang => lang.Code.ToLowerInvariant())
+                .Where(code => !string.IsNullOrWhiteSpace(code))
+                .ToList();
+
+            if (targetLanguages.Count == 0)
+            {
+                return BadRequest(new QueueWithSubtitleResponse 
+                { 
+                    Success = false, 
+                    Message = "No target languages configured. Please configure target languages in settings." 
+                });
+            }
+
+            // Get available subtitles to validate the stream index
+            var availableSubtitles = await _extractionService.ListAvailableSubtitlesAsync(request.MediaId, mediaType);
+            var selectedSubtitle = availableSubtitles.FirstOrDefault(s => s.StreamIndex == request.StreamIndex);
+
+            if (selectedSubtitle == null)
+            {
+                return NotFound(new QueueWithSubtitleResponse 
+                { 
+                    Success = false, 
+                    Message = $"Subtitle stream with index {request.StreamIndex} not found for this media." 
+                });
+            }
+
+            if (!selectedSubtitle.IsTextBased)
+            {
+                return BadRequest(new QueueWithSubtitleResponse 
+                { 
+                    Success = false, 
+                    Message = "Cannot use image-based subtitles (PGS/VobSub). Please select a text-based subtitle." 
+                });
+            }
+
+            var sourceLanguage = request.SourceLanguage.ToLowerInvariant();
+            var translationsQueued = 0;
+
+            // Queue translations for each target language
+            foreach (var targetLanguage in targetLanguages)
+            {
+                // Check for existing active request
+                var hasActiveRequest = await _dbContext.TranslationRequests.AnyAsync(tr =>
+                    tr.MediaId == request.MediaId &&
+                    tr.MediaType == mediaType &&
+                    tr.SourceLanguage == sourceLanguage &&
+                    tr.TargetLanguage == targetLanguage &&
+                    (tr.Status == TranslationStatus.Pending || tr.Status == TranslationStatus.InProgress));
+
+                if (hasActiveRequest)
+                {
+                    _logger.LogInformation(
+                        "Skipping enqueue for MediaId={MediaId} {Source}->{Target}: translation request already active.",
+                        request.MediaId, sourceLanguage, targetLanguage);
+                    continue;
+                }
+
+                await _translationRequestService.CreateRequest(new TranslateAbleSubtitle
+                {
+                    MediaId = request.MediaId,
+                    MediaType = mediaType,
+                    SubtitlePath = null, // Will trigger extraction with specific stream index in TranslationJob
+                    TargetLanguage = targetLanguage,
+                    SourceLanguage = sourceLanguage,
+                    SubtitleFormat = null
+                }, forcePriority: true);
+
+                translationsQueued++;
+                _logger.LogInformation(
+                    "Queued translation from |Orange|{Source}|/Orange| to |Orange|{Target}|/Orange| for MediaId={MediaId} using stream {StreamIndex}",
+                    sourceLanguage, targetLanguage, request.MediaId, request.StreamIndex);
+            }
+
+            // Store the selected stream index for the job to use
+            // We'll use a setting to pass this info to the translation job
+            var streamSelectionKey = $"subtitle_stream_selection_{request.MediaId}_{mediaType}";
+            await _settings.SetSetting(streamSelectionKey, request.StreamIndex.ToString());
+
+            var message = translationsQueued > 0
+                ? $"{translationsQueued} translation(s) queued using subtitle stream {request.StreamIndex}"
+                : "No new translations needed (may already be in queue)";
+
+            return Ok(new QueueWithSubtitleResponse
+            {
+                Success = true,
+                Message = message,
+                TranslationsQueued = translationsQueued
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error queuing translation with specific subtitle for MediaId={MediaId}", request.MediaId);
+            return StatusCode(500, new QueueWithSubtitleResponse 
+            { 
+                Success = false, 
+                Message = $"Failed to queue translations: {ex.Message}" 
+            });
         }
     }
 }
