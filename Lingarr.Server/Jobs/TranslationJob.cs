@@ -186,7 +186,23 @@ public class TranslationJob
                     AddRequestLog("Warning", "Subtitle file not found on disk, attempting embedded subtitle extraction");
                     if (request.MediaId.HasValue)
                     {
+                        // Before extraction, predict the output path to check if file already exists
+                        var predictedPath = PredictExtractionOutputPath(request.MediaId.Value, request.MediaType, request.SourceLanguage);
+                        var wasFileAlreadyExisting = !string.IsNullOrEmpty(predictedPath) && File.Exists(predictedPath);
+                        
                         subtitlePath = await _extractionService.TryExtractEmbeddedSubtitle(request.MediaId.Value, request.MediaType, request.SourceLanguage);
+                        
+                        // Mark for cleanup only if the file didn't exist before extraction (auto-extracted)
+                        // Don't check database state - the extraction service already set IsExtracted=true
+                        if (!string.IsNullOrEmpty(subtitlePath) && !wasFileAlreadyExisting)
+                        {
+                            temporaryFilePath = subtitlePath;
+                            _logger.LogDebug("Marked extracted subtitle as temporary (auto-extracted, will be cleaned up): {Path}", subtitlePath);
+                        }
+                        else if (!string.IsNullOrEmpty(subtitlePath))
+                        {
+                            _logger.LogDebug("Subtitle file existed before extraction (user-provided), preserving file: {Path}", subtitlePath);
+                        }
                     }
                     else
                     {
@@ -207,19 +223,6 @@ public class TranslationJob
                     request.SubtitleToTranslate = subtitlePath;
                     _logger.LogInformation("Using extracted embedded subtitle: {Path}", subtitlePath);
                     AddRequestLog("Information", $"Using extracted embedded subtitle: {subtitlePath}");
-                    
-                    // Check if the file was already in the database as extracted before this job started
-                    // If so, don't treat it as temporary - the user manually extracted it
-                    var wasAlreadyExtractedInDb = await WasSubtitleAlreadyExtracted(request.MediaId, request.MediaType, subtitlePath);
-                    if (!wasAlreadyExtractedInDb)
-                    {
-                        temporaryFilePath = subtitlePath;
-                        _logger.LogDebug("Marked extracted subtitle as temporary (will be cleaned up after translation): {Path}", subtitlePath);
-                    }
-                    else
-                    {
-                        _logger.LogDebug("Subtitle was already extracted before this job (found in database), preserving file: {Path}", subtitlePath);
-                    }
                 }
 
             // validate subtitles
@@ -324,6 +327,14 @@ public class TranslationJob
                     excludedPaths.Add(request.SubtitleToTranslate);
                 }
 
+                // Before fallback extraction, we can't easily predict which stream will be selected,
+                // so we check all potential output paths for the candidate streams
+                var wasFallbackFileAlreadyExisting = await WasAnyCandidatePathExisting(
+                    request.MediaId.Value,
+                    request.MediaType,
+                    request.SourceLanguage,
+                    excludedPaths);
+                
                 var newSubtitlePath = await _extractionService.TryExtractEmbeddedSubtitle(
                     request.MediaId.Value,
                     request.MediaType,
@@ -339,17 +350,16 @@ public class TranslationJob
                 // Update request to point to new file
                 request.SubtitleToTranslate = newSubtitlePath;
                 
-                // Only mark as temporary if this file was just extracted by this job
-                // Check if the file already existed (was manually extracted before)
-                var fallbackWasAlreadyExtracted = await WasSubtitleAlreadyExtracted(request.MediaId, request.MediaType, newSubtitlePath);
-                if (!fallbackWasAlreadyExtracted)
+                // Mark for cleanup only if no candidate files existed before extraction
+                // Don't check database state - the extraction service already set IsExtracted=true
+                if (!wasFallbackFileAlreadyExisting)
                 {
                     temporaryFilePath = newSubtitlePath; // Mark for deletion
-                    _logger.LogDebug("Marked fallback extracted subtitle as temporary: {Path}", newSubtitlePath);
+                    _logger.LogDebug("Marked fallback extracted subtitle as temporary (auto-extracted): {Path}", newSubtitlePath);
                 }
                 else
                 {
-                    _logger.LogDebug("Fallback subtitle was already extracted, preserving file: {Path}", newSubtitlePath);
+                    _logger.LogDebug("Fallback subtitle file existed before extraction (user-provided), preserving: {Path}", newSubtitlePath);
                 }
                 
                 _logger.LogInformation("Fallback successful, switching to: {Path}", newSubtitlePath);
@@ -836,6 +846,127 @@ public class TranslationJob
             _logger.LogWarning(ex, "Failed to clean source subtitle file: {Path}", subtitlePath);
             // Don't throw - this is a non-critical operation
         }
+    }
+
+    /// <summary>
+    /// Predicts the output path for an extracted subtitle based on media info and source language.
+    /// This mimics the logic in SubtitleExtractionService.GetExtractedSubtitlePath.
+    /// </summary>
+    private string? PredictExtractionOutputPath(int mediaId, MediaType mediaType, string sourceLanguage)
+    {
+        try
+        {
+            // We need to get the media file info to predict the path
+            // Since this is called before extraction, we look at the media entity
+            if (mediaType == MediaType.Movie)
+            {
+                var movie = _dbContext.Movies
+                    .AsNoTracking()
+                    .FirstOrDefault(m => m.Id == mediaId);
+                    
+                if (movie == null || string.IsNullOrEmpty(movie.Path) || string.IsNullOrEmpty(movie.FileName))
+                    return null;
+
+                var mediaPath = Path.Combine(movie.Path, movie.FileName);
+                return PredictSubtitlePathInternal(movie.Path, mediaPath, sourceLanguage);
+            }
+            else if (mediaType == MediaType.Episode)
+            {
+                var episode = _dbContext.Episodes
+                    .AsNoTracking()
+                    .FirstOrDefault(e => e.Id == mediaId);
+                    
+                if (episode == null || string.IsNullOrEmpty(episode.Path) || string.IsNullOrEmpty(episode.FileName))
+                    return null;
+
+                var mediaPath = Path.Combine(episode.Path, episode.FileName);
+                return PredictSubtitlePathInternal(episode.Path, mediaPath, sourceLanguage);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error predicting extraction output path for media {MediaId}", mediaId);
+        }
+
+        return null;
+    }
+    
+    /// <summary>
+    /// Internal helper to predict subtitle path. Assumes .srt extension as the most common case.
+    /// </summary>
+    private static string? PredictSubtitlePathInternal(string outputDir, string mediaFilePath, string? language)
+    {
+        if (string.IsNullOrEmpty(outputDir) || string.IsNullOrEmpty(mediaFilePath))
+            return null;
+
+        var baseFileName = Path.GetFileNameWithoutExtension(mediaFilePath);
+        var languageTag = !string.IsNullOrEmpty(language) ? language : "stream0";
+        return Path.Combine(outputDir, $"{baseFileName}.{languageTag}.srt");
+    }
+    
+    /// <summary>
+    /// Checks if any potential candidate subtitle path already exists on disk.
+    /// Used for fallback extraction to determine if files should be preserved.
+    /// </summary>
+    private async Task<bool> WasAnyCandidatePathExisting(int mediaId, MediaType mediaType, string sourceLanguage, List<string> excludedPaths)
+    {
+        try
+        {
+            // Get embedded subtitle candidates from the database
+            List<EmbeddedSubtitle>? embeddedSubtitles = null;
+            string? mediaPath = null;
+            string? outputDir = null;
+
+            if (mediaType == MediaType.Episode)
+            {
+                var episode = await _dbContext.Episodes
+                    .AsNoTracking()
+                    .Include(e => e.EmbeddedSubtitles)
+                    .FirstOrDefaultAsync(e => e.Id == mediaId);
+
+                if (episode == null || string.IsNullOrEmpty(episode.Path) || string.IsNullOrEmpty(episode.FileName))
+                    return false;
+
+                embeddedSubtitles = episode.EmbeddedSubtitles;
+                mediaPath = Path.Combine(episode.Path, episode.FileName);
+                outputDir = episode.Path;
+            }
+            else if (mediaType == MediaType.Movie)
+            {
+                var movie = await _dbContext.Movies
+                    .AsNoTracking()
+                    .Include(m => m.EmbeddedSubtitles)
+                    .FirstOrDefaultAsync(m => m.Id == mediaId);
+
+                if (movie == null || string.IsNullOrEmpty(movie.Path) || string.IsNullOrEmpty(movie.FileName))
+                    return false;
+
+                embeddedSubtitles = movie.EmbeddedSubtitles;
+                mediaPath = Path.Combine(movie.Path, movie.FileName);
+                outputDir = movie.Path;
+            }
+
+            if (embeddedSubtitles == null || embeddedSubtitles.Count == 0 || string.IsNullOrEmpty(mediaPath) || string.IsNullOrEmpty(outputDir))
+                return false;
+
+            // Check each text-based subtitle candidate
+            foreach (var subtitle in embeddedSubtitles.Where(s => s.IsTextBased))
+            {
+                var predictedPath = PredictSubtitlePathInternal(outputDir, mediaPath, subtitle.Language);
+                if (!string.IsNullOrEmpty(predictedPath) &&
+                    !excludedPaths.Contains(predictedPath) &&
+                    File.Exists(predictedPath))
+                {
+                    return true;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error checking candidate paths for media {MediaId}", mediaId);
+        }
+
+        return false;
     }
 
     /// <summary>
