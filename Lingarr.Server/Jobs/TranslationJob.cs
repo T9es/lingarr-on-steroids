@@ -116,6 +116,10 @@ public class TranslationJob
                 TranslationStatus.InProgress,
                 null); // No Hangfire job ID
 
+            // Set when translation actually started
+            request.StartedAt = DateTime.UtcNow;
+            await _dbContext.SaveChangesAsync(effectiveCancellationToken);
+
             var subtitlePathForLog = translationRequest.SubtitleToTranslate ?? "Unknown";
             _logger.LogInformation("TranslateJob started for subtitle: |Green|{filePath}|/Green|",
                 subtitlePathForLog);
@@ -298,13 +302,39 @@ public class TranslationJob
             const int maxAttempts = 3;
             var excludedPaths = new List<string>();
 
+            // Generate file identifier early for logging
+            var fileIdentifier = GenerateFileIdentifier(request.SubtitleToTranslate);
+
+            EmbeddedSubtitle? selectedSubtitle = null;
             while (true)
             {
                 subtitles = await _subtitleService.ReadSubtitles(request.SubtitleToTranslate);
                 AddRequestLog("Information", $"Loaded subtitle file with {subtitles.Count} entries for translation");
 
+                // Capture subtitle tracking metadata
                 if (subtitles.Count > 0)
                 {
+                    request.SourceSubtitleEntryCount = subtitles.Count;
+                    selectedSubtitle = await GetEmbeddedSubtitleMetadata(request);
+                    if (selectedSubtitle != null)
+                    {
+                        request.SelectedStreamTitle = selectedSubtitle.Title;
+                        request.IsForcedSubtitle = selectedSubtitle.IsForced;
+                        request.SourceSubtitleType = DetermineSubtitleType(selectedSubtitle);
+                        _logger.LogInformation(
+                            "[{FileId}] Captured subtitle metadata: Type={Type}, Entries={Entries}, Title={Title}, Forced={Forced}",
+                            fileIdentifier, request.SourceSubtitleType, request.SourceSubtitleEntryCount,
+                            request.SelectedStreamTitle ?? "N/A", request.IsForcedSubtitle);
+                    }
+                    else
+                    {
+                        // For external subtitle files, try to determine type from filename
+                        request.SourceSubtitleType = DetermineSubtitleTypeFromFilename(request.SubtitleToTranslate);
+                        _logger.LogInformation(
+                            "[{FileId}] External subtitle: Type={Type}, Entries={Entries}",
+                            fileIdentifier, request.SourceSubtitleType, request.SourceSubtitleEntryCount);
+                    }
+                    await _dbContext.SaveChangesAsync(effectiveCancellationToken);
                     break;
                 }
 
@@ -383,10 +413,6 @@ public class TranslationJob
                 settings.TryGetValue(SettingKeys.Translation.RepairMaxRetries, out var retriesVal) ? retriesVal : null, out var retries)
                 ? retries
                 : 1;
-            
-            // Generate a short, readable identifier from the filename for logging
-            // e.g., "S02E23" or "Movie Name (2024)"
-            var fileIdentifier = GenerateFileIdentifier(request.SubtitleToTranslate);
             
             // Parse ASS drawing command filter settings
             var stripAssDrawingCommands = settings.TryGetValue(SettingKeys.Translation.StripAssDrawingCommands, out var stripAssVal) && stripAssVal == "true";
@@ -1018,5 +1044,126 @@ public class TranslationJob
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Gets the embedded subtitle metadata that matches the currently selected subtitle file.
+    /// Used for tracking subtitle type and stream information for audit/debugging.
+    /// </summary>
+    private async Task<EmbeddedSubtitle?> GetEmbeddedSubtitleMetadata(TranslationRequest request)
+    {
+        if (!request.MediaId.HasValue || string.IsNullOrEmpty(request.SubtitleToTranslate))
+            return null;
+
+        try
+        {
+            // Get embedded subtitles for this media
+            List<EmbeddedSubtitle>? embeddedSubtitles = null;
+            if (request.MediaType == MediaType.Episode)
+            {
+                var episode = await _dbContext.Episodes
+                    .AsNoTracking()
+                    .Include(e => e.EmbeddedSubtitles)
+                    .FirstOrDefaultAsync(e => e.Id == request.MediaId.Value);
+                embeddedSubtitles = episode?.EmbeddedSubtitles?.ToList();
+            }
+            else if (request.MediaType == MediaType.Movie)
+            {
+                var movie = await _dbContext.Movies
+                    .AsNoTracking()
+                    .Include(m => m.EmbeddedSubtitles)
+                    .FirstOrDefaultAsync(m => m.Id == request.MediaId.Value);
+                embeddedSubtitles = movie?.EmbeddedSubtitles?.ToList();
+            }
+
+            if (embeddedSubtitles == null || embeddedSubtitles.Count == 0)
+                return null;
+
+            // Find the subtitle that matches the extracted path
+            // Match by filename pattern: {mediaFile}.{language}.srt or contains the language code
+            var subtitlePath = request.SubtitleToTranslate;
+            var subtitleFileName = Path.GetFileNameWithoutExtension(subtitlePath);
+
+            // First try exact match on ExtractedPath
+            var matched = embeddedSubtitles.FirstOrDefault(es =>
+                !string.IsNullOrEmpty(es.ExtractedPath) &&
+                es.ExtractedPath.Equals(subtitlePath, StringComparison.OrdinalIgnoreCase));
+
+            if (matched != null)
+                return matched;
+
+            // Try to match by language code in the filename
+            foreach (var es in embeddedSubtitles.Where(es => !string.IsNullOrEmpty(es.Language)))
+            {
+                if (subtitleFileName.Contains($".{es.Language}", StringComparison.OrdinalIgnoreCase) ||
+                    subtitleFileName.Contains($"_{es.Language}", StringComparison.OrdinalIgnoreCase))
+                {
+                    return es;
+                }
+            }
+
+            // Return the first text-based subtitle if we can't determine exactly which one
+            return embeddedSubtitles.FirstOrDefault(es => es.IsTextBased);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error getting embedded subtitle metadata for request {RequestId}", request.Id);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Determines the subtitle type based on embedded subtitle metadata.
+    /// </summary>
+    private static string DetermineSubtitleType(EmbeddedSubtitle subtitle)
+    {
+        // Check title for common indicators
+        if (!string.IsNullOrEmpty(subtitle.Title))
+        {
+            var title = subtitle.Title.ToLowerInvariant();
+            if (title.Contains("sdh") || title.Contains("hearing") || title.Contains("deaf"))
+                return "SDH";
+            if (title.Contains("forced") || title.Contains("force") || title.Contains("foreign"))
+                return "Forced";
+            if (title.Contains("full") || title.Contains("dialogue") || title.Contains("complete"))
+                return "Full";
+            if (title.Contains("sign") || title.Contains("song"))
+                return "Signs/Songs";
+        }
+
+        // Check if forced flag is set
+        if (subtitle.IsForced)
+            return "Forced";
+
+        // Default to Unknown - caller can check entry count to infer
+        return "Unknown";
+    }
+
+    /// <summary>
+    /// Determines the subtitle type from external subtitle filename.
+    /// </summary>
+    private static string DetermineSubtitleTypeFromFilename(string? subtitlePath)
+    {
+        if (string.IsNullOrEmpty(subtitlePath))
+            return "Unknown";
+
+        var fileName = Path.GetFileNameWithoutExtension(subtitlePath).ToLowerInvariant();
+
+        if (fileName.Contains(".sdh") || fileName.Contains("_sdh") ||
+            fileName.Contains(".hi") || fileName.Contains("_hi") ||
+            fileName.Contains("hearing"))
+            return "SDH";
+
+        if (fileName.Contains(".forced") || fileName.Contains("_forced") ||
+            fileName.Contains(".force") || fileName.Contains("_force") ||
+            fileName.Contains(".foreign") || fileName.Contains("_foreign"))
+            return "Forced";
+
+        if (fileName.Contains(".sign") || fileName.Contains("_sign") ||
+            fileName.Contains("song"))
+            return "Signs/Songs";
+
+        // Default to Full for external files
+        return "Full";
     }
 }
