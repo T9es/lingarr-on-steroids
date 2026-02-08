@@ -1,13 +1,26 @@
 # Lingarr on Steroids
 
-[![Version](https://img.shields.io/github/v/release/T9es/lingarr-on-steroids)](https://github.com/T9es/lingarr-on-steroids/releases)
-[![Docker Pulls](https://img.shields.io/docker/pulls/ree0/lingarr-on-steroids.svg)](https://hub.docker.com/r/ree0/lingarr-on-steroids)
-[![License](https://img.shields.io/badge/license-AGPL--3.0-green.svg)](LICENSE)
-[![Discord](https://img.shields.io/discord/1293119073739210885?label=discord&logo=discord)](https://discord.gg/HkubmH2rcR)
+<div align="center">
 
-**Lingarr on Steroids** is a specialized fork of the original [Lingarr](https://github.com/lingarr-translate/lingarr) application, re-engineered for enhanced reliability, performance, and cost-effective AI usage in subtitle translation workflows.
+[![Version](https://img.shields.io/github/v/release/T9es/lingarr-on-steroids?style=for-the-badge&logo=github&color=blue)](https://github.com/T9es/lingarr-on-steroids/releases)
+[![Docker Pulls](https://img.shields.io/docker/pulls/ree0/lingarr-on-steroids?style=for-the-badge&logo=docker&color=2496ED)](https://hub.docker.com/r/ree0/lingarr-on-steroids)
+[![License](https://img.shields.io/badge/license-AGPL--3.0-green.svg?style=for-the-badge)](LICENSE)
+[![Discord](https://img.shields.io/discord/1293119073739210885?style=for-the-badge&logo=discord&logoColor=white&label=discord&color=7289DA)](https://discord.gg/HkubmH2rcR)
 
-This fork maintains compatibility with **Radarr** and **Sonarr** while introducing architectural improvements designed for power users managing large media libraries.
+**Advanced subtitle translation for power users**  
+*Built for reliability, performance, and cost-effective AI workflows*
+
+[Getting Started](#getting-started) • [Features](#what-makes-this-fork-different) • [Translation Services](#translation-services) • [Documentation](https://lingarr.com/docs/api/)
+
+</div>
+
+---
+
+## Overview
+
+**Lingarr on Steroids** is a specialized fork of [Lingarr](https://github.com/lingarr-translate/lingarr) re-engineered for enhanced reliability, performance, and cost-effective AI usage in subtitle translation workflows.
+
+While maintaining full compatibility with **Radarr** and **Sonarr**, this fork introduces architectural improvements designed for power users managing large media libraries.
 
 ## What Makes This Fork Different
 
@@ -15,119 +28,125 @@ This fork builds upon the original Lingarr foundation with significant enhanceme
 
 ### Core Architecture Enhancements
 
-**Translation Worker Service**
+| Enhancement | Description | Benefit |
+|-------------|-------------|---------|
+| **Custom Translation Worker** | Database-driven BackgroundService with 1-20 concurrent workers | Eliminates queue starvation, automatic crash recovery |
+| **PostgreSQL by Default** | Changed from SQLite to PostgreSQL with MVCC support | Better concurrency, eliminates lock contention |
+| **Intelligent State Tracking** | 9-state TranslationState system for media items | Efficient "what needs translation" queries without redundant scanning |
+
+**Key Details:**
+
+**Translation Worker Service**  
 Replaced Hangfire with a custom database-driven BackgroundService supporting 1-20 concurrent workers, priority queues, and automatic crash recovery. This eliminates job queue starvation under heavy loads and provides better control over translation concurrency.
 
-**PostgreSQL as Default Database**
+**PostgreSQL as Default Database**  
 Changed the default database from SQLite to PostgreSQL (with SQLite still supported for simple setups). PostgreSQL's MVCC (Multi-Version Concurrency Control) provides better concurrency handling during parallel processing. **Note:** MySQL/MariaDB support has been removed.
 
-**Intelligent State Management**
+**Intelligent State Management**  
 Added TranslationState tracking for media items (9 states including Unknown, Pending, InProgress, Complete, Stale, AwaitingSource, NoSuitableSubtitles, Failed). This enables efficient queries for "what needs translation" without redundant scanning and provides stale detection when settings change.
 
 ### Subtitle Processing Improvements
 
-**Deep Embedded Subtitle Extraction**
-FFmpeg-based probing and extraction of subtitles (SRT, ASS, MOV_TEXT) directly from MKV/MP4 containers. Includes intelligent layer merging for concurrent subtitle entries and deduplication of overlapping timeframes commonly found in animation subtitles.
+| Feature | What It Does |
+|---------|--------------|
+| **Deep Embedded Extraction** | FFmpeg-based probing and extraction of subtitles (SRT, ASS, MOV_TEXT) directly from MKV/MP4 containers with intelligent layer merging |
+| **Enhanced ASS/SSA Sanitation** | Drawing block removal, heuristic detection, "poison" content filtering |
+| **Sparse Subtitle Detection** | Automatically skips tracks with <100 entries (Signs/Songs-only) |
+| **Subtitle Discovery** | Automatic detection of externally-added subtitle files with mtime tracking |
 
-**Enhanced ASS/SSA Sanitation**
-Significantly improved subtitle cleaning for translation:
-- Drawing block removal (`{\p1}...{\p0}` vector graphics)
-- Heuristic detection of drawing commands (80% density algorithm)
-- "Poison" content filtering (musical symbols ♪♫♬, sound effects in brackets, URLs, credit lines)
-- Single-character placeholder filtering
+**Enhanced ASS/SSA Sanitation:**
+- **Drawing block removal** (`{\p1}...{\p0}` vector graphics)
+- **Heuristic detection** of drawing commands (80% density algorithm)
+- **"Poison" content filtering** (musical symbols ♪♫♬, sound effects in brackets, URLs, credit lines)
+- **Single-character placeholder filtering**
 
 This ensures only translatable dialogue reaches translation services, dramatically improving translation quality for ASS/SSA files.
 
-**Sparse Subtitle Detection**
-Automatically identifies and skips subtitle tracks that contain only Signs/Songs/forced dialogue (threshold: <100 entries). Prevents wasting API calls on non-dialogue tracks.
-
-**Subtitle Discovery**
-Automatic detection of externally-added subtitle files with mtime-based change tracking. Media can remain in "AwaitingSource" state until suitable subtitles appear, enabling queue rotation without manual intervention.
-
 ### Translation Service Enhancements
 
-**Deferred Contextual Repair**
+**Deferred Contextual Repair**  
 Collects failed translations during batch processing and retries them at the end with surrounding context lines (configurable radius, default 10 lines). LLMs translate better with context, significantly improving recovery success rates for lines that fail in isolation.
 
-**Chutes.ai Integration**
+**Chutes.ai Integration**  
 Full integration with cost-effective open-source models, including:
 - Real-time usage tracking
 - Quota enforcement with configurable buffers
 - Intelligent pause/resume when quota limits are reached
 - 402 PaymentRequired handling
 
-**Extended Batch Translation Support**
+**Extended Batch Translation Support**  
 Added batch translation capabilities to additional AI services (DeepSeek, Gemini, Chutes.ai), allowing multiple lines to be translated in a single API call for better context and reduced costs. Context wrapper support enables including surrounding lines for improved translation quality.
 
 ### Workflow Control
 
-**Priority Queue & Cooperative Cancellation**
-- Bump specific media to the front of the queue dynamically via priority flag
-- Mid-stream job cancellation via cooperative cancellation service
-- Runtime priority reordering (changing a show's priority immediately reorders its episodes)
-
-**Live Test Panel**
-Dedicated "Dry Run" interface to test translation settings and prompts on specific samples without modifying files. Features real-time log streaming via SSE for debugging prompt engineering and provider configuration.
-
-**Cron Schedule Selector**
-User-friendly dropdown for common cron patterns (every 15/30 minutes, hourly, daily, etc.) with a custom option for advanced users who prefer raw cron syntax.
-
-**Translation Request Deduplication**
-Prevents duplicate translation requests for the same media file using database constraints and transaction-safe deduplication, preventing wasted API quota.
+| Feature | Description |
+|---------|-------------|
+| **Priority Queue** | Bump media to front of queue dynamically via priority flag |
+| **Cooperative Cancellation** | Mid-stream job cancellation via cancellation service |
+| **Runtime Reordering** | Changing show priority immediately reorders episodes |
+| **Live Test Panel** | "Dry Run" interface with real-time SSE log streaming |
+| **Cron Schedule Selector** | User-friendly dropdown for common patterns (15/30 min, hourly, daily) |
+| **Deduplication** | Prevents duplicate translation requests using database constraints |
 
 ### Additional Features
 
-**Automatic Orphaned Subtitle Cleanup**
+**Automatic Orphaned Subtitle Cleanup**  
 Detects and removes AI-translated subtitle files that have become orphaned when Sonarr/Radarr upgrades media files (filename changes). Includes audit logging of cleanup operations.
 
-**Bulk Integrity Check**
+**Bulk Integrity Check**  
 Settings page for validating translation integrity across the entire library with real-time progress tracking via SignalR.
+
+---
 
 ## Translation Services
 
-Lingarr supports multiple translation services:
+Lingarr supports multiple translation services to fit your needs, budget, and privacy requirements:
 
-- **[LibreTranslate](https://libretranslate.com)** - Self-hosted or cloud translation
-- **[DeepL](https://www.deepl.com/)** - Professional translation API
+**AI-Powered Translation**
 - **[OpenAI](https://openai.com/)** - GPT models with batch translation support
 - **[Anthropic](https://www.anthropic.com/)** - Claude models with batch translation support
 - **[Google Gemini](https://gemini.google.com/)** - Google's AI models with batch support
 - **[DeepSeek](https://deepseek.com)** - Cost-effective AI with batch translation support
 - **[Chutes.ai](https://chutes.ai)** - Open-source models with usage tracking and quota management
 - **[LocalAI](https://localai.io/)** - Self-hosted models (Ollama compatible) with batch support
+
+**Cloud Translation APIs**
+- **[LibreTranslate](https://libretranslate.com)** - Self-hosted or cloud translation
+- **[DeepL](https://www.deepl.com/)** - Professional translation API
 - **[Google Translate](https://translate.google.com/)** - Via GTranslate library
 - **[Bing Translate](https://www.bing.com/translator)** - Via GTranslate library
 - **[Yandex Translate](https://translate.yandex.com/)** - Via GTranslate library
 - **[Azure Translator](https://www.microsoft.com/en-us/translator/business/translator-api/)** - Via GTranslate library
 
-Choose the service that best fits your needs, budget, and privacy requirements.
+---
 
-## Usage
+## Getting Started
 
 ### Docker Image Tags
 
-Lingarr provides multi-architecture Docker images that automatically select the correct platform:
+Lingarr provides multi-architecture Docker images:
 
 | Tag | Description | Architectures |
 |-----|-------------|---------------|
 | `latest` | Latest stable release | `linux/amd64`, `linux/arm64` |
 | `1.2.3` | Specific version | `linux/amd64`, `linux/arm64` |
-| `main` | Development build from main branch | `linux/amd64`, `linux/arm64` |
+| `main` | Development build | `linux/amd64`, `linux/arm64` |
 
-**Note:** All images support both AMD64 (Intel/AMD) and ARM64 (Raspberry Pi, Apple Silicon) architectures.
+> **Note:** All images support both AMD64 (Intel/AMD) and ARM64 (Raspberry Pi, Apple Silicon) architectures.
 
-## Setting up Lingarr
+### Quick Start
 
 > [!WARNING]
 > **Upgrading from v1.x?** Version 2.0.0 introduces breaking changes:
-> - **MySQL/MariaDB support has been removed.** You must migrate to PostgreSQL (recommended) or SQLite.
-> - **Settings are NOT migrated.** You will need to reconfigure your settings after upgrading (~5 minutes).
-> - **Media library re-syncs automatically** from Radarr/Sonarr - no action needed for your media.
-> - Your previous database cannot be migrated; this is a fresh start.
+> - **MySQL/MariaDB support has been removed.** Migrate to PostgreSQL (recommended) or SQLite.
+> - **Settings are NOT migrated.** Reconfigure after upgrading (~5 minutes).
+> - **Media library re-syncs automatically** from Radarr/Sonarr - no action needed.
+> - Previous databases cannot be migrated; this is a fresh start.
 
-> **Recommended**: PostgreSQL is the recommended database for this fork. It uses MVCC (Multi-Version Concurrency Control) which eliminates lock contention issues during heavy parallel processing.
+**Recommended:** PostgreSQL is the recommended database for this fork. It uses MVCC (Multi-Version Concurrency Control) which eliminates lock contention issues during heavy parallel processing.
 
-### PostgreSQL Setup (Recommended)
+<details>
+<summary><b>PostgreSQL Setup (Recommended)</b></summary>
 
 ```yaml
 version: "3.8"
@@ -182,9 +201,12 @@ volumes:
   lingarr_postgres_data:
 ```
 
-### SQLite Setup (Simple)
+</details>
 
-For simple setups or testing, you can use SQLite which requires no additional containers:
+<details>
+<summary><b>SQLite Setup (Simple)</b></summary>
+
+For simple setups or testing, use SQLite which requires no additional containers:
 
 ```yaml
 version: "3.8"
@@ -205,7 +227,10 @@ services:
     restart: unless-stopped
 ```
 
-### Docker CLI Setup
+</details>
+
+<details>
+<summary><b>Docker CLI Setup</b></summary>
 
 ```bash
 docker run -d \
@@ -220,27 +245,36 @@ docker run -d \
   ree0/lingarr-on-steroids:latest
 ```
 
-## Environment Variables
+</details>
 
-| **Environment Variable** | **Description** |
-|--------------------------|-----------------|
-| `ASPNETCORE_URLS=http://+:9876` | The internal port that Lingarr will listen on inside the container. |
-| `MAX_CONCURRENT_JOBS` | Hangfire worker pool size for sync jobs only (default: 20). Translation concurrency is controlled via the UI setting "Concurrent file translations". |
-| `DB_CONNECTION=postgresql` | Specifies the database type. Options are `postgresql` (default) or `sqlite`. |
-| `DB_HOST=lingarr-postgres` | The hostname for the PostgreSQL database (required when using `postgresql`). |
-| `DB_PORT=5432` | The port for the PostgreSQL database (required when using `postgresql`). |
-| `DB_DATABASE=lingarr` | The name of the database (required when using `postgresql`). |
-| `DB_USERNAME=lingarr` | The username for the database (required when using `postgresql`). |
-| `DB_PASSWORD=lingarr` | The password for the database (required when using `postgresql`). |
-| `DB_HANGFIRE_SQLITE_PATH=/app/config/Hangfire.db` | The path of the sqlite database file for Hangfire, when sqlite connection is used. |
-| `HANGFIRE_USERNAME` | Username for the Hangfire dashboard (`/hangfire`). Defaults to `admin` if not set. |
-| `HANGFIRE_PASSWORD` | Password for the Hangfire dashboard. If not set, a random password is generated and printed to the console on startup. |
+---
 
-Additional [settings](Settings.MD) can be configured as environment variables to persist settings across reinstalls.
+## Configuration
 
-## Setting up LibreTranslate
+### Environment Variables
 
-This step is optional if you are using a translation service other than LibreTranslate.
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `ASPNETCORE_URLS` | Internal port Lingarr listens on | `http://+:9876` |
+| `MAX_CONCURRENT_JOBS` | Hangfire worker pool size for sync jobs | `20` |
+| `DB_CONNECTION` | Database type: `postgresql` or `sqlite` | `postgresql` |
+| `DB_HOST` | PostgreSQL hostname (required for PostgreSQL) | - |
+| `DB_PORT` | PostgreSQL port (required for PostgreSQL) | `5432` |
+| `DB_DATABASE` | Database name (required for PostgreSQL) | - |
+| `DB_USERNAME` | Database username (required for PostgreSQL) | - |
+| `DB_PASSWORD` | Database password (required for PostgreSQL) | - |
+| `DB_HANGFIRE_SQLITE_PATH` | SQLite path for Hangfire (SQLite only) | `/app/config/Hangfire.db` |
+| `HANGFIRE_USERNAME` | Hangfire dashboard username | `admin` |
+| `HANGFIRE_PASSWORD` | Hangfire dashboard password | Random (printed on startup) |
+
+Additional settings can be configured as environment variables to persist across reinstalls. See [Settings.MD](Settings.MD) for the complete list.
+
+### LibreTranslate Setup
+
+Optional if using a different translation service.
+
+<details>
+<summary><b>Docker Compose</b></summary>
 
 ```yaml
   libretranslate:
@@ -248,7 +282,7 @@ This step is optional if you are using a translation service other than LibreTra
     image: libretranslate/libretranslate:latest
     restart: unless-stopped
     environment:
-      - LT_LOAD_ONLY=en,nl  # Important, replace with your preferred languages
+      - LT_LOAD_ONLY=en,nl  # Replace with your preferred languages
     ports:
       - 5000:5000
     volumes:
@@ -259,7 +293,10 @@ This step is optional if you are using a translation service other than LibreTra
       test: ["CMD-SHELL", "./venv/bin/python scripts/healthcheck.py"]
 ```
 
-### LibreTranslate Docker CLI
+</details>
+
+<details>
+<summary><b>Docker CLI</b></summary>
 
 ```bash
 mkdir -p /apps/libretranslate/{local,db}
@@ -272,25 +309,35 @@ docker run -d \
   -v /path/to/libretranslate/local:/home/libretranslate/.local \
   libretranslate/libretranslate \
   --disable-web-ui \
-  --load-only=en,nl     # Important, replace with your preferred languages
+  --load-only=en,nl     # Replace with your preferred languages
 ```
 
-### LibreTranslate Environment Variables
+</details>
 
-| Parameter | Function |
-|-----------|----------|
-| `LT_LOAD_ONLY` | Allows you to add source languages by their [ISO code](https://libretranslate.com/languages) |
-| `LT_DISABLE_WEB_UI` | Enables or disables a Google Translate-like web UI |
+**LibreTranslate Environment Variables:**
+
+| Variable | Description |
+|----------|-------------|
+| `LT_LOAD_ONLY` | Source languages by [ISO code](https://libretranslate.com/languages) |
+| `LT_DISABLE_WEB_UI` | Disables the web UI (set to any value) |
+
+---
 
 ## API Integration
 
-Lingarr provides a RESTful API that allows you to integrate subtitle translation capabilities into your applications. Complete API documentation with Swagger definitions is available at:
+Lingarr provides a RESTful API for integrating subtitle translation capabilities into your applications. Complete API documentation with Swagger definitions is available at:
 
 [Lingarr API Documentation](https://lingarr.com/docs/api/)
 
+---
+
 ## Contributing
 
-We welcome contributions to Lingarr on Steroids! Whether it's bug reports, feature requests, or code contributions, please feel free to help out. Visit the [Lingarr on Steroids](https://github.com/T9es/lingarr-on-steroids) GitHub repository to get started.
+We welcome contributions! Whether it's bug reports, feature requests, or code contributions, please feel free to help out.
+
+Visit the [Lingarr on Steroids](https://github.com/T9es/lingarr-on-steroids) GitHub repository to get started.
+
+---
 
 ## Credits
 
@@ -300,6 +347,8 @@ This project builds upon the foundation of the original [Lingarr](https://github
 - Subtitle Parsing: [AlexPoint](https://github.com/AlexPoint/SubtitlesParser)
 - Translation Services: [LibreTranslate](https://libretranslate.com)
 - GTranslate: [GTranslate](https://github.com/d4n3436/GTranslate)
+
+---
 
 ## Special Thanks
 
