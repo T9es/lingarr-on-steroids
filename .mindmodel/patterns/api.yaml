@@ -1,0 +1,163 @@
+# API Patterns
+
+## REST API Pattern
+
+Controllers follow standard REST conventions:
+
+```csharp
+[ApiController]
+[Route("api/[controller]")]
+public class TranslationController : ControllerBase
+{
+    private readonly ISettingService _settingService;
+    private readonly ILogger<TranslationController> _logger;
+    
+    public TranslationController(
+        ISettingService settingService,
+        ILogger<TranslationController> logger)
+    {
+        _settingService = settingService;
+        _logger = logger;
+    }
+    
+    [HttpGet("languages")]
+    public ActionResult GetAvailableLanguages()
+    {
+        try
+        {
+            var languages = new[]
+            {
+                new { code = "en", name = "English" },
+                new { code = "nl", name = "Dutch" }
+            };
+            return Ok(languages);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving available languages");
+            return StatusCode(500, "Error retrieving available languages");
+        }
+    }
+    
+    [HttpGet]
+    public async Task<ActionResult> GetTranslations()
+    {
+        // Implementation
+    }
+}
+```
+
+## SignalR Real-Time Pattern
+
+Hubs for real-time communication:
+
+```csharp
+public class TranslationRequestsHub : Hub
+{
+    public async Task JoinGroup(GroupRequest request)
+    {
+        string group = request.Group;
+        await Groups.AddToGroupAsync(Context.ConnectionId, group);
+        await Clients.Caller.SendAsync("JoinedGroup", group);
+    }
+    
+    public async Task LeaveGroup(GroupRequest request)
+    {
+        string group = request.Group;
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, group);
+    }
+}
+```
+
+## API Client Pattern (Frontend)
+
+Factory functions with axios parameter:
+
+```typescript
+import { AxiosError, AxiosResponse, AxiosStatic } from 'axios'
+import { ITranslationRequest, ITranslationRequestService } from '@/ts'
+
+const service = (
+    http: AxiosStatic,
+    resource = '/api/translationRequest'
+): ITranslationRequestService => ({
+    getActiveCount<T>(): Promise<T> {
+        return new Promise((resolve, reject) => {
+            http.get(`${resource}/active`)
+                .then((response: AxiosResponse<T>) => {
+                    resolve(response.data)
+                })
+                .catch((error: AxiosError) => {
+                    reject(error.response)
+                })
+        })
+    },
+    
+    cancel<T>(translationRequest: ITranslationRequest): Promise<T> {
+        return new Promise((resolve, reject) => {
+            http.post(`${resource}/cancel`, translationRequest)
+                .then((response: AxiosResponse<T>) => resolve(response.data))
+                .catch((error: AxiosError) => reject(error.response))
+        })
+    }
+})
+
+export const translationRequestService = (axios: AxiosStatic): ITranslationRequestService => {
+    return service(axios)
+}
+```
+
+## Service Aggregation Pattern
+
+Services are aggregated in a central services object:
+
+```typescript
+// services/index.ts
+import { translationRequestService } from './translationRequestService'
+import { movieService } from './movieService'
+import { showService } from './showService'
+
+export default {
+    translationRequest: translationRequestService(axios),
+    movie: movieService(axios),
+    show: showService(axios)
+}
+```
+
+## Error Response Pattern
+
+Consistent error handling in API responses:
+
+```csharp
+[HttpPost("cancel")]
+public async Task<ActionResult> CancelTranslation([FromBody] TranslationRequest request)
+{
+    try
+    {
+        await _translationService.CancelAsync(request.Id);
+        return Ok(new { success = true, message = "Translation cancelled" });
+    }
+    catch (NotFoundException ex)
+    {
+        return NotFound(new { success = false, message = ex.Message });
+    }
+    catch (Exception ex)
+    {
+        _logger.LogError(ex, "Error cancelling translation");
+        return StatusCode(500, new { success = false, message = "Internal server error" });
+    }
+}
+```
+
+## Route Conventions
+
+- Use `[controller]` token for base route
+- Use kebab-case for multi-word actions: `[HttpGet("failed-requests")]`
+- Use route parameters for IDs: `[HttpGet("{id}")]`
+- Use query parameters for filtering/sorting/paging
+
+## ActionResult Types
+
+- `ActionResult<T>` for typed responses
+- `Ok()`, `NotFound()`, `BadRequest()`, `StatusCode()` for status codes
+- Avoid returning naked objects (always wrap in ActionResult)

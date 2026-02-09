@@ -1,0 +1,194 @@
+# Code Conventions
+
+## C# Naming Conventions
+
+### Classes & Types
+- **Classes**: PascalCase (e.g., `TranslationWorkerService`)
+- **Interfaces**: PascalCase with `I` prefix (e.g., `ITranslationService`)
+- **Enums**: PascalCase (e.g., `TranslationState`)
+- **Generic Type Parameters**: PascalCase with `T` prefix (e.g., `TEntity`)
+
+### Members
+- **Methods**: PascalCase (e.g., `GetMovies`, `TranslateAsync`)
+- **Properties**: PascalCase (e.g., `public string Name { get; set; }`)
+- **Public Fields**: PascalCase (avoid, use properties instead)
+- **Private Fields**: `_camelCase` with underscore prefix (e.g., `_logger`, `_dbContext`)
+- **Constants**: PascalCase (e.g., `MaxRetryAttempts`)
+- **Async Methods**: Must have `Async` suffix (e.g., `TranslateAsync`)
+
+### Parameters & Variables
+- **Parameters**: camelCase (e.g., `translationRequest`)
+- **Local Variables**: camelCase (e.g., `var requestCount = 0;`)
+- **Lambda Parameters**: camelCase (e.g., `x => x.Id`)
+
+## TypeScript/Vue Naming Conventions
+
+### Components
+- **Vue Components**: PascalCase with `Component` suffix (e.g., `CardComponent.vue`)
+- **Single File Components**: PascalCase (e.g., `TranslationPage.vue`)
+
+### Composables
+- **Composables**: camelCase with `use` prefix (e.g., `useDebounce.ts`)
+
+### Stores
+- **Pinia Stores**: camelCase with `use` prefix + `Store` suffix (e.g., `useMovieStore.ts`)
+
+### Types & Interfaces
+- **Interfaces**: PascalCase with `I` prefix (e.g., `IMovie`, `ISettings`)
+- **Types**: PascalCase (e.g., `TranslationStatus`)
+- **Enums**: PascalCase (e.g., `MediaType`)
+
+### Variables & Constants
+- **Variables**: camelCase (e.g., `const requestCount = 0`)
+- **Constants**: UPPER_SNAKE_CASE (e.g., `const MAX_RETRY_ATTEMPTS = 3`)
+- **Boolean Variables**: Prefix with `is`, `has`, `should` (e.g., `isLoading`, `hasErrors`)
+
+## Code Organization
+
+### C# Files
+```csharp
+// 1. Using statements (System first, then third-party, then internal)
+using System;
+using Microsoft.EntityFrameworkCore;
+using Lingarr.Core.Entities;
+
+// 2. Namespace declaration
+namespace Lingarr.Server.Services;
+
+// 3. XML documentation for public APIs
+/// <summary>
+/// Service for managing translation operations.
+/// </summary>
+public class TranslationService : ITranslationService
+{
+    // 4. Private readonly fields (injected dependencies)
+    private readonly ILogger<TranslationService> _logger;
+    private readonly LingarrDbContext _dbContext;
+    
+    // 5. Constructor with XML docs
+    /// <summary>
+    /// Initializes a new instance of the TranslationService.
+    /// </summary>
+    public TranslationService(
+        ILogger<TranslationService> logger,
+        LingarrDbContext dbContext)
+    {
+        _logger = logger;
+        _dbContext = dbContext;
+    }
+    
+    // 6. Public methods
+    // 7. Private methods
+}
+```
+
+### Vue Files
+```vue
+<template>
+    <!-- Template content -->
+</template>
+
+<script setup lang="ts">
+// 1. Vue imports
+import { ref, computed, onMounted } from 'vue'
+
+// 2. Third-party imports
+import { useRouter } from 'vue-router'
+
+// 3. Internal imports (using @/ alias)
+import { useMovieStore } from '@/store/movie'
+import type { IMovie } from '@/ts'
+
+// 4. Props definition
+const { movieId } = defineProps<{
+    movieId: number
+}>()
+
+// 5. Composables
+const router = useRouter()
+const movieStore = useMovieStore()
+
+// 6. Reactive state
+const isLoading = ref(false)
+
+// 7. Computed properties
+const movie = computed(() => movieStore.getMovieById(movieId))
+
+// 8. Methods
+async function loadMovie() {
+    // Implementation
+}
+
+// 9. Lifecycle hooks
+onMounted(() => {
+    loadMovie()
+})
+</script>
+```
+
+### TypeScript Service Files
+```typescript
+// 1. External imports
+import { AxiosError, AxiosResponse, AxiosStatic } from 'axios'
+
+// 2. Internal imports
+import { ITranslationRequest, ITranslationRequestService } from '@/ts'
+
+// 3. Factory function pattern
+const service = (
+    http: AxiosStatic,
+    resource = '/api/translationRequest'
+): ITranslationRequestService => ({
+    // Service methods
+})
+
+// 4. Export factory
+export const translationRequestService = (axios: AxiosStatic): ITranslationRequestService => {
+    return service(axios)
+}
+```
+
+## Import Order
+
+### C# Import Order
+1. `System` namespaces
+2. `Microsoft` namespaces
+3. Third-party library namespaces
+4. Internal project namespaces (most specific last)
+
+### TypeScript Import Order
+1. Vue core (`vue`, `vue-router`)
+2. Third-party libraries (`axios`, `pinia`)
+3. Internal types (`@/ts`)
+4. Internal services/stores (`@/services`, `@/store`)
+5. Internal composables (`@/composables`)
+
+## Prettier Configuration
+
+```json
+{
+    "semi": false,
+    "tabWidth": 4,
+    "singleQuote": true,
+    "trailingComma": "none",
+    "printWidth": 100,
+    "arrowParens": "always"
+}
+```
+
+## Code Style Rules
+
+### C#
+- Use `var` when type is obvious from right-hand side
+- Always use braces for control structures
+- Prefer expression-bodied members for simple properties
+- Use pattern matching where appropriate
+- Use null-coalescing operators (`??`, `??=`)
+- Use target-typed `new()` expressions
+
+### TypeScript
+- Prefer `interface` over `type` for object shapes
+- Use explicit return types on exported functions
+- Use `const` by default, `let` only when reassignment needed
+- Prefer optional chaining (`?.`) over null checks
+- Use nullish coalescing (`??`) over logical OR (`||`)

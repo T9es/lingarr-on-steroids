@@ -1,0 +1,109 @@
+# Technology Stack
+
+## Backend
+
+### Core Framework
+- **.NET**: 9.0
+- **C#**: 12
+- **ASP.NET Core**: 9.0 Web API
+
+### Database & ORM
+- **Entity Framework Core**: 9.0.11
+- **PostgreSQL**: 16 (primary database)
+- **SQLite**: Fallback/development database
+- **Npgsql.EntityFrameworkCore.PostgreSQL**: 9.0.2
+- **EFCore.NamingConventions**: 9.0.0
+
+### Background Jobs
+- **Hangfire**: 1.8.21
+- **Hangfire.PostgreSql**: 1.20.9
+- **Hangfire.Storage.SQLite**: 0.4.2
+
+### Real-time Communication
+- **SignalR**: Microsoft.AspNetCore.SignalR.Core 1.2.0
+
+### Translation Services
+- **DeepL.net**: 1.15.0
+- **GTranslate**: 2.3.1
+
+### Authentication & Security
+- **Microsoft.AspNetCore.Authentication.JwtBearer**: 9.0.8
+- **BCrypt.Net-Next**: 4.0.3
+
+### API Documentation
+- **Swashbuckle.AspNetCore**: 9.0.3 (OpenAPI/Swagger)
+
+### Utilities
+- **Newtonsoft.Json**: JSON serialization
+- **Semver**: 3.0.0 (semantic versioning)
+
+## Frontend
+
+### Core Framework
+- **Vue.js**: 3.5.26
+- **TypeScript**: 5.9.3
+
+### Build Tools
+- **Vite**: 7.2.6
+- **vue-tsc**: 2.2.12 (TypeScript compiler)
+
+### State Management
+- **Pinia**: 3.0.4
+
+### Routing
+- **vue-router**: 4.6.4
+
+### HTTP Client
+- **axios**: 1.13.2
+
+### Real-time
+- **@microsoft/signalr**: 10.0.0
+
+### UI & Styling
+- **Tailwind CSS**: 4.1.17
+- **Chart.js**: 4.5.1 (data visualization)
+- **vue-chartjs**: 5.3.3
+
+### Utilities
+- **cron-validator**: 1.4.0 (cron expression validation)
+
+### Code Quality
+- **ESLint**: 9.39.1
+- **Prettier**: 3.7.4
+
+## Testing
+
+### Backend Testing
+- **xUnit**: 2.9.3
+- **Moq**: 4.20.72
+
+## Infrastructure
+
+### Containerization
+- **Docker**
+- **Docker Compose**
+
+## Project Structure
+
+```
+lingarr-on-steroids/
+├── Lingarr.Core/              # Domain entities, enums, data context
+├── Lingarr.Server/            # ASP.NET Core Web API
+│   ├── Controllers/           # API controllers
+│   ├── Services/              # Business logic services
+│   ├── Jobs/                  # Hangfire background jobs
+│   ├── Hubs/                  # SignalR hubs
+│   ├── Filters/               # Action filters
+│   ├── Extensions/            # DI extensions
+│   └── Interfaces/            # Service interfaces
+├── Lingarr.Client/            # Vue.js frontend
+│   ├── src/
+│   │   ├── components/        # Vue components
+│   │   ├── pages/             # Page components
+│   │   ├── store/             # Pinia stores
+│   │   ├── services/          # API service clients
+│   │   ├── composables/       # Vue composables
+│   │   └── ts/                # TypeScript types
+├── Lingarr.Migrations.PostgreSQL/  # EF Core migrations for PostgreSQL
+└── Lingarr.Migrations.SQLite/      # EF Core migrations for SQLite
+```

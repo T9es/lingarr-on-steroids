@@ -1,0 +1,188 @@
+# Concurrency Patterns
+
+## Worker Pool Pattern
+
+TranslationWorkerService manages a pool of 1-20 workers:
+
+```csharp
+public class TranslationWorkerService : BackgroundService
+{
+    private readonly SemaphoreSlim _workerSemaphore;
+    private readonly ConcurrentDictionary<int, CancellationTokenSource> _activeJobs;
+    
+    public TranslationWorkerService(...)
+    {
+        // Configurable worker count (1-20)
+        _workerSemaphore = new SemaphoreSlim(maxWorkers);
+        _activeJobs = new ConcurrentDictionary<int, CancellationTokenSource>();
+    }
+    
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            await _workerSemaphore.WaitAsync(stoppingToken);
+            
+            var job = await GetNextJobAsync();
+            if (job != null)
+            {
+                _ = ProcessJobAsync(job, stoppingToken)
+                    .ContinueWith(_ => _workerSemaphore.Release());
+            }
+            else
+            {
+                _workerSemaphore.Release();
+                await Task.Delay(1000, stoppingToken);
+            }
+        }
+    }
+}
+```
+
+## Optimistic Locking Pattern
+
+Used for claiming translation requests:
+
+```csharp
+public async Task<bool> TryClaimAndStartWorkerAsync(int requestId)
+{
+    using var transaction = await _dbContext.Database
+        .BeginTransactionAsync();
+    
+    try
+    {
+        // Optimistic: assume we can claim it
+        var request = await _dbContext.TranslationRequests
+            .FirstOrDefaultAsync(r => r.Id == requestId);
+        
+        if (request?.IsActive == true)
+            return false; // Already claimed
+        
+        request.IsActive = true;
+        await _dbContext.SaveChangesAsync();
+        await transaction.CommitAsync();
+        
+        return true;
+    }
+    catch (DbUpdateConcurrencyException)
+    {
+        await transaction.RollbackAsync();
+        return false; // Someone else claimed it
+    }
+}
+```
+
+## Cooperative Cancellation
+
+Jobs register for cooperative cancellation:
+
+```csharp
+public async Task ExecuteCore(int translationRequestId, CancellationToken cancellationToken)
+{
+    // Register this job for cooperative cancellation
+    var jobCancellationToken = _cancellationService.RegisterJob(translationRequestId);
+    
+    // Create linked token that cancels if either token is cancelled
+    using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+        cancellationToken, jobCancellationToken);
+    var effectiveCancellationToken = linkedCts.Token;
+    
+    try
+    {
+        effectiveCancellationToken.ThrowIfCancellationRequested();
+        // ... do work
+    }
+    finally
+    {
+        // Always unregister
+        _cancellationService.UnregisterJob(translationRequestId);
+    }
+}
+```
+
+## Thread-Safe Initialization
+
+Lazy initialization with SemaphoreSlim:
+
+```csharp
+public class SomeService
+{
+    private static readonly SemaphoreSlim _initSemaphore = new(1, 1);
+    private static bool _isInitialized = false;
+    
+    public async Task EnsureInitializedAsync()
+    {
+        if (_isInitialized) return;
+        
+        await _initSemaphore.WaitAsync();
+        try
+        {
+            if (_isInitialized) return;
+            
+            // Perform initialization
+            await InitializeInternalAsync();
+            _isInitialized = true;
+        }
+        finally
+        {
+            _initSemaphore.Release();
+        }
+    }
+}
+```
+
+## Async/Await Best Practices
+
+- Always use `CancellationToken` in async methods
+- Use `ConfigureAwait(false)` in library code (not needed in ASP.NET Core)
+- Avoid `async void` (except for event handlers)
+- Use `Task.WhenAll` for concurrent operations
+
+```csharp
+// GOOD: Proper async with cancellation
+public async Task ProcessBatchAsync(
+    List<SubtitleItem> subtitles,
+    CancellationToken cancellationToken)
+{
+    var tasks = subtitles.Select(s => 
+        TranslateAsync(s, cancellationToken));
+    
+    await Task.WhenAll(tasks);
+}
+
+// BAD: Fire and forget without tracking
+public void BadMethod()
+{
+    DoWorkAsync(); // Warning: not awaited!
+}
+```
+
+## BackgroundService Pattern
+
+Long-running background services inherit from `BackgroundService`:
+
+```csharp
+public class TranslationWorkerService : BackgroundService
+{
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                await DoWorkAsync(stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                // Graceful shutdown
+                break;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in background service");
+                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+            }
+        }
+    }
+}
+```
