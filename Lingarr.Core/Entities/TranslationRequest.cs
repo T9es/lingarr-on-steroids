@@ -1,4 +1,4 @@
-﻿using Lingarr.Core.Enum;
+using Lingarr.Core.Enum;
 
 namespace Lingarr.Core.Entities;
 
@@ -49,4 +49,20 @@ public class TranslationRequest : BaseEntity
     /// When the translation actually started processing (not just queued)
     /// </summary>
     public DateTime? StartedAt { get; set; }
+    
+    /// <summary>
+    /// Number of times this request has been retried after failure
+    /// </summary>
+    public int RetryCount { get; set; }
+    
+    /// <summary>
+    /// When the request last failed (null if never failed)
+    /// </summary>
+    public DateTime? FailedAt { get; set; }
+    
+    /// <summary>
+    /// When the request should be retried next (null if not scheduled for retry)
+    /// Used for exponential backoff of failed requests
+    /// </summary>
+    public DateTime? NextRetryAt { get; set; }
 }

@@ -1,4 +1,4 @@
-﻿using Hangfire;
+using Hangfire;
 using Hangfire.Storage;
 using Lingarr.Core.Configuration;
 using Lingarr.Core.Enum;
@@ -88,7 +88,7 @@ public class ScheduleService : IScheduleService
         RecurringJob.AddOrUpdate<RetryFailedRequestsJob>(
             "RetryFailedRequestsJob",
             job => job.Execute(),
-            Cron.Hourly,
+            Cron.Daily(22),
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
         _logger.LogInformation("Starting pending translation requests.");

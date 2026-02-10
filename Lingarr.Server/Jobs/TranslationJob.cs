@@ -597,12 +597,30 @@ public class TranslationJob
 
             try 
             {
+                // Calculate exponential backoff for next retry
+                // 1st failure: 1 hour, 2nd: 4 hours, 3rd: 12 hours, 4th+: 24 hours
+                var retryDelay = translationRequest.RetryCount switch
+                {
+                    0 => TimeSpan.FromHours(1),
+                    1 => TimeSpan.FromHours(4),
+                    2 => TimeSpan.FromHours(12),
+                    _ => TimeSpan.FromHours(24)
+                };
+                
+                var now = DateTime.UtcNow;
+                var nextRetryAt = now.Add(retryDelay);
+                
                 // Retry logic for status update - prevents jobs getting stuck in InProgress
                 // when database is temporarily unavailable
                 for (int attempt = 0; attempt < 3; attempt++)
                 {
                     try
                     {
+                        // Update retry tracking fields before status update
+                        translationRequest.RetryCount++;
+                        translationRequest.FailedAt = now;
+                        translationRequest.NextRetryAt = nextRetryAt;
+                        
                         translationRequest = await _translationRequestService.UpdateTranslationRequest(
                             translationRequest,
                             TranslationStatus.Failed,
