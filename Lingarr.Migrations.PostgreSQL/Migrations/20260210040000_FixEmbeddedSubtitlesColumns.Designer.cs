@@ -63,6 +63,10 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_forced");
 
+                    b.Property<bool>("IsHearingImpaired")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_hearing_impaired");
+
                     b.Property<bool>("IsTextBased")
                         .HasColumnType("boolean")
                         .HasColumnName("is_text_based");

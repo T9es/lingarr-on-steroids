@@ -24,6 +24,13 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                 defaultValue: false);
 
             migrationBuilder.AddColumn<bool>(
+                name: "is_hearing_impaired",
+                table: "embedded_subtitles",
+                type: "boolean",
+                nullable: false,
+                defaultValue: false);
+
+            migrationBuilder.AddColumn<bool>(
                 name: "is_text_based",
                 table: "embedded_subtitles",
                 type: "boolean",
@@ -50,6 +57,10 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
 
             migrationBuilder.DropColumn(
                 name: "is_extracted",
+                table: "embedded_subtitles");
+
+            migrationBuilder.DropColumn(
+                name: "is_hearing_impaired",
                 table: "embedded_subtitles");
 
             migrationBuilder.DropColumn(
