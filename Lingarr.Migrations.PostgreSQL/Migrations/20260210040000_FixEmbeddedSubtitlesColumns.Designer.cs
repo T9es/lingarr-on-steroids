@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Lingarr.Migrations.PostgreSQL.Migrations
 {
     [DbContext(typeof(LingarrDbContext))]
-    [Migration("20260210033000_AddEmbeddedSubtitles")]
-    partial class AddEmbeddedSubtitles
+    [Migration("20260210040000_FixEmbeddedSubtitlesColumns")]
+    partial class FixEmbeddedSubtitlesColumns
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
