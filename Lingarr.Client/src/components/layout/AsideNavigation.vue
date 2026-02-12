@@ -1,4 +1,4 @@
-﻿<template>
+<template>
     <div class="relative">
         <!-- Backdrop -->
         <div
@@ -48,8 +48,15 @@
                 <div
                     v-if="instanceStore.getVersion.currentVersion.length"
                     class="absolute right-0 bottom-0 flex w-full flex-col items-center gap-2 p-4">
+                    <!-- Dev Build Badge - shown when running a dev/alpha/beta build -->
                     <BadgeComponent
-                        v-if="instanceStore.getVersion.newVersion"
+                        v-if="instanceStore.getVersion.isDevBuild"
+                        classes="text-white border-purple-200 bg-purple-500/50">
+                        {{ translate('common.devBuild') }}
+                    </BadgeComponent>
+                    <!-- Update Available Badge - shown for release builds with updates -->
+                    <BadgeComponent
+                        v-else-if="instanceStore.getVersion.newVersion"
                         classes="text-white border-green-200 bg-green-500/50">
                         {{
                             translate('common.updateAvailable').format({
@@ -57,7 +64,8 @@
                             })
                         }}
                     </BadgeComponent>
-                    <BadgeComponent v-else classes="text-white border-green-200 bg-green-500/50">
+                    <!-- Current Version Badge - shown for release builds on latest version -->
+                    <BadgeComponent v-else classes="text-white border-gray-200 bg-gray-500/50">
                         {{
                             translate('common.currentVersion').format({
                                 version: instanceStore.getVersion.currentVersion

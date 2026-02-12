@@ -122,6 +122,12 @@ public class MediaStateService : IMediaStateService
             return TranslationState.InProgress;
         }
 
+        // 3b. Check for failed translation request
+        if (await HasFailedTranslationRequestAsync(media.Id, mediaType))
+        {
+            return TranslationState.Failed;
+        }
+
         // 4. Get external subtitles
         var externalSubtitles = new List<Subtitles>();
         if (!string.IsNullOrEmpty(media.Path))
@@ -153,7 +159,7 @@ public class MediaStateService : IMediaStateService
 
         if (!hasExternalSource && !hasEmbeddedSource)
         {
-            return TranslationState.NotApplicable;
+            return TranslationState.AwaitingSource;
         }
 
         // 6. Check which targets are satisfied
@@ -202,18 +208,22 @@ public class MediaStateService : IMediaStateService
             .Where(m => !m.ExcludeFromTranslation)
             .Where(m => m.TranslationState == TranslationState.Pending 
                      || m.TranslationState == TranslationState.Stale
-                     || (m.TranslationState == TranslationState.Unknown && m.IndexedAt != null));
+                     || m.TranslationState == TranslationState.Unknown
+                     || (m.TranslationState == TranslationState.AwaitingSource && m.IndexedAt == null));
 
         if (priorityFirst)
         {
             moviesQuery = moviesQuery
                 .OrderByDescending(m => m.IsPriority)
                 .ThenBy(m => m.PriorityDate)
+                .ThenBy(m => m.LastSubtitleCheckAt) // Oldest check first
                 .ThenBy(m => m.DateAdded);
         }
         else
         {
-            moviesQuery = moviesQuery.OrderBy(m => m.DateAdded);
+            moviesQuery = moviesQuery
+                .OrderBy(m => m.LastSubtitleCheckAt) // Oldest check first
+                .ThenBy(m => m.DateAdded);
         }
 
         var movies = await moviesQuery.Take(halfLimit).ToListAsync();
@@ -229,18 +239,22 @@ public class MediaStateService : IMediaStateService
             .Where(e => !e.Season.Show.ExcludeFromTranslation)
             .Where(e => e.TranslationState == TranslationState.Pending 
                      || e.TranslationState == TranslationState.Stale
-                     || (e.TranslationState == TranslationState.Unknown && e.IndexedAt != null));
+                     || e.TranslationState == TranslationState.Unknown
+                     || (e.TranslationState == TranslationState.AwaitingSource && e.IndexedAt == null));
 
         if (priorityFirst)
         {
             episodesQuery = episodesQuery
                 .OrderByDescending(e => e.Season.Show.IsPriority)
                 .ThenBy(e => e.Season.Show.PriorityDate)
+                .ThenBy(e => e.LastSubtitleCheckAt) // Oldest check first (nulls first usually)
                 .ThenBy(e => e.DateAdded);
         }
         else
         {
-            episodesQuery = episodesQuery.OrderBy(e => e.DateAdded);
+            episodesQuery = episodesQuery
+                .OrderBy(e => e.LastSubtitleCheckAt) // Oldest check first
+                .ThenBy(e => e.DateAdded);
         }
 
         var episodes = await episodesQuery.Take(limit - movies.Count).ToListAsync();
@@ -274,6 +288,15 @@ public class MediaStateService : IMediaStateService
             (tr.Status == TranslationStatus.Pending || tr.Status == TranslationStatus.InProgress));
     }
 
+    /// <inheritdoc />
+    public async Task<bool> HasFailedTranslationRequestAsync(int mediaId, MediaType mediaType)
+    {
+        return await _dbContext.TranslationRequests.AnyAsync(tr =>
+            tr.MediaId == mediaId &&
+            tr.MediaType == mediaType &&
+            tr.Status == TranslationStatus.Failed);
+    }
+
     private async Task<HashSet<string>> GetConfiguredLanguages(string settingKey)
     {
         try
@@ -284,6 +307,24 @@ public class MediaStateService : IMediaStateService
         catch
         {
             return new HashSet<string>();
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task UpdateLastSubtitleCheckAt(int mediaId, MediaType mediaType)
+    {
+        var now = DateTime.UtcNow;
+        if (mediaType == MediaType.Movie)
+        {
+            await _dbContext.Movies
+                .Where(m => m.Id == mediaId)
+                .ExecuteUpdateAsync(s => s.SetProperty(m => m.LastSubtitleCheckAt, now));
+        }
+        else
+        {
+            await _dbContext.Episodes
+                .Where(e => e.Id == mediaId)
+                .ExecuteUpdateAsync(s => s.SetProperty(e => e.LastSubtitleCheckAt, now));
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿using Lingarr.Core.Configuration;
+using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
@@ -116,6 +116,10 @@ public class TranslationJob
                 TranslationStatus.InProgress,
                 null); // No Hangfire job ID
 
+            // Set when translation actually started
+            request.StartedAt = DateTime.UtcNow;
+            await _dbContext.SaveChangesAsync(effectiveCancellationToken);
+
             var subtitlePathForLog = translationRequest.SubtitleToTranslate ?? "Unknown";
             _logger.LogInformation("TranslateJob started for subtitle: |Green|{filePath}|/Green|",
                 subtitlePathForLog);
@@ -179,36 +183,70 @@ public class TranslationJob
             }
 
             // AUTO-EXTRACTION: If subtitle file doesn't exist, check for embedded subtitles
-            var subtitlePath = request.SubtitleToTranslate;
-            if (string.IsNullOrEmpty(subtitlePath) || !File.Exists(subtitlePath))
-            {
-                _logger.LogInformation("Subtitle file not found, checking for embedded subtitles...");
-                AddRequestLog("Warning", "Subtitle file not found on disk, attempting embedded subtitle extraction");
-                if (request.MediaId.HasValue)
+                var subtitlePath = request.SubtitleToTranslate;
+                if (string.IsNullOrEmpty(subtitlePath) || !File.Exists(subtitlePath))
                 {
-                    subtitlePath = await _extractionService.TryExtractEmbeddedSubtitle(request.MediaId.Value, request.MediaType, request.SourceLanguage);
+                    _logger.LogInformation("Subtitle file not found, checking for embedded subtitles...");
+                    AddRequestLog("Warning", "Subtitle file not found on disk, attempting embedded subtitle extraction");
+                    if (request.MediaId.HasValue)
+                    {
+                        // Check if there's a preferred stream index from manual selection
+                        var streamSelectionKey = $"subtitle_stream_selection_{request.MediaId.Value}_{request.MediaType}";
+                        var preferredStreamIndexSetting = await _settings.GetSetting(streamSelectionKey);
+                        int? preferredStreamIndex = null;
+                        if (!string.IsNullOrEmpty(preferredStreamIndexSetting) && int.TryParse(preferredStreamIndexSetting, out var parsedIndex))
+                        {
+                            preferredStreamIndex = parsedIndex;
+                            _logger.LogInformation("Using preferred stream index {StreamIndex} from manual selection", preferredStreamIndex);
+                            AddRequestLog("Information", $"Using preferred stream index {preferredStreamIndex} from manual selection");
+                            
+                            // Clear the setting after reading it to prevent affecting future jobs
+                            await _settings.SetSetting(streamSelectionKey, "");
+                        }
+
+                        // Before extraction, predict the output path to check if file already exists
+                        var predictedPath = PredictExtractionOutputPath(request.MediaId.Value, request.MediaType, request.SourceLanguage);
+                        var wasFileAlreadyExisting = !string.IsNullOrEmpty(predictedPath) && File.Exists(predictedPath);
+                        
+                        subtitlePath = await _extractionService.TryExtractEmbeddedSubtitle(
+                            request.MediaId.Value, 
+                            request.MediaType, 
+                            request.SourceLanguage,
+                            null,
+                            preferredStreamIndex);
+                        
+                        // Mark for cleanup only if the file didn't exist before extraction (auto-extracted)
+                        // Don't check database state - the extraction service already set IsExtracted=true
+                        if (!string.IsNullOrEmpty(subtitlePath) && !wasFileAlreadyExisting)
+                        {
+                            temporaryFilePath = subtitlePath;
+                            _logger.LogDebug("Marked extracted subtitle as temporary (auto-extracted, will be cleaned up): {Path}", subtitlePath);
+                        }
+                        else if (!string.IsNullOrEmpty(subtitlePath))
+                        {
+                            _logger.LogDebug("Subtitle file existed before extraction (user-provided), preserving file: {Path}", subtitlePath);
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Cannot extract embedded subtitle: MediaId is null");
+                        subtitlePath = null;
+                    }
+                    
+                    if (string.IsNullOrEmpty(subtitlePath))
+                    {
+                        var errorMessage =
+                            $"Subtitle file not found and no extractable embedded subtitle available: {request.SubtitleToTranslate}";
+                        _logger.LogError(errorMessage);
+                        AddRequestLog("Error", errorMessage);
+                        throw new InvalidOperationException(errorMessage);
+                    }
+                    
+                    // Update the request with the extracted subtitle path
+                    request.SubtitleToTranslate = subtitlePath;
+                    _logger.LogInformation("Using extracted embedded subtitle: {Path}", subtitlePath);
+                    AddRequestLog("Information", $"Using extracted embedded subtitle: {subtitlePath}");
                 }
-                else
-                {
-                    _logger.LogWarning("Cannot extract embedded subtitle: MediaId is null");
-                    subtitlePath = null;
-                }
-                
-                if (string.IsNullOrEmpty(subtitlePath))
-                {
-                    var errorMessage =
-                        $"Subtitle file not found and no extractable embedded subtitle available: {request.SubtitleToTranslate}";
-                    _logger.LogError(errorMessage);
-                    AddRequestLog("Error", errorMessage);
-                    throw new InvalidOperationException(errorMessage);
-                }
-                
-                // Update the request with the extracted subtitle path
-                request.SubtitleToTranslate = subtitlePath;
-                _logger.LogInformation("Using extracted embedded subtitle: {Path}", subtitlePath);
-                AddRequestLog("Information", $"Using extracted embedded subtitle: {subtitlePath}");
-                temporaryFilePath = subtitlePath;
-            }
 
             // validate subtitles
             if (validateSubtitles)
@@ -249,7 +287,7 @@ public class TranslationJob
                     StripSubtitleFormatting = stripSubtitleFormatting
                 };
 
-                if (!_subtitleService.ValidateSubtitle(request.SubtitleToTranslate, validationOptions))
+                if (string.IsNullOrEmpty(request.SubtitleToTranslate) || !_subtitleService.ValidateSubtitle(request.SubtitleToTranslate, validationOptions))
                 {
                     const string validationMessage = "Subtitle is not valid according to configured preferences.";
                     _logger.LogWarning(validationMessage);
@@ -283,13 +321,39 @@ public class TranslationJob
             const int maxAttempts = 3;
             var excludedPaths = new List<string>();
 
+            // Generate file identifier early for logging
+            var fileIdentifier = GenerateFileIdentifier(request.SubtitleToTranslate);
+
+            EmbeddedSubtitle? selectedSubtitle = null;
             while (true)
             {
                 subtitles = await _subtitleService.ReadSubtitles(request.SubtitleToTranslate);
                 AddRequestLog("Information", $"Loaded subtitle file with {subtitles.Count} entries for translation");
 
+                // Capture subtitle tracking metadata
                 if (subtitles.Count > 0)
                 {
+                    request.SourceSubtitleEntryCount = subtitles.Count;
+                    selectedSubtitle = await GetEmbeddedSubtitleMetadata(request);
+                    if (selectedSubtitle != null)
+                    {
+                        request.SelectedStreamTitle = selectedSubtitle.Title;
+                        request.IsForcedSubtitle = selectedSubtitle.IsForced;
+                        request.SourceSubtitleType = DetermineSubtitleType(selectedSubtitle);
+                        _logger.LogInformation(
+                            "[{FileId}] Captured subtitle metadata: Type={Type}, Entries={Entries}, Title={Title}, Forced={Forced}",
+                            fileIdentifier, request.SourceSubtitleType, request.SourceSubtitleEntryCount,
+                            request.SelectedStreamTitle ?? "N/A", request.IsForcedSubtitle);
+                    }
+                    else
+                    {
+                        // For external subtitle files, try to determine type from filename
+                        request.SourceSubtitleType = DetermineSubtitleTypeFromFilename(request.SubtitleToTranslate);
+                        _logger.LogInformation(
+                            "[{FileId}] External subtitle: Type={Type}, Entries={Entries}",
+                            fileIdentifier, request.SourceSubtitleType, request.SourceSubtitleEntryCount);
+                    }
+                    await _dbContext.SaveChangesAsync(effectiveCancellationToken);
                     break;
                 }
 
@@ -312,11 +376,20 @@ public class TranslationJob
                     excludedPaths.Add(request.SubtitleToTranslate);
                 }
 
-                var newSubtitlePath = await _extractionService.TryExtractEmbeddedSubtitle(
+                // Before fallback extraction, we can't easily predict which stream will be selected,
+                // so we check all potential output paths for the candidate streams
+                var wasFallbackFileAlreadyExisting = await WasAnyCandidatePathExisting(
                     request.MediaId.Value,
                     request.MediaType,
                     request.SourceLanguage,
                     excludedPaths);
+                
+                var newSubtitlePath = await _extractionService.TryExtractEmbeddedSubtitle(
+                    request.MediaId.Value,
+                    request.MediaType,
+                    request.SourceLanguage,
+                    excludedPaths,
+                    null); // Don't use preferred stream for fallback - we want a different stream
 
                 if (string.IsNullOrEmpty(newSubtitlePath))
                 {
@@ -326,7 +399,18 @@ public class TranslationJob
 
                 // Update request to point to new file
                 request.SubtitleToTranslate = newSubtitlePath;
-                temporaryFilePath = newSubtitlePath; // Mark for deletion
+                
+                // Mark for cleanup only if no candidate files existed before extraction
+                // Don't check database state - the extraction service already set IsExtracted=true
+                if (!wasFallbackFileAlreadyExisting)
+                {
+                    temporaryFilePath = newSubtitlePath; // Mark for deletion
+                    _logger.LogDebug("Marked fallback extracted subtitle as temporary (auto-extracted): {Path}", newSubtitlePath);
+                }
+                else
+                {
+                    _logger.LogDebug("Fallback subtitle file existed before extraction (user-provided), preserving: {Path}", newSubtitlePath);
+                }
                 
                 _logger.LogInformation("Fallback successful, switching to: {Path}", newSubtitlePath);
                 AddRequestLog("Information", $"Fallback successful, switching to: {newSubtitlePath}");
@@ -349,10 +433,6 @@ public class TranslationJob
                 settings.TryGetValue(SettingKeys.Translation.RepairMaxRetries, out var retriesVal) ? retriesVal : null, out var retries)
                 ? retries
                 : 1;
-            
-            // Generate a short, readable identifier from the filename for logging
-            // e.g., "S02E23" or "Movie Name (2024)"
-            var fileIdentifier = GenerateFileIdentifier(request.SubtitleToTranslate);
             
             // Parse ASS drawing command filter settings
             var stripAssDrawingCommands = settings.TryGetValue(SettingKeys.Translation.StripAssDrawingCommands, out var stripAssVal) && stripAssVal == "true";
@@ -387,8 +467,14 @@ public class TranslationJob
             }
             
             List<SubtitleItem> translatedSubtitles;
-            if (settings[SettingKeys.Translation.UseBatchTranslation] == "true"
-                && translationService is IBatchTranslationService _)
+            
+            var useBatchSetting = settings.TryGetValue(SettingKeys.Translation.UseBatchTranslation, out var useBatchVal) 
+                                  ? useBatchVal 
+                                  : "false";
+            var useBatchTranslation = string.Equals(useBatchSetting, "true", StringComparison.OrdinalIgnoreCase);
+            var isBatchService = translationService is IBatchTranslationService;
+
+            if (useBatchTranslation && isBatchService)
             {
                 var maxSize = int.TryParse(settings[SettingKeys.Translation.MaxBatchSize],
                     out var batchSize)
@@ -435,6 +521,10 @@ public class TranslationJob
             }
             else
             {
+                _logger.LogInformation(
+                    "[{FileId}] Batch translation skipped. UseBatchTranslation: {UseBatch} (Value: '{Value}'), Service: {ServiceType}, IsBatchService: {IsBatchService}",
+                    fileIdentifier, useBatchTranslation, useBatchSetting ?? "null", translationService.GetType().Name, isBatchService);
+
                 _logger.LogInformation(
                     "[{FileId}] Starting individual translation: {SubtitleCount} subtitles, context (before: {ContextBefore}, after: {ContextAfter})",
                     fileIdentifier, subtitles.Count, contextBefore, contextAfter);
@@ -507,16 +597,65 @@ public class TranslationJob
 
             try 
             {
+                // Calculate exponential backoff for next retry
+                // 1st failure: 1 hour, 2nd: 4 hours, 3rd: 12 hours, 4th+: 24 hours
+                var retryDelay = translationRequest.RetryCount switch
+                {
+                    0 => TimeSpan.FromHours(1),
+                    1 => TimeSpan.FromHours(4),
+                    2 => TimeSpan.FromHours(12),
+                    _ => TimeSpan.FromHours(24)
+                };
+                
+                var now = DateTime.UtcNow;
+                var nextRetryAt = now.Add(retryDelay);
+                
                 // Retry logic for status update - prevents jobs getting stuck in InProgress
                 // when database is temporarily unavailable
                 for (int attempt = 0; attempt < 3; attempt++)
                 {
                     try
                     {
+                        // Update retry tracking fields before status update
+                        translationRequest.RetryCount++;
+                        translationRequest.FailedAt = now;
+                        translationRequest.NextRetryAt = nextRetryAt;
+                        
                         translationRequest = await _translationRequestService.UpdateTranslationRequest(
                             translationRequest,
                             TranslationStatus.Failed,
                             null);
+
+                        // Update translation state to reflect failure
+                        if (translationRequest.MediaId.HasValue)
+                        {
+                            try
+                            {
+                                if (translationRequest.MediaType == MediaType.Movie)
+                                {
+                                    var movie = await _dbContext.Movies.FindAsync(translationRequest.MediaId.Value);
+                                    if (movie != null)
+                                    {
+                                        await _mediaStateService.UpdateStateAsync(movie, MediaType.Movie);
+                                    }
+                                }
+                                else
+                                {
+                                    var episode = await _dbContext.Episodes
+                                        .Include(e => e.Season)
+                                        .ThenInclude(s => s.Show)
+                                        .FirstOrDefaultAsync(e => e.Id == translationRequest.MediaId.Value);
+                                    if (episode != null)
+                                    {
+                                        await _mediaStateService.UpdateStateAsync(episode, MediaType.Episode);
+                                    }
+                                }
+                            }
+                            catch (Exception stateEx)
+                            {
+                                _logger.LogWarning(stateEx, "Failed to update translation state after failure");
+                            }
+                        }
                         break; // Success, exit retry loop
                     }
                     catch (Exception retryEx) when (attempt < 2)
@@ -772,7 +911,297 @@ public class TranslationJob
             // Don't throw - this is a non-critical operation
         }
     }
+
+    /// <summary>
+    /// Predicts the output path for an extracted subtitle based on media info and source language.
+    /// This mimics the logic in SubtitleExtractionService.GetExtractedSubtitlePath.
+    /// </summary>
+    private string? PredictExtractionOutputPath(int mediaId, MediaType mediaType, string sourceLanguage)
+    {
+        try
+        {
+            // We need to get the media file info to predict the path
+            // Since this is called before extraction, we look at the media entity
+            if (mediaType == MediaType.Movie)
+            {
+                var movie = _dbContext.Movies
+                    .AsNoTracking()
+                    .FirstOrDefault(m => m.Id == mediaId);
+                    
+                if (movie == null || string.IsNullOrEmpty(movie.Path) || string.IsNullOrEmpty(movie.FileName))
+                    return null;
+
+                var mediaPath = Path.Combine(movie.Path, movie.FileName);
+                return PredictSubtitlePathInternal(movie.Path, mediaPath, sourceLanguage);
+            }
+            else if (mediaType == MediaType.Episode)
+            {
+                var episode = _dbContext.Episodes
+                    .AsNoTracking()
+                    .FirstOrDefault(e => e.Id == mediaId);
+                    
+                if (episode == null || string.IsNullOrEmpty(episode.Path) || string.IsNullOrEmpty(episode.FileName))
+                    return null;
+
+                var mediaPath = Path.Combine(episode.Path, episode.FileName);
+                return PredictSubtitlePathInternal(episode.Path, mediaPath, sourceLanguage);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error predicting extraction output path for media {MediaId}", mediaId);
+        }
+
+        return null;
+    }
     
+    /// <summary>
+    /// Internal helper to predict subtitle path. Assumes .srt extension as the most common case.
+    /// </summary>
+    private static string? PredictSubtitlePathInternal(string outputDir, string mediaFilePath, string? language)
+    {
+        if (string.IsNullOrEmpty(outputDir) || string.IsNullOrEmpty(mediaFilePath))
+            return null;
 
+        var baseFileName = Path.GetFileNameWithoutExtension(mediaFilePath);
+        var languageTag = !string.IsNullOrEmpty(language) ? language : "stream0";
+        return Path.Combine(outputDir, $"{baseFileName}.{languageTag}.srt");
+    }
+    
+    /// <summary>
+    /// Checks if any potential candidate subtitle path already exists on disk.
+    /// Used for fallback extraction to determine if files should be preserved.
+    /// </summary>
+    private async Task<bool> WasAnyCandidatePathExisting(int mediaId, MediaType mediaType, string sourceLanguage, List<string> excludedPaths)
+    {
+        try
+        {
+            // Get embedded subtitle candidates from the database
+            List<EmbeddedSubtitle>? embeddedSubtitles = null;
+            string? mediaPath = null;
+            string? outputDir = null;
 
+            if (mediaType == MediaType.Episode)
+            {
+                var episode = await _dbContext.Episodes
+                    .AsNoTracking()
+                    .Include(e => e.EmbeddedSubtitles)
+                    .FirstOrDefaultAsync(e => e.Id == mediaId);
+
+                if (episode == null || string.IsNullOrEmpty(episode.Path) || string.IsNullOrEmpty(episode.FileName))
+                    return false;
+
+                embeddedSubtitles = episode.EmbeddedSubtitles;
+                mediaPath = Path.Combine(episode.Path, episode.FileName);
+                outputDir = episode.Path;
+            }
+            else if (mediaType == MediaType.Movie)
+            {
+                var movie = await _dbContext.Movies
+                    .AsNoTracking()
+                    .Include(m => m.EmbeddedSubtitles)
+                    .FirstOrDefaultAsync(m => m.Id == mediaId);
+
+                if (movie == null || string.IsNullOrEmpty(movie.Path) || string.IsNullOrEmpty(movie.FileName))
+                    return false;
+
+                embeddedSubtitles = movie.EmbeddedSubtitles;
+                mediaPath = Path.Combine(movie.Path, movie.FileName);
+                outputDir = movie.Path;
+            }
+
+            if (embeddedSubtitles == null || embeddedSubtitles.Count == 0 || string.IsNullOrEmpty(mediaPath) || string.IsNullOrEmpty(outputDir))
+                return false;
+
+            // Check each text-based subtitle candidate
+            foreach (var subtitle in embeddedSubtitles.Where(s => s.IsTextBased))
+            {
+                var predictedPath = PredictSubtitlePathInternal(outputDir, mediaPath, subtitle.Language);
+                if (!string.IsNullOrEmpty(predictedPath) &&
+                    !excludedPaths.Contains(predictedPath) &&
+                    File.Exists(predictedPath))
+                {
+                    return true;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error checking candidate paths for media {MediaId}", mediaId);
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Checks if a subtitle file was already extracted before this translation job started.
+    /// This is used to determine if we should preserve the file (user manually extracted it)
+    /// or clean it up (auto-extracted during translation).
+    /// </summary>
+    private async Task<bool> WasSubtitleAlreadyExtracted(int? mediaId, MediaType mediaType, string subtitlePath)
+    {
+        if (!mediaId.HasValue || string.IsNullOrEmpty(subtitlePath))
+            return false;
+
+        try
+        {
+            // Check if there's an embedded subtitle record in the database
+            // that matches this path and was marked as extracted
+            if (mediaType == MediaType.Movie)
+            {
+                var movie = await _dbContext.Movies
+                    .Include(m => m.EmbeddedSubtitles)
+                    .FirstOrDefaultAsync(m => m.Id == mediaId.Value);
+                    
+                if (movie?.EmbeddedSubtitles != null)
+                {
+                    return movie.EmbeddedSubtitles.Any(es =>
+                        es.IsExtracted &&
+                        !string.IsNullOrEmpty(es.ExtractedPath) &&
+                        es.ExtractedPath.Equals(subtitlePath, StringComparison.OrdinalIgnoreCase));
+                }
+            }
+            else if (mediaType == MediaType.Episode)
+            {
+                var episode = await _dbContext.Episodes
+                    .Include(e => e.EmbeddedSubtitles)
+                    .FirstOrDefaultAsync(e => e.Id == mediaId.Value);
+                    
+                if (episode?.EmbeddedSubtitles != null)
+                {
+                    return episode.EmbeddedSubtitles.Any(es =>
+                        es.IsExtracted &&
+                        !string.IsNullOrEmpty(es.ExtractedPath) &&
+                        es.ExtractedPath.Equals(subtitlePath, StringComparison.OrdinalIgnoreCase));
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error checking if subtitle was already extracted for {Path}", subtitlePath);
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Gets the embedded subtitle metadata that matches the currently selected subtitle file.
+    /// Used for tracking subtitle type and stream information for audit/debugging.
+    /// </summary>
+    private async Task<EmbeddedSubtitle?> GetEmbeddedSubtitleMetadata(TranslationRequest request)
+    {
+        if (!request.MediaId.HasValue || string.IsNullOrEmpty(request.SubtitleToTranslate))
+            return null;
+
+        try
+        {
+            // Get embedded subtitles for this media
+            List<EmbeddedSubtitle>? embeddedSubtitles = null;
+            if (request.MediaType == MediaType.Episode)
+            {
+                var episode = await _dbContext.Episodes
+                    .AsNoTracking()
+                    .Include(e => e.EmbeddedSubtitles)
+                    .FirstOrDefaultAsync(e => e.Id == request.MediaId.Value);
+                embeddedSubtitles = episode?.EmbeddedSubtitles?.ToList();
+            }
+            else if (request.MediaType == MediaType.Movie)
+            {
+                var movie = await _dbContext.Movies
+                    .AsNoTracking()
+                    .Include(m => m.EmbeddedSubtitles)
+                    .FirstOrDefaultAsync(m => m.Id == request.MediaId.Value);
+                embeddedSubtitles = movie?.EmbeddedSubtitles?.ToList();
+            }
+
+            if (embeddedSubtitles == null || embeddedSubtitles.Count == 0)
+                return null;
+
+            // Find the subtitle that matches the extracted path
+            // Match by filename pattern: {mediaFile}.{language}.srt or contains the language code
+            var subtitlePath = request.SubtitleToTranslate;
+            var subtitleFileName = Path.GetFileNameWithoutExtension(subtitlePath);
+
+            // First try exact match on ExtractedPath
+            var matched = embeddedSubtitles.FirstOrDefault(es =>
+                !string.IsNullOrEmpty(es.ExtractedPath) &&
+                es.ExtractedPath.Equals(subtitlePath, StringComparison.OrdinalIgnoreCase));
+
+            if (matched != null)
+                return matched;
+
+            // Try to match by language code in the filename
+            foreach (var es in embeddedSubtitles.Where(es => !string.IsNullOrEmpty(es.Language)))
+            {
+                if (subtitleFileName.Contains($".{es.Language}", StringComparison.OrdinalIgnoreCase) ||
+                    subtitleFileName.Contains($"_{es.Language}", StringComparison.OrdinalIgnoreCase))
+                {
+                    return es;
+                }
+            }
+
+            // Return the first text-based subtitle if we can't determine exactly which one
+            return embeddedSubtitles.FirstOrDefault(es => es.IsTextBased);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error getting embedded subtitle metadata for request {RequestId}", request.Id);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Determines the subtitle type based on embedded subtitle metadata.
+    /// </summary>
+    private static string DetermineSubtitleType(EmbeddedSubtitle subtitle)
+    {
+        // Check title for common indicators
+        if (!string.IsNullOrEmpty(subtitle.Title))
+        {
+            var title = subtitle.Title.ToLowerInvariant();
+            if (title.Contains("sdh") || title.Contains("hearing") || title.Contains("deaf"))
+                return "SDH";
+            if (title.Contains("forced") || title.Contains("force") || title.Contains("foreign"))
+                return "Forced";
+            if (title.Contains("full") || title.Contains("dialogue") || title.Contains("complete"))
+                return "Full";
+            if (title.Contains("sign") || title.Contains("song"))
+                return "Signs/Songs";
+        }
+
+        // Check if forced flag is set
+        if (subtitle.IsForced)
+            return "Forced";
+
+        // Default to Unknown - caller can check entry count to infer
+        return "Unknown";
+    }
+
+    /// <summary>
+    /// Determines the subtitle type from external subtitle filename.
+    /// </summary>
+    private static string DetermineSubtitleTypeFromFilename(string? subtitlePath)
+    {
+        if (string.IsNullOrEmpty(subtitlePath))
+            return "Unknown";
+
+        var fileName = Path.GetFileNameWithoutExtension(subtitlePath).ToLowerInvariant();
+
+        if (fileName.Contains(".sdh") || fileName.Contains("_sdh") ||
+            fileName.Contains(".hi") || fileName.Contains("_hi") ||
+            fileName.Contains("hearing"))
+            return "SDH";
+
+        if (fileName.Contains(".forced") || fileName.Contains("_forced") ||
+            fileName.Contains(".force") || fileName.Contains("_force") ||
+            fileName.Contains(".foreign") || fileName.Contains("_foreign"))
+            return "Forced";
+
+        if (fileName.Contains(".sign") || fileName.Contains("_sign") ||
+            fileName.Contains("song"))
+            return "Signs/Songs";
+
+        // Default to Full for external files
+        return "Full";
+    }
 }

@@ -35,4 +35,10 @@ public class Movie : BaseEntity, IMedia
     /// If this doesn't match current version, state is stale.
     /// </summary>
     public int StateSettingsVersion { get; set; }
+    
+    /// <summary>
+    /// When the media directory was last checked for new subtitle files.
+    /// Used for mtime-based change detection during sync.
+    /// </summary>
+    public DateTime? LastSubtitleCheckAt { get; set; }
 }

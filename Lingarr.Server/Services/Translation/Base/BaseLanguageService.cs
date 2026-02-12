@@ -1,7 +1,9 @@
-﻿using System.Globalization;
+using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Models;
+using Lingarr.Server.Models.Batch;
 
 namespace Lingarr.Server.Services.Translation.Base;
 
@@ -220,5 +222,54 @@ public abstract class BaseLanguageService : BaseTranslationService
         {
             return twoLetterIsoLanguageName;
         }
+    }
+
+    /// <summary>
+    /// Builds the user content for batch translation, optionally including context wrapper
+    /// </summary>
+    protected virtual string BuildBatchUserContent(
+        List<BatchSubtitleItem> subtitleBatch,
+        List<string>? preContext,
+        List<string>? postContext)
+    {
+        var hasPreContext = preContext is { Count: > 0 };
+        var hasPostContext = postContext is { Count: > 0 };
+
+        if (!hasPreContext && !hasPostContext)
+        {
+            // No context wrapper, just return the batch as JSON
+            return JsonSerializer.Serialize(subtitleBatch);
+        }
+
+        // Build content with context wrapper
+        var sb = new StringBuilder();
+
+        if (hasPreContext)
+        {
+            sb.AppendLine("[CONTEXT_BEFORE - Do not translate, for reference only]");
+            foreach (var line in preContext!)
+            {
+                sb.AppendLine(line);
+            }
+            sb.AppendLine("[/CONTEXT_BEFORE]");
+            sb.AppendLine();
+        }
+
+        sb.AppendLine("[SUBTITLES_TO_TRANSLATE]");
+        sb.AppendLine(JsonSerializer.Serialize(subtitleBatch));
+        sb.AppendLine("[/SUBTITLES_TO_TRANSLATE]");
+
+        if (hasPostContext)
+        {
+            sb.AppendLine();
+            sb.AppendLine("[CONTEXT_AFTER - Do not translate, for reference only]");
+            foreach (var line in postContext!)
+            {
+                sb.AppendLine(line);
+            }
+            sb.AppendLine("[/CONTEXT_AFTER]");
+        }
+
+        return sb.ToString();
     }
 }

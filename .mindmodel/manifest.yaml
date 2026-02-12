@@ -1,0 +1,58 @@
+name: lingarr-on-steroids
+version: 2
+description: Lingarr - Subtitle translation automation platform with AI/ML translation services
+repository: https://github.com/lingarr/lingarr-on-steroids
+categories:
+  # Stack
+  - path: stack.yaml
+    description: Technology stack and framework versions
+    group: stack
+  # Conventions
+  - path: conventions.yaml
+    description: Naming conventions and code style rules
+    group: conventions
+  # Patterns
+  - path: patterns/architecture.yaml
+    description: Architectural patterns and layering
+    group: patterns
+  - path: patterns/design.yaml
+    description: Design patterns used throughout the codebase
+    group: patterns
+  - path: patterns/concurrency.yaml
+    description: Concurrency and async patterns
+    group: patterns
+  - path: patterns/data-access.yaml
+    description: Data access and ORM patterns
+    group: patterns
+  - path: patterns/api.yaml
+    description: API design and communication patterns
+    group: patterns
+  - path: patterns/state-management.yaml
+    description: State management patterns (Pinia, SignalR)
+    group: patterns
+  - path: patterns/error-handling.yaml
+    description: Error handling and retry patterns
+    group: patterns
+  # Domain
+  - path: domain.yaml
+    description: Business domain glossary and terminology
+    group: domain
+  # Examples
+  - path: examples/service-pattern.cs
+    description: C# service class pattern example
+    group: examples
+  - path: examples/controller-pattern.cs
+    description: ASP.NET Core controller pattern example
+    group: examples
+  - path: examples/job-pattern.cs
+    description: Hangfire background job pattern example
+    group: examples
+  - path: examples/store-pattern.ts
+    description: Pinia store pattern example
+    group: examples
+  - path: examples/component-pattern.vue
+    description: Vue component pattern example
+    group: examples
+  - path: examples/error-handling.cs
+    description: Error handling pattern example
+    group: examples

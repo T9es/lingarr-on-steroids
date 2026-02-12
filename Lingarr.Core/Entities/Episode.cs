@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 using Lingarr.Core.Enum;
 using Lingarr.Core.Interfaces;
 
@@ -23,6 +24,7 @@ public class Episode : BaseEntity, IMedia
     /// <summary>
     /// Current translation state for efficient querying.
     /// </summary>
+    [JsonConverter(typeof(JsonNumberEnumConverter<TranslationState>))]
     public TranslationState TranslationState { get; set; } = TranslationState.Unknown;
     
     /// <summary>
@@ -34,4 +36,10 @@ public class Episode : BaseEntity, IMedia
     /// The language settings version when TranslationState was computed.
     /// </summary>
     public int StateSettingsVersion { get; set; }
+    
+    /// <summary>
+    /// When the media directory was last checked for new subtitle files.
+    /// Used for mtime-based change detection during sync.
+    /// </summary>
+    public DateTime? LastSubtitleCheckAt { get; set; }
 }

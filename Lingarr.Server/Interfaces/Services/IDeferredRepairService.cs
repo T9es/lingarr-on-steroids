@@ -30,8 +30,10 @@ public interface IDeferredRepairService
     /// </summary>
     /// <param name="repairBatch">The contextual repair batch to translate</param>
     /// <param name="batchService">The batch translation service to use</param>
+    /// <param name="fallbackService">The fallback service for graduated chunk splitting</param>
     /// <param name="sourceLanguage">Source language code</param>
     /// <param name="targetLanguage">Target language code</param>
+    /// <param name="batchSize">Size of chunks to use for repair (collected from settings)</param>
     /// <param name="maxRetries">Maximum number of retry attempts</param>
     /// <param name="fileIdentifier">Short identifier for logging</param>
     /// <param name="cancellationToken">Cancellation token</param>
@@ -39,8 +41,10 @@ public interface IDeferredRepairService
     Task<Dictionary<int, string>> ExecuteRepairAsync(
         ContextualRepairBatch repairBatch,
         IBatchTranslationService batchService,
+        IBatchFallbackService fallbackService,
         string sourceLanguage,
         string targetLanguage,
+        int batchSize,
         int maxRetries,
         string fileIdentifier,
         CancellationToken cancellationToken);

@@ -1,4 +1,4 @@
-﻿{
+{
   "navigation": {
     "dashboard": "Dashboard",
     "movies": "Movies",
@@ -19,6 +19,8 @@
     "extract": "Extract",
     "justExtract": "Just Extract",
     "extracting": "Extracting...",
+    "extractAgain": "Extract again?",
+    "reextractConfirm": "Re-extract this subtitle? The existing file will be overwritten.",
     "textBased": "Text-based",
     "imageBased": "Image-based subtitle (PGS/VobSub). Cannot be extracted without OCR.",
     "extracted": "Extracted",
@@ -35,6 +37,7 @@
     "searchMedia": "Search Media",
     "searchPlaceholder": "Search by movie, show, or episode...",
     "searchHelp": "Start typing a movie, show, or episode name and pick a subtitle below to fill in the path automatically.",
+    "searchDescription": "Search for media in your library to automatically find subtitle files.",
     "searchResultsTitle": "Search Results",
     "noSearchResults": "No media with subtitles matched your search.",
     "selectedFromSearch": "Using subtitle from",
@@ -50,7 +53,11 @@
     "success": "Translation Successful",
     "failed": "Translation Failed",
     "translated": "Translated",
-    "duration": "Duration"
+    "duration": "Duration",
+    "preview": "Preview",
+    "original": "Original",
+    "downloadOriginal": "Original",
+    "downloadTranslated": "Translated"
   },
   "statistics": {
     "notAvailable": "No statistics available",
@@ -162,6 +169,7 @@
     "statusInterrupted": "Interrupted",
     "updateAvailable": "Update {version} is available",
     "currentVersion": "Version: {version}",
+    "devBuild": "Dev Build",
     "basedOnLingarr": "Based on Lingarr",
     "enabled": "Enabled",
     "disabled": "Disabled",
@@ -413,12 +421,16 @@
       "enableAutoScroll": "Enable Auto-scroll",
       "clear": "Clear",
       "time": "Time",
-      "level": "Level",
-      "source": "Source",
-      "message": "Message",
-      "waitingForLogs": "Waiting for logs...",
-      "totalEntries": "Total entries",
-      "autoScroll": "Auto-scroll",
+    "level": "Level",
+    "source": "Source",
+    "message": "Message",
+    "waitingForLogs": "Waiting for logs...",
+    "totalEntries": "Total entries",
+    "maxLogs": "Max Logs",
+    "searchPlaceholder": "Search logs...",
+    "pause": "Pause",
+    "resume": "Resume",
+    "autoScroll": "Auto-scroll",
       "enabled": "Enabled",
       "disabled": "Disabled"
     },
@@ -448,12 +460,16 @@
     "unknown": "Unknown",
     "notApplicable": "N/A",
     "noSuitableSubtitles": "No Source",
+    "failed": "Failed",
+    "awaitingSource": "Awaiting Source",
     "tooltipComplete": "All translations complete",
     "tooltipInProgress": "Translation in progress",
     "tooltipPending": "Awaiting translation",
     "tooltipStale": "Needs re-analysis",
     "tooltipUnknown": "Not yet analyzed",
     "tooltipNotApplicable": "Not applicable / No source",
-    "tooltipNoSuitableSubtitles": "No suitable subtitle tracks found (all are sparse/Signs & Songs)"
+    "tooltipNoSuitableSubtitles": "No suitable subtitle tracks found (all are sparse/Signs & Songs)",
+    "tooltipFailed": "Translation failed. Needs manual retry.",
+    "tooltipAwaitingSource": "Waiting for source subtitle to appear"
   }
 }

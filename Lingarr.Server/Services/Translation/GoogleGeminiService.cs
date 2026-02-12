@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -510,52 +510,5 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
             }
         }
         return json;
-    }
-
-    /// <summary>
-    /// Builds the user content for batch translation, optionally including context wrapper
-    /// </summary>
-    private string BuildBatchUserContent(
-        List<BatchSubtitleItem> subtitleBatch,
-        List<string>? preContext,
-        List<string>? postContext)
-    {
-        var hasPreContext = preContext is { Count: > 0 };
-        var hasPostContext = postContext is { Count: > 0 };
-
-        if (!hasPreContext && !hasPostContext)
-        {
-            return JsonSerializer.Serialize(subtitleBatch);
-        }
-
-        var sb = new StringBuilder();
-
-        if (hasPreContext)
-        {
-            sb.AppendLine("[CONTEXT_BEFORE - Do not translate, for reference only]");
-            foreach (var line in preContext!)
-            {
-                sb.AppendLine(line);
-            }
-            sb.AppendLine("[/CONTEXT_BEFORE]");
-            sb.AppendLine();
-        }
-
-        sb.AppendLine("[SUBTITLES_TO_TRANSLATE]");
-        sb.AppendLine(JsonSerializer.Serialize(subtitleBatch));
-        sb.AppendLine("[/SUBTITLES_TO_TRANSLATE]");
-
-        if (hasPostContext)
-        {
-            sb.AppendLine();
-            sb.AppendLine("[CONTEXT_AFTER - Do not translate, for reference only]");
-            foreach (var line in postContext!)
-            {
-                sb.AppendLine(line);
-            }
-            sb.AppendLine("[/CONTEXT_AFTER]");
-        }
-
-        return sb.ToString();
     }
 }

@@ -1,4 +1,4 @@
-﻿{
+{
   "navigation": {
     "dashboard": "Dashboard",
     "movies": "Films",
@@ -19,6 +19,8 @@
     "extract": "Uitpakken",
     "justExtract": "Alleen uitpakken",
     "extracting": "Bezig met uitpakken...",
+    "extractAgain": "Opnieuw uitpakken?",
+    "reextractConfirm": "Deze ondertitel opnieuw uitpakken? Het bestaande bestand wordt overschreven.",
     "textBased": "Tekstgebaseerd",
     "imageBased": "Afbeeldingsondertitel (PGS/VobSub). Kan niet worden uitgepakt zonder OCR.",
     "extracted": "Uitgepakt",
@@ -35,6 +37,7 @@
     "searchMedia": "Zoek media",
     "searchPlaceholder": "Zoek op film, serie of aflevering...",
     "searchHelp": "Typ een film-, serie- of aflevernaam en kies hieronder een ondertitel om het pad automatisch in te vullen.",
+    "searchDescription": "Zoek naar media in je bibliotheek om automatisch ondertitelbestanden te vinden.",
     "searchResultsTitle": "Zoekresultaten",
     "noSearchResults": "Geen media met ondertitels gevonden voor deze zoekopdracht.",
     "selectedFromSearch": "Geselecteerde ondertitel van",
@@ -50,7 +53,11 @@
     "success": "Vertaling geslaagd",
     "failed": "Vertaling mislukt",
     "translated": "Vertaald",
-    "duration": "Duur"
+    "duration": "Duur",
+    "preview": "Voorbeeld",
+    "original": "Origineel",
+    "downloadOriginal": "Origineel",
+    "downloadTranslated": "Vertaald"
   },
   "movies": {
     "title": "Titel",
@@ -162,6 +169,7 @@
     "statusInterrupted": "Onderbroken",
     "updateAvailable": "Update {version} is beschikbaar",
     "currentVersion": "Versie: {version}",
+    "devBuild": "Dev Build",
     "basedOnLingarr": "Gebaseerd op Lingarr",
     "enabled": "Actief",
     "disabled": "Inactief",
@@ -415,12 +423,16 @@
       "enableAutoScroll": "Auto-scroll inschakelen",
       "clear": "Wissen",
       "time": "Tijd",
-      "level": "Niveau",
-      "source": "Bron",
-      "message": "Bericht",
-      "waitingForLogs": "Wachten op log...",
-      "totalEntries": "Totaal aantal vermeldingen",
-      "autoScroll": "Auto-scroll",
+    "level": "Niveau",
+    "source": "Bron",
+    "message": "Bericht",
+    "waitingForLogs": "Wachten op log...",
+    "totalEntries": "Totaal aantal vermeldingen",
+    "maxLogs": "Max Logs",
+    "searchPlaceholder": "Zoek logs...",
+    "pause": "Pauzeren",
+    "resume": "Hervatten",
+    "autoScroll": "Auto-scroll",
       "enabled": "Ingeschakeld",
       "disabled": "Uitgeschakeld"
     },
@@ -450,12 +462,16 @@
     "unknown": "Onbekend",
     "notApplicable": "N.v.t.",
     "noSuitableSubtitles": "Geen bron",
+    "failed": "Mislukt",
+    "awaitingSource": "Wachtend op bron",
     "tooltipComplete": "Alle vertalingen voltooid",
     "tooltipInProgress": "Vertaling bezig",
     "tooltipPending": "Wacht op vertaling",
     "tooltipStale": "Heranalyse nodig",
     "tooltipUnknown": "Nog niet geanalyseerd",
     "tooltipNotApplicable": "Niet van toepassing / Geen bron",
-    "tooltipNoSuitableSubtitles": "Geen geschikte ondertitelsporen gevonden (allemaal dun/Signs & Songs)"
+    "tooltipNoSuitableSubtitles": "Geen geschikte ondertitelsporen gevonden (allemaal dun/Signs & Songs)",
+    "tooltipFailed": "Vertaling mislukt. Handmatige herpoging nodig.",
+    "tooltipAwaitingSource": "Wacht tot bronondertitel beschikbaar is"
   }
 }

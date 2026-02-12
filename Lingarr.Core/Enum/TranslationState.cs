@@ -46,5 +46,18 @@ public enum TranslationState
     /// No suitable subtitle tracks available.
     /// All embedded subtitle tracks have fewer than the minimum required entries (sparse/Signs/Songs only).
     /// </summary>
-    NoSuitableSubtitles = 6
+    NoSuitableSubtitles = 6,
+
+    /// <summary>
+    /// Translation failed.
+    /// A previous translation request for this media failed and needs manual intervention.
+    /// </summary>
+    Failed = 7,
+
+    /// <summary>
+    /// Waiting for source subtitle to become available.
+    /// Configured for translation but no source subtitle exists yet.
+    /// Will be re-checked during sync when directory mtime changes.
+    /// </summary>
+    AwaitingSource = 8
 }

@@ -4,6 +4,7 @@ using Lingarr.Core.Enum;
 using Lingarr.Server.Filters;
 using Lingarr.Server.Hubs;
 using Lingarr.Server.Interfaces.Services;
+using Lingarr.Server.Interfaces.Services.Subtitle;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 
@@ -17,17 +18,20 @@ public class BulkIntegrityCheckJob
 {
     private readonly LingarrDbContext _dbContext;
     private readonly IMediaSubtitleProcessor _mediaSubtitleProcessor;
+    private readonly ISubtitleIntegrityService _integrityService;
     private readonly IHubContext<JobProgressHub> _hubContext;
     private readonly ILogger<BulkIntegrityCheckJob> _logger;
 
     public BulkIntegrityCheckJob(
         LingarrDbContext dbContext,
         IMediaSubtitleProcessor mediaSubtitleProcessor,
+        ISubtitleIntegrityService integrityService,
         IHubContext<JobProgressHub> hubContext,
         ILogger<BulkIntegrityCheckJob> logger)
     {
         _dbContext = dbContext;
         _mediaSubtitleProcessor = mediaSubtitleProcessor;
+        _integrityService = integrityService;
         _hubContext = hubContext;
         _logger = logger;
     }
@@ -155,13 +159,32 @@ public class BulkIntegrityCheckJob
                 }
             }
 
+            // After line count integrity check, validate subtitle types
+            _logger.LogInformation("Starting subtitle type validation for completed translations");
+            
+            try
+            {
+                var subtitleTypeSummary = await _integrityService.ValidateAllSubtitleTypesAsync(default);
+                
+                stats.IncompleteSubtitleCount = subtitleTypeSummary.IncompleteCount;
+                stats.IncompleteSubtitles = subtitleTypeSummary.FlaggedItems;
+                
+                _logger.LogInformation(
+                    "Subtitle type validation complete: {Total} scanned, {Incomplete} incomplete subtitles found",
+                    subtitleTypeSummary.TotalScanned, subtitleTypeSummary.IncompleteCount);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Subtitle type validation failed during bulk integrity check");
+            }
+
             stats.IsComplete = true;
             stats.IsRunning = false;
             await SendProgress(stats);
 
             _logger.LogInformation(
-                "Bulk integrity check completed: {Processed}/{Total}, Valid: {Valid}, Corrupt: {Corrupt}, Queued: {Queued}",
-                stats.ProcessedCount, stats.Total, stats.ValidCount, stats.CorruptCount, stats.QueuedCount);
+                "Bulk integrity check completed: {Processed}/{Total}, Valid: {Valid}, Corrupt: {Corrupt}, Queued: {Queued}, IncompleteSubtitles: {Incomplete}",
+                stats.ProcessedCount, stats.Total, stats.ValidCount, stats.CorruptCount, stats.QueuedCount, stats.IncompleteSubtitleCount);
         }
         catch (Exception ex)
         {
@@ -206,6 +229,17 @@ public class BulkIntegrityStats
     public int CorruptCount { get; set; }
     public int QueuedCount { get; set; }
     public int ErrorCount { get; set; }
+    
+    /// <summary>
+    /// Number of translations with incomplete source subtitles (Forced/Signs-only).
+    /// </summary>
+    public int IncompleteSubtitleCount { get; set; }
+    
+    /// <summary>
+    /// List of flagged incomplete subtitle issues.
+    /// </summary>
+    public List<Models.SubtitleTypeCheckResult> IncompleteSubtitles { get; set; } = new();
+    
     public bool IsComplete { get; set; }
     public bool IsRunning { get; set; }
     public string? Error { get; set; }

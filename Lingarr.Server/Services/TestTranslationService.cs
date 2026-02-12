@@ -207,8 +207,7 @@ public class TestTranslationService : ITestTranslationService
                 Log("INFORMATION", $"Translation completed! Translated {translatedCount}/{subtitles.Count} subtitles in {stopwatch.Elapsed.TotalSeconds:F1}s");
                 Log("INFORMATION", "NOTE: Translated subtitle was NOT saved (test mode)");
                 
-                // Create preview of first few translations
-                var preview = translated.Take(5).Select(s => new TranslatedSubtitlePreview
+                var preview = translated.Select(s => new TranslatedSubtitlePreview
                 {
                     Position = s.Position,
                     Original = string.Join(" ", s.Lines),

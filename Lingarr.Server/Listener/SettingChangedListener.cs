@@ -1,4 +1,4 @@
-﻿using Hangfire;
+using Hangfire;
 using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Server.Hubs;
@@ -18,7 +18,7 @@ public class SettingChangedListener
     private readonly ILogger<SettingChangedListener> _logger;
     private static readonly HashSet<string> BatchServiceTypes = new(StringComparer.OrdinalIgnoreCase)
     {
-        "openai", "anthropic", "localai", "gemini"
+        "openai", "anthropic", "localai", "gemini", "deepseek", "chutes"
     };
 
     public SettingChangedListener(IServiceProvider serviceProvider,
@@ -224,9 +224,19 @@ public class SettingChangedListener
 
                 case "ServiceType":
                     var serviceType = await settingService.GetSetting(SettingKeys.Translation.ServiceType);
+                    
+                    // If the selected service type is in the batch-capable list, we reset the batch setting to false.
+                    // This seems to be legacy logic to ensure a fresh state when switching providers.
                     if (serviceType != null && BatchServiceTypes.Contains(serviceType))
                     {
                         await settingService.SetSetting(SettingKeys.Translation.UseBatchTranslation, "false");
+                        
+                        // Notify frontend of the change
+                        await _hubContext.Clients.Group("SettingUpdates").SendAsync("SettingUpdate", new
+                        {
+                            Key = SettingKeys.Translation.UseBatchTranslation,
+                            Value = "false"
+                        });
                     }
                     break;
 
@@ -235,6 +245,11 @@ public class SettingChangedListener
                     if (useBatchTranslation is "true")
                     {
                         await settingService.SetSetting(SettingKeys.Translation.AiContextPromptEnabled, "false");
+                        await _hubContext.Clients.Group("SettingUpdates").SendAsync("SettingUpdate", new
+                        {
+                            Key = SettingKeys.Translation.AiContextPromptEnabled,
+                            Value = "false"
+                        });
                     }
                     break;
                     

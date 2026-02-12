@@ -152,11 +152,10 @@ public class SubtitleLanguageHelperTests
 
         // Assert
         // Japanese should win because:
-        // - English forced score: 50 (match) - 10 (forced) = 40 (exactly at threshold, gets 160 priority bonus) = 200
+        // - English forced score: 50 (match) - 50 (forced penalty) = 0 (below QualityThreshold of 30, no priority bonus)
         // - Japanese score: 50 (match) + 5 (not forced) = 55 + 80 (priority bonus) = 135
-        // Actually English wins! At exactly threshold = 40, it gets the bonus
-        Assert.Equal("en", result.MatchedLanguage);
-        Assert.Equal(0, result.Subtitle?.StreamIndex);
+        Assert.Equal("ja", result.MatchedLanguage);
+        Assert.Equal(1, result.Subtitle?.StreamIndex);
     }
     
     [Fact]
@@ -231,10 +230,10 @@ public class SubtitleLanguageHelperTests
     {
         // Arrange: English SDH (Forced & SDH) vs Japanese Clean
         // English is P1, Japanese P2.
-        // English score: 50 (match) - 10 (SDH) - 10 (Forced) = 30
-        // Because 30 >= QualityThreshold(30), it gets PriorityBonus(80 * 2 = 160). Total 190.
-        // Japanese score: 50 (match) + 5 (clean) = 55. PriorityBonus(80 * 1 = 80). Total 135.
-        // English should win.
+        // With new -50 forced penalty:
+        // English score: 50 (match) - 10 (SDH) - 50 (Forced) = -10 (below QualityThreshold, no priority bonus)
+        // Japanese score: 50 (match) + 5 (clean) = 55 + 80 (priority bonus) = 135.
+        // Japanese should win because English forced score is below threshold.
         
         var candidates = new List<EmbeddedSubtitle>
         {
@@ -244,7 +243,7 @@ public class SubtitleLanguageHelperTests
 
         var result = SubtitleLanguageHelper.FindBestMatch(candidates, new List<string> { "en", "ja" });
         
-        Assert.Equal("en", result.MatchedLanguage);
-        Assert.Equal(0, result.Subtitle?.StreamIndex);
+        Assert.Equal("ja", result.MatchedLanguage);
+        Assert.Equal(1, result.Subtitle?.StreamIndex);
     }
 }

@@ -1,6 +1,8 @@
+using Lingarr.Core.Enum;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Models;
+using Lingarr.Server.Models.Api;
 using Lingarr.Server.Models.FileSystem;
 using Microsoft.AspNetCore.Mvc;
 
@@ -17,13 +19,16 @@ public class SubtitleController : ControllerBase
 {
     private readonly ISubtitleService _subtitleService;
     private readonly ISubtitleIntegrityService _integrityService;
+    private readonly ISubtitleExtractionService _extractionService;
 
     public SubtitleController(
         ISubtitleService subtitleService,
-        ISubtitleIntegrityService integrityService)
+        ISubtitleIntegrityService integrityService,
+        ISubtitleExtractionService extractionService)
     {
         _subtitleService = subtitleService;
         _integrityService = integrityService;
+        _extractionService = extractionService;
     }
     
     /// <summary>
@@ -50,5 +55,60 @@ public class SubtitleController : ControllerBase
     {
         var result = await _integrityService.VerifyAssIntegrityAsync(ct);
         return Ok(result);
+    }
+
+    /// <summary>
+    /// Scans all completed translations for potentially incomplete source subtitles.
+    /// Detects Forced or Signs-only subtitles that should be re-translated.
+    /// </summary>
+    /// <param name="ct">Cancellation token</param>
+    /// <returns>Returns summary of incomplete subtitle findings</returns>
+    [HttpPost("validate-subtitle-types")]
+    public async Task<ActionResult<SubtitleTypeCheckSummary>> ValidateSubtitleTypes(CancellationToken ct)
+    {
+        var result = await _integrityService.ValidateAllSubtitleTypesAsync(ct);
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Validates a specific translation's subtitle type.
+    /// </summary>
+    /// <param name="translationId">The translation request ID</param>
+    /// <param name="ct">Cancellation token</param>
+    /// <returns>Returns the validation result for the specified translation</returns>
+    [HttpGet("validate-subtitle-type/{translationId}")]
+    public async Task<ActionResult<SubtitleTypeCheckResult>> ValidateSubtitleType(int translationId, CancellationToken ct)
+    {
+        var result = await _integrityService.ValidateSubtitleTypeAsync(translationId, ct);
+        
+        if (result == null)
+        {
+            return NotFound($"Translation {translationId} not found or could not be validated");
+        }
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Lists all available embedded subtitles for a movie or episode with metadata and entry counts.
+    /// </summary>
+    /// <param name="mediaType">The type of media ('movie' or 'episode')</param>
+    /// <param name="mediaId">The media ID</param>
+    /// <returns>List of available subtitles with metadata</returns>
+    [HttpGet("available/{mediaType}/{mediaId:int}")]
+    public async Task<ActionResult<List<AvailableSubtitleResponse>>> GetAvailableSubtitles(string mediaType, int mediaId)
+    {
+        if (!mediaType.Equals("movie", StringComparison.OrdinalIgnoreCase) && 
+            !mediaType.Equals("episode", StringComparison.OrdinalIgnoreCase))
+        {
+            return BadRequest(new { Error = "Media type must be 'movie' or 'episode'" });
+        }
+
+        var type = mediaType.Equals("movie", StringComparison.OrdinalIgnoreCase) 
+            ? MediaType.Movie 
+            : MediaType.Episode;
+
+        var subtitles = await _extractionService.ListAvailableSubtitlesAsync(mediaId, type);
+        return Ok(subtitles);
     }
 }

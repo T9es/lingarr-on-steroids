@@ -1,0 +1,105 @@
+# Architectural Patterns
+
+## Layered Architecture
+
+The project follows a clean layered architecture with clear separation of concerns:
+
+### Layers
+
+1. **Core Layer** (`Lingarr.Core`)
+   - Domain entities (Movie, Show, Episode, TranslationRequest)
+   - Enums and value objects
+   - Data context (DbContext)
+   - No dependencies on other layers
+
+2. **Server Layer** (`Lingarr.Server`)
+   - Controllers (API endpoints)
+   - Services (business logic)
+   - Jobs (background processing)
+   - Hubs (real-time communication)
+   - Depends on Core layer
+
+3. **Client Layer** (`Lingarr.Client`)
+   - Vue.js frontend
+   - Components, pages, stores
+   - Service clients
+   - Depends on Server API
+
+4. **Migrations Layer** (`Lingarr.Migrations.*`)
+   - Database migrations for PostgreSQL and SQLite
+   - Separate from main application
+
+## Repository Pattern
+
+Entity Framework Core DbContext acts as the unit of work and repository:
+
+```csharp
+public class LingarrDbContext : DbContext
+{
+    public DbSet<Movie> Movies { get; set; }
+    public DbSet<Show> Shows { get; set; }
+    // ... other entities
+    
+    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        UpdateTimestamps();
+        return base.SaveChangesAsync(cancellationToken);
+    }
+}
+```
+
+## Dependency Injection
+
+Constructor injection is used throughout:
+
+```csharp
+public class TranslationJob
+{
+    private readonly ILogger<TranslationJob> _logger;
+    private readonly ISettingService _settings;
+    private readonly LingarrDbContext _dbContext;
+    
+    public TranslationJob(
+        ILogger<TranslationJob> logger,
+        ISettingService settings,
+        LingarrDbContext dbContext)
+    {
+        _logger = logger;
+        _settings = settings;
+        _dbContext = dbContext;
+    }
+}
+```
+
+## Service Registration Pattern
+
+Services are registered in `ServiceCollectionExtensions`:
+
+```csharp
+public static IServiceCollection AddLingarrServices(this IServiceCollection services)
+{
+    services.AddScoped<ITranslationServiceFactory, TranslationFactory>();
+    services.AddScoped<ITranslationRequestService, TranslationRequestService>();
+    // ... more services
+    return services;
+}
+```
+
+## Options Pattern
+
+Configuration is bound to strongly-typed options classes:
+
+```csharp
+services.Configure<DatabaseConfiguration>(
+    configuration.GetSection("Database"));
+```
+
+## Project References
+
+```
+Lingarr.Server -> Lingarr.Core
+Lingarr.Migrations.PostgreSQL -> Lingarr.Core
+Lingarr.Migrations.SQLite -> Lingarr.Core
+```
+
+No circular dependencies allowed.

@@ -262,7 +262,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
 
                 foreach (var targetLanguage in languagesToTranslate)
                 {
-                    if (await HasActiveRequestAsync(_media.Id, _mediaType, sourceLanguage, targetLanguage))
+                    if (sourceLanguage == null || await HasActiveRequestAsync(_media.Id, _mediaType, sourceLanguage, targetLanguage))
                     {
                         _logger.LogInformation(
                             "Skipping enqueue for {FileName} {Source}->{Target}: translation request already active.",
@@ -637,11 +637,17 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
     /// </summary>
     /// <param name="media">The media item to process</param>
     /// <param name="mediaType">The type of media (Movie or Episode)</param>
+    /// <param name="forceTranslation">If true, translates to all target languages even if they already exist.</param>
     /// <param name="forceProcess">If true, bypasses the media hash check</param>
     /// <param name="forcePriority">If true, forces jobs to use the priority queue</param>
     /// <returns>The number of translation requests queued</returns>
     private async Task<int> TryQueueEmbeddedSubtitleTranslation(IMedia media, MediaType mediaType, bool forceTranslation, bool forceProcess, bool forcePriority = false)
     {
+        if (media.Path == null)
+        {
+            return 0;
+        }
+
         // Preserve the order of configured source languages so we can treat
         // them as a priority list (e.g. [en, ja] => prefer English when both
         // are good candidates, but fall back to Japanese when English only
@@ -876,7 +882,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             selectedSubtitle.CodecName);
 
         // Get external subtitles to check which target languages already exist and validate them
-        var allExternalSubtitles = await _subtitleService.GetAllSubtitles(media.Path);
+        var allExternalSubtitles = await _subtitleService.GetAllSubtitles(media.Path!);
         var matchingExternalSubtitles = allExternalSubtitles
             .Where(s => s.FileName.StartsWith(media.FileName + ".") || s.FileName == media.FileName)
             .ToList();

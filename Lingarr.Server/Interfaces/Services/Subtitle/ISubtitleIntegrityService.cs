@@ -22,4 +22,20 @@ public interface ISubtitleIntegrityService
     /// <param name="ct">Cancellation token</param>
     /// <returns>Result containing list of flagged files</returns>
     Task<Models.AssVerificationResult> VerifyAssIntegrityAsync(CancellationToken ct);
+
+    /// <summary>
+    /// Validates the subtitle type by checking if the source subtitle has sufficient entries.
+    /// Detects potentially incomplete subtitles like Forced or Signs-only subtitles.
+    /// </summary>
+    /// <param name="translationId">The translation request ID to check</param>
+    /// <param name="ct">Cancellation token</param>
+    /// <returns>Result containing entry count and completeness status</returns>
+    Task<Models.SubtitleTypeCheckResult?> ValidateSubtitleTypeAsync(int translationId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Scans all completed translations for potentially incomplete source subtitles.
+    /// </summary>
+    /// <param name="ct">Cancellation token</param>
+    /// <returns>Summary of all incomplete subtitle findings</returns>
+    Task<Models.SubtitleTypeCheckSummary> ValidateAllSubtitleTypesAsync(CancellationToken ct);
 }

@@ -149,6 +149,10 @@ namespace Lingarr.Migrations.SQLite.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("indexed_at");
 
+                    b.Property<DateTime?>("LastSubtitleCheckAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("last_subtitle_check_at");
+
                     b.Property<string>("MediaHash")
                         .HasColumnType("TEXT")
                         .HasColumnName("media_hash");
@@ -261,6 +265,10 @@ namespace Lingarr.Migrations.SQLite.Migrations
                     b.Property<bool>("IsPriority")
                         .HasColumnType("INTEGER")
                         .HasColumnName("is_priority");
+
+                    b.Property<DateTime?>("LastSubtitleCheckAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("last_subtitle_check_at");
 
                     b.Property<string>("MediaHash")
                         .HasColumnType("TEXT")
@@ -572,6 +580,10 @@ namespace Lingarr.Migrations.SQLite.Migrations
                         .HasColumnType("INTEGER")
                         .HasColumnName("is_active");
 
+                    b.Property<bool>("IsForcedSubtitle")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("is_forced_subtitle");
+
                     b.Property<bool>("IsPriority")
                         .HasColumnType("INTEGER")
                         .HasColumnName("is_priority");
@@ -592,10 +604,26 @@ namespace Lingarr.Migrations.SQLite.Migrations
                         .HasColumnType("INTEGER")
                         .HasColumnName("progress");
 
+                    b.Property<string>("SelectedStreamTitle")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("selected_stream_title");
+
                     b.Property<string>("SourceLanguage")
                         .IsRequired()
                         .HasColumnType("TEXT")
                         .HasColumnName("source_language");
+
+                    b.Property<int>("SourceSubtitleEntryCount")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("source_subtitle_entry_count");
+
+                    b.Property<string>("SourceSubtitleType")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("source_subtitle_type");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("started_at");
 
                     b.Property<int>("Status")
                         .HasColumnType("INTEGER")

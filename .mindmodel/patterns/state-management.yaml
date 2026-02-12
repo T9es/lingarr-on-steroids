@@ -1,0 +1,192 @@
+# State Management Patterns
+
+## Pinia Store Pattern
+
+Stores use the Options API style with HMR support:
+
+```typescript
+import { acceptHMRUpdate, defineStore } from 'pinia'
+import {
+    IFilter,
+    IPagedResult,
+    ITranslationRequest,
+    IUseTranslationRequestStore
+} from '@/ts'
+import services from '@/services'
+
+export const useTranslationRequestStore = defineStore('translateRequest', {
+    state: (): IUseTranslationRequestStore => ({
+        activeTranslationRequests: 0,
+        translationRequests: {
+            totalCount: 0,
+            pageSize: 0,
+            pageNumber: 0,
+            items: []
+        },
+        failedRequests: [] as ITranslationRequest[],
+        inProgressRequests: [] as ITranslationRequest[],
+        filter: {
+            searchQuery: '',
+            sortBy: 'CreatedAt',
+            isAscending: true,
+            pageNumber: 1
+        },
+        selectedRequests: [] as ITranslationRequest[],
+        selectAll: false
+    }),
+    
+    getters: {
+        getActiveTranslationRequests: (state): number =>
+            state.activeTranslationRequests,
+        
+        getFailedRequests: (state): ITranslationRequest[] => {
+            const query = state.filter.searchQuery?.toLowerCase() || ''
+            if (!query) return state.failedRequests
+            
+            return state.failedRequests.filter((req) => 
+                req.title.toLowerCase().includes(query) || 
+                req.sourceLanguage.toLowerCase().includes(query)
+            )
+        }
+    },
+    
+    actions: {
+        async fetch() {
+            this.translationRequests = await services.translationRequest.requests<
+                IPagedResult<ITranslationRequest>
+            >(
+                this.filter.pageNumber,
+                this.filter.searchQuery,
+                this.filter.sortBy,
+                this.filter.isAscending
+            )
+        },
+        
+        async cancel(translationRequest: ITranslationRequest) {
+            await services.translationRequest.cancel<string>(translationRequest)
+        },
+        
+        async retry(translationRequest: ITranslationRequest) {
+            await services.translationRequest.retry<string>(translationRequest)
+            // Optimistic update
+            this.failedRequests = this.failedRequests.filter(
+                (request) => request.id !== translationRequest.id
+            )
+        },
+        
+        updateProgress(requestProgress: IRequestProgress) {
+            // Update in main list
+            this.translationRequests.items = this.translationRequests.items.map(
+                (request: ITranslationRequest) => {
+                    if (request.id === requestProgress.id) {
+                        return { ...request, ...updatedRequest }
+                    }
+                    return request
+                }
+            )
+        }
+    }
+})
+
+// HMR support
+if (import.meta.hot) {
+    import.meta.hot.accept(acceptHMRUpdate(useTranslationRequestStore, import.meta.hot))
+}
+```
+
+## SignalR Store Integration
+
+Stores listen to SignalR events for real-time updates:
+
+```typescript
+// composables/useSignalR.ts
+import { HubConnectionBuilder } from '@microsoft/signalr'
+import { useTranslationRequestStore } from '@/store/translationRequest'
+
+export function useSignalR() {
+    const translationStore = useTranslationRequestStore()
+    
+    const connection = new HubConnectionBuilder()
+        .withUrl('/hubs/translationRequests')
+        .withAutomaticReconnect()
+        .build()
+    
+    connection.on('RequestProgress', (progress: IRequestProgress) => {
+        translationStore.updateProgress(progress)
+    })
+    
+    connection.on('ActiveCountChanged', ({ count }: { count: number }) => {
+        translationStore.setActiveCount(count)
+    })
+    
+    return { connection }
+}
+```
+
+## Store Composition Pattern
+
+Multiple stores can be composed together:
+
+```typescript
+// In a component
+import { useMovieStore } from '@/store/movie'
+import { useTranslationRequestStore } from '@/store/translationRequest'
+import { useSettingStore } from '@/store/setting'
+
+const movieStore = useMovieStore()
+const translationStore = useTranslationRequestStore()
+const settingStore = useSettingStore()
+
+// Use stores together
+async function translateMovie(movieId: number) {
+    const movie = movieStore.getMovieById(movieId)
+    const settings = settingStore.getTranslationSettings
+    
+    await translationStore.createRequest({
+        mediaId: movieId,
+        sourceLanguage: settings.sourceLanguage,
+        targetLanguage: settings.targetLanguage
+    })
+}
+```
+
+## Local State vs Global State
+
+### Use Local State (Component) When:
+- UI-only state (modals, form inputs, loading states)
+- Component-specific data that doesn't need to persist
+- Temporary filters or search queries
+
+### Use Global State (Pinia) When:
+- Shared across multiple components
+- Needs to persist between route changes
+- Real-time updates via SignalR
+- Complex state logic with actions
+
+## Reactive State Best Practices
+
+```typescript
+// GOOD: Use ref for primitives
+const isLoading = ref(false)
+const count = ref(0)
+
+// GOOD: Use reactive for objects
+const form = reactive({
+    title: '',
+    description: ''
+})
+
+// GOOD: Use computed for derived state
+const filteredMovies = computed(() => {
+    return movieStore.movies.filter(m => 
+        m.title.toLowerCase().includes(searchQuery.value.toLowerCase())
+    )
+})
+
+// BAD: Don't destructure reactive objects (loses reactivity)
+const { title, description } = form // ❌ Loses reactivity
+
+// GOOD: Use toRefs if you need to destructure
+import { toRefs } from 'vue'
+const { title, description } = toRefs(form) // ✓ Keeps reactivity
+```

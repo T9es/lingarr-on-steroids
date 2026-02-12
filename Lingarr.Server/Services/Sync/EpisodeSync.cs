@@ -83,10 +83,32 @@ public class EpisodeSync : IEpisodeSync
                 await IndexEmbeddedSubtitles(entity);
             }
 
+            // Update state - for AwaitingSource, check mtime first (reduces I/O)
             try
             {
-                // Update state without immediate save - parent ShowSyncService will save at its BatchSize
-                await _mediaStateService.UpdateStateAsync(entity, MediaType.Episode, saveChanges: false);
+                var shouldUpdateState = true;
+                
+                if (entity.TranslationState == TranslationState.AwaitingSource && 
+                    !string.IsNullOrEmpty(entity.Path))
+                {
+                    var dirInfo = new DirectoryInfo(entity.Path);
+                    if (dirInfo.Exists)
+                    {
+                        var dirMtime = dirInfo.LastWriteTimeUtc;
+                        if (entity.LastSubtitleCheckAt.HasValue && 
+                            dirMtime <= entity.LastSubtitleCheckAt.Value)
+                        {
+                            shouldUpdateState = false;
+                            _logger.LogDebug("Skipping subtitle check for {Title}: directory unchanged", entity.Title);
+                        }
+                    }
+                }
+                
+                if (shouldUpdateState)
+                {
+                    await _mediaStateService.UpdateStateAsync(entity, MediaType.Episode, saveChanges: false);
+                    entity.LastSubtitleCheckAt = DateTime.UtcNow;
+                }
             }
             catch (Exception ex)
             {

@@ -160,6 +160,10 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("indexed_at");
 
+                    b.Property<DateTime?>("LastSubtitleCheckAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_subtitle_check_at");
+
                     b.Property<string>("MediaHash")
                         .HasColumnType("text")
                         .HasColumnName("media_hash");
@@ -276,6 +280,10 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                     b.Property<bool>("IsPriority")
                         .HasColumnType("boolean")
                         .HasColumnName("is_priority");
+
+                    b.Property<DateTime?>("LastSubtitleCheckAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_subtitle_check_at");
 
                     b.Property<string>("MediaHash")
                         .HasColumnType("text")
@@ -595,9 +603,17 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<DateTime?>("FailedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("failed_at");
+
                     b.Property<bool?>("IsActive")
                         .HasColumnType("boolean")
                         .HasColumnName("is_active");
+
+                    b.Property<bool>("IsForcedSubtitle")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_forced_subtitle");
 
                     b.Property<bool>("IsPriority")
                         .HasColumnType("boolean")
@@ -615,14 +631,38 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("media_type");
 
+                    b.Property<DateTime?>("NextRetryAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_retry_at");
+
                     b.Property<int>("Progress")
                         .HasColumnType("integer")
                         .HasColumnName("progress");
+
+                    b.Property<int>("RetryCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("retry_count");
+
+                    b.Property<string>("SelectedStreamTitle")
+                        .HasColumnType("text")
+                        .HasColumnName("selected_stream_title");
 
                     b.Property<string>("SourceLanguage")
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("source_language");
+
+                    b.Property<int>("SourceSubtitleEntryCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("source_subtitle_entry_count");
+
+                    b.Property<string>("SourceSubtitleType")
+                        .HasColumnType("text")
+                        .HasColumnName("source_subtitle_type");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer")
