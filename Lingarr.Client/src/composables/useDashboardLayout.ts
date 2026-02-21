@@ -29,7 +29,11 @@ const DEFAULT_WIDGETS: WidgetConfig[] = [
     { id: 'active-translations', title: 'statistics.activeTranslations', size: 'full', order: 0, visible: true },
     { id: 'media-overview', title: 'statistics.mediaOverview', size: 'full', order: 1, visible: true },
     { id: 'translation-activity', title: 'statistics.translationActivity', size: 'half', order: 2, visible: true },
-    { id: 'language-statistics', title: 'statistics.languageStatistics', size: 'half', order: 3, visible: true }
+    { id: 'language-statistics', title: 'statistics.languageStatistics', size: 'half', order: 3, visible: true },
+    { id: 'translation-history', title: 'statistics.translationHistory', size: 'half', order: 4, visible: true },
+    { id: 'job-queue', title: 'statistics.jobQueue', size: 'third', order: 5, visible: true },
+    { id: 'api-usage', title: 'statistics.apiUsage', size: 'third', order: 6, visible: true },
+    { id: 'error-log', title: 'statistics.errorLog', size: 'third', order: 7, visible: true }
 ]
 
 /**

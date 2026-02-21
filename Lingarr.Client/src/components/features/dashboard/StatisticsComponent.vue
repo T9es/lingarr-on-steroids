@@ -223,6 +223,62 @@
                     </div>
                 </div>
             </DashboardWidget>
+
+            <!-- Translation History Widget -->
+            <DashboardWidget
+                v-if="isWidgetVisible('translation-history')"
+                widget-id="translation-history"
+                :title="translate('statistics.translationHistory')"
+                :is-config-mode="isConfigMode"
+                :is-visible="isWidgetVisible('translation-history')"
+                @toggle-visibility="toggleWidgetVisibility('translation-history')"
+                @drag-start="handleDragStart"
+                @drag-over="handleDragOver"
+                @drop="handleDrop">
+                <TranslationHistoryWidget :daily-statistics="dailyStats || []" />
+            </DashboardWidget>
+
+            <!-- Job Queue Widget -->
+            <DashboardWidget
+                v-if="isWidgetVisible('job-queue')"
+                widget-id="job-queue"
+                :title="translate('statistics.jobQueue')"
+                :is-config-mode="isConfigMode"
+                :is-visible="isWidgetVisible('job-queue')"
+                @toggle-visibility="toggleWidgetVisibility('job-queue')"
+                @drag-start="handleDragStart"
+                @drag-over="handleDragOver"
+                @drop="handleDrop">
+                <JobQueueWidget />
+            </DashboardWidget>
+
+            <!-- API Usage Widget -->
+            <DashboardWidget
+                v-if="isWidgetVisible('api-usage')"
+                widget-id="api-usage"
+                :title="translate('statistics.apiUsage')"
+                :is-config-mode="isConfigMode"
+                :is-visible="isWidgetVisible('api-usage')"
+                @toggle-visibility="toggleWidgetVisibility('api-usage')"
+                @drag-start="handleDragStart"
+                @drag-over="handleDragOver"
+                @drop="handleDrop">
+                <ApiUsageWidget />
+            </DashboardWidget>
+
+            <!-- Error Log Widget -->
+            <DashboardWidget
+                v-if="isWidgetVisible('error-log')"
+                widget-id="error-log"
+                :title="translate('statistics.errorLog')"
+                :is-config-mode="isConfigMode"
+                :is-visible="isWidgetVisible('error-log')"
+                @toggle-visibility="toggleWidgetVisibility('error-log')"
+                @drag-start="handleDragStart"
+                @drag-over="handleDragOver"
+                @drop="handleDrop">
+                <ErrorLogWidget />
+            </DashboardWidget>
         </div>
     </div>
 </template>
@@ -237,6 +293,10 @@ import LanguageChart from './LanguageChart.vue'
 import StatCard from './StatCard.vue'
 import MetricCard from './MetricCard.vue'
 import DashboardWidget from './DashboardWidget.vue'
+import TranslationHistoryWidget from './widgets/TranslationHistoryWidget.vue'
+import JobQueueWidget from './widgets/JobQueueWidget.vue'
+import ApiUsageWidget from './widgets/ApiUsageWidget.vue'
+import ErrorLogWidget from './widgets/ErrorLogWidget.vue'
 import { useDashboardSignalR } from '@/composables/useDashboardSignalR'
 import { useDashboardLayout } from '@/composables/useDashboardLayout'
 
