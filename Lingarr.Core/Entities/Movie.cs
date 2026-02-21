@@ -41,4 +41,10 @@ public class Movie : BaseEntity, IMedia
     /// Used for mtime-based change detection during sync.
     /// </summary>
     public DateTime? LastSubtitleCheckAt { get; set; }
+    
+    /// <summary>
+    /// Identifier for the Radarr instance this movie was synced from.
+    /// Used when multiple Radarr instances are configured.
+    /// </summary>
+    public string? SourceInstanceId { get; set; }
 }

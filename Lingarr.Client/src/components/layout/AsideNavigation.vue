@@ -102,6 +102,7 @@ import BadgeComponent from '@/components/common/BadgeComponent.vue'
 import LanguageIcon from '@/components/icons/LanguageIcon.vue'
 import TestIcon from '@/components/icons/TestIcon.vue'
 import GithubIcon from '@/components/icons/GithubIcon.vue'
+import QuestionMarkCircleIcon from '@/components/icons/QuestionMarkCircleIcon.vue'
 
 const translationRequestStore = useTranslationRequestStore()
 const instanceStore = useInstanceStore()
@@ -144,6 +145,12 @@ const menuItems: MenuItem[] = [
             'tasks-settings',
             'logs-settings'
         ]
+    },
+    {
+        label: translate('navigation.help'),
+        icon: QuestionMarkCircleIcon,
+        route: 'help',
+        children: []
     }
 ]
 

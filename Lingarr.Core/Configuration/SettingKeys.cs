@@ -10,6 +10,16 @@ public static class SettingKeys
         public const string SonarrApiKey = "sonarr_api_key";
         public const string RadarrSettingsCompleted = "radarr_settings_completed";
         public const string SonarrSettingsCompleted = "sonarr_settings_completed";
+        
+        /// <summary>
+        /// JSON array of Radarr instances. Each instance has: id, name, url, apiKey
+        /// </summary>
+        public const string RadarrInstances = "radarr_instances";
+        
+        /// <summary>
+        /// JSON array of Sonarr instances. Each instance has: id, name, url, apiKey
+        /// </summary>
+        public const string SonarrInstances = "sonarr_instances";
     }
 
     public static class Translation
@@ -172,5 +182,28 @@ public static class SettingKeys
         /// Extraction mode: "on_demand" | "specific_language" | "extract_all"
         /// </summary>
         public const string ExtractionMode = "subtitle_extraction_mode";
+    }
+
+    public static class Onboarding
+    {
+        /// <summary>
+        /// Whether the user has completed the onboarding wizard.
+        /// </summary>
+        public const string Completed = "onboarding_completed";
+        
+        /// <summary>
+        /// Whether the user has explicitly skipped the onboarding wizard.
+        /// </summary>
+        public const string Skipped = "onboarding_skipped";
+        
+        /// <summary>
+        /// The current step the user is on (for resuming).
+        /// </summary>
+        public const string CurrentStep = "onboarding_current_step";
+        
+        /// <summary>
+        /// JSON object tracking which steps have been completed.
+        /// </summary>
+        public const string StepProgress = "onboarding_step_progress";
     }
 }

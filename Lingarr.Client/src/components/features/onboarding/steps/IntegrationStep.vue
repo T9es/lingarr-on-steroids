@@ -1,18 +1,11 @@
 <template>
-    <SaveNotification ref="saveNotification" />
-
-    <!-- Radarr Section -->
-    <CardComponent :title="translate('settings.integrations.radarrHeader')">
-        <template #icon>
-            <RadarrIcon />
-        </template>
-        <template #description>
-            {{ translate('settings.integrations.description') }}
-        </template>
-        <template #content>
+    <div class="space-y-6">
+        <!-- Radarr Section -->
+        <div>
+            <h3 class="text-primary-content mb-3 text-lg font-semibold">Radarr</h3>
             <div class="space-y-3">
                 <InstanceCard
-                    v-for="instance in radarrInstances"
+                    v-for="instance in onboardingStore.radarrInstances"
                     :key="instance.id"
                     :instance="instance"
                     type="radarr"
@@ -21,26 +14,18 @@
                     @remove="removeRadarrInstance(instance.id)"
                     @test-connection="testRadarrConnection(instance)" />
                 <AddInstanceButton
-                    v-if="radarrInstances.length < 5"
+                    v-if="onboardingStore.radarrInstances.length < 5"
                     @add-radarr="addRadarrInstance"
                     @add-sonarr="addSonarrInstance" />
             </div>
-            <div v-translate="'settings.integrations.reindexTask'" class="pt-2" />
-        </template>
-    </CardComponent>
+        </div>
 
-    <!-- Sonarr Section -->
-    <CardComponent :title="translate('settings.integrations.sonarrHeader')">
-        <template #icon>
-            <SonarrIcon />
-        </template>
-        <template #description>
-            {{ translate('settings.integrations.description') }}
-        </template>
-        <template #content>
+        <!-- Sonarr Section -->
+        <div>
+            <h3 class="text-primary-content mb-3 text-lg font-semibold">Sonarr</h3>
             <div class="space-y-3">
                 <InstanceCard
-                    v-for="instance in sonarrInstances"
+                    v-for="instance in onboardingStore.sonarrInstances"
                     :key="instance.id"
                     :instance="instance"
                     type="sonarr"
@@ -49,28 +34,23 @@
                     @remove="removeSonarrInstance(instance.id)"
                     @test-connection="testSonarrConnection(instance)" />
                 <AddInstanceButton
-                    v-if="sonarrInstances.length < 5"
+                    v-if="onboardingStore.sonarrInstances.length < 5"
                     @add-radarr="addRadarrInstance"
                     @add-sonarr="addSonarrInstance" />
             </div>
-            <div v-translate="'settings.integrations.reindexTask'" class="pt-2" />
-        </template>
-    </CardComponent>
+        </div>
+    </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, reactive, onMounted } from 'vue'
+import { onMounted, reactive } from 'vue'
+import { useOnboardingStore } from '@/store/onboarding'
 import { useSettingStore } from '@/store/setting'
-import SaveNotification from '@/components/common/SaveNotification.vue'
 import { SETTINGS } from '@/ts'
 import type { IInstance } from '@/ts/setting'
-import CardComponent from '@/components/common/CardComponent.vue'
-import RadarrIcon from '@/components/icons/RadarrIcon.vue'
-import SonarrIcon from '@/components/icons/SonarrIcon.vue'
 import InstanceCard from '@/components/features/onboarding/InstanceCard.vue'
 import AddInstanceButton from '@/components/features/onboarding/AddInstanceButton.vue'
 import services from '@/services'
-import { useI18n } from '@/plugins/i18n'
 
 interface ConnectionStatus {
     testing: boolean
@@ -86,10 +66,8 @@ interface ConnectionTestResult {
     version?: string
 }
 
-const { translate } = useI18n()
-
-const saveNotification = ref<InstanceType<typeof SaveNotification> | null>(null)
-const settingsStore = useSettingStore()
+const onboardingStore = useOnboardingStore()
+const settingStore = useSettingStore()
 
 // Connection status per instance
 const connectionStatuses = reactive<
@@ -99,7 +77,7 @@ const connectionStatuses = reactive<
     sonarr: {}
 })
 
-// Debounce timers for auto-save
+// Debounce timers for auto-connect
 const debounceTimers = reactive<
     Record<string, Record<string, ReturnType<typeof setTimeout> | null>>
 >({
@@ -141,67 +119,17 @@ const initConnectionStatus = (type: 'radarr' | 'sonarr', id: string): void => {
     }
 }
 
-// Parse instances from settings (handle both string and array formats)
-const parseInstances = (value: string | IInstance[]): IInstance[] => {
-    if (Array.isArray(value)) {
-        return value
-    }
-    if (typeof value === 'string' && value) {
-        try {
-            const parsed = JSON.parse(value)
-            return Array.isArray(parsed) ? parsed : []
-        } catch {
-            return []
-        }
-    }
-    return []
-}
-
-// Radarr instances computed
-const radarrInstances = computed<IInstance[]>({
-    get: () => {
-        const instances = settingsStore.getSetting(SETTINGS.RADARR_INSTANCES)
-        return parseInstances(instances as string | IInstance[])
-    },
-    set: (value: IInstance[]) => {
-        settingsStore.updateSetting(
-            SETTINGS.RADARR_INSTANCES,
-            value,
-            true,
-            true
-        )
-        saveNotification.value?.show()
-    }
-})
-
-// Sonarr instances computed
-const sonarrInstances = computed<IInstance[]>({
-    get: () => {
-        const instances = settingsStore.getSetting(SETTINGS.SONARR_INSTANCES)
-        return parseInstances(instances as string | IInstance[])
-    },
-    set: (value: IInstance[]) => {
-        settingsStore.updateSetting(
-            SETTINGS.SONARR_INSTANCES,
-            value,
-            true,
-            true
-        )
-        saveNotification.value?.show()
-    }
-})
-
 // Add Radarr instance
 const addRadarrInstance = (): void => {
     const id = generateId()
     const instance: IInstance = {
         id,
-        name: `Radarr ${radarrInstances.value.length + 1}`,
+        name: 'Radarr',
         url: '',
         apiKey: ''
     }
     initConnectionStatus('radarr', id)
-    radarrInstances.value = [...radarrInstances.value, instance]
+    onboardingStore.addRadarrInstance(instance)
 }
 
 // Add Sonarr instance
@@ -209,39 +137,41 @@ const addSonarrInstance = (): void => {
     const id = generateId()
     const instance: IInstance = {
         id,
-        name: `Sonarr ${sonarrInstances.value.length + 1}`,
+        name: 'Sonarr',
         url: '',
         apiKey: ''
     }
     initConnectionStatus('sonarr', id)
-    sonarrInstances.value = [...sonarrInstances.value, instance]
+    onboardingStore.addSonarrInstance(instance)
 }
 
 // Update Radarr instance
 const updateRadarrInstance = (id: string, updatedInstance: IInstance): void => {
-    const index = radarrInstances.value.findIndex((inst) => inst.id === id)
+    const index = onboardingStore.radarrInstances.findIndex(
+        (inst) => inst.id === id
+    )
     if (index !== -1) {
-        const newInstances = [...radarrInstances.value]
-        newInstances[index] = updatedInstance
-        radarrInstances.value = newInstances
+        onboardingStore.radarrInstances[index] = updatedInstance
+        // Trigger auto-connect with debounce
+        scheduleAutoConnect('radarr', updatedInstance)
     }
 }
 
 // Update Sonarr instance
 const updateSonarrInstance = (id: string, updatedInstance: IInstance): void => {
-    const index = sonarrInstances.value.findIndex((inst) => inst.id === id)
+    const index = onboardingStore.sonarrInstances.findIndex(
+        (inst) => inst.id === id
+    )
     if (index !== -1) {
-        const newInstances = [...sonarrInstances.value]
-        newInstances[index] = updatedInstance
-        sonarrInstances.value = newInstances
+        onboardingStore.sonarrInstances[index] = updatedInstance
+        // Trigger auto-connect with debounce
+        scheduleAutoConnect('sonarr', updatedInstance)
     }
 }
 
 // Remove Radarr instance
 const removeRadarrInstance = (id: string): void => {
-    radarrInstances.value = radarrInstances.value.filter(
-        (inst) => inst.id !== id
-    )
+    onboardingStore.removeRadarrInstance(id)
     delete connectionStatuses.radarr[id]
     if (debounceTimers.radarr[id]) {
         clearTimeout(debounceTimers.radarr[id]!)
@@ -251,13 +181,57 @@ const removeRadarrInstance = (id: string): void => {
 
 // Remove Sonarr instance
 const removeSonarrInstance = (id: string): void => {
-    sonarrInstances.value = sonarrInstances.value.filter(
-        (inst) => inst.id !== id
-    )
+    onboardingStore.removeSonarrInstance(id)
     delete connectionStatuses.sonarr[id]
     if (debounceTimers.sonarr[id]) {
         clearTimeout(debounceTimers.sonarr[id]!)
         delete debounceTimers.sonarr[id]
+    }
+}
+
+// Schedule auto-connect with 500ms debounce
+const scheduleAutoConnect = (
+    type: 'radarr' | 'sonarr',
+    instance: IInstance
+): void => {
+    // Clear existing timer
+    if (debounceTimers[type][instance.id]) {
+        clearTimeout(debounceTimers[type][instance.id]!)
+    }
+
+    // Validate URL and API key
+    const isValidUrl =
+        instance.url &&
+        instance.url.length > 0 &&
+        isValidUrlFormat(instance.url)
+    const isValidApiKey =
+        instance.apiKey && instance.apiKey.length === 32
+
+    if (!isValidUrl || !isValidApiKey) {
+        // Reset connection status if inputs are invalid
+        if (connectionStatuses[type][instance.id]) {
+            connectionStatuses[type][instance.id].tested = false
+        }
+        return
+    }
+
+    // Set new timer for auto-connect
+    debounceTimers[type][instance.id] = setTimeout(() => {
+        if (type === 'radarr') {
+            testRadarrConnection(instance)
+        } else {
+            testSonarrConnection(instance)
+        }
+    }, 500)
+}
+
+// Validate URL format
+const isValidUrlFormat = (url: string): boolean => {
+    try {
+        new URL(url)
+        return true
+    } catch {
+        return false
     }
 }
 
@@ -321,30 +295,19 @@ const testSonarrConnection = async (instance: IInstance): Promise<void> => {
     }
 }
 
-// Migrate legacy single instance to instances array
-const migrateLegacySettings = (): void => {
-    const radarrUrl = settingsStore.getSetting(SETTINGS.RADARR_URL) as string
-    const radarrApiKey = settingsStore.getSetting(
+// Pre-populate from existing settings on mount
+onMounted(() => {
+    const radarrUrl = settingStore.getSetting(SETTINGS.RADARR_URL) as string
+    const radarrApiKey = settingStore.getSetting(
         SETTINGS.RADARR_API_KEY
     ) as string
-    const sonarrUrl = settingsStore.getSetting(SETTINGS.SONARR_URL) as string
-    const sonarrApiKey = settingsStore.getSetting(
+    const sonarrUrl = settingStore.getSetting(SETTINGS.SONARR_URL) as string
+    const sonarrApiKey = settingStore.getSetting(
         SETTINGS.SONARR_API_KEY
     ) as string
 
-    // Check if instances already exist
-    const existingRadarrInstances = parseInstances(
-        settingsStore.getSetting(SETTINGS.RADARR_INSTANCES) as string | IInstance[]
-    )
-    const existingSonarrInstances = parseInstances(
-        settingsStore.getSetting(SETTINGS.SONARR_INSTANCES) as string | IInstance[]
-    )
-
-    // Migrate Radarr if legacy settings exist and no instances
-    if (
-        (radarrUrl || radarrApiKey) &&
-        existingRadarrInstances.length === 0
-    ) {
+    // Pre-populate Radarr if settings exist
+    if (radarrUrl || radarrApiKey) {
         const id = generateId()
         const instance: IInstance = {
             id,
@@ -353,19 +316,16 @@ const migrateLegacySettings = (): void => {
             apiKey: radarrApiKey || ''
         }
         initConnectionStatus('radarr', id)
-        settingsStore.updateSetting(
-            SETTINGS.RADARR_INSTANCES,
-            [instance],
-            true,
-            true
-        )
+        onboardingStore.addRadarrInstance(instance)
+
+        // Auto-test if both values exist
+        if (radarrUrl && radarrApiKey) {
+            setTimeout(() => testRadarrConnection(instance), 100)
+        }
     }
 
-    // Migrate Sonarr if legacy settings exist and no instances
-    if (
-        (sonarrUrl || sonarrApiKey) &&
-        existingSonarrInstances.length === 0
-    ) {
+    // Pre-populate Sonarr if settings exist
+    if (sonarrUrl || sonarrApiKey) {
         const id = generateId()
         const instance: IInstance = {
             id,
@@ -374,36 +334,12 @@ const migrateLegacySettings = (): void => {
             apiKey: sonarrApiKey || ''
         }
         initConnectionStatus('sonarr', id)
-        settingsStore.updateSetting(
-            SETTINGS.SONARR_INSTANCES,
-            [instance],
-            true,
-            true
-        )
+        onboardingStore.addSonarrInstance(instance)
+
+        // Auto-test if both values exist
+        if (sonarrUrl && sonarrApiKey) {
+            setTimeout(() => testSonarrConnection(instance), 100)
+        }
     }
-}
-
-// Initialize connection statuses for existing instances
-const initExistingInstances = (): void => {
-    const radarrInsts = parseInstances(
-        settingsStore.getSetting(SETTINGS.RADARR_INSTANCES) as string | IInstance[]
-    )
-    const sonarrInsts = parseInstances(
-        settingsStore.getSetting(SETTINGS.SONARR_INSTANCES) as string | IInstance[]
-    )
-
-    radarrInsts.forEach((inst) => {
-        initConnectionStatus('radarr', inst.id)
-    })
-
-    sonarrInsts.forEach((inst) => {
-        initConnectionStatus('sonarr', inst.id)
-    })
-}
-
-// Run migration and initialization on mount
-onMounted(() => {
-    migrateLegacySettings()
-    initExistingInstances()
 })
 </script>
