@@ -83,7 +83,15 @@
     "connected": "Connected",
     "disconnected": "Disconnected",
     "source": "Source",
-    "target": "Target"
+    "target": "Target",
+    "dashboard": "Dashboard",
+    "configure": "Configure",
+    "resetLayout": "Reset Layout",
+    "saveLayout": "Save",
+    "notAvailable": "Not available",
+    "failedFetch": "Failed to fetch statistics",
+    "translationServices": "Translation Services",
+    "availableSubtitles": "Available Subtitles"
   },
   "movies": {
     "title": "Title",

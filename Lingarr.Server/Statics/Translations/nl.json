@@ -114,7 +114,15 @@
     "connected": "Verbonden",
     "disconnected": "Niet verbonden",
     "source": "Bron",
-    "target": "Doel"
+    "target": "Doel",
+    "dashboard": "Dashboard",
+    "configure": "Configureren",
+    "resetLayout": "Indeling resetten",
+    "saveLayout": "Opslaan",
+    "notAvailable": "Niet beschikbaar",
+    "failedFetch": "Statistieken ophalen mislukt",
+    "translationServices": "Vertaalservices",
+    "availableSubtitles": "Beschikbare ondertitels"
   },
   "translations": {
     "title": "Titel",

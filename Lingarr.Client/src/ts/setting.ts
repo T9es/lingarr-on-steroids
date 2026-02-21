@@ -1,6 +1,13 @@
 import { ILanguage } from '@/ts/language'
 import { ILocale, ITheme } from '@/ts/store'
 
+export interface IInstance {
+    id: string
+    name: string
+    url: string
+    apiKey: string
+}
+
 export const SETTINGS = {
     RADARR_API_KEY: 'radarr_api_key',
     RADARR_URL: 'radarr_url',
@@ -77,7 +84,13 @@ export const SETTINGS = {
     BATCH_CONTEXT_ENABLED: 'batch_context_enabled',
     BATCH_CONTEXT_BEFORE: 'batch_context_before',
     BATCH_CONTEXT_AFTER: 'batch_context_after',
-    SKIP_WHEN_TARGET_EMBEDDED: 'skip_when_target_embedded'
+    SKIP_WHEN_TARGET_EMBEDDED: 'skip_when_target_embedded',
+    RADARR_INSTANCES: 'radarr_instances',
+    SONARR_INSTANCES: 'sonarr_instances',
+    ONBOARDING_COMPLETED: 'onboarding_completed',
+    ONBOARDING_SKIPPED: 'onboarding_skipped',
+    ONBOARDING_CURRENT_STEP: 'onboarding_current_step',
+    ONBOARDING_STEP_PROGRESS: 'onboarding_step_progress'
 } as const
 
 export interface ISettings {
@@ -157,6 +170,12 @@ export interface ISettings {
     batch_context_before: string
     batch_context_after: string
     skip_when_target_embedded: string
+    radarr_instances: string | IInstance[]
+    sonarr_instances: string | IInstance[]
+    onboarding_completed: string
+    onboarding_skipped: string
+    onboarding_current_step: string
+    onboarding_step_progress: string
 }
 
 export interface ICustomAiParams {
