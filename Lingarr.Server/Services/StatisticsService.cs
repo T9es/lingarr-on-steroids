@@ -5,6 +5,7 @@ using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Models.Batch.Response;
 using Lingarr.Server.Models.FileSystem;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Lingarr.Server.Services;
@@ -12,19 +13,31 @@ namespace Lingarr.Server.Services;
 public class StatisticsService : IStatisticsService
 {
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IMemoryCache _cache;
+    private readonly TimeSpan _cacheExpiration = TimeSpan.FromSeconds(60);
+    private const string StatisticsCacheKey = "dashboard_statistics";
+    private const string DailyStatisticsCacheKey = "daily_statistics_{0}";
 
     public StatisticsService(
-        IServiceScopeFactory scopeFactory)
+        IServiceScopeFactory scopeFactory,
+        IMemoryCache cache)
     {
         _scopeFactory = scopeFactory;
+        _cache = cache;
     }
 
     public async Task<Statistics> GetStatistics()
     {
+        // Check cache first
+        if (_cache.TryGetValue(StatisticsCacheKey, out Statistics? cachedStats) && cachedStats != null)
+        {
+            return cachedStats;
+        }
+
         using var scope = _scopeFactory.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<LingarrDbContext>();
 
-        var stats = await GetOrCreateStatistics(dbContext);
+        var stats = await GetStatisticsForRead(dbContext);
         
         stats.TotalMovies = await dbContext.Movies.CountAsync();
         stats.TotalEpisodes = await dbContext.Episodes.CountAsync();
@@ -54,11 +67,26 @@ public class StatisticsService : IStatisticsService
             { MediaType.Episode.ToString(), translatedEpisodes }
         };
 
+        // Cache the result with sliding expiration
+        var cacheOptions = new MemoryCacheEntryOptions()
+            .SetSlidingExpiration(_cacheExpiration)
+            .SetPriority(CacheItemPriority.Normal);
+
+        _cache.Set(StatisticsCacheKey, stats, cacheOptions);
+
         return stats;
     }
 
     public async Task<IEnumerable<DailyStatistics>> GetDailyStatistics(int days = 30)
     {
+        var cacheKey = string.Format(DailyStatisticsCacheKey, days);
+        
+        // Check cache first
+        if (_cache.TryGetValue(cacheKey, out List<DailyStatistics>? cachedStats) && cachedStats != null)
+        {
+            return cachedStats;
+        }
+
         using var scope = _scopeFactory.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<LingarrDbContext>();
 
@@ -68,12 +96,32 @@ public class StatisticsService : IStatisticsService
             .OrderBy(d => d.Date)
             .ToListAsync();
 
+        // Cache the result with sliding expiration
+        var cacheOptions = new MemoryCacheEntryOptions()
+            .SetSlidingExpiration(_cacheExpiration)
+            .SetPriority(CacheItemPriority.Normal);
+
+        _cache.Set(cacheKey, stats, cacheOptions);
+
         return stats;
     }
 
     private static async Task<Statistics> GetOrCreateStatistics(LingarrDbContext dbContext)
     {
         var stats = await dbContext.Statistics.SingleOrDefaultAsync();
+        if (stats == null)
+        {
+            stats = new Statistics();
+            dbContext.Statistics.Add(stats);
+            await dbContext.SaveChangesAsync();
+        }
+
+        return stats;
+    }
+
+    private static async Task<Statistics> GetStatisticsForRead(LingarrDbContext dbContext)
+    {
+        var stats = await dbContext.Statistics.AsNoTracking().SingleOrDefaultAsync();
         if (stats == null)
         {
             stats = new Statistics();
@@ -134,18 +182,22 @@ public class StatisticsService : IStatisticsService
         using var scope = _scopeFactory.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<LingarrDbContext>();
 
-        var stats = await GetOrCreateStatistics(dbContext);
         var today = DateTime.UtcNow.Date;
 
-        // Update total counts
-        stats.TotalLinesTranslated += totalLines;
-        stats.TotalCharactersTranslated += totalCharacters;
-        stats.TotalFilesTranslated++;
+        // Ensure statistics row exists before raw SQL update
+        await GetOrCreateStatistics(dbContext);
 
-        // NOTE: TranslationsByMediaType is now calculated dynamically in GetStatistics()
-        // to count unique media items, not translation operations (prevents double-counting)
+        // Use raw SQL for atomic updates to prevent race conditions
+        // This works for both PostgreSQL and SQLite
+        await dbContext.Database.ExecuteSqlRawAsync(
+            "UPDATE statistics SET " +
+            "total_lines_translated = total_lines_translated + {0}, " +
+            "total_characters_translated = total_characters_translated + {1}, " +
+            "total_files_translated = total_files_translated + 1",
+            totalLines, totalCharacters);
 
-        // Update service type statistics
+        // Update service type statistics (requires read-modify-write for JSON field)
+        var stats = await GetOrCreateStatistics(dbContext);
         var serviceStats = stats.TranslationsByService;
         serviceStats[serviceType] = serviceStats.GetValueOrDefault(serviceType) + 1;
         stats.TranslationsByService = serviceStats;
@@ -155,10 +207,38 @@ public class StatisticsService : IStatisticsService
         languageStats[request.TargetLanguage] = languageStats.GetValueOrDefault(request.TargetLanguage) + 1;
         stats.SubtitlesByLanguage = languageStats;
 
-        // Update daily statistics
-        var dailyStats = await GetOrCreateDailyStatistics(dbContext, today);
-        dailyStats.TranslationCount++;
+        // Update daily statistics using EF Core (database-agnostic)
+        var dailyStats = await dbContext.DailyStatistics
+            .FirstOrDefaultAsync(d => d.Date == today);
+        
+        if (dailyStats == null)
+        {
+            dailyStats = new DailyStatistics { Date = today, TranslationCount = 1 };
+            dbContext.DailyStatistics.Add(dailyStats);
+        }
+        else
+        {
+            dailyStats.TranslationCount++;
+        }
 
-        return await dbContext.SaveChangesAsync();
+        var result = await dbContext.SaveChangesAsync();
+
+        // Invalidate cache after successful update
+        InvalidateCache();
+
+        return result;
+    }
+
+    /// <summary>
+    /// Invalidates the statistics cache. Called after translation completion.
+    /// </summary>
+    public void InvalidateCache()
+    {
+        _cache.Remove(StatisticsCacheKey);
+        // Remove all daily statistics cache entries
+        for (int i = 1; i <= 365; i++)
+        {
+            _cache.Remove(string.Format(DailyStatisticsCacheKey, i));
+        }
     }
 }

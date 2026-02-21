@@ -16,4 +16,9 @@ public interface IStatisticsService
         TranslationRequest request, 
         string serviceType, 
         BatchTranslatedLine[] translatedLines);
+    
+    /// <summary>
+    /// Invalidates the statistics cache. Called after translation completion.
+    /// </summary>
+    void InvalidateCache();
 }

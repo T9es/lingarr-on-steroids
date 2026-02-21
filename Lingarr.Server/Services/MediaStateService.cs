@@ -167,6 +167,19 @@ public class MediaStateService : IMediaStateService
             .Select(s => s.Language.ToLowerInvariant())
             .ToHashSet();
 
+        // Also include embedded subtitle languages (same pattern as source check)
+        foreach (var embedded in embeddedSubtitles)
+        {
+            if (embedded.IsTextBased && !string.IsNullOrEmpty(embedded.Language))
+            {
+                var normalizedLang = SubtitleLanguageHelper.NormalizeLanguageCode(embedded.Language);
+                if (!string.IsNullOrEmpty(normalizedLang))
+                {
+                    existingTargetLanguages.Add(normalizedLang);
+                }
+            }
+        }
+
         var missingTargets = targetLanguages
             .Where(t => !existingTargetLanguages.Contains(t))
             .ToList();
@@ -183,16 +196,22 @@ public class MediaStateService : IMediaStateService
     /// <inheritdoc />
     public async Task MarkAllStaleAsync()
     {
+        // Only mark items as stale if they are not already Complete or NotApplicable
+        // Complete items will be re-validated on next access
+        // This preserves progress for items that still satisfy requirements
+        
         var movieCount = await _dbContext.Movies
-            .Where(m => m.TranslationState != TranslationState.NotApplicable)
+            .Where(m => m.TranslationState != TranslationState.NotApplicable && 
+                        m.TranslationState != TranslationState.Complete)
             .ExecuteUpdateAsync(s => s.SetProperty(m => m.TranslationState, TranslationState.Stale));
 
         var episodeCount = await _dbContext.Episodes
-            .Where(e => e.TranslationState != TranslationState.NotApplicable)
+            .Where(e => e.TranslationState != TranslationState.NotApplicable && 
+                        e.TranslationState != TranslationState.Complete)
             .ExecuteUpdateAsync(s => s.SetProperty(e => e.TranslationState, TranslationState.Stale));
 
         _logger.LogInformation(
-            "Marked {MovieCount} movies and {EpisodeCount} episodes as stale",
+            "Marked {MovieCount} movies and {EpisodeCount} episodes as stale (Complete items preserved)",
             movieCount, episodeCount);
     }
 
