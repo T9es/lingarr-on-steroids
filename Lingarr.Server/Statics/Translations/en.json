@@ -291,6 +291,8 @@
       "description": "Configure how subtitles are cleaned, and timed to prevent overlaps and remove unwanted formatting.",
       "ignoreCaptions": "Skip translation if subtitles with caption tags exist:",
       "ignoreCaptionsDescription": "Skip translation if a target subtitle with captions such as Hearing Impaired or Forced already exists.",
+      "skipWhenTargetEmbedded": "Skip translation when target language is already embedded:",
+      "skipWhenTargetEmbeddedDescription": "When enabled, skip translation if the media file already contains an embedded subtitle track in your target language. This saves API costs and processing time.",
       "fixOverlappingSubtitles": "Fix overlapping subtitles:",
       "fixOverlappingSubtitlesDescription": "Automatically resolves overlapping subtitles by adjusting the timing of the previous, current and next subtitle based on text length.",
       "stripSubtitleFormatting": "Strip subtitle formatting:",

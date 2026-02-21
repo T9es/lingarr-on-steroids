@@ -890,10 +890,60 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             .Select(s => s.Language.ToLowerInvariant())
             .ToHashSet();
 
+        // Check for embedded target language subtitles that should skip translation
+        var skipWhenTargetEmbedded = await _settingService.GetSetting(
+            SettingKeys.SubtitleValidation.SkipWhenTargetEmbedded) ?? "true";
+        var embeddedTargetLanguages = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        
+        if (skipWhenTargetEmbedded.Equals("true", StringComparison.OrdinalIgnoreCase) && !forceTranslation)
+        {
+            foreach (var subtitle in textBasedSubs)
+            {
+                if (string.IsNullOrWhiteSpace(subtitle.Language))
+                {
+                    continue;
+                }
+
+                // Check if this embedded subtitle matches any target language
+                foreach (var targetLanguage in targetLanguages)
+                {
+                    if (SubtitleLanguageHelper.LanguageMatches(subtitle.Language, targetLanguage))
+                    {
+                        // Use score-based quality check: score >= 30 means it's likely a full dialogue track
+                        // Lower scores indicate sparse/signs-only tracks (heuristic from title, forced flag, etc.)
+                        var score = SubtitleLanguageHelper.ScoreSubtitleCandidate(subtitle, targetLanguage);
+                        if (score >= 30)
+                        {
+                            embeddedTargetLanguages.Add(targetLanguage.ToLowerInvariant());
+                            _logger.LogInformation(
+                                "Found embedded target subtitle for {FileName}: Language={Language}, StreamIndex={StreamIndex}, Score={Score}. Skipping translation.",
+                                media.FileName,
+                                targetLanguage,
+                                subtitle.StreamIndex,
+                                score);
+                        }
+                        else
+                        {
+                            _logger.LogDebug(
+                                "Embedded target subtitle for {FileName} (Language={Language}) has low score ({Score}), likely sparse. Will still translate.",
+                                media.FileName,
+                                targetLanguage,
+                                score);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Combine external and embedded target languages to skip
+        var languagesToSkip = new HashSet<string>(existingExternalLanguages, StringComparer.OrdinalIgnoreCase);
+        languagesToSkip.UnionWith(embeddedTargetLanguages);
+
         // Determine which languages need translation (missing or corrupt)
         var languagesToTranslate = forceTranslation
             ? targetLanguages.ToList()
-            : targetLanguages.Except(existingExternalLanguages).ToList();
+            : targetLanguages.Except(languagesToSkip).ToList();
 
         // For integrity validation (forceTranslation=false), we need to extract temp source and check existing targets
         string? tempSourcePath = null;

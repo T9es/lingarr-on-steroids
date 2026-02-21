@@ -76,7 +76,8 @@ export const SETTINGS = {
     CLEAN_SOURCE_ASS_DRAWINGS: 'clean_source_ass_drawings',
     BATCH_CONTEXT_ENABLED: 'batch_context_enabled',
     BATCH_CONTEXT_BEFORE: 'batch_context_before',
-    BATCH_CONTEXT_AFTER: 'batch_context_after'
+    BATCH_CONTEXT_AFTER: 'batch_context_after',
+    SKIP_WHEN_TARGET_EMBEDDED: 'skip_when_target_embedded'
 } as const
 
 export interface ISettings {
@@ -155,6 +156,7 @@ export interface ISettings {
     batch_context_enabled: string
     batch_context_before: string
     batch_context_after: string
+    skip_when_target_embedded: string
 }
 
 export interface ICustomAiParams {

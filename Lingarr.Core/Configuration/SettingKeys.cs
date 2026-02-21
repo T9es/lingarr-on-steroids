@@ -155,6 +155,12 @@ public static class SettingKeys
         public const string ValidateSubtitles = "subtitle_validation_enabled";
         public const string IntegrityValidationEnabled = "subtitle_integrity_validation_enabled";
         
+        /// <summary>
+        /// When enabled, skip translation if the target language subtitle is already embedded in the media container.
+        /// This saves API costs and time when the desired subtitle already exists.
+        /// </summary>
+        public const string SkipWhenTargetEmbedded = "skip_when_target_embedded";
+        
         // Persistent scan results
         public const string LastIntegrityCheckResult = "subtitle_integrity_last_result";
         public const string LastAssVerificationResult = "subtitle_ass_verification_last_result";

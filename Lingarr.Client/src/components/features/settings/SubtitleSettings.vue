@@ -6,6 +6,24 @@
         <template #content>
             <div class="flex flex-col space-y-4">
                 <SaveNotification ref="saveNotification" />
+                
+                <!-- Skip when target embedded -->
+                <div class="flex flex-col space-x-2">
+                    <span class="font-semibold">
+                        {{ translate('settings.subtitle.skipWhenTargetEmbedded') }}
+                    </span>
+                    {{ translate('settings.subtitle.skipWhenTargetEmbeddedDescription') }}
+                </div>
+                <ToggleButton v-model="skipWhenTargetEmbedded">
+                    <span class="text-primary-content text-sm font-medium">
+                        {{
+                            skipWhenTargetEmbedded == 'true'
+                                ? translate('common.enabled')
+                                : translate('common.disabled')
+                        }}
+                    </span>
+                </ToggleButton>
+
                 <div class="flex flex-col space-x-2">
                     <span class="font-semibold">
                         {{ translate('settings.subtitle.ignoreCaptions') }}
@@ -194,6 +212,14 @@ const settingsStore = useSettingStore()
 const isValid = reactive({
     subtitleTag: true,
     subtitleTagShort: true
+})
+
+const skipWhenTargetEmbedded = computed({
+    get: (): string => settingsStore.getSetting(SETTINGS.SKIP_WHEN_TARGET_EMBEDDED) as string,
+    set: (newValue: string): void => {
+        settingsStore.updateSetting(SETTINGS.SKIP_WHEN_TARGET_EMBEDDED, newValue, true)
+        saveNotification.value?.show()
+    }
 })
 
 const ignoreCaptions = computed({
