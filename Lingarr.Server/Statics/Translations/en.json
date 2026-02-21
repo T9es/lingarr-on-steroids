@@ -73,7 +73,17 @@
     "charactersTranslated": "Characters Translated",
     "languageStatistics": "Language Statistics",
     "translated": "Translated",
-    "noDataAvailable": "No data available"
+    "noDataAvailable": "No data available",
+    "activeTranslations": "Active Translations",
+    "noActiveTranslations": "No translations in progress",
+    "realtime": "Real-time",
+    "lastUpdated": "Last updated",
+    "progress": "Progress",
+    "jobId": "Job",
+    "connected": "Connected",
+    "disconnected": "Disconnected",
+    "source": "Source",
+    "target": "Target"
   },
   "movies": {
     "title": "Title",

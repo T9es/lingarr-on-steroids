@@ -104,7 +104,17 @@
     "charactersTranslated": "Vertaalde karakters",
     "languageStatistics": "Taalstatistieken",
     "translated": "Vertaald",
-    "noDataAvailable": "Geen gegevens beschikbaar"
+    "noDataAvailable": "Geen gegevens beschikbaar",
+    "activeTranslations": "Actieve vertalingen",
+    "noActiveTranslations": "Geen vertalingen bezig",
+    "realtime": "Realtime",
+    "lastUpdated": "Laatst bijgewerkt",
+    "progress": "Voortgang",
+    "jobId": "Taak",
+    "connected": "Verbonden",
+    "disconnected": "Niet verbonden",
+    "source": "Bron",
+    "target": "Doel"
   },
   "translations": {
     "title": "Titel",

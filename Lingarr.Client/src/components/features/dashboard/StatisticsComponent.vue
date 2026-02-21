@@ -1,5 +1,64 @@
 ﻿<template>
     <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <!-- Active Translations Widget - Real-time -->
+        <div class="from-secondary to-tertiary relative rounded-md bg-linear-to-br p-6 shadow-md lg:col-span-2">
+            <div class="mb-4 flex items-center justify-between">
+                <h2 class="text-primary-content text-lg font-semibold">
+                    {{ translate('statistics.activeTranslations') }}
+                </h2>
+                <div class="flex items-center gap-2">
+                    <span
+                        :class="[
+                            'h-2 w-2 rounded-full',
+                            realtimeState.isConnected ? 'bg-green-500' : 'bg-red-500'
+                        ]" />
+                    <span class="text-primary-content/60 text-xs">
+                        {{ realtimeState.isConnected ? translate('statistics.connected') : translate('statistics.disconnected') }}
+                    </span>
+                </div>
+            </div>
+            <div v-if="activeTranslations.length === 0" class="flex h-24 items-center justify-center">
+                <p class="text-primary-content/60">{{ translate('statistics.noActiveTranslations') }}</p>
+            </div>
+            <div v-else class="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+                <div
+                    v-for="translation in activeTranslations"
+                    :key="translation.id"
+                    class="bg-primary rounded-md p-3">
+                    <div class="flex items-start justify-between">
+                        <div class="min-w-0 flex-1">
+                            <h4 class="text-primary-content truncate text-sm font-medium">
+                                {{ translate('statistics.jobId') }}: {{ translation.jobId.slice(0, 8) }}
+                            </h4>
+                            <p class="text-primary-content/60 text-xs">
+                                ID: {{ translation.id }}
+                            </p>
+                        </div>
+                        <span
+                            :class="[
+                                'rounded px-2 py-0.5 text-xs font-medium',
+                                translation.status === 'InProgress' ? 'bg-blue-500/20 text-blue-400' :
+                                translation.status === 'Pending' ? 'bg-yellow-500/20 text-yellow-400' :
+                                'bg-gray-500/20 text-gray-400'
+                            ]">
+                            {{ translation.status }}
+                        </span>
+                    </div>
+                    <div class="mt-2">
+                        <div class="flex items-center justify-between text-xs">
+                            <span class="text-primary-content/60">{{ translate('statistics.progress') }}</span>
+                            <span class="text-primary-content font-medium">{{ Math.round(translation.progress) }}%</span>
+                        </div>
+                        <div class="bg-primary-content/10 mt-1 h-1.5 w-full overflow-hidden rounded-full">
+                            <div
+                                class="h-full rounded-full bg-accent transition-all duration-300"
+                                :style="{ width: `${translation.progress}%` }" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <CardComponent :title="translate('statistics.mediaOverview')" class="lg:col-span-2">
             <template #content>
                 <template v-if="loading">
@@ -107,7 +166,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { DailyStatistic, MEDIA_TYPE, Statistics } from '@/ts'
 import { useI18n } from '@/plugins/i18n'
 import services from '@/services'
@@ -116,7 +175,10 @@ import LoaderCircleIcon from '@/components/icons/LoaderCircleIcon.vue'
 import LanguageChart from './LanguageChart.vue'
 import StatCard from './StatCard.vue'
 import MetricCard from './MetricCard.vue'
+import { useDashboardSignalR } from '@/composables/useDashboardSignalR'
+
 const { translate } = useI18n()
+const { state: realtimeState, connect: connectSignalR, disconnect: disconnectSignalR, getActiveTranslations } = useDashboardSignalR()
 
 const loading = ref(true)
 const error = ref<string | null>(null)
@@ -132,6 +194,8 @@ const subtitleLanguages = computed(() => {
     if (!statistics.value?.subtitlesByLanguage) return []
     return Object.entries(statistics.value.subtitlesByLanguage)
 })
+
+const activeTranslations = computed(() => getActiveTranslations())
 
 const formatNumber = (num: number): string => {
     return num ? new Intl.NumberFormat().format(num) : '0'
@@ -172,7 +236,12 @@ const fetchDailyStats = async () => {
 }
 
 onMounted(async () => {
+    await connectSignalR()
     await fetchDailyStats()
     await fetchStatistics()
+})
+
+onUnmounted(() => {
+    disconnectSignalR()
 })
 </script>
