@@ -1,6 +1,8 @@
 import { acceptHMRUpdate, defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { IInstance } from '@/ts/setting'
+import { useSettingStore } from '@/store/setting'
+import { SETTINGS } from '@/ts'
 import config from '@/config/onboarding-config.json'
 
 export const useOnboardingStore = defineStore('onboarding', () => {
@@ -35,12 +37,16 @@ export const useOnboardingStore = defineStore('onboarding', () => {
         }
     }
 
-    function skip(): void {
+    async function skip(): Promise<void> {
+        const settingStore = useSettingStore()
+        await settingStore.saveSetting(SETTINGS.ONBOARDING_SKIPPED, 'true')
         skipped.value = true
         isActive.value = false
     }
 
-    function complete(): void {
+    async function complete(): Promise<void> {
+        const settingStore = useSettingStore()
+        await settingStore.saveSetting(SETTINGS.ONBOARDING_COMPLETED, 'true')
         isActive.value = false
     }
 

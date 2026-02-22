@@ -27,7 +27,9 @@ const fetchApiUsage = async () => {
     
     try {
         const response = await axios.get('/api/dashboard/api-usage')
-        apiUsage.value = response.data
+        // Handle both array response and object with RecentCalls property
+        const data = response.data
+        apiUsage.value = Array.isArray(data) ? data : (data.recentCalls || data.RecentCalls || [])
     } catch (e) {
         error.value = 'Failed to fetch API usage'
         console.error('Failed to fetch API usage:', e)
@@ -83,7 +85,7 @@ const getUsagePercentage = (usage: ApiUsageInfo): number => {
             {{ i18n.translate('statistics.noApiUsage') }}
         </div>
 
-        <div v-else class="space-y-4">
+        <div v-else class="space-y-4 max-h-64 overflow-y-auto">
             <div 
                 v-for="usage in apiUsage" 
                 :key="usage.service"

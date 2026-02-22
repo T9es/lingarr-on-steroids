@@ -12,7 +12,10 @@
     "integrity": "Integriteit",
     "automation": "Automatisering",
     "tasks": "Taken",
-    "logs": "Logs"
+    "logs": "Logs",
+    "help": "Hulp",
+    "onboarding": "Installatie-assistent",
+    "about": "Over Lingarr"
   },
   "embedded": {
     "title": "Ingebedde Ondertitels",

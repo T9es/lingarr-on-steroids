@@ -5,24 +5,38 @@
         <div
             class="bg-secondary flex w-full max-w-2xl max-h-[90vh] flex-col overflow-hidden rounded-md shadow-lg">
             <!-- Header with theme selector and skip button -->
-            <header class="border-accent flex items-center justify-between border-b px-6 py-4">
-                <div class="flex items-center gap-3">
-                    <DropdownComponent width="medium">
-                        <template #button>
-                            <ThemeIcon class="h-5 w-5 cursor-pointer" />
-                        </template>
-                        <template #content>
-                            <div class="py-1" role="menu">
-                                <button
-                                    v-for="theme in Object.values(THEMES)"
-                                    :key="theme"
-                                    class="hover:bg-secondary-focus text-secondary-content block w-full cursor-pointer px-4 py-2 text-left text-sm capitalize"
-                                    @click="setTheme(theme)">
-                                    {{ theme }}
-                                </button>
+            <header class="border-accent flex items-center justify-between border-b px-6 py-4 overflow-visible">
+                <div class="flex items-center gap-3 relative">
+                    <button
+                        class="inline-flex h-10 w-10 cursor-pointer items-center justify-center"
+                        @click="toggleThemeDropdown">
+                        <ThemeIcon class="h-5 w-5 cursor-pointer text-secondary-content hover:text-primary-content transition-colors" />
+                    </button>
+                    <Teleport to="body">
+                        <transition
+                            enter-active-class="transition ease-out duration-100"
+                            enter-from-class="transform opacity-0 scale-95"
+                            enter-to-class="transform opacity-100 scale-100"
+                            leave-active-class="transition ease-in duration-75"
+                            leave-from-class="transform opacity-100 scale-100"
+                            leave-to-class="transform opacity-0 scale-95">
+                            <div
+                                v-if="isThemeDropdownOpen"
+                                ref="themeDropdownRef"
+                                class="border-accent bg-secondary fixed z-[100] mt-2 w-48 origin-top-right rounded-md border shadow-lg"
+                                :style="{ top: themeDropdownPosition.top + 'px', left: themeDropdownPosition.left + 'px' }">
+                                <div class="py-1" role="menu">
+                                    <button
+                                        v-for="theme in Object.values(THEMES)"
+                                        :key="theme"
+                                        class="hover:bg-secondary-focus text-secondary-content block w-full cursor-pointer px-4 py-2 text-left text-sm capitalize"
+                                        @click="setTheme(theme)">
+                                        {{ theme }}
+                                    </button>
+                                </div>
                             </div>
-                        </template>
-                    </DropdownComponent>
+                        </transition>
+                    </Teleport>
                 </div>
                 <button
                     class="text-secondary-content hover:text-primary-content cursor-pointer text-sm transition-colors"
@@ -91,15 +105,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent } from 'vue'
+import { computed, defineAsyncComponent, ref, onMounted, onUnmounted } from 'vue'
 import { useOnboardingStore } from '@/store/onboarding'
 import { useInstanceStore } from '@/store/instance'
 import { THEMES, type ITheme } from '@/ts'
-import DropdownComponent from '@/components/common/DropdownComponent.vue'
 import ThemeIcon from '@/components/icons/ThemeIcon.vue'
 
 const onboardingStore = useOnboardingStore()
 const instanceStore = useInstanceStore()
+
+// Theme dropdown state
+const isThemeDropdownOpen = ref(false)
+const themeDropdownPosition = ref({ top: 0, left: 0 })
+const themeButtonRef = ref<HTMLElement | null>(null)
 
 // Step component mapping
 const stepComponents: Record<string, any> = {
@@ -131,16 +149,44 @@ const currentStepComponent = computed(() => {
     return componentName ? stepComponents[componentName] : null
 })
 
-// Methods
+// Theme dropdown methods
+const toggleThemeDropdown = (event: MouseEvent) => {
+    isThemeDropdownOpen.value = !isThemeDropdownOpen.value
+    if (isThemeDropdownOpen.value) {
+        const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+        themeDropdownPosition.value = {
+            top: rect.bottom + window.scrollY,
+            left: rect.left + window.scrollX
+        }
+    }
+}
+
 const setTheme = (theme: ITheme) => {
     instanceStore.storeTheme(theme)
+    isThemeDropdownOpen.value = false
 }
 
-const handleSkip = () => {
-    onboardingStore.skip()
+// Close dropdown when clicking outside
+const handleClickOutside = (event: MouseEvent) => {
+    if (themeButtonRef.value && !themeButtonRef.value.contains(event.target as Node)) {
+        isThemeDropdownOpen.value = false
+    }
 }
 
-const handleComplete = () => {
-    onboardingStore.complete()
+onMounted(() => {
+    document.addEventListener('click', handleClickOutside)
+})
+
+onUnmounted(() => {
+    document.removeEventListener('click', handleClickOutside)
+})
+
+// Methods
+const handleSkip = async () => {
+    await onboardingStore.skip()
+}
+
+const handleComplete = async () => {
+    await onboardingStore.complete()
 }
 </script>

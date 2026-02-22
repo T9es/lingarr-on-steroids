@@ -27,7 +27,9 @@ const fetchJobs = async () => {
     
     try {
         const response = await axios.get('/api/dashboard/jobs')
-        jobs.value = response.data
+        // Handle both array response and object with Jobs property
+        const data = response.data
+        jobs.value = Array.isArray(data) ? data : (data.jobs || data.Jobs || [])
     } catch (e) {
         error.value = 'Failed to fetch job queue'
         console.error('Failed to fetch job queue:', e)
@@ -92,7 +94,7 @@ const getStateBg = (state: string): string => {
             {{ i18n.translate('statistics.noJobs') }}
         </div>
 
-        <div v-else class="space-y-2">
+        <div v-else class="space-y-2 max-h-64 overflow-y-auto">
             <div 
                 v-for="job in jobs" 
                 :key="job.id"

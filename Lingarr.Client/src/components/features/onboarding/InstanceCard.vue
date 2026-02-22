@@ -1,5 +1,5 @@
 <template>
-    <div class="border-accent bg-primary/50 rounded-md border p-4">
+    <div class="border-accent bg-secondary rounded-md border p-4">
         <!-- Header with icon, name input, and X button -->
         <div class="mb-4 flex items-center gap-2">
             <component :is="typeIcon" class="h-5 w-5" />
@@ -10,7 +10,7 @@
                 class="w-full rounded-md border border-accent bg-transparent px-3 py-1.5 text-sm outline-hidden transition-colors focus:border-accent/70" />
             <button
                 type="button"
-                class="text-gray-400 hover:text-gray-200 ml-auto cursor-pointer transition-colors"
+                class="text-secondary-content hover:text-primary-content ml-auto cursor-pointer transition-colors"
                 @click="$emit('remove')">
                 <TimesIcon class="h-4 w-4" />
             </button>
@@ -37,7 +37,7 @@
         <div class="flex items-center gap-3 pt-2">
             <button
                 type="button"
-                class="bg-primary-600 hover:bg-primary-700 rounded-md px-3 py-1.5 text-sm text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                class="bg-accent hover:brightness-125 rounded-md px-3 py-1.5 text-sm text-primary transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                 :disabled="connectionStatus.testing || !isValid.url || !isValid.apiKey"
                 @click="$emit('test-connection')">
                 <span v-if="connectionStatus.testing" class="flex items-center gap-2">
@@ -74,7 +74,7 @@
                             clip-rule="evenodd" />
                     </svg>
                     Connected
-                    <span v-if="connectionStatus.version" class="text-gray-500">
+                    <span v-if="connectionStatus.version" class="text-secondary-content">
                         (v{{ connectionStatus.version }})
                     </span>
                 </span>

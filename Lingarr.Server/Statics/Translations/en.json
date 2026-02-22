@@ -12,7 +12,10 @@
     "integrity": "Integrity",
     "automation": "Automation",
     "tasks": "Tasks",
-    "logs": "Logs"
+    "logs": "Logs",
+    "help": "Help",
+    "onboarding": "Onboarding Assistant",
+    "about": "About Lingarr"
   },
   "embedded": {
     "title": "Embedded Subtitles",
