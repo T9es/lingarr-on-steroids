@@ -142,6 +142,34 @@ public class SyncMovieJob
                 var instances = JsonSerializer.Deserialize<List<RadarrInstance>>(instancesJson);
                 if (instances != null && instances.Count > 0)
                 {
+                    // Validate no duplicate IDs (would cause data corruption)
+                    var duplicateIds = instances
+                        .GroupBy(i => i.Id)
+                        .Where(g => g.Count() > 1)
+                        .Select(g => g.Key)
+                        .ToList();
+                        
+                    if (duplicateIds.Count != 0)
+                    {
+                        _logger.LogError("Duplicate Radarr instance IDs detected: {Ids}. Each instance must have a unique ID to prevent data corruption.", 
+                            string.Join(", ", duplicateIds));
+                        // Filter to first occurrence of each ID to prevent corruption
+                        instances = instances
+                            .GroupBy(i => i.Id)
+                            .Select(g => g.First())
+                            .ToList();
+                        _logger.LogWarning("Filtered to unique instances: {Count} remaining", instances.Count);
+                    }
+                    
+                    // Validate maximum instances
+                    const int maxInstances = 10;
+                    if (instances.Count > maxInstances)
+                    {
+                        _logger.LogWarning("Too many Radarr instances configured ({Count}). Maximum is {Max}. Using first {Max} instances.",
+                            instances.Count, maxInstances, maxInstances);
+                        instances = instances.Take(maxInstances).ToList();
+                    }
+                    
                     return instances;
                 }
             }

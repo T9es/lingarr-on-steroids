@@ -28,9 +28,9 @@ public class SeasonSync : ISeasonSync
     }
 
     /// <inheritdoc />
-    public async Task<Season> SyncSeason(Show show, SonarrShow sonarrShow, SonarrSeason season)
+    public async Task<Season> SyncSeason(Show show, SonarrShow sonarrShow, SonarrSeason season, string instanceUrl, string instanceApiKey)
     {
-        var seasonPath = await GetSeasonPath(sonarrShow, season);
+        var seasonPath = await GetSeasonPath(sonarrShow, season, instanceUrl, instanceApiKey);
         
         var seasonEntity = await _dbContext.Seasons
             .Include(s => s.Episodes)
@@ -61,17 +61,19 @@ public class SeasonSync : ISeasonSync
     /// </summary>
     /// <param name="show">The Sonarr show containing the season</param>
     /// <param name="season">The Sonarr season to get the path for</param>
+    /// <param name="instanceUrl">The Sonarr instance URL</param>
+    /// <param name="instanceApiKey">The Sonarr instance API key</param>
     /// <returns>The converted and mapped path for the season, or an empty string if no path could be determined</returns>
-    private async Task<string> GetSeasonPath(SonarrShow show, SonarrSeason season)
+    private async Task<string> GetSeasonPath(SonarrShow show, SonarrSeason season, string instanceUrl, string instanceApiKey)
     {
-        var episodes = await _sonarrService.GetEpisodes(show.Id, season.SeasonNumber);
+        var episodes = await _sonarrService.GetEpisodes(show.Id, season.SeasonNumber, instanceUrl, instanceApiKey);
         var episode = episodes?.Where(episode => episode.HasFile).FirstOrDefault();
         if (episode == null)
         {
             return string.Empty;
         }
         
-        var episodePathResult = await _sonarrService.GetEpisodePath(episode.Id);
+        var episodePathResult = await _sonarrService.GetEpisodePath(episode.Id, instanceUrl, instanceApiKey);
         var normalizePath = _pathConversionService.NormalizePath(episodePathResult?.EpisodeFile.Path ?? string.Empty);
         var seasonPath = Path.GetDirectoryName(normalizePath);
         _logger.LogInformation("Resolved season path from episode {EpisodeId}: {SeasonPath}", episode.Id, seasonPath);

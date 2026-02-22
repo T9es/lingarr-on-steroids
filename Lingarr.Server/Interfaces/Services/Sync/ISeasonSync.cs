@@ -11,6 +11,8 @@ public interface ISeasonSync
     /// <param name="show">The show entity the season belongs to</param>
     /// <param name="sonarrShow">The Sonarr show containing the season</param>
     /// <param name="season">The Sonarr season to sync</param>
+    /// <param name="instanceUrl">The Sonarr instance URL</param>
+    /// <param name="instanceApiKey">The Sonarr instance API key</param>
     /// <returns>The synchronized season entity</returns>
-    Task<Season> SyncSeason(Show show, SonarrShow sonarrShow, SonarrSeason season);
+    Task<Season> SyncSeason(Show show, SonarrShow sonarrShow, SonarrSeason season, string instanceUrl, string instanceApiKey);
 }

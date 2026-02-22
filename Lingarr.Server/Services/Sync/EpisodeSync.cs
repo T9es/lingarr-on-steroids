@@ -41,16 +41,16 @@ public class EpisodeSync : IEpisodeSync
     }
 
     /// <inheritdoc />
-    public async Task SyncEpisodes(SonarrShow show, Season season)
+    public async Task SyncEpisodes(SonarrShow show, Season season, string? instanceUrl = null, string? instanceApiKey = null)
     {
-        var episodes = await _sonarrService.GetEpisodes(show.Id, season.SeasonNumber);
+        var episodes = await _sonarrService.GetEpisodes(show.Id, season.SeasonNumber, instanceUrl, instanceApiKey);
         if (episodes == null) return;
 
         var syncedEpisodes = new List<(Episode Entity, bool NeedsIndexing, string? OldPath, string? OldFileName)>();
 
         foreach (var episode in episodes.Where(e => e.HasFile))
         {
-            var episodePathResult = await _sonarrService.GetEpisodePath(episode.Id);
+            var episodePathResult = await _sonarrService.GetEpisodePath(episode.Id, instanceUrl, instanceApiKey);
             var episodePath = _pathConversionService.ConvertAndMapPath(
                 episodePathResult?.EpisodeFile.Path ?? string.Empty,
                 MediaType.Show
