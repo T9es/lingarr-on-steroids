@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { useI18n } from '@/plugins/i18n'
 import CardComponent from '@/components/common/CardComponent.vue'
 import RefreshIcon from '@/components/icons/RefreshIcon.vue'
+import axios from 'axios'
 
 const i18n = useI18n()
 
@@ -20,22 +21,19 @@ const jobs = ref<JobInfo[]>([])
 const isLoading = ref(false)
 const error = ref<string | null>(null)
 
-// TODO: Connect to backend endpoint in Phase 4
-// For now, show placeholder data
 const fetchJobs = async () => {
     isLoading.value = true
     error.value = null
     
-    // Placeholder data - will be replaced with actual API call
-    // GET /api/jobs/status
-    jobs.value = [
-        { id: '1', name: 'Sync Movies', state: 'scheduled', nextRun: 'In 2 hours' },
-        { id: '2', name: 'Sync Shows', state: 'scheduled', nextRun: 'In 3 hours' },
-        { id: '3', name: 'Translation Queue', state: 'running', progress: 45 },
-        { id: '4', name: 'Cleanup Job', state: 'completed', lastRun: '2 hours ago' }
-    ]
-    
-    isLoading.value = false
+    try {
+        const response = await axios.get('/api/dashboard/job-queue')
+        jobs.value = response.data
+    } catch (e) {
+        error.value = 'Failed to fetch job queue'
+        console.error('Failed to fetch job queue:', e)
+    } finally {
+        isLoading.value = false
+    }
 }
 
 const refreshInterval = ref<number | null>(null)

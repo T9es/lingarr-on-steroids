@@ -4,6 +4,7 @@ import { useI18n } from '@/plugins/i18n'
 import CardComponent from '@/components/common/CardComponent.vue'
 import RefreshIcon from '@/components/icons/RefreshIcon.vue'
 import ExclamationIcon from '@/components/icons/ExclamationIcon.vue'
+import axios from 'axios'
 
 const i18n = useI18n()
 
@@ -20,41 +21,17 @@ const errors = ref<ErrorLog[]>([])
 const isLoading = ref(false)
 const expandedId = ref<string | null>(null)
 
-// TODO: Connect to backend endpoint in Phase 4
-// For now, show placeholder data
 const fetchErrors = async () => {
     isLoading.value = true
     
-    // Placeholder data - will be replaced with actual API call
-    // GET /api/statistics/errors?limit=10
-    errors.value = [
-        {
-            id: '1',
-            timestamp: '2 min ago',
-            type: 'error',
-            message: 'Translation failed for movie_123.srt',
-            source: 'TranslationJob',
-            details: 'API rate limit exceeded'
-        },
-        {
-            id: '2',
-            timestamp: '15 min ago',
-            type: 'warning',
-            message: 'Slow response from DeepL API',
-            source: 'DeepLService',
-            details: 'Response time: 5.2s'
-        },
-        {
-            id: '3',
-            timestamp: '1 hour ago',
-            type: 'info',
-            message: 'Sync completed with warnings',
-            source: 'SyncMovieJob',
-            details: '3 movies skipped due to missing subtitles'
-        }
-    ]
-    
-    isLoading.value = false
+    try {
+        const response = await axios.get('/api/dashboard/error-log?limit=10')
+        errors.value = response.data
+    } catch (e) {
+        console.error('Failed to fetch error log:', e)
+    } finally {
+        isLoading.value = false
+    }
 }
 
 const refreshInterval = ref<number | null>(null)

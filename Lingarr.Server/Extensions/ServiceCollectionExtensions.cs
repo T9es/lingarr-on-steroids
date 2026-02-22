@@ -108,6 +108,7 @@ public static class ServiceCollectionExtensions
 
         builder.Services.AddHostedService<ScheduleInitializationService>();
         builder.Services.AddSingleton<IScheduleService, ScheduleService>();
+        builder.Services.AddScoped<IDashboardService, DashboardService>();
 
         builder.Services.AddScoped<IImageService, ImageService>();
         builder.Services.AddScoped<IIntegrationService, IntegrationService>();

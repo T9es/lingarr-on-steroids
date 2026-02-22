@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { useI18n } from '@/plugins/i18n'
 import CardComponent from '@/components/common/CardComponent.vue'
 import RefreshIcon from '@/components/icons/RefreshIcon.vue'
+import axios from 'axios'
 
 const i18n = useI18n()
 
@@ -20,33 +21,19 @@ const apiUsage = ref<ApiUsageInfo[]>([])
 const isLoading = ref(false)
 const error = ref<string | null>(null)
 
-// TODO: Connect to backend endpoint in Phase 4
-// For now, show placeholder data
 const fetchApiUsage = async () => {
     isLoading.value = true
     error.value = null
     
-    // Placeholder data - will be replaced with actual API call
-    // GET /api/statistics/api-usage
-    apiUsage.value = [
-        { 
-            service: 'OpenAI', 
-            callsToday: 45, 
-            callsWeek: 312, 
-            callsMonth: 1247,
-            tokensUsed: 125000
-        },
-        { 
-            service: 'DeepL', 
-            callsToday: 23, 
-            callsWeek: 156, 
-            callsMonth: 623,
-            limit: 500000,
-            remaining: 487000
-        }
-    ]
-    
-    isLoading.value = false
+    try {
+        const response = await axios.get('/api/dashboard/api-usage')
+        apiUsage.value = response.data
+    } catch (e) {
+        error.value = 'Failed to fetch API usage'
+        console.error('Failed to fetch API usage:', e)
+    } finally {
+        isLoading.value = false
+    }
 }
 
 const refreshInterval = ref<number | null>(null)
