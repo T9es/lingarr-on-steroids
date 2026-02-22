@@ -37,6 +37,29 @@ public class IntegrationService : IIntegrationService
     }
     
     /// <inheritdoc />
+    public async Task<T?> GetApiResponse<T>(string apiUrl, string url, string apiKey)
+    {
+        if (string.IsNullOrEmpty(url) || string.IsNullOrEmpty(apiKey))
+        {
+            return default;
+        }
+
+        var separator = apiUrl.Contains("?") ? "&" : "?";
+        var fullUrl = $"{url.TrimEnd('/')}{apiUrl}{separator}apikey={apiKey}";
+
+        var response = await _httpClient.GetAsync(fullUrl);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorContent = await response.Content.ReadAsStringAsync();
+            throw new HttpRequestException($"Integration request failed: {response.StatusCode}: {errorContent}");
+        }
+
+        await using var responseStream = await response.Content.ReadAsStreamAsync();
+        return await JsonSerializer.DeserializeAsync<T>(responseStream);
+    }
+    
+    /// <inheritdoc />
     public async Task<IntegrationTestResult> TestConnection(IntegrationSettingKeys settingKeys)
     {
         var settings = await _settingsProvider.GetSettings(settingKeys);

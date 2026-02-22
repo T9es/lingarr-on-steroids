@@ -17,6 +17,7 @@ export interface IShow extends IBaseEntity {
     translationAgeThreshold: string
     isPriority: boolean
     priorityDate?: Date | null
+    sourceInstanceId?: string | null
 }
 
 export interface IEmbeddedSubtitle {
@@ -46,6 +47,7 @@ export interface IMovie extends IBaseEntity {
     isPriority: boolean
     priorityDate?: Date | null
     translationState?: TranslationStateType
+    sourceInstanceId?: string | null
 }
 
 export interface ITranslationRequest {

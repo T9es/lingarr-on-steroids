@@ -1,12 +1,16 @@
-﻿using Hangfire;
+using Hangfire;
 using Microsoft.EntityFrameworkCore;
+using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Filters;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Integration;
 using Lingarr.Server.Interfaces.Services.Sync;
+using Lingarr.Server.Models;
+using Lingarr.Server.Models.Integrations;
 using Microsoft.OpenApi.Extensions;
+using System.Text.Json;
 
 namespace Lingarr.Server.Jobs;
 
@@ -17,19 +21,22 @@ public class SyncShowJob
     private readonly ILogger<SyncShowJob> _logger;
     private readonly IScheduleService _scheduleService;
     private readonly IShowSyncService _showSyncService;
+    private readonly ISettingService _settingService;
 
     public SyncShowJob(
         LingarrDbContext dbContext,
         ISonarrService sonarrService,
         ILogger<SyncShowJob> logger,
         IScheduleService scheduleService,
-        IShowSyncService showSyncService)
+        IShowSyncService showSyncService,
+        ISettingService settingService)
     {
         _dbContext = dbContext;
         _sonarrService = sonarrService;
         _logger = logger;
         _scheduleService = scheduleService;
         _showSyncService = showSyncService;
+        _settingService = settingService;
     }
 
     [DisableConcurrentExecution(timeoutInSeconds: 60 * 60)]
@@ -44,24 +51,75 @@ public class SyncShowJob
         {
             await _scheduleService.UpdateJobState(jobName, JobStatus.Processing.GetDisplayName());
 
-            var shows = await _sonarrService.GetShows();
-            if (shows == null) return;
+            // Get instances from settings
+            var instances = await GetSonarrInstances();
+            if (instances.Count == 0)
+            {
+                _logger.LogWarning("No Sonarr instances configured");
+                await _scheduleService.UpdateJobState(jobName, JobStatus.Succeeded.GetDisplayName());
+                return;
+            }
 
-            _logger.LogInformation("Fetched {ShowCount} shows from Sonarr", shows.Count);
+            var allShows = new List<(SonarrShow Show, string InstanceId)>();
+            var instanceShowIds = new Dictionary<string, HashSet<int>>();
 
-            // Sync shows incrementally - each batch commits independently for UI visibility
-            await _showSyncService.SyncShows(shows);
+            foreach (var instance in instances)
+            {
+                try
+                {
+                    var shows = await _sonarrService.GetShows(instance.Url, instance.ApiKey);
+                    if (shows != null)
+                    {
+                        _logger.LogInformation("Fetched {Count} shows from Sonarr instance '{Name}'",
+                            shows.Count, instance.Name);
 
-            // Deletion is the risky operation - wrap in transaction for atomicity
+                        var showIds = new HashSet<int>();
+                        foreach (var show in shows)
+                        {
+                            allShows.Add((show, instance.Id));
+                            showIds.Add(show.Id);
+                        }
+                        instanceShowIds[instance.Id] = showIds;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to fetch shows from Sonarr instance '{Name}'", instance.Name);
+                }
+            }
+
+            if (allShows.Count == 0)
+            {
+                _logger.LogWarning("No shows fetched from any Sonarr instance");
+                await _scheduleService.UpdateJobState(jobName, JobStatus.Succeeded.GetDisplayName());
+                return;
+            }
+
+            _logger.LogInformation("Fetched {Count} total shows from {InstanceCount} Sonarr instances", 
+                allShows.Count, instances.Count);
+
+            // Sync all shows with their instance IDs
+            await _showSyncService.SyncShows(allShows);
+
+            // Remove non-existent shows per instance
             var strategy = _dbContext.Database.CreateExecutionStrategy();
             await strategy.ExecuteAsync(async () =>
             {
                 await using var transaction = await _dbContext.Database.BeginTransactionAsync();
-                await _showSyncService.RemoveNonExistentShows(shows.Select(s => s.Id).ToHashSet());
+                
+                foreach (var instance in instances)
+                {
+                    if (instanceShowIds.TryGetValue(instance.Id, out var showIds))
+                    {
+                        await _showSyncService.RemoveNonExistentShows(showIds, instance.Id);
+                    }
+                }
+                
                 await transaction.CommitAsync();
             });
+
             await _scheduleService.UpdateJobState(jobName, JobStatus.Succeeded.GetDisplayName());
-            _logger.LogInformation("Shows synced successfully.");
+            _logger.LogInformation("Shows synced successfully from {Count} instances.", instances.Count);
         }
         catch (Exception ex)
         {
@@ -70,5 +128,44 @@ public class SyncShowJob
                 "An error occurred when syncing shows. Exception details: {ExceptionMessage}, Stack Trace: {StackTrace}",
                 ex.Message, ex.StackTrace);
         }
+    }
+
+    /// <summary>
+    /// Gets the list of Sonarr instances from settings.
+    /// Falls back to single instance from old settings if multi-instance is not configured.
+    /// </summary>
+    private async Task<List<SonarrInstance>> GetSonarrInstances()
+    {
+        var instancesJson = await _settingService.GetSetting(SettingKeys.Integration.SonarrInstances);
+
+        if (!string.IsNullOrEmpty(instancesJson))
+        {
+            try
+            {
+                var instances = JsonSerializer.Deserialize<List<SonarrInstance>>(instancesJson);
+                if (instances != null && instances.Count > 0)
+                {
+                    return instances;
+                }
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(ex, "Failed to deserialize Sonarr instances from settings");
+            }
+        }
+
+        // Fall back to single instance from old settings
+        var url = await _settingService.GetSetting(SettingKeys.Integration.SonarrUrl);
+        var apiKey = await _settingService.GetSetting(SettingKeys.Integration.SonarrApiKey);
+
+        if (!string.IsNullOrEmpty(url) && !string.IsNullOrEmpty(apiKey))
+        {
+            return new List<SonarrInstance>
+            {
+                new() { Id = "default", Name = "Default", Url = url, ApiKey = apiKey }
+            };
+        }
+
+        return new List<SonarrInstance>();
     }
 }

@@ -132,7 +132,7 @@ public class MediaService : IMediaService
                 return 0;
             }
 
-            var movieEntity = await _movieSyncService.SyncMovie(movieFetched);
+            var movieEntity = await _movieSyncService.SyncMovie(movieFetched, "legacy");
             if (movieEntity == null)
             {
                 // Movie had no file
@@ -180,7 +180,7 @@ public class MediaService : IMediaService
                 return 0;
             }
 
-            var show = await _showSyncService.SyncShow(episodeFetched.Show);
+            var show = await _showSyncService.SyncShow(episodeFetched.Show, "legacy");
             // Find the episode id or return 0 if not found
             return show.Seasons
                 .SelectMany(s => s.Episodes)
@@ -197,7 +197,9 @@ public class MediaService : IMediaService
                 var shows = await _sonarrService.GetShows();
                 if (shows != null && shows.Any())
                 {
-                    await _showSyncService.SyncShows(shows);
+                    // Use "legacy" instanceId for fallback sync - proper multi-instance sync happens in SyncShowJob
+                    var showsWithInstanceId = shows.Select(s => (s, "legacy")).ToList();
+                    await _showSyncService.SyncShows(showsWithInstanceId);
                     // Try to find the episode again after resync
                     var matchedEpisode = await _dbContext.Episodes.Where(s => s.SonarrId == episodeNumber).FirstOrDefaultAsync();
                     if (matchedEpisode != null)

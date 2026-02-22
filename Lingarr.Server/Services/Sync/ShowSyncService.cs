@@ -31,13 +31,13 @@ public class ShowSyncService : IShowSyncService
     }
 
     /// <inheritdoc />
-    public async Task SyncShows(List<SonarrShow> shows)
+    public async Task SyncShows(List<(SonarrShow Show, string InstanceId)> shows)
     {
         var processedCount = 0;
         
-        foreach (var show in shows)
+        foreach (var (show, instanceId) in shows)
         {
-            var showEntity = await _showSync.SyncShow(show);
+            var showEntity = await _showSync.SyncShow(show, instanceId);
 
             foreach (var season in show.Seasons)
             {
@@ -60,9 +60,9 @@ public class ShowSyncService : IShowSyncService
     }
 
     /// <inheritdoc />
-    public async Task<Show> SyncShow(SonarrShow show)
+    public async Task<Show?> SyncShow(SonarrShow show, string instanceId)
     {
-        var showEntity = await _showSync.SyncShow(show);
+        var showEntity = await _showSync.SyncShow(show, instanceId);
 
         foreach (var season in show.Seasons)
         {
@@ -77,19 +77,21 @@ public class ShowSyncService : IShowSyncService
     }
 
     /// <inheritdoc />
-    public async Task RemoveNonExistentShows(HashSet<int> existingSonarrIds)
+    public async Task RemoveNonExistentShows(IEnumerable<int> existingSonarrIds, string instanceId)
     {
         var showsToDelete = await _dbContext.Shows
             .Include(s => s.Images)
             .Include(s => s.Seasons)
                 .ThenInclude(s => s.Episodes)
                     .ThenInclude(e => e.EmbeddedSubtitles)
+            .Where(s => s.SourceInstanceId == instanceId)
             .Where(s => !existingSonarrIds.Contains(s.SonarrId))
             .ToListAsync();
 
         if (showsToDelete.Any())
         {
-            _logger.LogInformation("Removing {Count} shows that no longer exist in Sonarr", showsToDelete.Count);
+            _logger.LogInformation("Removing {Count} shows that no longer exist in Sonarr instance '{InstanceId}'", 
+                showsToDelete.Count, instanceId);
 
             var episodes = showsToDelete.SelectMany(s => s.Seasons.SelectMany(season => season.Episodes)).ToList();
             var embeddedSubtitles = episodes.SelectMany(e => e.EmbeddedSubtitles).ToList();

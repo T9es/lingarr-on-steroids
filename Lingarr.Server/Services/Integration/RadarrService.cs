@@ -37,4 +37,22 @@ public class RadarrService : IRadarrService
                 ApiKey = "radarr_api_key"
             });
     }
+
+    /// <inheritdoc />
+    public async Task<List<RadarrMovie>?> GetMovies(string url, string apiKey)
+    {
+        return await _integrationService.GetApiResponse<List<RadarrMovie>>(
+            "/api/v3/movie/",
+            url,
+            apiKey);
+    }
+
+    /// <inheritdoc />
+    public async Task<RadarrMovie?> GetMovie(int movieId, string url, string apiKey)
+    {
+        return await _integrationService.GetApiResponse<RadarrMovie>(
+            $"/api/v3/movie/{movieId}",
+            url,
+            apiKey);
+    }
 }

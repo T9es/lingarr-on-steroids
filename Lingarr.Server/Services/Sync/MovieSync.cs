@@ -39,7 +39,7 @@ public class MovieSync : IMovieSync
     }
 
     /// <inheritdoc />
-    public async Task<Movie?> SyncMovie(RadarrMovie movie)
+    public async Task<Movie?> SyncMovie(RadarrMovie movie, string instanceId)
     {
         if (!movie.HasFile)
         {
@@ -47,10 +47,11 @@ public class MovieSync : IMovieSync
             return null;
         }
 
+        // Match by RadarrId AND SourceInstanceId for multi-instance support
         var movieEntity = await _dbContext.Movies
             .Include(m => m.Images)
             .Include(m => m.EmbeddedSubtitles)
-            .FirstOrDefaultAsync(m => m.RadarrId == movie.Id);
+            .FirstOrDefaultAsync(m => m.RadarrId == movie.Id && m.SourceInstanceId == instanceId);
 
         var moviePath = _pathConversionService.ConvertAndMapPath(
             movie.MovieFile.Path ?? string.Empty,
@@ -69,7 +70,8 @@ public class MovieSync : IMovieSync
                 Title = movie.Title,
                 DateAdded = DateTime.Parse(movie.Added).ToUniversalTime(),
                 FileName = Path.GetFileNameWithoutExtension(moviePath),
-                Path = Path.GetDirectoryName(moviePath) ?? string.Empty
+                Path = Path.GetDirectoryName(moviePath) ?? string.Empty,
+                SourceInstanceId = instanceId
             };
             _dbContext.Movies.Add(movieEntity);
         }
@@ -79,6 +81,7 @@ public class MovieSync : IMovieSync
             movieEntity.DateAdded = DateTime.Parse(movie.Added).ToUniversalTime();
             movieEntity.FileName = Path.GetFileNameWithoutExtension(moviePath);
             movieEntity.Path = Path.GetDirectoryName(moviePath) ?? string.Empty;
+            movieEntity.SourceInstanceId = instanceId;
         }
 
         _logger.LogInformation("Syncing movie: {MovieId} with Path: {Path}", movie.Id, movieEntity.Path);
