@@ -62,11 +62,12 @@ public interface IMediaService
     /// If it is not in the database, it will try to sync the Movie with Radarr
     /// If the Movie is not found in Rdarr either, 0 will be returned
     /// </summary>
-    /// <param name="movieId">The Sonarr episode id to search with</param>
+    /// <param name="movieId">The Radarr movie id to search with</param>
+    /// <param name="sourceInstanceId">Optional source instance ID to filter by in multi-instance setups</param>
     /// <returns>
-    /// A task result containing the lingarr's episode id
+    /// A task result containing the lingarr's movie id
     /// </returns>
-    Task<int> GetMovieIdOrSyncFromRadarrMovieId(int movieId);
+    Task<int> GetMovieIdOrSyncFromRadarrMovieId(int movieId, string? sourceInstanceId = null);
 
     /// <summary>
     /// Retrieves an episode id (lingarr's id) from the database with a Sonarr episode id.
@@ -74,10 +75,11 @@ public interface IMediaService
     /// If the Show is not found in Sonarr either, 0 will be returned
     /// </summary>
     /// <param name="episodeNumber">The Sonarr episode id to search with</param>
+    /// <param name="sourceInstanceId">Optional source instance ID to filter by in multi-instance setups</param>
     /// <returns>
     /// A task result containing the lingarr's episode id
     /// </returns>
-    Task<int> GetEpisodeIdOrSyncFromSonarrEpisodeId(int episodeNumber);
+    Task<int> GetEpisodeIdOrSyncFromSonarrEpisodeId(int episodeNumber, string? sourceInstanceId = null);
 
     /// <summary>
     /// Toggles the exclusion status of a media item from translation.

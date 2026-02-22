@@ -86,6 +86,7 @@ public class MediaService : IMediaService
             {
                 Id = movie.Id,
                 RadarrId = movie.RadarrId,
+                SourceInstanceId = movie.SourceInstanceId,
                 Title = movie.Title,
                 FileName = movie.FileName ?? string.Empty,
                 Path = movie.Path,
@@ -113,9 +114,20 @@ public class MediaService : IMediaService
     }
 
     /// <inheritdoc />
-    public async Task<int> GetMovieIdOrSyncFromRadarrMovieId(int movieId)
+    public async Task<int> GetMovieIdOrSyncFromRadarrMovieId(int movieId, string? sourceInstanceId = null)
     {
-        var movie = await _dbContext.Movies.Where(s => s.RadarrId == movieId).FirstOrDefaultAsync();
+        var query = _dbContext.Movies.AsQueryable();
+        
+        if (sourceInstanceId != null)
+        {
+            query = query.Where(s => s.RadarrId == movieId && s.SourceInstanceId == sourceInstanceId);
+        }
+        else
+        {
+            query = query.Where(s => s.RadarrId == movieId);
+        }
+        
+        var movie = await query.FirstOrDefaultAsync();
         if (movie != null)
         {
             return movie.Id;
@@ -155,9 +167,20 @@ public class MediaService : IMediaService
     }
 
     /// <inheritdoc />
-    public async Task<int> GetEpisodeIdOrSyncFromSonarrEpisodeId(int episodeNumber)
+    public async Task<int> GetEpisodeIdOrSyncFromSonarrEpisodeId(int episodeNumber, string? sourceInstanceId = null)
     {
-        var episode = await _dbContext.Episodes.Where(s => s.SonarrId == episodeNumber).FirstOrDefaultAsync();
+        var query = _dbContext.Episodes.AsQueryable();
+        
+        if (sourceInstanceId != null)
+        {
+            query = query.Where(s => s.SonarrId == episodeNumber && s.Season.Show.SourceInstanceId == sourceInstanceId);
+        }
+        else
+        {
+            query = query.Where(s => s.SonarrId == episodeNumber);
+        }
+        
+        var episode = await query.FirstOrDefaultAsync();
         if (episode != null)
         {
             return episode.Id;

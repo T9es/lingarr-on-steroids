@@ -40,11 +40,20 @@ public class ShowSyncService : IShowSyncService
     /// <inheritdoc />
     public async Task SyncShows(List<(SonarrShow Show, string InstanceId)> shows)
     {
+        // Pre-fetch all unique instance configs ONCE to avoid N+1 queries
+        var uniqueInstanceIds = shows.Select(s => s.InstanceId).Distinct().ToList();
+        var instanceConfigs = new Dictionary<string, (string Url, string ApiKey)>();
+        
+        foreach (var instanceId in uniqueInstanceIds)
+        {
+            instanceConfigs[instanceId] = await GetSonarrInstanceConfig(instanceId);
+        }
+        
         var processedCount = 0;
         
         foreach (var (show, instanceId) in shows)
         {
-            var (instanceUrl, instanceApiKey) = await GetSonarrInstanceConfig(instanceId);
+            var (instanceUrl, instanceApiKey) = instanceConfigs[instanceId];  // O(1) lookup
             var showEntity = await _showSync.SyncShow(show, instanceId);
 
             foreach (var season in show.Seasons)

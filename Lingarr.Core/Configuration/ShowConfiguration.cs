@@ -21,5 +21,8 @@ public class ShowConfiguration : IEntityTypeConfiguration<Show>
             .OnDelete(DeleteBehavior.Cascade);
 
         builder.Navigation(s => s.Seasons).AutoInclude();
+
+        builder.HasIndex(s => new { s.SourceInstanceId, s.SonarrId })
+            .HasDatabaseName("IX_Shows_SourceInstanceId_SonarrId");
     }
 }

@@ -115,6 +115,25 @@ public class SyncMovieJob
                 await transaction.CommitAsync();
             });
 
+            // Cleanup orphaned movies from deleted instances
+            var configuredInstanceIds = instances.Select(i => i.Id).ToHashSet();
+
+            // Include "default" and "legacy" to avoid removing migrated records
+            configuredInstanceIds.Add("default");
+            configuredInstanceIds.Add("legacy");
+
+            var orphanedMovies = await _dbContext.Movies
+                .Where(m => !string.IsNullOrEmpty(m.SourceInstanceId) && 
+                            !configuredInstanceIds.Contains(m.SourceInstanceId))
+                .ToListAsync();
+
+            if (orphanedMovies.Count != 0)
+            {
+                _logger.LogWarning("Removing {Count} movies from deleted instances", orphanedMovies.Count);
+                _dbContext.Movies.RemoveRange(orphanedMovies);
+                await _dbContext.SaveChangesAsync();
+            }
+
             await _scheduleService.UpdateJobState(jobName, JobStatus.Succeeded.GetDisplayName());
             _logger.LogInformation("Movies synced successfully from {Count} instances.", instances.Count);
         }
@@ -142,6 +161,27 @@ public class SyncMovieJob
                 var instances = JsonSerializer.Deserialize<List<RadarrInstance>>(instancesJson);
                 if (instances != null && instances.Count > 0)
                 {
+                    // Filter out instances with missing required fields
+                    var originalCount = instances.Count;
+                    instances = instances
+                        .Where(i => !string.IsNullOrWhiteSpace(i.Id) &&
+                                    !string.IsNullOrWhiteSpace(i.Name) &&
+                                    !string.IsNullOrWhiteSpace(i.Url) &&
+                                    !string.IsNullOrWhiteSpace(i.ApiKey))
+                        .ToList();
+                    
+                    if (instances.Count < originalCount)
+                    {
+                        _logger.LogWarning("Filtered out {Count} invalid Radarr instances with missing required fields",
+                            originalCount - instances.Count);
+                    }
+                    
+                    if (instances.Count == 0)
+                    {
+                        _logger.LogWarning("No valid Radarr instances after filtering");
+                        return new List<RadarrInstance>();
+                    }
+                    
                     // Validate no duplicate IDs (would cause data corruption)
                     var duplicateIds = instances
                         .GroupBy(i => i.Id)

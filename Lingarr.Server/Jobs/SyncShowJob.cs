@@ -118,6 +118,25 @@ public class SyncShowJob
                 await transaction.CommitAsync();
             });
 
+            // Cleanup orphaned shows from deleted instances
+            var configuredInstanceIds = instances.Select(i => i.Id).ToHashSet();
+
+            // Include "default" and "legacy" to avoid removing migrated records
+            configuredInstanceIds.Add("default");
+            configuredInstanceIds.Add("legacy");
+
+            var orphanedShows = await _dbContext.Shows
+                .Where(s => !string.IsNullOrEmpty(s.SourceInstanceId) && 
+                            !configuredInstanceIds.Contains(s.SourceInstanceId))
+                .ToListAsync();
+
+            if (orphanedShows.Count != 0)
+            {
+                _logger.LogWarning("Removing {Count} shows from deleted instances", orphanedShows.Count);
+                _dbContext.Shows.RemoveRange(orphanedShows);
+                await _dbContext.SaveChangesAsync();
+            }
+
             await _scheduleService.UpdateJobState(jobName, JobStatus.Succeeded.GetDisplayName());
             _logger.LogInformation("Shows synced successfully from {Count} instances.", instances.Count);
         }
@@ -145,6 +164,27 @@ public class SyncShowJob
                 var instances = JsonSerializer.Deserialize<List<SonarrInstance>>(instancesJson);
                 if (instances != null && instances.Count > 0)
                 {
+                    // Filter out instances with missing required fields
+                    var originalCount = instances.Count;
+                    instances = instances
+                        .Where(i => !string.IsNullOrWhiteSpace(i.Id) &&
+                                    !string.IsNullOrWhiteSpace(i.Name) &&
+                                    !string.IsNullOrWhiteSpace(i.Url) &&
+                                    !string.IsNullOrWhiteSpace(i.ApiKey))
+                        .ToList();
+                    
+                    if (instances.Count < originalCount)
+                    {
+                        _logger.LogWarning("Filtered out {Count} invalid Sonarr instances with missing required fields",
+                            originalCount - instances.Count);
+                    }
+                    
+                    if (instances.Count == 0)
+                    {
+                        _logger.LogWarning("No valid Sonarr instances after filtering");
+                        return new List<SonarrInstance>();
+                    }
+                    
                     // Validate no duplicate IDs (would cause data corruption)
                     var duplicateIds = instances
                         .GroupBy(i => i.Id)
