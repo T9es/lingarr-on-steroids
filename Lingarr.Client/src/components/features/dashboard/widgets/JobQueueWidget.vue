@@ -26,7 +26,7 @@ const fetchJobs = async () => {
     error.value = null
     
     try {
-        const response = await axios.get('/api/dashboard/job-queue')
+        const response = await axios.get('/api/dashboard/jobs')
         jobs.value = response.data
     } catch (e) {
         error.value = 'Failed to fetch job queue'

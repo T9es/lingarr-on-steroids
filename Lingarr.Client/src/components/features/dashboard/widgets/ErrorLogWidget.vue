@@ -25,7 +25,7 @@ const fetchErrors = async () => {
     isLoading.value = true
     
     try {
-        const response = await axios.get('/api/dashboard/error-log?limit=10')
+        const response = await axios.get('/api/dashboard/errors?limit=10')
         errors.value = response.data
     } catch (e) {
         console.error('Failed to fetch error log:', e)
