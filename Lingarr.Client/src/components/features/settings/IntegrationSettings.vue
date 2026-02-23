@@ -2,7 +2,7 @@
     <SaveNotification ref="saveNotification" />
 
     <!-- Media Servers Section -->
-    <CardComponent :title="translate('settings.integrations.header') || 'Media Servers'">
+    <CardComponent :title="translate('settings.integrations.title') || 'Media Servers'">
         <template #icon>
             <div class="flex gap-2">
                 <RadarrIcon />
@@ -16,31 +16,55 @@
             <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                 <!-- Radarr Instances -->
                 <InstanceCard
-                    v-for="instance in radarrInstances"
+                    v-for="instance in localRadarrInstances"
                     :key="instance.id"
                     :instance="instance"
                     type="radarr"
                     :connection-status="getConnectionStatus('radarr', instance.id)"
-                    @update:instance="updateRadarrInstance(instance.id, $event)"
-                    @remove="removeRadarrInstance(instance.id)"
+                    @update:instance="updateLocalRadarrInstance(instance.id, $event)"
+                    @remove="removeLocalRadarrInstance(instance.id)"
                     @test-connection="testRadarrConnection(instance)" />
                 
                 <!-- Sonarr Instances -->
                 <InstanceCard
-                    v-for="instance in sonarrInstances"
+                    v-for="instance in localSonarrInstances"
                     :key="instance.id"
                     :instance="instance"
                     type="sonarr"
                     :connection-status="getConnectionStatus('sonarr', instance.id)"
-                    @update:instance="updateSonarrInstance(instance.id, $event)"
-                    @remove="removeSonarrInstance(instance.id)"
+                    @update:instance="updateLocalSonarrInstance(instance.id, $event)"
+                    @remove="removeLocalSonarrInstance(instance.id)"
                     @test-connection="testSonarrConnection(instance)" />
                 
                 <!-- Single Add Button with Dropdown -->
                 <AddInstanceButton
-                    v-if="radarrInstances.length + sonarrInstances.length < 10"
+                    v-if="localRadarrInstances.length + localSonarrInstances.length < 10"
                     @add="handleAddInstance" />
             </div>
+            
+            <!-- Save/Discard Button Bar -->
+            <div 
+                v-if="hasChanges" 
+                class="mt-6 flex items-center justify-end gap-3 border-t border-secondary-content/20 pt-4"
+            >
+                <span class="text-sm text-secondary-content">
+                    {{ translate('common.unsavedChanges') || 'You have unsaved changes' }}
+                </span>
+                <button
+                    @click="discardChanges"
+                    class="rounded-md border border-gray-600 px-4 py-2 text-sm text-secondary-content transition-colors hover:bg-secondary-content/10"
+                >
+                    {{ translate('common.discard') || 'Discard' }}
+                </button>
+                <button
+                    @click="saveChanges"
+                    :disabled="isSaving"
+                    class="rounded-md bg-accent px-4 py-2 text-sm font-medium text-primary-content transition-colors hover:bg-accent/80 disabled:opacity-50"
+                >
+                    {{ isSaving ? (translate('common.saving') || 'Saving...') : (translate('common.saveChanges') || 'Save Changes') }}
+                </button>
+            </div>
+            
             <div v-translate="'settings.integrations.reindexTask'" class="pt-4 text-sm text-secondary-content" />
         </template>
     </CardComponent>
@@ -79,6 +103,13 @@ const { translate } = useI18n()
 const saveNotification = ref<InstanceType<typeof SaveNotification> | null>(null)
 const settingsStore = useSettingStore()
 
+// Local state for unsaved changes
+const localRadarrInstances = ref<IInstance[]>([])
+const localSonarrInstances = ref<IInstance[]>([])
+const originalRadarrInstances = ref<IInstance[]>([])
+const originalSonarrInstances = ref<IInstance[]>([])
+const isSaving = ref(false)
+
 // Connection status per instance
 const connectionStatuses = reactive<
     Record<string, Record<string, ConnectionStatus>>
@@ -91,6 +122,18 @@ const connectionStatuses = reactive<
 const generateId = (): string => {
     return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
 }
+
+// Deep equality check for instances
+const instancesEqual = (a: IInstance[], b: IInstance[]): boolean => {
+    if (a.length !== b.length) return false
+    return JSON.stringify(a) === JSON.stringify(b)
+}
+
+// Computed to check if there are unsaved changes
+const hasChanges = computed(() => {
+    return !instancesEqual(localRadarrInstances.value, originalRadarrInstances.value) ||
+           !instancesEqual(localSonarrInstances.value, originalSonarrInstances.value)
+})
 
 // Get connection status for an instance
 const getConnectionStatus = (
@@ -124,12 +167,12 @@ const initConnectionStatus = (type: 'radarr' | 'sonarr', id: string): void => {
 // Parse instances from settings (handle both string and array formats)
 const parseInstances = (value: string | IInstance[]): IInstance[] => {
     if (Array.isArray(value)) {
-        return value
+        return JSON.parse(JSON.stringify(value)) // Deep clone
     }
     if (typeof value === 'string' && value) {
         try {
             const parsed = JSON.parse(value)
-            return Array.isArray(parsed) ? parsed : []
+            return Array.isArray(parsed) ? JSON.parse(JSON.stringify(parsed)) : []
         } catch {
             return []
         }
@@ -137,106 +180,130 @@ const parseInstances = (value: string | IInstance[]): IInstance[] => {
     return []
 }
 
-// Radarr instances computed
-const radarrInstances = computed<IInstance[]>({
-    get: () => {
-        const instances = settingsStore.getSetting(SETTINGS.RADARR_INSTANCES)
-        return parseInstances(instances as string | IInstance[])
-    },
-    set: (value: IInstance[]) => {
+// Load instances from store into local state
+const loadInstancesFromStore = (): void => {
+    const radarrInsts = parseInstances(
+        settingsStore.getSetting(SETTINGS.RADARR_INSTANCES) as string | IInstance[]
+    )
+    const sonarrInsts = parseInstances(
+        settingsStore.getSetting(SETTINGS.SONARR_INSTANCES) as string | IInstance[]
+    )
+    
+    localRadarrInstances.value = radarrInsts
+    localSonarrInstances.value = sonarrInsts
+    originalRadarrInstances.value = JSON.parse(JSON.stringify(radarrInsts))
+    originalSonarrInstances.value = JSON.parse(JSON.stringify(sonarrInsts))
+    
+    // Initialize connection statuses
+    radarrInsts.forEach((inst) => initConnectionStatus('radarr', inst.id))
+    sonarrInsts.forEach((inst) => initConnectionStatus('sonarr', inst.id))
+}
+
+// Save changes to store
+const saveChanges = async (): Promise<void> => {
+    isSaving.value = true
+    try {
         settingsStore.updateSetting(
             SETTINGS.RADARR_INSTANCES,
-            value,
+            JSON.parse(JSON.stringify(localRadarrInstances.value)),
             true,
             true
         )
-        saveNotification.value?.show()
-    }
-})
-
-// Sonarr instances computed
-const sonarrInstances = computed<IInstance[]>({
-    get: () => {
-        const instances = settingsStore.getSetting(SETTINGS.SONARR_INSTANCES)
-        return parseInstances(instances as string | IInstance[])
-    },
-    set: (value: IInstance[]) => {
         settingsStore.updateSetting(
             SETTINGS.SONARR_INSTANCES,
-            value,
+            JSON.parse(JSON.stringify(localSonarrInstances.value)),
             true,
             true
         )
+        
+        // Update originals to match current state
+        originalRadarrInstances.value = JSON.parse(JSON.stringify(localRadarrInstances.value))
+        originalSonarrInstances.value = JSON.parse(JSON.stringify(localSonarrInstances.value))
+        
         saveNotification.value?.show()
+    } finally {
+        isSaving.value = false
     }
-})
+}
+
+// Discard changes and reset to original
+const discardChanges = (): void => {
+    localRadarrInstances.value = JSON.parse(JSON.stringify(originalRadarrInstances.value))
+    localSonarrInstances.value = JSON.parse(JSON.stringify(originalSonarrInstances.value))
+    
+    // Re-initialize connection statuses for current instances
+    connectionStatuses.radarr = {}
+    connectionStatuses.sonarr = {}
+    localRadarrInstances.value.forEach((inst) => initConnectionStatus('radarr', inst.id))
+    localSonarrInstances.value.forEach((inst) => initConnectionStatus('sonarr', inst.id))
+}
 
 // Handle add instance from unified button
 const handleAddInstance = (type: 'radarr' | 'sonarr'): void => {
     if (type === 'radarr') {
-        addRadarrInstance()
+        addLocalRadarrInstance()
     } else {
-        addSonarrInstance()
+        addLocalSonarrInstance()
     }
 }
 
-// Add Radarr instance
-const addRadarrInstance = (): void => {
+// Add Radarr instance (local only)
+const addLocalRadarrInstance = (): void => {
     const id = generateId()
     const instance: IInstance = {
         id,
-        name: `Radarr ${radarrInstances.value.length + 1}`,
+        name: `Radarr ${localRadarrInstances.value.length + 1}`,
         url: '',
         apiKey: ''
     }
     initConnectionStatus('radarr', id)
-    radarrInstances.value = [...radarrInstances.value, instance]
+    localRadarrInstances.value = [...localRadarrInstances.value, instance]
 }
 
-// Add Sonarr instance
-const addSonarrInstance = (): void => {
+// Add Sonarr instance (local only)
+const addLocalSonarrInstance = (): void => {
     const id = generateId()
     const instance: IInstance = {
         id,
-        name: `Sonarr ${sonarrInstances.value.length + 1}`,
+        name: `Sonarr ${localSonarrInstances.value.length + 1}`,
         url: '',
         apiKey: ''
     }
     initConnectionStatus('sonarr', id)
-    sonarrInstances.value = [...sonarrInstances.value, instance]
+    localSonarrInstances.value = [...localSonarrInstances.value, instance]
 }
 
-// Update Radarr instance
-const updateRadarrInstance = (id: string, updatedInstance: IInstance): void => {
-    const index = radarrInstances.value.findIndex((inst) => inst.id === id)
+// Update local Radarr instance
+const updateLocalRadarrInstance = (id: string, updatedInstance: IInstance): void => {
+    const index = localRadarrInstances.value.findIndex((inst) => inst.id === id)
     if (index !== -1) {
-        const newInstances = [...radarrInstances.value]
+        const newInstances = [...localRadarrInstances.value]
         newInstances[index] = updatedInstance
-        radarrInstances.value = newInstances
+        localRadarrInstances.value = newInstances
     }
 }
 
-// Update Sonarr instance
-const updateSonarrInstance = (id: string, updatedInstance: IInstance): void => {
-    const index = sonarrInstances.value.findIndex((inst) => inst.id === id)
+// Update local Sonarr instance
+const updateLocalSonarrInstance = (id: string, updatedInstance: IInstance): void => {
+    const index = localSonarrInstances.value.findIndex((inst) => inst.id === id)
     if (index !== -1) {
-        const newInstances = [...sonarrInstances.value]
+        const newInstances = [...localSonarrInstances.value]
         newInstances[index] = updatedInstance
-        sonarrInstances.value = newInstances
+        localSonarrInstances.value = newInstances
     }
 }
 
-// Remove Radarr instance
-const removeRadarrInstance = (id: string): void => {
-    radarrInstances.value = radarrInstances.value.filter(
+// Remove local Radarr instance
+const removeLocalRadarrInstance = (id: string): void => {
+    localRadarrInstances.value = localRadarrInstances.value.filter(
         (inst) => inst.id !== id
     )
     delete connectionStatuses.radarr[id]
 }
 
-// Remove Sonarr instance
-const removeSonarrInstance = (id: string): void => {
-    sonarrInstances.value = sonarrInstances.value.filter(
+// Remove local Sonarr instance
+const removeLocalSonarrInstance = (id: string): void => {
+    localSonarrInstances.value = localSonarrInstances.value.filter(
         (inst) => inst.id !== id
     )
     delete connectionStatuses.sonarr[id]
@@ -359,26 +426,8 @@ const migrateLegacySettings = (): void => {
     }
 }
 
-// Initialize connection statuses for existing instances
-const initExistingInstances = (): void => {
-    const radarrInsts = parseInstances(
-        settingsStore.getSetting(SETTINGS.RADARR_INSTANCES) as string | IInstance[]
-    )
-    const sonarrInsts = parseInstances(
-        settingsStore.getSetting(SETTINGS.SONARR_INSTANCES) as string | IInstance[]
-    )
-
-    radarrInsts.forEach((inst) => {
-        initConnectionStatus('radarr', inst.id)
-    })
-
-    sonarrInsts.forEach((inst) => {
-        initConnectionStatus('sonarr', inst.id)
-    })
-}
-
 onMounted(() => {
     migrateLegacySettings()
-    initExistingInstances()
+    loadInstancesFromStore()
 })
 </script>

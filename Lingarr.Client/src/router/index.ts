@@ -77,6 +77,7 @@ const routes: RouteRecordRaw[] = [
         path: '/help',
         component: () => import('@/pages/HelpPage.vue'),
         name: 'help',
+        redirect: { name: 'help-about' },
         children: [
             {
                 name: 'help-onboarding',

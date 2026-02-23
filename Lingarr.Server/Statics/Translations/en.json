@@ -222,7 +222,11 @@
     "disabled": "Disabled",
     "saved": "saved",
     "loading": "Loading...",
-    "retry": "Retry"
+    "retry": "Retry",
+    "unsavedChanges": "You have unsaved changes",
+    "discard": "Discard",
+    "saveChanges": "Save Changes",
+    "saving": "Saving..."
   },
   "settings": {
     "integrations": {

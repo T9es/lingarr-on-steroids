@@ -222,7 +222,11 @@
     "disabled": "Inactief",
     "saved": "opgeslagen",
     "loading": "Laden...",
-    "retry": "Opnieuw proberen"
+    "retry": "Opnieuw proberen",
+    "unsavedChanges": "Je hebt niet-opgeslagen wijzigingen",
+    "discard": "Negeren",
+    "saveChanges": "Wijzigingen opslaan",
+    "saving": "Opslaan..."
   },
   "settings": {
     "integrations": {
