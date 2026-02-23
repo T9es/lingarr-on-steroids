@@ -41,7 +41,7 @@
                 <button
                     class="text-secondary-content hover:text-primary-content cursor-pointer text-sm transition-colors"
                     @click="handleSkip">
-                    Skip Setup
+                    {{ translate('onboarding.skipSetup') }}
                 </button>
             </header>
 
@@ -81,7 +81,7 @@
                     v-if="!isFirstStep"
                     class="border-accent text-secondary-content hover:bg-secondary-focus cursor-pointer rounded-md border px-4 py-2 text-sm transition-colors"
                     @click="onboardingStore.previous()">
-                    Back
+                    {{ translate('onboarding.back') }}
                 </button>
                 <div v-else />
 
@@ -90,13 +90,13 @@
                         v-if="!isLastStep"
                         class="bg-accent text-primary-content hover:bg-accent/80 cursor-pointer rounded-md px-6 py-2 text-sm font-medium transition-colors"
                         @click="onboardingStore.next()">
-                        Next
+                        {{ translate('onboarding.next') }}
                     </button>
                     <button
                         v-else
                         class="bg-accent text-primary-content hover:bg-accent/80 cursor-pointer rounded-md px-6 py-2 text-sm font-medium transition-colors"
                         @click="handleComplete">
-                        Complete
+                        {{ translate('onboarding.complete') }}
                     </button>
                 </div>
             </footer>
@@ -110,7 +110,9 @@ import { useOnboardingStore } from '@/store/onboarding'
 import { useInstanceStore } from '@/store/instance'
 import { THEMES, type ITheme } from '@/ts'
 import ThemeIcon from '@/components/icons/ThemeIcon.vue'
+import { useI18n } from '@/plugins/i18n'
 
+const { translate } = useI18n()
 const onboardingStore = useOnboardingStore()
 const instanceStore = useInstanceStore()
 

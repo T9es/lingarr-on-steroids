@@ -13,7 +13,7 @@
                 <!-- Use Batch Translation -->
                 <div class="flex items-center justify-between">
                     <div>
-                        <span class="font-semibold">
+                        <span class="text-primary-content font-semibold">
                             {{ translate('settings.translation.useBatchTranslation') }}
                         </span>
                         <p class="text-secondary-content text-xs">
@@ -33,7 +33,7 @@
 
                 <!-- Max Batch Size -->
                 <div v-if="useBatchTranslation === 'true'">
-                    <span class="font-semibold">
+                    <span class="text-primary-content font-semibold">
                         {{ translate('settings.translation.maxBatchSize') }}
                     </span>
                     <p class="text-secondary-content text-xs">
@@ -48,7 +48,7 @@
 
                 <!-- Batch Retry Mode -->
                 <div v-if="useBatchTranslation === 'true'">
-                    <span class="font-semibold">
+                    <span class="text-primary-content font-semibold">
                         {{ translate('settings.translation.batchRetryMode') }}
                     </span>
                     <p class="text-secondary-content text-xs">
@@ -71,16 +71,16 @@
         <!-- Retry Settings Section -->
         <div>
             <h3 class="text-primary-content mb-2 text-lg font-semibold">
-                Retry Settings
+                {{ translate('onboarding.settings.retryTitle') }}
             </h3>
             <p class="text-secondary-content mb-4 text-sm">
-                Configure how failed translations are retried.
+                {{ translate('onboarding.settings.retryDescription') }}
             </p>
 
             <div class="grid grid-cols-3 gap-4">
                 <!-- Max Retries -->
                 <div>
-                    <span class="font-semibold">
+                    <span class="text-primary-content font-semibold">
                         {{ translate('settings.translation.maxRetries') }}
                     </span>
                     <p class="text-secondary-content text-xs">
@@ -95,7 +95,7 @@
 
                 <!-- Retry Delay -->
                 <div>
-                    <span class="font-semibold">
+                    <span class="text-primary-content font-semibold">
                         {{ translate('settings.translation.retryDelay') }}
                     </span>
                     <p class="text-secondary-content text-xs">
@@ -110,7 +110,7 @@
 
                 <!-- Retry Delay Multiplier -->
                 <div>
-                    <span class="font-semibold">
+                    <span class="text-primary-content font-semibold">
                         {{ translate('settings.translation.retryDelayMultiplier') }}
                     </span>
                     <p class="text-secondary-content text-xs">
@@ -128,16 +128,16 @@
         <!-- Parallel Translations Section -->
         <div>
             <h3 class="text-primary-content mb-2 text-lg font-semibold">
-                Parallel Translations
+                {{ translate('onboarding.settings.parallelTitle') }}
             </h3>
             <p class="text-secondary-content mb-4 text-sm">
-                Control how many translations can run simultaneously.
+                {{ translate('onboarding.settings.parallelDescription') }}
             </p>
 
             <div class="grid grid-cols-2 gap-4">
                 <!-- Max Parallel Translations -->
                 <div>
-                    <span class="font-semibold">
+                    <span class="text-primary-content font-semibold">
                         {{ translate('settings.translation.maxParallelTranslations') }}
                     </span>
                     <p class="text-secondary-content text-xs">
@@ -173,7 +173,7 @@
                 <!-- Fix Overlapping Subtitles -->
                 <div class="flex items-center justify-between">
                     <div>
-                        <span class="font-semibold">
+                        <span class="text-primary-content font-semibold">
                             {{ translate('settings.subtitle.fixOverlappingSubtitles') }}
                         </span>
                         <p class="text-secondary-content text-xs">
@@ -194,7 +194,7 @@
                 <!-- Strip Subtitle Formatting -->
                 <div class="flex items-center justify-between">
                     <div>
-                        <span class="font-semibold">
+                        <span class="text-primary-content font-semibold">
                             {{ translate('settings.subtitle.stripSubtitleFormatting') }}
                         </span>
                         <p class="text-secondary-content text-xs">
@@ -215,7 +215,7 @@
                 <!-- Add Translator Info -->
                 <div class="flex items-center justify-between">
                     <div>
-                        <span class="font-semibold">
+                        <span class="text-primary-content font-semibold">
                             {{ translate('settings.subtitle.addTranslatorInfo') }}
                         </span>
                         <p class="text-secondary-content text-xs">
@@ -238,17 +238,17 @@
         <!-- Subtitle Tagging Section -->
         <div>
             <h3 class="text-primary-content mb-2 text-lg font-semibold">
-                Subtitle Tagging
+                {{ translate('onboarding.settings.taggingTitle') }}
             </h3>
             <p class="text-secondary-content mb-4 text-sm">
-                Tag translated subtitles to identify them in your media player.
+                {{ translate('onboarding.settings.taggingDescription') }}
             </p>
 
             <div class="grid grid-cols-2 gap-4">
                 <!-- Use Subtitle Tagging -->
                 <div class="flex items-center justify-between">
                     <div>
-                        <span class="font-semibold">
+                        <span class="text-primary-content font-semibold">
                             {{ translate('settings.subtitle.useSubtitleTagging') }}
                         </span>
                         <p class="text-secondary-content text-xs">
@@ -268,7 +268,7 @@
 
                 <!-- Subtitle Tag -->
                 <div v-if="useSubtitleTagging === 'true'">
-                    <span class="font-semibold">
+                    <span class="text-primary-content font-semibold">
                         {{ translate('settings.subtitle.subtitleTag') }}
                     </span>
                     <InputComponent
@@ -280,7 +280,7 @@
 
                 <!-- Subtitle Tag Short -->
                 <div v-if="useSubtitleTagging === 'true'">
-                    <span class="font-semibold">
+                    <span class="text-primary-content font-semibold">
                         {{ translate('settings.subtitle.subtitleTagShort') }}
                     </span>
                     <p class="text-secondary-content text-xs">

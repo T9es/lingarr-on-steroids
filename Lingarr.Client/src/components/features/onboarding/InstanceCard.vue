@@ -6,7 +6,7 @@
             <input
                 v-model="localInstance.name"
                 type="text"
-                :placeholder="type === 'radarr' ? 'Radarr Instance' : 'Sonarr Instance'"
+                :placeholder="type === 'radarr' ? translate('onboarding.instanceCard.radarrPlaceholder') : translate('onboarding.instanceCard.sonarrPlaceholder')"
                 class="w-full rounded-md border border-accent bg-transparent px-3 py-1.5 text-sm outline-hidden transition-colors focus:border-accent/70" />
             <button
                 type="button"
@@ -20,7 +20,7 @@
         <InputComponent
             v-model="localInstance.url"
             validation-type="url"
-            :label="'URL'"
+            :label="translate('onboarding.instanceCard.url')"
             @update:validation="(val) => (isValid.url = val)" />
 
         <!-- API Key Input -->
@@ -30,7 +30,7 @@
             validation-type="string"
             :min-length="32"
             :max-length="32"
-            label="API Key"
+            :label="translate('onboarding.instanceCard.apiKey')"
             @update:validation="(val) => (isValid.apiKey = val)" />
 
         <!-- Connection Status -->
@@ -58,9 +58,9 @@
                             fill="currentColor"
                             d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    Testing...
+                    {{ translate('onboarding.instanceCard.testing') }}
                 </span>
-                <span v-else>Test Connection</span>
+                <span v-else>{{ translate('onboarding.instanceCard.testConnection') }}</span>
             </button>
 
             <div v-if="connectionStatus.tested" class="flex items-center gap-2 text-sm">
@@ -73,7 +73,7 @@
                             d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
                             clip-rule="evenodd" />
                     </svg>
-                    Connected
+                    {{ translate('onboarding.instanceCard.connected') }}
                     <span v-if="connectionStatus.version" class="text-secondary-content">
                         (v{{ connectionStatus.version }})
                     </span>
@@ -85,7 +85,7 @@
                             d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
                             clip-rule="evenodd" />
                     </svg>
-                    {{ connectionStatus.message || 'Connection failed' }}
+                    {{ connectionStatus.message || translate('onboarding.instanceCard.connectionFailed') }}
                 </span>
             </div>
         </div>
@@ -99,6 +99,9 @@ import InputComponent from '@/components/common/InputComponent.vue'
 import RadarrIcon from '@/components/icons/RadarrIcon.vue'
 import SonarrIcon from '@/components/icons/SonarrIcon.vue'
 import TimesIcon from '@/components/icons/TimesIcon.vue'
+import { useI18n } from '@/plugins/i18n'
+
+const { translate } = useI18n()
 
 interface ConnectionStatus {
     testing: boolean

@@ -3,10 +3,10 @@
         <!-- Source Languages Section -->
         <div>
             <h3 class="text-primary-content mb-2 text-lg font-semibold">
-                Source Languages
+                {{ translate('onboarding.language.sourceTitle') }}
             </h3>
             <p class="text-secondary-content mb-3 text-sm">
-                What language would you like to translate from your media?
+                {{ translate('onboarding.language.sourceDescription') }}
             </p>
             <LanguageSelect
                 v-model:selected="sourceLanguages"
@@ -17,10 +17,10 @@
         <!-- Target Languages Section (only shown when source languages are selected) -->
         <div v-if="sourceLanguages.length > 0">
             <h3 class="text-primary-content mb-2 text-lg font-semibold">
-                Target Languages
+                {{ translate('onboarding.language.targetTitle') }}
             </h3>
             <p class="text-secondary-content mb-3 text-sm">
-                Select the languages you want to translate to.
+                {{ translate('onboarding.language.targetDescription') }}
             </p>
             <LanguageSelect
                 v-model:selected="targetLanguages"
@@ -36,7 +36,9 @@ import LanguageSelect from '@/components/features/settings/LanguageSelect.vue'
 import { ILanguage, SETTINGS } from '@/ts'
 import { useTranslateStore } from '@/store/translate'
 import { useSettingStore } from '@/store/setting'
+import { useI18n } from '@/plugins/i18n'
 
+const { translate } = useI18n()
 const settingStore = useSettingStore()
 const translateStore = useTranslateStore()
 

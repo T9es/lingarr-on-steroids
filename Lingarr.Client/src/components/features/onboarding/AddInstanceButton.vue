@@ -6,7 +6,7 @@
             class="border-accent hover:bg-accent/10 flex w-full cursor-pointer items-center justify-center gap-2 rounded-md border p-3 transition-colors"
             @click="isExpanded = true">
             <PlusIcon class="h-4 w-4" />
-            <span>Add new</span>
+            <span>{{ translate('onboarding.addInstance.addNew') }}</span>
         </button>
 
         <!-- Expanded state: Radarr/Sonarr buttons -->
@@ -15,13 +15,13 @@
                 class="border-accent hover:bg-accent/10 flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border p-3 transition-colors"
                 @click="$emit('add-radarr'); isExpanded = false">
                 <RadarrIcon class="h-5 w-5" />
-                <span>Add Radarr</span>
+                <span>{{ translate('onboarding.addInstance.addRadarr') }}</span>
             </button>
             <button
                 class="border-accent hover:bg-accent/10 flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border p-3 transition-colors"
                 @click="$emit('add-sonarr'); isExpanded = false">
                 <SonarrIcon class="h-5 w-5" />
-                <span>Add Sonarr</span>
+                <span>{{ translate('onboarding.addInstance.addSonarr') }}</span>
             </button>
         </div>
     </div>
@@ -32,6 +32,9 @@ import { ref } from 'vue'
 import PlusIcon from '@/components/icons/PlusIcon.vue'
 import RadarrIcon from '@/components/icons/RadarrIcon.vue'
 import SonarrIcon from '@/components/icons/SonarrIcon.vue'
+import { useI18n } from '@/plugins/i18n'
+
+const { translate } = useI18n()
 
 defineEmits<{
     'add-radarr': []

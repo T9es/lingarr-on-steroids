@@ -522,5 +522,62 @@
     "tooltipNoSuitableSubtitles": "Geen geschikte ondertitelsporen gevonden (allemaal dun/Signs & Songs)",
     "tooltipFailed": "Vertaling mislukt. Handmatige herpoging nodig.",
     "tooltipAwaitingSource": "Wacht tot bronondertitel beschikbaar is"
+  },
+  "onboarding": {
+    "skipSetup": "Installatie overslaan",
+    "back": "Terug",
+    "next": "Volgende",
+    "complete": "Voltooien",
+    "instanceCard": {
+      "url": "URL",
+      "apiKey": "API-sleutel",
+      "testConnection": "Verbinding testen",
+      "testing": "Testen...",
+      "connected": "Verbonden",
+      "connectionFailed": "Verbinding mislukt",
+      "radarrPlaceholder": "Radarr Instantie",
+      "sonarrPlaceholder": "Sonarr Instantie"
+    },
+    "addInstance": {
+      "addNew": "Nieuwe toevoegen",
+      "addRadarr": "Radarr toevoegen",
+      "addSonarr": "Sonarr toevoegen"
+    },
+    "completeStep": {
+      "title": "Installatie Voltooid!",
+      "radarrInstances": "Radarr instanties:",
+      "sonarrInstances": "Sonarr instanties:",
+      "translationService": "Vertaalservice:",
+      "sourceLanguages": "Brontalen:",
+      "targetLanguages": "Doeltalen:",
+      "startTranslating": "Begin met vertalen",
+      "goToSettings": "Ga naar Instellingen voor meer configuratie"
+    },
+    "service": {
+      "aiServices": "AI-diensten",
+      "aiServicesDescription": "Ondersteuning voor batchvertaling voor kostenefficiënte verwerking",
+      "cloudApis": "Cloud API's",
+      "cloudApisDescription": "Professionele vertaalservices met API-sleutels",
+      "freeWebApis": "Gratis Web API's",
+      "freeWebApisDescription": "Geen API-sleutel vereist, maar tariefbeperkt"
+    },
+    "language": {
+      "sourceTitle": "Brontalen",
+      "sourceDescription": "Welke taal wil je vertalen vanuit je media?",
+      "targetTitle": "Doeltalen",
+      "targetDescription": "Selecteer de talen waarnaar je wilt vertalen."
+    },
+    "settings": {
+      "retryTitle": "Instellingen voor opnieuw proberen",
+      "retryDescription": "Configureer hoe mislukte vertalingen opnieuw worden geprobeerd.",
+      "parallelTitle": "Parallelle vertalingen",
+      "parallelDescription": "Bepaal hoeveel vertalingen tegelijkertijd kunnen draaien.",
+      "taggingTitle": "Ondertitel Tagging",
+      "taggingDescription": "Tag vertaalde ondertitels om ze te identificeren in je mediaspeler."
+    },
+    "integration": {
+      "radarr": "Radarr",
+      "sonarr": "Sonarr"
+    }
   }
 }

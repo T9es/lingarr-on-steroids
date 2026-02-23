@@ -29,7 +29,17 @@ const fetchJobs = async () => {
         const response = await axios.get('/api/dashboard/jobs')
         // Handle both array response and object with Jobs property
         const data = response.data
-        jobs.value = Array.isArray(data) ? data : (data.jobs || data.Jobs || [])
+        const rawJobs = Array.isArray(data) ? data : (data.jobs || data.Jobs || [])
+        
+        // Map backend DTOs to frontend interface
+        jobs.value = rawJobs.map((job: any) => ({
+            id: job.Id || job.id,
+            name: job.Name || job.name,
+            state: (job.State || job.state || '').toLowerCase(),
+            nextRun: job.ScheduledAt || job.nextRun,
+            lastRun: job.StartedAt || job.lastRun,
+            error: job.ErrorMessage || job.error
+        }))
     } catch (e) {
         error.value = 'Failed to fetch job queue'
         console.error('Failed to fetch job queue:', e)

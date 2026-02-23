@@ -91,8 +91,14 @@ async function fetchReadme() {
 
     const data = await response.json()
     
-    // Decode base64 content and parse with marked (GFM support)
-    const decodedContent = atob(data.content)
+    // Decode base64 content with proper UTF-8 handling
+    // atob() only handles ASCII - use TextDecoder for UTF-8 characters like •, —, etc.
+    const binaryString = atob(data.content)
+    const bytes = new Uint8Array(binaryString.length)
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i)
+    }
+    const decodedContent = new TextDecoder('utf-8').decode(bytes)
     readmeContent.value = await marked.parse(decodedContent) as string
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Unknown error occurred'

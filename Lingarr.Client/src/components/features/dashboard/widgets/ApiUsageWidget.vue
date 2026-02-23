@@ -27,9 +27,18 @@ const fetchApiUsage = async () => {
     
     try {
         const response = await axios.get('/api/dashboard/api-usage')
-        // Handle both array response and object with RecentCalls property
         const data = response.data
-        apiUsage.value = Array.isArray(data) ? data : (data.recentCalls || data.RecentCalls || [])
+        
+        // Backend returns ApiUsageStatus with ByService dictionary
+        // Map ByService dictionary to our interface
+        const byService = data.ByService || data.byService || {}
+        apiUsage.value = Object.entries(byService).map(([service, usage]: [string, any]) => ({
+            service,
+            callsToday: usage.TotalCalls || usage.totalCalls || 0,
+            callsWeek: usage.TotalCalls || usage.totalCalls || 0,
+            callsMonth: usage.TotalCalls || usage.totalCalls || 0,
+            tokensUsed: usage.TotalTokens || usage.totalTokens || 0
+        }))
     } catch (e) {
         error.value = 'Failed to fetch API usage'
         console.error('Failed to fetch API usage:', e)

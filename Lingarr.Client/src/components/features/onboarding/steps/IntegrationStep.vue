@@ -2,7 +2,7 @@
     <div class="space-y-6">
         <!-- Radarr Section -->
         <div>
-            <h3 class="text-primary-content mb-3 text-lg font-semibold">Radarr</h3>
+            <h3 class="text-primary-content mb-3 text-lg font-semibold">{{ translate('onboarding.integration.radarr') }}</h3>
             <div class="space-y-3">
                 <InstanceCard
                     v-for="instance in onboardingStore.radarrInstances"
@@ -22,7 +22,7 @@
 
         <!-- Sonarr Section -->
         <div>
-            <h3 class="text-primary-content mb-3 text-lg font-semibold">Sonarr</h3>
+            <h3 class="text-primary-content mb-3 text-lg font-semibold">{{ translate('onboarding.integration.sonarr') }}</h3>
             <div class="space-y-3">
                 <InstanceCard
                     v-for="instance in onboardingStore.sonarrInstances"
@@ -51,6 +51,9 @@ import type { IInstance } from '@/ts/setting'
 import InstanceCard from '@/components/features/onboarding/InstanceCard.vue'
 import AddInstanceButton from '@/components/features/onboarding/AddInstanceButton.vue'
 import services from '@/services'
+import { useI18n } from '@/plugins/i18n'
+
+const { translate } = useI18n()
 
 interface ConnectionStatus {
     testing: boolean

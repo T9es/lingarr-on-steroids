@@ -7,18 +7,20 @@
         and choosing your languages.
       </template>
       <template #content>
-        <div v-if="onboardingCompleted" class="text-green-500 mb-4">
-          Onboarding was completed previously.
+        <div class="flex flex-col items-center justify-center space-y-4">
+          <div v-if="onboardingCompleted" class="text-green-500">
+            Onboarding was completed previously.
+          </div>
+          <div v-if="onboardingSkipped" class="text-yellow-500">
+            Onboarding was skipped previously.
+          </div>
+          <button
+            class="bg-accent hover:brightness-125 rounded-md px-4 py-2 text-white transition-all"
+            @click="startOnboarding"
+          >
+            Start Onboarding Wizard
+          </button>
         </div>
-        <div v-if="onboardingSkipped" class="text-yellow-500 mb-4">
-          Onboarding was skipped previously.
-        </div>
-        <button
-          class="bg-accent hover:brightness-125 rounded-md px-4 py-2 text-white transition-all"
-          @click="startOnboarding"
-        >
-          Start Onboarding Wizard
-        </button>
       </template>
     </CardComponent>
   </div>

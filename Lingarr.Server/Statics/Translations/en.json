@@ -520,5 +520,62 @@
     "tooltipNoSuitableSubtitles": "No suitable subtitle tracks found (all are sparse/Signs & Songs)",
     "tooltipFailed": "Translation failed. Needs manual retry.",
     "tooltipAwaitingSource": "Waiting for source subtitle to appear"
+  },
+  "onboarding": {
+    "skipSetup": "Skip Setup",
+    "back": "Back",
+    "next": "Next",
+    "complete": "Complete",
+    "instanceCard": {
+      "url": "URL",
+      "apiKey": "API Key",
+      "testConnection": "Test Connection",
+      "testing": "Testing...",
+      "connected": "Connected",
+      "connectionFailed": "Connection failed",
+      "radarrPlaceholder": "Radarr Instance",
+      "sonarrPlaceholder": "Sonarr Instance"
+    },
+    "addInstance": {
+      "addNew": "Add new",
+      "addRadarr": "Add Radarr",
+      "addSonarr": "Add Sonarr"
+    },
+    "completeStep": {
+      "title": "Setup Complete!",
+      "radarrInstances": "Radarr instances:",
+      "sonarrInstances": "Sonarr instances:",
+      "translationService": "Translation service:",
+      "sourceLanguages": "Source languages:",
+      "targetLanguages": "Target languages:",
+      "startTranslating": "Start Translating",
+      "goToSettings": "Go to Settings for more configuration"
+    },
+    "service": {
+      "aiServices": "AI Services",
+      "aiServicesDescription": "Support batch translation for cost-effective processing",
+      "cloudApis": "Cloud APIs",
+      "cloudApisDescription": "Professional translation services with API keys",
+      "freeWebApis": "Free Web APIs",
+      "freeWebApisDescription": "No API key required, but rate-limited"
+    },
+    "language": {
+      "sourceTitle": "Source Languages",
+      "sourceDescription": "What language would you like to translate from your media?",
+      "targetTitle": "Target Languages",
+      "targetDescription": "Select the languages you want to translate to."
+    },
+    "settings": {
+      "retryTitle": "Retry Settings",
+      "retryDescription": "Configure how failed translations are retried.",
+      "parallelTitle": "Parallel Translations",
+      "parallelDescription": "Control how many translations can run simultaneously.",
+      "taggingTitle": "Subtitle Tagging",
+      "taggingDescription": "Tag translated subtitles to identify them in your media player."
+    },
+    "integration": {
+      "radarr": "Radarr",
+      "sonarr": "Sonarr"
+    }
   }
 }

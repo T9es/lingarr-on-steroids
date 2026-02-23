@@ -3,10 +3,10 @@
         <!-- AI Services Section -->
         <div>
             <h3 class="text-primary-content mb-2 text-lg font-semibold">
-                AI Services
+                {{ translate('onboarding.service.aiServices') }}
             </h3>
             <p class="text-secondary-content mb-3 text-sm">
-                Support batch translation for cost-effective processing
+                {{ translate('onboarding.service.aiServicesDescription') }}
             </p>
             <div class="grid grid-cols-2 gap-2">
                 <button
@@ -29,10 +29,10 @@
         <!-- Cloud APIs Section -->
         <div>
             <h3 class="text-primary-content mb-2 text-lg font-semibold">
-                Cloud APIs
+                {{ translate('onboarding.service.cloudApis') }}
             </h3>
             <p class="text-secondary-content mb-3 text-sm">
-                Professional translation services with API keys
+                {{ translate('onboarding.service.cloudApisDescription') }}
             </p>
             <div class="grid grid-cols-2 gap-2">
                 <button
@@ -55,10 +55,10 @@
         <!-- Free Web APIs Section -->
         <div>
             <h3 class="text-primary-content mb-2 text-lg font-semibold">
-                Free Web APIs
+                {{ translate('onboarding.service.freeWebApis') }}
             </h3>
             <p class="text-secondary-content mb-3 text-sm">
-                No API key required, but rate-limited
+                {{ translate('onboarding.service.freeWebApisDescription') }}
             </p>
             <div class="grid grid-cols-2 gap-2">
                 <button
@@ -84,7 +84,9 @@
 import { computed } from 'vue'
 import { useSettingStore } from '@/store/setting'
 import { SERVICE_TYPE, SETTINGS } from '@/ts'
+import { useI18n } from '@/plugins/i18n'
 
+const { translate } = useI18n()
 const settingStore = useSettingStore()
 
 // Service groups (alphabetical within each group)
