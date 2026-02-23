@@ -161,7 +161,7 @@ public class SyncShowJob
         {
             try
             {
-                var instances = JsonSerializer.Deserialize<List<SonarrInstance>>(instancesJson);
+                var instances = JsonSerializer.Deserialize<List<SonarrInstance>>(instancesJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                 if (instances != null && instances.Count > 0)
                 {
                     // Filter out instances with missing required fields

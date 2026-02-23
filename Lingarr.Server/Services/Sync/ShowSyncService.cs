@@ -152,7 +152,7 @@ public class ShowSyncService : IShowSyncService
         {
             try
             {
-                var instances = JsonSerializer.Deserialize<List<SonarrInstance>>(instancesJson);
+                var instances = JsonSerializer.Deserialize<List<SonarrInstance>>(instancesJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                 var instance = instances?.FirstOrDefault(i => i.Id == instanceId);
                 if (instance != null)
                 {

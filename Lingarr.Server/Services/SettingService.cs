@@ -123,7 +123,7 @@ public class SettingService : ISettingService
 
         try
         {
-            var result = JsonSerializer.Deserialize<List<T>>(settingValue);
+            var result = JsonSerializer.Deserialize<List<T>>(settingValue, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
             return result ?? [];
         }

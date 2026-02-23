@@ -7,7 +7,7 @@
                 v-model="localInstance.name"
                 type="text"
                 :placeholder="type === 'radarr' ? translate('onboarding.instanceCard.radarrPlaceholder') : translate('onboarding.instanceCard.sonarrPlaceholder')"
-                class="w-full rounded-md border border-accent bg-transparent px-3 py-1.5 text-sm outline-hidden transition-colors focus:border-accent/70" />
+                class="w-full rounded-md border border-accent bg-transparent text-primary-content px-3 py-1.5 text-sm outline-hidden transition-colors focus:border-accent/70" />
             <button
                 type="button"
                 class="text-secondary-content hover:text-primary-content ml-auto cursor-pointer transition-colors"

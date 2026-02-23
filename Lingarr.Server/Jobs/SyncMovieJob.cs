@@ -158,7 +158,7 @@ public class SyncMovieJob
         {
             try
             {
-                var instances = JsonSerializer.Deserialize<List<RadarrInstance>>(instancesJson);
+                var instances = JsonSerializer.Deserialize<List<RadarrInstance>>(instancesJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                 if (instances != null && instances.Count > 0)
                 {
                     // Filter out instances with missing required fields

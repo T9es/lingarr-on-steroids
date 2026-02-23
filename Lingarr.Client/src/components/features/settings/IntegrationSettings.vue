@@ -13,34 +13,52 @@
             {{ translate('settings.integrations.description') }}
         </template>
         <template #content>
-            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                <!-- Radarr Instances -->
-                <InstanceCard
-                    v-for="instance in radarrInstances"
-                    :key="instance.id"
-                    :instance="instance"
-                    type="radarr"
-                    :connection-status="getConnectionStatus('radarr', instance.id)"
-                    @update:instance="updateRadarrInstance(instance.id, $event)"
-                    @remove="removeRadarrInstance(instance.id)"
-                    @test-connection="testRadarrConnection(instance)" />
-                
-                <!-- Sonarr Instances -->
-                <InstanceCard
-                    v-for="instance in sonarrInstances"
-                    :key="instance.id"
-                    :instance="instance"
-                    type="sonarr"
-                    :connection-status="getConnectionStatus('sonarr', instance.id)"
-                    @update:instance="updateSonarrInstance(instance.id, $event)"
-                    @remove="removeSonarrInstance(instance.id)"
-                    @test-connection="testSonarrConnection(instance)" />
-                
-                <!-- Add New Button -->
-                <AddInstanceButton
-                    v-if="radarrInstances.length + sonarrInstances.length < 10"
-                    @add-radarr="addRadarrInstance"
-                    @add-sonarr="addSonarrInstance" />
+            <div class="space-y-8">
+                <!-- Radarr Section -->
+                <div>
+                    <h3 class="text-primary-content mb-3 text-lg font-semibold">Radarr</h3>
+                    <div class="flex flex-wrap gap-4">
+                        <InstanceCard
+                            v-for="instance in radarrInstances"
+                            :key="instance.id"
+                            :instance="instance"
+                            type="radarr"
+                            class="w-full md:w-[calc(50%-0.5rem)] xl:w-[calc(33.333%-0.667rem)]"
+                            :connection-status="getConnectionStatus('radarr', instance.id)"
+                            @update:instance="updateRadarrInstance(instance.id, $event)"
+                            @remove="removeRadarrInstance(instance.id)"
+                            @test-connection="testRadarrConnection(instance)" />
+                        
+                        <AddInstanceButton
+                            v-if="radarrInstances.length < 5"
+                            type="radarr"
+                            class="w-full md:w-[calc(50%-0.5rem)] xl:w-[calc(33.333%-0.667rem)]"
+                            @add="addRadarrInstance" />
+                    </div>
+                </div>
+
+                <!-- Sonarr Section -->
+                <div>
+                    <h3 class="text-primary-content mb-3 text-lg font-semibold">Sonarr</h3>
+                    <div class="flex flex-wrap gap-4">
+                        <InstanceCard
+                            v-for="instance in sonarrInstances"
+                            :key="instance.id"
+                            :instance="instance"
+                            type="sonarr"
+                            class="w-full md:w-[calc(50%-0.5rem)] xl:w-[calc(33.333%-0.667rem)]"
+                            :connection-status="getConnectionStatus('sonarr', instance.id)"
+                            @update:instance="updateSonarrInstance(instance.id, $event)"
+                            @remove="removeSonarrInstance(instance.id)"
+                            @test-connection="testSonarrConnection(instance)" />
+                        
+                        <AddInstanceButton
+                            v-if="sonarrInstances.length < 5"
+                            type="sonarr"
+                            class="w-full md:w-[calc(50%-0.5rem)] xl:w-[calc(33.333%-0.667rem)]"
+                            @add="addSonarrInstance" />
+                    </div>
+                </div>
             </div>
             <div v-translate="'settings.integrations.reindexTask'" class="pt-4 text-sm text-secondary-content" />
         </template>

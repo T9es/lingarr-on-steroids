@@ -39,7 +39,7 @@ export default {
         }
     },
 
-    plugins: [
+    plugins: [require('@tailwindcss/typography'),
         function ({ addUtilities }) {
             addUtilities({
                 '.mask-gradient': {

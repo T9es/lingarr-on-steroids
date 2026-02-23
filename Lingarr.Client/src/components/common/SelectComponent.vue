@@ -7,7 +7,7 @@
             ref="excludeClickOutside"
             class="border-accent flex h-12 cursor-pointer items-center justify-between rounded-md border px-4 py-2"
             @click="toggleDropdown">
-            <span v-if="!selected" class="text-gray-400">{{ placeholder }}</span>
+            <span v-if="!selected" class="text-secondary-content">{{ placeholder }}</span>
             <div v-else class="flex max-h-12 flex-wrap gap-2 overflow-auto">
                 <span
                     class="bg-accent flex cursor-pointer items-center rounded-md px-3 py-1 text-sm font-medium">
@@ -29,7 +29,7 @@
                 <input
                     v-model="searchQuery"
                     type="text"
-                    class="border-border w-full rounded border bg-transparent px-2 py-1 text-sm outline-hidden"
+                    class="border-border w-full rounded border bg-transparent text-primary-content px-2 py-1 text-sm outline-hidden"
                     :placeholder="translate('settings.services.modelSearchPlaceholder')" />
             </li>
             <li v-if="!filteredOptions.length" class="p-3">{{ noOptions }}</li>
