@@ -301,6 +301,10 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("radarr_id");
 
+                    b.Property<string>("SourceInstanceId")
+                        .HasColumnType("text")
+                        .HasColumnName("source_instance_id");
+
                     b.Property<int>("StateSettingsVersion")
                         .HasColumnType("integer")
                         .HasColumnName("state_settings_version");
@@ -327,6 +331,9 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
 
                     b.HasIndex("TranslationState")
                         .HasDatabaseName("IX_Movies_TranslationState");
+
+                    b.HasIndex("SourceInstanceId", "RadarrId")
+                        .HasDatabaseName("IX_Movies_SourceInstanceId_RadarrId");
 
                     b.ToTable("movies", (string)null);
                 });
@@ -466,6 +473,10 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("sonarr_id");
 
+                    b.Property<string>("SourceInstanceId")
+                        .HasColumnType("text")
+                        .HasColumnName("source_instance_id");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasColumnType("text")
@@ -481,6 +492,9 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_shows");
+
+                    b.HasIndex("SourceInstanceId", "SonarrId")
+                        .HasDatabaseName("IX_Shows_SourceInstanceId_SonarrId");
 
                     b.ToTable("shows", (string)null);
                 });

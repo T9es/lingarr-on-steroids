@@ -5,6 +5,11 @@ import { useSettingStore } from '@/store/setting'
 import { SETTINGS } from '@/ts'
 import config from '@/config/onboarding-config.json'
 
+// Generate unique ID helper
+const generateId = (): string => {
+    return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
+}
+
 export const useOnboardingStore = defineStore('onboarding', () => {
     // State
     const isActive = ref(false)
@@ -23,6 +28,9 @@ export const useOnboardingStore = defineStore('onboarding', () => {
         isActive.value = true
         currentStep.value = 0
         skipped.value = false
+        
+        // Migrate legacy settings when starting onboarding
+        migrateLegacySettings()
     }
 
     function next(): void {
@@ -76,6 +84,46 @@ export const useOnboardingStore = defineStore('onboarding', () => {
         }
     }
 
+    /**
+     * Migrate legacy single-instance settings to multi-instance arrays.
+     * This is called when onboarding starts to pre-populate instance arrays
+     * with existing legacy settings if the arrays are empty.
+     */
+    function migrateLegacySettings(): void {
+        const settingStore = useSettingStore()
+        
+        // Only migrate if instance arrays are empty
+        if (radarrInstances.value.length === 0) {
+            const radarrUrl = settingStore.getSetting(SETTINGS.RADARR_URL) as string
+            const radarrApiKey = settingStore.getSetting(SETTINGS.RADARR_API_KEY) as string
+            
+            if (radarrUrl || radarrApiKey) {
+                const instance: IInstance = {
+                    id: generateId(),
+                    name: 'Radarr',
+                    url: radarrUrl || '',
+                    apiKey: radarrApiKey || ''
+                }
+                radarrInstances.value.push(instance)
+            }
+        }
+        
+        if (sonarrInstances.value.length === 0) {
+            const sonarrUrl = settingStore.getSetting(SETTINGS.SONARR_URL) as string
+            const sonarrApiKey = settingStore.getSetting(SETTINGS.SONARR_API_KEY) as string
+            
+            if (sonarrUrl || sonarrApiKey) {
+                const instance: IInstance = {
+                    id: generateId(),
+                    name: 'Sonarr',
+                    url: sonarrUrl || '',
+                    apiKey: sonarrApiKey || ''
+                }
+                sonarrInstances.value.push(instance)
+            }
+        }
+    }
+
     return {
         // State
         isActive,
@@ -97,7 +145,8 @@ export const useOnboardingStore = defineStore('onboarding', () => {
         removeRadarrInstance,
         addSonarrInstance,
         removeSonarrInstance,
-        goToStep
+        goToStep,
+        migrateLegacySettings
     }
 })
 

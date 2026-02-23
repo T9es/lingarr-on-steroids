@@ -1,6 +1,6 @@
 ﻿<template>
     <div class="relative">
-        <label v-if="label" class="mb-1 block text-sm">
+        <label v-if="label" class="text-primary-content mb-1 block text-sm">
             {{ label }}
         </label>
         <div

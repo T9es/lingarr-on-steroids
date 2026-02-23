@@ -13,52 +13,33 @@
             {{ translate('settings.integrations.description') }}
         </template>
         <template #content>
-            <div class="space-y-8">
-                <!-- Radarr Section -->
-                <div>
-                    <h3 class="text-primary-content mb-3 text-lg font-semibold">Radarr</h3>
-                    <div class="flex flex-wrap gap-4">
-                        <InstanceCard
-                            v-for="instance in radarrInstances"
-                            :key="instance.id"
-                            :instance="instance"
-                            type="radarr"
-                            class="w-full md:w-[calc(50%-0.5rem)] xl:w-[calc(33.333%-0.667rem)]"
-                            :connection-status="getConnectionStatus('radarr', instance.id)"
-                            @update:instance="updateRadarrInstance(instance.id, $event)"
-                            @remove="removeRadarrInstance(instance.id)"
-                            @test-connection="testRadarrConnection(instance)" />
-                        
-                        <AddInstanceButton
-                            v-if="radarrInstances.length < 5"
-                            type="radarr"
-                            class="w-full md:w-[calc(50%-0.5rem)] xl:w-[calc(33.333%-0.667rem)]"
-                            @add="addRadarrInstance" />
-                    </div>
-                </div>
-
-                <!-- Sonarr Section -->
-                <div>
-                    <h3 class="text-primary-content mb-3 text-lg font-semibold">Sonarr</h3>
-                    <div class="flex flex-wrap gap-4">
-                        <InstanceCard
-                            v-for="instance in sonarrInstances"
-                            :key="instance.id"
-                            :instance="instance"
-                            type="sonarr"
-                            class="w-full md:w-[calc(50%-0.5rem)] xl:w-[calc(33.333%-0.667rem)]"
-                            :connection-status="getConnectionStatus('sonarr', instance.id)"
-                            @update:instance="updateSonarrInstance(instance.id, $event)"
-                            @remove="removeSonarrInstance(instance.id)"
-                            @test-connection="testSonarrConnection(instance)" />
-                        
-                        <AddInstanceButton
-                            v-if="sonarrInstances.length < 5"
-                            type="sonarr"
-                            class="w-full md:w-[calc(50%-0.5rem)] xl:w-[calc(33.333%-0.667rem)]"
-                            @add="addSonarrInstance" />
-                    </div>
-                </div>
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                <!-- Radarr Instances -->
+                <InstanceCard
+                    v-for="instance in radarrInstances"
+                    :key="instance.id"
+                    :instance="instance"
+                    type="radarr"
+                    :connection-status="getConnectionStatus('radarr', instance.id)"
+                    @update:instance="updateRadarrInstance(instance.id, $event)"
+                    @remove="removeRadarrInstance(instance.id)"
+                    @test-connection="testRadarrConnection(instance)" />
+                
+                <!-- Sonarr Instances -->
+                <InstanceCard
+                    v-for="instance in sonarrInstances"
+                    :key="instance.id"
+                    :instance="instance"
+                    type="sonarr"
+                    :connection-status="getConnectionStatus('sonarr', instance.id)"
+                    @update:instance="updateSonarrInstance(instance.id, $event)"
+                    @remove="removeSonarrInstance(instance.id)"
+                    @test-connection="testSonarrConnection(instance)" />
+                
+                <!-- Single Add Button with Dropdown -->
+                <AddInstanceButton
+                    v-if="radarrInstances.length + sonarrInstances.length < 10"
+                    @add="handleAddInstance" />
             </div>
             <div v-translate="'settings.integrations.reindexTask'" class="pt-4 text-sm text-secondary-content" />
         </template>
@@ -101,14 +82,6 @@ const settingsStore = useSettingStore()
 // Connection status per instance
 const connectionStatuses = reactive<
     Record<string, Record<string, ConnectionStatus>>
->({
-    radarr: {},
-    sonarr: {}
-})
-
-// Debounce timers for auto-save
-const debounceTimers = reactive<
-    Record<string, Record<string, ReturnType<typeof setTimeout> | null>>
 >({
     radarr: {},
     sonarr: {}
@@ -198,6 +171,15 @@ const sonarrInstances = computed<IInstance[]>({
     }
 })
 
+// Handle add instance from unified button
+const handleAddInstance = (type: 'radarr' | 'sonarr'): void => {
+    if (type === 'radarr') {
+        addRadarrInstance()
+    } else {
+        addSonarrInstance()
+    }
+}
+
 // Add Radarr instance
 const addRadarrInstance = (): void => {
     const id = generateId()
@@ -250,10 +232,6 @@ const removeRadarrInstance = (id: string): void => {
         (inst) => inst.id !== id
     )
     delete connectionStatuses.radarr[id]
-    if (debounceTimers.radarr[id]) {
-        clearTimeout(debounceTimers.radarr[id]!)
-        delete debounceTimers.radarr[id]
-    }
 }
 
 // Remove Sonarr instance
@@ -262,10 +240,6 @@ const removeSonarrInstance = (id: string): void => {
         (inst) => inst.id !== id
     )
     delete connectionStatuses.sonarr[id]
-    if (debounceTimers.sonarr[id]) {
-        clearTimeout(debounceTimers.sonarr[id]!)
-        delete debounceTimers.sonarr[id]
-    }
 }
 
 // Test Radarr connection
@@ -277,7 +251,6 @@ const testRadarrConnection = async (instance: IInstance): Promise<void> => {
     status.tested = false
 
     try {
-        // Temporarily save settings to test connection
         await services.setting.setSetting(SETTINGS.RADARR_URL, instance.url)
         await services.setting.setSetting(
             SETTINGS.RADARR_API_KEY,
@@ -307,7 +280,6 @@ const testSonarrConnection = async (instance: IInstance): Promise<void> => {
     status.tested = false
 
     try {
-        // Temporarily save settings to test connection
         await services.setting.setSetting(SETTINGS.SONARR_URL, instance.url)
         await services.setting.setSetting(
             SETTINGS.SONARR_API_KEY,
@@ -339,7 +311,6 @@ const migrateLegacySettings = (): void => {
         SETTINGS.SONARR_API_KEY
     ) as string
 
-    // Check if instances already exist
     const existingRadarrInstances = parseInstances(
         settingsStore.getSetting(SETTINGS.RADARR_INSTANCES) as string | IInstance[]
     )
@@ -347,7 +318,6 @@ const migrateLegacySettings = (): void => {
         settingsStore.getSetting(SETTINGS.SONARR_INSTANCES) as string | IInstance[]
     )
 
-    // Migrate Radarr if legacy settings exist and no instances
     if (
         (radarrUrl || radarrApiKey) &&
         existingRadarrInstances.length === 0
@@ -368,7 +338,6 @@ const migrateLegacySettings = (): void => {
         )
     }
 
-    // Migrate Sonarr if legacy settings exist and no instances
     if (
         (sonarrUrl || sonarrApiKey) &&
         existingSonarrInstances.length === 0
@@ -408,7 +377,6 @@ const initExistingInstances = (): void => {
     })
 }
 
-// Run migration and initialization on mount
 onMounted(() => {
     migrateLegacySettings()
     initExistingInstances()
