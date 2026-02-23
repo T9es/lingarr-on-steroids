@@ -85,17 +85,17 @@ const formatNumber = (num: number): string => {
         </div>
         <div v-else class="space-y-4">
             <!-- Trend indicator -->
-            <div class="flex items-center gap-2 text-sm text-gray-400">
+            <div class="flex items-center gap-2 text-sm text-secondary-content">
                 <TrendUpIcon v-if="trend.direction === 'up'" class="h-4 w-4 text-green-500" />
                 <TrendDownIcon v-if="trend.direction === 'down'" class="h-4 w-4 text-red-500" />
-                <TrendFlatIcon v-if="trend.direction === 'flat'" class="h-4 w-4 text-gray-500" />
+                <TrendFlatIcon v-if="trend.direction === 'flat'" class="h-4 w-4 text-secondary-content" />
                 <span v-if="trend.direction === 'up'" class="text-green-500">
                     +{{ trend.percentage }}% {{ i18n.translate('statistics.vsLastWeek') }}
                 </span>
                 <span v-else-if="trend.direction === 'down'" class="text-red-500">
                     -{{ trend.percentage }}% {{ i18n.translate('statistics.vsLastWeek') }}
                 </span>
-                <span v-else class="text-gray-500">
+                <span v-else class="text-secondary-content">
                     {{ i18n.translate('statistics.stable') }}
                 </span>
             </div>
@@ -104,39 +104,39 @@ const formatNumber = (num: number): string => {
             <div class="grid grid-cols-3 gap-4">
                 <!-- Today -->
                 <div class="text-center">
-                    <div class="text-xs uppercase tracking-wider text-gray-500 mb-1">
+                    <div class="text-xs uppercase tracking-wider text-secondary-content mb-1">
                         {{ i18n.translate('statistics.today') }}
                     </div>
-                    <div class="text-2xl font-bold text-white">
+                    <div class="text-2xl font-bold text-primary-content">
                         {{ formatNumber(todayCount) }}
                     </div>
-                    <div class="text-xs text-gray-400">
+                    <div class="text-xs text-secondary-content">
                         {{ i18n.translate('statistics.translations') }}
                     </div>
                 </div>
 
                 <!-- This Week -->
                 <div class="text-center">
-                    <div class="text-xs uppercase tracking-wider text-gray-500 mb-1">
+                    <div class="text-xs uppercase tracking-wider text-secondary-content mb-1">
                         {{ i18n.translate('statistics.thisWeek') }}
                     </div>
-                    <div class="text-2xl font-bold text-white">
+                    <div class="text-2xl font-bold text-primary-content">
                         {{ formatNumber(weekCount) }}
                     </div>
-                    <div class="text-xs text-gray-400">
+                    <div class="text-xs text-secondary-content">
                         {{ i18n.translate('statistics.translations') }}
                     </div>
                 </div>
 
                 <!-- This Month -->
                 <div class="text-center">
-                    <div class="text-xs uppercase tracking-wider text-gray-500 mb-1">
+                    <div class="text-xs uppercase tracking-wider text-secondary-content mb-1">
                         {{ i18n.translate('statistics.thisMonth') }}
                     </div>
-                    <div class="text-2xl font-bold text-white">
+                    <div class="text-2xl font-bold text-primary-content">
                         {{ formatNumber(monthCount) }}
                     </div>
-                    <div class="text-xs text-gray-400">
+                    <div class="text-xs text-secondary-content">
                         {{ i18n.translate('statistics.translations') }}
                     </div>
                 </div>

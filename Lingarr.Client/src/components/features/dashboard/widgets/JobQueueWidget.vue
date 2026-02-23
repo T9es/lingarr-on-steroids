@@ -68,7 +68,7 @@ const getStateColor = (state: string): string => {
         case 'scheduled': return 'text-yellow-400'
         case 'failed': return 'text-red-400'
         case 'completed': return 'text-green-400'
-        default: return 'text-gray-400'
+        default: return 'text-secondary-content'
     }
 }
 
@@ -89,7 +89,7 @@ const getStateBg = (state: string): string => {
             <button 
                 @click="fetchJobs" 
                 :disabled="isLoading"
-                class="p-1 text-gray-400 hover:text-white transition-colors"
+                class="p-1 text-secondary-content hover:text-primary-content transition-colors"
                 :title="i18n.translate('statistics.refresh')"
             >
                 <RefreshIcon class="h-4 w-4" :class="{ 'animate-spin': isLoading }" />
@@ -100,7 +100,7 @@ const getStateBg = (state: string): string => {
             {{ error }}
         </div>
 
-        <div v-else-if="jobs.length === 0" class="text-gray-400 text-sm py-4 text-center">
+        <div v-else-if="jobs.length === 0" class="text-secondary-content text-sm py-4 text-center">
             {{ i18n.translate('statistics.noJobs') }}
         </div>
 
@@ -111,7 +111,7 @@ const getStateBg = (state: string): string => {
                 class="p-2 rounded-md bg-black/30 border border-gray-700"
             >
                 <div class="flex items-center justify-between">
-                    <span class="text-sm font-medium text-white">{{ job.name }}</span>
+                    <span class="text-sm font-medium text-primary-content">{{ job.name }}</span>
                     <span 
                         class="text-xs px-2 py-0.5 rounded-full"
                         :class="[getStateColor(job.state), getStateBg(job.state)]"
@@ -128,16 +128,16 @@ const getStateBg = (state: string): string => {
                             :style="{ width: `${job.progress}%` }"
                         ></div>
                     </div>
-                    <div class="text-xs text-gray-400 mt-1">{{ job.progress }}%</div>
+                    <div class="text-xs text-secondary-content mt-1">{{ job.progress }}%</div>
                 </div>
 
                 <!-- Next run time for scheduled jobs -->
-                <div v-if="job.state === 'scheduled' && job.nextRun" class="text-xs text-gray-400 mt-1">
+                <div v-if="job.state === 'scheduled' && job.nextRun" class="text-xs text-secondary-content mt-1">
                     {{ i18n.translate('statistics.nextRun') }}: {{ job.nextRun }}
                 </div>
 
                 <!-- Last run time for completed jobs -->
-                <div v-if="job.state === 'completed' && job.lastRun" class="text-xs text-gray-400 mt-1">
+                <div v-if="job.state === 'completed' && job.lastRun" class="text-xs text-secondary-content mt-1">
                     {{ i18n.translate('statistics.lastRun') }}: {{ job.lastRun }}
                 </div>
 

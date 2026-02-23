@@ -1,16 +1,16 @@
 <template>
-    <div class="relative">
+    <div class="relative h-full min-h-[120px]">
         <!-- Collapsed state: Add new button -->
         <button
             v-if="!isExpanded"
-            class="border-accent hover:bg-accent/10 flex w-full cursor-pointer items-center justify-center gap-2 rounded-md border p-3 transition-colors"
+            class="border-accent hover:bg-accent/10 flex h-full w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-md border border-dashed p-4 transition-colors"
             @click="isExpanded = true">
-            <PlusIcon class="h-4 w-4" />
-            <span>{{ translate('onboarding.addInstance.addNew') }}</span>
+            <PlusIcon class="h-8 w-8 text-gray-400" />
+            <span class="text-gray-400 font-medium">{{ translate('onboarding.addInstance.addNew') }}</span>
         </button>
 
         <!-- Expanded state: Radarr/Sonarr buttons -->
-        <div v-else class="flex gap-2">
+        <div v-else class="flex h-full flex-col gap-2">
             <button
                 class="border-accent hover:bg-accent/10 flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border p-3 transition-colors"
                 @click="$emit('add-radarr'); isExpanded = false">

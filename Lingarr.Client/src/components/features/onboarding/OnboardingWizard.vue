@@ -68,7 +68,7 @@
                     <h2 class="text-primary-content text-xl font-bold">
                         {{ currentStepData.title }}
                     </h2>
-                    <p class="text-secondary-content/80">
+                    <p class="text-secondary-content">
                         {{ currentStepData.description }}
                     </p>
                     <component :is="currentStepComponent" :key="currentStepData.id" />

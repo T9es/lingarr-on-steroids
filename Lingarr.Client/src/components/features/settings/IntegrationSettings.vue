@@ -1,16 +1,20 @@
 <template>
     <SaveNotification ref="saveNotification" />
 
-    <!-- Radarr Section -->
-    <CardComponent :title="translate('settings.integrations.radarrHeader')">
+    <!-- Media Servers Section -->
+    <CardComponent :title="translate('settings.integrations.header') || 'Media Servers'">
         <template #icon>
-            <RadarrIcon />
+            <div class="flex gap-2">
+                <RadarrIcon />
+                <SonarrIcon />
+            </div>
         </template>
         <template #description>
             {{ translate('settings.integrations.description') }}
         </template>
         <template #content>
-            <div class="space-y-3">
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                <!-- Radarr Instances -->
                 <InstanceCard
                     v-for="instance in radarrInstances"
                     :key="instance.id"
@@ -20,25 +24,8 @@
                     @update:instance="updateRadarrInstance(instance.id, $event)"
                     @remove="removeRadarrInstance(instance.id)"
                     @test-connection="testRadarrConnection(instance)" />
-                <AddInstanceButton
-                    v-if="radarrInstances.length < 5"
-                    @add-radarr="addRadarrInstance"
-                    @add-sonarr="addSonarrInstance" />
-            </div>
-            <div v-translate="'settings.integrations.reindexTask'" class="pt-2" />
-        </template>
-    </CardComponent>
-
-    <!-- Sonarr Section -->
-    <CardComponent :title="translate('settings.integrations.sonarrHeader')">
-        <template #icon>
-            <SonarrIcon />
-        </template>
-        <template #description>
-            {{ translate('settings.integrations.description') }}
-        </template>
-        <template #content>
-            <div class="space-y-3">
+                
+                <!-- Sonarr Instances -->
                 <InstanceCard
                     v-for="instance in sonarrInstances"
                     :key="instance.id"
@@ -48,12 +35,14 @@
                     @update:instance="updateSonarrInstance(instance.id, $event)"
                     @remove="removeSonarrInstance(instance.id)"
                     @test-connection="testSonarrConnection(instance)" />
+                
+                <!-- Add New Button -->
                 <AddInstanceButton
-                    v-if="sonarrInstances.length < 5"
+                    v-if="radarrInstances.length + sonarrInstances.length < 10"
                     @add-radarr="addRadarrInstance"
                     @add-sonarr="addSonarrInstance" />
             </div>
-            <div v-translate="'settings.integrations.reindexTask'" class="pt-2" />
+            <div v-translate="'settings.integrations.reindexTask'" class="pt-4 text-sm text-secondary-content" />
         </template>
     </CardComponent>
 </template>

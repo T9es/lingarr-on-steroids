@@ -79,7 +79,7 @@ const getUsagePercentage = (usage: ApiUsageInfo): number => {
             <button 
                 @click="fetchApiUsage" 
                 :disabled="isLoading"
-                class="p-1 text-gray-400 hover:text-white transition-colors"
+                class="p-1 text-secondary-content hover:text-primary-content transition-colors"
                 :title="i18n.translate('statistics.refresh')"
             >
                 <RefreshIcon class="h-4 w-4" :class="{ 'animate-spin': isLoading }" />
@@ -90,7 +90,7 @@ const getUsagePercentage = (usage: ApiUsageInfo): number => {
             {{ error }}
         </div>
 
-        <div v-else-if="apiUsage.length === 0" class="text-gray-400 text-sm py-4 text-center">
+        <div v-else-if="apiUsage.length === 0" class="text-secondary-content text-sm py-4 text-center">
             {{ i18n.translate('statistics.noApiUsage') }}
         </div>
 
@@ -101,8 +101,8 @@ const getUsagePercentage = (usage: ApiUsageInfo): number => {
                 class="p-3 rounded-md bg-black/30 border border-gray-700"
             >
                 <div class="flex items-center justify-between mb-2">
-                    <span class="text-sm font-medium text-white">{{ usage.service }}</span>
-                    <span v-if="usage.limit" class="text-xs text-gray-400">
+                    <span class="text-sm font-medium text-primary-content">{{ usage.service }}</span>
+                    <span v-if="usage.limit" class="text-xs text-secondary-content">
                         {{ getUsagePercentage(usage) }}% {{ i18n.translate('statistics.used') }}
                     </span>
                 </div>
@@ -119,26 +119,26 @@ const getUsagePercentage = (usage: ApiUsageInfo): number => {
                 <!-- Stats grid -->
                 <div class="grid grid-cols-3 gap-2 text-xs">
                     <div class="text-center">
-                        <div class="text-gray-400">{{ i18n.translate('statistics.today') }}</div>
-                        <div class="text-white font-medium">{{ formatNumber(usage.callsToday) }}</div>
+                        <div class="text-secondary-content">{{ i18n.translate('statistics.today') }}</div>
+                        <div class="text-primary-content font-medium">{{ formatNumber(usage.callsToday) }}</div>
                     </div>
                     <div class="text-center">
-                        <div class="text-gray-400">{{ i18n.translate('statistics.week') }}</div>
-                        <div class="text-white font-medium">{{ formatNumber(usage.callsWeek) }}</div>
+                        <div class="text-secondary-content">{{ i18n.translate('statistics.week') }}</div>
+                        <div class="text-primary-content font-medium">{{ formatNumber(usage.callsWeek) }}</div>
                     </div>
                     <div class="text-center">
-                        <div class="text-gray-400">{{ i18n.translate('statistics.month') }}</div>
-                        <div class="text-white font-medium">{{ formatNumber(usage.callsMonth) }}</div>
+                        <div class="text-secondary-content">{{ i18n.translate('statistics.month') }}</div>
+                        <div class="text-primary-content font-medium">{{ formatNumber(usage.callsMonth) }}</div>
                     </div>
                 </div>
 
                 <!-- Token usage -->
-                <div v-if="usage.tokensUsed" class="text-xs text-gray-400 mt-2 pt-2 border-t border-gray-700">
+                <div v-if="usage.tokensUsed" class="text-xs text-secondary-content mt-2 pt-2 border-t border-gray-700">
                     {{ i18n.translate('statistics.tokensUsed') }}: {{ formatNumber(usage.tokensUsed) }}
                 </div>
 
                 <!-- Remaining quota -->
-                <div v-if="usage.remaining" class="text-xs text-gray-400 mt-1">
+                <div v-if="usage.remaining" class="text-xs text-secondary-content mt-1">
                     {{ i18n.translate('statistics.remaining') }}: {{ formatNumber(usage.remaining) }}
                 </div>
             </div>

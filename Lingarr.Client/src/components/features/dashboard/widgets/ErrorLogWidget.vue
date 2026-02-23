@@ -53,7 +53,7 @@ const getTypeColor = (type: string): string => {
         case 'error': return 'text-red-400 bg-red-500/20 border-red-500/30'
         case 'warning': return 'text-yellow-400 bg-yellow-500/20 border-yellow-500/30'
         case 'info': return 'text-blue-400 bg-blue-500/20 border-blue-500/30'
-        default: return 'text-gray-400 bg-gray-500/20 border-gray-500/30'
+        default: return 'text-secondary-content bg-gray-500/20 border-gray-500/30'
     }
 }
 
@@ -79,14 +79,14 @@ const warningCount = () => errors.value.filter(e => e.type === 'warning').length
             <button 
                 @click="fetchErrors" 
                 :disabled="isLoading"
-                class="p-1 text-gray-400 hover:text-white transition-colors"
+                class="p-1 text-secondary-content hover:text-primary-content transition-colors"
                 :title="i18n.translate('statistics.refresh')"
             >
                 <RefreshIcon class="h-4 w-4" :class="{ 'animate-spin': isLoading }" />
             </button>
         </div>
 
-        <div v-if="errors.length === 0" class="text-gray-400 text-sm py-4 text-center">
+        <div v-if="errors.length === 0" class="text-secondary-content text-sm py-4 text-center">
             <ExclamationIcon class="h-8 w-8 mx-auto mb-2 text-green-500" />
             {{ i18n.translate('statistics.noErrors') }}
         </div>
