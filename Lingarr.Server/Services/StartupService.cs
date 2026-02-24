@@ -120,6 +120,9 @@ public class StartupService : IHostedService
             SettingKeys.Integration.SonarrApiKey
         ]);
 
+        // Clean up duplicate records from multi-instance migration
+        await CleanupDuplicateRecords(dbContext);
+
         // Ensure service_type is not empty
         var serviceType = await dbContext.Settings.FirstOrDefaultAsync(s => s.Key == SettingKeys.Translation.ServiceType);
         if (serviceType == null)
@@ -264,4 +267,74 @@ public class StartupService : IHostedService
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    /// <summary>
+    /// Cleans up duplicate movie and show records that may have been created
+    /// during the multi-instance migration. This happens when users upgrade from
+    /// a pre-multi-instance version where source_instance_id was NULL.
+    /// </summary>
+    private async Task CleanupDuplicateRecords(LingarrDbContext dbContext)
+    {
+        try
+        {
+            // Delete duplicate movies - keep the one with lowest ID (oldest)
+            var duplicateMovies = await dbContext.Movies
+                .GroupBy(m => m.RadarrId)
+                .Where(g => g.Count() > 1)
+                .Select(g => g.Key)
+                .ToListAsync();
+
+            if (duplicateMovies.Count > 0)
+            {
+                var moviesToDelete = await dbContext.Movies
+                    .Where(m => duplicateMovies.Contains(m.RadarrId))
+                    .GroupBy(m => m.RadarrId)
+                    .SelectMany(g => g.OrderByDescending(m => m.Id).Skip(1))
+                    .ToListAsync();
+
+                dbContext.Movies.RemoveRange(moviesToDelete);
+                await dbContext.SaveChangesAsync();
+                _logger.LogInformation("Cleaned up {Count} duplicate movie records from multi-instance migration.", moviesToDelete.Count);
+            }
+
+            // Delete duplicate shows - keep the one with lowest ID (oldest)
+            var duplicateShows = await dbContext.Shows
+                .GroupBy(s => s.SonarrId)
+                .Where(g => g.Count() > 1)
+                .Select(g => g.Key)
+                .ToListAsync();
+
+            if (duplicateShows.Count > 0)
+            {
+                var showsToDelete = await dbContext.Shows
+                    .Where(s => duplicateShows.Contains(s.SonarrId))
+                    .GroupBy(s => s.SonarrId)
+                    .SelectMany(g => g.OrderByDescending(s => s.Id).Skip(1))
+                    .ToListAsync();
+
+                dbContext.Shows.RemoveRange(showsToDelete);
+                await dbContext.SaveChangesAsync();
+                _logger.LogInformation("Cleaned up {Count} duplicate show records from multi-instance migration.", showsToDelete.Count);
+            }
+
+            // Update remaining records to have 'default' as source_instance_id if NULL
+            var moviesWithNullInstance = await dbContext.Movies
+                .Where(m => m.SourceInstanceId == null)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(m => m.SourceInstanceId, "default"));
+
+            var showsWithNullInstance = await dbContext.Shows
+                .Where(s => s.SourceInstanceId == null)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(s => s.SourceInstanceId, "default"));
+
+            if (moviesWithNullInstance > 0 || showsWithNullInstance > 0)
+            {
+                _logger.LogInformation("Updated {Movies} movies and {Shows} shows with NULL source_instance_id to 'default'.", 
+                    moviesWithNullInstance, showsWithNullInstance);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during duplicate record cleanup. Continuing startup...");
+        }
+    }
 }

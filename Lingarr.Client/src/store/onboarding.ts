@@ -5,11 +5,6 @@ import { useSettingStore } from '@/store/setting'
 import { SETTINGS } from '@/ts'
 import config from '@/config/onboarding-config.json'
 
-// Generate unique ID helper
-const generateId = (): string => {
-    return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
-}
-
 export const useOnboardingStore = defineStore('onboarding', () => {
     // State
     const isActive = ref(false)
@@ -88,6 +83,9 @@ export const useOnboardingStore = defineStore('onboarding', () => {
      * Migrate legacy single-instance settings to multi-instance arrays.
      * This is called when onboarding starts to pre-populate instance arrays
      * with existing legacy settings if the arrays are empty.
+     * 
+     * IMPORTANT: Uses 'default' as the instance ID to match backend fallback behavior.
+     * This prevents duplicate records when upgrading from pre-multi-instance versions.
      */
     function migrateLegacySettings(): void {
         const settingStore = useSettingStore()
@@ -99,7 +97,7 @@ export const useOnboardingStore = defineStore('onboarding', () => {
             
             if (radarrUrl || radarrApiKey) {
                 const instance: IInstance = {
-                    id: generateId(),
+                    id: 'default', // Use 'default' to match backend fallback
                     name: 'Radarr',
                     url: radarrUrl || '',
                     apiKey: radarrApiKey || ''
@@ -114,7 +112,7 @@ export const useOnboardingStore = defineStore('onboarding', () => {
             
             if (sonarrUrl || sonarrApiKey) {
                 const instance: IInstance = {
-                    id: generateId(),
+                    id: 'default', // Use 'default' to match backend fallback
                     name: 'Sonarr',
                     url: sonarrUrl || '',
                     apiKey: sonarrApiKey || ''

@@ -48,10 +48,12 @@ public class MovieSync : IMovieSync
         }
 
         // Match by RadarrId AND SourceInstanceId for multi-instance support
+        // Also match NULL SourceInstanceId for migration from pre-multi-instance versions
         var movieEntity = await _dbContext.Movies
             .Include(m => m.Images)
             .Include(m => m.EmbeddedSubtitles)
-            .FirstOrDefaultAsync(m => m.RadarrId == movie.Id && m.SourceInstanceId == instanceId);
+            .FirstOrDefaultAsync(m => m.RadarrId == movie.Id && 
+                (m.SourceInstanceId == instanceId || m.SourceInstanceId == null));
 
         var moviePath = _pathConversionService.ConvertAndMapPath(
             movie.MovieFile.Path ?? string.Empty,

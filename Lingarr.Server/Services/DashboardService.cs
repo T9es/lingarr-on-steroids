@@ -27,7 +27,21 @@ public class DashboardService : IDashboardService
     /// <inheritdoc />
     public async Task<JobQueueStatus> GetJobQueueStatus()
     {
-        var monitoringApi = JobStorage.Current.GetMonitoringApi();
+        var monitoringApi = JobStorage.Current?.GetMonitoringApi();
+        
+        // Return empty status if Hangfire is not initialized
+        if (monitoringApi == null)
+        {
+            return new JobQueueStatus
+            {
+                ScheduledCount = 0,
+                QueuedCount = 0,
+                RunningCount = 0,
+                FailedCount = 0,
+                SucceededCount = 0,
+                Jobs = new List<JobInfo>()
+            };
+        }
         
         var scheduled = monitoringApi.ScheduledJobs(0, 100);
         var enqueued = monitoringApi.EnqueuedJobs("default", 0, 100);
