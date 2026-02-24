@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -11,6 +11,7 @@ namespace Lingarr.Migrations.SQLite.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            // Add retry tracking columns to translation_requests
             migrationBuilder.AddColumn<DateTime>(
                 name: "failed_at",
                 table: "translation_requests",
@@ -30,6 +31,7 @@ namespace Lingarr.Migrations.SQLite.Migrations
                 nullable: false,
                 defaultValue: 0);
 
+            // Add source_instance_id columns
             migrationBuilder.AddColumn<string>(
                 name: "source_instance_id",
                 table: "shows",
@@ -42,27 +44,38 @@ namespace Lingarr.Migrations.SQLite.Migrations
                 type: "TEXT",
                 nullable: true);
 
-            migrationBuilder.CreateIndex(
-                name: "IX_Shows_SourceInstanceId_SonarrId",
-                table: "shows",
-                columns: new[] { "source_instance_id", "sonarr_id" });
+            // Step 1: Set SourceInstanceId to 'default' for existing records with NULL
+            // This is needed for data that was synced before multi-instance support
+            migrationBuilder.Sql(
+                "UPDATE movies SET source_instance_id = 'default' WHERE source_instance_id IS NULL");
+            migrationBuilder.Sql(
+                "UPDATE shows SET source_instance_id = 'default' WHERE source_instance_id IS NULL");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_Movies_SourceInstanceId_RadarrId",
-                table: "movies",
-                columns: new[] { "source_instance_id", "radarr_id" });
+            // Step 2: Drop old unique indexes if they exist (from pre-multi-instance)
+            // SQLite doesn't support IF EXISTS for DROP INDEX, so we use a try-catch approach
+            migrationBuilder.Sql(
+                "DROP INDEX IF EXISTS IX_Movies_RadarrId");
+            migrationBuilder.Sql(
+                "DROP INDEX IF EXISTS IX_Shows_SonarrId");
+
+            // Step 3: Create unique composite indexes
+            // This allows the same RadarrId/SonarrId across different instances,
+            // but prevents duplicates within the same instance
+            migrationBuilder.Sql(
+                "CREATE UNIQUE INDEX IF NOT EXISTS IX_Movies_SourceInstanceId_RadarrId " +
+                "ON movies (source_instance_id, radarr_id)");
+            migrationBuilder.Sql(
+                "CREATE UNIQUE INDEX IF NOT EXISTS IX_Shows_SourceInstanceId_SonarrId " +
+                "ON shows (source_instance_id, sonarr_id)");
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropIndex(
-                name: "IX_Shows_SourceInstanceId_SonarrId",
-                table: "shows");
-
-            migrationBuilder.DropIndex(
-                name: "IX_Movies_SourceInstanceId_RadarrId",
-                table: "movies");
+            migrationBuilder.Sql(
+                "DROP INDEX IF EXISTS IX_Movies_SourceInstanceId_RadarrId");
+            migrationBuilder.Sql(
+                "DROP INDEX IF EXISTS IX_Shows_SourceInstanceId_SonarrId");
 
             migrationBuilder.DropColumn(
                 name: "failed_at",

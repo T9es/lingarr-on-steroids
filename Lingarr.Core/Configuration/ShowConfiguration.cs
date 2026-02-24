@@ -23,6 +23,7 @@ public class ShowConfiguration : IEntityTypeConfiguration<Show>
         builder.Navigation(s => s.Seasons).AutoInclude();
 
         builder.HasIndex(s => new { s.SourceInstanceId, s.SonarrId })
+            .IsUnique()
             .HasDatabaseName("IX_Shows_SourceInstanceId_SonarrId");
     }
 }

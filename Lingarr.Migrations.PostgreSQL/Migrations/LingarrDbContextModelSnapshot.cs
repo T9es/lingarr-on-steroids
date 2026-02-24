@@ -333,6 +333,7 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                         .HasDatabaseName("IX_Movies_TranslationState");
 
                     b.HasIndex("SourceInstanceId", "RadarrId")
+                        .IsUnique()
                         .HasDatabaseName("IX_Movies_SourceInstanceId_RadarrId");
 
                     b.ToTable("movies", (string)null);
@@ -494,6 +495,7 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                         .HasName("pk_shows");
 
                     b.HasIndex("SourceInstanceId", "SonarrId")
+                        .IsUnique()
                         .HasDatabaseName("IX_Shows_SourceInstanceId_SonarrId");
 
                     b.ToTable("shows", (string)null);

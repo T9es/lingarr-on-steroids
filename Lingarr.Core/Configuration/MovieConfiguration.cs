@@ -21,6 +21,7 @@ public class MovieConfiguration : IEntityTypeConfiguration<Movie>
             .HasDatabaseName("IX_Movies_TranslationState");
 
         builder.HasIndex(m => new { m.SourceInstanceId, m.RadarrId })
+            .IsUnique()
             .HasDatabaseName("IX_Movies_SourceInstanceId_RadarrId");
     }
 }
