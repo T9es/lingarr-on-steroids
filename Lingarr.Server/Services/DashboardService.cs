@@ -1,7 +1,11 @@
 using Hangfire;
 using Hangfire.Storage;
+using Lingarr.Core.Data;
+using Lingarr.Core.Entities;
+using Lingarr.Core.Enum;
 using Lingarr.Server.Interfaces;
 using Lingarr.Server.Interfaces.Services;
+using Microsoft.EntityFrameworkCore;
 
 namespace Lingarr.Server.Services;
 
@@ -12,16 +16,19 @@ public class DashboardService : IDashboardService
 {
     private readonly IStatisticsService _statisticsService;
     private readonly ITranslationRequestService _translationRequestService;
+    private readonly LingarrDbContext _dbContext;
     private static readonly List<ErrorLogEntry> _errorLog = new();
     private static readonly List<ApiUsageEntry> _apiUsageLog = new();
     private static readonly object _lock = new();
 
     public DashboardService(
         IStatisticsService statisticsService,
-        ITranslationRequestService translationRequestService)
+        ITranslationRequestService translationRequestService,
+        LingarrDbContext dbContext)
     {
         _statisticsService = statisticsService;
         _translationRequestService = translationRequestService;
+        _dbContext = dbContext;
     }
 
     /// <inheritdoc />
@@ -102,12 +109,77 @@ public class DashboardService : IDashboardService
             });
         }
 
+        // Query translation requests from database (managed by TranslationWorkerService)
+        var translationPending = await _dbContext.TranslationRequests
+            .Where(r => r.Status == TranslationStatus.Pending)
+            .OrderByDescending(r => r.CreatedAt)
+            .Take(20)
+            .ToListAsync();
+
+        var translationInProgress = await _dbContext.TranslationRequests
+            .Where(r => r.Status == TranslationStatus.InProgress)
+            .OrderByDescending(r => r.StartedAt)
+            .Take(20)
+            .ToListAsync();
+
+        var translationFailed = await _dbContext.TranslationRequests
+            .Where(r => r.Status == TranslationStatus.Failed)
+            .OrderByDescending(r => r.FailedAt)
+            .Take(10)
+            .ToListAsync();
+
+        // Add pending translation requests
+        foreach (var request in translationPending)
+        {
+            jobs.Add(new JobInfo
+            {
+                Id = $"translation-{request.Id}",
+                Name = request.Title,
+                State = "Pending",
+                Queue = request.IsPriority ? "priority" : "translation",
+                ScheduledAt = request.CreatedAt,
+                SourceLanguage = request.SourceLanguage,
+                TargetLanguage = request.TargetLanguage
+            });
+        }
+
+        // Add in-progress translation requests
+        foreach (var request in translationInProgress)
+        {
+            jobs.Add(new JobInfo
+            {
+                Id = $"translation-{request.Id}",
+                Name = request.Title,
+                State = "Running",
+                Queue = request.IsPriority ? "priority" : "translation",
+                StartedAt = request.StartedAt,
+                Progress = request.Progress,
+                SourceLanguage = request.SourceLanguage,
+                TargetLanguage = request.TargetLanguage
+            });
+        }
+
+        // Add failed translation requests
+        foreach (var request in translationFailed)
+        {
+            jobs.Add(new JobInfo
+            {
+                Id = $"translation-{request.Id}",
+                Name = request.Title,
+                State = "Failed",
+                Queue = "translation",
+                FailedAt = request.FailedAt,
+                SourceLanguage = request.SourceLanguage,
+                TargetLanguage = request.TargetLanguage
+            });
+        }
+
         return new JobQueueStatus
         {
             ScheduledCount = scheduled.Count,
-            QueuedCount = enqueued.Count,
-            RunningCount = processing.Count,
-            FailedCount = failed.Count,
+            QueuedCount = enqueued.Count + translationPending.Count,
+            RunningCount = processing.Count + translationInProgress.Count,
+            FailedCount = failed.Count + translationFailed.Count,
             SucceededCount = succeeded.Count,
             Jobs = jobs.OrderByDescending(j => j.StartedAt ?? j.ScheduledAt ?? j.FailedAt).Take(20).ToList()
         };
@@ -248,6 +320,9 @@ public class JobInfo
     public DateTime? ScheduledAt { get; set; }
     public DateTime? FailedAt { get; set; }
     public string? ErrorMessage { get; set; }
+    public int Progress { get; set; }
+    public string? SourceLanguage { get; set; }
+    public string? TargetLanguage { get; set; }
 }
 
 /// <summary>

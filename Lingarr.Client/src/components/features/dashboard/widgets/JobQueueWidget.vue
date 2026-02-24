@@ -10,11 +10,14 @@ const i18n = useI18n()
 interface JobInfo {
     id: string
     name: string
-    state: 'running' | 'scheduled' | 'failed' | 'completed'
+    state: 'running' | 'scheduled' | 'failed' | 'completed' | 'pending' | 'queued'
     progress?: number
     nextRun?: string
     lastRun?: string
     error?: string
+    queue?: string
+    sourceLanguage?: string
+    targetLanguage?: string
 }
 
 const jobs = ref<JobInfo[]>([])
@@ -36,9 +39,13 @@ const fetchJobs = async () => {
             id: job.Id || job.id,
             name: job.Name || job.name,
             state: (job.State || job.state || '').toLowerCase(),
+            progress: job.Progress || job.progress,
             nextRun: job.ScheduledAt || job.nextRun,
             lastRun: job.StartedAt || job.lastRun,
-            error: job.ErrorMessage || job.error
+            error: job.ErrorMessage || job.error,
+            queue: job.Queue || job.queue,
+            sourceLanguage: job.SourceLanguage || job.sourceLanguage,
+            targetLanguage: job.TargetLanguage || job.targetLanguage
         }))
     } catch (e) {
         error.value = 'Failed to fetch job queue'
@@ -65,6 +72,8 @@ onUnmounted(() => {
 const getStateColor = (state: string): string => {
     switch (state) {
         case 'running': return 'text-blue-400'
+        case 'pending': return 'text-purple-400'
+        case 'queued': return 'text-yellow-400'
         case 'scheduled': return 'text-yellow-400'
         case 'failed': return 'text-red-400'
         case 'completed': return 'text-green-400'
@@ -75,10 +84,21 @@ const getStateColor = (state: string): string => {
 const getStateBg = (state: string): string => {
     switch (state) {
         case 'running': return 'bg-blue-500/20'
+        case 'pending': return 'bg-purple-500/20'
+        case 'queued': return 'bg-yellow-500/20'
         case 'scheduled': return 'bg-yellow-500/20'
         case 'failed': return 'bg-red-500/20'
         case 'completed': return 'bg-green-500/20'
         default: return 'bg-gray-500/20'
+    }
+}
+
+const getQueueLabel = (queue?: string): string => {
+    if (!queue) return ''
+    switch (queue) {
+        case 'priority': return '⚡'
+        case 'translation': return '🌐'
+        default: return ''
     }
 }
 </script>
@@ -111,7 +131,10 @@ const getStateBg = (state: string): string => {
                 class="p-2 rounded-md bg-black/30 border border-gray-700"
             >
                 <div class="flex items-center justify-between">
-                    <span class="text-sm font-medium text-primary-content">{{ job.name }}</span>
+                    <div class="flex items-center gap-1">
+                        <span v-if="getQueueLabel(job.queue)" class="text-xs">{{ getQueueLabel(job.queue) }}</span>
+                        <span class="text-sm font-medium text-primary-content truncate max-w-[120px]">{{ job.name }}</span>
+                    </div>
                     <span 
                         class="text-xs px-2 py-0.5 rounded-full"
                         :class="[getStateColor(job.state), getStateBg(job.state)]"
@@ -120,8 +143,13 @@ const getStateBg = (state: string): string => {
                     </span>
                 </div>
                 
+                <!-- Language info for translation jobs -->
+                <div v-if="job.sourceLanguage && job.targetLanguage" class="text-xs text-secondary-content mt-1">
+                    {{ job.sourceLanguage }} → {{ job.targetLanguage }}
+                </div>
+                
                 <!-- Progress bar for running jobs -->
-                <div v-if="job.state === 'running' && job.progress !== undefined" class="mt-2">
+                <div v-if="job.state === 'running' && job.progress !== undefined && job.progress > 0" class="mt-2">
                     <div class="h-1.5 bg-gray-700 rounded-full overflow-hidden">
                         <div 
                             class="h-full bg-blue-500 transition-all duration-300"
