@@ -2,17 +2,21 @@
     <div class="border-accent bg-secondary rounded-md border p-4">
         <!-- Header with icon, name input, and X button -->
         <div class="mb-4 flex items-center gap-2">
-            <component :is="typeIcon" class="h-5 w-5" />
-            <input
-                v-model="localInstance.name"
-                type="text"
-                :placeholder="type === 'radarr' ? translate('onboarding.instanceCard.radarrPlaceholder') : translate('onboarding.instanceCard.sonarrPlaceholder')"
-                class="w-full rounded-md border border-accent bg-transparent text-primary-content px-3 py-1.5 text-sm outline-hidden transition-colors focus:border-accent/70" />
+            <div class="relative flex-1">
+                <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                    <component :is="typeIcon" class="text-primary-content h-5 w-5" />
+                </div>
+                <input
+                    v-model="localInstance.name"
+                    type="text"
+                    :placeholder="type === 'radarr' ? translate('onboarding.instanceCard.radarrPlaceholder') : translate('onboarding.instanceCard.sonarrPlaceholder')"
+                    class="w-full rounded-md border border-accent bg-transparent text-primary-content py-1.5 pl-10 pr-3 text-sm outline-hidden transition-colors focus:border-accent/70" />
+            </div>
             <button
                 type="button"
-                class="text-secondary-content hover:text-primary-content ml-auto cursor-pointer transition-colors"
+                class="text-secondary-content hover:text-primary-content cursor-pointer transition-colors"
                 @click="$emit('remove')">
-                <TimesIcon class="h-4 w-4" />
+                <TimesIcon class="h-5 w-5" />
             </button>
         </div>
 

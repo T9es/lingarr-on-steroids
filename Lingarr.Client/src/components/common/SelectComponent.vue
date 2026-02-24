@@ -7,7 +7,7 @@
             ref="excludeClickOutside"
             class="border-accent flex h-12 cursor-pointer items-center justify-between rounded-md border px-4 py-2"
             @click="toggleDropdown">
-            <span v-if="!selected" class="text-secondary-content">{{ placeholder }}</span>
+            <span v-if="!selected" class="!text-secondary-content">{{ placeholder }}</span>
             <div v-else class="flex max-h-12 flex-wrap gap-2 overflow-auto">
                 <span
                     class="bg-accent flex cursor-pointer items-center rounded-md px-3 py-1 text-sm font-medium">
@@ -18,7 +18,7 @@
                 <LoaderCircleIcon v-if="isLoading" class="mr-2 h-4 w-4 animate-spin" />
                 <CaretRightIcon
                     :class="{ 'rotate-90': isOpen }"
-                    class="arrow-right h-5 w-5 transition-transform duration-200 text-secondary-content" />
+                    class="arrow-right h-5 w-5 transition-transform duration-200 text-primary-content" />
             </div>
         </div>
         <ul

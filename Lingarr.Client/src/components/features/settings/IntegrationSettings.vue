@@ -14,31 +14,20 @@
         </template>
         <template #content>
             <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                <!-- Radarr Instances -->
+                <!-- All Instances -->
                 <InstanceCard
-                    v-for="instance in localRadarrInstances"
-                    :key="instance.id"
-                    :instance="instance"
-                    type="radarr"
-                    :connection-status="getConnectionStatus('radarr', instance.id)"
-                    @update:instance="updateLocalRadarrInstance(instance.id, $event)"
-                    @remove="removeLocalRadarrInstance(instance.id)"
-                    @test-connection="testRadarrConnection(instance)" />
-                
-                <!-- Sonarr Instances -->
-                <InstanceCard
-                    v-for="instance in localSonarrInstances"
-                    :key="instance.id"
-                    :instance="instance"
-                    type="sonarr"
-                    :connection-status="getConnectionStatus('sonarr', instance.id)"
-                    @update:instance="updateLocalSonarrInstance(instance.id, $event)"
-                    @remove="removeLocalSonarrInstance(instance.id)"
-                    @test-connection="testSonarrConnection(instance)" />
+                    v-for="item in localInstances"
+                    :key="`${item.type}-${item.instance.id}`"
+                    :instance="item.instance"
+                    :type="item.type"
+                    :connection-status="getConnectionStatus(item.type, item.instance.id)"
+                    @update:instance="updateLocalInstance(item.instance.id, $event)"
+                    @remove="removeLocalInstance(item.instance.id)"
+                    @test-connection="testConnection(item.type, item.instance)" />
                 
                 <!-- Single Add Button with Dropdown -->
                 <AddInstanceButton
-                    v-if="localRadarrInstances.length + localSonarrInstances.length < 10"
+                    v-if="localInstances.length < 10"
                     @add="handleAddInstance" />
             </div>
             
@@ -98,16 +87,19 @@ interface ConnectionTestResult {
     version?: string
 }
 
+interface InstanceWrapper {
+    type: 'radarr' | 'sonarr'
+    instance: IInstance
+}
+
 const { translate } = useI18n()
 
 const saveNotification = ref<InstanceType<typeof SaveNotification> | null>(null)
 const settingsStore = useSettingStore()
 
 // Local state for unsaved changes
-const localRadarrInstances = ref<IInstance[]>([])
-const localSonarrInstances = ref<IInstance[]>([])
-const originalRadarrInstances = ref<IInstance[]>([])
-const originalSonarrInstances = ref<IInstance[]>([])
+const localInstances = ref<InstanceWrapper[]>([])
+const originalInstances = ref<InstanceWrapper[]>([])
 const isSaving = ref(false)
 
 // Connection status per instance
@@ -124,15 +116,14 @@ const generateId = (): string => {
 }
 
 // Deep equality check for instances
-const instancesEqual = (a: IInstance[], b: IInstance[]): boolean => {
+const instancesEqual = (a: InstanceWrapper[], b: InstanceWrapper[]): boolean => {
     if (a.length !== b.length) return false
     return JSON.stringify(a) === JSON.stringify(b)
 }
 
 // Computed to check if there are unsaved changes
 const hasChanges = computed(() => {
-    return !instancesEqual(localRadarrInstances.value, originalRadarrInstances.value) ||
-           !instancesEqual(localSonarrInstances.value, originalSonarrInstances.value)
+    return !instancesEqual(localInstances.value, originalInstances.value)
 })
 
 // Get connection status for an instance
@@ -189,10 +180,13 @@ const loadInstancesFromStore = (): void => {
         settingsStore.getSetting(SETTINGS.SONARR_INSTANCES) as string | IInstance[]
     )
     
-    localRadarrInstances.value = radarrInsts
-    localSonarrInstances.value = sonarrInsts
-    originalRadarrInstances.value = JSON.parse(JSON.stringify(radarrInsts))
-    originalSonarrInstances.value = JSON.parse(JSON.stringify(sonarrInsts))
+    const combined: InstanceWrapper[] = [
+        ...radarrInsts.map(i => ({ type: 'radarr' as const, instance: i })),
+        ...sonarrInsts.map(i => ({ type: 'sonarr' as const, instance: i }))
+    ]
+    
+    localInstances.value = combined
+    originalInstances.value = JSON.parse(JSON.stringify(combined))
     
     // Initialize connection statuses
     radarrInsts.forEach((inst) => initConnectionStatus('radarr', inst.id))
@@ -203,22 +197,24 @@ const loadInstancesFromStore = (): void => {
 const saveChanges = async (): Promise<void> => {
     isSaving.value = true
     try {
+        const radarrs = localInstances.value.filter(i => i.type === 'radarr').map(i => i.instance)
+        const sonarrs = localInstances.value.filter(i => i.type === 'sonarr').map(i => i.instance)
+        
         settingsStore.updateSetting(
             SETTINGS.RADARR_INSTANCES,
-            JSON.parse(JSON.stringify(localRadarrInstances.value)),
+            JSON.parse(JSON.stringify(radarrs)),
             true,
             true
         )
         settingsStore.updateSetting(
             SETTINGS.SONARR_INSTANCES,
-            JSON.parse(JSON.stringify(localSonarrInstances.value)),
+            JSON.parse(JSON.stringify(sonarrs)),
             true,
             true
         )
         
         // Update originals to match current state
-        originalRadarrInstances.value = JSON.parse(JSON.stringify(localRadarrInstances.value))
-        originalSonarrInstances.value = JSON.parse(JSON.stringify(localSonarrInstances.value))
+        originalInstances.value = JSON.parse(JSON.stringify(localInstances.value))
         
         saveNotification.value?.show()
     } finally {
@@ -228,85 +224,50 @@ const saveChanges = async (): Promise<void> => {
 
 // Discard changes and reset to original
 const discardChanges = (): void => {
-    localRadarrInstances.value = JSON.parse(JSON.stringify(originalRadarrInstances.value))
-    localSonarrInstances.value = JSON.parse(JSON.stringify(originalSonarrInstances.value))
+    localInstances.value = JSON.parse(JSON.stringify(originalInstances.value))
     
     // Re-initialize connection statuses for current instances
     connectionStatuses.radarr = {}
     connectionStatuses.sonarr = {}
-    localRadarrInstances.value.forEach((inst) => initConnectionStatus('radarr', inst.id))
-    localSonarrInstances.value.forEach((inst) => initConnectionStatus('sonarr', inst.id))
+    localInstances.value.forEach((wrapper) => initConnectionStatus(wrapper.type, wrapper.instance.id))
 }
 
 // Handle add instance from unified button
 const handleAddInstance = (type: 'radarr' | 'sonarr'): void => {
-    if (type === 'radarr') {
-        addLocalRadarrInstance()
-    } else {
-        addLocalSonarrInstance()
-    }
-}
-
-// Add Radarr instance (local only)
-const addLocalRadarrInstance = (): void => {
     const id = generateId()
+    const currentCount = localInstances.value.filter(i => i.type === type).length
+    const namePrefix = type === 'radarr' ? 'Radarr' : 'Sonarr'
+    
     const instance: IInstance = {
         id,
-        name: `Radarr ${localRadarrInstances.value.length + 1}`,
+        name: `${namePrefix} ${currentCount + 1}`,
         url: '',
         apiKey: ''
     }
-    initConnectionStatus('radarr', id)
-    localRadarrInstances.value = [...localRadarrInstances.value, instance]
+    
+    initConnectionStatus(type, id)
+    localInstances.value.push({ type, instance })
 }
 
-// Add Sonarr instance (local only)
-const addLocalSonarrInstance = (): void => {
-    const id = generateId()
-    const instance: IInstance = {
-        id,
-        name: `Sonarr ${localSonarrInstances.value.length + 1}`,
-        url: '',
-        apiKey: ''
-    }
-    initConnectionStatus('sonarr', id)
-    localSonarrInstances.value = [...localSonarrInstances.value, instance]
-}
-
-// Update local Radarr instance
-const updateLocalRadarrInstance = (id: string, updatedInstance: IInstance): void => {
-    const index = localRadarrInstances.value.findIndex((inst) => inst.id === id)
+// Update local instance
+const updateLocalInstance = (id: string, updatedInstance: IInstance): void => {
+    const index = localInstances.value.findIndex((wrapper) => wrapper.instance.id === id)
     if (index !== -1) {
-        const newInstances = [...localRadarrInstances.value]
-        newInstances[index] = updatedInstance
-        localRadarrInstances.value = newInstances
+        const newInstances = [...localInstances.value]
+        newInstances[index].instance = updatedInstance
+        localInstances.value = newInstances
     }
 }
 
-// Update local Sonarr instance
-const updateLocalSonarrInstance = (id: string, updatedInstance: IInstance): void => {
-    const index = localSonarrInstances.value.findIndex((inst) => inst.id === id)
-    if (index !== -1) {
-        const newInstances = [...localSonarrInstances.value]
-        newInstances[index] = updatedInstance
-        localSonarrInstances.value = newInstances
+// Remove local instance
+const removeLocalInstance = (id: string): void => {
+    const wrapper = localInstances.value.find(w => w.instance.id === id)
+    if (wrapper) {
+        delete connectionStatuses[wrapper.type][id]
     }
-}
-
-// Remove local Radarr instance
-const removeLocalRadarrInstance = (id: string): void => {
-    localRadarrInstances.value = localRadarrInstances.value.filter(
-        (inst) => inst.id !== id
+    localInstances.value = localInstances.value.filter(
+        (wrapper) => wrapper.instance.id !== id
     )
-    delete connectionStatuses.radarr[id]
-}
-
-// Remove local Sonarr instance
-const removeLocalSonarrInstance = (id: string): void => {
-    localSonarrInstances.value = localSonarrInstances.value.filter(
-        (inst) => inst.id !== id
-    )
-    delete connectionStatuses.sonarr[id]
 }
 
 // Test Radarr connection
@@ -364,6 +325,16 @@ const testSonarrConnection = async (instance: IInstance): Promise<void> => {
     } finally {
         status.testing = false
         status.tested = true
+    }
+}
+
+
+// Test connection
+const testConnection = async (type: 'radarr' | 'sonarr', instance: IInstance): Promise<void> => {
+    if (type === 'radarr') {
+        await testRadarrConnection(instance)
+    } else {
+        await testSonarrConnection(instance)
     }
 }
 
