@@ -359,32 +359,29 @@ const MediaOverviewContent = defineComponent({
         statistics: Object as () => Statistics
     },
     setup(props) {
-        if (props.loading) {
-            return () =>
-                h(
+        return () => {
+            if (props.loading) {
+                return h(
                     'div',
                     { class: 'flex h-64 items-center justify-center' },
                     h(LoaderCircleIcon, { class: 'h-8 w-8 animate-spin' })
                 )
-        }
-        if (props.error) {
-            return () =>
-                h(
+            }
+            if (props.error) {
+                return h(
                     'div',
                     { class: 'flex h-64 items-center justify-center text-red-500' },
                     props.error
                 )
-        }
-        if (!props.statistics) {
-            return () =>
-                h(
+            }
+            if (!props.statistics) {
+                return h(
                     'div',
                     { class: 'text-primary-content flex h-64 items-center justify-center' },
                     translate('statistics.notAvailable')
                 )
-        }
-        return () =>
-            h('div', { class: 'grid grid-cols-1 gap-4 md:grid-cols-2' }, [
+            }
+            return h('div', { class: 'grid grid-cols-1 gap-4 md:grid-cols-2' }, [
                 h(StatCard, {
                     title: translate('statistics.movies'),
                     total: props.statistics!.totalMovies,
@@ -396,6 +393,7 @@ const MediaOverviewContent = defineComponent({
                     translated: props.statistics!.translationsByMediaType?.[MEDIA_TYPE.EPISODE] || 0
                 })
             ])
+        }
     }
 })
 
