@@ -1,10 +1,14 @@
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Lingarr.Core.Data;
 
 #nullable disable
 
 namespace Lingarr.Migrations.SQLite.Migrations
 {
     /// <inheritdoc />
+    [DbContext(typeof(LingarrDbContext))]
+    [Migration("20260221000000_AddMultiInstanceSupport")]
     public partial class AddMultiInstanceSupport : Migration
     {
         /// <inheritdoc />

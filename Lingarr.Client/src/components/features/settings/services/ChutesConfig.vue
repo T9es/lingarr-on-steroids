@@ -1,6 +1,6 @@
 <template>
     <div class="flex flex-col space-y-3">
-        <div>
+        <div class="text-primary-content">
             {{ translate('settings.services.aiWarningIntro') }}
             <span :class="automationEnabled == 'true' ? 'text-red-500' : 'text-green-500'">
                 {{
@@ -10,7 +10,7 @@
                 }}
             </span>
         </div>
-        <p class="text-xs">
+        <p class="text-xs text-secondary-content">
             {{ translate('settings.services.aiCostDescription') }}
         </p>
 

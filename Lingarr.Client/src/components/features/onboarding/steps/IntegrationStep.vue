@@ -2,7 +2,10 @@
     <div class="space-y-8">
         <!-- Radarr Section -->
         <div>
-            <h3 class="text-primary-content mb-3 text-lg font-semibold">Radarr</h3>
+            <div class="mb-3 flex items-center gap-2">
+                <RadarrIcon class="text-primary-content h-6 w-6" />
+                <h3 class="text-primary-content text-lg font-semibold">Radarr</h3>
+            </div>
             <div class="flex flex-wrap gap-4">
                 <InstanceCard
                     v-for="instance in onboardingStore.radarrInstances"
@@ -25,7 +28,10 @@
 
         <!-- Sonarr Section -->
         <div>
-            <h3 class="text-primary-content mb-3 text-lg font-semibold">Sonarr</h3>
+            <div class="mb-3 flex items-center gap-2">
+                <SonarrIcon class="text-primary-content h-6 w-6" />
+                <h3 class="text-primary-content text-lg font-semibold">Sonarr</h3>
+            </div>
             <div class="flex flex-wrap gap-4">
                 <InstanceCard
                     v-for="instance in onboardingStore.sonarrInstances"
@@ -55,6 +61,8 @@ import { SETTINGS } from '@/ts'
 import type { IInstance } from '@/ts/setting'
 import InstanceCard from '@/components/features/onboarding/InstanceCard.vue'
 import AddInstanceButton from '@/components/features/onboarding/AddInstanceButton.vue'
+import RadarrIcon from '@/components/icons/RadarrIcon.vue'
+import SonarrIcon from '@/components/icons/SonarrIcon.vue'
 import services from '@/services'
 
 const onboardingStore = useOnboardingStore()

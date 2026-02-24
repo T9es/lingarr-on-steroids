@@ -18,7 +18,7 @@
                 <LoaderCircleIcon v-if="isLoading" class="mr-2 h-4 w-4 animate-spin" />
                 <CaretRightIcon
                     :class="{ 'rotate-90': isOpen }"
-                    class="arrow-right h-5 w-5 transition-transform duration-200" />
+                    class="arrow-right h-5 w-5 transition-transform duration-200 text-secondary-content" />
             </div>
         </div>
         <ul
