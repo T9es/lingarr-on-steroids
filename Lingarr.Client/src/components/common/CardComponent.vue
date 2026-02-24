@@ -1,7 +1,7 @@
 ﻿<template>
     <div class="from-secondary to-tertiary relative rounded-md bg-linear-to-br p-6 shadow-md">
         <div class="mb-2 flex items-center justify-center space-x-3" v-if="title">
-            <div v-if="$slots.icon" class="text-primary-content h-6 w-6">
+            <div v-if="$slots.icon" class="text-primary-content">
                 <slot name="icon"></slot>
             </div>
             <h2 class="text-primary-content text-2xl font-bold">{{ title }}</h2>
