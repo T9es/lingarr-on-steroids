@@ -14,10 +14,10 @@
             <div class="px-3 py-1" role="menu" aria-orientation="vertical">
                 <!-- Embedded Options -->
                 <div v-if="embeddedSubtitle" class="border-accent mb-1 border-b pb-1">
-                    <span class="text-xs" role="menuitem">{{ translate('embedded.title') }}</span>
+                    <span class="text-primary-content text-xs" role="menuitem">{{ translate('embedded.title') }}</span>
                     <div
                         v-if="!embeddedSubtitle.isExtracted"
-                        class="flex text-sm"
+                        class="text-primary-content flex text-sm"
                         role="menuitem"
                         @click="handleJustExtract">
                         <span class="h-full w-full cursor-pointer py-2 hover:brightness-150">
@@ -49,11 +49,11 @@
                     </div>
                 </div>
 
-                <span class="text-xs" role="menuitem">Translate to ...</span>
+                <span class="text-primary-content text-xs" role="menuitem">Translate to ...</span>
                 <div
                     v-for="language in languages"
                     :key="language.code"
-                    class="mb-1 flex text-sm"
+                    class="text-primary-content mb-1 flex text-sm"
                     role="menuitem"
                     @click="selectOption(language)">
                     <span class="h-full w-full cursor-pointer py-2 hover:brightness-150">

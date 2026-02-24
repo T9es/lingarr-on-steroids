@@ -32,11 +32,11 @@
                     class="border-border w-full rounded border bg-transparent text-primary-content px-2 py-1 text-sm outline-hidden"
                     :placeholder="translate('settings.services.modelSearchPlaceholder')" />
             </li>
-            <li v-if="!filteredOptions.length" class="p-3">{{ noOptions }}</li>
+            <li v-if="!filteredOptions.length" class="text-primary-content p-3">{{ noOptions }}</li>
             <li
                 v-for="(option, index) in filteredOptions"
                 :key="`${option.value}-${index}`"
-                class="cursor-pointer px-4 py-2"
+                class="text-primary-content hover:bg-accent/20 cursor-pointer px-4 py-2"
                 :class="{ 'bg-accent/20': isSelected(option.value) }"
                 @click="selectOption(option)">
                 {{ option.label }}

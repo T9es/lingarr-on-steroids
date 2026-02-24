@@ -22,7 +22,7 @@
             <li
                 v-for="option in scheduleOptions"
                 :key="option.value"
-                class="hover:bg-accent/20 cursor-pointer px-4 py-2"
+                class="text-primary-content hover:bg-accent/20 cursor-pointer px-4 py-2"
                 :class="{ 'bg-accent/20': isSelected(option.value) }"
                 @click="selectOption(option)">
                 {{ option.label }}
