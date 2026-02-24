@@ -61,6 +61,8 @@ public class DashboardService : IDashboardService
         // Add processing jobs
         foreach (var job in processing)
         {
+            if (job.Value?.Job?.Method == null) continue;
+            
             jobs.Add(new JobInfo
             {
                 Id = job.Key,
@@ -74,6 +76,8 @@ public class DashboardService : IDashboardService
         // Add scheduled jobs
         foreach (var job in scheduled)
         {
+            if (job.Value?.Job?.Method == null) continue;
+            
             jobs.Add(new JobInfo
             {
                 Id = job.Key,
@@ -87,6 +91,8 @@ public class DashboardService : IDashboardService
         // Add enqueued jobs
         foreach (var job in enqueued)
         {
+            if (job.Value?.Job?.Method == null) continue;
+            
             jobs.Add(new JobInfo
             {
                 Id = job.Key,
@@ -99,6 +105,8 @@ public class DashboardService : IDashboardService
         // Add recent failed jobs
         foreach (var job in failed)
         {
+            if (job.Value?.Job?.Method == null) continue;
+            
             jobs.Add(new JobInfo
             {
                 Id = job.Key,
