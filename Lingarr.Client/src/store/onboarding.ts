@@ -23,7 +23,7 @@ export const useOnboardingStore = defineStore('onboarding', () => {
         isActive.value = true
         currentStep.value = 0
         skipped.value = false
-        
+
         // Migrate legacy settings when starting onboarding
         migrateLegacySettings()
     }
@@ -58,9 +58,7 @@ export const useOnboardingStore = defineStore('onboarding', () => {
     }
 
     function removeRadarrInstance(id: string): void {
-        radarrInstances.value = radarrInstances.value.filter(
-            (instance) => instance.id !== id
-        )
+        radarrInstances.value = radarrInstances.value.filter((instance) => instance.id !== id)
     }
 
     function addSonarrInstance(instance: IInstance): void {
@@ -68,9 +66,7 @@ export const useOnboardingStore = defineStore('onboarding', () => {
     }
 
     function removeSonarrInstance(id: string): void {
-        sonarrInstances.value = sonarrInstances.value.filter(
-            (instance) => instance.id !== id
-        )
+        sonarrInstances.value = sonarrInstances.value.filter((instance) => instance.id !== id)
     }
 
     function goToStep(index: number): void {
@@ -83,18 +79,18 @@ export const useOnboardingStore = defineStore('onboarding', () => {
      * Migrate legacy single-instance settings to multi-instance arrays.
      * This is called when onboarding starts to pre-populate instance arrays
      * with existing legacy settings if the arrays are empty.
-     * 
+     *
      * IMPORTANT: Uses 'default' as the instance ID to match backend fallback behavior.
      * This prevents duplicate records when upgrading from pre-multi-instance versions.
      */
     function migrateLegacySettings(): void {
         const settingStore = useSettingStore()
-        
+
         // Only migrate if instance arrays are empty
         if (radarrInstances.value.length === 0) {
             const radarrUrl = settingStore.getSetting(SETTINGS.RADARR_URL) as string
             const radarrApiKey = settingStore.getSetting(SETTINGS.RADARR_API_KEY) as string
-            
+
             if (radarrUrl || radarrApiKey) {
                 const instance: IInstance = {
                     id: 'default', // Use 'default' to match backend fallback
@@ -105,11 +101,11 @@ export const useOnboardingStore = defineStore('onboarding', () => {
                 radarrInstances.value.push(instance)
             }
         }
-        
+
         if (sonarrInstances.value.length === 0) {
             const sonarrUrl = settingStore.getSetting(SETTINGS.SONARR_URL) as string
             const sonarrApiKey = settingStore.getSetting(SETTINGS.SONARR_API_KEY) as string
-            
+
             if (sonarrUrl || sonarrApiKey) {
                 const instance: IInstance = {
                     id: 'default', // Use 'default' to match backend fallback

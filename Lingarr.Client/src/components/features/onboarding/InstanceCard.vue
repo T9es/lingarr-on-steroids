@@ -9,8 +9,12 @@
                 <input
                     v-model="localInstance.name"
                     type="text"
-                    :placeholder="type === 'radarr' ? translate('onboarding.instanceCard.radarrPlaceholder') : translate('onboarding.instanceCard.sonarrPlaceholder')"
-                    class="w-full rounded-md border border-accent bg-transparent text-primary-content py-1.5 pl-10 pr-3 text-sm outline-hidden transition-colors focus:border-accent/70" />
+                    :placeholder="
+                        type === 'radarr'
+                            ? translate('onboarding.instanceCard.radarrPlaceholder')
+                            : translate('onboarding.instanceCard.sonarrPlaceholder')
+                    "
+                    class="border-accent text-primary-content focus:border-accent/70 w-full rounded-md border bg-transparent py-1.5 pr-3 pl-10 text-sm outline-hidden transition-colors" />
             </div>
             <button
                 type="button"
@@ -41,7 +45,7 @@
         <div class="flex items-center gap-3 pt-2">
             <button
                 type="button"
-                class="bg-accent hover:brightness-125 rounded-md px-3 py-1.5 text-sm text-primary transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                class="bg-accent text-primary rounded-md px-3 py-1.5 text-sm transition-colors hover:brightness-125 disabled:cursor-not-allowed disabled:opacity-50"
                 :disabled="connectionStatus.testing || !isValid.url || !isValid.apiKey"
                 @click="$emit('test-connection')">
                 <span v-if="connectionStatus.testing" class="flex items-center gap-2">
@@ -89,7 +93,10 @@
                             d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
                             clip-rule="evenodd" />
                     </svg>
-                    {{ connectionStatus.message || translate('onboarding.instanceCard.connectionFailed') }}
+                    {{
+                        connectionStatus.message ||
+                        translate('onboarding.instanceCard.connectionFailed')
+                    }}
                 </span>
             </div>
         </div>

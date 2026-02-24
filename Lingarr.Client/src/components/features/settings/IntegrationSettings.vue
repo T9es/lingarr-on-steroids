@@ -24,37 +24,38 @@
                     @update:instance="updateLocalInstance(item.instance.id, $event)"
                     @remove="removeLocalInstance(item.instance.id)"
                     @test-connection="testConnection(item.type, item.instance)" />
-                
+
                 <!-- Single Add Button with Dropdown -->
-                <AddInstanceButton
-                    v-if="localInstances.length < 10"
-                    @add="handleAddInstance" />
+                <AddInstanceButton v-if="localInstances.length < 10" @add="handleAddInstance" />
             </div>
-            
+
             <!-- Save/Discard Button Bar -->
-            <div 
-                v-if="hasChanges" 
-                class="mt-6 flex items-center justify-end gap-3 border-t border-secondary-content/20 pt-4"
-            >
-                <span class="text-sm text-secondary-content">
+            <div
+                v-if="hasChanges"
+                class="border-secondary-content/20 mt-6 flex items-center justify-end gap-3 border-t pt-4">
+                <span class="text-secondary-content text-sm">
                     {{ translate('common.unsavedChanges') || 'You have unsaved changes' }}
                 </span>
                 <button
                     @click="discardChanges"
-                    class="rounded-md border border-gray-600 px-4 py-2 text-sm text-secondary-content transition-colors hover:bg-secondary-content/10"
-                >
+                    class="text-secondary-content hover:bg-secondary-content/10 rounded-md border border-gray-600 px-4 py-2 text-sm transition-colors">
                     {{ translate('common.discard') || 'Discard' }}
                 </button>
                 <button
                     @click="saveChanges"
                     :disabled="isSaving"
-                    class="rounded-md bg-accent px-4 py-2 text-sm font-medium text-primary-content transition-colors hover:bg-accent/80 disabled:opacity-50"
-                >
-                    {{ isSaving ? (translate('common.saving') || 'Saving...') : (translate('common.saveChanges') || 'Save Changes') }}
+                    class="bg-accent text-primary-content hover:bg-accent/80 rounded-md px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50">
+                    {{
+                        isSaving
+                            ? translate('common.saving') || 'Saving...'
+                            : translate('common.saveChanges') || 'Save Changes'
+                    }}
                 </button>
             </div>
-            
-            <div v-translate="'settings.integrations.reindexTask'" class="pt-4 text-sm text-secondary-content" />
+
+            <div
+                v-translate="'settings.integrations.reindexTask'"
+                class="text-secondary-content pt-4 text-sm" />
         </template>
     </CardComponent>
 </template>
@@ -103,9 +104,7 @@ const originalInstances = ref<InstanceWrapper[]>([])
 const isSaving = ref(false)
 
 // Connection status per instance
-const connectionStatuses = reactive<
-    Record<string, Record<string, ConnectionStatus>>
->({
+const connectionStatuses = reactive<Record<string, Record<string, ConnectionStatus>>>({
     radarr: {},
     sonarr: {}
 })
@@ -127,10 +126,7 @@ const hasChanges = computed(() => {
 })
 
 // Get connection status for an instance
-const getConnectionStatus = (
-    type: 'radarr' | 'sonarr',
-    id: string
-): ConnectionStatus => {
+const getConnectionStatus = (type: 'radarr' | 'sonarr', id: string): ConnectionStatus => {
     return (
         connectionStatuses[type][id] || {
             testing: false,
@@ -179,15 +175,15 @@ const loadInstancesFromStore = (): void => {
     const sonarrInsts = parseInstances(
         settingsStore.getSetting(SETTINGS.SONARR_INSTANCES) as string | IInstance[]
     )
-    
+
     const combined: InstanceWrapper[] = [
-        ...radarrInsts.map(i => ({ type: 'radarr' as const, instance: i })),
-        ...sonarrInsts.map(i => ({ type: 'sonarr' as const, instance: i }))
+        ...radarrInsts.map((i) => ({ type: 'radarr' as const, instance: i })),
+        ...sonarrInsts.map((i) => ({ type: 'sonarr' as const, instance: i }))
     ]
-    
+
     localInstances.value = combined
     originalInstances.value = JSON.parse(JSON.stringify(combined))
-    
+
     // Initialize connection statuses
     radarrInsts.forEach((inst) => initConnectionStatus('radarr', inst.id))
     sonarrInsts.forEach((inst) => initConnectionStatus('sonarr', inst.id))
@@ -197,9 +193,13 @@ const loadInstancesFromStore = (): void => {
 const saveChanges = async (): Promise<void> => {
     isSaving.value = true
     try {
-        const radarrs = localInstances.value.filter(i => i.type === 'radarr').map(i => i.instance)
-        const sonarrs = localInstances.value.filter(i => i.type === 'sonarr').map(i => i.instance)
-        
+        const radarrs = localInstances.value
+            .filter((i) => i.type === 'radarr')
+            .map((i) => i.instance)
+        const sonarrs = localInstances.value
+            .filter((i) => i.type === 'sonarr')
+            .map((i) => i.instance)
+
         settingsStore.updateSetting(
             SETTINGS.RADARR_INSTANCES,
             JSON.parse(JSON.stringify(radarrs)),
@@ -212,10 +212,10 @@ const saveChanges = async (): Promise<void> => {
             true,
             true
         )
-        
+
         // Update originals to match current state
         originalInstances.value = JSON.parse(JSON.stringify(localInstances.value))
-        
+
         saveNotification.value?.show()
     } finally {
         isSaving.value = false
@@ -225,26 +225,28 @@ const saveChanges = async (): Promise<void> => {
 // Discard changes and reset to original
 const discardChanges = (): void => {
     localInstances.value = JSON.parse(JSON.stringify(originalInstances.value))
-    
+
     // Re-initialize connection statuses for current instances
     connectionStatuses.radarr = {}
     connectionStatuses.sonarr = {}
-    localInstances.value.forEach((wrapper) => initConnectionStatus(wrapper.type, wrapper.instance.id))
+    localInstances.value.forEach((wrapper) =>
+        initConnectionStatus(wrapper.type, wrapper.instance.id)
+    )
 }
 
 // Handle add instance from unified button
 const handleAddInstance = (type: 'radarr' | 'sonarr'): void => {
     const id = generateId()
-    const currentCount = localInstances.value.filter(i => i.type === type).length
+    const currentCount = localInstances.value.filter((i) => i.type === type).length
     const namePrefix = type === 'radarr' ? 'Radarr' : 'Sonarr'
-    
+
     const instance: IInstance = {
         id,
         name: `${namePrefix} ${currentCount + 1}`,
         url: '',
         apiKey: ''
     }
-    
+
     initConnectionStatus(type, id)
     localInstances.value.push({ type, instance })
 }
@@ -261,13 +263,11 @@ const updateLocalInstance = (id: string, updatedInstance: IInstance): void => {
 
 // Remove local instance
 const removeLocalInstance = (id: string): void => {
-    const wrapper = localInstances.value.find(w => w.instance.id === id)
+    const wrapper = localInstances.value.find((w) => w.instance.id === id)
     if (wrapper) {
         delete connectionStatuses[wrapper.type][id]
     }
-    localInstances.value = localInstances.value.filter(
-        (wrapper) => wrapper.instance.id !== id
-    )
+    localInstances.value = localInstances.value.filter((wrapper) => wrapper.instance.id !== id)
 }
 
 // Test Radarr connection
@@ -280,13 +280,9 @@ const testRadarrConnection = async (instance: IInstance): Promise<void> => {
 
     try {
         await services.setting.setSetting(SETTINGS.RADARR_URL, instance.url)
-        await services.setting.setSetting(
-            SETTINGS.RADARR_API_KEY,
-            instance.apiKey
-        )
+        await services.setting.setSetting(SETTINGS.RADARR_API_KEY, instance.apiKey)
 
-        const result =
-            await services.setting.testRadarrConnection<ConnectionTestResult>()
+        const result = await services.setting.testRadarrConnection<ConnectionTestResult>()
         status.connected = result.isConnected
         status.message = result.message || ''
         status.version = result.version || null
@@ -309,13 +305,9 @@ const testSonarrConnection = async (instance: IInstance): Promise<void> => {
 
     try {
         await services.setting.setSetting(SETTINGS.SONARR_URL, instance.url)
-        await services.setting.setSetting(
-            SETTINGS.SONARR_API_KEY,
-            instance.apiKey
-        )
+        await services.setting.setSetting(SETTINGS.SONARR_API_KEY, instance.apiKey)
 
-        const result =
-            await services.setting.testSonarrConnection<ConnectionTestResult>()
+        const result = await services.setting.testSonarrConnection<ConnectionTestResult>()
         status.connected = result.isConnected
         status.message = result.message || ''
         status.version = result.version || null
@@ -327,7 +319,6 @@ const testSonarrConnection = async (instance: IInstance): Promise<void> => {
         status.tested = true
     }
 }
-
 
 // Test connection
 const testConnection = async (type: 'radarr' | 'sonarr', instance: IInstance): Promise<void> => {
@@ -341,13 +332,9 @@ const testConnection = async (type: 'radarr' | 'sonarr', instance: IInstance): P
 // Migrate legacy single instance to instances array
 const migrateLegacySettings = (): void => {
     const radarrUrl = settingsStore.getSetting(SETTINGS.RADARR_URL) as string
-    const radarrApiKey = settingsStore.getSetting(
-        SETTINGS.RADARR_API_KEY
-    ) as string
+    const radarrApiKey = settingsStore.getSetting(SETTINGS.RADARR_API_KEY) as string
     const sonarrUrl = settingsStore.getSetting(SETTINGS.SONARR_URL) as string
-    const sonarrApiKey = settingsStore.getSetting(
-        SETTINGS.SONARR_API_KEY
-    ) as string
+    const sonarrApiKey = settingsStore.getSetting(SETTINGS.SONARR_API_KEY) as string
 
     const existingRadarrInstances = parseInstances(
         settingsStore.getSetting(SETTINGS.RADARR_INSTANCES) as string | IInstance[]
@@ -356,10 +343,7 @@ const migrateLegacySettings = (): void => {
         settingsStore.getSetting(SETTINGS.SONARR_INSTANCES) as string | IInstance[]
     )
 
-    if (
-        (radarrUrl || radarrApiKey) &&
-        existingRadarrInstances.length === 0
-    ) {
+    if ((radarrUrl || radarrApiKey) && existingRadarrInstances.length === 0) {
         const id = generateId()
         const instance: IInstance = {
             id,
@@ -368,18 +352,10 @@ const migrateLegacySettings = (): void => {
             apiKey: radarrApiKey || ''
         }
         initConnectionStatus('radarr', id)
-        settingsStore.updateSetting(
-            SETTINGS.RADARR_INSTANCES,
-            [instance],
-            true,
-            true
-        )
+        settingsStore.updateSetting(SETTINGS.RADARR_INSTANCES, [instance], true, true)
     }
 
-    if (
-        (sonarrUrl || sonarrApiKey) &&
-        existingSonarrInstances.length === 0
-    ) {
+    if ((sonarrUrl || sonarrApiKey) && existingSonarrInstances.length === 0) {
         const id = generateId()
         const instance: IInstance = {
             id,
@@ -388,12 +364,7 @@ const migrateLegacySettings = (): void => {
             apiKey: sonarrApiKey || ''
         }
         initConnectionStatus('sonarr', id)
-        settingsStore.updateSetting(
-            SETTINGS.SONARR_INSTANCES,
-            [instance],
-            true,
-            true
-        )
+        settingsStore.updateSetting(SETTINGS.SONARR_INSTANCES, [instance], true, true)
     }
 }
 

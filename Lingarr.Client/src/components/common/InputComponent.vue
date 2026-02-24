@@ -26,11 +26,11 @@
                     'pr-3': size === 'md',
                     'pr-1': size === 'sm'
                 }" />
-        <button
-            v-if="type === 'password'"
-            type="button"
-            class="absolute inset-y-0 right-0 flex cursor-pointer items-center pr-3 !text-primary-content hover:brightness-125"
-            @click="togglePassword">
+            <button
+                v-if="type === 'password'"
+                type="button"
+                class="!text-primary-content absolute inset-y-0 right-0 flex cursor-pointer items-center pr-3 hover:brightness-125"
+                @click="togglePassword">
                 <EyeOnIcon v-if="showPassword" class="h-5 w-5" />
                 <EyeOffIcon v-else class="h-5 w-5" />
             </button>

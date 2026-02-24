@@ -1,12 +1,7 @@
 <template>
     <div class="space-y-4">
-        <h3 class="text-primary-content text-lg font-semibold">
-            Configure {{ serviceName }}
-        </h3>
-        <component
-            :is="serviceConfigComponent"
-            v-if="serviceConfigComponent"
-            @save="onSave" />
+        <h3 class="text-primary-content text-lg font-semibold">Configure {{ serviceName }}</h3>
+        <component :is="serviceConfigComponent" v-if="serviceConfigComponent" @save="onSave" />
     </div>
 </template>
 
@@ -30,9 +25,7 @@ const emit = defineEmits<{
 
 const settingsStore = useSettingStore()
 
-const serviceType = computed(
-    () => settingsStore.getSetting(SETTINGS.SERVICE_TYPE) as string
-)
+const serviceType = computed(() => settingsStore.getSetting(SETTINGS.SERVICE_TYPE) as string)
 
 const serviceName = computed(() => {
     const names: Record<string, string> = {

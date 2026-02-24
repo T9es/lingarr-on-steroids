@@ -18,7 +18,7 @@
                 <LoaderCircleIcon v-if="isLoading" class="mr-2 h-4 w-4 animate-spin" />
                 <CaretRightIcon
                     :class="{ 'rotate-90': isOpen }"
-                    class="arrow-right h-5 w-5 transition-transform duration-200 text-primary-content" />
+                    class="arrow-right text-primary-content h-5 w-5 transition-transform duration-200" />
             </div>
         </div>
         <ul
@@ -29,7 +29,7 @@
                 <input
                     v-model="searchQuery"
                     type="text"
-                    class="border-border w-full rounded border bg-transparent text-primary-content px-2 py-1 text-sm outline-hidden"
+                    class="border-border text-primary-content w-full rounded border bg-transparent px-2 py-1 text-sm outline-hidden"
                     :placeholder="translate('settings.services.modelSearchPlaceholder')" />
             </li>
             <li v-if="!filteredOptions.length" class="text-primary-content p-3">{{ noOptions }}</li>

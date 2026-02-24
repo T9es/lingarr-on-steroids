@@ -17,7 +17,7 @@
                     @update:instance="updateRadarrInstance(instance.id, $event)"
                     @remove="removeRadarrInstance(instance.id)"
                     @test-connection="testRadarrConnection(instance)" />
-                
+
                 <AddInstanceButton
                     v-if="onboardingStore.radarrInstances.length < 5"
                     type="radarr"
@@ -43,7 +43,7 @@
                     @update:instance="updateSonarrInstance(instance.id, $event)"
                     @remove="removeSonarrInstance(instance.id)"
                     @test-connection="testSonarrConnection(instance)" />
-                
+
                 <AddInstanceButton
                     v-if="onboardingStore.sonarrInstances.length < 5"
                     type="sonarr"
@@ -82,9 +82,7 @@ interface ConnectionTestResult {
 }
 
 // Connection status per instance
-const connectionStatuses = reactive<
-    Record<string, Record<string, ConnectionStatus>>
->({
+const connectionStatuses = reactive<Record<string, Record<string, ConnectionStatus>>>({
     radarr: {},
     sonarr: {}
 })
@@ -95,10 +93,7 @@ const generateId = (): string => {
 }
 
 // Get connection status for an instance
-const getConnectionStatus = (
-    type: 'radarr' | 'sonarr',
-    id: string
-): ConnectionStatus => {
+const getConnectionStatus = (type: 'radarr' | 'sonarr', id: string): ConnectionStatus => {
     return (
         connectionStatuses[type][id] || {
             testing: false,
@@ -196,13 +191,9 @@ const testRadarrConnection = async (instance: IInstance): Promise<void> => {
     try {
         // Temporarily save settings to test connection
         await services.setting.setSetting(SETTINGS.RADARR_URL, instance.url)
-        await services.setting.setSetting(
-            SETTINGS.RADARR_API_KEY,
-            instance.apiKey
-        )
+        await services.setting.setSetting(SETTINGS.RADARR_API_KEY, instance.apiKey)
 
-        const result =
-            await services.setting.testRadarrConnection<ConnectionTestResult>()
+        const result = await services.setting.testRadarrConnection<ConnectionTestResult>()
         status.connected = result.isConnected
         status.message = result.message || ''
         status.version = result.version || null
@@ -226,13 +217,9 @@ const testSonarrConnection = async (instance: IInstance): Promise<void> => {
     try {
         // Temporarily save settings to test connection
         await services.setting.setSetting(SETTINGS.SONARR_URL, instance.url)
-        await services.setting.setSetting(
-            SETTINGS.SONARR_API_KEY,
-            instance.apiKey
-        )
+        await services.setting.setSetting(SETTINGS.SONARR_API_KEY, instance.apiKey)
 
-        const result =
-            await services.setting.testSonarrConnection<ConnectionTestResult>()
+        const result = await services.setting.testSonarrConnection<ConnectionTestResult>()
         status.connected = result.isConnected
         status.message = result.message || ''
         status.version = result.version || null

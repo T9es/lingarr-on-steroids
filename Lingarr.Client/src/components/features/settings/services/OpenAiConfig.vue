@@ -23,7 +23,7 @@
             :error-message="translate('settings.services.apiKeyError')"
             @update:validation="(val) => (apiKeyIsValid = val)" />
 
-        <label class="mb-1 block text-sm text-secondary-content">
+        <label class="text-secondary-content mb-1 block text-sm">
             {{ translate('settings.services.aiModel') }}
         </label>
         <SelectComponent

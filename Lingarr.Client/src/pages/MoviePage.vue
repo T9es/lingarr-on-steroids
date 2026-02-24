@@ -66,7 +66,10 @@
                             </div>
                             <div class="col-span-1 flex items-center justify-center px-2 py-2">
                                 <TranslationStateBadge
-                                    :state="group.movies[0].translationState ?? TRANSLATION_STATE.UNKNOWN" />
+                                    :state="
+                                        group.movies[0].translationState ??
+                                        TRANSLATION_STATE.UNKNOWN
+                                    " />
                             </div>
                             <div class="col-span-3 flex flex-wrap items-center gap-2 px-4 py-2">
                                 <ContextMenu
@@ -78,7 +81,9 @@
                                     @update:toggle="toggleMovie(group.movies[0])">
                                     <BadgeComponent>
                                         {{ subtitle.language.toUpperCase() }}
-                                        <span v-if="subtitle.caption" class="text-primary-content/50">
+                                        <span
+                                            v-if="subtitle.caption"
+                                            class="text-primary-content/50">
                                             - {{ subtitle.caption.toUpperCase() }}
                                         </span>
                                     </BadgeComponent>
@@ -94,12 +99,24 @@
                                     <BadgeComponent :classes="getEmbeddedBadgeClasses(embeddedSub)">
                                         <span class="mr-1">📦</span>
                                         {{ formatEmbeddedLanguage(embeddedSub) }}
-                                        <span v-if="embeddedSub.title" class="ml-1 text-amber-200/70">
+                                        <span
+                                            v-if="embeddedSub.title"
+                                            class="ml-1 text-amber-200/70">
                                             ({{ truncate(embeddedSub.title, 10) }})
                                         </span>
-                                        <span v-if="embeddedSub.isForced" class="ml-1 text-xs opacity-70">F</span>
-                                        <span v-if="embeddedSub.isDefault" class="ml-1 text-xs opacity-70">D</span>
-                                        <LoaderCircleIcon v-if="isExtracting" class="ml-1 h-3 w-3 animate-spin" />
+                                        <span
+                                            v-if="embeddedSub.isForced"
+                                            class="ml-1 text-xs opacity-70">
+                                            F
+                                        </span>
+                                        <span
+                                            v-if="embeddedSub.isDefault"
+                                            class="ml-1 text-xs opacity-70">
+                                            D
+                                        </span>
+                                        <LoaderCircleIcon
+                                            v-if="isExtracting"
+                                            class="ml-1 h-3 w-3 animate-spin" />
                                     </BadgeComponent>
                                 </ContextMenu>
                             </div>
@@ -107,31 +124,50 @@
                                 <ToggleButton
                                     v-model="group.movies[0].excludeFromTranslation"
                                     size="small"
-                                    @toggle:update="() => movieStore.exclude(MEDIA_TYPE.MOVIE, group.movies[0].id)" />
+                                    @toggle:update="
+                                        () =>
+                                            movieStore.exclude(MEDIA_TYPE.MOVIE, group.movies[0].id)
+                                    " />
                             </div>
-                            <div class="col-span-1 flex items-center justify-center px-4 py-2" @click.stop>
+                            <div
+                                class="col-span-1 flex items-center justify-center px-4 py-2"
+                                @click.stop>
                                 <ToggleButton
                                     v-model="group.movies[0].isPriority"
                                     size="small"
-                                    @toggle:update="() => movieStore.priority(MEDIA_TYPE.MOVIE, group.movies[0].id)" />
+                                    @toggle:update="
+                                        () =>
+                                            movieStore.priority(
+                                                MEDIA_TYPE.MOVIE,
+                                                group.movies[0].id
+                                            )
+                                    " />
                             </div>
-                            <div class="col-span-1 flex items-center justify-center px-4 py-2" @click.stop>
+                            <div
+                                class="col-span-1 flex items-center justify-center px-4 py-2"
+                                @click.stop>
                                 <button
                                     class="border-accent hover:bg-accent cursor-pointer rounded border p-1 transition-colors"
                                     :disabled="translatingMovies[group.movies[0].id]"
                                     :title="translate('movies.translateNow')"
                                     @click="translateMovie(group.movies[0])">
-                                    <LoaderCircleIcon v-if="translatingMovies[group.movies[0].id]" class="h-4 w-4 animate-spin" />
+                                    <LoaderCircleIcon
+                                        v-if="translatingMovies[group.movies[0].id]"
+                                        class="h-4 w-4 animate-spin" />
                                     <LanguageIcon v-else class="h-4 w-4" />
                                 </button>
                             </div>
-                            <div class="col-span-1 flex items-center justify-center px-4 py-2" @click.stop>
+                            <div
+                                class="col-span-1 flex items-center justify-center px-4 py-2"
+                                @click.stop>
                                 <button
                                     class="border-accent hover:bg-accent cursor-pointer rounded border p-1 transition-colors"
                                     :disabled="integrityCheckingMovies[group.movies[0].id]"
                                     :title="translate('movies.integrityCheck')"
                                     @click="checkIntegrityMovie(group.movies[0])">
-                                    <LoaderCircleIcon v-if="integrityCheckingMovies[group.movies[0].id]" class="h-4 w-4 animate-spin" />
+                                    <LoaderCircleIcon
+                                        v-if="integrityCheckingMovies[group.movies[0].id]"
+                                        class="h-4 w-4 animate-spin" />
                                     <CheckMarkCicleIcon v-else class="h-4 w-4" />
                                 </button>
                             </div>
@@ -143,10 +179,16 @@
                                     size="sm"
                                     type="number"
                                     validation-type="number"
-                                    @update:value="(value) => {
-                                        group.movies[0].translationAgeThreshold = value
-                                        movieStore.updateThreshold(MEDIA_TYPE.MOVIE, group.movies[0].id, value)
-                                    }" />
+                                    @update:value="
+                                        (value) => {
+                                            group.movies[0].translationAgeThreshold = value
+                                            movieStore.updateThreshold(
+                                                MEDIA_TYPE.MOVIE,
+                                                group.movies[0].id,
+                                                value
+                                            )
+                                        }
+                                    " />
                             </div>
                         </div>
                     </template>
@@ -155,7 +197,7 @@
                     <template v-else>
                         <!-- Collapsed header row -->
                         <div
-                            class="border-accent grid grid-cols-14 cursor-pointer border-b hover:bg-secondary/30"
+                            class="border-accent hover:bg-secondary/30 grid cursor-pointer grid-cols-14 border-b"
                             @click="toggleGroup(group.key)">
                             <div class="col-span-3 px-4 py-2">
                                 <span class="mr-2">{{ group.title }}</span>
@@ -170,7 +212,11 @@
                             </div>
                             <div class="col-span-11 flex items-center justify-end px-4 py-2">
                                 <span class="text-secondary-content text-sm">
-                                    {{ isGroupExpanded(group.key) ? 'Click to collapse' : 'Click to expand' }}
+                                    {{
+                                        isGroupExpanded(group.key)
+                                            ? 'Click to collapse'
+                                            : 'Click to expand'
+                                    }}
                                 </span>
                             </div>
                         </div>
@@ -180,7 +226,7 @@
                             <div
                                 v-for="item in group.movies"
                                 :key="item.id"
-                                class="border-accent/50 grid grid-cols-14 border-b bg-secondary/20">
+                                class="border-accent/50 bg-secondary/20 grid grid-cols-14 border-b">
                                 <div class="col-span-3 px-4 py-2">
                                     <span class="text-secondary-content mr-2 text-sm">
                                         {{ getInstanceName(item.sourceInstanceId) }}:
@@ -189,7 +235,9 @@
                                 </div>
                                 <div class="col-span-1 flex items-center justify-center px-2 py-2">
                                     <TranslationStateBadge
-                                        :state="item.translationState ?? TRANSLATION_STATE.UNKNOWN" />
+                                        :state="
+                                            item.translationState ?? TRANSLATION_STATE.UNKNOWN
+                                        " />
                                 </div>
                                 <div class="col-span-3 flex flex-wrap items-center gap-2 px-4 py-2">
                                     <ContextMenu
@@ -201,7 +249,9 @@
                                         @update:toggle="toggleMovie(item)">
                                         <BadgeComponent>
                                             {{ subtitle.language.toUpperCase() }}
-                                            <span v-if="subtitle.caption" class="text-primary-content/50">
+                                            <span
+                                                v-if="subtitle.caption"
+                                                class="text-primary-content/50">
                                                 - {{ subtitle.caption.toUpperCase() }}
                                             </span>
                                         </BadgeComponent>
@@ -214,15 +264,28 @@
                                         :media-type="MEDIA_TYPE.MOVIE"
                                         @update:toggle="toggleMovie(item)"
                                         v-slot="{ isExtracting }">
-                                        <BadgeComponent :classes="getEmbeddedBadgeClasses(embeddedSub)">
+                                        <BadgeComponent
+                                            :classes="getEmbeddedBadgeClasses(embeddedSub)">
                                             <span class="mr-1">📦</span>
                                             {{ formatEmbeddedLanguage(embeddedSub) }}
-                                            <span v-if="embeddedSub.title" class="ml-1 text-amber-200/70">
+                                            <span
+                                                v-if="embeddedSub.title"
+                                                class="ml-1 text-amber-200/70">
                                                 ({{ truncate(embeddedSub.title, 10) }})
                                             </span>
-                                            <span v-if="embeddedSub.isForced" class="ml-1 text-xs opacity-70">F</span>
-                                            <span v-if="embeddedSub.isDefault" class="ml-1 text-xs opacity-70">D</span>
-                                            <LoaderCircleIcon v-if="isExtracting" class="ml-1 h-3 w-3 animate-spin" />
+                                            <span
+                                                v-if="embeddedSub.isForced"
+                                                class="ml-1 text-xs opacity-70">
+                                                F
+                                            </span>
+                                            <span
+                                                v-if="embeddedSub.isDefault"
+                                                class="ml-1 text-xs opacity-70">
+                                                D
+                                            </span>
+                                            <LoaderCircleIcon
+                                                v-if="isExtracting"
+                                                class="ml-1 h-3 w-3 animate-spin" />
                                         </BadgeComponent>
                                     </ContextMenu>
                                 </div>
@@ -230,31 +293,45 @@
                                     <ToggleButton
                                         v-model="item.excludeFromTranslation"
                                         size="small"
-                                        @toggle:update="() => movieStore.exclude(MEDIA_TYPE.MOVIE, item.id)" />
+                                        @toggle:update="
+                                            () => movieStore.exclude(MEDIA_TYPE.MOVIE, item.id)
+                                        " />
                                 </div>
-                                <div class="col-span-1 flex items-center justify-center px-4 py-2" @click.stop>
+                                <div
+                                    class="col-span-1 flex items-center justify-center px-4 py-2"
+                                    @click.stop>
                                     <ToggleButton
                                         v-model="item.isPriority"
                                         size="small"
-                                        @toggle:update="() => movieStore.priority(MEDIA_TYPE.MOVIE, item.id)" />
+                                        @toggle:update="
+                                            () => movieStore.priority(MEDIA_TYPE.MOVIE, item.id)
+                                        " />
                                 </div>
-                                <div class="col-span-1 flex items-center justify-center px-4 py-2" @click.stop>
+                                <div
+                                    class="col-span-1 flex items-center justify-center px-4 py-2"
+                                    @click.stop>
                                     <button
                                         class="border-accent hover:bg-accent cursor-pointer rounded border p-1 transition-colors"
                                         :disabled="translatingMovies[item.id]"
                                         :title="translate('movies.translateNow')"
                                         @click="translateMovie(item)">
-                                        <LoaderCircleIcon v-if="translatingMovies[item.id]" class="h-4 w-4 animate-spin" />
+                                        <LoaderCircleIcon
+                                            v-if="translatingMovies[item.id]"
+                                            class="h-4 w-4 animate-spin" />
                                         <LanguageIcon v-else class="h-4 w-4" />
                                     </button>
                                 </div>
-                                <div class="col-span-1 flex items-center justify-center px-4 py-2" @click.stop>
+                                <div
+                                    class="col-span-1 flex items-center justify-center px-4 py-2"
+                                    @click.stop>
                                     <button
                                         class="border-accent hover:bg-accent cursor-pointer rounded border p-1 transition-colors"
                                         :disabled="integrityCheckingMovies[item.id]"
                                         :title="translate('movies.integrityCheck')"
                                         @click="checkIntegrityMovie(item)">
-                                        <LoaderCircleIcon v-if="integrityCheckingMovies[item.id]" class="h-4 w-4 animate-spin" />
+                                        <LoaderCircleIcon
+                                            v-if="integrityCheckingMovies[item.id]"
+                                            class="h-4 w-4 animate-spin" />
                                         <CheckMarkCicleIcon v-else class="h-4 w-4" />
                                     </button>
                                 </div>
@@ -266,10 +343,16 @@
                                         size="sm"
                                         type="number"
                                         validation-type="number"
-                                        @update:value="(value) => {
-                                            item.translationAgeThreshold = value
-                                            movieStore.updateThreshold(MEDIA_TYPE.MOVIE, item.id, value)
-                                        }" />
+                                        @update:value="
+                                            (value) => {
+                                                item.translationAgeThreshold = value
+                                                movieStore.updateThreshold(
+                                                    MEDIA_TYPE.MOVIE,
+                                                    item.id,
+                                                    value
+                                                )
+                                            }
+                                        " />
                                 </div>
                             </div>
                         </template>
@@ -340,14 +423,14 @@ interface IMovieGroup {
 
 const groupedMovies = computed<IMovieGroup[]>(() => {
     const groups = new Map<string, IMovieGroup>()
-    
+
     for (const movie of movies.value.items) {
         // Create a normalized key for grouping (title + year from path)
         const normalizedTitle = movie.title.toLowerCase().trim()
         // Extract year from path if available (e.g., "/movies/Movie Name (2024)/")
         const year = movie.path?.match(/\((\d{4})\)/)?.[1]
         const groupKey = `${normalizedTitle}-${year || 'unknown'}`
-        
+
         if (!groups.has(groupKey)) {
             groups.set(groupKey, {
                 key: groupKey,
@@ -358,19 +441,19 @@ const groupedMovies = computed<IMovieGroup[]>(() => {
         }
         groups.get(groupKey)!.movies.push(movie)
     }
-    
+
     return Array.from(groups.values())
 })
 
 const getInstanceName = (sourceInstanceId: string | null | undefined): string => {
     if (!sourceInstanceId) return 'Default'
-    
+
     // Get instance name from setting store
     const instancesJson = settingStore.getSetting(SETTINGS.RADARR_INSTANCES) as string
     if (instancesJson) {
         try {
             const instances = JSON.parse(instancesJson) as IInstance[]
-            const instance = instances.find(i => i.id === sourceInstanceId)
+            const instance = instances.find((i) => i.id === sourceInstanceId)
             return instance?.name || sourceInstanceId
         } catch {
             return sourceInstanceId
@@ -392,11 +475,11 @@ const isGroupExpanded = (groupKey: string): boolean => {
 }
 
 const getGroupStateSummary = (movies: IMovie[]): string => {
-    const states = movies.map(m => m.translationState)
-    const translated = states.filter(s => s === TRANSLATION_STATE.COMPLETE).length
-    const pending = states.filter(s => s === TRANSLATION_STATE.PENDING).length
-    const failed = states.filter(s => s === TRANSLATION_STATE.FAILED).length
-    
+    const states = movies.map((m) => m.translationState)
+    const translated = states.filter((s) => s === TRANSLATION_STATE.COMPLETE).length
+    const pending = states.filter((s) => s === TRANSLATION_STATE.PENDING).length
+    const failed = states.filter((s) => s === TRANSLATION_STATE.FAILED).length
+
     if (translated === movies.length) return 'All translated'
     if (failed > 0) return `${failed} failed`
     if (pending > 0) return `${pending} pending`

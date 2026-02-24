@@ -1,41 +1,41 @@
 {
-  "version": 1,
-  "steps": [
-    {
-      "id": "integration",
-      "title": "Connect Your Services",
-      "component": "IntegrationStep",
-      "description": "Connect Radarr and Sonarr to sync your media library"
-    },
-    {
-      "id": "service",
-      "title": "Choose Translation Service",
-      "component": "ServiceStep", 
-      "description": "Select how you want subtitles translated"
-    },
-    {
-      "id": "service-config",
-      "title": "Configure Service",
-      "component": "ServiceConfigStep",
-      "description": "Set up your translation service credentials"
-    },
-    {
-      "id": "languages",
-      "title": "Select Languages",
-      "component": "LanguageStep",
-      "description": "Choose source and target languages for translation"
-    },
-    {
-      "id": "translation-settings",
-      "title": "Translation Settings",
-      "component": "TranslationSettingsStep",
-      "description": "Configure batch translation and subtitle processing"
-    },
-    {
-      "id": "complete",
-      "title": "Setup Complete",
-      "component": "CompleteStep",
-      "description": "You're ready to start translating"
-    }
-  ]
+    "version": 1,
+    "steps": [
+        {
+            "id": "integration",
+            "title": "Connect Your Services",
+            "component": "IntegrationStep",
+            "description": "Connect Radarr and Sonarr to sync your media library"
+        },
+        {
+            "id": "service",
+            "title": "Choose Translation Service",
+            "component": "ServiceStep",
+            "description": "Select how you want subtitles translated"
+        },
+        {
+            "id": "service-config",
+            "title": "Configure Service",
+            "component": "ServiceConfigStep",
+            "description": "Set up your translation service credentials"
+        },
+        {
+            "id": "languages",
+            "title": "Select Languages",
+            "component": "LanguageStep",
+            "description": "Choose source and target languages for translation"
+        },
+        {
+            "id": "translation-settings",
+            "title": "Translation Settings",
+            "component": "TranslationSettingsStep",
+            "description": "Configure batch translation and subtitle processing"
+        },
+        {
+            "id": "complete",
+            "title": "Setup Complete",
+            "component": "CompleteStep",
+            "description": "You're ready to start translating"
+        }
+    ]
 }

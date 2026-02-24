@@ -23,7 +23,10 @@
                     <input
                         v-model="searchQuery"
                         type="text"
-                        :placeholder="translate('translationTest.searchPlaceholder') + ' (e.g. Movie Title, Show Name)'"
+                        :placeholder="
+                            translate('translationTest.searchPlaceholder') +
+                            ' (e.g. Movie Title, Show Name)'
+                        "
                         class="bg-primary border-accent w-full rounded border px-3 py-2 text-sm"
                         :disabled="isRunning" />
                     <p class="text-secondary-content mt-1 text-xs">
@@ -170,34 +173,48 @@
                         {{ result.duration.toFixed(1) }}s
                     </p>
                 </div>
-                
+
                 <!-- Comparison View -->
-                <div v-if="result.preview && result.preview.length > 0" class="mt-4 border-t border-secondary/30 pt-4">
-                    <div class="flex items-center justify-between mb-2">
-                        <h3 class="text-md font-semibold">{{ translate('translationTest.preview') }}</h3>
+                <div
+                    v-if="result.preview && result.preview.length > 0"
+                    class="border-secondary/30 mt-4 border-t pt-4">
+                    <div class="mb-2 flex items-center justify-between">
+                        <h3 class="text-md font-semibold">
+                            {{ translate('translationTest.preview') }}
+                        </h3>
                         <div class="flex gap-2">
-                            <button 
-                                class="bg-secondary hover:bg-secondary/80 text-xs px-2 py-1 rounded transition"
+                            <button
+                                class="bg-secondary hover:bg-secondary/80 rounded px-2 py-1 text-xs transition"
                                 @click="downloadOriginal">
                                 ⬇ Original
                             </button>
-                            <button 
-                                class="bg-accent hover:bg-accent/80 text-white text-xs px-2 py-1 rounded transition"
+                            <button
+                                class="bg-accent hover:bg-accent/80 rounded px-2 py-1 text-xs text-white transition"
                                 @click="downloadTranslated">
                                 ⬇ Translated
                             </button>
                         </div>
                     </div>
-                    
-                    <div class="bg-primary border border-secondary/40 rounded-lg overflow-hidden h-96 flex flex-col">
-                        <div class="grid grid-cols-2 bg-secondary/50 font-bold text-xs p-2 border-b border-secondary/40">
+
+                    <div
+                        class="bg-primary border-secondary/40 flex h-96 flex-col overflow-hidden rounded-lg border">
+                        <div
+                            class="bg-secondary/50 border-secondary/40 grid grid-cols-2 border-b p-2 text-xs font-bold">
                             <div class="pl-2">Original ({{ sourceLanguage.toUpperCase() }})</div>
                             <div class="pl-2">Translated ({{ targetLanguage.toUpperCase() }})</div>
                         </div>
-                        <div class="overflow-y-auto flex-1 divide-y divide-secondary/20">
-                            <div v-for="item in result.preview" :key="item.position" class="grid grid-cols-2 hover:bg-secondary/10">
-                                <div class="p-2 text-xs border-r border-secondary/20 whitespace-pre-wrap">{{ item.original }}</div>
-                                <div class="p-2 text-xs whitespace-pre-wrap">{{ item.translated }}</div>
+                        <div class="divide-secondary/20 flex-1 divide-y overflow-y-auto">
+                            <div
+                                v-for="item in result.preview"
+                                :key="item.position"
+                                class="hover:bg-secondary/10 grid grid-cols-2">
+                                <div
+                                    class="border-secondary/20 border-r p-2 text-xs whitespace-pre-wrap">
+                                    {{ item.original }}
+                                </div>
+                                <div class="p-2 text-xs whitespace-pre-wrap">
+                                    {{ item.translated }}
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -343,17 +360,13 @@ function downloadContent(content: string, filename: string) {
 
 function downloadOriginal() {
     if (!result.value?.preview) return
-    const content = result.value.preview
-        .map((p) => `${p.position}\n${p.original}\n`)
-        .join('\n')
+    const content = result.value.preview.map((p) => `${p.position}\n${p.original}\n`).join('\n')
     downloadContent(content, `original_${Date.now()}.srt`)
 }
 
 function downloadTranslated() {
     if (!result.value?.preview) return
-    const content = result.value.preview
-        .map((p) => `${p.position}\n${p.translated}\n`)
-        .join('\n')
+    const content = result.value.preview.map((p) => `${p.position}\n${p.translated}\n`).join('\n')
     downloadContent(content, `translated_${targetLanguage.value}_${Date.now()}.srt`)
 }
 
@@ -473,7 +486,7 @@ async function startTest() {
                 try {
                     const data = JSON.parse(line.substring(6))
 
-                            if (data.type === 'log') {
+                    if (data.type === 'log') {
                         logs.value.push({
                             level: data.Level,
                             message: data.Message,

@@ -6,7 +6,7 @@
         <template #content>
             <div class="flex flex-col space-y-4">
                 <SaveNotification ref="saveNotification" />
-                
+
                 <!-- Skip when target embedded -->
                 <div class="flex flex-col space-x-2">
                     <span class="font-semibold">

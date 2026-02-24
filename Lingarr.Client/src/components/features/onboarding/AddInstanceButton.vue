@@ -6,7 +6,7 @@
             <PlusIcon class="text-secondary-content mb-2 h-8 w-8" />
             <span class="text-secondary-content font-medium">Add new</span>
         </div>
-        
+
         <!-- Dropdown Menu -->
         <Transition
             enter-active-class="transition ease-out duration-100"
@@ -17,7 +17,7 @@
             leave-to-class="transform opacity-0 scale-95">
             <div
                 v-if="isOpen"
-                class="border-accent bg-primary absolute top-full left-0 right-0 z-10 mt-2 overflow-hidden rounded-md border shadow-lg">
+                class="border-accent bg-primary absolute top-full right-0 left-0 z-10 mt-2 overflow-hidden rounded-md border shadow-lg">
                 <button
                     type="button"
                     class="hover:bg-accent/10 flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left transition-colors"
@@ -27,7 +27,7 @@
                 </button>
                 <button
                     type="button"
-                    class="hover:bg-accent/10 flex w-full cursor-pointer items-center gap-3 border-t border-accent/20 px-4 py-3 text-left transition-colors"
+                    class="hover:bg-accent/10 border-accent/20 flex w-full cursor-pointer items-center gap-3 border-t px-4 py-3 text-left transition-colors"
                     @click.stop="selectType('sonarr')">
                     <SonarrIcon class="h-5 w-5" />
                     <span class="text-primary-content">Add Sonarr</span>

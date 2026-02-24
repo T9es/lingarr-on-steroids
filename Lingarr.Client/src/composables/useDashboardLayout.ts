@@ -83,13 +83,13 @@ function loadLayout(): DashboardLayout {
             }
             // Ensure all widgets exist
             const missingWidgets = DEFAULT_WIDGETS.filter(
-                w => !layout.widgets.find(lw => lw.id === w.id)
+                (w) => !layout.widgets.find((lw) => lw.id === w.id)
             )
             if (missingWidgets.length > 0) {
                 layout.widgets.push(...missingWidgets)
                 // Add missing layout items
                 const missingLayout = DEFAULT_LAYOUT.filter(
-                    l => !layout.layout.find(ll => ll.i === l.i)
+                    (l) => !layout.layout.find((ll) => ll.i === l.i)
                 )
                 layout.layout.push(...missingLayout)
             }
@@ -120,16 +120,20 @@ export function useDashboardLayout() {
     const isConfigMode = ref(false)
 
     // Watch for changes and persist
-    watch(state, (newState) => {
-        saveLayout(newState)
-    }, { deep: true })
+    watch(
+        state,
+        (newState) => {
+            saveLayout(newState)
+        },
+        { deep: true }
+    )
 
     /**
      * Get visible layout items sorted by position
      */
     const visibleLayout = computed(() => {
-        return state.value.layout.filter(item => {
-            const widget = state.value.widgets.find(w => w.id === item.i)
+        return state.value.layout.filter((item) => {
+            const widget = state.value.widgets.find((w) => w.id === item.i)
             return widget?.visible ?? true
         })
     })
@@ -164,7 +168,7 @@ export function useDashboardLayout() {
      * Check if a widget is visible
      */
     function isWidgetVisible(widgetId: string): boolean {
-        const widget = state.value.widgets.find(w => w.id === widgetId)
+        const widget = state.value.widgets.find((w) => w.id === widgetId)
         return widget?.visible ?? true
     }
 
@@ -172,7 +176,7 @@ export function useDashboardLayout() {
      * Toggle widget visibility
      */
     function toggleWidgetVisibility(widgetId: string): void {
-        const widget = state.value.widgets.find(w => w.id === widgetId)
+        const widget = state.value.widgets.find((w) => w.id === widgetId)
         if (widget) {
             widget.visible = !widget.visible
         }
@@ -182,7 +186,16 @@ export function useDashboardLayout() {
      * Update layout after drag/resize
      */
     function updateLayout(newLayout: LayoutItem[]): void {
-        state.value.layout = newLayout
+        const fullLayout = [...state.value.layout]
+        newLayout.forEach((newItem) => {
+            const index = fullLayout.findIndex((item) => item.i === newItem.i)
+            if (index !== -1) {
+                fullLayout[index] = { ...fullLayout[index], ...newItem }
+            } else {
+                fullLayout.push(newItem)
+            }
+        })
+        state.value.layout = fullLayout
     }
 
     /**
@@ -200,14 +213,14 @@ export function useDashboardLayout() {
      * Get widget metadata by ID
      */
     function getWidgetMeta(widgetId: string): WidgetMeta | undefined {
-        return state.value.widgets.find(w => w.id === widgetId)
+        return state.value.widgets.find((w) => w.id === widgetId)
     }
 
     /**
      * Get layout item by ID
      */
     function getLayoutItem(widgetId: string): LayoutItem | undefined {
-        return state.value.layout.find(l => l.i === widgetId)
+        return state.value.layout.find((l) => l.i === widgetId)
     }
 
     return {
@@ -215,12 +228,12 @@ export function useDashboardLayout() {
         layout: allLayout,
         visibleLayout,
         isConfigMode: computed(() => isConfigMode.value),
-        
+
         // Grid config
         gridCols: GRID_COLS,
         rowHeight: ROW_HEIGHT,
         margin: MARGIN,
-        
+
         // Actions
         toggleConfigMode,
         enterConfigMode,

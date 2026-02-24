@@ -3,14 +3,16 @@
         v-if="onboardingStore.isActive"
         class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
         <div
-            class="bg-secondary flex w-full max-w-2xl max-h-[90vh] flex-col overflow-hidden rounded-md shadow-lg">
+            class="bg-secondary flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-md shadow-lg">
             <!-- Header with theme selector and skip button -->
-            <header class="border-accent flex items-center justify-between border-b px-6 py-4 overflow-visible">
-                <div class="flex items-center gap-3 relative">
+            <header
+                class="border-accent flex items-center justify-between overflow-visible border-b px-6 py-4">
+                <div class="relative flex items-center gap-3">
                     <button
                         class="inline-flex h-10 w-10 cursor-pointer items-center justify-center"
                         @click="toggleThemeDropdown">
-                        <ThemeIcon class="h-5 w-5 cursor-pointer text-secondary-content hover:text-primary-content transition-colors" />
+                        <ThemeIcon
+                            class="text-secondary-content hover:text-primary-content h-5 w-5 cursor-pointer transition-colors" />
                     </button>
                     <Teleport to="body">
                         <transition
@@ -24,7 +26,10 @@
                                 v-if="isThemeDropdownOpen"
                                 ref="themeDropdownRef"
                                 class="border-accent bg-secondary fixed z-[100] mt-2 w-48 origin-top-right rounded-md border shadow-lg"
-                                :style="{ top: themeDropdownPosition.top + 'px', left: themeDropdownPosition.left + 'px' }">
+                                :style="{
+                                    top: themeDropdownPosition.top + 'px',
+                                    left: themeDropdownPosition.left + 'px'
+                                }">
                                 <div class="py-1" role="menu">
                                     <button
                                         v-for="theme in Object.values(THEMES)"
@@ -123,28 +128,20 @@ const themeButtonRef = ref<HTMLElement | null>(null)
 
 // Step component mapping
 const stepComponents: Record<string, any> = {
-    IntegrationStep: defineAsyncComponent(
-        () => import('./steps/IntegrationStep.vue')
-    ),
+    IntegrationStep: defineAsyncComponent(() => import('./steps/IntegrationStep.vue')),
     ServiceStep: defineAsyncComponent(() => import('./steps/ServiceStep.vue')),
-    ServiceConfigStep: defineAsyncComponent(
-        () => import('./steps/ServiceConfigStep.vue')
-    ),
+    ServiceConfigStep: defineAsyncComponent(() => import('./steps/ServiceConfigStep.vue')),
     LanguageStep: defineAsyncComponent(() => import('./steps/LanguageStep.vue')),
     TranslationSettingsStep: defineAsyncComponent(
         () => import('./steps/TranslationSettingsStep.vue')
     ),
-    CompleteStep: defineAsyncComponent(
-        () => import('./steps/CompleteStep.vue')
-    )
+    CompleteStep: defineAsyncComponent(() => import('./steps/CompleteStep.vue'))
 }
 
 // Computed properties
 const currentStepData = computed(() => onboardingStore.currentStepData)
 const isFirstStep = computed(() => onboardingStore.currentStep === 0)
-const isLastStep = computed(
-    () => onboardingStore.currentStep === onboardingStore.steps.length - 1
-)
+const isLastStep = computed(() => onboardingStore.currentStep === onboardingStore.steps.length - 1)
 
 const currentStepComponent = computed(() => {
     const componentName = currentStepData.value?.component

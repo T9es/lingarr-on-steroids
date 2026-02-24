@@ -56,7 +56,9 @@
                             class="border-accent grid cursor-pointer grid-cols-12 border-b"
                             @click="toggleShow(group.shows[0])">
                             <div class="col-span-6 flex items-center px-4 py-2">
-                                <CaretButton :is-expanded="expandedShow !== group.shows[0].id" class="pr-2" />
+                                <CaretButton
+                                    :is-expanded="expandedShow !== group.shows[0].id"
+                                    class="pr-2" />
                                 {{ group.shows[0].title }}
                             </div>
                             <div class="col-span-1 flex items-center px-4 py-2" @click.stop>
@@ -78,7 +80,11 @@
                                     @update:value="
                                         (value) => {
                                             group.shows[0].translationAgeThreshold = value
-                                            showStore.updateThreshold(MEDIA_TYPE.SHOW, group.shows[0].id, value)
+                                            showStore.updateThreshold(
+                                                MEDIA_TYPE.SHOW,
+                                                group.shows[0].id,
+                                                value
+                                            )
                                         }
                                     " />
                             </div>
@@ -108,17 +114,21 @@
                             </div>
                             <div class="col-span-1"></div>
                         </div>
-                        <SeasonTable v-if="expandedShow === group.shows[0].id" :seasons="group.shows[0].seasons" />
+                        <SeasonTable
+                            v-if="expandedShow === group.shows[0].id"
+                            :seasons="group.shows[0].seasons" />
                     </template>
 
                     <!-- Multiple shows (duplicates) - collapsible display -->
                     <template v-else>
                         <!-- Collapsed header row -->
                         <div
-                            class="border-accent grid cursor-pointer grid-cols-12 border-b hover:bg-secondary/30"
+                            class="border-accent hover:bg-secondary/30 grid cursor-pointer grid-cols-12 border-b"
                             @click="toggleGroup(group.key)">
                             <div class="col-span-6 flex items-center px-4 py-2">
-                                <CaretButton :is-expanded="!isGroupExpanded(group.key)" class="pr-2" />
+                                <CaretButton
+                                    :is-expanded="!isGroupExpanded(group.key)"
+                                    class="pr-2" />
                                 <span class="mr-2">{{ group.title }}</span>
                                 <span class="text-secondary-content text-sm">
                                     ({{ group.shows.length }} instances)
@@ -131,25 +141,31 @@
                             </div>
                             <div class="col-span-5 flex items-center justify-end px-4 py-2">
                                 <span class="text-secondary-content text-sm">
-                                    {{ isGroupExpanded(group.key) ? 'Click to collapse' : 'Click to expand' }}
+                                    {{
+                                        isGroupExpanded(group.key)
+                                            ? 'Click to collapse'
+                                            : 'Click to expand'
+                                    }}
                                 </span>
                             </div>
                         </div>
 
                         <!-- Expanded instance rows -->
                         <template v-if="isGroupExpanded(group.key)">
-                            <div
-                                v-for="item in group.shows"
-                                :key="item.id">
+                            <div v-for="item in group.shows" :key="item.id">
                                 <div
-                                    class="border-accent/50 grid cursor-pointer grid-cols-12 border-b bg-secondary/20"
+                                    class="border-accent/50 bg-secondary/20 grid cursor-pointer grid-cols-12 border-b"
                                     @click="toggleShow(item)">
                                     <div class="col-span-6 flex items-center px-4 py-2">
-                                        <CaretButton :is-expanded="expandedShow !== item.id" class="pr-2" />
+                                        <CaretButton
+                                            :is-expanded="expandedShow !== item.id"
+                                            class="pr-2" />
                                         <span class="text-secondary-content mr-2 text-sm">
                                             {{ getInstanceName(item.sourceInstanceId) }}:
                                         </span>
-                                        <span class="text-primary-content/80">{{ item.title }}</span>
+                                        <span class="text-primary-content/80">
+                                            {{ item.title }}
+                                        </span>
                                     </div>
                                     <div class="col-span-1 flex items-center px-4 py-2" @click.stop>
                                         <ToggleButton
@@ -170,7 +186,11 @@
                                             @update:value="
                                                 (value) => {
                                                     item.translationAgeThreshold = value
-                                                    showStore.updateThreshold(MEDIA_TYPE.SHOW, item.id, value)
+                                                    showStore.updateThreshold(
+                                                        MEDIA_TYPE.SHOW,
+                                                        item.id,
+                                                        value
+                                                    )
                                                 }
                                             " />
                                     </div>
@@ -200,7 +220,9 @@
                                     </div>
                                     <div class="col-span-1"></div>
                                 </div>
-                                <SeasonTable v-if="expandedShow === item.id" :seasons="item.seasons" />
+                                <SeasonTable
+                                    v-if="expandedShow === item.id"
+                                    :seasons="item.seasons" />
                             </div>
                         </template>
                     </template>
@@ -257,12 +279,12 @@ interface IShowGroup {
 
 const groupedShows = computed<IShowGroup[]>(() => {
     const groups = new Map<string, IShowGroup>()
-    
+
     for (const show of shows.value.items) {
         // Create a normalized key for grouping (title)
         const normalizedTitle = show.title.toLowerCase().trim()
         const groupKey = normalizedTitle
-        
+
         if (!groups.has(groupKey)) {
             groups.set(groupKey, {
                 key: groupKey,
@@ -272,19 +294,19 @@ const groupedShows = computed<IShowGroup[]>(() => {
         }
         groups.get(groupKey)!.shows.push(show)
     }
-    
+
     return Array.from(groups.values())
 })
 
 const getInstanceName = (sourceInstanceId: string | null | undefined): string => {
     if (!sourceInstanceId) return 'Default'
-    
+
     // Get instance name from setting store
     const instancesJson = settingStore.getSetting(SETTINGS.SONARR_INSTANCES) as string
     if (instancesJson) {
         try {
             const instances = JSON.parse(instancesJson) as IInstance[]
-            const instance = instances.find(i => i.id === sourceInstanceId)
+            const instance = instances.find((i) => i.id === sourceInstanceId)
             return instance?.name || sourceInstanceId
         } catch {
             return sourceInstanceId
@@ -307,7 +329,7 @@ const isGroupExpanded = (groupKey: string): boolean => {
 
 const getGroupStateSummary = (showList: IShow[]): string => {
     // Shows don't have translationState directly - count excluded vs active
-    const excluded = showList.filter(s => s.excludeFromTranslation).length
+    const excluded = showList.filter((s) => s.excludeFromTranslation).length
     if (excluded === showList.length) return 'All excluded'
     if (excluded > 0) return `${showList.length - excluded} active`
     return `${showList.length} instances`

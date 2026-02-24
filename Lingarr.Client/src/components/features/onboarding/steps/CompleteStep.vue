@@ -6,39 +6,45 @@
         </div>
 
         <!-- Title -->
-        <h2 class="text-primary-content text-2xl font-bold">{{ translate('onboarding.completeStep.title') }}</h2>
+        <h2 class="text-primary-content text-2xl font-bold">
+            {{ translate('onboarding.completeStep.title') }}
+        </h2>
 
         <!-- Summary -->
-        <div class="bg-primary/50 rounded-md p-4 text-left space-y-2">
+        <div class="bg-primary/50 space-y-2 rounded-md p-4 text-left">
             <div v-if="radarrCount > 0">
-                <span class="text-secondary-content">{{ translate('onboarding.completeStep.radarrInstances') }}</span>
-                <span class="text-primary-content font-semibold ml-2">{{
-                    radarrCount
-                }}</span>
+                <span class="text-secondary-content">
+                    {{ translate('onboarding.completeStep.radarrInstances') }}
+                </span>
+                <span class="text-primary-content ml-2 font-semibold">{{ radarrCount }}</span>
             </div>
             <div v-if="sonarrCount > 0">
-                <span class="text-secondary-content">{{ translate('onboarding.completeStep.sonarrInstances') }}</span>
-                <span class="text-primary-content font-semibold ml-2">{{
-                    sonarrCount
-                }}</span>
+                <span class="text-secondary-content">
+                    {{ translate('onboarding.completeStep.sonarrInstances') }}
+                </span>
+                <span class="text-primary-content ml-2 font-semibold">{{ sonarrCount }}</span>
             </div>
             <div v-if="serviceName">
-                <span class="text-secondary-content">{{ translate('onboarding.completeStep.translationService') }}</span>
-                <span class="text-primary-content font-semibold ml-2">{{
-                    serviceName
-                }}</span>
+                <span class="text-secondary-content">
+                    {{ translate('onboarding.completeStep.translationService') }}
+                </span>
+                <span class="text-primary-content ml-2 font-semibold">{{ serviceName }}</span>
             </div>
             <div v-if="sourceLanguageNames">
-                <span class="text-secondary-content">{{ translate('onboarding.completeStep.sourceLanguages') }}</span>
-                <span class="text-primary-content font-semibold ml-2">{{
-                    sourceLanguageNames
-                }}</span>
+                <span class="text-secondary-content">
+                    {{ translate('onboarding.completeStep.sourceLanguages') }}
+                </span>
+                <span class="text-primary-content ml-2 font-semibold">
+                    {{ sourceLanguageNames }}
+                </span>
             </div>
             <div v-if="targetLanguageNames">
-                <span class="text-secondary-content">{{ translate('onboarding.completeStep.targetLanguages') }}</span>
-                <span class="text-primary-content font-semibold ml-2">{{
-                    targetLanguageNames
-                }}</span>
+                <span class="text-secondary-content">
+                    {{ translate('onboarding.completeStep.targetLanguages') }}
+                </span>
+                <span class="text-primary-content ml-2 font-semibold">
+                    {{ targetLanguageNames }}
+                </span>
             </div>
         </div>
 
@@ -102,18 +108,14 @@ const serviceName = computed(() => {
 
 // Get source language names
 const sourceLanguageNames = computed(() => {
-    const languages = settingStore.getSetting(SETTINGS.SOURCE_LANGUAGES) as
-        | ILanguage[]
-        | null
+    const languages = settingStore.getSetting(SETTINGS.SOURCE_LANGUAGES) as ILanguage[] | null
     if (!languages || languages.length === 0) return null
     return languages.map((lang) => lang.name).join(', ')
 })
 
 // Get target language names
 const targetLanguageNames = computed(() => {
-    const languages = settingStore.getSetting(SETTINGS.TARGET_LANGUAGES) as
-        | ILanguage[]
-        | null
+    const languages = settingStore.getSetting(SETTINGS.TARGET_LANGUAGES) as ILanguage[] | null
     if (!languages || languages.length === 0) return null
     return languages.map((lang) => lang.name).join(', ')
 })

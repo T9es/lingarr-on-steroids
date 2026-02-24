@@ -19,7 +19,7 @@ export interface DashboardRealtimeState {
 
 export function useDashboardSignalR() {
     const signalR = useSignalR()
-    
+
     const state = ref<DashboardRealtimeState>({
         isConnected: false,
         activeTranslations: new Map(),
@@ -29,7 +29,7 @@ export function useDashboardSignalR() {
 
     const handleRequestProgress = (progress: IRequestProgress) => {
         const existing = state.value.activeTranslations.get(progress.id)
-        
+
         if (progress.status === 'Completed' || progress.status === 'Failed') {
             state.value.activeTranslations.delete(progress.id)
             state.value.activeCount = state.value.activeTranslations.size
@@ -44,7 +44,7 @@ export function useDashboardSignalR() {
             state.value.activeTranslations.set(progress.id, translation)
             state.value.activeCount = state.value.activeTranslations.size
         }
-        
+
         state.value.lastUpdate = new Date()
     }
 
@@ -55,16 +55,13 @@ export function useDashboardSignalR() {
 
     const connect = async () => {
         try {
-            const hub = await signalR.connect(
-                'translationRequests',
-                '/hubs/translation-requests'
-            )
-            
+            const hub = await signalR.connect('translationRequests', '/hubs/translation-requests')
+
             await hub.joinGroup({ group: 'TranslationRequests' })
-            
+
             hub.on('RequestProgress', handleRequestProgress)
             hub.on('RequestActive', handleRequestActive)
-            
+
             state.value.isConnected = true
         } catch (error) {
             console.error('Failed to connect to dashboard SignalR:', error)

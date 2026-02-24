@@ -118,7 +118,9 @@
         <!-- Subtitle Source Issues Section -->
         <CardComponent title="Subtitle Source Issues">
             <template #description>
-                Detects potentially incomplete source subtitles (Forced/Signs-only) based on entry count. Subtitles with fewer than 50 entries may need re-translation with a different source.
+                Detects potentially incomplete source subtitles (Forced/Signs-only) based on entry
+                count. Subtitles with fewer than 50 entries may need re-translation with a different
+                source.
             </template>
             <template #content>
                 <div class="flex flex-col space-y-6">
@@ -178,7 +180,10 @@
 
                         <!-- Flagged Items List -->
                         <div
-                            v-if="subtitleTypeResult.flaggedItems && subtitleTypeResult.flaggedItems.length > 0"
+                            v-if="
+                                subtitleTypeResult.flaggedItems &&
+                                subtitleTypeResult.flaggedItems.length > 0
+                            "
                             class="w-full space-y-3">
                             <div class="flex items-center justify-between">
                                 <h4 class="font-semibold">Flagged Incomplete Subtitles</h4>
@@ -203,7 +208,7 @@
                                             <div class="truncate text-xs opacity-50">
                                                 {{ item.subtitlePath }}
                                             </div>
-                                            <div class="flex items-center gap-2 mt-1">
+                                            <div class="mt-1 flex items-center gap-2">
                                                 <span class="text-xs text-yellow-500">
                                                     {{ item.entryCount }} entries (threshold: 50)
                                                 </span>
@@ -219,7 +224,7 @@
                                                 </span>
                                             </div>
                                         </div>
-                                         <div class="ml-2 flex items-center gap-1">
+                                        <div class="ml-2 flex items-center gap-1">
                                             <button
                                                 v-if="!item.isQueued && !item.dismissed"
                                                 class="rounded bg-green-500/20 px-2 py-1 text-xs text-green-400 hover:bg-green-500/30"
@@ -228,7 +233,7 @@
                                             </button>
                                             <button
                                                 v-if="!item.isQueued && !item.dismissed"
-                                                class="rounded bg-accent/20 px-2 py-1 text-xs text-accent hover:bg-accent/30"
+                                                class="bg-accent/20 text-accent hover:bg-accent/30 rounded px-2 py-1 text-xs"
                                                 @click.stop="requeueSubtitleType(item)">
                                                 Auto-fix
                                             </button>
@@ -249,13 +254,16 @@
                                     <!-- Expandable details -->
                                     <div
                                         v-if="
-                                            expandedSubtitleTypeItems.includes(item.translationId) &&
-                                            item.warning
+                                            expandedSubtitleTypeItems.includes(
+                                                item.translationId
+                                            ) && item.warning
                                         "
                                         class="bg-base-300/30 border-base-300 border-t p-3 text-xs">
                                         <div class="mb-1 font-semibold opacity-70">Warning:</div>
                                         <div class="text-yellow-400">{{ item.warning }}</div>
-                                        <div class="mt-2 mb-1 font-semibold opacity-70">Recommended Action:</div>
+                                        <div class="mt-2 mb-1 font-semibold opacity-70">
+                                            Recommended Action:
+                                        </div>
                                         <div class="text-accent">{{ item.recommendedAction }}</div>
                                     </div>
                                 </div>
@@ -536,7 +544,9 @@ const handleSubtitleModalError = (message: string) => {
 
 const toggleSubtitleTypeExpand = (translationId: number) => {
     if (expandedSubtitleTypeItems.value.includes(translationId)) {
-        expandedSubtitleTypeItems.value = expandedSubtitleTypeItems.value.filter((id) => id !== translationId)
+        expandedSubtitleTypeItems.value = expandedSubtitleTypeItems.value.filter(
+            (id) => id !== translationId
+        )
     } else {
         expandedSubtitleTypeItems.value.push(translationId)
     }
@@ -628,10 +638,12 @@ const requeueAllIncomplete = async () => {
         }
 
         // Mark all as queued
-        subtitleTypeResult.value.flaggedItems = subtitleTypeResult.value.flaggedItems.map((item) => ({
-            ...item,
-            isQueued: true
-        }))
+        subtitleTypeResult.value.flaggedItems = subtitleTypeResult.value.flaggedItems.map(
+            (item) => ({
+                ...item,
+                isQueued: true
+            })
+        )
 
         // Update persisted result
         await axios.post('/api/setting', {
@@ -710,7 +722,9 @@ onMounted(async () => {
 
     // Load persisted subtitle type validation result
     try {
-        const subtitleTypeResponse = await axios.get('/api/setting/subtitle_type_validation_last_result')
+        const subtitleTypeResponse = await axios.get(
+            '/api/setting/subtitle_type_validation_last_result'
+        )
         if (subtitleTypeResponse.data) {
             subtitleTypeResult.value = JSON.parse(subtitleTypeResponse.data)
         }
@@ -781,7 +795,7 @@ const requeueAll = async () => {
     try {
         // Only requeue items that are not already in queue
         const itemsToRequeue = assResult.value.flaggedItems.filter((item) => !item.isQueued)
-        
+
         for (const item of itemsToRequeue) {
             // MediaType should be string like 'Movie' or 'Episode'
             await axios.post('/api/translate/media', {
@@ -789,7 +803,7 @@ const requeueAll = async () => {
                 mediaType: item.mediaType
             })
         }
-        
+
         // Mark requeued items as isQueued instead of removing them
         assResult.value.flaggedItems = assResult.value.flaggedItems.map((item) => ({
             ...item,

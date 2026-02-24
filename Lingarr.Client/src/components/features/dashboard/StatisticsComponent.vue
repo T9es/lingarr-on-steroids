@@ -28,12 +28,15 @@
         </div>
 
         <!-- Config Mode Instructions -->
-        <div
-            v-if="isConfigMode"
-            class="bg-accent/10 border-accent/30 rounded-md border p-3">
+        <div v-if="isConfigMode" class="bg-accent/10 border-accent/30 rounded-md border p-3">
             <p class="text-primary-content/80 text-sm">
-                <span class="font-medium">{{ translate('statistics.configMode') || 'Configuration Mode' }}:</span>
-                {{ translate('statistics.configModeHint') || 'Drag widgets to rearrange. Click the eye icon to show/hide widgets. Changes are saved automatically.' }}
+                <span class="font-medium">
+                    {{ translate('statistics.configMode') || 'Configuration Mode' }}:
+                </span>
+                {{
+                    translate('statistics.configModeHint') ||
+                    'Drag widgets to rearrange. Click the eye icon to show/hide widgets. Changes are saved automatically.'
+                }}
             </p>
         </div>
 
@@ -144,13 +147,18 @@ import { useDashboardSignalR } from '@/composables/useDashboardSignalR'
 import { useDashboardLayout, type LayoutItem } from '@/composables/useDashboardLayout'
 
 const { translate } = useI18n()
-const { state: realtimeState, connect: connectSignalR, disconnect: disconnectSignalR, getActiveTranslations } = useDashboardSignalR()
-const { 
+const {
+    state: realtimeState,
+    connect: connectSignalR,
+    disconnect: disconnectSignalR,
+    getActiveTranslations
+} = useDashboardSignalR()
+const {
     visibleLayout,
-    isConfigMode, 
-    toggleConfigMode, 
-    isWidgetVisible, 
-    toggleWidgetVisibility, 
+    isConfigMode,
+    toggleConfigMode,
+    isWidgetVisible,
+    toggleWidgetVisibility,
     resetLayout,
     updateLayout,
     gridCols,
@@ -162,14 +170,30 @@ const {
 const currentLayout = ref<LayoutItem[]>([])
 
 // Sync visibleLayout to currentLayout
-watch(visibleLayout, (newLayout) => {
-    currentLayout.value = [...newLayout]
-}, { immediate: true, deep: true })
+watch(
+    visibleLayout,
+    (newLayout) => {
+        const currentStr = JSON.stringify(currentLayout.value)
+        const newStr = JSON.stringify(newLayout)
+        if (currentStr !== newStr) {
+            currentLayout.value = JSON.parse(newStr)
+        }
+    },
+    { immediate: true, deep: true }
+)
 
 // Sync changes back to store
-watch(currentLayout, (newLayout) => {
-    updateLayout(newLayout)
-}, { deep: true })
+watch(
+    currentLayout,
+    (newLayout) => {
+        const visibleStr = JSON.stringify(visibleLayout.value)
+        const newStr = JSON.stringify(newLayout)
+        if (visibleStr !== newStr) {
+            updateLayout(JSON.parse(newStr))
+        }
+    },
+    { deep: true }
+)
 
 const loading = ref(true)
 const error = ref<string | null>(null)
@@ -187,8 +211,6 @@ const subtitleLanguages = computed(() => {
 })
 
 const activeTranslations = computed(() => getActiveTranslations())
-
-
 
 const fetchStatistics = async () => {
     try {
@@ -230,53 +252,101 @@ onUnmounted(() => {
 const ActiveTranslationsContent = defineComponent({
     props: {
         isConnected: Boolean,
-        translations: Array as () => Array<{ id: number; jobId: string; status: string; progress: number }>
+        translations: Array as () => Array<{
+            id: number
+            jobId: string
+            status: string
+            progress: number
+        }>
     },
     setup(props) {
         return () => [
             h('div', { class: 'flex items-center gap-2 mb-4' }, [
-                h('span', { 
-                    class: ['h-2 w-2 rounded-full', props.isConnected ? 'bg-green-500' : 'bg-red-500'] 
+                h('span', {
+                    class: [
+                        'h-2 w-2 rounded-full',
+                        props.isConnected ? 'bg-green-500' : 'bg-red-500'
+                    ]
                 }),
-                h('span', { class: 'text-primary-content/60 text-xs' }, 
-                    props.isConnected ? translate('statistics.connected') : translate('statistics.disconnected')
+                h(
+                    'span',
+                    { class: 'text-primary-content/60 text-xs' },
+                    props.isConnected
+                        ? translate('statistics.connected')
+                        : translate('statistics.disconnected')
                 )
             ]),
-            props.translations?.length === 0 
-                ? h('div', { class: 'flex h-24 items-center justify-center' }, 
-                    h('p', { class: 'text-primary-content/60' }, translate('statistics.noActiveTranslations'))
+            props.translations?.length === 0
+                ? h(
+                      'div',
+                      { class: 'flex h-24 items-center justify-center' },
+                      h(
+                          'p',
+                          { class: 'text-primary-content/60' },
+                          translate('statistics.noActiveTranslations')
+                      )
                   )
-                : h('div', { class: 'grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3' }, 
-                    props.translations?.map(t => 
-                        h('div', { key: t.id, class: 'bg-primary rounded-md p-3' }, [
-                            h('div', { class: 'flex items-start justify-between' }, [
-                                h('div', { class: 'min-w-0 flex-1' }, [
-                                    h('h4', { class: 'text-primary-content truncate text-sm font-medium' }, 
-                                        `${translate('statistics.jobId')}: ${t.jobId.slice(0, 8)}`),
-                                    h('p', { class: 'text-primary-content/60 text-xs' }, `ID: ${t.id}`)
-                                ]),
-                                h('span', { 
-                                    class: ['rounded px-2 py-0.5 text-xs font-medium',
-                                        t.status === 'InProgress' ? 'bg-blue-500/20 text-blue-400' :
-                                        t.status === 'Pending' ? 'bg-yellow-500/20 text-yellow-400' :
-                                        'bg-gray-500/20 text-gray-400'
-                                    ]
-                                }, t.status)
-                            ]),
-                            h('div', { class: 'mt-2' }, [
-                                h('div', { class: 'flex items-center justify-between text-xs' }, [
-                                    h('span', { class: 'text-primary-content/60' }, translate('statistics.progress')),
-                                    h('span', { class: 'text-primary-content font-medium' }, `${Math.round(t.progress)}%`)
-                                ]),
-                                h('div', { class: 'bg-primary-content/10 mt-1 h-1.5 w-full overflow-hidden rounded-full' }, 
-                                    h('div', { 
-                                        class: 'h-full rounded-full bg-accent transition-all duration-300',
-                                        style: { width: `${t.progress}%` }
-                                    })
-                                )
-                            ])
-                        ])
-                    )
+                : h(
+                      'div',
+                      { class: 'grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3' },
+                      props.translations?.map((t) =>
+                          h('div', { key: t.id, class: 'bg-primary rounded-md p-3' }, [
+                              h('div', { class: 'flex items-start justify-between' }, [
+                                  h('div', { class: 'min-w-0 flex-1' }, [
+                                      h(
+                                          'h4',
+                                          {
+                                              class: 'text-primary-content truncate text-sm font-medium'
+                                          },
+                                          `${translate('statistics.jobId')}: ${t.jobId.slice(0, 8)}`
+                                      ),
+                                      h(
+                                          'p',
+                                          { class: 'text-primary-content/60 text-xs' },
+                                          `ID: ${t.id}`
+                                      )
+                                  ]),
+                                  h(
+                                      'span',
+                                      {
+                                          class: [
+                                              'rounded px-2 py-0.5 text-xs font-medium',
+                                              t.status === 'InProgress'
+                                                  ? 'bg-blue-500/20 text-blue-400'
+                                                  : t.status === 'Pending'
+                                                    ? 'bg-yellow-500/20 text-yellow-400'
+                                                    : 'bg-gray-500/20 text-gray-400'
+                                          ]
+                                      },
+                                      t.status
+                                  )
+                              ]),
+                              h('div', { class: 'mt-2' }, [
+                                  h('div', { class: 'flex items-center justify-between text-xs' }, [
+                                      h(
+                                          'span',
+                                          { class: 'text-primary-content/60' },
+                                          translate('statistics.progress')
+                                      ),
+                                      h(
+                                          'span',
+                                          { class: 'text-primary-content font-medium' },
+                                          `${Math.round(t.progress)}%`
+                                      )
+                                  ]),
+                                  h(
+                                      'div',
+                                      {
+                                          class: 'bg-primary-content/10 mt-1 h-1.5 w-full overflow-hidden rounded-full'
+                                      },
+                                      h('div', {
+                                          class: 'h-full rounded-full bg-accent transition-all duration-300',
+                                          style: { width: `${t.progress}%` }
+                                      })
+                                  )
+                              ])
+                          ])
+                      )
                   )
         ]
     }
@@ -290,30 +360,42 @@ const MediaOverviewContent = defineComponent({
     },
     setup(props) {
         if (props.loading) {
-            return () => h('div', { class: 'flex h-64 items-center justify-center' }, 
-                h(LoaderCircleIcon, { class: 'h-8 w-8 animate-spin' })
-            )
+            return () =>
+                h(
+                    'div',
+                    { class: 'flex h-64 items-center justify-center' },
+                    h(LoaderCircleIcon, { class: 'h-8 w-8 animate-spin' })
+                )
         }
         if (props.error) {
-            return () => h('div', { class: 'flex h-64 items-center justify-center text-red-500' }, props.error)
+            return () =>
+                h(
+                    'div',
+                    { class: 'flex h-64 items-center justify-center text-red-500' },
+                    props.error
+                )
         }
         if (!props.statistics) {
-            return () => h('div', { class: 'text-primary-content flex h-64 items-center justify-center' }, 
-                translate('statistics.notAvailable')
-            )
+            return () =>
+                h(
+                    'div',
+                    { class: 'text-primary-content flex h-64 items-center justify-center' },
+                    translate('statistics.notAvailable')
+                )
         }
-        return () => h('div', { class: 'grid grid-cols-1 gap-4 md:grid-cols-2' }, [
-            h(StatCard, { 
-                title: translate('statistics.movies'),
-                total: props.statistics!.totalMovies,
-                translated: props.statistics!.translationsByMediaType?.[MEDIA_TYPE.MOVIE] || 0
-            }),
-            h(StatCard, { 
-                title: translate('statistics.tvShows'),
-                total: props.statistics!.totalEpisodes,
-                translated: props.statistics!.translationsByMediaType?.[MEDIA_TYPE.EPISODE] || 0
-            })
-        ])
+        return () =>
+            h('div', { class: 'grid grid-cols-1 gap-4 md:grid-cols-2' }, [
+                h(StatCard, {
+                    title: translate('statistics.movies'),
+                    total: props.statistics!.totalMovies,
+                    translated: props.statistics!.translationsByMediaType?.[MEDIA_TYPE.MOVIE] || 0
+                }),
+                h(StatCard, {
+                    title: translate('statistics.tvShows'),
+                    total: props.statistics!.totalEpisodes,
+                    translated: props.statistics!.translationsByMediaType?.[MEDIA_TYPE.EPISODE] || 0
+                })
+            ])
     }
 })
 
@@ -324,35 +406,52 @@ const TranslationActivityContent = defineComponent({
     },
     setup(props) {
         return () => [
-            h('div', { class: 'grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2' }, [
-                h(MetricCard, { 
-                    title: translate('statistics.linesTranslated'),
-                    value: props.statistics?.totalLinesTranslated ?? 0
-                }),
-                h(MetricCard, { 
-                    title: translate('statistics.filesProcessed'),
-                    value: props.statistics?.totalFilesTranslated ?? 0
-                }),
-                h(MetricCard, { 
-                    title: translate('statistics.charactersTranslated'),
-                    value: props.statistics?.totalCharactersTranslated ?? 0,
-                    class: 'xl:col-span-2'
-                })
-            ]),
-            props.translationServices?.length ? h('div', { class: 'mt-4' }, [
-                h('h3', { class: 'text-primary-content mb-4 text-sm font-medium' }, 
-                    translate('statistics.translationServices')),
-                h('div', { class: 'grid grid-cols-2 gap-2 xl:grid-cols-3' }, 
-                    props.translationServices.map(([service, count]) => 
-                        h('div', { key: service, class: 'bg-primary rounded-sm p-2' }, [
-                            h('h4', { class: 'text-primary-content/70 text-xs font-medium' }, 
-                                service.charAt(0).toUpperCase() + service.slice(1)),
-                            h('p', { class: 'text-primary-content text-lg font-bold' }, 
-                                count ? new Intl.NumberFormat().format(count) : '0')
-                        ])
-                    )
-                )
-            ]) : null
+            h(
+                'div',
+                { class: 'grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2' },
+                [
+                    h(MetricCard, {
+                        title: translate('statistics.linesTranslated'),
+                        value: props.statistics?.totalLinesTranslated ?? 0
+                    }),
+                    h(MetricCard, {
+                        title: translate('statistics.filesProcessed'),
+                        value: props.statistics?.totalFilesTranslated ?? 0
+                    }),
+                    h(MetricCard, {
+                        title: translate('statistics.charactersTranslated'),
+                        value: props.statistics?.totalCharactersTranslated ?? 0,
+                        class: 'xl:col-span-2'
+                    })
+                ]
+            ),
+            props.translationServices?.length
+                ? h('div', { class: 'mt-4' }, [
+                      h(
+                          'h3',
+                          { class: 'text-primary-content mb-4 text-sm font-medium' },
+                          translate('statistics.translationServices')
+                      ),
+                      h(
+                          'div',
+                          { class: 'grid grid-cols-2 gap-2 xl:grid-cols-3' },
+                          props.translationServices.map(([service, count]) =>
+                              h('div', { key: service, class: 'bg-primary rounded-sm p-2' }, [
+                                  h(
+                                      'h4',
+                                      { class: 'text-primary-content/70 text-xs font-medium' },
+                                      service.charAt(0).toUpperCase() + service.slice(1)
+                                  ),
+                                  h(
+                                      'p',
+                                      { class: 'text-primary-content text-lg font-bold' },
+                                      count ? new Intl.NumberFormat().format(count) : '0'
+                                  )
+                              ])
+                          )
+                      )
+                  ])
+                : null
         ]
     }
 })
@@ -364,26 +463,44 @@ const LanguageStatisticsContent = defineComponent({
     },
     setup(props) {
         return () => [
-            h('div', { class: 'h-80' }, 
-                props.dailyStats?.length 
+            h(
+                'div',
+                { class: 'h-80' },
+                props.dailyStats?.length
                     ? h(LanguageChart, { dailyStats: props.dailyStats })
-                    : h('div', { class: 'flex h-full w-full items-center justify-center' }, 
-                        h(LoaderCircleIcon, { class: 'h-8 w-8 animate-spin' })
+                    : h(
+                          'div',
+                          { class: 'flex h-full w-full items-center justify-center' },
+                          h(LoaderCircleIcon, { class: 'h-8 w-8 animate-spin' })
                       )
             ),
-            props.subtitleLanguages?.length ? h('div', { class: 'mt-4' }, [
-                h('h3', { class: 'text-primary-content mb-2 text-sm font-medium' }, 
-                    translate('statistics.availableSubtitles')),
-                h('div', { class: 'grid grid-cols-3 gap-2 md:grid-cols-4 xl:grid-cols-6' }, 
-                    props.subtitleLanguages.map(([language, count]) => 
-                        h('div', { key: language, class: 'bg-primary rounded-sm p-2' }, [
-                            h('h4', { class: 'text-primary-content/70 text-xs font-medium' }, language.toUpperCase()),
-                            h('p', { class: 'text-primary-content text-lg font-bold' }, 
-                                count ? new Intl.NumberFormat().format(count) : '0')
-                        ])
-                    )
-                )
-            ]) : null
+            props.subtitleLanguages?.length
+                ? h('div', { class: 'mt-4' }, [
+                      h(
+                          'h3',
+                          { class: 'text-primary-content mb-2 text-sm font-medium' },
+                          translate('statistics.availableSubtitles')
+                      ),
+                      h(
+                          'div',
+                          { class: 'grid grid-cols-3 gap-2 md:grid-cols-4 xl:grid-cols-6' },
+                          props.subtitleLanguages.map(([language, count]) =>
+                              h('div', { key: language, class: 'bg-primary rounded-sm p-2' }, [
+                                  h(
+                                      'h4',
+                                      { class: 'text-primary-content/70 text-xs font-medium' },
+                                      language.toUpperCase()
+                                  ),
+                                  h(
+                                      'p',
+                                      { class: 'text-primary-content text-lg font-bold' },
+                                      count ? new Intl.NumberFormat().format(count) : '0'
+                                  )
+                              ])
+                          )
+                      )
+                  ])
+                : null
         ]
     }
 })

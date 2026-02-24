@@ -8,10 +8,7 @@
             <p class="text-secondary-content mb-3 text-sm">
                 {{ translate('onboarding.language.sourceDescription') }}
             </p>
-            <LanguageSelect
-                v-model:selected="sourceLanguages"
-                :options="languages"
-            />
+            <LanguageSelect v-model:selected="sourceLanguages" :options="languages" />
         </div>
 
         <!-- Target Languages Section (only shown when source languages are selected) -->
@@ -22,10 +19,7 @@
             <p class="text-secondary-content mb-3 text-sm">
                 {{ translate('onboarding.language.targetDescription') }}
             </p>
-            <LanguageSelect
-                v-model:selected="targetLanguages"
-                :options="targetLanguageOptions"
-            />
+            <LanguageSelect v-model:selected="targetLanguages" :options="targetLanguageOptions" />
         </div>
     </div>
 </template>
@@ -75,9 +69,7 @@ const targetLanguageOptions = computed(() => {
 
     // Get all target codes from selected source languages
     const allTargets = sourceLanguages.value.flatMap((sourceLanguage) => {
-        const sourceTargetSet = languages.value.find(
-            (lang) => lang.code === sourceLanguage.code
-        )
+        const sourceTargetSet = languages.value.find((lang) => lang.code === sourceLanguage.code)
         if (!sourceTargetSet) {
             return []
         }

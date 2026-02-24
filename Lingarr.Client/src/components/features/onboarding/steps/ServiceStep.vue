@@ -14,9 +14,7 @@
                     :key="service.value"
                     :class="[
                         'border-accent rounded-md border p-3 text-left transition-colors',
-                        selectedService === service.value
-                            ? 'bg-accent/20'
-                            : 'hover:bg-accent/10'
+                        selectedService === service.value ? 'bg-accent/20' : 'hover:bg-accent/10'
                     ]"
                     @click="selectService(service.value)">
                     <span class="text-primary-content text-sm font-medium">
@@ -40,9 +38,7 @@
                     :key="service.value"
                     :class="[
                         'border-accent rounded-md border p-3 text-left transition-colors',
-                        selectedService === service.value
-                            ? 'bg-accent/20'
-                            : 'hover:bg-accent/10'
+                        selectedService === service.value ? 'bg-accent/20' : 'hover:bg-accent/10'
                     ]"
                     @click="selectService(service.value)">
                     <span class="text-primary-content text-sm font-medium">
@@ -66,9 +62,7 @@
                     :key="service.value"
                     :class="[
                         'border-accent rounded-md border p-3 text-left transition-colors',
-                        selectedService === service.value
-                            ? 'bg-accent/20'
-                            : 'hover:bg-accent/10'
+                        selectedService === service.value ? 'bg-accent/20' : 'hover:bg-accent/10'
                     ]"
                     @click="selectService(service.value)">
                     <span class="text-primary-content text-sm font-medium">
