@@ -1,13 +1,28 @@
-import { ref, watch, readonly } from 'vue'
+import { ref, watch, computed } from 'vue'
 
 /**
- * Widget configuration interface
+ * Widget layout item for grid-layout-plus
+ * i = id, x = column, y = row, w = width (columns), h = height (rows), minW/minH = minimums
  */
-export interface WidgetConfig {
+export interface LayoutItem {
+    i: string
+    x: number
+    y: number
+    w: number
+    h: number
+    minW?: number
+    minH?: number
+    maxW?: number
+    maxH?: number
+    static?: boolean
+}
+
+/**
+ * Widget metadata for display
+ */
+export interface WidgetMeta {
     id: string
     title: string
-    size: 'full' | 'half' | 'third'
-    order: number
     visible: boolean
 }
 
@@ -15,25 +30,43 @@ export interface WidgetConfig {
  * Dashboard layout state
  */
 export interface DashboardLayout {
-    widgets: WidgetConfig[]
+    layout: LayoutItem[]
+    widgets: WidgetMeta[]
     version: number
 }
 
 const STORAGE_KEY = 'lingarr-dashboard-layout'
-const LAYOUT_VERSION = 1
+const LAYOUT_VERSION = 2
+
+// Grid configuration
+export const GRID_COLS = 12
+export const ROW_HEIGHT = 80
+export const MARGIN = [16, 16] as [number, number]
 
 /**
- * Default widget configuration
+ * Default widget layout configuration
+ * Each widget has position (x, y), size (w, h), and constraints
  */
-const DEFAULT_WIDGETS: WidgetConfig[] = [
-    { id: 'active-translations', title: 'statistics.activeTranslations', size: 'full', order: 0, visible: true },
-    { id: 'media-overview', title: 'statistics.mediaOverview', size: 'full', order: 1, visible: true },
-    { id: 'translation-activity', title: 'statistics.translationActivity', size: 'half', order: 2, visible: true },
-    { id: 'language-statistics', title: 'statistics.languageStatistics', size: 'half', order: 3, visible: true },
-    { id: 'translation-history', title: 'statistics.translationHistory', size: 'half', order: 4, visible: true },
-    { id: 'job-queue', title: 'statistics.jobQueue', size: 'third', order: 5, visible: true },
-    { id: 'api-usage', title: 'statistics.apiUsage', size: 'third', order: 6, visible: true },
-    { id: 'error-log', title: 'statistics.errorLog', size: 'third', order: 7, visible: true }
+const DEFAULT_LAYOUT: LayoutItem[] = [
+    { i: 'active-translations', x: 0, y: 0, w: 12, h: 4, minW: 6, minH: 3 },
+    { i: 'media-overview', x: 0, y: 4, w: 12, h: 4, minW: 6, minH: 3 },
+    { i: 'translation-activity', x: 0, y: 8, w: 6, h: 5, minW: 4, minH: 3 },
+    { i: 'language-statistics', x: 6, y: 8, w: 6, h: 5, minW: 4, minH: 4 },
+    { i: 'translation-history', x: 0, y: 13, w: 6, h: 5, minW: 4, minH: 3 },
+    { i: 'job-queue', x: 6, y: 13, w: 3, h: 5, minW: 3, minH: 3 },
+    { i: 'api-usage', x: 9, y: 13, w: 3, h: 5, minW: 3, minH: 3 },
+    { i: 'error-log', x: 0, y: 18, w: 12, h: 4, minW: 6, minH: 3 }
+]
+
+const DEFAULT_WIDGETS: WidgetMeta[] = [
+    { id: 'active-translations', title: 'statistics.activeTranslations', visible: true },
+    { id: 'media-overview', title: 'statistics.mediaOverview', visible: true },
+    { id: 'translation-activity', title: 'statistics.translationActivity', visible: true },
+    { id: 'language-statistics', title: 'statistics.languageStatistics', visible: true },
+    { id: 'translation-history', title: 'statistics.translationHistory', visible: true },
+    { id: 'job-queue', title: 'statistics.jobQueue', visible: true },
+    { id: 'api-usage', title: 'statistics.apiUsage', visible: true },
+    { id: 'error-log', title: 'statistics.errorLog', visible: true }
 ]
 
 /**
@@ -46,14 +79,26 @@ function loadLayout(): DashboardLayout {
             const layout = JSON.parse(stored) as DashboardLayout
             // Migrate if version mismatch
             if (layout.version !== LAYOUT_VERSION) {
-                return { widgets: DEFAULT_WIDGETS, version: LAYOUT_VERSION }
+                return { layout: DEFAULT_LAYOUT, widgets: DEFAULT_WIDGETS, version: LAYOUT_VERSION }
+            }
+            // Ensure all widgets exist
+            const missingWidgets = DEFAULT_WIDGETS.filter(
+                w => !layout.widgets.find(lw => lw.id === w.id)
+            )
+            if (missingWidgets.length > 0) {
+                layout.widgets.push(...missingWidgets)
+                // Add missing layout items
+                const missingLayout = DEFAULT_LAYOUT.filter(
+                    l => !layout.layout.find(ll => ll.i === l.i)
+                )
+                layout.layout.push(...missingLayout)
             }
             return layout
         }
     } catch (error) {
         console.warn('Failed to load dashboard layout:', error)
     }
-    return { widgets: DEFAULT_WIDGETS, version: LAYOUT_VERSION }
+    return { layout: DEFAULT_LAYOUT, widgets: DEFAULT_WIDGETS, version: LAYOUT_VERSION }
 }
 
 /**
@@ -68,40 +113,37 @@ function saveLayout(layout: DashboardLayout): void {
 }
 
 /**
- * Composable for managing dashboard widget layout
+ * Composable for managing dashboard widget layout with grid-layout-plus
  */
 export function useDashboardLayout() {
-    const layout = ref<DashboardLayout>(loadLayout())
+    const state = ref<DashboardLayout>(loadLayout())
     const isConfigMode = ref(false)
-    const draggedWidgetId = ref<string | null>(null)
 
     // Watch for changes and persist
-    watch(layout, (newLayout) => {
-        saveLayout(newLayout)
+    watch(state, (newState) => {
+        saveLayout(newState)
     }, { deep: true })
 
     /**
-     * Get widgets sorted by order
+     * Get visible layout items sorted by position
      */
-    function getSortedWidgets(): WidgetConfig[] {
-        return [...layout.value.widgets]
-            .filter(w => w.visible)
-            .sort((a, b) => a.order - b.order)
-    }
+    const visibleLayout = computed(() => {
+        return state.value.layout.filter(item => {
+            const widget = state.value.widgets.find(w => w.id === item.i)
+            return widget?.visible ?? true
+        })
+    })
 
     /**
-     * Get all widgets (including hidden)
+     * Get all layout items
      */
-    function getAllWidgets(): WidgetConfig[] {
-        return [...layout.value.widgets].sort((a, b) => a.order - b.order)
-    }
+    const allLayout = computed(() => state.value.layout)
 
     /**
      * Toggle configuration mode
      */
     function toggleConfigMode(): void {
         isConfigMode.value = !isConfigMode.value
-        draggedWidgetId.value = null
     }
 
     /**
@@ -116,104 +158,78 @@ export function useDashboardLayout() {
      */
     function exitConfigMode(): void {
         isConfigMode.value = false
-        draggedWidgetId.value = null
     }
 
     /**
      * Check if a widget is visible
      */
     function isWidgetVisible(widgetId: string): boolean {
-        const widget = layout.value.widgets.find(w => w.id === widgetId)
+        const widget = state.value.widgets.find(w => w.id === widgetId)
         return widget?.visible ?? true
-    }
-
-    /**
-     * Handle drag start
-     */
-    function handleDragStart(widgetId: string): void {
-        if (!isConfigMode.value) return
-        draggedWidgetId.value = widgetId
-    }
-
-    /**
-     * Handle drag end
-     */
-    function handleDragEnd(): void {
-        draggedWidgetId.value = null
-    }
-
-    /**
-     * Handle drag over (for visual feedback)
-     */
-    function handleDragOver(_widgetId: string): void {
-        // This is just for visual feedback during drag
-        // The actual reorder happens on drop
-    }
-
-    /**
-     * Handle drop - reorder widgets
-     */
-    function handleDrop(targetWidgetId: string): void {
-        if (!isConfigMode.value || !draggedWidgetId.value) return
-        if (draggedWidgetId.value === targetWidgetId) return
-
-        const widgets = [...layout.value.widgets]
-        const draggedIndex = widgets.findIndex(w => w.id === draggedWidgetId.value)
-        const targetIndex = widgets.findIndex(w => w.id === targetWidgetId)
-
-        if (draggedIndex === -1 || targetIndex === -1) return
-
-        // Swap orders
-        const draggedOrder = widgets[draggedIndex].order
-        const targetOrder = widgets[targetIndex].order
-
-        widgets[draggedIndex].order = targetOrder
-        widgets[targetIndex].order = draggedOrder
-
-        layout.value.widgets = widgets
-        draggedWidgetId.value = null
     }
 
     /**
      * Toggle widget visibility
      */
     function toggleWidgetVisibility(widgetId: string): void {
-        const widget = layout.value.widgets.find(w => w.id === widgetId)
+        const widget = state.value.widgets.find(w => w.id === widgetId)
         if (widget) {
             widget.visible = !widget.visible
         }
     }
 
     /**
-     * Reset to default layout
+     * Update layout after drag/resize
      */
-    function resetLayout(): void {
-        layout.value = { widgets: DEFAULT_WIDGETS, version: LAYOUT_VERSION }
+    function updateLayout(newLayout: LayoutItem[]): void {
+        state.value.layout = newLayout
     }
 
     /**
-     * Get widget by ID
+     * Reset to default layout
      */
-    function getWidget(widgetId: string): WidgetConfig | undefined {
-        return layout.value.widgets.find(w => w.id === widgetId)
+    function resetLayout(): void {
+        state.value = {
+            layout: [...DEFAULT_LAYOUT],
+            widgets: [...DEFAULT_WIDGETS],
+            version: LAYOUT_VERSION
+        }
+    }
+
+    /**
+     * Get widget metadata by ID
+     */
+    function getWidgetMeta(widgetId: string): WidgetMeta | undefined {
+        return state.value.widgets.find(w => w.id === widgetId)
+    }
+
+    /**
+     * Get layout item by ID
+     */
+    function getLayoutItem(widgetId: string): LayoutItem | undefined {
+        return state.value.layout.find(l => l.i === widgetId)
     }
 
     return {
-        layout: readonly(layout),
-        isConfigMode: readonly(isConfigMode),
-        draggedWidgetId: readonly(draggedWidgetId),
-        getSortedWidgets,
-        getAllWidgets,
+        // State
+        layout: allLayout,
+        visibleLayout,
+        isConfigMode: computed(() => isConfigMode.value),
+        
+        // Grid config
+        gridCols: GRID_COLS,
+        rowHeight: ROW_HEIGHT,
+        margin: MARGIN,
+        
+        // Actions
         toggleConfigMode,
         enterConfigMode,
         exitConfigMode,
         isWidgetVisible,
-        handleDragStart,
-        handleDragEnd,
-        handleDragOver,
-        handleDrop,
         toggleWidgetVisibility,
+        updateLayout,
         resetLayout,
-        getWidget
+        getWidgetMeta,
+        getLayoutItem
     }
 }
