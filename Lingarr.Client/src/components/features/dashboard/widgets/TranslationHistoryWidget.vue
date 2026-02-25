@@ -17,7 +17,7 @@ const props = defineProps<{
 
 // Calculate totals for different time periods
 const todayCount = computed(() => {
-    const today = props.dailyStatistics.find((s) => {
+    const today = props.dailyStatistics?.find((s) => {
         const statDate = new Date(s.date)
         const now = new Date()
         return statDate.toDateString() === now.toDateString()
@@ -28,7 +28,7 @@ const todayCount = computed(() => {
 const weekCount = computed(() => {
     const weekAgo = new Date()
     weekAgo.setDate(weekAgo.getDate() - 7)
-    return props.dailyStatistics
+    return (props.dailyStatistics || [])
         .filter((s) => new Date(s.date) >= weekAgo)
         .reduce((acc, s) => acc + (s.translationCount || 0), 0)
 })
@@ -36,7 +36,7 @@ const weekCount = computed(() => {
 const monthCount = computed(() => {
     const monthAgo = new Date()
     monthAgo.setDate(monthAgo.getDate() - 30)
-    return props.dailyStatistics
+    return (props.dailyStatistics || [])
         .filter((s) => new Date(s.date) >= monthAgo)
         .reduce((acc, s) => acc + (s.translationCount || 0), 0)
 })
@@ -49,14 +49,14 @@ const trend = computed(() => {
     const prev7DaysStart = new Date(last7DaysStart)
     prev7DaysStart.setDate(prev7DaysStart.getDate() - 7)
 
-    const last7Days = props.dailyStatistics
+    const last7Days = (props.dailyStatistics || [])
         .filter((s) => {
             const d = new Date(s.date)
             return d >= last7DaysStart && d < now
         })
         .reduce((acc, s) => acc + (s.translationCount || 0), 0)
 
-    const prev7Days = props.dailyStatistics
+    const prev7Days = (props.dailyStatistics || [])
         .filter((s) => {
             const d = new Date(s.date)
             return d >= prev7DaysStart && d < last7DaysStart
