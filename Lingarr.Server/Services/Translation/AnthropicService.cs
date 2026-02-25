@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -16,6 +17,8 @@ public class AnthropicService : BaseLanguageService, ITranslationService, IBatch
 {
     private readonly string? _endpoint = "https://api.anthropic.com/v1";
     private readonly HttpClient _httpClient;
+    private readonly IDashboardService? _dashboardService;
+    private const string ServiceName = "anthropic";
     private string? _model;
     private string? _prompt;
     private string? _apiKey;
@@ -30,10 +33,12 @@ public class AnthropicService : BaseLanguageService, ITranslationService, IBatch
 
     public AnthropicService(ISettingService settings,
         HttpClient httpClient,
-        ILogger<AnthropicService> logger)
+        ILogger<AnthropicService> logger,
+        IDashboardService? dashboardService = null)
         : base(settings, logger, "/app/Statics/ai_languages.json")
     {
         _httpClient = httpClient;
+        _dashboardService = dashboardService;
     }
 
     /// <summary>
@@ -150,10 +155,18 @@ public class AnthropicService : BaseLanguageService, ITranslationService, IBatch
                     "application/json"
                 );
 
+                var stopwatch = Stopwatch.StartNew();
                 var response =
                     await _httpClient.PostAsync($"{_endpoint}/messages", content, linked.Token);
+                stopwatch.Stop();
+
                 if (!response.IsSuccessStatusCode)
                 {
+                    if (_dashboardService != null)
+                    {
+                        await _dashboardService.LogApiUsage(ServiceName, null, stopwatch.ElapsedMilliseconds, false, $"Status: {response.StatusCode}");
+                    }
+
                     if (response.StatusCode == HttpStatusCode.TooManyRequests)
                     {
                         throw new HttpRequestException("Rate limit exceeded", null, HttpStatusCode.TooManyRequests);
@@ -167,6 +180,20 @@ public class AnthropicService : BaseLanguageService, ITranslationService, IBatch
 
                 var responseBody = await response.Content.ReadAsStringAsync(linked.Token);
                 var jsonResponse = JsonSerializer.Deserialize<JsonElement>(responseBody);
+                
+                if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var usageProp))
+                {
+                    int totalTokens = 0;
+                    if (usageProp.TryGetProperty("input_tokens", out var inputTokens)) totalTokens += inputTokens.GetInt32();
+                    if (usageProp.TryGetProperty("output_tokens", out var outputTokens)) totalTokens += outputTokens.GetInt32();
+                    
+                    await _dashboardService.LogApiUsage(ServiceName, totalTokens > 0 ? totalTokens : null, stopwatch.ElapsedMilliseconds, true);
+                }
+                else if (_dashboardService != null)
+                {
+                    await _dashboardService.LogApiUsage(ServiceName, null, stopwatch.ElapsedMilliseconds, true);
+                }
+
                 var subtitleLine = jsonResponse.GetProperty("content")[0].GetProperty("text").GetString();
                 return subtitleLine ?? throw new InvalidOperationException();
             }
@@ -339,9 +366,17 @@ public class AnthropicService : BaseLanguageService, ITranslationService, IBatch
             Encoding.UTF8,
             "application/json");
 
+        var stopwatch = Stopwatch.StartNew();
         var response = await _httpClient.PostAsync($"{_endpoint}/messages", content, cancellationToken);
+        stopwatch.Stop();
+
         if (!response.IsSuccessStatusCode)
         {
+            if (_dashboardService != null)
+            {
+                await _dashboardService.LogApiUsage(ServiceName, null, stopwatch.ElapsedMilliseconds, false, $"Status: {response.StatusCode}");
+            }
+
             _logger.LogError("Response Status Code: {StatusCode}", response.StatusCode);
             _logger.LogError("Response Content: {ResponseContent}",
                 await response.Content.ReadAsStringAsync(cancellationToken));
@@ -350,6 +385,19 @@ public class AnthropicService : BaseLanguageService, ITranslationService, IBatch
 
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
         var jsonResponse = JsonSerializer.Deserialize<JsonElement>(responseBody);
+
+        if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var usageProp))
+        {
+            int totalTokens = 0;
+            if (usageProp.TryGetProperty("input_tokens", out var inputTokens)) totalTokens += inputTokens.GetInt32();
+            if (usageProp.TryGetProperty("output_tokens", out var outputTokens)) totalTokens += outputTokens.GetInt32();
+            
+            await _dashboardService.LogApiUsage(ServiceName, totalTokens > 0 ? totalTokens : null, stopwatch.ElapsedMilliseconds, true);
+        }
+        else if (_dashboardService != null)
+        {
+            await _dashboardService.LogApiUsage(ServiceName, null, stopwatch.ElapsedMilliseconds, true);
+        }
 
         // Extract tool use result from Anthropic response
         if (!jsonResponse.TryGetProperty("content", out var contentArray) || 

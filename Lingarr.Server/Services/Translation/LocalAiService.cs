@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
@@ -16,6 +17,8 @@ namespace Lingarr.Server.Services.Translation;
 public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTranslationService
 {
     private readonly HttpClient _httpClient;
+    private readonly IDashboardService? _dashboardService;
+    private const string ServiceName = "localai";
     private string? _model;
     private string? _endpoint;
     private string? _prompt;
@@ -32,10 +35,12 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
     public LocalAiService(
         ISettingService settings,
         HttpClient httpClient,
-        ILogger<LocalAiService> logger)
+        ILogger<LocalAiService> logger,
+        IDashboardService? dashboardService = null)
         : base(settings, logger, "/app/Statics/ai_languages.json")
     {
         _httpClient = httpClient;
+        _dashboardService = dashboardService;
     }
 
     /// <summary>
@@ -341,9 +346,17 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
             Encoding.UTF8,
             "application/json");
 
+        var stopwatch = Stopwatch.StartNew();
         var response = await _httpClient.PostAsync(_endpoint, requestContent, cancellationToken);
+        stopwatch.Stop();
+        
         if (!response.IsSuccessStatusCode)
         {
+            if (_dashboardService != null)
+            {
+                await _dashboardService.LogApiUsage(ServiceName, null, stopwatch.ElapsedMilliseconds, false, $"Status: {response.StatusCode}");
+            }
+
             _logger.LogError("Response Status Code: {StatusCode}", response.StatusCode);
             _logger.LogError("Response Content: {ResponseContent}",
                 await response.Content.ReadAsStringAsync(cancellationToken));
@@ -352,6 +365,12 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
 
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
         var chatResponse = JsonSerializer.Deserialize<ChatResponse>(responseBody);
+        
+        if (_dashboardService != null)
+        {
+            await _dashboardService.LogApiUsage(ServiceName, chatResponse?.Usage?.TotalTokens, stopwatch.ElapsedMilliseconds, true);
+        }
+
         if (chatResponse?.Choices == null || chatResponse.Choices.Count == 0)
         {
             throw new TranslationException("No completion choices returned from LocalAI");
@@ -429,9 +448,17 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
             Encoding.UTF8,
             "application/json");
 
+        var stopwatch = Stopwatch.StartNew();
         var response = await _httpClient.PostAsync(_endpoint, requestContent, cancellationToken);
+        stopwatch.Stop();
+        
         if (!response.IsSuccessStatusCode)
         {
+            if (_dashboardService != null)
+            {
+                await _dashboardService.LogApiUsage(ServiceName, null, stopwatch.ElapsedMilliseconds, false, $"Status: {response.StatusCode}");
+            }
+
             _logger.LogError("Response Status Code: {StatusCode}", response.StatusCode);
             _logger.LogError("Response Content: {ResponseContent}",
                 await response.Content.ReadAsStringAsync(cancellationToken));
@@ -440,6 +467,11 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
 
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
         var chatResponse = JsonSerializer.Deserialize<ChatResponse>(responseBody);
+
+        if (_dashboardService != null)
+        {
+            await _dashboardService.LogApiUsage(ServiceName, chatResponse?.Usage?.TotalTokens, stopwatch.ElapsedMilliseconds, true);
+        }
 
         if (chatResponse?.Choices == null || chatResponse.Choices.Count == 0)
         {
@@ -501,9 +533,17 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
         var content = new StringContent(JsonSerializer.Serialize(requestData),
             Encoding.UTF8, "application/json");
 
+        var stopwatch = Stopwatch.StartNew();
         var response = await _httpClient.PostAsync(_endpoint, content, cancellationToken);
+        stopwatch.Stop();
+        
         if (!response.IsSuccessStatusCode)
         {
+            if (_dashboardService != null)
+            {
+                await _dashboardService.LogApiUsage(ServiceName, null, stopwatch.ElapsedMilliseconds, false, $"Status: {response.StatusCode}");
+            }
+
             _logger.LogError("Response Status Code: {StatusCode}", response.StatusCode);
             _logger.LogError("Response Content: {ResponseContent}",
                 await response.Content.ReadAsStringAsync(cancellationToken));
@@ -512,6 +552,12 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
 
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
         var generateResponse = JsonSerializer.Deserialize<GenerateResponse>(responseBody);
+
+        if (_dashboardService != null)
+        {
+            // Generate API doesn't return usage
+            await _dashboardService.LogApiUsage(ServiceName, null, stopwatch.ElapsedMilliseconds, true);
+        }
 
         if (generateResponse == null || string.IsNullOrEmpty(generateResponse.Response))
         {
@@ -600,10 +646,17 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
         var content = new StringContent(JsonSerializer.Serialize(requestBody),
             Encoding.UTF8, "application/json");
 
+        var stopwatch = Stopwatch.StartNew();
         var response = await _httpClient.PostAsync(_endpoint, content, cancellationToken);
+        stopwatch.Stop();
 
         if (!response.IsSuccessStatusCode)
         {
+            if (_dashboardService != null)
+            {
+                await _dashboardService.LogApiUsage(ServiceName, null, stopwatch.ElapsedMilliseconds, false, $"Status: {response.StatusCode}");
+            }
+
             _logger.LogError("Response Status Code: {StatusCode}", response.StatusCode);
             _logger.LogError("Response Content: {ResponseContent}",
                 await response.Content.ReadAsStringAsync(cancellationToken));
@@ -612,6 +665,11 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
 
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
         var chatResponse = JsonSerializer.Deserialize<ChatResponse>(responseBody);
+
+        if (_dashboardService != null)
+        {
+            await _dashboardService.LogApiUsage(ServiceName, chatResponse?.Usage?.TotalTokens, stopwatch.ElapsedMilliseconds, true);
+        }
 
         if (chatResponse?.Choices == null || chatResponse.Choices.Count == 0)
         {

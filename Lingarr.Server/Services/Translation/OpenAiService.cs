@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.IO;
 using System.Net.Sockets;
 using System.Threading.Tasks;
+using System.Diagnostics;
 using Lingarr.Core.Configuration;
 using Lingarr.Server.Exceptions;
 using Lingarr.Server.Interfaces.Services;
@@ -21,6 +22,7 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
     protected virtual string ModelSettingKey => SettingKeys.Translation.OpenAi.Model;
     protected virtual string ApiKeySettingKey => SettingKeys.Translation.OpenAi.ApiKey;
     protected virtual string EndpointBase => "https://api.openai.com/v1/";
+    protected virtual string ServiceName => "openai";
 
     protected readonly string _endpoint;
     protected string? _prompt;
@@ -29,6 +31,7 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
     protected readonly HttpClient _httpClient;
     protected bool _initialized;
     protected readonly SemaphoreSlim _initLock = new(1, 1);
+    protected readonly IDashboardService? _dashboardService;
 
     // retry settings
     protected int _maxRetries;
@@ -38,11 +41,13 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
     public OpenAiService(
         ISettingService settings,
         ILogger<OpenAiService> logger,
-        HttpClient? httpClient = null)
+        HttpClient? httpClient = null,
+        IDashboardService? dashboardService = null)
         : base(settings, logger, "/app/Statics/ai_languages.json")
     {
         _httpClient = httpClient ?? new HttpClient();
         _endpoint = EndpointBase;
+        _dashboardService = dashboardService;
     }
 
     /// <summary>
@@ -165,9 +170,17 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
                     Encoding.UTF8,
                     "application/json");
 
+                var stopwatch = Stopwatch.StartNew();
                 var response = await _httpClient.PostAsync(requestUrl, requestContent, linked.Token);
+                stopwatch.Stop();
+                
                 if (!response.IsSuccessStatusCode)
                 {
+                    if (_dashboardService != null)
+                    {
+                        await _dashboardService.LogApiUsage(ServiceName, null, stopwatch.ElapsedMilliseconds, false, $"Status: {response.StatusCode}");
+                    }
+
                     if (response.StatusCode == HttpStatusCode.TooManyRequests)
                     {
                         var responseBody = await response.Content.ReadAsStringAsync(linked.Token);
@@ -192,6 +205,16 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
                 if (completionResponse?.Choices == null || completionResponse.Choices.Count == 0)
                 {
                     throw new TranslationException("No completion choices returned from OpenAI");
+                }
+
+                // Log API usage
+                if (_dashboardService != null)
+                {
+                    await _dashboardService.LogApiUsage(
+                        "openai",
+                        completionResponse.Usage?.TotalTokens,
+                        stopwatch.ElapsedMilliseconds,
+                        success: true);
                 }
 
                 return completionResponse.Choices[0].Message.Content;
@@ -432,7 +455,9 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
             Encoding.UTF8,
             "application/json");
 
+        var stopwatch = Stopwatch.StartNew();
         var response = await _httpClient.PostAsync(requestUrl, requestContent, cancellationToken);
+        stopwatch.Stop();
 
         if (!response.IsSuccessStatusCode)
         {
@@ -472,6 +497,16 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
         if (completionResponse?.Choices == null || completionResponse.Choices.Count == 0)
         {
             throw new TranslationException("No completion choices returned from OpenAI");
+        }
+        
+        // Log API usage for batch
+        if (_dashboardService != null)
+        {
+            await _dashboardService.LogApiUsage(
+                "openai",
+                completionResponse.Usage?.TotalTokens,
+                stopwatch.ElapsedMilliseconds,
+                success: true);
         }
         
         var translatedJson = completionResponse.Choices[0].Message.Content;

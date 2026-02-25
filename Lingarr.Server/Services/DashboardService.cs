@@ -10,16 +10,14 @@ using Microsoft.EntityFrameworkCore;
 namespace Lingarr.Server.Services;
 
 /// <summary>
-/// Service for dashboard data aggregation
+/// Service for dashboard data aggregation.
+/// Uses database persistence for API usage and error logs.
 /// </summary>
 public class DashboardService : IDashboardService
 {
     private readonly IStatisticsService _statisticsService;
     private readonly ITranslationRequestService _translationRequestService;
     private readonly LingarrDbContext _dbContext;
-    private static readonly List<ErrorLogEntry> _errorLog = new();
-    private static readonly List<ApiUsageEntry> _apiUsageLog = new();
-    private static readonly object _lock = new();
 
     public DashboardService(
         IStatisticsService statisticsService,
@@ -196,12 +194,11 @@ public class DashboardService : IDashboardService
     /// <inheritdoc />
     public async Task<ApiUsageStatus> GetApiUsage()
     {
-        List<ApiUsageEntry> recentUsage;
-        lock (_lock)
-        {
-            var cutoff = DateTime.UtcNow.AddDays(-7);
-            recentUsage = _apiUsageLog.Where(u => u.Timestamp >= cutoff).ToList();
-        }
+        var cutoff = DateTime.UtcNow.AddDays(-7);
+        var recentUsage = await _dbContext.ApiUsageLogs
+            .Where(u => u.Timestamp >= cutoff)
+            .OrderByDescending(u => u.Timestamp)
+            .ToListAsync();
 
         var today = DateTime.UtcNow.Date;
         var todayUsage = recentUsage.Where(u => u.Timestamp.Date == today);
@@ -214,7 +211,7 @@ public class DashboardService : IDashboardService
                 g => new ServiceUsage
                 {
                     TotalCalls = g.Count(),
-                    TotalTokens = g.Sum(u => u.TokensUsed),
+                    TotalTokens = g.Sum(u => u.TokensUsed ?? 0),
                     AverageResponseTime = g.Average(u => u.ResponseTimeMs),
                     ErrorCount = g.Count(u => !u.Success)
                 });
@@ -223,70 +220,70 @@ public class DashboardService : IDashboardService
         {
             TotalCallsToday = todayUsage.Count(),
             TotalCallsWeek = weekUsage.Count(),
-            TotalTokensToday = todayUsage.Sum(u => u.TokensUsed),
-            TotalTokensWeek = weekUsage.Sum(u => u.TokensUsed),
+            TotalTokensToday = todayUsage.Sum(u => u.TokensUsed ?? 0),
+            TotalTokensWeek = weekUsage.Sum(u => u.TokensUsed ?? 0),
             AverageResponseTime = weekUsage.Any() ? weekUsage.Average(u => u.ResponseTimeMs) : 0,
             ErrorCount = weekUsage.Count(u => !u.Success),
             ByService = byService,
-            RecentCalls = recentUsage.OrderByDescending(u => u.Timestamp).Take(50).ToList()
+            RecentCalls = recentUsage.Take(50).Select(u => new ApiUsageEntry
+            {
+                Timestamp = u.Timestamp,
+                Service = u.Service,
+                TokensUsed = u.TokensUsed ?? 0,
+                ResponseTimeMs = u.ResponseTimeMs,
+                Success = u.Success,
+                ErrorMessage = u.ErrorMessage
+            }).ToList()
         };
     }
 
     /// <inheritdoc />
     public async Task<List<ErrorLogEntry>> GetErrorLog(int limit = 50)
     {
-        lock (_lock)
+        var errors = await _dbContext.ErrorLogs
+            .OrderByDescending(e => e.Timestamp)
+            .Take(limit)
+            .ToListAsync();
+
+        return errors.Select(e => new ErrorLogEntry
         {
-            return _errorLog
-                .OrderByDescending(e => e.Timestamp)
-                .Take(limit)
-                .ToList();
-        }
+            Timestamp = e.Timestamp,
+            Source = e.Source,
+            Message = e.Message,
+            Details = e.Details,
+            StackTrace = e.StackTrace
+        }).ToList();
     }
 
     /// <inheritdoc />
-    public void LogApiUsage(string service, int tokensUsed, long responseTimeMs, bool success, string? errorMessage = null)
+    public async Task LogApiUsage(string service, int? tokensUsed, long responseTimeMs, bool success, string? errorMessage = null)
     {
-        lock (_lock)
+        _dbContext.ApiUsageLogs.Add(new ApiUsageLog
         {
-            _apiUsageLog.Add(new ApiUsageEntry
-            {
-                Timestamp = DateTime.UtcNow,
-                Service = service,
-                TokensUsed = tokensUsed,
-                ResponseTimeMs = responseTimeMs,
-                Success = success,
-                ErrorMessage = errorMessage
-            });
+            Timestamp = DateTime.UtcNow,
+            Service = service,
+            TokensUsed = tokensUsed,
+            ResponseTimeMs = responseTimeMs,
+            Success = success,
+            ErrorMessage = errorMessage
+        });
 
-            // Keep only last 1000 entries
-            if (_apiUsageLog.Count > 1000)
-            {
-                _apiUsageLog.RemoveAt(0);
-            }
-        }
+        await _dbContext.SaveChangesAsync();
     }
 
     /// <inheritdoc />
-    public void LogError(string source, string message, string? details = null, string? stackTrace = null)
+    public async Task LogError(string source, string message, string? details = null, string? stackTrace = null)
     {
-        lock (_lock)
+        _dbContext.ErrorLogs.Add(new ErrorLog
         {
-            _errorLog.Add(new ErrorLogEntry
-            {
-                Timestamp = DateTime.UtcNow,
-                Source = source,
-                Message = message,
-                Details = details,
-                StackTrace = stackTrace
-            });
+            Timestamp = DateTime.UtcNow,
+            Source = source,
+            Message = message,
+            Details = details,
+            StackTrace = stackTrace
+        });
 
-            // Keep only last 100 entries
-            if (_errorLog.Count > 100)
-            {
-                _errorLog.RemoveAt(0);
-            }
-        }
+        await _dbContext.SaveChangesAsync();
     }
 }
 
@@ -298,8 +295,8 @@ public interface IDashboardService
     Task<JobQueueStatus> GetJobQueueStatus();
     Task<ApiUsageStatus> GetApiUsage();
     Task<List<ErrorLogEntry>> GetErrorLog(int limit = 50);
-    void LogApiUsage(string service, int tokensUsed, long responseTimeMs, bool success, string? errorMessage = null);
-    void LogError(string source, string message, string? details = null, string? stackTrace = null);
+    Task LogApiUsage(string service, int? tokensUsed, long responseTimeMs, bool success, string? errorMessage = null);
+    Task LogError(string source, string message, string? details = null, string? stackTrace = null);
 }
 
 /// <summary>

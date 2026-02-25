@@ -22,6 +22,54 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Lingarr.Core.Entities.ApiUsageLog", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ErrorMessage")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("error_message");
+
+                    b.Property<long>("ResponseTimeMs")
+                        .HasColumnType("bigint")
+                        .HasColumnName("response_time_ms");
+
+                    b.Property<string>("Service")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("service");
+
+                    b.Property<bool>("Success")
+                        .HasColumnType("boolean")
+                        .HasColumnName("success");
+
+                    b.Property<DateTime>("Timestamp")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("timestamp");
+
+                    b.Property<int?>("TokensUsed")
+                        .HasColumnType("integer")
+                        .HasColumnName("tokens_used");
+
+                    b.HasKey("Id")
+                        .HasName("pk_api_usage_logs");
+
+                    b.HasIndex("Service")
+                        .HasDatabaseName("ix_api_usage_logs_service");
+
+                    b.HasIndex("Timestamp")
+                        .HasDatabaseName("ix_api_usage_logs_timestamp");
+
+                    b.ToTable("api_usage_logs", (string)null);
+                });
+
             modelBuilder.Entity("Lingarr.Core.Entities.DailyStatistics", b =>
                 {
                     b.Property<int>("Id")
@@ -211,6 +259,49 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                         .HasDatabaseName("IX_Episodes_TranslationState");
 
                     b.ToTable("episodes", (string)null);
+                });
+
+            modelBuilder.Entity("Lingarr.Core.Entities.ErrorLog", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Details")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("details");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("message");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("source");
+
+                    b.Property<string>("StackTrace")
+                        .HasColumnType("text")
+                        .HasColumnName("stack_trace");
+
+                    b.Property<DateTime>("Timestamp")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("timestamp");
+
+                    b.HasKey("Id")
+                        .HasName("pk_error_logs");
+
+                    b.HasIndex("Timestamp")
+                        .HasDatabaseName("ix_error_logs_timestamp");
+
+                    b.ToTable("error_logs", (string)null);
                 });
 
             modelBuilder.Entity("Lingarr.Core.Entities.Image", b =>

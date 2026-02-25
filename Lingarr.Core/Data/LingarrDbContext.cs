@@ -20,6 +20,8 @@ public class LingarrDbContext : DbContext
     public DbSet<DailyStatistics> DailyStatistics { get; set; }
     public DbSet<EmbeddedSubtitle> EmbeddedSubtitles { get; set; }
     public DbSet<SubtitleCleanupLog> SubtitleCleanupLogs { get; set; }
+    public DbSet<ApiUsageLog> ApiUsageLogs { get; set; }
+    public DbSet<ErrorLog> ErrorLogs { get; set; }
 
     public LingarrDbContext(DbContextOptions options) : base(options)
     {
@@ -86,6 +88,22 @@ public class LingarrDbContext : DbContext
             b.HasIndex(d => d.Date)
                 .IsUnique()
                 .HasDatabaseName("ux_daily_statistics_date");
+        });
+
+        // ApiUsageLog: index on Timestamp for efficient queries, index on Service for filtering
+        modelBuilder.Entity<ApiUsageLog>(b =>
+        {
+            b.HasIndex(a => a.Timestamp)
+                .HasDatabaseName("ix_api_usage_logs_timestamp");
+            b.HasIndex(a => a.Service)
+                .HasDatabaseName("ix_api_usage_logs_service");
+        });
+
+        // ErrorLog: index on Timestamp for efficient queries
+        modelBuilder.Entity<ErrorLog>(b =>
+        {
+            b.HasIndex(e => e.Timestamp)
+                .HasDatabaseName("ix_error_logs_timestamp");
         });
     }
 

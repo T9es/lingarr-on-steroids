@@ -15,13 +15,15 @@ public class ChutesAiService : OpenAiService
     protected override string ModelSettingKey => SettingKeys.Translation.Chutes.Model;
     protected override string ApiKeySettingKey => SettingKeys.Translation.Chutes.ApiKey;
     protected override string EndpointBase => "https://llm.chutes.ai/v1/";
+    protected override string ServiceName => "chutes";
 
     public ChutesAiService(
         ISettingService settings,
         ILogger<ChutesAiService> logger,
         IChutesUsageService usageService,
-        IHttpClientFactory httpClientFactory)
-        : base(settings, logger, httpClientFactory.CreateClient(nameof(ChutesAiService)))
+        IHttpClientFactory httpClientFactory,
+        IDashboardService? dashboardService = null)
+        : base(settings, logger, httpClientFactory.CreateClient(nameof(ChutesAiService)), dashboardService)
     {
         _usageService = usageService;
     }

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using Lingarr.Core.Configuration;
@@ -18,6 +19,8 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
 {
     private readonly string? _endpoint = "https://generativelanguage.googleapis.com/v1beta";
     private readonly HttpClient _httpClient;
+    private readonly IDashboardService? _dashboardService;
+    private const string ServiceName = "gemini";
     private string? _model;
     private string? _apiKey;
     private string? _prompt;
@@ -32,10 +35,12 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
     public GoogleGeminiService(
         ISettingService settings,
         HttpClient httpClient,
-        ILogger<GoogleGeminiService> logger)
+        ILogger<GoogleGeminiService> logger,
+        IDashboardService? dashboardService = null)
         : base(settings, logger, "/app/Statics/ai_languages.json")
     {
         _httpClient = httpClient;
+        _dashboardService = dashboardService;
     }
 
     /// <summary>
@@ -209,10 +214,17 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
             Encoding.UTF8,
             "application/json");
 
+        var stopwatch = Stopwatch.StartNew();
         var response = await _httpClient.PostAsync(endpoint, content, cancellationToken);
+        stopwatch.Stop();
 
         if (!response.IsSuccessStatusCode)
         {
+            if (_dashboardService != null)
+            {
+                await _dashboardService.LogApiUsage(ServiceName, null, stopwatch.ElapsedMilliseconds, false, $"Status: {response.StatusCode}");
+            }
+
             _logger.LogError("Response Status Code: {StatusCode}", response.StatusCode);
             _logger.LogError("Response Content: {ResponseContent}",
                 await response.Content.ReadAsStringAsync(cancellationToken));
@@ -221,6 +233,16 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
 
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
         var geminiResponse = JsonSerializer.Deserialize<GeminiResponse>(responseBody);
+
+        if (_dashboardService != null)
+        {
+            int? tokensUsed = null;
+            if (geminiResponse?.UsageMetadata != null)
+            {
+                tokensUsed = geminiResponse.UsageMetadata.PromptTokenCount + geminiResponse.UsageMetadata.CandidatesTokenCount;
+            }
+            await _dashboardService.LogApiUsage(ServiceName, tokensUsed, stopwatch.ElapsedMilliseconds, true);
+        }
 
         if (geminiResponse?.Candidates == null || geminiResponse.Candidates.Count == 0 ||
             geminiResponse.Candidates[0].Content?.Parts == null ||
@@ -438,9 +460,17 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
             Encoding.UTF8,
             "application/json");
 
+        var stopwatch = Stopwatch.StartNew();
         var response = await _httpClient.PostAsync(endpoint, content, cancellationToken);
+        stopwatch.Stop();
+        
         if (!response.IsSuccessStatusCode)
         {
+            if (_dashboardService != null)
+            {
+                await _dashboardService.LogApiUsage(ServiceName, null, stopwatch.ElapsedMilliseconds, false, $"Status: {response.StatusCode}");
+            }
+
             _logger.LogError("Response Status Code: {StatusCode}", response.StatusCode);
             _logger.LogError("Response Content: {ResponseContent}",
                 await response.Content.ReadAsStringAsync(cancellationToken)
@@ -450,6 +480,17 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
 
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
         var geminiResponse = JsonSerializer.Deserialize<GeminiResponse>(responseBody);
+        
+        if (_dashboardService != null)
+        {
+            int? tokensUsed = null;
+            if (geminiResponse?.UsageMetadata != null)
+            {
+                tokensUsed = geminiResponse.UsageMetadata.PromptTokenCount + geminiResponse.UsageMetadata.CandidatesTokenCount;
+            }
+            await _dashboardService.LogApiUsage(ServiceName, tokensUsed, stopwatch.ElapsedMilliseconds, true);
+        }
+
         if (geminiResponse?.Candidates == null || geminiResponse.Candidates.Count == 0 ||
             geminiResponse.Candidates[0].Content?.Parts == null ||
             geminiResponse.Candidates[0].Content?.Parts.Count == 0)

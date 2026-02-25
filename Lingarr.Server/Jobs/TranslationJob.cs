@@ -30,6 +30,7 @@ public class TranslationJob
     private readonly ITranslationCancellationService _cancellationService;
     private readonly IMediaStateService _mediaStateService;
     private readonly IDeferredRepairService _deferredRepairService;
+    private readonly IDashboardService _dashboardService;
 
     public TranslationJob(
         ILogger<TranslationJob> logger,
@@ -45,7 +46,8 @@ public class TranslationJob
         ISubtitleExtractionService extractionService,
         ITranslationCancellationService cancellationService,
         IMediaStateService mediaStateService,
-        IDeferredRepairService deferredRepairService)
+        IDeferredRepairService deferredRepairService,
+        IDashboardService dashboardService)
     {
         _logger = logger;
         _settings = settings;
@@ -61,6 +63,7 @@ public class TranslationJob
         _cancellationService = cancellationService;
         _mediaStateService = mediaStateService;
         _deferredRepairService = deferredRepairService;
+        _dashboardService = dashboardService;
     }
 
     /// <summary>
@@ -676,6 +679,15 @@ public class TranslationJob
                 // Add the failure entry as the final log message
                 var failureMessage = $"Translation failed: {ex.Message}";
                 _logger.LogError(ex, "Translation failed for request {RequestId}", translationRequest.Id);
+                
+                // Log to dashboard
+                await _dashboardService.LogError(
+                    "TranslationJob",
+                    failureMessage,
+                    $"Request ID: {translationRequest.Id}\nMedia ID: {translationRequest.MediaId}",
+                    ex.ToString()
+                );
+                
                 _dbContext.TranslationRequestLogs.Add(new TranslationRequestLog
                 {
                     TranslationRequestId = translationRequest.Id,

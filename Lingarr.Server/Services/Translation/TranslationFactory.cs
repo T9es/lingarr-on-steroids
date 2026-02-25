@@ -62,38 +62,45 @@ public class TranslationFactory : ITranslationServiceFactory
 
             "openai" => new OpenAiService(
                 _serviceProvider.GetRequiredService<ISettingService>(),
-                _serviceProvider.GetRequiredService<ILogger<OpenAiService>>()
+                _serviceProvider.GetRequiredService<ILogger<OpenAiService>>(),
+                _serviceProvider.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(OpenAiService)),
+                _serviceProvider.GetService<IDashboardService>()
             ),
 
             "anthropic" => new AnthropicService(
                 _serviceProvider.GetRequiredService<ISettingService>(),
                 _serviceProvider.GetRequiredService<HttpClient>(),
-                _serviceProvider.GetRequiredService<ILogger<AnthropicService>>()
+                _serviceProvider.GetRequiredService<ILogger<AnthropicService>>(),
+                _serviceProvider.GetService<IDashboardService>()
             ),
 
             "localai" => new LocalAiService(
                 _serviceProvider.GetRequiredService<ISettingService>(),
                 _serviceProvider.GetRequiredService<HttpClient>(),
-                _serviceProvider.GetRequiredService<ILogger<LocalAiService>>()
+                _serviceProvider.GetRequiredService<ILogger<LocalAiService>>(),
+                _serviceProvider.GetService<IDashboardService>()
             ),
 
             "deepseek" => new DeepSeekService(
                 _serviceProvider.GetRequiredService<ISettingService>(),
                 _serviceProvider.GetRequiredService<ILogger<DeepSeekService>>(),
-                _serviceProvider.GetRequiredService<IHttpClientFactory>()
+                _serviceProvider.GetRequiredService<IHttpClientFactory>(),
+                _serviceProvider.GetService<IDashboardService>()
             ),
 
             "gemini" => new GoogleGeminiService(
                 _serviceProvider.GetRequiredService<ISettingService>(),
                 _serviceProvider.GetRequiredService<HttpClient>(),
-                _serviceProvider.GetRequiredService<ILogger<GoogleGeminiService>>()
+                _serviceProvider.GetRequiredService<ILogger<GoogleGeminiService>>(),
+                _serviceProvider.GetService<IDashboardService>()
             ),
 
             "chutes" => new ChutesAiService(
                 _serviceProvider.GetRequiredService<ISettingService>(),
                 _serviceProvider.GetRequiredService<ILogger<ChutesAiService>>(),
                 _serviceProvider.GetRequiredService<IChutesUsageService>(),
-                _serviceProvider.GetRequiredService<IHttpClientFactory>()
+                _serviceProvider.GetRequiredService<IHttpClientFactory>(),
+                _serviceProvider.GetService<IDashboardService>()
             ),
 
             _ => throw new ArgumentException("Unsupported translation service type", nameof(serviceType))
