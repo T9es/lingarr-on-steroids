@@ -50,6 +50,10 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                     b.HasKey("Id")
                         .HasName("pk_daily_statistics");
 
+                    b.HasIndex("Date")
+                        .IsUnique()
+                        .HasDatabaseName("ux_daily_statistics_date");
+
                     b.ToTable("daily_statistics", (string)null);
                 });
 

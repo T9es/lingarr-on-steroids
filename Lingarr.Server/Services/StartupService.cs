@@ -278,19 +278,25 @@ public class StartupService : IHostedService
         try
         {
             // Delete duplicate movies - keep the one with lowest ID (oldest)
+            // Group by both RadarrId AND SourceInstanceId to preserve legitimate multi-instance records
             var duplicateMovies = await dbContext.Movies
-                .GroupBy(m => m.RadarrId)
+                .GroupBy(m => new { m.RadarrId, m.SourceInstanceId })
                 .Where(g => g.Count() > 1)
                 .Select(g => g.Key)
                 .ToListAsync();
 
             if (duplicateMovies.Count > 0)
             {
-                var moviesToDelete = await dbContext.Movies
-                    .Where(m => duplicateMovies.Contains(m.RadarrId))
-                    .GroupBy(m => m.RadarrId)
-                    .SelectMany(g => g.OrderByDescending(m => m.Id).Skip(1))
-                    .ToListAsync();
+                var moviesToDelete = new List<Movie>();
+                foreach (var key in duplicateMovies)
+                {
+                    var duplicates = await dbContext.Movies
+                        .Where(m => m.RadarrId == key.RadarrId && m.SourceInstanceId == key.SourceInstanceId)
+                        .OrderByDescending(m => m.Id)
+                        .Skip(1)
+                        .ToListAsync();
+                    moviesToDelete.AddRange(duplicates);
+                }
 
                 dbContext.Movies.RemoveRange(moviesToDelete);
                 await dbContext.SaveChangesAsync();
@@ -298,19 +304,25 @@ public class StartupService : IHostedService
             }
 
             // Delete duplicate shows - keep the one with lowest ID (oldest)
+            // Group by both SonarrId AND SourceInstanceId to preserve legitimate multi-instance records
             var duplicateShows = await dbContext.Shows
-                .GroupBy(s => s.SonarrId)
+                .GroupBy(s => new { s.SonarrId, s.SourceInstanceId })
                 .Where(g => g.Count() > 1)
                 .Select(g => g.Key)
                 .ToListAsync();
 
             if (duplicateShows.Count > 0)
             {
-                var showsToDelete = await dbContext.Shows
-                    .Where(s => duplicateShows.Contains(s.SonarrId))
-                    .GroupBy(s => s.SonarrId)
-                    .SelectMany(g => g.OrderByDescending(s => s.Id).Skip(1))
-                    .ToListAsync();
+                var showsToDelete = new List<Show>();
+                foreach (var key in duplicateShows)
+                {
+                    var duplicates = await dbContext.Shows
+                        .Where(s => s.SonarrId == key.SonarrId && s.SourceInstanceId == key.SourceInstanceId)
+                        .OrderByDescending(s => s.Id)
+                        .Skip(1)
+                        .ToListAsync();
+                    showsToDelete.AddRange(duplicates);
+                }
 
                 dbContext.Shows.RemoveRange(showsToDelete);
                 await dbContext.SaveChangesAsync();

@@ -31,21 +31,9 @@ namespace Lingarr.Migrations.SQLite.Migrations
                 nullable: false,
                 defaultValue: 0);
 
-            // Add source_instance_id columns
-            migrationBuilder.AddColumn<string>(
-                name: "source_instance_id",
-                table: "shows",
-                type: "TEXT",
-                nullable: true);
-
-            migrationBuilder.AddColumn<string>(
-                name: "source_instance_id",
-                table: "movies",
-                type: "TEXT",
-                nullable: true);
-
             // Step 1: Set SourceInstanceId to 'default' for existing records with NULL
             // This is needed for data that was synced before multi-instance support
+            // Note: Columns were already added in AddMultiInstanceSupport migration (20260221000000)
             migrationBuilder.Sql(
                 "UPDATE movies SET source_instance_id = 'default' WHERE source_instance_id IS NULL");
             migrationBuilder.Sql(

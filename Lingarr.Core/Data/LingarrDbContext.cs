@@ -79,6 +79,14 @@ public class LingarrDbContext : DbContext
 
             b.Property(tr => tr.IsActive).HasColumnName("is_active");
         });
+
+        // DailyStatistics: unique index on Date to prevent race condition duplicates
+        modelBuilder.Entity<DailyStatistics>(b =>
+        {
+            b.HasIndex(d => d.Date)
+                .IsUnique()
+                .HasDatabaseName("ux_daily_statistics_date");
+        });
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)

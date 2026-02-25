@@ -132,23 +132,6 @@ public class StatisticsService : IStatisticsService
         return stats;
     }
 
-    private static async Task<DailyStatistics> GetOrCreateDailyStatistics(
-        LingarrDbContext dbContext,
-        DateTime today)
-    {
-        var dailyStats = await dbContext.DailyStatistics
-            .Where(d => d.Date >= today)
-            .FirstOrDefaultAsync();
-
-        if (dailyStats == null)
-        {
-            dailyStats = new DailyStatistics { Date = today };
-            dbContext.DailyStatistics.Add(dailyStats);
-        }
-
-        return dailyStats;
-    }
-
     public async Task<int> UpdateTranslationStatisticsFromSubtitles(
         TranslationRequest request,
         string serviceType,
@@ -207,21 +190,20 @@ public class StatisticsService : IStatisticsService
         languageStats[request.TargetLanguage] = languageStats.GetValueOrDefault(request.TargetLanguage) + 1;
         stats.SubtitlesByLanguage = languageStats;
 
-        // Update daily statistics using EF Core (database-agnostic)
-        var dailyStats = await dbContext.DailyStatistics
-            .FirstOrDefaultAsync(d => d.Date == today);
-        
-        if (dailyStats == null)
-        {
-            dailyStats = new DailyStatistics { Date = today, TranslationCount = 1 };
-            dbContext.DailyStatistics.Add(dailyStats);
-        }
-        else
-        {
-            dailyStats.TranslationCount++;
-        }
+        // Save JSON field changes
+        await dbContext.SaveChangesAsync();
 
-        var result = await dbContext.SaveChangesAsync();
+        // Update daily statistics using atomic upsert to prevent race conditions
+        // Both PostgreSQL and SQLite 3.24.0+ support ON CONFLICT syntax
+        await dbContext.Database.ExecuteSqlRawAsync(
+            "INSERT INTO daily_statistics (date, translation_count, created_at, updated_at) " +
+            "VALUES ({0}, 1, {1}, {1}) " +
+            "ON CONFLICT (date) DO UPDATE SET " +
+            "translation_count = daily_statistics.translation_count + 1, " +
+            "updated_at = {1}",
+            today, DateTime.UtcNow);
+
+        var result = 1; // Return 1 to indicate success
 
         // Invalidate cache after successful update
         InvalidateCache();

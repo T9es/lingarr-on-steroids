@@ -180,6 +180,9 @@ public static class ServiceCollectionExtensions
         // Media state service for intelligent translation automation
         builder.Services.AddScoped<IMediaStateService, MediaStateService>();
         
+        // Cleanup service for fixing duplicate instances
+        builder.Services.AddScoped<ICleanupService, CleanupService>();
+        
         // Translation job (scoped to match all its dependencies like LingarrDbContext)
         // This was previously only instantiated by Hangfire, but now TranslationWorkerService needs to resolve it
         builder.Services.AddScoped<Jobs.TranslationJob>();

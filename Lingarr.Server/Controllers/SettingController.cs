@@ -179,4 +179,22 @@ public class SettingController : ControllerBase
             });
         return Ok(result);
     }
+    
+    /// <summary>
+    /// Cleans up duplicate movies/shows and consolidates all media to a single 'default' instance.
+    /// This fixes issues caused by the multi-instance migration where users ended up with duplicate
+    /// instance configurations pointing to the same Radarr/Sonarr server.
+    /// </summary>
+    /// <returns>Returns the result of the cleanup operation.</returns>
+    [HttpPost("cleanup/duplicates")]
+    public async Task<ActionResult<CleanupResult>> CleanupDuplicateInstances(
+        [FromServices] ICleanupService cleanupService)
+    {
+        var result = await cleanupService.CleanupDuplicateInstances();
+        if (result.Success)
+        {
+            return Ok(result);
+        }
+        return StatusCode(500, result);
+    }
 }

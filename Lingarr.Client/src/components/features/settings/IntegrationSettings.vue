@@ -63,6 +63,7 @@
 <script setup lang="ts">
 import { computed, ref, reactive, onMounted } from 'vue'
 import { useSettingStore } from '@/store/setting'
+import { useOnboardingStore } from '@/store/onboarding'
 import SaveNotification from '@/components/common/SaveNotification.vue'
 import { SETTINGS } from '@/ts'
 import type { IInstance } from '@/ts/setting'
@@ -330,7 +331,15 @@ const testConnection = async (type: 'radarr' | 'sonarr', instance: IInstance): P
 }
 
 // Migrate legacy single instance to instances array
+// Only runs if onboarding is NOT active (prevents race condition)
 const migrateLegacySettings = (): void => {
+    const onboardingStore = useOnboardingStore()
+
+    // Don't migrate if onboarding is active - let onboarding handle it
+    if (onboardingStore.isActive) {
+        return
+    }
+
     const radarrUrl = settingsStore.getSetting(SETTINGS.RADARR_URL) as string
     const radarrApiKey = settingsStore.getSetting(SETTINGS.RADARR_API_KEY) as string
     const sonarrUrl = settingsStore.getSetting(SETTINGS.SONARR_URL) as string
@@ -344,26 +353,26 @@ const migrateLegacySettings = (): void => {
     )
 
     if ((radarrUrl || radarrApiKey) && existingRadarrInstances.length === 0) {
-        const id = generateId()
+        // Use 'default' ID to match backend fallback and prevent duplicates
         const instance: IInstance = {
-            id,
+            id: 'default',
             name: 'Radarr',
             url: radarrUrl || '',
             apiKey: radarrApiKey || ''
         }
-        initConnectionStatus('radarr', id)
+        initConnectionStatus('radarr', 'default')
         settingsStore.updateSetting(SETTINGS.RADARR_INSTANCES, [instance], true, true)
     }
 
     if ((sonarrUrl || sonarrApiKey) && existingSonarrInstances.length === 0) {
-        const id = generateId()
+        // Use 'default' ID to match backend fallback and prevent duplicates
         const instance: IInstance = {
-            id,
+            id: 'default',
             name: 'Sonarr',
             url: sonarrUrl || '',
             apiKey: sonarrApiKey || ''
         }
-        initConnectionStatus('sonarr', id)
+        initConnectionStatus('sonarr', 'default')
         settingsStore.updateSetting(SETTINGS.SONARR_INSTANCES, [instance], true, true)
     }
 }
