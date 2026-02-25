@@ -75,53 +75,43 @@
                     :is-visible="isWidgetVisible(item.i)"
                     @toggle-visibility="toggleWidgetVisibility(item.i)">
                     <!-- Active Translations Widget -->
-                    <template v-if="item.i === 'active-translations'">
-                        <ActiveTranslationsContent
-                            :is-connected="realtimeState.isConnected"
-                            :translations="activeTranslations" />
-                    </template>
+                    <ActiveTranslationsContent
+                        v-if="item.i === 'active-translations'"
+                        :is-connected="realtimeState.isConnected"
+                        :translations="activeTranslations" />
 
                     <!-- Media Overview Widget -->
-                    <template v-else-if="item.i === 'media-overview'">
-                        <MediaOverviewContent
-                            :loading="loading"
-                            :error="error ?? undefined"
-                            :statistics="statistics" />
-                    </template>
+                    <MediaOverviewContent
+                        v-if="item.i === 'media-overview'"
+                        :loading="loading"
+                        :error="error ?? undefined"
+                        :statistics="statistics" />
 
                     <!-- Translation Activity Widget -->
-                    <template v-else-if="item.i === 'translation-activity'">
-                        <TranslationActivityContent
-                            :statistics="statistics"
-                            :translation-services="translationServices" />
-                    </template>
+                    <TranslationActivityContent
+                        v-if="item.i === 'translation-activity'"
+                        :statistics="statistics"
+                        :translation-services="translationServices" />
 
                     <!-- Language Statistics Widget -->
-                    <template v-else-if="item.i === 'language-statistics'">
-                        <LanguageStatisticsContent
-                            :daily-stats="dailyStats"
-                            :subtitle-languages="subtitleLanguages" />
-                    </template>
+                    <LanguageStatisticsContent
+                        v-if="item.i === 'language-statistics'"
+                        :daily-stats="dailyStats"
+                        :subtitle-languages="subtitleLanguages" />
 
                     <!-- Translation History Widget -->
-                    <template v-else-if="item.i === 'translation-history'">
-                        <TranslationHistoryWidget :daily-statistics="dailyStats || []" />
-                    </template>
+                    <TranslationHistoryWidget
+                        v-if="item.i === 'translation-history'"
+                        :daily-statistics="dailyStats || []" />
 
                     <!-- Job Queue Widget -->
-                    <template v-else-if="item.i === 'job-queue'">
-                        <JobQueueWidget />
-                    </template>
+                    <JobQueueWidget v-if="item.i === 'job-queue'" />
 
                     <!-- API Usage Widget -->
-                    <template v-else-if="item.i === 'api-usage'">
-                        <ApiUsageWidget />
-                    </template>
+                    <ApiUsageWidget v-if="item.i === 'api-usage'" />
 
                     <!-- Error Log Widget -->
-                    <template v-else-if="item.i === 'error-log'">
-                        <ErrorLogWidget />
-                    </template>
+                    <ErrorLogWidget v-if="item.i === 'error-log'" />
                 </DashboardWidget>
             </GridItem>
         </GridLayout>
