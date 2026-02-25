@@ -247,9 +247,11 @@ public class DashboardService : IDashboardService
 
         return errors.Select(e => new ErrorLogEntry
         {
+            Id = e.Id,
             Timestamp = e.Timestamp,
             Source = e.Source,
             Message = e.Message,
+            Type = "error",
             Details = e.Details,
             StackTrace = e.StackTrace
         }).ToList();
@@ -374,9 +376,11 @@ public class ApiUsageEntry
 /// </summary>
 public class ErrorLogEntry
 {
+    public int Id { get; set; }
     public DateTime Timestamp { get; set; }
     public string Source { get; set; } = string.Empty;
     public string Message { get; set; } = string.Empty;
+    public string Type { get; set; } = "error";
     public string? Details { get; set; }
     public string? StackTrace { get; set; }
 }

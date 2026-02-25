@@ -99,8 +99,11 @@
                         cleanupResult.success ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
                     ]">
                     {{ cleanupResult.message }}
-                    <div v-if="cleanupResult.success && (cleanupResult.moviesDeleted > 0 || cleanupResult.showsDeleted > 0)" class="mt-1 text-xs opacity-75">
-                        {{ translate('settings.integrations.cleanupStats') || 'Deleted' }}: {{ cleanupResult.moviesDeleted }} {{ translate('common.movies') || 'movies' }}, {{ cleanupResult.showsDeleted }} {{ translate('common.shows') || 'shows' }}
+                    <div v-if="cleanupResult.success && (cleanupResult.moviesReassigned > 0 || cleanupResult.showsReassigned > 0)" class="mt-1 text-xs opacity-75">
+                        {{ cleanupResult.moviesReassigned }} {{ translate('statistics.movies') || 'movies' }}, {{ cleanupResult.showsReassigned }} {{ translate('statistics.tvShows') || 'shows' }}
+                        <span v-if="cleanupResult.duplicatesRemoved > 0">
+                            ({{ cleanupResult.duplicatesRemoved }} {{ translate('statistics.duplicatesRemoved') || 'duplicates removed' }})
+                        </span>
                     </div>
                 </div>
             </div>
@@ -145,10 +148,11 @@ interface InstanceWrapper {
 interface CleanupResult {
     success: boolean
     message: string
-    moviesDeleted: number
-    showsDeleted: number
+    moviesReassigned: number
+    showsReassigned: number
+    duplicatesRemoved: number
     instancesConsolidated: number
-    removedInstanceIds: string[]
+    reassignedInstanceIds: string[]
 }
 
 const { translate } = useI18n()
@@ -298,8 +302,8 @@ const discardChanges = (): void => {
 
 // Handle add instance from unified button
 const handleAddInstance = (type: 'radarr' | 'sonarr'): void => {
-    const id = generateId()
     const currentCount = localInstances.value.filter((i) => i.type === type).length
+    const id = currentCount === 0 ? 'default' : generateId()
     const namePrefix = type === 'radarr' ? 'Radarr' : 'Sonarr'
 
     const instance: IInstance = {
@@ -464,10 +468,11 @@ const cleanupDuplicates = async (): Promise<void> => {
         cleanupResult.value = {
             success: false,
             message: 'Failed to connect to server',
-            moviesDeleted: 0,
-            showsDeleted: 0,
+            moviesReassigned: 0,
+            showsReassigned: 0,
+            duplicatesRemoved: 0,
             instancesConsolidated: 0,
-            removedInstanceIds: []
+            reassignedInstanceIds: []
         }
     } finally {
         isCleaningUp.value = false

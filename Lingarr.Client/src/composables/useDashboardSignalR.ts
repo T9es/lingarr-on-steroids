@@ -55,7 +55,7 @@ export function useDashboardSignalR() {
 
     const connect = async () => {
         try {
-            const hub = await signalR.connect('translationRequests', '/hubs/translation-requests')
+            const hub = await signalR.connect('translationRequests', '/signalr/TranslationRequests')
 
             await hub.joinGroup({ group: 'TranslationRequests' })
 

@@ -9,7 +9,7 @@ import axios from 'axios'
 const i18n = useI18n()
 
 interface ErrorLog {
-    id: string
+    id: number
     timestamp: string
     type: 'error' | 'warning' | 'info'
     message: string
@@ -19,7 +19,7 @@ interface ErrorLog {
 
 const errors = ref<ErrorLog[]>([])
 const isLoading = ref(false)
-const expandedId = ref<string | null>(null)
+const expandedId = ref<number | null>(null)
 
 const fetchErrors = async () => {
     isLoading.value = true
@@ -61,7 +61,7 @@ const getTypeColor = (type: string): string => {
     }
 }
 
-const toggleExpand = (id: string) => {
+const toggleExpand = (id: number) => {
     expandedId.value = expandedId.value === id ? null : id
 }
 

@@ -7,10 +7,11 @@ public class CleanupResult
 {
     public bool Success { get; set; }
     public string Message { get; set; } = string.Empty;
-    public int MoviesDeleted { get; set; }
-    public int ShowsDeleted { get; set; }
+    public int MoviesReassigned { get; set; }
+    public int ShowsReassigned { get; set; }
+    public int DuplicatesRemoved { get; set; }
     public int InstancesConsolidated { get; set; }
-    public List<string> RemovedInstanceIds { get; set; } = new();
+    public List<string> ReassignedInstanceIds { get; set; } = new();
 }
 
 /// <summary>

@@ -120,7 +120,8 @@
     "recentErrors": "Recent Errors",
     "noErrors": "No recent errors",
     "viewAll": "View All",
-    "retry": "Retry"
+    "retry": "Retry",
+    "duplicatesRemoved": "duplicates removed"
   },
   "movies": {
     "title": "Title",
@@ -248,11 +249,11 @@
       "connectionSuccess": "Connected",
       "connectionFailed": "Connection failed",
       "notTested": "Not tested",
-            "version": "Version",
+      "version": "Version",
       "cleanupTitle": "Consolidate Duplicates",
       "cleanupDescription": "If you have duplicate movies or shows from migrating to multi-instance, this will consolidate them to a single default instance.",
       "cleanupButton": "Fix Duplicates",
-      "cleanupStats": "{0} movies, {1} shows"
+      "cleanupStats": "Reassigned to default instance"
     },
     "services": {
       "title": "Services",
@@ -478,16 +479,16 @@
       "enableAutoScroll": "Enable Auto-scroll",
       "clear": "Clear",
       "time": "Time",
-    "level": "Level",
-    "source": "Source",
-    "message": "Message",
-    "waitingForLogs": "Waiting for logs...",
-    "totalEntries": "Total entries",
-    "maxLogs": "Max Logs",
-    "searchPlaceholder": "Search logs...",
-    "pause": "Pause",
-    "resume": "Resume",
-    "autoScroll": "Auto-scroll",
+      "level": "Level",
+      "source": "Source",
+      "message": "Message",
+      "waitingForLogs": "Waiting for logs...",
+      "totalEntries": "Total entries",
+      "maxLogs": "Max Logs",
+      "searchPlaceholder": "Search logs...",
+      "pause": "Pause",
+      "resume": "Resume",
+      "autoScroll": "Auto-scroll",
       "enabled": "Enabled",
       "disabled": "Disabled"
     },

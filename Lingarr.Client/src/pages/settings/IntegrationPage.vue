@@ -1,5 +1,5 @@
 <template>
-    <div class="p-4 mx-auto max-w-7xl">
+    <div class="p-4">
         <IntegrationSettings />
     </div>
 </template>

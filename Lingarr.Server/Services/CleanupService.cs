@@ -49,40 +49,38 @@ public class CleanupService : ICleanupService
                 .Union(nonDefaultShowInstances)
                 .ToList();
 
-            result.RemovedInstanceIds = allNonDefaultInstances;
+            result.ReassignedInstanceIds = allNonDefaultInstances;
 
             _logger.LogInformation("Found {Count} non-default instance IDs: {Instances}",
                 allNonDefaultInstances.Count, string.Join(", ", allNonDefaultInstances));
 
-            // Step 2: Delete movies with non-default instance IDs
+            // Step 2: Reassign movies with non-default instance IDs to 'default'
             if (nonDefaultMovieInstances.Any())
             {
-                var moviesToDelete = await _dbContext.Movies
+                var moviesReassigned = await _dbContext.Movies
                     .Where(m => m.SourceInstanceId != null && m.SourceInstanceId != "default")
-                    .ToListAsync();
+                    .ExecuteUpdateAsync(setters => setters.SetProperty(m => m.SourceInstanceId, "default"));
 
-                _dbContext.Movies.RemoveRange(moviesToDelete);
-                result.MoviesDeleted = moviesToDelete.Count;
-                _logger.LogInformation("Marked {Count} movies for deletion (non-default instances)", moviesToDelete.Count);
+                result.MoviesReassigned = moviesReassigned;
+                _logger.LogInformation("Reassigned {Count} movies to 'default' instance", moviesReassigned);
             }
 
-            // Step 3: Delete shows with non-default instance IDs
+            // Step 3: Reassign shows with non-default instance IDs to 'default'
             if (nonDefaultShowInstances.Any())
             {
-                var showsToDelete = await _dbContext.Shows
+                var showsReassigned = await _dbContext.Shows
                     .Where(s => s.SourceInstanceId != null && s.SourceInstanceId != "default")
-                    .ToListAsync();
+                    .ExecuteUpdateAsync(setters => setters.SetProperty(s => s.SourceInstanceId, "default"));
 
-                _dbContext.Shows.RemoveRange(showsToDelete);
-                result.ShowsDeleted = showsToDelete.Count;
-                _logger.LogInformation("Marked {Count} shows for deletion (non-default instances)", showsToDelete.Count);
+                result.ShowsReassigned = showsReassigned;
+                _logger.LogInformation("Reassigned {Count} shows to 'default' instance", showsReassigned);
             }
 
-            // Step 4: Clean up true duplicates (same RadarrId/SonarrId + same SourceInstanceId)
+            // Step 4: Clean up true duplicates (same RadarrId/SonarrId + same SourceInstanceId 'default')
+            // This runs AFTER reassignment so any collisions get resolved
             var duplicateMoviesDeleted = await CleanupTrueDuplicates(isMovie: true);
             var duplicateShowsDeleted = await CleanupTrueDuplicates(isMovie: false);
-            result.MoviesDeleted += duplicateMoviesDeleted;
-            result.ShowsDeleted += duplicateShowsDeleted;
+            result.DuplicatesRemoved = duplicateMoviesDeleted + duplicateShowsDeleted;
 
             // Step 5: Set NULL instance IDs to 'default'
             var nullMoviesUpdated = await _dbContext.Movies
@@ -102,7 +100,8 @@ public class CleanupService : ICleanupService
             // Step 7: Update settings to have only 'default' instance
             await UpdateInstanceSettings(result);
 
-            result.Message = $"Cleanup complete. Deleted {result.MoviesDeleted} movies and {result.ShowsDeleted} shows. " +
+            result.Message = $"Cleanup complete. Reassigned {result.MoviesReassigned} movies and {result.ShowsReassigned} shows to 'default'. " +
+                           $"Removed {result.DuplicatesRemoved} true duplicates. " +
                            $"Consolidated {result.InstancesConsolidated} instances to 'default'.";
 
             _logger.LogInformation(result.Message);
@@ -183,18 +182,22 @@ public class CleanupService : ICleanupService
             if (!string.IsNullOrEmpty(radarrInstancesStr))
             {
                 var radarrInstances = System.Text.Json.JsonSerializer.Deserialize<List<InstanceConfig>>(radarrInstancesStr);
-                if (radarrInstances != null && radarrInstances.Count > 1)
+                if (radarrInstances != null && radarrInstances.Count > 0)
                 {
-                    // Keep only the 'default' instance, or the first one if no 'default' exists
-                    var defaultInstance = radarrInstances.FirstOrDefault(i => i.Id == "default") 
-                        ?? radarrInstances.First();
-                    
-                    defaultInstance.Id = "default"; // Ensure ID is 'default'
-                    
-                    var consolidatedJson = System.Text.Json.JsonSerializer.Serialize(new[] { defaultInstance });
-                    await _settingService.SetSetting(SettingKeys.Integration.RadarrInstances, consolidatedJson);
-                    result.InstancesConsolidated += radarrInstances.Count - 1;
-                    _logger.LogInformation("Consolidated {Count} Radarr instances to single 'default' instance", radarrInstances.Count);
+                    // Check if any instance has a non-default ID (single or multiple)
+                    var hasNonDefault = radarrInstances.Any(i => i.Id != "default");
+                    if (radarrInstances.Count > 1 || hasNonDefault)
+                    {
+                        var defaultInstance = radarrInstances.FirstOrDefault(i => i.Id == "default") 
+                            ?? radarrInstances.First();
+                        
+                        defaultInstance.Id = "default";
+                        
+                        var consolidatedJson = System.Text.Json.JsonSerializer.Serialize(new[] { defaultInstance });
+                        await _settingService.SetSetting(SettingKeys.Integration.RadarrInstances, consolidatedJson);
+                        result.InstancesConsolidated += radarrInstances.Count > 1 ? radarrInstances.Count - 1 : 0;
+                        _logger.LogInformation("Consolidated Radarr instances to single 'default' instance (was {Count} instances)", radarrInstances.Count);
+                    }
                 }
             }
 
@@ -202,18 +205,22 @@ public class CleanupService : ICleanupService
             if (!string.IsNullOrEmpty(sonarrInstancesStr))
             {
                 var sonarrInstances = System.Text.Json.JsonSerializer.Deserialize<List<InstanceConfig>>(sonarrInstancesStr);
-                if (sonarrInstances != null && sonarrInstances.Count > 1)
+                if (sonarrInstances != null && sonarrInstances.Count > 0)
                 {
-                    // Keep only the 'default' instance, or the first one if no 'default' exists
-                    var defaultInstance = sonarrInstances.FirstOrDefault(i => i.Id == "default") 
-                        ?? sonarrInstances.First();
-                    
-                    defaultInstance.Id = "default"; // Ensure ID is 'default'
-                    
-                    var consolidatedJson = System.Text.Json.JsonSerializer.Serialize(new[] { defaultInstance });
-                    await _settingService.SetSetting(SettingKeys.Integration.SonarrInstances, consolidatedJson);
-                    result.InstancesConsolidated += sonarrInstances.Count - 1;
-                    _logger.LogInformation("Consolidated {Count} Sonarr instances to single 'default' instance", sonarrInstances.Count);
+                    // Check if any instance has a non-default ID (single or multiple)
+                    var hasNonDefault = sonarrInstances.Any(i => i.Id != "default");
+                    if (sonarrInstances.Count > 1 || hasNonDefault)
+                    {
+                        var defaultInstance = sonarrInstances.FirstOrDefault(i => i.Id == "default") 
+                            ?? sonarrInstances.First();
+                        
+                        defaultInstance.Id = "default";
+                        
+                        var consolidatedJson = System.Text.Json.JsonSerializer.Serialize(new[] { defaultInstance });
+                        await _settingService.SetSetting(SettingKeys.Integration.SonarrInstances, consolidatedJson);
+                        result.InstancesConsolidated += sonarrInstances.Count > 1 ? sonarrInstances.Count - 1 : 0;
+                        _logger.LogInformation("Consolidated Sonarr instances to single 'default' instance (was {Count} instances)", sonarrInstances.Count);
+                    }
                 }
             }
         }

@@ -151,7 +151,8 @@
     "recentErrors": "Recente fouten",
     "noErrors": "Geen recente fouten",
     "viewAll": "Alles bekijken",
-    "retry": "Opnieuw proberen"
+    "retry": "Opnieuw proberen",
+    "duplicatesRemoved": "duplicaten verwijderd"
   },
   "translations": {
     "title": "Titel",
@@ -248,11 +249,11 @@
       "connectionSuccess": "Verbonden",
       "connectionFailed": "Verbinding mislukt",
       "notTested": "Niet getest",
-            "version": "Versie",
+      "version": "Versie",
       "cleanupTitle": "Duplicaten Consolideren",
       "cleanupDescription": "Als je dubbele films of series hebt door de migratie naar multi-instance, zal dit ze consolideren naar een enkele standaard instantie.",
       "cleanupButton": "Duplicaten Repareren",
-      "cleanupStats": "{0} films, {1} series"
+      "cleanupStats": "Toegewezen aan standaard instantie"
     },
     "services": {
       "title": "Diensten",
@@ -480,16 +481,16 @@
       "enableAutoScroll": "Auto-scroll inschakelen",
       "clear": "Wissen",
       "time": "Tijd",
-    "level": "Niveau",
-    "source": "Bron",
-    "message": "Bericht",
-    "waitingForLogs": "Wachten op log...",
-    "totalEntries": "Totaal aantal vermeldingen",
-    "maxLogs": "Max Logs",
-    "searchPlaceholder": "Zoek logs...",
-    "pause": "Pauzeren",
-    "resume": "Hervatten",
-    "autoScroll": "Auto-scroll",
+      "level": "Niveau",
+      "source": "Bron",
+      "message": "Bericht",
+      "waitingForLogs": "Wachten op log...",
+      "totalEntries": "Totaal aantal vermeldingen",
+      "maxLogs": "Max Logs",
+      "searchPlaceholder": "Zoek logs...",
+      "pause": "Pauzeren",
+      "resume": "Hervatten",
+      "autoScroll": "Auto-scroll",
       "enabled": "Ingeschakeld",
       "disabled": "Uitgeschakeld"
     },
