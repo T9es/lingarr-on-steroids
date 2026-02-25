@@ -248,7 +248,11 @@
       "connectionSuccess": "Connected",
       "connectionFailed": "Connection failed",
       "notTested": "Not tested",
-      "version": "Version"
+            "version": "Version",
+      "cleanupTitle": "Consolidate Duplicates",
+      "cleanupDescription": "If you have duplicate movies or shows from migrating to multi-instance, this will consolidate them to a single default instance.",
+      "cleanupButton": "Fix Duplicates",
+      "cleanupStats": "{0} movies, {1} shows"
     },
     "services": {
       "title": "Services",
