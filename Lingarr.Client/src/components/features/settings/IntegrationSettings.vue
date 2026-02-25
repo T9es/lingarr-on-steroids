@@ -56,6 +56,54 @@
             <div
                 v-translate="'settings.integrations.reindexTask'"
                 class="text-secondary-content pt-4 text-sm" />
+
+            <!-- Cleanup Duplicates Section -->
+            <div class="border-secondary-content/20 mt-6 border-t pt-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h4 class="text-primary-content text-sm font-medium">
+                            {{ translate('settings.integrations.cleanupTitle') || 'Fix Duplicate Instances' }}
+                        </h4>
+                        <p class="text-secondary-content mt-1 text-xs">
+                            {{ translate('settings.integrations.cleanupDescription') || 'If you see duplicate movies/shows after onboarding, click this button to consolidate all media to a single instance.' }}
+                        </p>
+                    </div>
+                    <button
+                        @click="cleanupDuplicates"
+                        :disabled="isCleaningUp"
+                        class="hover:bg-accent/80 rounded-md bg-accent/20 px-3 py-1.5 text-xs font-medium text-accent transition-colors disabled:opacity-50">
+                        <span v-if="isCleaningUp" class="flex items-center gap-1">
+                            <svg class="h-3 w-3 animate-spin" viewBox="0 0 24 24">
+                                <circle
+                                    class="opacity-25"
+                                    cx="12"
+                                    cy="12"
+                                    r="10"
+                                    stroke="currentColor"
+                                    stroke-width="4"
+                                    fill="none" />
+                                <path
+                                    class="opacity-75"
+                                    fill="currentColor"
+                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                            </svg>
+                            {{ translate('common.cleaning') || 'Cleaning...' }}
+                        </span>
+                        <span v-else>{{ translate('settings.integrations.cleanupButton') || 'Fix Duplicates' }}</span>
+                    </button>
+                </div>
+                <div
+                    v-if="cleanupResult"
+                    :class="[
+                        'mt-3 rounded-md p-3 text-sm',
+                        cleanupResult.success ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
+                    ]">
+                    {{ cleanupResult.message }}
+                    <div v-if="cleanupResult.success && (cleanupResult.moviesDeleted > 0 || cleanupResult.showsDeleted > 0)" class="mt-1 text-xs opacity-75">
+                        {{ translate('settings.integrations.cleanupStats') || 'Deleted' }}: {{ cleanupResult.moviesDeleted }} {{ translate('common.movies') || 'movies' }}, {{ cleanupResult.showsDeleted }} {{ translate('common.shows') || 'shows' }}
+                    </div>
+                </div>
+            </div>
         </template>
     </CardComponent>
 </template>
@@ -94,6 +142,15 @@ interface InstanceWrapper {
     instance: IInstance
 }
 
+interface CleanupResult {
+    success: boolean
+    message: string
+    moviesDeleted: number
+    showsDeleted: number
+    instancesConsolidated: number
+    removedInstanceIds: string[]
+}
+
 const { translate } = useI18n()
 
 const saveNotification = ref<InstanceType<typeof SaveNotification> | null>(null)
@@ -103,6 +160,10 @@ const settingsStore = useSettingStore()
 const localInstances = ref<InstanceWrapper[]>([])
 const originalInstances = ref<InstanceWrapper[]>([])
 const isSaving = ref(false)
+
+// Cleanup state
+const isCleaningUp = ref(false)
+const cleanupResult = ref<CleanupResult | null>(null)
 
 // Connection status per instance
 const connectionStatuses = reactive<Record<string, Record<string, ConnectionStatus>>>({
@@ -374,6 +435,42 @@ const migrateLegacySettings = (): void => {
         }
         initConnectionStatus('sonarr', 'default')
         settingsStore.updateSetting(SETTINGS.SONARR_INSTANCES, [instance], true, true)
+    }
+}
+
+// Cleanup duplicate instances
+const cleanupDuplicates = async (): Promise<void> => {
+    isCleaningUp.value = true
+    cleanupResult.value = null
+
+    try {
+        const response = await fetch('/api/setting/cleanup/duplicates', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+
+        const result = await response.json()
+        cleanupResult.value = result
+
+        // Reload instances from store after cleanup
+        if (result.success) {
+            setTimeout(() => {
+                loadInstancesFromStore()
+            }, 1000)
+        }
+    } catch (error) {
+        cleanupResult.value = {
+            success: false,
+            message: 'Failed to connect to server',
+            moviesDeleted: 0,
+            showsDeleted: 0,
+            instancesConsolidated: 0,
+            removedInstanceIds: []
+        }
+    } finally {
+        isCleaningUp.value = false
     }
 }
 
