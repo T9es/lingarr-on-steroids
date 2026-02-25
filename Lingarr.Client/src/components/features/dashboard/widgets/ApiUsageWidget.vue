@@ -75,6 +75,7 @@ const getUsagePercentage = (usage: ApiUsageInfo): number => {
 
 <template>
     <CardComponent :title="i18n.translate('statistics.apiUsage')" class="h-full">
+        <template #content>
         <div class="mb-2 flex justify-end">
             <button
                 @click="fetchApiUsage"
@@ -166,5 +167,6 @@ const getUsagePercentage = (usage: ApiUsageInfo): number => {
                 </div>
             </div>
         </div>
+        </template>
     </CardComponent>
 </template>

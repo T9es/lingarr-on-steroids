@@ -80,6 +80,7 @@ const formatNumber = (num: number): string => {
 
 <template>
     <CardComponent :title="i18n.translate('statistics.translationHistory')" class="h-full">
+        <template #content>
         <div v-if="isLoading" class="flex items-center justify-center py-8">
             <div
                 class="border-accent h-6 w-6 animate-spin rounded-full border-2 border-t-transparent"></div>
@@ -145,5 +146,6 @@ const formatNumber = (num: number): string => {
                 </div>
             </div>
         </div>
+        </template>
     </CardComponent>
 </template>

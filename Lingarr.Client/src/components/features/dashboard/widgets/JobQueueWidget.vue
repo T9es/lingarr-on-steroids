@@ -122,6 +122,7 @@ const getQueueLabel = (queue?: string): string => {
 
 <template>
     <CardComponent :title="i18n.translate('statistics.jobQueue')" class="h-full">
+        <template #content>
         <div class="mb-2 flex justify-end">
             <button
                 @click="fetchJobs"
@@ -201,5 +202,6 @@ const getQueueLabel = (queue?: string): string => {
                 </div>
             </div>
         </div>
+        </template>
     </CardComponent>
 </template>

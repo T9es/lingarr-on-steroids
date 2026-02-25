@@ -71,6 +71,7 @@ const warningCount = () => errors.value.filter((e) => e.type === 'warning').leng
 
 <template>
     <CardComponent :title="i18n.translate('statistics.errorLog')" class="h-full">
+        <template #content>
         <div class="mb-2 flex items-center justify-between">
             <div class="flex gap-2 text-xs">
                 <span v-if="errorCount() > 0" class="text-red-400">
@@ -122,5 +123,6 @@ const warningCount = () => errors.value.filter((e) => e.type === 'warning').leng
                 </div>
             </div>
         </div>
+        </template>
     </CardComponent>
 </template>
