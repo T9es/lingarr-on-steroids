@@ -43,14 +43,20 @@ public class EpisodeSync : IEpisodeSync
     /// <inheritdoc />
     public async Task SyncEpisodes(SonarrShow show, Season season, string? instanceUrl = null, string? instanceApiKey = null)
     {
-        var episodes = await _sonarrService.GetEpisodes(show.Id, season.SeasonNumber, instanceUrl, instanceApiKey);
+        // Use the appropriate overload based on whether instance params are provided
+        var episodes = instanceUrl != null && instanceApiKey != null
+            ? await _sonarrService.GetEpisodes(show.Id, season.SeasonNumber, instanceUrl, instanceApiKey)
+            : await _sonarrService.GetEpisodes(show.Id, season.SeasonNumber);
         if (episodes == null) return;
 
         var syncedEpisodes = new List<(Episode Entity, bool NeedsIndexing, string? OldPath, string? OldFileName)>();
 
         foreach (var episode in episodes.Where(e => e.HasFile))
         {
-            var episodePathResult = await _sonarrService.GetEpisodePath(episode.Id, instanceUrl, instanceApiKey);
+            // Use the appropriate overload based on whether instance params are provided
+            var episodePathResult = instanceUrl != null && instanceApiKey != null
+                ? await _sonarrService.GetEpisodePath(episode.Id, instanceUrl, instanceApiKey)
+                : await _sonarrService.GetEpisodePath(episode.Id);
             var episodePath = _pathConversionService.ConvertAndMapPath(
                 episodePathResult?.EpisodeFile.Path ?? string.Empty,
                 MediaType.Show

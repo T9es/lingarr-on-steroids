@@ -322,12 +322,12 @@ public class TranslationJob
             var excludedPaths = new List<string>();
 
             // Generate file identifier early for logging
-            var fileIdentifier = GenerateFileIdentifier(request.SubtitleToTranslate);
+            var fileIdentifier = GenerateFileIdentifier(request.SubtitleToTranslate!);
 
             EmbeddedSubtitle? selectedSubtitle = null;
             while (true)
             {
-                subtitles = await _subtitleService.ReadSubtitles(request.SubtitleToTranslate);
+                subtitles = await _subtitleService.ReadSubtitles(request.SubtitleToTranslate!);
                 AddRequestLog("Information", $"Loaded subtitle file with {subtitles.Count} entries for translation");
 
                 // Capture subtitle tracking metadata
@@ -459,7 +459,7 @@ public class TranslationJob
                 // Optionally clean the source file as well
                 if (cleanSourceAssDrawings && removedCount > 0)
                 {
-                    await CleanSourceSubtitleFile(request.SubtitleToTranslate, stripSubtitleFormatting);
+                    await CleanSourceSubtitleFile(request.SubtitleToTranslate!, stripSubtitleFormatting);
                     _logger.LogInformation("[{FileId}] Cleaned ASS drawing commands from source file", fileIdentifier);
                     AddRequestLog("Information",
                         $"[{fileIdentifier}] Cleaned ASS drawing commands from source subtitle file");
@@ -734,7 +734,7 @@ public class TranslationJob
             var targetLanguage = removeLanguageTag ? "" : translationRequest.TargetLanguage;
 
             var paths = _subtitleService.CreateFallbackPaths(
-                translationRequest.SubtitleToTranslate,
+                translationRequest.SubtitleToTranslate!,
                 targetLanguage,
                 subtitleTag,
                 subtitleTagShort);

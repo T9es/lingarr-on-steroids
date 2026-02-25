@@ -280,7 +280,7 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
                         return false;
 
                     return methods.EnumerateArray()
-                        .Any(method => supportedGenerationMethods.Contains(method.GetString()));
+                        .Any(method => method.GetString() is string methodName && supportedGenerationMethods.Contains(methodName));
                 })
                 .Select(model => new LabelValue
                 {

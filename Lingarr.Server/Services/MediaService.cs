@@ -205,6 +205,11 @@ public class MediaService : IMediaService
 
             var show = await _showSyncService.SyncShow(episodeFetched.Show, "default");
             // Find the episode id or return 0 if not found
+            if (show == null)
+            {
+                _logger.LogWarning("Show sync returned null for episode {EpisodeId}", episodeNumber);
+                return 0;
+            }
             return show.Seasons
                 .SelectMany(s => s.Episodes)
                 .FirstOrDefault(e => e.SonarrId == episodeNumber)?.Id ?? 0;
