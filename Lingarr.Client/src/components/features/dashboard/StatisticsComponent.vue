@@ -232,7 +232,14 @@ onMounted(async () => {
     await connectSignalR()
     await fetchDailyStats()
     await fetchStatistics()
+    // DEBUG: Log what visibleLayout actually contains
+    console.log('[DEBUG] visibleLayout items:', JSON.stringify(visibleLayout.value.map((item: any) => ({ i: item.i, type: typeof item.i }))))
 })
+
+// DEBUG: Watch for changes to visibleLayout
+watch(visibleLayout, (newLayout) => {
+    console.log('[DEBUG] visibleLayout changed:', JSON.stringify(newLayout.map((item: any) => ({ i: item.i, type: typeof item.i }))))
+}, { immediate: true })
 
 onUnmounted(() => {
     disconnectSignalR()
