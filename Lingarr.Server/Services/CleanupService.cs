@@ -54,9 +54,33 @@ public class CleanupService : ICleanupService
             _logger.LogInformation("Found {Count} non-default instance IDs: {Instances}",
                 allNonDefaultInstances.Count, string.Join(", ", allNonDefaultInstances));
 
-            // Step 2: Reassign movies with non-default instance IDs to 'default'
+            // Step 2: Handle movies with non-default instance IDs
+            // Must delete collisions first (same RadarrId already exists at 'default'),
+            // then reassign the remaining non-colliding records
             if (nonDefaultMovieInstances.Any())
             {
+                // Find RadarrIds that already exist at 'default' instance
+                var defaultRadarrIds = await _dbContext.Movies
+                    .Where(m => m.SourceInstanceId == "default")
+                    .Select(m => m.RadarrId)
+                    .ToListAsync();
+                var defaultRadarrIdSet = new HashSet<int>(defaultRadarrIds);
+
+                // Delete non-default movies that would collide (RadarrId already at 'default')
+                var collidingMovies = await _dbContext.Movies
+                    .Where(m => m.SourceInstanceId != null && m.SourceInstanceId != "default"
+                                && defaultRadarrIdSet.Contains(m.RadarrId))
+                    .ToListAsync();
+
+                if (collidingMovies.Count > 0)
+                {
+                    _dbContext.Movies.RemoveRange(collidingMovies);
+                    await _dbContext.SaveChangesAsync();
+                    result.DuplicatesRemoved += collidingMovies.Count;
+                    _logger.LogInformation("Deleted {Count} colliding non-default movies (RadarrId already exists at 'default')", collidingMovies.Count);
+                }
+
+                // Reassign remaining non-default movies to 'default' (safe, no collisions)
                 var moviesReassigned = await _dbContext.Movies
                     .Where(m => m.SourceInstanceId != null && m.SourceInstanceId != "default")
                     .ExecuteUpdateAsync(setters => setters.SetProperty(m => m.SourceInstanceId, "default"));
@@ -65,9 +89,31 @@ public class CleanupService : ICleanupService
                 _logger.LogInformation("Reassigned {Count} movies to 'default' instance", moviesReassigned);
             }
 
-            // Step 3: Reassign shows with non-default instance IDs to 'default'
+            // Step 3: Handle shows with non-default instance IDs (same approach)
             if (nonDefaultShowInstances.Any())
             {
+                // Find SonarrIds that already exist at 'default' instance
+                var defaultSonarrIds = await _dbContext.Shows
+                    .Where(s => s.SourceInstanceId == "default")
+                    .Select(s => s.SonarrId)
+                    .ToListAsync();
+                var defaultSonarrIdSet = new HashSet<int>(defaultSonarrIds);
+
+                // Delete non-default shows that would collide (SonarrId already at 'default')
+                var collidingShows = await _dbContext.Shows
+                    .Where(s => s.SourceInstanceId != null && s.SourceInstanceId != "default"
+                                && defaultSonarrIdSet.Contains(s.SonarrId))
+                    .ToListAsync();
+
+                if (collidingShows.Count > 0)
+                {
+                    _dbContext.Shows.RemoveRange(collidingShows);
+                    await _dbContext.SaveChangesAsync();
+                    result.DuplicatesRemoved += collidingShows.Count;
+                    _logger.LogInformation("Deleted {Count} colliding non-default shows (SonarrId already exists at 'default')", collidingShows.Count);
+                }
+
+                // Reassign remaining non-default shows to 'default' (safe, no collisions)
                 var showsReassigned = await _dbContext.Shows
                     .Where(s => s.SourceInstanceId != null && s.SourceInstanceId != "default")
                     .ExecuteUpdateAsync(setters => setters.SetProperty(s => s.SourceInstanceId, "default"));
