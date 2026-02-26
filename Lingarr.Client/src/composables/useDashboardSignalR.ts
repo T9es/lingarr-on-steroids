@@ -84,7 +84,7 @@ export function useDashboardSignalR() {
             for (const job of runningJobs) {
                 // Extract ID - handle both "translation-123" format and raw IDs
                 const rawId = job?.id ?? job?.Id ?? job?.jobId ?? job?.JobId
-                if (rawId === undefined && rawId === null) continue
+                if (rawId === undefined || rawId === null) continue
 
                 // Parse numeric ID from "translation-123" format, or use raw value
                 let numericId: number
