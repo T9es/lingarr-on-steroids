@@ -104,7 +104,6 @@
     "vsLastWeek": "vs last week",
     "stable": "Stable",
     "vsYesterday": "vs yesterday",
-    "vsLastWeek": "vs last week",
     "vsLastMonth": "vs last month",
     "jobQueue": "Job Queue",
     "scheduled": "Scheduled",
@@ -121,7 +120,17 @@
     "noErrors": "No recent errors",
     "viewAll": "View All",
     "retry": "Retry",
-    "duplicatesRemoved": "duplicates removed"
+    "duplicatesRemoved": "duplicates removed",
+    "tokensUsed": "Tokens Used",
+    "errors": "errors",
+    "warnings": "warnings",
+    "used": "used",
+    "week": "Week",
+    "month": "Month",
+    "remaining": "Remaining",
+    "refresh": "Refresh",
+    "nextRun": "Next run",
+    "lastRun": "Last run"
   },
   "movies": {
     "title": "Title",

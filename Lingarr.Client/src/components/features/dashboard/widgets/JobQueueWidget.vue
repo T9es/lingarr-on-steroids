@@ -138,23 +138,23 @@ const getQueueLabel = (queue?: string): string => {
             {{ i18n.translate('statistics.noJobs') }}
         </div>
 
-        <div v-else class="max-h-64 flex-1 space-y-3 overflow-y-auto pr-1">
+        <div v-else class="max-h-64 flex-1 space-y-3 overflow-y-auto overflow-x-hidden pr-1">
             <div
                 v-for="job in jobs"
                 :key="job.id"
                 class="border-secondary/20 border-b pb-3 last:border-0 last:pb-0">
                 <div class="flex items-center justify-between">
-                    <div class="flex items-center gap-1">
-                        <span v-if="getQueueLabel(job.queue)" class="text-xs">
+                    <div class="flex min-w-0 flex-1 items-center gap-1 pr-2">
+                        <span v-if="getQueueLabel(job.queue)" class="shrink-0 text-xs">
                             {{ getQueueLabel(job.queue) }}
                         </span>
                         <span
-                            class="text-primary-content max-w-[120px] truncate text-sm font-medium">
+                            class="text-primary-content truncate text-sm font-medium">
                             {{ job.name }}
                         </span>
                     </div>
                     <span
-                        class="rounded-full px-2 py-0.5 text-xs font-medium"
+                        class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium"
                         :class="[getStateColor(job.state), getStateBg(job.state)]">
                         {{ job.state }}
                     </span>

@@ -95,13 +95,13 @@ const getUsagePercentage = (usage: ApiUsageInfo): number => {
             {{ i18n.translate('statistics.noApiUsage') }}
         </div>
 
-        <div v-else class="max-h-64 flex-1 space-y-4 overflow-y-auto pr-1">
+        <div v-else class="max-h-64 flex-1 space-y-4 overflow-y-auto overflow-x-hidden pr-1">
             <div
                 v-for="usage in apiUsage"
                 :key="usage.service"
                 class="border-secondary/20 border-b pb-4 last:border-0 last:pb-0">
                 <div class="mb-2 flex items-center justify-between">
-                    <span class="text-primary-content text-sm font-medium">
+                    <span class="text-primary-content max-w-[60%] truncate text-sm font-medium">
                         {{ usage.service }}
                     </span>
                     <span v-if="usage.limit" class="text-secondary-content text-xs font-medium">

@@ -23,7 +23,7 @@
         </div>
 
         <!-- Widget Content -->
-        <div :class="['h-full overflow-auto', isConfigMode && 'mt-4']">
+        <div :class="['h-full overflow-y-auto overflow-x-hidden', isConfigMode && 'mt-4']">
             <slot />
         </div>
     </div>
