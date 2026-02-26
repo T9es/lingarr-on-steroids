@@ -46,6 +46,10 @@ msbuild.wrn
 /SQL
 deployment/
 
+# Cartography (local agent context)
+.slim/
+**/codemap.md
+
 # Logs
 nas_logs.txt
 nas_logs_window.txt
