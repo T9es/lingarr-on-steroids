@@ -141,7 +141,8 @@ const {
     state: realtimeState,
     connect: connectSignalR,
     disconnect: disconnectSignalR,
-    getActiveTranslations
+    getActiveTranslations,
+    loadInitialTranslations
 } = useDashboardSignalR()
 const {
     visibleLayout,
@@ -230,6 +231,7 @@ const fetchDailyStats = async () => {
 
 onMounted(async () => {
     await connectSignalR()
+    await loadInitialTranslations()
     await fetchDailyStats()
     await fetchStatistics()
 })
