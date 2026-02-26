@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useI18n } from '@/plugins/i18n'
-import CardComponent from '@/components/common/CardComponent.vue'
 import RefreshIcon from '@/components/icons/RefreshIcon.vue'
 import axios from 'axios'
 
@@ -72,13 +71,12 @@ onUnmounted(() => {
 const getStateColor = (state: string): string => {
     switch (state) {
         case 'running':
-            return 'text-blue-400'
+            return 'text-accent'
         case 'pending':
-            return 'text-purple-400'
+            return 'text-primary-content'
         case 'queued':
-            return 'text-yellow-400'
         case 'scheduled':
-            return 'text-yellow-400'
+            return 'text-primary-content/80'
         case 'failed':
             return 'text-red-400'
         case 'completed':
@@ -91,19 +89,18 @@ const getStateColor = (state: string): string => {
 const getStateBg = (state: string): string => {
     switch (state) {
         case 'running':
-            return 'bg-blue-500/20'
+            return 'bg-accent/10'
         case 'pending':
-            return 'bg-purple-500/20'
+            return 'bg-secondary'
         case 'queued':
-            return 'bg-yellow-500/20'
         case 'scheduled':
-            return 'bg-yellow-500/20'
+            return 'bg-secondary/50'
         case 'failed':
-            return 'bg-red-500/20'
+            return 'bg-red-500/10'
         case 'completed':
-            return 'bg-green-500/20'
+            return 'bg-green-500/10'
         default:
-            return 'bg-gray-500/20'
+            return 'bg-secondary/30'
     }
 }
 
@@ -121,9 +118,9 @@ const getQueueLabel = (queue?: string): string => {
 </script>
 
 <template>
-    <CardComponent :title="i18n.translate('statistics.jobQueue')" class="h-full">
-        <template #content>
-        <div class="mb-2 flex justify-end">
+    <div class="flex h-full flex-col">
+        <div class="mb-4 flex items-center justify-between">
+            <h3 class="text-primary-content/70 text-sm font-medium">{{ i18n.translate('statistics.jobQueue') }}</h3>
             <button
                 @click="fetchJobs"
                 :disabled="isLoading"
@@ -137,15 +134,15 @@ const getQueueLabel = (queue?: string): string => {
             {{ error }}
         </div>
 
-        <div v-else-if="jobs.length === 0" class="text-secondary-content py-4 text-center text-sm">
+        <div v-else-if="jobs.length === 0" class="text-secondary-content py-8 text-center text-sm italic opacity-70">
             {{ i18n.translate('statistics.noJobs') }}
         </div>
 
-        <div v-else class="max-h-64 space-y-2 overflow-y-auto">
+        <div v-else class="max-h-64 flex-1 space-y-3 overflow-y-auto pr-1">
             <div
                 v-for="job in jobs"
                 :key="job.id"
-                class="rounded-md border border-gray-700 bg-black/30 p-2">
+                class="border-secondary/20 border-b pb-3 last:border-0 last:pb-0">
                 <div class="flex items-center justify-between">
                     <div class="flex items-center gap-1">
                         <span v-if="getQueueLabel(job.queue)" class="text-xs">
@@ -157,7 +154,7 @@ const getQueueLabel = (queue?: string): string => {
                         </span>
                     </div>
                     <span
-                        class="rounded-full px-2 py-0.5 text-xs"
+                        class="rounded-full px-2 py-0.5 text-xs font-medium"
                         :class="[getStateColor(job.state), getStateBg(job.state)]">
                         {{ job.state }}
                     </span>
@@ -174,9 +171,9 @@ const getQueueLabel = (queue?: string): string => {
                 <div
                     v-if="job.state === 'running' && job.progress !== undefined && job.progress > 0"
                     class="mt-2">
-                    <div class="h-1.5 overflow-hidden rounded-full bg-gray-700">
+                    <div class="bg-secondary h-1.5 overflow-hidden rounded-full">
                         <div
-                            class="h-full bg-blue-500 transition-all duration-300"
+                            class="bg-accent h-full transition-all duration-300"
                             :style="{ width: `${job.progress}%` }"></div>
                     </div>
                     <div class="text-secondary-content mt-1 text-xs">{{ job.progress }}%</div>
@@ -202,6 +199,5 @@ const getQueueLabel = (queue?: string): string => {
                 </div>
             </div>
         </div>
-        </template>
-    </CardComponent>
+    </div>
 </template>

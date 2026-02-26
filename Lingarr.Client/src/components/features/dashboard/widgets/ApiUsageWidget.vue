@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useI18n } from '@/plugins/i18n'
-import CardComponent from '@/components/common/CardComponent.vue'
 import RefreshIcon from '@/components/icons/RefreshIcon.vue'
 import axios from 'axios'
 
@@ -74,9 +73,9 @@ const getUsagePercentage = (usage: ApiUsageInfo): number => {
 </script>
 
 <template>
-    <CardComponent :title="i18n.translate('statistics.apiUsage')" class="h-full">
-        <template #content>
-        <div class="mb-2 flex justify-end">
+    <div class="flex h-full flex-col">
+        <div class="mb-4 flex items-center justify-between">
+            <h3 class="text-primary-content/70 text-sm font-medium">{{ i18n.translate('statistics.apiUsage') }}</h3>
             <button
                 @click="fetchApiUsage"
                 :disabled="isLoading"
@@ -92,26 +91,26 @@ const getUsagePercentage = (usage: ApiUsageInfo): number => {
 
         <div
             v-else-if="apiUsage.length === 0"
-            class="text-secondary-content py-4 text-center text-sm">
+            class="text-secondary-content py-8 text-center text-sm italic opacity-70">
             {{ i18n.translate('statistics.noApiUsage') }}
         </div>
 
-        <div v-else class="max-h-64 space-y-4 overflow-y-auto">
+        <div v-else class="max-h-64 flex-1 space-y-4 overflow-y-auto pr-1">
             <div
                 v-for="usage in apiUsage"
                 :key="usage.service"
-                class="rounded-md border border-gray-700 bg-black/30 p-3">
+                class="border-secondary/20 border-b pb-4 last:border-0 last:pb-0">
                 <div class="mb-2 flex items-center justify-between">
                     <span class="text-primary-content text-sm font-medium">
                         {{ usage.service }}
                     </span>
-                    <span v-if="usage.limit" class="text-secondary-content text-xs">
+                    <span v-if="usage.limit" class="text-secondary-content text-xs font-medium">
                         {{ getUsagePercentage(usage) }}% {{ i18n.translate('statistics.used') }}
                     </span>
                 </div>
 
                 <!-- Usage limit bar -->
-                <div v-if="usage.limit" class="mb-2 h-1.5 overflow-hidden rounded-full bg-gray-700">
+                <div v-if="usage.limit" class="bg-secondary mb-3 h-1.5 overflow-hidden rounded-full">
                     <div
                         class="h-full transition-all duration-300"
                         :class="
@@ -119,7 +118,7 @@ const getUsagePercentage = (usage: ApiUsageInfo): number => {
                                 ? 'bg-red-500'
                                 : getUsagePercentage(usage) > 50
                                   ? 'bg-yellow-500'
-                                  : 'bg-green-500'
+                                  : 'bg-accent'
                         "
                         :style="{ width: `${getUsagePercentage(usage)}%` }"></div>
                 </div>
@@ -127,26 +126,26 @@ const getUsagePercentage = (usage: ApiUsageInfo): number => {
                 <!-- Stats grid -->
                 <div class="grid grid-cols-3 gap-2 text-xs">
                     <div class="text-center">
-                        <div class="text-secondary-content">
+                        <div class="text-secondary-content uppercase tracking-wider opacity-70">
                             {{ i18n.translate('statistics.today') }}
                         </div>
-                        <div class="text-primary-content font-medium">
+                        <div class="text-primary-content mt-0.5 text-sm font-bold">
                             {{ formatNumber(usage.callsToday) }}
                         </div>
                     </div>
                     <div class="text-center">
-                        <div class="text-secondary-content">
+                        <div class="text-secondary-content uppercase tracking-wider opacity-70">
                             {{ i18n.translate('statistics.week') }}
                         </div>
-                        <div class="text-primary-content font-medium">
+                        <div class="text-primary-content mt-0.5 text-sm font-bold">
                             {{ formatNumber(usage.callsWeek) }}
                         </div>
                     </div>
                     <div class="text-center">
-                        <div class="text-secondary-content">
+                        <div class="text-secondary-content uppercase tracking-wider opacity-70">
                             {{ i18n.translate('statistics.month') }}
                         </div>
-                        <div class="text-primary-content font-medium">
+                        <div class="text-primary-content mt-0.5 text-sm font-bold">
                             {{ formatNumber(usage.callsMonth) }}
                         </div>
                     </div>
@@ -155,18 +154,17 @@ const getUsagePercentage = (usage: ApiUsageInfo): number => {
                 <!-- Token usage -->
                 <div
                     v-if="usage.tokensUsed"
-                    class="text-secondary-content mt-2 border-t border-gray-700 pt-2 text-xs">
-                    {{ i18n.translate('statistics.tokensUsed') }}:
-                    {{ formatNumber(usage.tokensUsed) }}
+                    class="text-secondary-content border-secondary/20 mt-3 flex justify-between border-t pt-2 text-xs">
+                    <span>{{ i18n.translate('statistics.tokensUsed') }}</span>
+                    <span class="text-primary-content font-medium">{{ formatNumber(usage.tokensUsed) }}</span>
                 </div>
 
                 <!-- Remaining quota -->
-                <div v-if="usage.remaining" class="text-secondary-content mt-1 text-xs">
-                    {{ i18n.translate('statistics.remaining') }}:
-                    {{ formatNumber(usage.remaining) }}
+                <div v-if="usage.remaining" class="text-secondary-content mt-1 flex justify-between text-xs">
+                    <span>{{ i18n.translate('statistics.remaining') }}</span>
+                    <span class="text-primary-content font-medium">{{ formatNumber(usage.remaining) }}</span>
                 </div>
             </div>
         </div>
-        </template>
-    </CardComponent>
+    </div>
 </template>

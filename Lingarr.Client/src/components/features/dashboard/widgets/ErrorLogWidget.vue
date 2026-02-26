@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useI18n } from '@/plugins/i18n'
-import CardComponent from '@/components/common/CardComponent.vue'
 import RefreshIcon from '@/components/icons/RefreshIcon.vue'
-import ExclamationIcon from '@/components/icons/ExclamationIcon.vue'
 import axios from 'axios'
 
 const i18n = useI18n()
@@ -51,13 +49,13 @@ onUnmounted(() => {
 const getTypeColor = (type: string): string => {
     switch (type) {
         case 'error':
-            return 'text-red-400 bg-red-500/20 border-red-500/30'
+            return 'text-red-400 bg-red-500/10'
         case 'warning':
-            return 'text-yellow-400 bg-yellow-500/20 border-yellow-500/30'
+            return 'text-yellow-400 bg-yellow-500/10'
         case 'info':
-            return 'text-blue-400 bg-blue-500/20 border-blue-500/30'
+            return 'text-accent bg-accent/10'
         default:
-            return 'text-secondary-content bg-gray-500/20 border-gray-500/30'
+            return 'text-secondary-content bg-secondary/30'
     }
 }
 
@@ -70,16 +68,18 @@ const warningCount = () => errors.value.filter((e) => e.type === 'warning').leng
 </script>
 
 <template>
-    <CardComponent :title="i18n.translate('statistics.errorLog')" class="h-full">
-        <template #content>
-        <div class="mb-2 flex items-center justify-between">
-            <div class="flex gap-2 text-xs">
-                <span v-if="errorCount() > 0" class="text-red-400">
-                    {{ errorCount() }} {{ i18n.translate('statistics.errors') }}
-                </span>
-                <span v-if="warningCount() > 0" class="text-yellow-400">
-                    {{ warningCount() }} {{ i18n.translate('statistics.warnings') }}
-                </span>
+    <div class="flex h-full flex-col">
+        <div class="mb-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <h3 class="text-primary-content/70 text-sm font-medium">{{ i18n.translate('statistics.errorLog') }}</h3>
+                <div class="flex gap-2 text-xs">
+                    <span v-if="errorCount() > 0" class="text-red-400">
+                        {{ errorCount() }} {{ i18n.translate('statistics.errors') }}
+                    </span>
+                    <span v-if="warningCount() > 0" class="text-yellow-400">
+                        {{ warningCount() }} {{ i18n.translate('statistics.warnings') }}
+                    </span>
+                </div>
             </div>
             <button
                 @click="fetchErrors"
@@ -90,27 +90,27 @@ const warningCount = () => errors.value.filter((e) => e.type === 'warning').leng
             </button>
         </div>
 
-        <div v-if="errors.length === 0" class="text-secondary-content py-4 text-center text-sm">
-            <ExclamationIcon class="mx-auto mb-2 h-8 w-8 text-green-500" />
+        <div v-if="errors.length === 0" class="text-secondary-content py-8 text-center text-sm italic opacity-70">
             {{ i18n.translate('statistics.noErrors') }}
         </div>
 
-        <div v-else class="max-h-64 space-y-2 overflow-y-auto">
+        <div v-else class="max-h-64 flex-1 space-y-3 overflow-y-auto pr-1">
             <div
                 v-for="error in errors"
                 :key="error.id"
-                class="cursor-pointer rounded-md border p-2 transition-colors hover:bg-black/20"
-                :class="getTypeColor(error.type)"
+                class="border-secondary/20 cursor-pointer border-b pb-3 transition-opacity hover:opacity-80 last:border-0 last:pb-0"
                 @click="toggleExpand(error.id)">
                 <div class="flex items-start justify-between">
                     <div class="min-w-0 flex-1">
-                        <div class="truncate text-sm font-medium">{{ error.message }}</div>
-                        <div class="mt-0.5 text-xs opacity-70">
+                        <div class="text-primary-content truncate text-sm font-medium">{{ error.message }}</div>
+                        <div class="text-secondary-content mt-0.5 text-xs">
                             {{ error.timestamp }}
                             <span v-if="error.source">• {{ error.source }}</span>
                         </div>
                     </div>
-                    <span class="ml-2 shrink-0 rounded px-1.5 py-0.5 text-xs uppercase">
+                    <span 
+                        class="ml-2 shrink-0 rounded px-2 py-0.5 text-xs font-medium uppercase"
+                        :class="getTypeColor(error.type)">
                         {{ error.type }}
                     </span>
                 </div>
@@ -118,11 +118,10 @@ const warningCount = () => errors.value.filter((e) => e.type === 'warning').leng
                 <!-- Expanded details -->
                 <div
                     v-if="expandedId === error.id && error.details"
-                    class="mt-2 border-t border-current/20 pt-2 text-xs opacity-80">
+                    class="text-secondary-content border-secondary/20 mt-2 border-t pt-2 text-xs">
                     {{ error.details }}
                 </div>
             </div>
         </div>
-        </template>
-    </CardComponent>
+    </div>
 </template>

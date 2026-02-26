@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from '@/plugins/i18n'
-import CardComponent from '@/components/common/CardComponent.vue'
 import TrendUpIcon from '@/components/icons/TrendUpIcon.vue'
 import TrendDownIcon from '@/components/icons/TrendDownIcon.vue'
 import TrendFlatIcon from '@/components/icons/TrendFlatIcon.vue'
@@ -79,73 +78,56 @@ const formatNumber = (num: number): string => {
 </script>
 
 <template>
-    <CardComponent :title="i18n.translate('statistics.translationHistory')" class="h-full">
-        <template #content>
-        <div v-if="isLoading" class="flex items-center justify-center py-8">
-            <div
-                class="border-accent h-6 w-6 animate-spin rounded-full border-2 border-t-transparent"></div>
+    <div class="flex h-full flex-col">
+        <h3 class="text-primary-content/70 mb-4 text-sm font-medium">{{ i18n.translate('statistics.translationHistory') }}</h3>
+        
+        <div v-if="isLoading" class="flex flex-1 items-center justify-center">
+            <div class="border-accent h-6 w-6 animate-spin rounded-full border-2 border-t-transparent"></div>
         </div>
-        <div v-else class="space-y-4">
-            <!-- Trend indicator -->
-            <div class="text-secondary-content flex items-center gap-2 text-sm">
-                <TrendUpIcon v-if="trend.direction === 'up'" class="h-4 w-4 text-green-500" />
-                <TrendDownIcon v-if="trend.direction === 'down'" class="h-4 w-4 text-red-500" />
-                <TrendFlatIcon
-                    v-if="trend.direction === 'flat'"
-                    class="text-secondary-content h-4 w-4" />
-                <span v-if="trend.direction === 'up'" class="text-green-500">
-                    +{{ trend.percentage }}% {{ i18n.translate('statistics.vsLastWeek') }}
-                </span>
-                <span v-else-if="trend.direction === 'down'" class="text-red-500">
-                    -{{ trend.percentage }}% {{ i18n.translate('statistics.vsLastWeek') }}
-                </span>
-                <span v-else class="text-secondary-content">
-                    {{ i18n.translate('statistics.stable') }}
-                </span>
-            </div>
-
-            <!-- Time period stats -->
-            <div class="grid grid-cols-3 gap-4">
-                <!-- Today -->
-                <div class="text-center">
-                    <div class="text-secondary-content mb-1 text-xs tracking-wider uppercase">
-                        {{ i18n.translate('statistics.today') }}
-                    </div>
-                    <div class="text-primary-content text-2xl font-bold">
-                        {{ formatNumber(todayCount) }}
-                    </div>
-                    <div class="text-secondary-content text-xs">
-                        {{ i18n.translate('statistics.translations') }}
-                    </div>
-                </div>
-
-                <!-- This Week -->
-                <div class="text-center">
-                    <div class="text-secondary-content mb-1 text-xs tracking-wider uppercase">
-                        {{ i18n.translate('statistics.thisWeek') }}
-                    </div>
-                    <div class="text-primary-content text-2xl font-bold">
-                        {{ formatNumber(weekCount) }}
-                    </div>
-                    <div class="text-secondary-content text-xs">
-                        {{ i18n.translate('statistics.translations') }}
-                    </div>
-                </div>
-
-                <!-- This Month -->
-                <div class="text-center">
-                    <div class="text-secondary-content mb-1 text-xs tracking-wider uppercase">
-                        {{ i18n.translate('statistics.thisMonth') }}
-                    </div>
-                    <div class="text-primary-content text-2xl font-bold">
+        
+        <div v-else class="flex flex-1 flex-col justify-between">
+            <!-- Total count with trend -->
+            <div class="mb-4 flex items-end justify-between">
+                <div>
+                    <div class="text-primary-content text-3xl font-bold">
                         {{ formatNumber(monthCount) }}
                     </div>
-                    <div class="text-secondary-content text-xs">
-                        {{ i18n.translate('statistics.translations') }}
+                    <div class="text-secondary-content text-xs uppercase tracking-wider opacity-70">
+                        {{ i18n.translate('statistics.thisMonth') }}
+                    </div>
+                </div>
+                
+                <div class="flex items-center gap-1 text-sm font-medium" 
+                     :class="trend.direction === 'up' ? 'text-green-500' : trend.direction === 'down' ? 'text-red-500' : 'text-secondary-content'">
+                    <TrendUpIcon v-if="trend.direction === 'up'" class="h-4 w-4 shrink-0" />
+                    <TrendDownIcon v-if="trend.direction === 'down'" class="h-4 w-4 shrink-0" />
+                    <TrendFlatIcon v-if="trend.direction === 'flat'" class="h-4 w-4 shrink-0" />
+                    <span>
+                        {{ trend.direction === 'flat' ? i18n.translate('statistics.stable') : `${trend.direction === 'up' ? '+' : '-'}${trend.percentage}%` }}
+                    </span>
+                </div>
+            </div>
+
+            <!-- Time period breakdown -->
+            <div class="grid grid-cols-2 gap-4 border-t border-secondary/20 pt-4">
+                <div>
+                    <div class="text-secondary-content text-xs uppercase tracking-wider opacity-70">
+                        {{ i18n.translate('statistics.today') }}
+                    </div>
+                    <div class="text-primary-content mt-0.5 text-lg font-bold">
+                        {{ formatNumber(todayCount) }}
+                    </div>
+                </div>
+
+                <div>
+                    <div class="text-secondary-content text-xs uppercase tracking-wider opacity-70">
+                        {{ i18n.translate('statistics.thisWeek') }}
+                    </div>
+                    <div class="text-primary-content mt-0.5 text-lg font-bold">
+                        {{ formatNumber(weekCount) }}
                     </div>
                 </div>
             </div>
         </div>
-        </template>
-    </CardComponent>
+    </div>
 </template>
