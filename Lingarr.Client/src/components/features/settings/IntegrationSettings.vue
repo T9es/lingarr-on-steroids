@@ -14,15 +14,15 @@
         </template>
         <template #content>
             <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                <!-- All Instances -->
+<!-- All Instances -->
                 <InstanceCard
                     v-for="item in localInstances"
                     :key="`${item.type}-${item.instance.id}`"
                     :instance="item.instance"
                     :type="item.type"
                     :connection-status="getConnectionStatus(item.type, item.instance.id)"
-                    @update:instance="updateLocalInstance(item.instance.id, $event)"
-                    @remove="removeLocalInstance(item.instance.id)"
+                    @update:instance="(inst) => updateLocalInstance(item.instance.id, inst, item.type)"
+                    @remove="removeLocalInstance(item.instance.id, item.type)"
                     @test-connection="testConnection(item.type, item.instance)" />
 
                 <!-- Single Add Button with Dropdown -->
@@ -255,14 +255,50 @@ const parseInstances = (value: string | IInstance[]): IInstance[] => {
     return []
 }
 
+// Validate that an instance has required fields
+const isValidInstance = (instance: IInstance): boolean => {
+    return !!(instance.url && instance.apiKey)
+}
+
 // Load instances from store into local state
 const loadInstancesFromStore = (): void => {
-    const radarrInsts = parseInstances(
+    let radarrInsts = parseInstances(
         settingsStore.getSetting(SETTINGS.RADARR_INSTANCES) as string | IInstance[]
     )
-    const sonarrInsts = parseInstances(
+    let sonarrInsts = parseInstances(
         settingsStore.getSetting(SETTINGS.SONARR_INSTANCES) as string | IInstance[]
     )
+
+    // Filter to only valid instances (non-empty URL and ApiKey)
+    radarrInsts = radarrInsts.filter(isValidInstance)
+    sonarrInsts = sonarrInsts.filter(isValidInstance)
+
+    // Fallback to legacy settings if no valid instances exist
+    if (radarrInsts.length === 0) {
+        const legacyUrl = settingsStore.getSetting(SETTINGS.RADARR_URL) as string
+        const legacyKey = settingsStore.getSetting(SETTINGS.RADARR_API_KEY) as string
+        if (legacyUrl && legacyKey) {
+            radarrInsts = [{
+                id: 'default',
+                name: 'Radarr',
+                url: legacyUrl,
+                apiKey: legacyKey
+            }]
+        }
+    }
+
+    if (sonarrInsts.length === 0) {
+        const legacyUrl = settingsStore.getSetting(SETTINGS.SONARR_URL) as string
+        const legacyKey = settingsStore.getSetting(SETTINGS.SONARR_API_KEY) as string
+        if (legacyUrl && legacyKey) {
+            sonarrInsts = [{
+                id: 'default',
+                name: 'Sonarr',
+                url: legacyUrl,
+                apiKey: legacyKey
+            }]
+        }
+    }
 
     const combined: InstanceWrapper[] = [
         ...radarrInsts.map((i) => ({ type: 'radarr' as const, instance: i })),
@@ -284,9 +320,11 @@ const saveChanges = async (): Promise<void> => {
         const radarrs = localInstances.value
             .filter((i) => i.type === 'radarr')
             .map((i) => i.instance)
+            .filter(isValidInstance)
         const sonarrs = localInstances.value
             .filter((i) => i.type === 'sonarr')
             .map((i) => i.instance)
+            .filter(isValidInstance)
 
         settingsStore.updateSetting(
             SETTINGS.RADARR_INSTANCES,
@@ -340,8 +378,10 @@ const handleAddInstance = (type: 'radarr' | 'sonarr'): void => {
 }
 
 // Update local instance
-const updateLocalInstance = (id: string, updatedInstance: IInstance): void => {
-    const index = localInstances.value.findIndex((wrapper) => wrapper.instance.id === id)
+const updateLocalInstance = (id: string, updatedInstance: IInstance, type: 'radarr' | 'sonarr'): void => {
+    const index = localInstances.value.findIndex(
+        (wrapper) => wrapper.instance.id === id && wrapper.type === type
+    )
     if (index !== -1) {
         const newInstances = [...localInstances.value]
         newInstances[index].instance = updatedInstance
@@ -350,12 +390,11 @@ const updateLocalInstance = (id: string, updatedInstance: IInstance): void => {
 }
 
 // Remove local instance
-const removeLocalInstance = (id: string): void => {
-    const wrapper = localInstances.value.find((w) => w.instance.id === id)
-    if (wrapper) {
-        delete connectionStatuses[wrapper.type][id]
-    }
-    localInstances.value = localInstances.value.filter((wrapper) => wrapper.instance.id !== id)
+const removeLocalInstance = (id: string, type: 'radarr' | 'sonarr'): void => {
+    delete connectionStatuses[type][id]
+    localInstances.value = localInstances.value.filter(
+        (wrapper) => !(wrapper.instance.id === id && wrapper.type === type)
+    )
 }
 
 // Test Radarr connection
@@ -434,30 +473,29 @@ const migrateLegacySettings = (): void => {
 
     const existingRadarrInstances = parseInstances(
         settingsStore.getSetting(SETTINGS.RADARR_INSTANCES) as string | IInstance[]
-    )
+    ).filter(isValidInstance)
     const existingSonarrInstances = parseInstances(
         settingsStore.getSetting(SETTINGS.SONARR_INSTANCES) as string | IInstance[]
-    )
+    ).filter(isValidInstance)
 
-    if ((radarrUrl || radarrApiKey) && existingRadarrInstances.length === 0) {
-        // Use 'default' ID to match backend fallback and prevent duplicates
+    // Only migrate if no valid instances exist AND legacy settings are complete
+    if (existingRadarrInstances.length === 0 && radarrUrl && radarrApiKey) {
         const instance: IInstance = {
             id: 'default',
             name: 'Radarr',
-            url: radarrUrl || '',
-            apiKey: radarrApiKey || ''
+            url: radarrUrl,
+            apiKey: radarrApiKey
         }
         initConnectionStatus('radarr', 'default')
         settingsStore.updateSetting(SETTINGS.RADARR_INSTANCES, [instance], true, true)
     }
 
-    if ((sonarrUrl || sonarrApiKey) && existingSonarrInstances.length === 0) {
-        // Use 'default' ID to match backend fallback and prevent duplicates
+    if (existingSonarrInstances.length === 0 && sonarrUrl && sonarrApiKey) {
         const instance: IInstance = {
             id: 'default',
             name: 'Sonarr',
-            url: sonarrUrl || '',
-            apiKey: sonarrApiKey || ''
+            url: sonarrUrl,
+            apiKey: sonarrApiKey
         }
         initConnectionStatus('sonarr', 'default')
         settingsStore.updateSetting(SETTINGS.SONARR_INSTANCES, [instance], true, true)

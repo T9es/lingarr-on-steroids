@@ -47,24 +47,31 @@ export const useOnboardingStore = defineStore('onboarding', () => {
         isActive.value = false
     }
 
-    async function complete(): Promise<void> {
+async function complete(): Promise<void> {
         const settingStore = useSettingStore()
+
+        const validRadarrInstances = radarrInstances.value.filter(
+            (inst) => inst.url && inst.apiKey
+        )
+        const validSonarrInstances = sonarrInstances.value.filter(
+            (inst) => inst.url && inst.apiKey
+        )
 
         // Save instance configurations to database AND update local store
         // Using updateSetting ensures the local store is updated immediately,
         // preventing race conditions with IntegrationSettings.vue
-        if (radarrInstances.value.length > 0) {
-            settingStore.storeSetting(SETTINGS.RADARR_INSTANCES, radarrInstances.value)
+        if (validRadarrInstances.length > 0) {
+            settingStore.storeSetting(SETTINGS.RADARR_INSTANCES, validRadarrInstances)
             await settingStore.saveSetting(
                 SETTINGS.RADARR_INSTANCES,
-                JSON.stringify(radarrInstances.value)
+                JSON.stringify(validRadarrInstances)
             )
         }
-        if (sonarrInstances.value.length > 0) {
-            settingStore.storeSetting(SETTINGS.SONARR_INSTANCES, sonarrInstances.value)
+        if (validSonarrInstances.length > 0) {
+            settingStore.storeSetting(SETTINGS.SONARR_INSTANCES, validSonarrInstances)
             await settingStore.saveSetting(
                 SETTINGS.SONARR_INSTANCES,
-                JSON.stringify(sonarrInstances.value)
+                JSON.stringify(validSonarrInstances)
             )
         }
 
@@ -108,7 +115,7 @@ export const useOnboardingStore = defineStore('onboarding', () => {
     function migrateLegacySettings(): void {
         const settingStore = useSettingStore()
 
-        // Helper to parse instances from store
+// Helper to parse instances from store
         const parseInstances = (value: string | IInstance[] | undefined): IInstance[] => {
             if (!value) return []
             if (Array.isArray(value)) return value
@@ -120,26 +127,30 @@ export const useOnboardingStore = defineStore('onboarding', () => {
             }
         }
 
+        // Helper to validate instance has required fields
+        const isValidInstance = (instance: IInstance): boolean => {
+            return !!(instance.url && instance.apiKey)
+        }
+
         // Load existing Radarr instances from database first
         if (radarrInstances.value.length === 0) {
             const existingRadarrInstances = parseInstances(
                 settingStore.getSetting(SETTINGS.RADARR_INSTANCES) as string | IInstance[]
-            )
+            ).filter(isValidInstance)
 
             if (existingRadarrInstances.length > 0) {
-                // Use existing instances from database
                 radarrInstances.value = existingRadarrInstances
             } else {
                 // Fall back to legacy single-instance settings
                 const radarrUrl = settingStore.getSetting(SETTINGS.RADARR_URL) as string
                 const radarrApiKey = settingStore.getSetting(SETTINGS.RADARR_API_KEY) as string
 
-                if (radarrUrl || radarrApiKey) {
+                if (radarrUrl && radarrApiKey) {
                     const instance: IInstance = {
                         id: 'default',
                         name: 'Radarr',
-                        url: radarrUrl || '',
-                        apiKey: radarrApiKey || ''
+                        url: radarrUrl,
+                        apiKey: radarrApiKey
                     }
                     radarrInstances.value.push(instance)
                 }
@@ -150,22 +161,21 @@ export const useOnboardingStore = defineStore('onboarding', () => {
         if (sonarrInstances.value.length === 0) {
             const existingSonarrInstances = parseInstances(
                 settingStore.getSetting(SETTINGS.SONARR_INSTANCES) as string | IInstance[]
-            )
+            ).filter(isValidInstance)
 
             if (existingSonarrInstances.length > 0) {
-                // Use existing instances from database
                 sonarrInstances.value = existingSonarrInstances
             } else {
                 // Fall back to legacy single-instance settings
                 const sonarrUrl = settingStore.getSetting(SETTINGS.SONARR_URL) as string
                 const sonarrApiKey = settingStore.getSetting(SETTINGS.SONARR_API_KEY) as string
 
-                if (sonarrUrl || sonarrApiKey) {
+                if (sonarrUrl && sonarrApiKey) {
                     const instance: IInstance = {
                         id: 'default',
                         name: 'Sonarr',
-                        url: sonarrUrl || '',
-                        apiKey: sonarrApiKey || ''
+                        url: sonarrUrl,
+                        apiKey: sonarrApiKey
                     }
                     sonarrInstances.value.push(instance)
                 }
