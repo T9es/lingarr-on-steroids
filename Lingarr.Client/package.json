@@ -12,6 +12,7 @@
     "dependencies": {
         "@microsoft/signalr": "^10.0.0",
         "@tailwindcss/typography": "^0.5.19",
+        "@vuepic/vue-datepicker": "^12.1.0",
         "axios": "^1.13.5",
         "chart.js": "^4.5.1",
         "cron-validator": "^1.4.0",

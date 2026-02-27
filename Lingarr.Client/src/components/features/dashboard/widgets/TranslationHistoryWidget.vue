@@ -16,6 +16,8 @@ import {
     Tooltip
 } from 'chart.js/auto'
 import { Bar } from 'vue-chartjs'
+import { VueDatePicker } from '@vuepic/vue-datepicker'
+import '@vuepic/vue-datepicker/dist/main.css'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip)
 
@@ -24,6 +26,11 @@ const instanceStore = useInstanceStore()
 
 const props = defineProps<{
     dailyStatistics: DailyStatistic[]
+    statistics?: {
+        totalLinesTranslated: number
+        totalFilesTranslated: number
+        totalCharactersTranslated: number
+    }
     isLoading?: boolean
 }>()
 
@@ -36,9 +43,20 @@ interface RecentTranslation {
     mediaType: string
 }
 
+interface HourlyStatistic {
+    hour: number
+    translationCount: number
+}
+
+type TimeFilter = '24h' | '7d' | '30d' | '1y' | 'custom' | 'all'
+
 const recentTranslations = ref<RecentTranslation[]>([])
 const recentLoading = ref(false)
 const chartKey = ref(0)
+const selectedFilter = ref<TimeFilter>('30d')
+const customDateRange = ref<Date[]>([])
+const hourlyStatistics = ref<HourlyStatistic[]>([])
+const hourlyLoading = ref(false)
 
 watch(
     () => instanceStore.getTheme,
@@ -46,6 +64,19 @@ watch(
         chartKey.value++
     }
 )
+
+watch(selectedFilter, async (newFilter) => {
+    if (newFilter === '24h') {
+        await fetchHourlyStatistics()
+    }
+    chartKey.value++
+})
+
+watch(customDateRange, () => {
+    if (selectedFilter.value === 'custom' && customDateRange.value?.length === 2) {
+        chartKey.value++
+    }
+})
 
 onMounted(async () => {
     await fetchRecentTranslations()
@@ -70,58 +101,133 @@ const fetchRecentTranslations = async () => {
     }
 }
 
-const todayCount = computed(() => {
-    const today = props.dailyStatistics?.find((s) => {
-        const statDate = new Date(s.date)
-        const now = new Date()
-        return statDate.toDateString() === now.toDateString()
-    })
-    return today?.translationCount || 0
-})
+const fetchHourlyStatistics = async () => {
+    hourlyLoading.value = true
+    try {
+        const response = await fetch('/api/statistics/hourly')
+        if (response.ok) {
+            hourlyStatistics.value = await response.json()
+        }
+    } catch (error) {
+        console.warn('Failed to fetch hourly statistics:', error)
+    } finally {
+        hourlyLoading.value = false
+    }
+}
 
-const weekCount = computed(() => {
-    const weekAgo = new Date()
-    weekAgo.setDate(weekAgo.getDate() - 7)
-    return (props.dailyStatistics || [])
-        .filter((s) => new Date(s.date) >= weekAgo)
-        .reduce((acc, s) => acc + (s.translationCount || 0), 0)
-})
-
-const monthCount = computed(() => {
-    const monthAgo = new Date()
-    monthAgo.setDate(monthAgo.getDate() - 30)
-    return (props.dailyStatistics || [])
-        .filter((s) => new Date(s.date) >= monthAgo)
-        .reduce((acc, s) => acc + (s.translationCount || 0), 0)
+const filteredCount = computed(() => {
+    const daily = props.dailyStatistics || []
+    
+    switch (selectedFilter.value) {
+        case '24h':
+            return hourlyStatistics.value.reduce((acc, h) => acc + h.translationCount, 0)
+        case '7d': {
+            const weekAgo = new Date()
+            weekAgo.setDate(weekAgo.getDate() - 7)
+            return daily
+                .filter((s) => new Date(s.date) >= weekAgo)
+                .reduce((acc, s) => acc + (s.translationCount || 0), 0)
+        }
+        case '30d': {
+            const monthAgo = new Date()
+            monthAgo.setDate(monthAgo.getDate() - 30)
+            return daily
+                .filter((s) => new Date(s.date) >= monthAgo)
+                .reduce((acc, s) => acc + (s.translationCount || 0), 0)
+        }
+        case '1y': {
+            const yearAgo = new Date()
+            yearAgo.setFullYear(yearAgo.getFullYear() - 1)
+            return daily
+                .filter((s) => new Date(s.date) >= yearAgo)
+                .reduce((acc, s) => acc + (s.translationCount || 0), 0)
+        }
+        case 'custom':
+            if (customDateRange.value?.length === 2) {
+                const [start, end] = customDateRange.value
+                return daily
+                    .filter((s) => {
+                        const d = new Date(s.date)
+                        return d >= start && d <= end
+                    })
+                    .reduce((acc, s) => acc + (s.translationCount || 0), 0)
+            }
+            return 0
+        case 'all':
+        default:
+            return daily.reduce((acc, s) => acc + (s.translationCount || 0), 0)
+    }
 })
 
 const trend = computed(() => {
+    const daily = props.dailyStatistics || []
     const now = new Date()
-    const last7DaysStart = new Date(now)
-    last7DaysStart.setDate(last7DaysStart.getDate() - 7)
-    const prev7DaysStart = new Date(last7DaysStart)
-    prev7DaysStart.setDate(prev7DaysStart.getDate() - 7)
+    let periodDays = 7
+    
+    switch (selectedFilter.value) {
+        case '24h':
+            periodDays = 1
+            break
+        case '7d':
+            periodDays = 7
+            break
+        case '30d':
+            periodDays = 30
+            break
+        case '1y':
+            periodDays = 365
+            break
+        case 'custom':
+            if (customDateRange.value?.length === 2) {
+                const [start, end] = customDateRange.value
+                periodDays = Math.ceil((end.getTime() - start.getTime()) / 86400000) || 1
+            }
+            break
+        case 'all':
+            return { direction: 'flat' as const, percentage: 0 }
+    }
+    
+    const currentStart = new Date(now)
+    currentStart.setDate(currentStart.getDate() - periodDays)
+    const prevStart = new Date(currentStart)
+    prevStart.setDate(prevStart.getDate() - periodDays)
 
-    const last7Days = (props.dailyStatistics || [])
+    const currentPeriod = daily
         .filter((s) => {
             const d = new Date(s.date)
-            return d >= last7DaysStart && d < now
+            return d >= currentStart && d <= now
         })
         .reduce((acc, s) => acc + (s.translationCount || 0), 0)
 
-    const prev7Days = (props.dailyStatistics || [])
+    const prevPeriod = daily
         .filter((s) => {
             const d = new Date(s.date)
-            return d >= prev7DaysStart && d < last7DaysStart
+            return d >= prevStart && d < currentStart
         })
         .reduce((acc, s) => acc + (s.translationCount || 0), 0)
 
-    if (prev7Days === 0) return { direction: 'flat', percentage: 0 }
-    const percentage = Math.round(((last7Days - prev7Days) / prev7Days) * 100)
+    if (prevPeriod === 0) return { direction: 'flat' as const, percentage: 0 }
+    const percentage = Math.round(((currentPeriod - prevPeriod) / prevPeriod) * 100)
     return {
-        direction: percentage > 5 ? 'up' : percentage < -5 ? 'down' : 'flat',
+        direction: percentage > 5 ? 'up' as const : percentage < -5 ? 'down' as const : 'flat' as const,
         percentage: Math.abs(percentage)
     }
+})
+
+const isDarkTheme = computed(() => {
+    const darkThemes = [
+        'solarized-dark',
+        'dracula',
+        'nord',
+        'monokai',
+        'material-dark',
+        'gotham',
+        'gruvbox',
+        'cyberpunk-neon',
+        'horizon',
+        'lingarr'
+    ]
+    return darkThemes.includes(instanceStore.getTheme)
 })
 
 const getCssVariable = (variableName: string): string => {
@@ -129,17 +235,64 @@ const getCssVariable = (variableName: string): string => {
 }
 
 const chartData = computed(() => {
-    const last14Days = (props.dailyStatistics || []).slice(-14)
-    if (!last14Days.length) return null
+    const daily = props.dailyStatistics || []
+    
+    if (selectedFilter.value === '24h') {
+        if (!hourlyStatistics.value.length) return null
+        return {
+            labels: hourlyStatistics.value.map((h) => `${h.hour.toString().padStart(2, '0')}:00`),
+            datasets: [
+                {
+                    label: 'Translations',
+                    data: hourlyStatistics.value.map((h) => h.translationCount),
+                    backgroundColor: getCssVariable('--accent') + '80',
+                    borderColor: getCssVariable('--accent'),
+                    borderRadius: 4,
+                    barThickness: 8
+                }
+            ]
+        }
+    }
+    
+    let data = daily
+    let maxItems = 14
+    
+    switch (selectedFilter.value) {
+        case '7d':
+            maxItems = 7
+            break
+        case '30d':
+            maxItems = 30
+            break
+        case '1y':
+            maxItems = 52
+            break
+        case 'custom':
+            if (customDateRange.value?.length === 2) {
+                const [start, end] = customDateRange.value
+                data = daily.filter((s) => {
+                    const d = new Date(s.date)
+                    return d >= start && d <= end
+                })
+            }
+            maxItems = data.length
+            break
+        case 'all':
+            maxItems = daily.length
+            break
+    }
+    
+    const sliced = data.slice(-maxItems)
+    if (!sliced.length) return null
 
     return {
-        labels: last14Days.map((s) =>
+        labels: sliced.map((s) =>
             new Date(s.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
         ),
         datasets: [
             {
                 label: 'Translations',
-                data: last14Days.map((s) => s.translationCount),
+                data: sliced.map((s) => s.translationCount),
                 backgroundColor: getCssVariable('--accent') + '80',
                 borderColor: getCssVariable('--accent'),
                 borderRadius: 4,
@@ -149,7 +302,7 @@ const chartData = computed(() => {
     }
 })
 
-const chartOptions = {
+const chartOptions = computed(() => ({
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
@@ -172,8 +325,8 @@ const chartOptions = {
             ticks: {
                 color: '#c0c8d2',
                 font: { size: 10 },
-                maxRotation: 0,
-                maxTicksLimit: 7
+                maxRotation: 45,
+                maxTicksLimit: selectedFilter.value === '24h' ? 12 : 7
             },
             border: { display: false }
         },
@@ -189,7 +342,7 @@ const chartOptions = {
             border: { display: false }
         }
     }
-}
+}))
 
 const formatNumber = (num: number): string => {
     if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`
@@ -209,84 +362,95 @@ const formatRelativeTime = (dateStr: string | null): string => {
     if (days < 7) return `${days}d ago`
     return new Date(dateStr).toLocaleDateString()
 }
+
+const timeFilterOptions = [
+    { value: '24h', label: '24h' },
+    { value: '7d', label: '7 days' },
+    { value: '30d', label: '30 days' },
+    { value: '1y', label: '1 year' },
+    { value: 'custom', label: 'Custom' },
+    { value: 'all', label: 'All time' }
+]
 </script>
 
 <template>
     <div class="flex h-full flex-col">
-        <h3 class="text-primary-content/70 mb-3 text-sm font-medium">
-            {{ i18n.translate('statistics.translationHistory') }}
-        </h3>
+        <div class="mb-3 flex items-center justify-between">
+            <h3 class="text-primary-content/70 text-sm font-medium">
+                {{ i18n.translate('statistics.translationHistory') }}
+            </h3>
+            <div class="flex items-center gap-2">
+                <select
+                    v-model="selectedFilter"
+                    class="bg-secondary text-primary-content rounded-md border-0 px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-accent">
+                    <option v-for="opt in timeFilterOptions" :key="opt.value" :value="opt.value">
+                        {{ opt.label }}
+                    </option>
+                </select>
+                <button
+                    v-if="selectedFilter !== 'all'"
+                    @click="selectedFilter = 'all'"
+                    class="text-primary-content/60 hover:text-accent rounded px-2 py-1 text-xs transition-colors">
+                    All
+                </button>
+            </div>
+        </div>
 
-        <div v-if="isLoading" class="flex flex-1 items-center justify-center">
+        <div v-if="selectedFilter === 'custom'" class="mb-3">
+            <VueDatePicker
+                v-model="customDateRange"
+                range
+                :dark="isDarkTheme"
+                :enable-time-picker="false"
+                placeholder="Select date range"
+                class="!bg-secondary" />
+        </div>
+
+        <div v-if="isLoading || hourlyLoading" class="flex flex-1 items-center justify-center">
             <div
                 class="border-accent h-6 w-6 animate-spin rounded-full border-2 border-t-transparent"></div>
         </div>
 
         <div v-else class="flex flex-1 flex-col gap-3">
-            <div class="flex items-end justify-between">
-                <div>
-                    <div class="text-primary-content text-2xl font-bold">
-                        {{ formatNumber(monthCount) }}
-                    </div>
-                    <div class="text-primary-content/50 text-xs tracking-wider uppercase">
-                        {{ i18n.translate('statistics.thisMonth') }}
-                    </div>
-                </div>
-                <div
-                    class="flex items-center gap-1 text-sm font-medium"
-                    :class="
-                        trend.direction === 'up'
-                            ? 'text-green-500'
-                            : trend.direction === 'down'
-                              ? 'text-red-500'
-                              : 'text-primary-content/50'
-                    ">
-                    <TrendUpIcon v-if="trend.direction === 'up'" class="h-4 w-4 shrink-0" />
-                    <TrendDownIcon v-if="trend.direction === 'down'" class="h-4 w-4 shrink-0" />
-                    <TrendFlatIcon v-if="trend.direction === 'flat'" class="h-4 w-4 shrink-0" />
-                    <span>
-                        {{
-                            trend.direction === 'flat'
-                                ? i18n.translate('statistics.stable')
-                                : `${trend.direction === 'up' ? '+' : '-'}${trend.percentage}%`
-                        }}
-                    </span>
-                </div>
-            </div>
-
-            <div class="grid grid-cols-3 gap-2">
+            <div class="grid grid-cols-4 gap-2">
                 <div class="bg-primary/50 rounded-md p-2 text-center">
-                    <div class="text-primary-content/50 text-xs">
-                        {{ i18n.translate('statistics.today') }}
-                    </div>
+                    <div class="text-primary-content/50 text-xs">Translations</div>
                     <div class="text-primary-content text-lg font-bold">
-                        {{ formatNumber(todayCount) }}
+                        {{ formatNumber(filteredCount) }}
                     </div>
                 </div>
                 <div class="bg-primary/50 rounded-md p-2 text-center">
-                    <div class="text-primary-content/50 text-xs">
-                        {{ i18n.translate('statistics.thisWeek') }}
-                    </div>
+                    <div class="text-primary-content/50 text-xs">Lines</div>
                     <div class="text-primary-content text-lg font-bold">
-                        {{ formatNumber(weekCount) }}
+                        {{ formatNumber(props.statistics?.totalLinesTranslated || 0) }}
                     </div>
                 </div>
                 <div class="bg-primary/50 rounded-md p-2 text-center">
-                    <div class="text-primary-content/50 text-xs">Total</div>
+                    <div class="text-primary-content/50 text-xs">Files</div>
                     <div class="text-primary-content text-lg font-bold">
-                        {{
-                            formatNumber(
-                                (dailyStatistics || []).reduce(
-                                    (acc, s) => acc + s.translationCount,
-                                    0
-                                )
-                            )
-                        }}
+                        {{ formatNumber(props.statistics?.totalFilesTranslated || 0) }}
+                    </div>
+                </div>
+                <div class="bg-primary/50 rounded-md p-2 text-center">
+                    <div class="text-primary-content/50 text-xs">Trend</div>
+                    <div
+                        class="flex items-center justify-center gap-1 text-sm font-medium"
+                        :class="
+                            trend.direction === 'up'
+                                ? 'text-green-500'
+                                : trend.direction === 'down'
+                                  ? 'text-red-500'
+                                  : 'text-primary-content/50'
+                        ">
+                        <TrendUpIcon v-if="trend.direction === 'up'" class="h-3 w-3 shrink-0" />
+                        <TrendDownIcon v-if="trend.direction === 'down'" class="h-3 w-3 shrink-0" />
+                        <TrendFlatIcon v-if="trend.direction === 'flat'" class="h-3 w-3 shrink-0" />
+                        <span v-if="trend.direction !== 'flat'">{{ trend.percentage }}%</span>
                     </div>
                 </div>
             </div>
 
-            <div class="h-24 min-h-[80px]">
+            <div class="h-28 min-h-[100px]">
                 <Bar
                     v-if="chartData"
                     :key="chartKey"
@@ -337,3 +501,21 @@ const formatRelativeTime = (dateStr: string | null): string => {
         </div>
     </div>
 </template>
+
+<style scoped>
+:deep(.dp__theme_dark) {
+    --dp-background-color: var(--secondary);
+    --dp-text-color: var(--primary-content);
+    --dp-border-color: var(--accent);
+    --dp-border-color-hover: var(--accent);
+    --dp-primary-color: var(--accent);
+}
+
+:deep(.dp__input) {
+    background-color: var(--secondary) !important;
+    border-color: var(--accent) !important;
+    color: var(--primary-content) !important;
+    font-size: 12px;
+    padding: 4px 8px;
+}
+</style>

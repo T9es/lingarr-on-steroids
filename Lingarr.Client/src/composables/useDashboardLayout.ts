@@ -37,7 +37,7 @@ export interface DashboardLayout {
 }
 
 const STORAGE_KEY = 'lingarr-dashboard-layout'
-const LAYOUT_VERSION = 4
+const LAYOUT_VERSION = 5
 
 // Grid configuration
 export const GRID_COLS = 12
@@ -47,25 +47,29 @@ export const MARGIN = [16, 16] as [number, number]
 /**
  * Default widget layout configuration
  * Each widget has position (x, y), size (w, h), and constraints
+ * 
+ * Layout structure:
+ * Row 0:  active-translations (full width)
+ * Row 3:  translation-history (full width - merged with activity)
+ * Row 7:  media-overview (left) | error-log (right)
+ * Row 11: job-queue (left) | api-usage (right)
  */
 const DEFAULT_LAYOUT: LayoutItem[] = [
     { i: 'active-translations', x: 0, y: 0, w: 12, h: 3, minW: 6, minH: 2 },
-    { i: 'media-overview', x: 0, y: 3, w: 12, h: 2, minW: 6, minH: 2 },
-    { i: 'translation-activity', x: 0, y: 5, w: 6, h: 3, minW: 4, minH: 2 },
-    { i: 'translation-history', x: 6, y: 5, w: 6, h: 5, minW: 4, minH: 3 },
-    { i: 'job-queue', x: 0, y: 8, w: 4, h: 4, minW: 3, minH: 3 },
-    { i: 'api-usage', x: 4, y: 8, w: 4, h: 4, minW: 3, minH: 3 },
-    { i: 'error-log', x: 8, y: 8, w: 4, h: 4, minW: 6, minH: 2 }
+    { i: 'translation-history', x: 0, y: 3, w: 12, h: 4, minW: 6, minH: 3 },
+    { i: 'media-overview', x: 0, y: 7, w: 6, h: 2, minW: 4, minH: 2 },
+    { i: 'error-log', x: 6, y: 7, w: 6, h: 4, minW: 4, minH: 2 },
+    { i: 'job-queue', x: 0, y: 11, w: 6, h: 4, minW: 3, minH: 3 },
+    { i: 'api-usage', x: 6, y: 11, w: 6, h: 4, minW: 3, minH: 3 }
 ]
 
 const DEFAULT_WIDGETS: WidgetMeta[] = [
     { id: 'active-translations', title: 'statistics.activeTranslations', visible: true },
-    { id: 'media-overview', title: 'statistics.mediaOverview', visible: true },
-    { id: 'translation-activity', title: 'statistics.translationActivity', visible: true },
     { id: 'translation-history', title: 'statistics.translationHistory', visible: true },
+    { id: 'media-overview', title: 'statistics.mediaOverview', visible: true },
+    { id: 'error-log', title: 'statistics.errorLog', visible: true },
     { id: 'job-queue', title: 'statistics.jobQueue', visible: true },
-    { id: 'api-usage', title: 'statistics.apiUsage', visible: true },
-    { id: 'error-log', title: 'statistics.errorLog', visible: true }
+    { id: 'api-usage', title: 'statistics.apiUsage', visible: true }
 ]
 
 /**
@@ -95,121 +99,161 @@ function saveToLocalStorage(layout: DashboardLayout): void {
 }
 
 /**
- * Validate and migrate layout
+ * Migrate layout from older versions
+ * Preserves user's widget positions while handling structural changes
  */
-function validateLayout(layout: DashboardLayout): DashboardLayout {
-    // Version mismatch - return defaults
-    if (layout.version !== LAYOUT_VERSION) {
-        return {
-            layout: [...DEFAULT_LAYOUT],
-            widgets: [...DEFAULT_WIDGETS],
-            version: LAYOUT_VERSION
-        }
+function migrateLayout(layout: DashboardLayout): DashboardLayout {
+    if (layout.version >= LAYOUT_VERSION) {
+        return layout
     }
-
-    // Ensure all widgets exist
-    const missingWidgets = DEFAULT_WIDGETS.filter(
-        (w) => !layout.widgets.find((lw) => lw.id === w.id)
-    )
-    if (missingWidgets.length > 0) {
-        layout.widgets.push(...missingWidgets)
-        // Add missing layout items
-        const missingLayout = DEFAULT_LAYOUT.filter(
-            (l) => !layout.layout.find((ll) => ll.i === l.i)
-        )
-        layout.layout.push(...missingLayout)
+    
+    let migrated: DashboardLayout = {
+        layout: [...layout.layout],
+        widgets: [...layout.widgets],
+        version: LAYOUT_VERSION
     }
-
-    return layout
+    
+    // Version 4 to 5: Remove translation-activity widget
+    if (layout.version < 5) {
+        // Remove the deprecated widget from layout
+        migrated.layout = migrated.layout.filter(item => item.i !== 'translation-activity')
+        
+        // Remove the deprecated widget from widgets list
+        migrated.widgets = migrated.widgets.filter(w => w.id !== 'translation-activity')
+        
+        // Add any missing widgets that should exist in v5
+        DEFAULT_WIDGETS.forEach(defaultWidget => {
+            if (!migrated.widgets.find(w => w.id === defaultWidget.id)) {
+                migrated.widgets.push({ ...defaultWidget })
+                
+                // Add layout item if missing
+                const defaultLayoutItem = DEFAULT_LAYOUT.find(l => l.i === defaultWidget.id)
+                if (defaultLayoutItem && !migrated.layout.find(l => l.i === defaultWidget.id)) {
+                    migrated.layout.push({ ...defaultLayoutItem })
+                }
+            }
+        })
+    }
+    
+    return migrated
 }
 
 /**
- * Composable for managing dashboard widget layout with grid-layout-plus
+ * Validate layout has all required widgets
  */
-export function useDashboardLayout() {
-    const state = ref<DashboardLayout>({ layout: [], widgets: [], version: LAYOUT_VERSION })
-    const isConfigMode = ref(false)
-    const isLoading = ref(true)
-    const saveTimeout = ref<ReturnType<typeof setTimeout> | null>(null)
-
-    /**
-     * Load layout from server, fallback to localStorage, then defaults
-     */
-    async function loadLayout(): Promise<void> {
-        isLoading.value = true
-        try {
-            // Try server first
-            const serverLayout = await services.dashboard.getLayout<string>()
-            if (serverLayout) {
-                const parsed = JSON.parse(serverLayout) as DashboardLayout
-                state.value = validateLayout(parsed)
-                // Cache to localStorage
-                saveToLocalStorage(state.value)
-                isLoading.value = false
-                return
+function validateLayout(layout: DashboardLayout): DashboardLayout {
+    // Ensure all default widgets exist
+    const missingWidgets = DEFAULT_WIDGETS.filter(
+        (defaultWidget) => !layout.widgets.find((w) => w.id === defaultWidget.id)
+    )
+    
+    if (missingWidgets.length > 0) {
+        layout.widgets.push(...missingWidgets)
+        
+        // Add missing layout items
+        missingWidgets.forEach((widget) => {
+            const defaultItem = DEFAULT_LAYOUT.find((l) => l.i === widget.id)
+            if (defaultItem && !layout.layout.find((l) => l.i === widget.id)) {
+                layout.layout.push({ ...defaultItem })
             }
-        } catch (error) {
-            console.warn('Failed to load dashboard layout from server:', error)
-        }
-
-        // Fallback to localStorage
-        const cachedLayout = loadFromLocalStorage()
-        if (cachedLayout) {
-            state.value = validateLayout(cachedLayout)
-            isLoading.value = false
-            return
-        }
-
-        // Final fallback: defaults
-        state.value = {
-            layout: [...DEFAULT_LAYOUT],
-            widgets: [...DEFAULT_WIDGETS],
-            version: LAYOUT_VERSION
-        }
-        isLoading.value = false
+        })
     }
+    
+    return layout
+}
 
-    /**
-     * Save layout to server (debounced)
-     */
-    async function saveToServer(): Promise<void> {
+// Singleton state
+const state = ref<DashboardLayout>({
+    layout: [...DEFAULT_LAYOUT],
+    widgets: [...DEFAULT_WIDGETS],
+    version: LAYOUT_VERSION
+})
+const isConfigMode = ref(false)
+const isLoading = ref(false)
+
+// Debounce save to server
+let saveTimeout: ReturnType<typeof setTimeout> | null = null
+
+/**
+ * Save layout to server (debounced)
+ */
+async function saveToServer(layout: DashboardLayout): Promise<void> {
+    if (saveTimeout) {
+        clearTimeout(saveTimeout)
+    }
+    
+    saveTimeout = setTimeout(async () => {
         try {
-            const layoutJson = JSON.stringify(state.value)
-            await services.dashboard.saveLayout(layoutJson)
+            await services.dashboard.saveLayout(JSON.stringify(layout))
         } catch (error) {
             console.warn('Failed to save dashboard layout to server:', error)
         }
-    }
+    }, 1000)
+}
 
-    /**
-     * Debounced save - saves to localStorage immediately, server after 1s delay
-     */
-    function debouncedSave(): void {
-        // Save to localStorage immediately
-        saveToLocalStorage(state.value)
-
-        // Debounce server save
-        if (saveTimeout.value) {
-            clearTimeout(saveTimeout.value)
-        }
-        saveTimeout.value = setTimeout(() => {
-            saveToServer()
-        }, 1000)
-    }
-
-    // Watch for changes and persist (debounced)
-    watch(
-        state,
-        () => {
-            if (!isLoading.value) {
-                debouncedSave()
+/**
+ * Load layout from server/localStorage/defaults
+ */
+async function loadLayout(): Promise<void> {
+    isLoading.value = true
+    
+    try {
+        // Try server first
+        const serverLayout = await services.dashboard.getLayout<string>()
+        
+        if (serverLayout) {
+            try {
+                const parsed = JSON.parse(serverLayout) as DashboardLayout
+                const migrated = migrateLayout(parsed)
+                const validated = validateLayout(migrated)
+                state.value = validated
+                saveToLocalStorage(validated)
+            } catch {
+                // Invalid JSON, use localStorage
+                const localLayout = loadFromLocalStorage()
+                if (localLayout) {
+                    const migrated = migrateLayout(localLayout)
+                    const validated = validateLayout(migrated)
+                    state.value = validated
+                }
             }
-        },
-        { deep: true }
-    )
+        } else {
+            // No server layout, try localStorage
+            const localLayout = loadFromLocalStorage()
+            if (localLayout) {
+                const migrated = migrateLayout(localLayout)
+                const validated = validateLayout(migrated)
+                state.value = validated
+            }
+        }
+    } catch (error) {
+        console.warn('Failed to load dashboard layout from server:', error)
+        
+        // Fallback to localStorage
+        const localLayout = loadFromLocalStorage()
+        if (localLayout) {
+            const migrated = migrateLayout(localLayout)
+            const validated = validateLayout(migrated)
+            state.value = validated
+        }
+    } finally {
+        isLoading.value = false
+    }
+}
 
+// Watch for changes and save
+watch(
+    state,
+    (newLayout) => {
+        saveToLocalStorage(newLayout)
+        saveToServer(newLayout)
+    },
+    { deep: true }
+)
+
+export function useDashboardLayout() {
     /**
-     * Get visible layout items sorted by position
+     * Get visible layout items
      */
     const visibleLayout = computed(() => {
         return state.value.layout.filter((item) => {
@@ -217,40 +261,40 @@ export function useDashboardLayout() {
             return widget?.visible ?? true
         })
     })
-
+    
     /**
      * Get all layout items
      */
     const allLayout = computed(() => state.value.layout)
-
+    
     /**
      * Get hidden widgets
      */
     const hiddenWidgets = computed(() => {
         return state.value.widgets.filter((w) => !w.visible)
     })
-
+    
     /**
      * Toggle configuration mode
      */
     function toggleConfigMode(): void {
         isConfigMode.value = !isConfigMode.value
     }
-
+    
     /**
      * Enter configuration mode
      */
     function enterConfigMode(): void {
         isConfigMode.value = true
     }
-
+    
     /**
      * Exit configuration mode
      */
     function exitConfigMode(): void {
         isConfigMode.value = false
     }
-
+    
     /**
      * Check if a widget is visible
      */
@@ -258,7 +302,7 @@ export function useDashboardLayout() {
         const widget = state.value.widgets.find((w) => w.id === widgetId)
         return widget?.visible ?? true
     }
-
+    
     /**
      * Toggle widget visibility
      */
@@ -268,7 +312,7 @@ export function useDashboardLayout() {
             widget.visible = !widget.visible
         }
     }
-
+    
     /**
      * Show a hidden widget
      */
@@ -285,7 +329,7 @@ export function useDashboardLayout() {
             }
         }
     }
-
+    
     /**
      * Update layout after drag/resize
      */
@@ -301,7 +345,7 @@ export function useDashboardLayout() {
         })
         state.value.layout = fullLayout
     }
-
+    
     /**
      * Reset to default layout
      */
@@ -318,24 +362,24 @@ export function useDashboardLayout() {
             console.warn('Failed to reset dashboard layout on server:', error)
         }
     }
-
+    
     /**
      * Get widget metadata by ID
      */
     function getWidgetMeta(widgetId: string): WidgetMeta | undefined {
         return state.value.widgets.find((w) => w.id === widgetId)
     }
-
+    
     /**
      * Get layout item by ID
      */
     function getLayoutItem(widgetId: string): LayoutItem | undefined {
         return state.value.layout.find((l) => l.i === widgetId)
     }
-
+    
     // Initialize on first use
     loadLayout()
-
+    
     return {
         // State
         layout: allLayout,
@@ -343,12 +387,12 @@ export function useDashboardLayout() {
         hiddenWidgets,
         isConfigMode: computed(() => isConfigMode.value),
         isLoading: computed(() => isLoading.value),
-
+        
         // Grid config
         gridCols: GRID_COLS,
         rowHeight: ROW_HEIGHT,
         margin: MARGIN,
-
+        
         // Actions
         toggleConfigMode,
         enterConfigMode,
@@ -358,10 +402,9 @@ export function useDashboardLayout() {
         showWidget,
         updateLayout,
         resetLayout,
+        
+        // Helpers
         getWidgetMeta,
-        getLayoutItem,
-
-        // Expose for initialization
-        loadLayout
+        getLayoutItem
     }
 }

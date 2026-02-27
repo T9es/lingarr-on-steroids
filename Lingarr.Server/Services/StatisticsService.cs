@@ -2,6 +2,7 @@ using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Interfaces.Services;
+using Lingarr.Server.Models;
 using Lingarr.Server.Models.Batch.Response;
 using Lingarr.Server.Models.FileSystem;
 using Microsoft.EntityFrameworkCore;
@@ -17,6 +18,7 @@ public class StatisticsService : IStatisticsService
     private readonly TimeSpan _cacheExpiration = TimeSpan.FromSeconds(60);
     private const string StatisticsCacheKey = "dashboard_statistics";
     private const string DailyStatisticsCacheKey = "daily_statistics_{0}";
+    private const string HourlyStatisticsCacheKey = "hourly_statistics_{0:yyyy-MM-dd}";
 
     public StatisticsService(
         IServiceScopeFactory scopeFactory,
@@ -101,9 +103,55 @@ public class StatisticsService : IStatisticsService
             .SetSlidingExpiration(_cacheExpiration)
             .SetPriority(CacheItemPriority.Normal);
 
-        _cache.Set(cacheKey, stats, cacheOptions);
+_cache.Set(cacheKey, stats, cacheOptions);
 
         return stats;
+    }
+
+    public async Task<IEnumerable<HourlyStatistics>> GetHourlyStatistics(DateTime? date = null)
+    {
+        var targetDate = (date ?? DateTime.UtcNow).Date;
+        var cacheKey = string.Format(HourlyStatisticsCacheKey, targetDate);
+        
+        if (_cache.TryGetValue(cacheKey, out List<HourlyStatistics>? cachedStats) && cachedStats != null)
+        {
+            return cachedStats;
+        }
+
+        using var scope = _scopeFactory.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<LingarrDbContext>();
+
+        var startOfDay = targetDate;
+        var endOfDay = targetDate.AddDays(1);
+
+        var hourlyCounts = await dbContext.TranslationRequests
+            .Where(r => r.Status == TranslationStatus.Completed &&
+                        r.CompletedAt >= startOfDay &&
+                        r.CompletedAt < endOfDay)
+            .GroupBy(r => r.CompletedAt!.Value.Hour)
+            .Select(g => new HourlyStatistics
+            {
+                Hour = g.Key,
+                TranslationCount = g.Count()
+            })
+            .ToListAsync();
+
+        var result = Enumerable.Range(0, 24)
+            .Select(hour => hourlyCounts.FirstOrDefault(h => h.Hour == hour) ?? new HourlyStatistics
+            {
+                Hour = hour,
+                TranslationCount = 0
+            })
+            .OrderBy(h => h.Hour)
+            .ToList();
+
+        var cacheOptions = new MemoryCacheEntryOptions()
+            .SetSlidingExpiration(_cacheExpiration)
+            .SetPriority(CacheItemPriority.Normal);
+
+        _cache.Set(cacheKey, result, cacheOptions);
+
+        return result;
     }
 
     private static async Task<Statistics> GetOrCreateStatistics(LingarrDbContext dbContext)

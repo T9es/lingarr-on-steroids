@@ -1,4 +1,5 @@
 ﻿using Lingarr.Core.Entities;
+using Lingarr.Server.Models;
 using Lingarr.Server.Models.Batch.Response;
 using Lingarr.Server.Models.FileSystem;
 
@@ -8,6 +9,7 @@ public interface IStatisticsService
 {
     Task<Statistics> GetStatistics();
     Task<IEnumerable<DailyStatistics>> GetDailyStatistics(int days = 30);
+    Task<IEnumerable<HourlyStatistics>> GetHourlyStatistics(DateTime? date = null);
     Task<int> UpdateTranslationStatisticsFromSubtitles(
         TranslationRequest request,
         string serviceType,

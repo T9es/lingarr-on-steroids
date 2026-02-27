@@ -118,16 +118,12 @@
                         :error="error ?? undefined"
                         :statistics="statistics" />
 
-                    <!-- Translation Activity Widget -->
-                    <TranslationActivityContent
-                        v-if="item.i === 'translation-activity'"
-                        :statistics="statistics"
-                        :translation-services="translationServices" />
-
-                    <!-- Translation History Widget -->
+<!-- Translation History Widget -->
                     <TranslationHistoryWidget
                         v-if="item.i === 'translation-history'"
-                        :daily-statistics="dailyStats || []" />
+                        :daily-statistics="dailyStats || []"
+                        :statistics="statistics"
+                        :is-loading="loading" />
 
                     <!-- Job Queue Widget -->
                     <JobQueueWidget v-if="item.i === 'job-queue'" />
@@ -175,7 +171,6 @@ import { DailyStatistic, MEDIA_TYPE, Statistics } from '@/ts'
 import { useI18n } from '@/plugins/i18n'
 import services from '@/services'
 import LoaderCircleIcon from '@/components/icons/LoaderCircleIcon.vue'
-import MetricCard from './MetricCard.vue'
 import DashboardWidget from './DashboardWidget.vue'
 import TranslationHistoryWidget from './widgets/TranslationHistoryWidget.vue'
 import JobQueueWidget from './widgets/JobQueueWidget.vue'
@@ -248,10 +243,7 @@ const error = ref<string | null>(null)
 const statistics = ref<Statistics>()
 const dailyStats = ref<DailyStatistic[]>()
 
-const translationServices = computed(() => {
-    if (!statistics.value?.translationsByService) return []
-    return Object.entries(statistics.value.translationsByService)
-})
+
 
 const activeTranslations = computed(() => getActiveTranslations())
 
@@ -525,62 +517,6 @@ const MediaOverviewContent = defineComponent({
     }
 })
 
-const TranslationActivityContent = defineComponent({
-    props: {
-        statistics: Object as () => Statistics,
-        translationServices: Array as () => [string, number][]
-    },
-    setup(props) {
-        return () => [
-            h(
-                'div',
-                { class: 'grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2' },
-                [
-                    h(MetricCard, {
-                        title: translate('statistics.linesTranslated'),
-                        value: props.statistics?.totalLinesTranslated ?? 0
-                    }),
-                    h(MetricCard, {
-                        title: translate('statistics.filesProcessed'),
-                        value: props.statistics?.totalFilesTranslated ?? 0
-                    }),
-                    h(MetricCard, {
-                        title: translate('statistics.charactersTranslated'),
-                        value: props.statistics?.totalCharactersTranslated ?? 0,
-                        class: 'xl:col-span-2'
-                    })
-                ]
-            ),
-            props.translationServices?.length
-                ? h('div', { class: 'mt-4' }, [
-                      h(
-                          'h3',
-                          { class: 'text-primary-content mb-4 text-sm font-medium' },
-                          translate('statistics.translationServices')
-                      ),
-                      h(
-                          'div',
-                          { class: 'grid grid-cols-2 gap-2 xl:grid-cols-3' },
-                          props.translationServices.map(([service, count]) =>
-                              h('div', { key: service, class: 'bg-primary rounded-sm p-2' }, [
-                                  h(
-                                      'h4',
-                                      { class: 'text-primary-content/70 text-xs font-medium' },
-                                      service.charAt(0).toUpperCase() + service.slice(1)
-                                  ),
-                                  h(
-                                      'p',
-                                      { class: 'text-primary-content text-lg font-bold' },
-                                      count ? new Intl.NumberFormat().format(count) : '0'
-                                  )
-                              ])
-                          )
-                      )
-                  ])
-                : null
-        ]
-    }
-})
 </script>
 
 <style>
@@ -614,23 +550,30 @@ const TranslationActivityContent = defineComponent({
 }
 
 .vue-grid-item .vue-resizable-handle {
-    width: 20px;
-    height: 20px;
+    width: 24px;
+    height: 24px;
     bottom: 0;
     right: 0;
-    background: none;
+    background: rgba(var(--accent-rgb, 147, 51, 234), 0.1);
+    border-radius: 6px 0 6px 0;
     cursor: se-resize;
+    transition: background 0.2s ease;
+}
+
+.vue-grid-item .vue-resizable-handle:hover {
+    background: rgba(var(--accent-rgb, 147, 51, 234), 0.25);
 }
 
 .vue-grid-item .vue-resizable-handle::after {
     content: '';
     position: absolute;
-    right: 4px;
-    bottom: 4px;
-    width: 8px;
-    height: 8px;
-    border-right: 2px solid rgba(150, 150, 150, 0.5);
-    border-bottom: 2px solid rgba(150, 150, 150, 0.5);
+    right: 6px;
+    bottom: 6px;
+    width: 10px;
+    height: 10px;
+    border-right: 2px solid var(--accent, #9333ea);
+    border-bottom: 2px solid var(--accent, #9333ea);
+    border-radius: 0 0 2px 0;
 }
 
 /* Responsive adjustments */
