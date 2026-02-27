@@ -11,7 +11,7 @@
                 :title="isVisible ? 'Hide widget' : 'Show widget'"
                 @click.stop="$emit('toggle-visibility')">
                 <EyeOnIcon v-if="isVisible" class="h-4 w-4" />
-                <EyeOffIcon v-else class="h-4 w-4 text-gray-400" />
+                <EyeOffIcon v-else class="h-4 w-4 text-primary-content/50" />
             </button>
         </div>
 

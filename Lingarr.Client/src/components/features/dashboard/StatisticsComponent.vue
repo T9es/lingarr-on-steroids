@@ -43,7 +43,7 @@
         <!-- Reset Confirmation Modal -->
         <div
             v-if="showResetConfirmation"
-            class="bg-black/50 fixed inset-0 z-50 flex items-center justify-center">
+            class="bg-secondary/80 fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm">
             <div class="bg-secondary border-secondary mx-4 max-w-sm rounded-lg border p-6">
                 <h3 class="text-primary-content mb-2 text-lg font-semibold">
                     {{ translate('statistics.resetLayoutConfirmTitle') || 'Reset Dashboard Layout' }}
@@ -372,7 +372,7 @@ const ActiveTranslationsContent = defineComponent({
                                                   ? 'bg-blue-500/20 text-blue-400'
                                                   : t.status === 'Pending'
                                                     ? 'bg-yellow-500/20 text-yellow-400'
-                                                    : 'bg-gray-500/20 text-gray-400'
+                                                    : 'bg-secondary/50 text-primary-content/60'
                                           ]
                                       },
                                       t.status
