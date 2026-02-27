@@ -123,6 +123,12 @@ public class DashboardService : IDashboardService
         }
 
         // Query translation requests from database (managed by TranslationWorkerService)
+        var translationInProgress = await _dbContext.TranslationRequests
+            .Where(r => r.Status == TranslationStatus.InProgress)
+            .OrderByDescending(r => r.StartedAt)
+            .Take(20)
+            .ToListAsync();
+
         var translationPending = await _dbContext.TranslationRequests
             .Where(r => r.Status == TranslationStatus.Pending)
             .OrderByDescending(r => r.CreatedAt)
@@ -140,6 +146,22 @@ public class DashboardService : IDashboardService
             .OrderByDescending(r => r.CompletedAt)
             .Take(5)
             .ToListAsync();
+
+        // Add in-progress translation requests
+        foreach (var request in translationInProgress)
+        {
+            jobs.Add(new JobInfo
+            {
+                Id = $"translation-{request.Id}",
+                Name = request.Title,
+                State = "Running",
+                Queue = "translation",
+                StartedAt = request.StartedAt,
+                Progress = request.Progress,
+                SourceLanguage = request.SourceLanguage,
+                TargetLanguage = request.TargetLanguage
+            });
+        }
 
         // Add pending translation requests
         foreach (var request in translationPending)
@@ -190,7 +212,7 @@ public class DashboardService : IDashboardService
         {
             ScheduledCount = scheduled.Count + recurring.Count,
             QueuedCount = enqueued.Count + translationPending.Count,
-            RunningCount = processing.Count,
+            RunningCount = processing.Count + translationInProgress.Count,
             FailedCount = failed.Count + translationFailed.Count,
             SucceededCount = succeeded.Count,
             Jobs = jobs
