@@ -188,9 +188,16 @@ public interface ITranslationRequestService
     /// <returns>List of all failed translation requests</returns>
     Task<List<TranslationRequest>> GetFailedRequests();
 
-    /// <summary>
+/// <summary>
     /// Retrieves all translation requests with InProgress status.
     /// </summary>
     /// <returns>List of all in-progress translation requests</returns>
     Task<List<TranslationRequest>> GetInProgressRequests();
+
+    /// <summary>
+    /// Retrieves recent completed translation requests.
+    /// </summary>
+    /// <param name="limit">Maximum number of requests to return</param>
+    /// <returns>List of recent completed translation requests</returns>
+    Task<List<TranslationRequest>> GetRecentCompletedRequests(int limit = 10);
 }

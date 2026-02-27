@@ -210,12 +210,25 @@ public class TranslationRequestService : ITranslationRequestService
         return requests;
     }
 
-    /// <inheritdoc />
+/// <inheritdoc />
     public async Task<List<TranslationRequest>> GetInProgressRequests()
     {
         var requests = await _dbContext.TranslationRequests
             .Where(tr => tr.Status == TranslationStatus.InProgress)
             .OrderByDescending(tr => tr.CreatedAt)
+            .ToListAsync();
+
+        await PopulatePriorityFlagsAsync(requests);
+        return requests;
+    }
+
+    /// <inheritdoc />
+    public async Task<List<TranslationRequest>> GetRecentCompletedRequests(int limit = 10)
+    {
+        var requests = await _dbContext.TranslationRequests
+            .Where(tr => tr.Status == TranslationStatus.Completed)
+            .OrderByDescending(tr => tr.CompletedAt)
+            .Take(limit)
             .ToListAsync();
 
         await PopulatePriorityFlagsAsync(requests);

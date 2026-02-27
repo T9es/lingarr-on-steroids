@@ -62,16 +62,22 @@
                 <div class="flex items-center justify-between">
                     <div>
                         <h4 class="text-primary-content text-sm font-medium">
-                            {{ translate('settings.integrations.cleanupTitle') || 'Fix Duplicate Instances' }}
+                            {{
+                                translate('settings.integrations.cleanupTitle') ||
+                                'Fix Duplicate Instances'
+                            }}
                         </h4>
                         <p class="text-secondary-content mt-1 text-xs">
-                            {{ translate('settings.integrations.cleanupDescription') || 'If you see duplicate movies/shows after onboarding, click this button to consolidate all media to a single instance.' }}
+                            {{
+                                translate('settings.integrations.cleanupDescription') ||
+                                'If you see duplicate movies/shows after onboarding, click this button to consolidate all media to a single instance.'
+                            }}
                         </p>
                     </div>
                     <button
                         @click="cleanupDuplicates"
                         :disabled="isCleaningUp"
-                        class="hover:bg-accent/80 rounded-md bg-accent/20 px-3 py-1.5 text-xs font-medium text-accent transition-colors disabled:opacity-50">
+                        class="hover:bg-accent/80 bg-accent/20 text-accent rounded-md px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50">
                         <span v-if="isCleaningUp" class="flex items-center gap-1">
                             <svg class="h-3 w-3 animate-spin" viewBox="0 0 24 24">
                                 <circle
@@ -89,20 +95,36 @@
                             </svg>
                             {{ translate('common.cleaning') || 'Cleaning...' }}
                         </span>
-                        <span v-else>{{ translate('settings.integrations.cleanupButton') || 'Fix Duplicates' }}</span>
+                        <span v-else>
+                            {{
+                                translate('settings.integrations.cleanupButton') || 'Fix Duplicates'
+                            }}
+                        </span>
                     </button>
                 </div>
                 <div
                     v-if="cleanupResult"
                     :class="[
                         'mt-3 rounded-md p-3 text-sm',
-                        cleanupResult.success ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
+                        cleanupResult.success
+                            ? 'bg-green-500/10 text-green-400'
+                            : 'bg-red-500/10 text-red-400'
                     ]">
                     {{ cleanupResult.message }}
-                    <div v-if="cleanupResult.success && (cleanupResult.moviesReassigned > 0 || cleanupResult.showsReassigned > 0)" class="mt-1 text-xs opacity-75">
-                        {{ cleanupResult.moviesReassigned }} {{ translate('statistics.movies') || 'movies' }}, {{ cleanupResult.showsReassigned }} {{ translate('statistics.tvShows') || 'shows' }}
+                    <div
+                        v-if="
+                            cleanupResult.success &&
+                            (cleanupResult.moviesReassigned > 0 ||
+                                cleanupResult.showsReassigned > 0)
+                        "
+                        class="mt-1 text-xs opacity-75">
+                        {{ cleanupResult.moviesReassigned }}
+                        {{ translate('statistics.movies') || 'movies' }},
+                        {{ cleanupResult.showsReassigned }}
+                        {{ translate('statistics.tvShows') || 'shows' }}
                         <span v-if="cleanupResult.duplicatesRemoved > 0">
-                            ({{ cleanupResult.duplicatesRemoved }} {{ translate('statistics.duplicatesRemoved') || 'duplicates removed' }})
+                            ({{ cleanupResult.duplicatesRemoved }}
+                            {{ translate('statistics.duplicatesRemoved') || 'duplicates removed' }})
                         </span>
                     </div>
                 </div>

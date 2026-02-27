@@ -44,7 +44,7 @@ public class TranslationRequestController : ControllerBase
         return Ok(requests);
     }
 
-    /// <summary>
+/// <summary>
     /// Gets all translation requests with InProgress status
     /// </summary>
     /// <response code="200">Returns all in-progress translation requests</response>
@@ -54,6 +54,20 @@ public class TranslationRequestController : ControllerBase
     public async Task<ActionResult<List<TranslationRequest>>> GetInProgressRequests()
     {
         var requests = await _translationRequestService.GetInProgressRequests();
+        return Ok(requests);
+    }
+
+    /// <summary>
+    /// Gets recent completed translation requests
+    /// </summary>
+    /// <param name="limit">Maximum number of requests to return (default: 10)</param>
+    /// <response code="200">Returns recent completed translation requests</response>
+    /// <response code="500">If there was an error retrieving completed requests</response>
+    /// <returns>ActionResult containing the list of recent completed translation requests</returns>
+    [HttpGet("recent")]
+    public async Task<ActionResult<List<TranslationRequest>>> GetRecentCompletedRequests([FromQuery] int limit = 10)
+    {
+        var requests = await _translationRequestService.GetRecentCompletedRequests(limit);
         return Ok(requests);
     }
 
