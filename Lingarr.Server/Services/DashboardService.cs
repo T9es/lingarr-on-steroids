@@ -255,7 +255,7 @@ public class DashboardService : IDashboardService
         await _dbContext.SaveChangesAsync();
     }
 
-    /// <inheritdoc />
+/// <inheritdoc />
     public async Task ResetDashboardLayout()
     {
         var setting = await _dbContext.Settings
@@ -266,6 +266,51 @@ public class DashboardService : IDashboardService
             _dbContext.Settings.Remove(setting);
             await _dbContext.SaveChangesAsync();
         }
+    }
+
+/// <inheritdoc />
+    public async Task<int> ClearFailedJobs()
+    {
+        var jobStorage = JobStorage.Current;
+        if (jobStorage == null) return 0;
+        
+        var monitoringApi = jobStorage.GetMonitoringApi();
+        var failed = monitoringApi.FailedJobs(0, int.MaxValue);
+        var client = new BackgroundJobClient(jobStorage);
+        
+        foreach (var job in failed)
+        {
+            client.Delete(job.Key);
+        }
+        
+        return failed.Count;
+    }
+
+    /// <inheritdoc />
+    public async Task<(List<JobInfo> Jobs, int TotalCount)> GetFailedJobs(int offset = 0, int limit = 10)
+    {
+        var jobStorage = JobStorage.Current;
+        if (jobStorage == null) return (new List<JobInfo>(), 0);
+        
+        var monitoringApi = jobStorage.GetMonitoringApi();
+        var allFailed = monitoringApi.FailedJobs(0, int.MaxValue);
+        
+        var jobs = allFailed
+            .Skip(offset)
+            .Take(limit)
+            .Where(job => job.Value?.Job?.Method != null)
+            .Select(job => new JobInfo
+            {
+                Id = job.Key,
+                Name = job.Value.Job.Method.Name,
+                JobName = job.Value.Job.Type.Name,
+                State = "Failed",
+                FailedAt = job.Value.FailedAt,
+                ErrorMessage = job.Value.ExceptionMessage
+            })
+            .ToList();
+        
+        return (jobs, allFailed.Count);
     }
 }
 
@@ -282,6 +327,8 @@ public interface IDashboardService
     Task<string?> GetDashboardLayout();
     Task SaveDashboardLayout(string layoutJson);
     Task ResetDashboardLayout();
+    Task<int> ClearFailedJobs();
+    Task<(List<JobInfo> Jobs, int TotalCount)> GetFailedJobs(int offset = 0, int limit = 10);
 }
 
 /// <summary>

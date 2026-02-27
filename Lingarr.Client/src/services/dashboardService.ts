@@ -26,8 +26,19 @@ export const dashboardService = (axios: AxiosStatic) => ({
         return response.data
     },
 
-    getErrors: async <T>(limit: number = 50): Promise<T> => {
-        const response = await axios.get(`/api/dashboard/errors?limit=${limit}`)
+    clearFailedJobs: async (): Promise<{ cleared: number }> => {
+        const response = await axios.delete('/api/dashboard/jobs/failed')
+        return response.data
+    },
+
+    getFailedJobs: async (offset: number = 0, limit: number = 10): Promise<{
+        jobs: any[]
+        totalCount: number
+        hasMore: boolean
+    }> => {
+        const response = await axios.get('/api/dashboard/jobs/failed', {
+            params: { offset, limit }
+        })
         return response.data
     }
 })

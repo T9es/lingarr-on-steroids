@@ -140,5 +140,10 @@ export interface IDashboardService {
     resetLayout(): Promise<void>
     getJobs<T>(): Promise<T>
     getApiUsage<T>(): Promise<T>
-    getErrors<T>(limit?: number): Promise<T>
+    clearFailedJobs(): Promise<{ cleared: number }>
+    getFailedJobs(offset?: number, limit?: number): Promise<{
+        jobs: any[]
+        totalCount: number
+        hasMore: boolean
+    }>
 }

@@ -112,7 +112,7 @@ public class DashboardController : ControllerBase
         }
     }
 
-    /// <summary>
+/// <summary>
     /// Reset dashboard layout to defaults
     /// </summary>
     [HttpPost("layout/reset")]
@@ -127,6 +127,42 @@ public class DashboardController : ControllerBase
         {
             _logger.LogError(ex, "Failed to reset dashboard layout");
             return StatusCode(500, "Failed to reset dashboard layout");
+        }
+    }
+
+    /// <summary>
+    /// Clear all failed jobs
+    /// </summary>
+    [HttpDelete("jobs/failed")]
+    public async Task<IActionResult> ClearFailedJobs()
+    {
+        try
+        {
+            var count = await _dashboardService.ClearFailedJobs();
+            return Ok(new { cleared = count });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to clear failed jobs");
+            return StatusCode(500, "Failed to clear failed jobs");
+        }
+    }
+
+    /// <summary>
+    /// Get failed jobs with pagination
+    /// </summary>
+    [HttpGet("jobs/failed")]
+    public async Task<IActionResult> GetFailedJobs([FromQuery] int offset = 0, [FromQuery] int limit = 10)
+    {
+        try
+        {
+            var (jobs, totalCount) = await _dashboardService.GetFailedJobs(offset, limit);
+            return Ok(new { jobs, totalCount, hasMore = offset + limit < totalCount });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get failed jobs");
+            return StatusCode(500, "Failed to get failed jobs");
         }
     }
 }

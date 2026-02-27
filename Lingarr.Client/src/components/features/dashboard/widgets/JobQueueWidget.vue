@@ -27,8 +27,14 @@ interface JobInfo {
 }
 
 const jobs = ref<JobInfo[]>([])
+const failedJobsList = ref<JobInfo[]>([])
+const failedJobsTotal = ref(0)
+const failedJobsOffset = ref(0)
+const hasMoreFailedJobs = ref(false)
 const isLoading = ref(false)
 const localLoading = ref(false)
+const isClearingFailed = ref(false)
+const isLoadingMoreFailed = ref(false)
 const error = ref<string | null>(null)
 const now = ref(Date.now())
 
@@ -56,6 +62,8 @@ const fetchJobs = async () => {
             error: job.ErrorMessage || job.error,
             queue: job.Queue || job.queue
         }))
+        
+        await fetchFailedJobs(0, 10)
     } catch (e) {
         error.value = 'Failed to fetch job queue'
         console.error('Failed to fetch job queue:', e)
@@ -64,6 +72,57 @@ const fetchJobs = async () => {
         setTimeout(() => {
             localLoading.value = false
         }, 500)
+    }
+}
+
+const fetchFailedJobs = async (offset: number, limit: number) => {
+    try {
+        const response = await services.dashboard.getFailedJobs(offset, limit)
+        const normalizedJobs = response.jobs.map((job: any) => ({
+            id: job.Id || job.id,
+            name: job.Name || job.name,
+            jobName: job.JobName || job.jobName,
+            state: 'failed',
+            failedAt: job.FailedAt || job.failedAt,
+            error: job.ErrorMessage || job.errorMessage || job.error
+        }))
+        
+        if (offset === 0) {
+            failedJobsList.value = normalizedJobs
+        } else {
+            failedJobsList.value = [...failedJobsList.value, ...normalizedJobs]
+        }
+        
+        failedJobsTotal.value = response.totalCount
+        failedJobsOffset.value = offset + limit
+        hasMoreFailedJobs.value = response.hasMore
+    } catch (e) {
+        console.error('Failed to fetch failed jobs:', e)
+    }
+}
+
+const loadMoreFailedJobs = async () => {
+    if (isLoadingMoreFailed.value || !hasMoreFailedJobs.value) return
+    isLoadingMoreFailed.value = true
+    try {
+        await fetchFailedJobs(failedJobsOffset.value, 10)
+    } finally {
+        isLoadingMoreFailed.value = false
+    }
+}
+
+const clearFailedJobs = async () => {
+    isClearingFailed.value = true
+    try {
+        await services.dashboard.clearFailedJobs()
+        failedJobsList.value = []
+        failedJobsTotal.value = 0
+        hasMoreFailedJobs.value = false
+        await fetchJobs()
+    } catch (e) {
+        console.error('Failed to clear failed jobs:', e)
+    } finally {
+        isClearingFailed.value = false
     }
 }
 
@@ -90,8 +149,6 @@ onUnmounted(() => {
 const runningJobs = computed(() =>
     jobs.value.filter((j) => j.state === 'running')
 )
-
-const failedJobs = computed(() => jobs.value.filter((j) => j.state === 'failed'))
 
 const jobPriority = (jobName: string): number => {
     if (jobName === 'SyncShowJob') return 1
@@ -163,13 +220,14 @@ const formatCron = (cron?: string): string => {
 }
 
 const getJobDisplayName = (job: JobInfo): string => {
-    if (job.name === 'AutomatedTranslationJob') return 'Auto Translation'
-    if (job.name === 'CleanupJob') return 'Cleanup'
-    if (job.name === 'RetryFailedRequestsJob') return 'Retry Failed'
-    if (job.name === 'StatisticsJob') return 'Statistics'
-    if (job.name === 'SyncMovieJob') return 'Sync Movies'
-    if (job.name === 'SyncShowJob') return 'Sync Shows'
-    return job.name
+    const id = job.jobName || job.name
+    if (id === 'AutomatedTranslationJob') return 'Auto Translation'
+    if (id === 'CleanupJob') return 'Cleanup'
+    if (id === 'RetryFailedRequestsJob') return 'Retry Failed'
+    if (id === 'StatisticsJob') return 'Statistics'
+    if (id === 'SyncMovieJob') return 'Sync Movies'
+    if (id === 'SyncShowJob') return 'Sync Shows'
+    return id
 }
 
 const triggerJob = async (jobName: string) => {
@@ -198,7 +256,7 @@ const triggerJob = async (jobName: string) => {
         </div>
 
         <div
-            v-else-if="jobs.length === 0"
+            v-else-if="jobs.length === 0 && failedJobsList.length === 0"
             class="text-primary-content/50 flex flex-1 items-center justify-center text-sm">
             <div class="text-center">
                 <div class="mb-2 text-2xl">✓</div>
@@ -266,14 +324,22 @@ const triggerJob = async (jobName: string) => {
             </div>
 
             <!-- Failed Jobs -->
-            <div v-if="failedJobs.length > 0">
-                <h4 class="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-red-400/80">
-                    <span class="text-red-400">⚠</span>
-                    Failed ({{ failedJobs.length }})
-                </h4>
+            <div v-if="failedJobsList.length > 0">
+                <div class="mb-1.5 flex items-center justify-between">
+                    <h4 class="flex items-center gap-1.5 text-xs font-medium text-red-400/80">
+                        <span class="text-red-400">⚠</span>
+                        Failed ({{ failedJobsTotal }})
+                    </h4>
+                    <button
+                        @click="clearFailedJobs"
+                        :disabled="isClearingFailed"
+                        class="text-xs text-red-400/70 hover:text-red-400 disabled:opacity-50">
+                        {{ isClearingFailed ? 'Clearing...' : 'Clear All' }}
+                    </button>
+                </div>
                 <div class="space-y-1.5">
                     <div
-                        v-for="job in failedJobs"
+                        v-for="job in failedJobsList"
                         :key="job.id"
                         class="rounded-md border border-red-500/20 bg-red-500/5 p-2">
                         <div class="text-primary-content truncate text-xs font-medium">
@@ -290,6 +356,13 @@ const triggerJob = async (jobName: string) => {
                         </div>
                     </div>
                 </div>
+                <button
+                    v-if="hasMoreFailedJobs"
+                    @click="loadMoreFailedJobs"
+                    :disabled="isLoadingMoreFailed"
+                    class="mt-2 w-full rounded-md border border-red-500/20 py-1.5 text-xs text-red-400/70 hover:bg-red-500/5 hover:text-red-400 disabled:opacity-50">
+                    {{ isLoadingMoreFailed ? 'Loading...' : 'Show More' }}
+                </button>
             </div>
         </div>
     </div>
