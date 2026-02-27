@@ -187,6 +187,7 @@ const state = ref<DashboardLayout>({
 })
 const isConfigMode = ref(false)
 const isLoading = ref(false)
+const isInitialized = ref(false)
 
 // Debounce save to server
 let saveTimeout: ReturnType<typeof setTimeout> | null = null
@@ -251,17 +252,19 @@ async function loadLayout(): Promise<void> {
         if (localLayout) {
             const migrated = migrateLayout(localLayout)
             const validated = validateLayout(migrated)
-            state.value = validated
+state.value = validated
         }
     } finally {
         isLoading.value = false
+        isInitialized.value = true
     }
 }
 
-// Watch for changes and save
+// Watch for changes and save (only after initialization)
 watch(
     state,
     (newLayout) => {
+        if (!isInitialized.value) return
         saveToLocalStorage(newLayout)
         saveToServer(newLayout)
     },
@@ -394,8 +397,10 @@ export function useDashboardLayout() {
         return state.value.layout.find((l) => l.i === widgetId)
     }
     
-    // Initialize on first use
-    loadLayout()
+    // Initialize on first use (guard against multiple calls)
+    if (!isInitialized.value && !isLoading.value) {
+        loadLayout()
+    }
     
     return {
         // State

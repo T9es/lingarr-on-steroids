@@ -8,7 +8,7 @@ namespace Lingarr.Server.Interfaces.Services;
 public interface IStatisticsService
 {
     Task<Statistics> GetStatistics();
-    Task<IEnumerable<DailyStatistics>> GetDailyStatistics(int days = 30);
+    Task<IEnumerable<DailyStatistics>> GetDailyStatistics(int? days = null);
     Task<IEnumerable<HourlyStatistics>> GetHourlyStatistics(DateTime? date = null);
     Task<int> UpdateTranslationStatisticsFromSubtitles(
         TranslationRequest request,

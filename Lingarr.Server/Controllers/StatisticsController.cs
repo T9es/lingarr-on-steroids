@@ -23,8 +23,8 @@ public class StatisticsController : ControllerBase
         return Ok(stats);
     }
     
-[HttpGet("daily/{days}")]
-    public async Task<ActionResult<IEnumerable<DailyStatistics>>> GetDailyStats(int days = 30)
+[HttpGet("daily/{days?}")]
+    public async Task<ActionResult<IEnumerable<DailyStatistics>>> GetDailyStats(int? days = null)
     {
         var stats = await _statisticsService.GetDailyStatistics(days);
         return Ok(stats);

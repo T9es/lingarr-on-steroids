@@ -30,6 +30,7 @@ const jobs = ref<JobInfo[]>([])
 const isLoading = ref(false)
 const localLoading = ref(false)
 const error = ref<string | null>(null)
+const now = ref(Date.now())
 
 const fetchJobs = async () => {
     isLoading.value = true
@@ -37,8 +38,8 @@ const fetchJobs = async () => {
     error.value = null
 
     try {
-        const data = await services.dashboard.getJobs<{ Jobs: JobInfo[] } | JobInfo[]>()
-        const rawJobs = Array.isArray(data) ? data : (data as any).Jobs || []
+        const data = await services.dashboard.getJobs<{ jobs: JobInfo[]; Jobs: JobInfo[] } | JobInfo[]>()
+        const rawJobs = Array.isArray(data) ? data : (data as any).jobs || (data as any).Jobs || []
 
         jobs.value = rawJobs.map((job: any) => ({
             id: job.Id || job.id,
@@ -67,15 +68,22 @@ const fetchJobs = async () => {
 }
 
 const refreshInterval = ref<number | null>(null)
+const countdownInterval = ref<number | null>(null)
 
 onMounted(() => {
     fetchJobs()
     refreshInterval.value = window.setInterval(fetchJobs, 10000)
+    countdownInterval.value = window.setInterval(() => {
+        now.value = Date.now()
+    }, 1000)
 })
 
 onUnmounted(() => {
     if (refreshInterval.value) {
         clearInterval(refreshInterval.value)
+    }
+    if (countdownInterval.value) {
+        clearInterval(countdownInterval.value)
     }
 })
 
@@ -83,11 +91,55 @@ const runningJobs = computed(() =>
     jobs.value.filter((j) => j.state === 'running')
 )
 
-const scheduledJobs = computed(() =>
-    jobs.value.filter((j) => j.state === 'scheduled' && j.jobName)
-)
-
 const failedJobs = computed(() => jobs.value.filter((j) => j.state === 'failed'))
+
+const jobPriority = (jobName: string): number => {
+    if (jobName === 'SyncShowJob') return 1
+    if (jobName === 'SyncMovieJob') return 2
+    if (jobName === 'AutomatedTranslationJob') return 3
+    if (jobName === 'CleanupJob') return 4
+    if (jobName === 'StatisticsJob') return 5
+    if (jobName === 'RetryFailedRequestsJob') return 6
+    return 99
+}
+
+const scheduledJobs = computed(() => {
+    return jobs.value
+        .filter((j) => j.state === 'scheduled' && j.jobName)
+        .sort((a, b) => {
+            const timeA = a.nextExecution ? new Date(a.nextExecution).getTime() : Infinity
+            const timeB = b.nextExecution ? new Date(b.nextExecution).getTime() : Infinity
+            if (timeA !== timeB) return timeA - timeB
+            return jobPriority(a.jobName || '') - jobPriority(b.jobName || '')
+        })
+})
+
+const getCountdown = (dateStr?: string): { text: string; seconds: number } => {
+    if (!dateStr) return { text: '', seconds: 0 }
+    const target = new Date(dateStr).getTime()
+    const diff = target - now.value
+    const seconds = Math.floor(diff / 1000)
+    
+    if (diff <= 0) return { text: 'now', seconds: 0 }
+    
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    const hours = Math.floor(mins / 60)
+    const days = Math.floor(hours / 24)
+    
+    if (days > 0) {
+        const remainingHours = hours % 24
+        if (remainingHours > 0) return { text: `${days}d ${remainingHours}h`, seconds }
+        return { text: `${days}d`, seconds }
+    }
+    if (hours > 0) {
+        const remainingMins = mins % 60
+        if (remainingMins > 0) return { text: `${hours}h ${remainingMins}m`, seconds }
+        return { text: `${hours}h`, seconds }
+    }
+    if (mins > 0) return { text: `${mins}m ${secs}s`, seconds }
+    return { text: `${secs}s`, seconds }
+}
 
 const formatDuration = (dateStr?: string): string => {
     if (!dateStr) return ''
@@ -98,22 +150,6 @@ const formatDuration = (dateStr?: string): string => {
     if (minutes < 1) return 'just started'
     if (minutes < 60) return `${minutes}m`
     return `${hours}h ${minutes % 60}m`
-}
-
-const formatNextRun = (dateStr?: string): string => {
-    if (!dateStr) return ''
-    const date = new Date(dateStr)
-    const now = new Date()
-    const diff = date.getTime() - now.getTime()
-    const minutes = Math.floor(diff / 60000)
-    const hours = Math.floor(diff / 3600000)
-    const days = Math.floor(diff / 86400000)
-
-    if (diff < 0) return 'overdue'
-    if (minutes < 60) return `${minutes}m`
-    if (hours < 24) return `${hours}h`
-    if (days < 7) return `${days}d`
-    return date.toLocaleDateString()
 }
 
 const formatCron = (cron?: string): string => {
@@ -218,8 +254,8 @@ const triggerJob = async (jobName: string) => {
                             </div>
                         </div>
                         <div class="text-primary-content/50 mt-0.5 text-xs">
-                            <span v-if="job.nextExecution">
-                                Next: {{ formatNextRun(job.nextExecution) }}
+                            <span v-if="job.nextExecution" class="font-medium text-accent">
+                                In {{ getCountdown(job.nextExecution).text }}
                             </span>
                             <span v-else-if="job.lastExecution">
                                 Last: {{ formatDuration(job.lastExecution) }} ago

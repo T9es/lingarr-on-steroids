@@ -79,11 +79,10 @@ public class StatisticsService : IStatisticsService
         return stats;
     }
 
-    public async Task<IEnumerable<DailyStatistics>> GetDailyStatistics(int days = 30)
+public async Task<IEnumerable<DailyStatistics>> GetDailyStatistics(int? days = null)
     {
-        var cacheKey = string.Format(DailyStatisticsCacheKey, days);
+        var cacheKey = string.Format(DailyStatisticsCacheKey, days ?? 0);
         
-        // Check cache first
         if (_cache.TryGetValue(cacheKey, out List<DailyStatistics>? cachedStats) && cachedStats != null)
         {
             return cachedStats;
@@ -92,7 +91,9 @@ public class StatisticsService : IStatisticsService
         using var scope = _scopeFactory.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<LingarrDbContext>();
 
-        var startDate = DateTime.UtcNow.Date.AddDays(-days + 1); // +1 to include today
+        var startDate = days.HasValue 
+            ? DateTime.UtcNow.Date.AddDays(-days.Value + 1)
+            : DateTime.MinValue;
         var stats = await dbContext.DailyStatistics
             .Where(d => d.Date >= startDate)
             .OrderBy(d => d.Date)
