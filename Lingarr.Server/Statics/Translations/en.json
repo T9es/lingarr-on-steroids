@@ -201,8 +201,10 @@
     "noActiveTranslations": "No translations currently in progress.",
     "noFailedTranslations": "No failed translations.",
     "noQueuedTranslations": "No translations in queue.",
-    "reenqueueQueue": "Re-enqueue queue",
-    "cancelAll": "Cancel All"
+"reenqueueQueue": "Re-enqueue queue",
+    "cancelAll": "Cancel All",
+    "removeAllFailed": "Remove All Failed",
+    "removeAllFailedConfirm": "Are you sure you want to remove all failed translation requests? This cannot be undone."
   },
   "schedule": {
     "jobName": "Job Name",

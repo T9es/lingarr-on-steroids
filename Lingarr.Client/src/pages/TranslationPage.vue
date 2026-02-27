@@ -124,20 +124,28 @@
                         </div>
                     </div>
 
-                    <!-- Failed translations -->
+<!-- Failed translations -->
                     <div class="border-accent bg-secondary rounded-md border p-4 shadow-sm">
                         <div class="mb-3 flex items-center justify-between">
                             <h2 class="text-sm font-semibold tracking-wide uppercase">
                                 {{ translate('common.statusFailed') }}
                             </h2>
-                            <button
-                                v-if="failedRequests.length"
-                                class="border-accent text-primary-content hover:bg-accent cursor-pointer rounded-md border px-3 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-60"
-                                :disabled="retryingFailed"
-                                @click="retryAllFailed">
-                                {{ translate('common.retry') }}
-                                ({{ failedRequests.length }})
-                            </button>
+                            <div v-if="failedRequests.length" class="flex gap-2">
+                                <button
+                                    class="border-red-500/50 text-red-400 hover:bg-red-500/20 cursor-pointer rounded-md border px-3 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+                                    :disabled="removingFailed || retryingFailed"
+                                    @click="showRemoveConfirm = true">
+                                    {{ translate('translations.removeAllFailed') }}
+                                    ({{ failedRequests.length }})
+                                </button>
+                                <button
+                                    class="border-accent text-primary-content hover:bg-accent cursor-pointer rounded-md border px-3 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+                                    :disabled="retryingFailed || removingFailed"
+                                    @click="retryAllFailed">
+                                    {{ translate('common.retry') }}
+                                    ({{ failedRequests.length }})
+                                </button>
+                            </div>
                             <span v-else class="text-secondary-content text-xs">
                                 0 {{ translate('common.items') }}
                             </span>
@@ -186,8 +194,34 @@
                                 </div>
                             </div>
                         </div>
-                        <div v-else class="text-secondary-content py-4 text-center text-sm">
+<div v-else class="text-secondary-content py-4 text-center text-sm">
                             {{ translate('translations.noFailedTranslations') }}
+                        </div>
+                    </div>
+
+                    <!-- Remove All Failed Confirmation Modal -->
+                    <div
+                        v-if="showRemoveConfirm"
+                        class="bg-secondary/80 fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm">
+                        <div class="bg-secondary border-secondary mx-4 max-w-sm rounded-lg border p-6">
+                            <h3 class="text-primary-content mb-2 text-lg font-semibold">
+                                {{ translate('translations.removeAllFailed') }}
+                            </h3>
+                            <p class="text-primary-content/70 mb-4 text-sm">
+                                {{ translate('translations.removeAllFailedConfirm') }}
+                            </p>
+                            <div class="flex justify-end gap-2">
+                                <button
+                                    @click="showRemoveConfirm = false"
+                                    class="text-primary-content/60 hover:text-primary-content rounded-md px-4 py-2 text-sm transition-colors hover:bg-white/5">
+                                    {{ translate('common.cancel') }}
+                                </button>
+                                <button
+                                    @click="removeAllFailed"
+                                    class="rounded-md bg-red-500/80 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-500">
+                                    {{ translate('common.confirm') }}
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -478,6 +512,8 @@ const logsError = ref<string | null>(null)
 const activeLogRequest = ref<ITranslationRequest | null>(null)
 const requestLogs = ref<ITranslationRequestLog[]>([])
 const retryingFailed = ref(false)
+const removingFailed = ref(false)
+const showRemoveConfirm = ref(false)
 const reenqueuingQueued = ref(false)
 const cancellingQueued = ref(false)
 
@@ -554,6 +590,19 @@ const retryAllFailed = async () => {
         await translationRequestStore.fetch()
     } finally {
         retryingFailed.value = false
+    }
+}
+
+const removeAllFailed = async () => {
+    if (!failedRequests.value.length || removingFailed.value) return
+
+    showRemoveConfirm.value = false
+    removingFailed.value = true
+    try {
+        await translationRequestStore.removeAllFailed()
+        await translationRequestStore.fetch()
+    } finally {
+        removingFailed.value = false
     }
 }
 

@@ -116,11 +116,17 @@ public interface ITranslationRequestService
         TranslationRequest cancelRequest
     );
 
-    /// <summary>
+/// <summary>
     /// Retries all translation requests with Failed status
     /// </summary>
     /// <returns>Int representing number of retried requests</returns>
     Task<int> RetryAllFailedRequests();
+
+    /// <summary>
+    /// Removes all translation requests with Failed status
+    /// </summary>
+    /// <returns>Int representing number of removed requests</returns>
+    Task<int> RemoveAllFailedRequests();
     
     /// <summary>
     /// Retries an existing translation request

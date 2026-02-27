@@ -192,8 +192,10 @@
     "noActiveTranslations": "Geen actieve vertalingen.",
     "noFailedTranslations": "Geen mislukte vertalingen.",
     "noQueuedTranslations": "Geen vertalingen in wachtrij.",
-    "reenqueueQueue": "Wachtrij opnieuw inplannen",
-    "cancelAll": "Alles annuleren"
+"reenqueueQueue": "Wachtrij opnieuw inplannen",
+    "cancelAll": "Alles annuleren",
+    "removeAllFailed": "Verwijder alle mislukte",
+    "removeAllFailedConfirm": "Weet u zeker dat u alle mislukte vertaalaanvragen wilt verwijderen? Dit kan niet ongedaan worden gemaakt."
   },
   "schedule": {
     "jobName": "Taaknaam",

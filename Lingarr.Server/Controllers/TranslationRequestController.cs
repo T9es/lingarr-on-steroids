@@ -172,10 +172,23 @@ public class TranslationRequestController : ControllerBase
     /// <response code="200">Returns the count of retried requests</response>
     /// <response code="500">If there was an error processing the retries</response>
     /// <returns>ActionResult containing the number of retried requests</returns>
-    [HttpPost("retry-all-failed")]
+[HttpPost("retry-all-failed")]
     public async Task<ActionResult<int>> RetryAllFailedRequests()
     {
         var count = await _translationRequestService.RetryAllFailedRequests();
+        return Ok(count);
+    }
+
+    /// <summary>
+    /// Removes all translation requests with Failed status
+    /// </summary>
+    /// <response code="200">Returns the count of removed requests</response>
+    /// <response code="500">If there was an error processing the removal</response>
+    /// <returns>ActionResult containing the number of removed requests</returns>
+    [HttpPost("remove-all-failed")]
+    public async Task<ActionResult<int>> RemoveAllFailedRequests()
+    {
+        var count = await _translationRequestService.RemoveAllFailedRequests();
         return Ok(count);
     }
     
