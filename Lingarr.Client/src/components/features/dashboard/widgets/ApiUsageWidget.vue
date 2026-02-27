@@ -95,7 +95,7 @@ const getUsagePercentage = (usage: ApiUsageInfo): number => {
             {{ i18n.translate('statistics.noApiUsage') }}
         </div>
 
-        <div v-else class="max-h-64 flex-1 space-y-4 overflow-y-auto overflow-x-hidden pr-1">
+        <div v-else class="flex-1 space-y-4 overflow-y-auto overflow-x-hidden pr-1">
             <div
                 v-for="usage in apiUsage"
                 :key="usage.service"

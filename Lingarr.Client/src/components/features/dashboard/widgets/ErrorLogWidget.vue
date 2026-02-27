@@ -94,7 +94,7 @@ const warningCount = () => errors.value.filter((e) => e.type === 'warning').leng
             {{ i18n.translate('statistics.noErrors') }}
         </div>
 
-        <div v-else class="max-h-64 flex-1 space-y-3 overflow-y-auto pr-1">
+        <div v-else class="flex-1 space-y-3 overflow-y-auto pr-1">
             <div
                 v-for="error in errors"
                 :key="error.id"

@@ -178,7 +178,6 @@ import { useI18n } from '@/plugins/i18n'
 import services from '@/services'
 import LoaderCircleIcon from '@/components/icons/LoaderCircleIcon.vue'
 import LanguageChart from './LanguageChart.vue'
-import StatCard from './StatCard.vue'
 import MetricCard from './MetricCard.vue'
 import DashboardWidget from './DashboardWidget.vue'
 import TranslationHistoryWidget from './widgets/TranslationHistoryWidget.vue'
@@ -417,39 +416,79 @@ const MediaOverviewContent = defineComponent({
         statistics: Object as () => Statistics
     },
     setup(props) {
+        const formatNumber = (num: number): string => {
+            return new Intl.NumberFormat().format(num)
+        }
+        
+        const getPercentage = (translated: number, total: number): number => {
+            if (total === 0) return 0
+            return Math.round((translated / total) * 100)
+        }
+        
         return () => {
             if (props.loading) {
                 return h(
                     'div',
-                    { class: 'flex h-64 items-center justify-center' },
-                    h(LoaderCircleIcon, { class: 'h-8 w-8 animate-spin' })
+                    { class: 'flex h-20 items-center justify-center' },
+                    h(LoaderCircleIcon, { class: 'h-6 w-6 animate-spin' })
                 )
             }
             if (props.error) {
                 return h(
                     'div',
-                    { class: 'flex h-64 items-center justify-center text-red-500' },
+                    { class: 'flex h-20 items-center justify-center text-red-500 text-sm' },
                     props.error
                 )
             }
             if (!props.statistics) {
                 return h(
                     'div',
-                    { class: 'text-primary-content flex h-64 items-center justify-center' },
+                    { class: 'text-primary-content/60 flex h-20 items-center justify-center text-sm' },
                     translate('statistics.notAvailable')
                 )
             }
-            return h('div', { class: 'grid grid-cols-1 gap-4 md:grid-cols-2' }, [
-                h(StatCard, {
-                    title: translate('statistics.movies'),
-                    total: props.statistics!.totalMovies,
-                    translated: props.statistics!.translationsByMediaType?.[MEDIA_TYPE.MOVIE] || 0
-                }),
-                h(StatCard, {
-                    title: translate('statistics.tvShows'),
-                    total: props.statistics!.totalEpisodes,
-                    translated: props.statistics!.translationsByMediaType?.[MEDIA_TYPE.EPISODE] || 0
-                })
+            
+            const moviesTranslated = props.statistics!.translationsByMediaType?.[MEDIA_TYPE.MOVIE] || 0
+            const episodesTranslated = props.statistics!.translationsByMediaType?.[MEDIA_TYPE.EPISODE] || 0
+            const moviesPercentage = getPercentage(moviesTranslated, props.statistics!.totalMovies)
+            const episodesPercentage = getPercentage(episodesTranslated, props.statistics!.totalEpisodes)
+            
+            return h('div', { class: 'flex gap-6' }, [
+                h('div', { class: 'flex-1' }, [
+                    h('div', { class: 'text-primary-content/60 text-xs font-medium' }, [
+                        translate('statistics.movies')
+                    ]),
+                    h('div', { class: 'flex items-baseline gap-2 mt-1' }, [
+                        h('span', { class: 'text-primary-content text-xl font-bold' }, 
+                            formatNumber(props.statistics!.totalMovies)),
+                        h('span', { class: 'text-accent text-sm' }, 
+                            `${formatNumber(moviesTranslated)} translated`)
+                    ]),
+                    h('div', { class: 'bg-secondary mt-2 h-1.5 w-full overflow-hidden rounded-full' }, [
+                        h('div', {
+                            class: 'bg-accent h-full rounded-full transition-all duration-500',
+                            style: { width: `${moviesPercentage}%` }
+                        })
+                    ])
+                ]),
+                h('div', { class: 'w-px bg-secondary/50' }),
+                h('div', { class: 'flex-1' }, [
+                    h('div', { class: 'text-primary-content/60 text-xs font-medium' }, [
+                        translate('statistics.tvShows')
+                    ]),
+                    h('div', { class: 'flex items-baseline gap-2 mt-1' }, [
+                        h('span', { class: 'text-primary-content text-xl font-bold' }, 
+                            formatNumber(props.statistics!.totalEpisodes)),
+                        h('span', { class: 'text-accent text-sm' }, 
+                            `${formatNumber(episodesTranslated)} translated`)
+                    ]),
+                    h('div', { class: 'bg-secondary mt-2 h-1.5 w-full overflow-hidden rounded-full' }, [
+                        h('div', {
+                            class: 'bg-accent h-full rounded-full transition-all duration-500',
+                            style: { width: `${episodesPercentage}%` }
+                        })
+                    ])
+                ])
             ])
         }
     }

@@ -138,7 +138,7 @@ const getQueueLabel = (queue?: string): string => {
             {{ i18n.translate('statistics.noJobs') }}
         </div>
 
-        <div v-else class="max-h-64 flex-1 space-y-3 overflow-y-auto overflow-x-hidden pr-1">
+        <div v-else class="flex-1 space-y-3 overflow-y-auto overflow-x-hidden pr-1">
             <div
                 v-for="job in jobs"
                 :key="job.id"
