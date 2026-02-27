@@ -75,7 +75,9 @@ const getUsagePercentage = (usage: ApiUsageInfo): number => {
 <template>
     <div class="flex h-full flex-col">
         <div class="mb-4 flex items-center justify-between">
-            <h3 class="text-primary-content/70 text-sm font-medium">{{ i18n.translate('statistics.apiUsage') }}</h3>
+            <h3 class="text-primary-content/70 text-sm font-medium">
+                {{ i18n.translate('statistics.apiUsage') }}
+            </h3>
             <button
                 @click="fetchApiUsage"
                 :disabled="isLoading"
@@ -95,7 +97,7 @@ const getUsagePercentage = (usage: ApiUsageInfo): number => {
             {{ i18n.translate('statistics.noApiUsage') }}
         </div>
 
-        <div v-else class="flex-1 space-y-4 overflow-y-auto overflow-x-hidden pr-1">
+        <div v-else class="min-h-0 flex-1 space-y-4 overflow-x-hidden overflow-y-auto pr-1">
             <div
                 v-for="usage in apiUsage"
                 :key="usage.service"
@@ -110,7 +112,9 @@ const getUsagePercentage = (usage: ApiUsageInfo): number => {
                 </div>
 
                 <!-- Usage limit bar -->
-                <div v-if="usage.limit" class="bg-secondary mb-3 h-1.5 overflow-hidden rounded-full">
+                <div
+                    v-if="usage.limit"
+                    class="bg-secondary mb-3 h-1.5 overflow-hidden rounded-full">
                     <div
                         class="h-full transition-all duration-300"
                         :class="
@@ -126,7 +130,7 @@ const getUsagePercentage = (usage: ApiUsageInfo): number => {
                 <!-- Stats grid -->
                 <div class="grid grid-cols-3 gap-2 text-xs">
                     <div class="text-center">
-                        <div class="text-secondary-content uppercase tracking-wider opacity-70">
+                        <div class="text-secondary-content tracking-wider uppercase opacity-70">
                             {{ i18n.translate('statistics.today') }}
                         </div>
                         <div class="text-primary-content mt-0.5 text-sm font-bold">
@@ -134,7 +138,7 @@ const getUsagePercentage = (usage: ApiUsageInfo): number => {
                         </div>
                     </div>
                     <div class="text-center">
-                        <div class="text-secondary-content uppercase tracking-wider opacity-70">
+                        <div class="text-secondary-content tracking-wider uppercase opacity-70">
                             {{ i18n.translate('statistics.week') }}
                         </div>
                         <div class="text-primary-content mt-0.5 text-sm font-bold">
@@ -142,7 +146,7 @@ const getUsagePercentage = (usage: ApiUsageInfo): number => {
                         </div>
                     </div>
                     <div class="text-center">
-                        <div class="text-secondary-content uppercase tracking-wider opacity-70">
+                        <div class="text-secondary-content tracking-wider uppercase opacity-70">
                             {{ i18n.translate('statistics.month') }}
                         </div>
                         <div class="text-primary-content mt-0.5 text-sm font-bold">
@@ -156,13 +160,19 @@ const getUsagePercentage = (usage: ApiUsageInfo): number => {
                     v-if="usage.tokensUsed"
                     class="text-secondary-content border-secondary/20 mt-3 flex justify-between border-t pt-2 text-xs">
                     <span>{{ i18n.translate('statistics.tokensUsed') }}</span>
-                    <span class="text-primary-content font-medium">{{ formatNumber(usage.tokensUsed) }}</span>
+                    <span class="text-primary-content font-medium">
+                        {{ formatNumber(usage.tokensUsed) }}
+                    </span>
                 </div>
 
                 <!-- Remaining quota -->
-                <div v-if="usage.remaining" class="text-secondary-content mt-1 flex justify-between text-xs">
+                <div
+                    v-if="usage.remaining"
+                    class="text-secondary-content mt-1 flex justify-between text-xs">
                     <span>{{ i18n.translate('statistics.remaining') }}</span>
-                    <span class="text-primary-content font-medium">{{ formatNumber(usage.remaining) }}</span>
+                    <span class="text-primary-content font-medium">
+                        {{ formatNumber(usage.remaining) }}
+                    </span>
                 </div>
             </div>
         </div>

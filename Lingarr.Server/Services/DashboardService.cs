@@ -31,7 +31,7 @@ public class DashboardService : IDashboardService
         _dbContext = dbContext;
     }
 
-    /// <inheritdoc />
+/// <inheritdoc />
     public async Task<JobQueueStatus> GetJobQueueStatus()
     {
         var monitoringApi = JobStorage.Current?.GetMonitoringApi();
@@ -55,21 +55,26 @@ public class DashboardService : IDashboardService
         var processing = monitoringApi.ProcessingJobs(0, 100);
         var succeeded = monitoringApi.SucceededJobs(0, 10);
         var failed = monitoringApi.FailedJobs(0, 10);
+        
+        // Get recurring jobs using storage connection
+        using var connection = JobStorage.Current?.GetConnection();
+        var recurring = connection?.GetRecurringJobs() ?? new List<RecurringJobDto>();
 
         var jobs = new List<JobInfo>();
 
-        // Add processing jobs
-        foreach (var job in processing)
+        // Add recurring jobs
+        foreach (var job in recurring)
         {
-            if (job.Value?.Job?.Method == null) continue;
-            
             jobs.Add(new JobInfo
             {
-                Id = job.Key,
-                Name = job.Value.Job.Method.Name,
-                State = "Running",
-                StartedAt = job.Value.StartedAt,
-                Queue = "processing"
+                Id = $"recurring-{job.Id}",
+                Name = job.Job?.Method?.Name ?? job.Id,
+                State = job.LastJobState ?? "Scheduled",
+                Queue = "recurring",
+                Cron = job.Cron,
+                LastExecution = job.LastExecution,
+                NextExecution = job.NextExecution,
+                ErrorMessage = job.Error
             });
         }
 
@@ -124,16 +129,16 @@ public class DashboardService : IDashboardService
             .Take(20)
             .ToListAsync();
 
-        var translationInProgress = await _dbContext.TranslationRequests
-            .Where(r => r.Status == TranslationStatus.InProgress)
-            .OrderByDescending(r => r.StartedAt)
-            .Take(20)
-            .ToListAsync();
-
         var translationFailed = await _dbContext.TranslationRequests
             .Where(r => r.Status == TranslationStatus.Failed)
             .OrderByDescending(r => r.FailedAt)
             .Take(10)
+            .ToListAsync();
+
+        var translationCompleted = await _dbContext.TranslationRequests
+            .Where(r => r.Status == TranslationStatus.Completed)
+            .OrderByDescending(r => r.CompletedAt)
+            .Take(5)
             .ToListAsync();
 
         // Add pending translation requests
@@ -146,22 +151,6 @@ public class DashboardService : IDashboardService
                 State = "Pending",
                 Queue = request.IsPriority ? "priority" : "translation",
                 ScheduledAt = request.CreatedAt,
-                SourceLanguage = request.SourceLanguage,
-                TargetLanguage = request.TargetLanguage
-            });
-        }
-
-        // Add in-progress translation requests
-        foreach (var request in translationInProgress)
-        {
-            jobs.Add(new JobInfo
-            {
-                Id = $"translation-{request.Id}",
-                Name = request.Title,
-                State = "Running",
-                Queue = request.IsPriority ? "priority" : "translation",
-                StartedAt = request.StartedAt,
-                Progress = request.Progress,
                 SourceLanguage = request.SourceLanguage,
                 TargetLanguage = request.TargetLanguage
             });
@@ -182,14 +171,33 @@ public class DashboardService : IDashboardService
             });
         }
 
+        // Add completed translation requests
+        foreach (var request in translationCompleted)
+        {
+            jobs.Add(new JobInfo
+            {
+                Id = $"translation-{request.Id}",
+                Name = request.Title,
+                State = "Completed",
+                Queue = "translation",
+                CompletedAt = request.CompletedAt,
+                SourceLanguage = request.SourceLanguage,
+                TargetLanguage = request.TargetLanguage
+            });
+        }
+
         return new JobQueueStatus
         {
-            ScheduledCount = scheduled.Count,
+            ScheduledCount = scheduled.Count + recurring.Count,
             QueuedCount = enqueued.Count + translationPending.Count,
-            RunningCount = processing.Count + translationInProgress.Count,
+            RunningCount = processing.Count,
             FailedCount = failed.Count + translationFailed.Count,
             SucceededCount = succeeded.Count,
-            Jobs = jobs.OrderByDescending(j => j.StartedAt ?? j.ScheduledAt ?? j.FailedAt).Take(20).ToList()
+            Jobs = jobs
+                .OrderBy(j => j.State == "Completed" ? 1 : (j.State == "Failed" ? 2 : 0))
+                .ThenBy(j => j.NextExecution ?? j.ScheduledAt ?? j.LastExecution ?? j.FailedAt ?? j.CompletedAt)
+                .Take(30)
+                .ToList()
         };
     }
 
@@ -376,10 +384,14 @@ public class JobInfo
     public DateTime? StartedAt { get; set; }
     public DateTime? ScheduledAt { get; set; }
     public DateTime? FailedAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
     public string? ErrorMessage { get; set; }
     public int Progress { get; set; }
     public string? SourceLanguage { get; set; }
     public string? TargetLanguage { get; set; }
+    public string? Cron { get; set; }
+    public DateTime? LastExecution { get; set; }
+    public DateTime? NextExecution { get; set; }
 }
 
 /// <summary>

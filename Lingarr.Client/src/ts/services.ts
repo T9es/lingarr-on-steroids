@@ -91,6 +91,7 @@ export interface ITranslationRequestService {
     getActiveCount<T>(): Promise<T>
     getFailedRequests<T>(): Promise<T>
     getInProgressRequests<T>(): Promise<T>
+    getRecentCompleted<T>(limit?: number): Promise<T>
     requests<T>(
         pageNumber: number,
         searchQuery: string,

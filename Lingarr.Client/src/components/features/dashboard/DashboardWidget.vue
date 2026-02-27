@@ -11,7 +11,7 @@
                 :title="isVisible ? 'Hide widget' : 'Show widget'"
                 @click.stop="$emit('toggle-visibility')">
                 <EyeOnIcon v-if="isVisible" class="h-4 w-4" />
-                <EyeOffIcon v-else class="h-4 w-4 text-primary-content/50" />
+                <EyeOffIcon v-else class="text-primary-content/50 h-4 w-4" />
             </button>
         </div>
 
@@ -23,7 +23,7 @@
         </div>
 
         <!-- Widget Content -->
-        <div :class="['h-full overflow-y-auto overflow-x-hidden', isConfigMode && 'mt-4']">
+        <div :class="['h-full overflow-x-hidden', isConfigMode && 'mt-4']">
             <slot />
         </div>
     </div>

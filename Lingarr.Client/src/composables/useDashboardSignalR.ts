@@ -32,7 +32,7 @@ export function useDashboardSignalR() {
         lastUpdate: null
     })
 
-const handleRequestProgress = (progress: IRequestProgress) => {
+    const handleRequestProgress = (progress: IRequestProgress) => {
         const existing = state.value.activeTranslations.get(progress.id)
 
         if (progress.status === 'Completed' || progress.status === 'Failed') {
@@ -48,7 +48,9 @@ const handleRequestProgress = (progress: IRequestProgress) => {
                 targetLanguage: progress.targetLanguage,
                 progress: progress.progress,
                 status: progress.status,
-                startedAt: existing?.startedAt || (progress.startedAt ? new Date(progress.startedAt) : new Date())
+                startedAt:
+                    existing?.startedAt ||
+                    (progress.startedAt ? new Date(progress.startedAt) : new Date())
             }
             state.value.activeTranslations.set(progress.id, translation)
             state.value.activeCount = state.value.activeTranslations.size
@@ -74,9 +76,7 @@ const handleRequestProgress = (progress: IRequestProgress) => {
             const data = response.data
 
             // Handle various response formats (defensive)
-            const rawJobs = Array.isArray(data)
-                ? data
-                : data?.jobs || data?.Jobs || []
+            const rawJobs = Array.isArray(data) ? data : data?.jobs || data?.Jobs || []
 
             if (!Array.isArray(rawJobs) || rawJobs.length === 0) {
                 return
@@ -128,11 +128,21 @@ const handleRequestProgress = (progress: IRequestProgress) => {
                 const translation: ActiveTranslation = {
                     id: numericId,
                     jobId: String(rawId),
-                    title: job?.title ?? job?.Title ?? job?.name ?? job?.Name ?? `Translation #${numericId}`,
+                    title:
+                        job?.title ??
+                        job?.Title ??
+                        job?.name ??
+                        job?.Name ??
+                        `Translation #${numericId}`,
                     mediaType: job?.mediaType ?? job?.MediaType ?? 'Movie',
                     sourceLanguage: job?.sourceLanguage ?? job?.SourceLanguage ?? '',
                     targetLanguage: job?.targetLanguage ?? job?.TargetLanguage ?? '',
-                    progress: typeof job?.progress === 'number' ? job.progress : (typeof job?.Progress === 'number' ? job.Progress : 0),
+                    progress:
+                        typeof job?.progress === 'number'
+                            ? job.progress
+                            : typeof job?.Progress === 'number'
+                              ? job.Progress
+                              : 0,
                     status: 'InProgress',
                     startedAt
                 }

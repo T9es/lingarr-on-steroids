@@ -37,7 +37,7 @@ export interface DashboardLayout {
 }
 
 const STORAGE_KEY = 'lingarr-dashboard-layout'
-const LAYOUT_VERSION = 3
+const LAYOUT_VERSION = 4
 
 // Grid configuration
 export const GRID_COLS = 12
@@ -52,18 +52,16 @@ const DEFAULT_LAYOUT: LayoutItem[] = [
     { i: 'active-translations', x: 0, y: 0, w: 12, h: 3, minW: 6, minH: 2 },
     { i: 'media-overview', x: 0, y: 3, w: 12, h: 2, minW: 6, minH: 2 },
     { i: 'translation-activity', x: 0, y: 5, w: 6, h: 3, minW: 4, minH: 2 },
-    { i: 'language-statistics', x: 6, y: 5, w: 6, h: 4, minW: 4, minH: 3 },
-    { i: 'translation-history', x: 0, y: 8, w: 6, h: 5, minW: 4, minH: 3 },
-    { i: 'job-queue', x: 6, y: 8, w: 3, h: 4, minW: 3, minH: 3 },
-    { i: 'api-usage', x: 9, y: 8, w: 3, h: 4, minW: 3, minH: 3 },
-    { i: 'error-log', x: 0, y: 12, w: 12, h: 3, minW: 6, minH: 2 }
+    { i: 'translation-history', x: 6, y: 5, w: 6, h: 5, minW: 4, minH: 3 },
+    { i: 'job-queue', x: 0, y: 8, w: 4, h: 4, minW: 3, minH: 3 },
+    { i: 'api-usage', x: 4, y: 8, w: 4, h: 4, minW: 3, minH: 3 },
+    { i: 'error-log', x: 8, y: 8, w: 4, h: 4, minW: 6, minH: 2 }
 ]
 
 const DEFAULT_WIDGETS: WidgetMeta[] = [
     { id: 'active-translations', title: 'statistics.activeTranslations', visible: true },
     { id: 'media-overview', title: 'statistics.mediaOverview', visible: true },
     { id: 'translation-activity', title: 'statistics.translationActivity', visible: true },
-    { id: 'language-statistics', title: 'statistics.languageStatistics', visible: true },
     { id: 'translation-history', title: 'statistics.translationHistory', visible: true },
     { id: 'job-queue', title: 'statistics.jobQueue', visible: true },
     { id: 'api-usage', title: 'statistics.apiUsage', visible: true },
@@ -102,9 +100,13 @@ function saveToLocalStorage(layout: DashboardLayout): void {
 function validateLayout(layout: DashboardLayout): DashboardLayout {
     // Version mismatch - return defaults
     if (layout.version !== LAYOUT_VERSION) {
-        return { layout: [...DEFAULT_LAYOUT], widgets: [...DEFAULT_WIDGETS], version: LAYOUT_VERSION }
+        return {
+            layout: [...DEFAULT_LAYOUT],
+            widgets: [...DEFAULT_WIDGETS],
+            version: LAYOUT_VERSION
+        }
     }
-    
+
     // Ensure all widgets exist
     const missingWidgets = DEFAULT_WIDGETS.filter(
         (w) => !layout.widgets.find((lw) => lw.id === w.id)
@@ -117,7 +119,7 @@ function validateLayout(layout: DashboardLayout): DashboardLayout {
         )
         layout.layout.push(...missingLayout)
     }
-    
+
     return layout
 }
 
@@ -159,7 +161,11 @@ export function useDashboardLayout() {
         }
 
         // Final fallback: defaults
-        state.value = { layout: [...DEFAULT_LAYOUT], widgets: [...DEFAULT_WIDGETS], version: LAYOUT_VERSION }
+        state.value = {
+            layout: [...DEFAULT_LAYOUT],
+            widgets: [...DEFAULT_WIDGETS],
+            version: LAYOUT_VERSION
+        }
         isLoading.value = false
     }
 
@@ -181,7 +187,7 @@ export function useDashboardLayout() {
     function debouncedSave(): void {
         // Save to localStorage immediately
         saveToLocalStorage(state.value)
-        
+
         // Debounce server save
         if (saveTimeout.value) {
             clearTimeout(saveTimeout.value)
@@ -354,7 +360,7 @@ export function useDashboardLayout() {
         resetLayout,
         getWidgetMeta,
         getLayoutItem,
-        
+
         // Expose for initialization
         loadLayout
     }

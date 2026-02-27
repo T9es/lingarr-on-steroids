@@ -118,7 +118,7 @@ public class SyncShowJob
                 await transaction.CommitAsync();
             });
 
-            // Cleanup orphaned shows from deleted instances
+// Cleanup orphaned shows from deleted instances
             var configuredInstanceIds = instances.Select(i => i.Id).ToHashSet();
 
             // Include "default" and "legacy" to avoid removing migrated records
@@ -134,6 +134,25 @@ public class SyncShowJob
             {
                 _logger.LogWarning("Removing {Count} shows from deleted instances", orphanedShows.Count);
                 _dbContext.Shows.RemoveRange(orphanedShows);
+                await _dbContext.SaveChangesAsync();
+            }
+
+            // Cleanup orphaned translation requests for removed shows
+            var existingShowIds = await _dbContext.Shows.Select(s => s.Id).ToListAsync();
+            var orphanedRequests = await _dbContext.TranslationRequests
+                .Where(tr => tr.MediaType == MediaType.Show &&
+                             tr.MediaId.HasValue &&
+                             !existingShowIds.Contains(tr.MediaId.Value) &&
+                             (tr.Status == TranslationStatus.Pending ||
+                              tr.Status == TranslationStatus.InProgress ||
+                              tr.Status == TranslationStatus.Failed))
+                .ToListAsync();
+
+            if (orphanedRequests.Count != 0)
+            {
+                _logger.LogInformation("Removing {Count} orphaned translation requests for removed shows", 
+                    orphanedRequests.Count);
+                _dbContext.TranslationRequests.RemoveRange(orphanedRequests);
                 await _dbContext.SaveChangesAsync();
             }
 

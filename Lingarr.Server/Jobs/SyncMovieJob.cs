@@ -98,7 +98,7 @@ public class SyncMovieJob
             // Sync all movies with their instance IDs
             await _movieSyncService.SyncMovies(allMovies);
 
-            // Remove non-existent movies per instance
+// Remove non-existent movies per instance
             var strategy = _dbContext.Database.CreateExecutionStrategy();
             await strategy.ExecuteAsync(async () =>
             {
@@ -131,6 +131,25 @@ public class SyncMovieJob
             {
                 _logger.LogWarning("Removing {Count} movies from deleted instances", orphanedMovies.Count);
                 _dbContext.Movies.RemoveRange(orphanedMovies);
+                await _dbContext.SaveChangesAsync();
+            }
+
+// Cleanup orphaned translation requests for removed movies
+            var existingMovieIds = await _dbContext.Movies.Select(m => m.Id).ToListAsync();
+            var orphanedRequests = await _dbContext.TranslationRequests
+                .Where(tr => tr.MediaType == MediaType.Movie &&
+                             tr.MediaId.HasValue &&
+                             !existingMovieIds.Contains(tr.MediaId.Value) &&
+                             (tr.Status == TranslationStatus.Pending ||
+                              tr.Status == TranslationStatus.InProgress ||
+                              tr.Status == TranslationStatus.Failed))
+                .ToListAsync();
+
+            if (orphanedRequests.Count != 0)
+            {
+                _logger.LogInformation("Removing {Count} orphaned translation requests for removed movies", 
+                    orphanedRequests.Count);
+                _dbContext.TranslationRequests.RemoveRange(orphanedRequests);
                 await _dbContext.SaveChangesAsync();
             }
 
