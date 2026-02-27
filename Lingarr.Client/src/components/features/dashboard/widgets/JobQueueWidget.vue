@@ -54,6 +54,7 @@ const fetchJobs = async () => {
             state: (job.State || job.state || '').toLowerCase(),
             progress: job.Progress || job.progress,
             cron: job.Cron || job.cron,
+            startedAt: job.StartedAt || job.startedAt,
             lastExecution: job.LastExecution || job.lastExecution,
             nextExecution: job.NextExecution || job.nextExecution,
             scheduledAt: job.ScheduledAt || job.scheduledAt,
