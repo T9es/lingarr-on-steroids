@@ -27,7 +27,7 @@
             </div>
         </div>
 
-        <!-- Config Mode Instructions -->
+<!-- Config Mode Instructions -->
         <div v-if="isConfigMode" class="bg-accent/10 border-accent/30 rounded-md border p-3">
             <p class="text-primary-content/80 text-sm">
                 <span class="font-medium">
@@ -40,39 +40,16 @@
             </p>
         </div>
 
-        <!-- Reset Confirmation Modal -->
+        <!-- Loading State -->
         <div
-            v-if="showResetConfirmation"
-            class="bg-secondary/80 fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm">
-            <div class="bg-secondary border-secondary mx-4 max-w-sm rounded-lg border p-6">
-                <h3 class="text-primary-content mb-2 text-lg font-semibold">
-                    {{
-                        translate('statistics.resetLayoutConfirmTitle') || 'Reset Dashboard Layout'
-                    }}
-                </h3>
-                <p class="text-primary-content/70 mb-4 text-sm">
-                    {{
-                        translate('statistics.resetLayoutConfirmMessage') ||
-                        'Are you sure you want to reset the dashboard layout to defaults? This cannot be undone.'
-                    }}
-                </p>
-                <div class="flex justify-end gap-2">
-                    <button
-                        @click="showResetConfirmation = false"
-                        class="text-primary-content/60 hover:text-primary-content rounded-md px-4 py-2 text-sm transition-colors hover:bg-white/5">
-                        {{ translate('common.cancel') || 'Cancel' }}
-                    </button>
-                    <button
-                        @click="confirmReset"
-                        class="rounded-md bg-red-500/80 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-500">
-                        {{ translate('statistics.resetLayout') || 'Reset' }}
-                    </button>
-                </div>
-            </div>
+            v-if="isLayoutLoading"
+            class="flex min-h-[400px] items-center justify-center">
+            <LoaderCircleIcon class="text-accent h-8 w-8 animate-spin" />
         </div>
 
         <!-- Widget Grid -->
         <GridLayout
+            v-else
             v-model:layout="currentLayout"
             :col-num="gridCols"
             :row-height="rowHeight"
@@ -118,7 +95,7 @@
                         :error="error ?? undefined"
                         :statistics="statistics" />
 
-<!-- Translation History Widget -->
+                    <!-- Translation History Widget -->
                     <TranslationHistoryWidget
                         v-if="item.i === 'translation-history'"
                         :daily-statistics="dailyStats || []"
@@ -136,6 +113,37 @@
                 </DashboardWidget>
             </GridItem>
         </GridLayout>
+
+        <!-- Reset Confirmation Modal -->
+        <div
+            v-if="showResetConfirmation"
+            class="bg-secondary/80 fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm">
+            <div class="bg-secondary border-secondary mx-4 max-w-sm rounded-lg border p-6">
+                <h3 class="text-primary-content mb-2 text-lg font-semibold">
+                    {{
+                        translate('statistics.resetLayoutConfirmTitle') || 'Reset Dashboard Layout'
+                    }}
+                </h3>
+                <p class="text-primary-content/70 mb-4 text-sm">
+                    {{
+                        translate('statistics.resetLayoutConfirmMessage') ||
+                        'Are you sure you want to reset the dashboard layout to defaults? This cannot be undone.'
+                    }}
+                </p>
+<div class="flex justify-end gap-2">
+                    <button
+                        @click="showResetConfirmation = false"
+                        class="text-primary-content/60 hover:text-primary-content rounded-md px-4 py-2 text-sm transition-colors hover:bg-white/5">
+                        {{ translate('common.cancel') || 'Cancel' }}
+                    </button>
+                    <button
+                        @click="confirmReset"
+                        class="rounded-md bg-red-500/80 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-500">
+                        {{ translate('statistics.resetLayout') || 'Reset' }}
+                    </button>
+                </div>
+            </div>
+        </div>
 
         <!-- Hidden Widgets Drawer (only visible in config mode) -->
         <div
@@ -191,6 +199,7 @@ const {
     visibleLayout,
     hiddenWidgets,
     isConfigMode,
+    isLoading: isLayoutLoading,
     toggleConfigMode,
     isWidgetVisible,
     toggleWidgetVisibility,
