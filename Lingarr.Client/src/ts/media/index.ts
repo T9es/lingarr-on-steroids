@@ -78,6 +78,11 @@ export interface ITranslationRequestLog {
 export interface IRequestProgress {
     id: number
     jobId: string
+    title: string
+    mediaType: MediaType
+    sourceLanguage: string
+    targetLanguage: string
+    startedAt?: string | null
     status: TranslationStatus
     progress: number
     completed: boolean

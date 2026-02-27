@@ -1,11 +1,13 @@
 using Hangfire;
 using Hangfire.Storage;
+using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Interfaces;
 using Lingarr.Server.Interfaces.Services;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace Lingarr.Server.Services;
 
@@ -287,6 +289,51 @@ public class DashboardService : IDashboardService
 
         await _dbContext.SaveChangesAsync();
     }
+
+    /// <inheritdoc />
+    public async Task<string?> GetDashboardLayout()
+    {
+        var setting = await _dbContext.Settings
+            .FirstOrDefaultAsync(s => s.Key == SettingKeys.Dashboard.Layout);
+        
+        return setting?.Value;
+    }
+
+    /// <inheritdoc />
+    public async Task SaveDashboardLayout(string layoutJson)
+    {
+        var setting = await _dbContext.Settings
+            .FirstOrDefaultAsync(s => s.Key == SettingKeys.Dashboard.Layout);
+        
+        if (setting == null)
+        {
+            setting = new Setting
+            {
+                Key = SettingKeys.Dashboard.Layout,
+                Value = layoutJson
+            };
+            _dbContext.Settings.Add(setting);
+        }
+        else
+        {
+            setting.Value = layoutJson;
+        }
+        
+        await _dbContext.SaveChangesAsync();
+    }
+
+    /// <inheritdoc />
+    public async Task ResetDashboardLayout()
+    {
+        var setting = await _dbContext.Settings
+            .FirstOrDefaultAsync(s => s.Key == SettingKeys.Dashboard.Layout);
+        
+        if (setting != null)
+        {
+            _dbContext.Settings.Remove(setting);
+            await _dbContext.SaveChangesAsync();
+        }
+    }
 }
 
 /// <summary>
@@ -299,6 +346,9 @@ public interface IDashboardService
     Task<List<ErrorLogEntry>> GetErrorLog(int limit = 50);
     Task LogApiUsage(string service, int? tokensUsed, long responseTimeMs, bool success, string? errorMessage = null);
     Task LogError(string source, string message, string? details = null, string? stackTrace = null);
+    Task<string?> GetDashboardLayout();
+    Task SaveDashboardLayout(string layoutJson);
+    Task ResetDashboardLayout();
 }
 
 /// <summary>

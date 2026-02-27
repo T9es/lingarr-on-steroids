@@ -75,4 +75,58 @@ public class DashboardController : ControllerBase
             return StatusCode(500, "Failed to get error log");
         }
     }
+
+    /// <summary>
+    /// Get dashboard layout
+    /// </summary>
+    [HttpGet("layout")]
+    public async Task<ActionResult<string?>> GetLayout()
+    {
+        try
+        {
+            var layout = await _dashboardService.GetDashboardLayout();
+            return Ok(layout);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get dashboard layout");
+            return StatusCode(500, "Failed to get dashboard layout");
+        }
+    }
+
+    /// <summary>
+    /// Save dashboard layout
+    /// </summary>
+    [HttpPut("layout")]
+    public async Task<IActionResult> SaveLayout([FromBody] string layoutJson)
+    {
+        try
+        {
+            await _dashboardService.SaveDashboardLayout(layoutJson);
+            return Ok();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to save dashboard layout");
+            return StatusCode(500, "Failed to save dashboard layout");
+        }
+    }
+
+    /// <summary>
+    /// Reset dashboard layout to defaults
+    /// </summary>
+    [HttpPost("layout/reset")]
+    public async Task<IActionResult> ResetLayout()
+    {
+        try
+        {
+            await _dashboardService.ResetDashboardLayout();
+            return Ok();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to reset dashboard layout");
+            return StatusCode(500, "Failed to reset dashboard layout");
+        }
+    }
 }

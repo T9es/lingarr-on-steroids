@@ -6,6 +6,10 @@ import type { IRequestProgress } from '@/ts'
 export interface ActiveTranslation {
     id: number
     jobId: string
+    title: string
+    mediaType: string
+    sourceLanguage: string
+    targetLanguage: string
     progress: number
     status: string
     startedAt: Date
@@ -28,7 +32,7 @@ export function useDashboardSignalR() {
         lastUpdate: null
     })
 
-    const handleRequestProgress = (progress: IRequestProgress) => {
+const handleRequestProgress = (progress: IRequestProgress) => {
         const existing = state.value.activeTranslations.get(progress.id)
 
         if (progress.status === 'Completed' || progress.status === 'Failed') {
@@ -38,9 +42,13 @@ export function useDashboardSignalR() {
             const translation: ActiveTranslation = {
                 id: progress.id,
                 jobId: progress.jobId,
+                title: progress.title,
+                mediaType: progress.mediaType,
+                sourceLanguage: progress.sourceLanguage,
+                targetLanguage: progress.targetLanguage,
                 progress: progress.progress,
                 status: progress.status,
-                startedAt: existing?.startedAt || new Date()
+                startedAt: existing?.startedAt || (progress.startedAt ? new Date(progress.startedAt) : new Date())
             }
             state.value.activeTranslations.set(progress.id, translation)
             state.value.activeCount = state.value.activeTranslations.size
@@ -120,6 +128,10 @@ export function useDashboardSignalR() {
                 const translation: ActiveTranslation = {
                     id: numericId,
                     jobId: String(rawId),
+                    title: job?.title ?? job?.Title ?? job?.name ?? job?.Name ?? `Translation #${numericId}`,
+                    mediaType: job?.mediaType ?? job?.MediaType ?? 'Movie',
+                    sourceLanguage: job?.sourceLanguage ?? job?.SourceLanguage ?? '',
+                    targetLanguage: job?.targetLanguage ?? job?.TargetLanguage ?? '',
                     progress: typeof job?.progress === 'number' ? job.progress : (typeof job?.Progress === 'number' ? job.Progress : 0),
                     status: 'InProgress',
                     startedAt

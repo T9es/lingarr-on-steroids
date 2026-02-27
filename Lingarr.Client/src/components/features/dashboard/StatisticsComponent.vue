@@ -14,7 +14,7 @@
                 </button>
                 <template v-else>
                     <button
-                        @click="resetLayout"
+                        @click="showResetConfirmation = true"
                         class="text-primary-content/60 hover:text-primary-content rounded-md px-3 py-1.5 text-sm transition-colors hover:bg-white/5">
                         {{ translate('statistics.resetLayout') }}
                     </button>
@@ -38,6 +38,35 @@
                     'Drag widgets to rearrange. Click the eye icon to show/hide widgets. Changes are saved automatically.'
                 }}
             </p>
+        </div>
+
+        <!-- Reset Confirmation Modal -->
+        <div
+            v-if="showResetConfirmation"
+            class="bg-black/50 fixed inset-0 z-50 flex items-center justify-center">
+            <div class="bg-secondary border-secondary mx-4 max-w-sm rounded-lg border p-6">
+                <h3 class="text-primary-content mb-2 text-lg font-semibold">
+                    {{ translate('statistics.resetLayoutConfirmTitle') || 'Reset Dashboard Layout' }}
+                </h3>
+                <p class="text-primary-content/70 mb-4 text-sm">
+                    {{
+                        translate('statistics.resetLayoutConfirmMessage') ||
+                        'Are you sure you want to reset the dashboard layout to defaults? This cannot be undone.'
+                    }}
+                </p>
+                <div class="flex justify-end gap-2">
+                    <button
+                        @click="showResetConfirmation = false"
+                        class="text-primary-content/60 hover:text-primary-content rounded-md px-4 py-2 text-sm transition-colors hover:bg-white/5">
+                        {{ translate('common.cancel') || 'Cancel' }}
+                    </button>
+                    <button
+                        @click="confirmReset"
+                        class="bg-red-500/80 hover:bg-red-500 rounded-md px-4 py-2 text-sm font-medium text-white transition-colors">
+                        {{ translate('statistics.resetLayout') || 'Reset' }}
+                    </button>
+                </div>
+            </div>
         </div>
 
         <!-- Widget Grid -->
@@ -115,6 +144,29 @@
                 </DashboardWidget>
             </GridItem>
         </GridLayout>
+
+        <!-- Hidden Widgets Drawer (only visible in config mode) -->
+        <div
+            v-if="isConfigMode && hiddenWidgets.length > 0"
+            class="border-secondary/50 bg-secondary/30 mt-4 rounded-lg border border-dashed p-4">
+            <h4 class="text-primary-content/70 mb-3 text-sm font-medium">
+                {{ translate('statistics.hiddenWidgets') || 'Hidden Widgets' }} ({{ hiddenWidgets.length }})
+            </h4>
+            <div class="flex flex-wrap gap-3">
+                <button
+                    v-for="widget in hiddenWidgets"
+                    :key="widget.id"
+                    @click="showWidget(widget.id)"
+                    class="bg-primary hover:bg-accent/20 rounded-md p-3 text-left transition-colors">
+                    <div class="text-primary-content text-sm font-medium">
+                        {{ translate(widget.title) || widget.title }}
+                    </div>
+                    <div class="text-primary-content/60 mt-1 text-xs">
+                        {{ translate('statistics.clickToShow') || 'Click to show' }}
+                    </div>
+                </button>
+            </div>
+        </div>
     </div>
 </template>
 
@@ -146,16 +198,25 @@ const {
 } = useDashboardSignalR()
 const {
     visibleLayout,
+    hiddenWidgets,
     isConfigMode,
     toggleConfigMode,
     isWidgetVisible,
     toggleWidgetVisibility,
+    showWidget,
     resetLayout,
     updateLayout,
     gridCols,
     rowHeight,
     margin
 } = useDashboardLayout()
+
+const showResetConfirmation = ref(false)
+
+const confirmReset = async () => {
+    showResetConfirmation.value = false
+    await resetLayout()
+}
 
 // Local reactive layout for grid-layout-plus
 const currentLayout = ref<LayoutItem[]>([])
@@ -240,13 +301,16 @@ onUnmounted(() => {
     disconnectSignalR()
 })
 
-// Inline components for widget content
 const ActiveTranslationsContent = defineComponent({
     props: {
         isConnected: Boolean,
         translations: Array as () => Array<{
             id: number
             jobId: string
+            title: string
+            mediaType: string
+            sourceLanguage: string
+            targetLanguage: string
             status: string
             progress: number
         }>
@@ -290,12 +354,14 @@ const ActiveTranslationsContent = defineComponent({
                                           {
                                               class: 'text-primary-content truncate text-sm font-medium'
                                           },
-                                          `${translate('statistics.jobId')}: ${t.jobId.slice(0, 8)}`
+                                          t.title || `Translation #${t.id}`
                                       ),
                                       h(
                                           'p',
                                           { class: 'text-primary-content/60 text-xs' },
-                                          `ID: ${t.id}`
+                                          t.sourceLanguage && t.targetLanguage
+                                              ? `${t.sourceLanguage} → ${t.targetLanguage}`
+                                              : t.mediaType || 'Movie'
                                       )
                                   ]),
                                   h(

@@ -12,6 +12,7 @@ import { directoryService } from '@/services/directoryService'
 import { statisticsService } from '@/services/statisticsService'
 import { logsService } from '@/services/logsService'
 import { chutesService } from '@/services/chutesService'
+import { dashboardService } from '@/services/dashboardService'
 
 const services = (axios: AxiosStatic): Services => ({
     setting: settingService(axios),
@@ -25,7 +26,8 @@ const services = (axios: AxiosStatic): Services => ({
     mapping: mappingService(axios),
     directory: directoryService(axios),
     statistics: statisticsService(axios),
-    logs: logsService()
+    logs: logsService(),
+    dashboard: dashboardService(axios)
 })
 
-export default services(axios)
+export default services(import.meta.env.DEV ? axios : axios)

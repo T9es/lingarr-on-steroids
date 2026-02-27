@@ -211,7 +211,7 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
                 if (_dashboardService != null)
                 {
                     await _dashboardService.LogApiUsage(
-                        "openai",
+                        ServiceName,
                         completionResponse.Usage?.TotalTokens,
                         stopwatch.ElapsedMilliseconds,
                         success: true);
@@ -503,7 +503,7 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
         if (_dashboardService != null)
         {
             await _dashboardService.LogApiUsage(
-                "openai",
+                ServiceName,
                 completionResponse.Usage?.TotalTokens,
                 stopwatch.ElapsedMilliseconds,
                 success: true);

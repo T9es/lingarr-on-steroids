@@ -22,6 +22,7 @@ export interface Services {
     directory: IDirectoryService
     statistics: IStatisticsService
     logs: ILogsService
+    dashboard: IDashboardService
 }
 
 export interface IMediaService {
@@ -129,4 +130,13 @@ export interface IStatisticsService {
 
 export interface ILogsService {
     getStream(): EventSource
+}
+
+export interface IDashboardService {
+    getLayout<T>(): Promise<T | null>
+    saveLayout(layoutJson: string): Promise<void>
+    resetLayout(): Promise<void>
+    getJobs<T>(): Promise<T>
+    getApiUsage<T>(): Promise<T>
+    getErrors<T>(limit?: number): Promise<T>
 }

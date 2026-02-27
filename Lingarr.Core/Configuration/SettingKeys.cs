@@ -206,4 +206,13 @@ public static class SettingKeys
         /// </summary>
         public const string StepProgress = "onboarding_step_progress";
     }
+    
+    public static class Dashboard
+    {
+        /// <summary>
+        /// JSON object containing dashboard widget layout configuration.
+        /// Includes layout positions, widget visibility, and version.
+        /// </summary>
+        public const string Layout = "dashboard_layout";
+    }
 }
