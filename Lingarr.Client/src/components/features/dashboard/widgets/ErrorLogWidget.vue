@@ -17,6 +17,7 @@ interface ErrorLog {
 
 const errors = ref<ErrorLog[]>([])
 const isLoading = ref(false)
+const localLoading = ref(false)
 const expandedId = ref<number | null>(null)
 const hasMore = ref(true)
 const isLoadingMore = ref(false)
@@ -27,6 +28,7 @@ let observer: IntersectionObserver | null = null
 const fetchErrors = async (reset = false) => {
     if (reset) {
         isLoading.value = true
+        localLoading.value = true
         errors.value = []
         hasMore.value = true
     }
@@ -48,6 +50,11 @@ const fetchErrors = async (reset = false) => {
     } finally {
         isLoading.value = false
         isLoadingMore.value = false
+        if (reset) {
+            setTimeout(() => {
+                localLoading.value = false
+            }, 500)
+        }
     }
 }
 
@@ -128,7 +135,7 @@ const warningCount = () => errors.value.filter((e) => e.type === 'warning').leng
                 :disabled="isLoading"
                 class="text-secondary-content hover:text-primary-content p-1 transition-colors"
                 :title="i18n.translate('statistics.refresh')">
-                <RefreshIcon class="h-4 w-4" :class="{ 'animate-spin': isLoading }" />
+                <RefreshIcon class="h-4 w-4" :class="{ 'animate-spin': localLoading || isLoading }" />
             </button>
         </div>
 

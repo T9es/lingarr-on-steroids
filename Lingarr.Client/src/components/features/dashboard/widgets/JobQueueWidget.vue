@@ -28,10 +28,12 @@ interface JobInfo {
 
 const jobs = ref<JobInfo[]>([])
 const isLoading = ref(false)
+const localLoading = ref(false)
 const error = ref<string | null>(null)
 
 const fetchJobs = async () => {
     isLoading.value = true
+    localLoading.value = true
     error.value = null
 
     try {
@@ -58,6 +60,9 @@ const fetchJobs = async () => {
         console.error('Failed to fetch job queue:', e)
     } finally {
         isLoading.value = false
+        setTimeout(() => {
+            localLoading.value = false
+        }, 500)
     }
 }
 
@@ -148,7 +153,7 @@ const triggerJob = async (jobName: string) => {
                 :disabled="isLoading"
                 class="text-primary-content/50 hover:text-primary-content p-1 transition-colors"
                 :title="i18n.translate('statistics.refresh')">
-                <RefreshIcon class="h-4 w-4" :class="{ 'animate-spin': isLoading }" />
+                <RefreshIcon class="h-4 w-4" :class="{ 'animate-spin': localLoading || isLoading }" />
             </button>
         </div>
 

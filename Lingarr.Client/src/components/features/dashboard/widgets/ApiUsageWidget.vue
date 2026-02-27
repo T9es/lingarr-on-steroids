@@ -18,10 +18,12 @@ interface ApiUsageInfo {
 
 const apiUsage = ref<ApiUsageInfo[]>([])
 const isLoading = ref(false)
+const localLoading = ref(false)
 const error = ref<string | null>(null)
 
 const fetchApiUsage = async () => {
     isLoading.value = true
+    localLoading.value = true
     error.value = null
 
     try {
@@ -43,6 +45,9 @@ const fetchApiUsage = async () => {
         console.error('Failed to fetch API usage:', e)
     } finally {
         isLoading.value = false
+        setTimeout(() => {
+            localLoading.value = false
+        }, 500)
     }
 }
 
@@ -83,7 +88,7 @@ const getUsagePercentage = (usage: ApiUsageInfo): number => {
                 :disabled="isLoading"
                 class="text-secondary-content hover:text-primary-content p-1 transition-colors"
                 :title="i18n.translate('statistics.refresh')">
-                <RefreshIcon class="h-4 w-4" :class="{ 'animate-spin': isLoading }" />
+                <RefreshIcon class="h-4 w-4" :class="{ 'animate-spin': localLoading || isLoading }" />
             </button>
         </div>
 
