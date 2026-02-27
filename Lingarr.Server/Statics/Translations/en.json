@@ -130,7 +130,15 @@
     "remaining": "Remaining",
     "refresh": "Refresh",
     "nextRun": "Next run",
-    "lastRun": "Last run"
+    "lastRun": "Last run",
+    "configMode": "Configuration Mode",
+    "configModeHint": "Drag widgets to rearrange. Click the eye icon to show/hide widgets. Changes are saved automatically.",
+    "resetLayoutConfirmTitle": "Reset Dashboard Layout",
+    "resetLayoutConfirmMessage": "Are you sure you want to reset the dashboard layout to defaults? This cannot be undone.",
+    "hiddenWidgets": "Hidden Widgets",
+    "clickToShow": "Click to show",
+    "recentTranslations": "Recent",
+    "noRecentTranslations": "No recent translations"
   },
   "movies": {
     "title": "Title",

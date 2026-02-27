@@ -137,7 +137,7 @@
     "vsYesterday": "vs gisteren",
     "vsLastWeek": "vs vorige week",
     "vsLastMonth": "vs vorige maand",
-    "jobQueue": "Taakwachtrij",
+"jobQueue": "Taakwachtrij",
     "scheduled": "Gepland",
     "running": "Actief",
     "completed": "Voltooid",
@@ -152,7 +152,15 @@
     "noErrors": "Geen recente fouten",
     "viewAll": "Alles bekijken",
     "retry": "Opnieuw proberen",
-    "duplicatesRemoved": "duplicaten verwijderd"
+    "duplicatesRemoved": "duplicaten verwijderd",
+    "configMode": "Configuratiemodus",
+    "configModeHint": "Sleep widgets om te herschikken. Klik op het oog-icoon om widgets te tonen/verbergen. Wijzigingen worden automatisch opgeslagen.",
+    "resetLayoutConfirmTitle": "Dashboardindeling resetten",
+    "resetLayoutConfirmMessage": "Weet je zeker dat je de dashboardindeling wilt resetten naar de standaardwaarden? Dit kan niet ongedaan worden gemaakt.",
+    "hiddenWidgets": "Verborgen widgets",
+    "clickToShow": "Klik om te tonen",
+    "recentTranslations": "Recent",
+    "noRecentTranslations": "Geen recente vertalingen"
   },
   "translations": {
     "title": "Titel",
