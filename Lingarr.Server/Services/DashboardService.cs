@@ -32,9 +32,9 @@ public class DashboardService : IDashboardService
 /// <inheritdoc />
     public async Task<JobQueueStatus> GetJobQueueStatus()
     {
-        var monitoringApi = JobStorage.Current?.GetMonitoringApi();
+        var jobStorage = JobStorage.Current;
         
-        if (monitoringApi == null)
+        if (jobStorage == null)
         {
             return new JobQueueStatus
             {
@@ -47,14 +47,15 @@ public class DashboardService : IDashboardService
             };
         }
         
+        using var connection = jobStorage.GetConnection();
+        var monitoringApi = jobStorage.GetMonitoringApi();
+        
         var scheduled = monitoringApi.ScheduledJobs(0, 100);
         var enqueued = monitoringApi.EnqueuedJobs("default", 0, 100);
         var processing = monitoringApi.ProcessingJobs(0, 100);
         var succeeded = monitoringApi.SucceededJobs(0, 10);
         var failed = monitoringApi.FailedJobs(0, 10);
-        
-        using var connection = JobStorage.Current?.GetConnection();
-        var recurring = connection?.GetRecurringJobs() ?? new List<RecurringJobDto>();
+        var recurring = connection.GetRecurringJobs();
 
         var jobs = new List<JobInfo>();
 

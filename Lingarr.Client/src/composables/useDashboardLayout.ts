@@ -37,7 +37,7 @@ export interface DashboardLayout {
 }
 
 const STORAGE_KEY = 'lingarr-dashboard-layout'
-const LAYOUT_VERSION = 5
+const LAYOUT_VERSION = 6
 
 // Grid configuration
 export const GRID_COLS = 12
@@ -56,11 +56,11 @@ export const MARGIN = [16, 16] as [number, number]
  */
 const DEFAULT_LAYOUT: LayoutItem[] = [
     { i: 'active-translations', x: 0, y: 0, w: 12, h: 3, minW: 6, minH: 2 },
-    { i: 'translation-history', x: 0, y: 3, w: 12, h: 4, minW: 6, minH: 3 },
-    { i: 'media-overview', x: 0, y: 7, w: 6, h: 2, minW: 4, minH: 2 },
-    { i: 'error-log', x: 6, y: 7, w: 6, h: 4, minW: 4, minH: 2 },
-    { i: 'job-queue', x: 0, y: 11, w: 6, h: 4, minW: 3, minH: 3 },
-    { i: 'api-usage', x: 6, y: 11, w: 6, h: 4, minW: 3, minH: 3 }
+    { i: 'translation-history', x: 0, y: 3, w: 12, h: 6, minW: 6, minH: 4 },
+    { i: 'media-overview', x: 0, y: 9, w: 6, h: 2, minW: 4, minH: 2 },
+    { i: 'error-log', x: 6, y: 9, w: 6, h: 4, minW: 4, minH: 2 },
+    { i: 'job-queue', x: 0, y: 13, w: 6, h: 4, minW: 3, minH: 3 },
+    { i: 'api-usage', x: 6, y: 13, w: 6, h: 4, minW: 3, minH: 3 }
 ]
 
 const DEFAULT_WIDGETS: WidgetMeta[] = [
@@ -111,6 +111,23 @@ function migrateLayout(layout: DashboardLayout): DashboardLayout {
         layout: [...layout.layout],
         widgets: [...layout.widgets],
         version: LAYOUT_VERSION
+    }
+    
+    // Version 5 to 6: Extend translation-history widget height
+    if (layout.version < 6) {
+        const historyWidget = migrated.layout.find(item => item.i === 'translation-history')
+        if (historyWidget) {
+            historyWidget.h = 6
+            historyWidget.minH = 4
+        }
+        
+        // Recalculate y positions for widgets below translation-history
+        const widgetsBelow = migrated.layout.filter(item => 
+            item.i !== 'translation-history' && item.y >= 3
+        )
+        widgetsBelow.forEach(item => {
+            item.y += 2
+        })
     }
     
     // Version 4 to 5: Remove translation-activity widget
