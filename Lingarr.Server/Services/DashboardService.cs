@@ -67,6 +67,7 @@ public class DashboardService : IDashboardService
             {
                 Id = job.Key,
                 Name = job.Value.Job.Method.Name,
+                JobName = job.Value.Job.Type.Name,
                 State = "Running",
                 StartedAt = job.Value.StartedAt,
                 Queue = "default"

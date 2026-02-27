@@ -82,10 +82,14 @@ export function useDashboardSignalR() {
                 return
             }
 
-            // Filter for running translations only
+// Filter for running translations only (exclude system jobs like SyncMovieJob)
             const runningJobs = rawJobs.filter(
-                (job: { state?: string; State?: string }) =>
-                    job?.state === 'Running' || job?.State === 'Running'
+                (job: { state?: string; State?: string; jobName?: string; JobName?: string }) => {
+                    const state = job?.state || job?.State
+                    if (state !== 'Running') return false
+                    const jobName = job?.jobName || job?.JobName
+                    return jobName === 'TranslationJob'
+                }
             )
 
             let addedCount = 0
