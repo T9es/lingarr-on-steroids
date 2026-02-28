@@ -63,7 +63,7 @@
     "downloadTranslated": "Translated"
   },
   "statistics": {
-    "notAvailable": "No statistics available",
+    "notAvailable": "Not available",
     "translationServices": "Translation Services",
     "availableSubtitles": "Available Subtitles",
     "failedFetch": "Failed to fetch statistics",
@@ -91,10 +91,6 @@
     "configure": "Configure",
     "resetLayout": "Reset Layout",
     "saveLayout": "Save",
-    "notAvailable": "Not available",
-    "failedFetch": "Failed to fetch statistics",
-    "translationServices": "Translation Services",
-    "availableSubtitles": "Available Subtitles",
     "translationHistory": "Translation History",
     "today": "Today",
     "thisWeek": "This Week",
@@ -201,7 +197,7 @@
     "noActiveTranslations": "No translations currently in progress.",
     "noFailedTranslations": "No failed translations.",
     "noQueuedTranslations": "No translations in queue.",
-"reenqueueQueue": "Re-enqueue queue",
+    "reenqueueQueue": "Re-enqueue queue",
     "cancelAll": "Cancel All",
     "removeAllFailed": "Remove All Failed",
     "removeAllFailedConfirm": "Are you sure you want to remove all failed translation requests? This cannot be undone."
@@ -246,7 +242,10 @@
     "unsavedChanges": "You have unsaved changes",
     "discard": "Discard",
     "saveChanges": "Save Changes",
-    "saving": "Saving..."
+    "saving": "Saving...",
+    "cancel": "Cancel",
+    "cleaning": "Cleaning...",
+    "confirm": "Confirm"
   },
   "settings": {
     "integrations": {
@@ -288,6 +287,7 @@
       "serviceAddress": "Address",
       "selectModel": "Select model...",
       "loadingModels": "Loading models...",
+      "noModelsAvailable": "No models available",
       "deeplNotification": "Please note that DeepL has <a href=\"https://developers.deepl.com/docs/resources/usage-limits\" class=\"underline\" target=\"_blank\">usage limits</a> and rate limits. A single subtitle file typically contains between 60,000 and 120,000 characters. To avoid exceeding these limits, it's recommended to keep automated translation disabled.",
       "localAiDescriptionPath": "Local AI addresses usually consist of the following path",
       "localAiDescriptionOr": "or",
@@ -450,7 +450,7 @@
       "title": "System & Context Prompts",
       "description": "Define custom instructions (system prompt) and an optional context prompt to control AI response logic.",
       "promptTitle": "System prompt",
-      "promptDescription": "Define the AI’s behavior and tone by setting global instructions.",
+      "promptDescription": "Define the AI's behavior and tone by setting global instructions.",
       "contextPromptToggle": "Enable context prompt:",
       "contextPromptTitle": "Context prompt",
       "contextPromptDescription": "Provide the surrounding context, including lines before and after the current subtitle, to help the AI generate a more accurate translation.",

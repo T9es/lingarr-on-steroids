@@ -318,6 +318,50 @@ If verification fails:
 4. **Use async/await** - no synchronous I/O operations in backend
 5. **Respect the architecture** - services in Services/, entities in Core/Entities/
 
+### Translation Maintenance
+
+**Translation Files Location:**
+- Translation files are stored in `Lingarr.Server/Statics/Translations/`
+- Supported languages: English (en), Dutch (nl), German (de), French (fr), Spanish (es), Chinese Simplified (zh), Polish (pl)
+- Files are JSON format with 2-space indentation for human readability
+
+**When Adding New Translation Keys:**
+1. Add the key to **ALL** translation files (en.json, nl.json, de.json, fr.json, es.json, zh.json, pl.json)
+2. Use dot notation for nested keys: `section.subsection.key`
+3. Provide meaningful translations - do not use machine translations without review
+4. Maintain alphabetical order within each section
+5. Test the translation by switching languages in the UI
+
+**Translation Key Naming Convention:**
+- Use camelCase for key names: `translateNow`, `sortByTitle`
+- Group related keys under common sections: `navigation`, `settings`, `common`
+- Use descriptive names that indicate the purpose: `translationTest.startTest`
+
+**Updating TranslationController:**
+When adding a new language:
+1. Create the translation file: `{language-code}.json`
+2. Update `TranslationController.cs` to include the new language in the `GetAvailableLanguages()` method
+3. Use native language names in the response: `{ code: "de", name = "Deutsch" }`
+
+**Example Translation Entry:**
+```json
+{
+  "navigation": {
+    "dashboard": "Dashboard",
+    "movies": "Movies"
+  },
+  "common": {
+    "cancel": "Cancel",
+    "confirm": "Confirm"
+  }
+}
+```
+
+**Verification:**
+- Ensure all translation files have the same structure and keys
+- Check for missing keys by running: `python3 scripts/verify_translations.py` (if available)
+- Frontend will log warnings for missing translation keys in the browser console
+
 ### Maintaining AGENTS.md
 
 **Update this file when:**
