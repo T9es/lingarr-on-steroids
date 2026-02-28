@@ -298,6 +298,29 @@ signatures, and data flow, you do not understand the task enough to plan it.
 - "TBD" or "TODO" appears anywhere
 - Plan lacks concrete function/method names
 
+#### Plan Output Depth
+
+Your plan must reflect the FULL depth of your investigation, not a summary.
+For each issue or change, include:
+
+1. **What you investigated** — Which files you read, what patterns you found,
+   what existing behavior you observed. Show your work.
+
+2. **What you ruled out** — If you considered alternative approaches or root 
+   causes, state them and explain why you rejected them. This prevents the 
+   implementer from re-investigating the same dead ends.
+
+3. **The exact current state** — Quote or reference the specific lines, 
+   function signatures, class names, and variable values that exist RIGHT NOW 
+   in the code. Do not describe code from memory — cite what you verified.
+
+4. **Why this fix and not another** — If there are multiple valid approaches, 
+   explain your choice. If the user asked you to check something (commits, 
+   other components, etc.), show what you found.
+
+A plan that only states WHAT to change without showing HOW you arrived at 
+that conclusion is a summary, not a plan. Summaries are rejected.
+
 ### Mandatory Verification Before Commit
 
 **After ANY code changes, you MUST run ALL applicable verification commands:**
