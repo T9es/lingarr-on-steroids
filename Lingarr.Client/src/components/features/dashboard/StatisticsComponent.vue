@@ -453,74 +453,76 @@ const MediaOverviewContent = defineComponent({
                 props.statistics!.totalEpisodes
             )
 
-            return h('div', { class: 'flex gap-6' }, [
-                h(
-                    'div',
-                    { class: 'flex-1 bg-secondary/30 rounded-md border border-secondary/20 p-3' },
-                    [
-                        h('div', { class: 'text-primary-content/60 text-xs font-medium' }, [
-                            translate('statistics.movies')
-                        ]),
-                        h('div', { class: 'flex items-baseline gap-2 mt-1' }, [
+            return h('div', { class: 'bg-primary rounded-lg p-4 shadow-sm' }, [
+                h('div', { class: 'flex gap-6' }, [
+                    h(
+                        'div',
+                        { class: 'flex-1 bg-secondary/30 rounded-md p-3' },
+                        [
+                            h('div', { class: 'text-primary-content/60 text-xs font-medium' }, [
+                                translate('statistics.movies')
+                            ]),
+                            h('div', { class: 'flex items-baseline gap-2 mt-1' }, [
+                                h(
+                                    'span',
+                                    { class: 'text-primary-content text-xl font-bold' },
+                                    formatNumber(props.statistics!.totalMovies)
+                                ),
+                                h(
+                                    'span',
+                                    { class: 'text-accent text-sm' },
+                                    `${formatNumber(moviesTranslated)} translated`
+                                )
+                            ]),
                             h(
-                                'span',
-                                { class: 'text-primary-content text-xl font-bold' },
-                                formatNumber(props.statistics!.totalMovies)
-                            ),
-                            h(
-                                'span',
-                                { class: 'text-accent text-sm' },
-                                `${formatNumber(moviesTranslated)} translated`
+                                'div',
+                                {
+                                    class: 'bg-primary-content/10 mt-2 h-1.5 w-full overflow-hidden rounded-full'
+                                },
+                                [
+                                    h('div', {
+                                        class: 'bg-accent h-full rounded-full transition-all duration-500',
+                                        style: { width: `${moviesPercentage}%` }
+                                    })
+                                ]
                             )
-                        ]),
-                        h(
-                            'div',
-                            {
-                                class: 'bg-primary-content/10 mt-2 h-1.5 w-full overflow-hidden rounded-full'
-                            },
-                            [
-                                h('div', {
-                                    class: 'bg-accent h-full rounded-full transition-all duration-500',
-                                    style: { width: `${moviesPercentage}%` }
-                                })
-                            ]
-                        )
-                    ]
-                ),
-                h('div', { class: 'w-px bg-secondary/50' }),
-                h(
-                    'div',
-                    { class: 'flex-1 bg-secondary/30 rounded-md border border-secondary/20 p-3' },
-                    [
-                        h('div', { class: 'text-primary-content/60 text-xs font-medium' }, [
-                            translate('statistics.tvShows')
-                        ]),
-                        h('div', { class: 'flex items-baseline gap-2 mt-1' }, [
+                        ]
+                    ),
+                    h('div', { class: 'w-px bg-secondary/50' }),
+                    h(
+                        'div',
+                        { class: 'flex-1 bg-secondary/30 rounded-md p-3' },
+                        [
+                            h('div', { class: 'text-primary-content/60 text-xs font-medium' }, [
+                                translate('statistics.tvShows')
+                            ]),
+                            h('div', { class: 'flex items-baseline gap-2 mt-1' }, [
+                                h(
+                                    'span',
+                                    { class: 'text-primary-content text-xl font-bold' },
+                                    formatNumber(props.statistics!.totalEpisodes)
+                                ),
+                                h(
+                                    'span',
+                                    { class: 'text-accent text-sm' },
+                                    `${formatNumber(episodesTranslated)} translated`
+                                )
+                            ]),
                             h(
-                                'span',
-                                { class: 'text-primary-content text-xl font-bold' },
-                                formatNumber(props.statistics!.totalEpisodes)
-                            ),
-                            h(
-                                'span',
-                                { class: 'text-accent text-sm' },
-                                `${formatNumber(episodesTranslated)} translated`
+                                'div',
+                                {
+                                    class: 'bg-primary-content/10 mt-2 h-1.5 w-full overflow-hidden rounded-full'
+                                },
+                                [
+                                    h('div', {
+                                        class: 'bg-accent h-full rounded-full transition-all duration-500',
+                                        style: { width: `${episodesPercentage}%` }
+                                    })
+                                ]
                             )
-                        ]),
-                        h(
-                            'div',
-                            {
-                                class: 'bg-primary-content/10 mt-2 h-1.5 w-full overflow-hidden rounded-full'
-                            },
-                            [
-                                h('div', {
-                                    class: 'bg-accent h-full rounded-full transition-all duration-500',
-                                    style: { width: `${episodesPercentage}%` }
-                                })
-                            ]
-                        )
-                    ]
-                )
+                        ]
+                    )
+                ])
             ])
         }
     }
