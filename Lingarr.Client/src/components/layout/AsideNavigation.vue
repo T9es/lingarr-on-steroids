@@ -118,7 +118,7 @@ const isOpen = computed({
     set: (value) => instanceStore.setIsOpen(value)
 })
 
-const menuItems: MenuItem[] = [
+const menuItems = computed<MenuItem[]>(() => [
     { label: translate('navigation.dashboard'), icon: HomeIcon, route: 'dashboard', children: [] },
     { label: translate('navigation.movies'), icon: MovieIcon, route: 'movies', children: [] },
     { label: translate('navigation.tvShows'), icon: ShowIcon, route: 'shows', children: [] },
@@ -152,7 +152,7 @@ const menuItems: MenuItem[] = [
         route: 'help',
         children: []
     }
-]
+])
 
 function isActive(item: MenuItem) {
     if (item.route == route.name) return true

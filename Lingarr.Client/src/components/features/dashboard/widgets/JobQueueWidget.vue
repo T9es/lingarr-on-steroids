@@ -222,12 +222,12 @@ const formatCron = (cron?: string): string => {
 
 const getJobDisplayName = (job: JobInfo): string => {
     const id = job.jobName || job.name
-    if (id === 'AutomatedTranslationJob') return 'Auto Translation'
-    if (id === 'CleanupJob') return 'Cleanup'
-    if (id === 'RetryFailedRequestsJob') return 'Retry Failed'
-    if (id === 'StatisticsJob') return 'Statistics'
-    if (id === 'SyncMovieJob') return 'Sync Movies'
-    if (id === 'SyncShowJob') return 'Sync Shows'
+    if (id === 'AutomatedTranslationJob') return i18n.translate('statistics.autoTranslation')
+    if (id === 'CleanupJob') return i18n.translate('statistics.cleanup')
+    if (id === 'RetryFailedRequestsJob') return i18n.translate('statistics.retryFailed')
+    if (id === 'StatisticsJob') return i18n.translate('statistics.statistics')
+    if (id === 'SyncMovieJob') return i18n.translate('statistics.syncMovies')
+    if (id === 'SyncShowJob') return i18n.translate('statistics.syncShows')
     return id
 }
 

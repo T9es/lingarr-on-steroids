@@ -35,6 +35,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useI18n } from '@/plugins/i18n'
 import { MenuItem } from '@/ts'
 import PageLayout from '@/components/layout/PageLayout.vue'
@@ -48,7 +49,7 @@ import CheckMarkIcon from '@/components/icons/CheckMarkIcon.vue'
 
 const { translate } = useI18n()
 
-const menuItems: MenuItem[] = [
+const menuItems = computed<MenuItem[]>(() => [
     {
         label: translate('navigation.integrations'),
         icon: IntegrationIcon,
@@ -81,5 +82,5 @@ const menuItems: MenuItem[] = [
     },
     { label: translate('navigation.tasks'), icon: TaskIcon, route: 'tasks-settings', children: [] },
     { label: translate('navigation.logs'), icon: LogIcon, route: 'logs-settings', children: [] }
-]
+])
 </script>

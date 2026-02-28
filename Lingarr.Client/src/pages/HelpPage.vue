@@ -34,6 +34,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useI18n } from '@/plugins/i18n'
 import { MenuItem } from '@/ts'
 import PageLayout from '@/components/layout/PageLayout.vue'
@@ -42,7 +43,7 @@ import BuildingIcon from '@/components/icons/BuildingIcon.vue'
 
 const { translate } = useI18n()
 
-const menuItems: MenuItem[] = [
+const menuItems = computed<MenuItem[]>(() => [
     {
         label: translate('navigation.onboarding'),
         icon: QuestionMarkCircleIcon,
@@ -55,5 +56,5 @@ const menuItems: MenuItem[] = [
         route: 'help-about',
         children: []
     }
-]
+])
 </script>
