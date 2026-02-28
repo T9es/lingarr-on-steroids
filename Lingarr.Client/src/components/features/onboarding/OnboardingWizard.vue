@@ -4,10 +4,14 @@
         class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
         <div
             class="bg-secondary flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-md shadow-lg">
-            <!-- Header with theme selector and skip button -->
+            <!-- Header with language selector, theme selector and skip button -->
             <header
                 class="border-accent flex items-center justify-between overflow-visible border-b px-6 py-4">
                 <div class="relative flex items-center gap-3">
+                    <!-- Language Selector -->
+                    <LanguageSelect />
+                    
+                    <!-- Theme Selector -->
                     <button
                         class="inline-flex h-10 w-10 cursor-pointer items-center justify-center"
                         @click="toggleThemeDropdown">
@@ -115,6 +119,7 @@ import { useOnboardingStore } from '@/store/onboarding'
 import { useInstanceStore } from '@/store/instance'
 import { THEMES, type ITheme } from '@/ts'
 import ThemeIcon from '@/components/icons/ThemeIcon.vue'
+import LanguageSelect from '@/components/common/LanguageSelect.vue'
 import { useI18n } from '@/plugins/i18n'
 
 const { translate } = useI18n()

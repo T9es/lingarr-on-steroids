@@ -25,10 +25,20 @@ export type ITheme = (typeof THEMES)[keyof typeof THEMES]
 
 export const LOCALE = {
     ENGLISH: 'en',
-    DUTCH: 'nl'
+    DUTCH: 'nl',
+    GERMAN: 'de',
+    FRENCH: 'fr',
+    SPANISH: 'es',
+    CHINESE: 'zh',
+    POLISH: 'pl'
 } as const
 
 export type ILocale = (typeof LOCALE)[keyof typeof LOCALE]
+
+/**
+ * List of all supported locale codes for validation
+ */
+export const SUPPORTED_LOCALES: readonly ILocale[] = Object.values(LOCALE)
 
 export type IFilter = {
     pageNumber: number
