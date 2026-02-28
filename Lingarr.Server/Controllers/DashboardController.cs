@@ -1,4 +1,5 @@
 using Lingarr.Server.Interfaces;
+using Lingarr.Server.Models;
 using Lingarr.Server.Services;
 using Microsoft.AspNetCore.Mvc;
 

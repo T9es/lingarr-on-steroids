@@ -5,6 +5,7 @@ using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Server.Interfaces;
 using Lingarr.Server.Interfaces.Services;
+using Lingarr.Server.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace Lingarr.Server.Services;
@@ -149,7 +150,20 @@ public class DashboardService : IDashboardService
                     TotalCalls = g.Count(),
                     TotalTokens = g.Sum(u => u.TokensUsed ?? 0),
                     AverageResponseTime = g.Average(u => u.ResponseTimeMs),
-                    ErrorCount = g.Count(u => !u.Success)
+                    ErrorCount = g.Count(u => !u.Success),
+                    SuccessRate = g.Any() ? (int)((g.Count(u => u.Success) / (double)g.Count()) * 100) : 100,
+                    
+                    DailyBreakdown = g
+                        .GroupBy(u => u.Timestamp.Date)
+                        .OrderBy(d => d.Key)
+                        .Select(d => new DailyUsage
+                        {
+                            Date = d.Key,
+                            CallCount = d.Count(),
+                            TokenCount = d.Sum(u => u.TokensUsed ?? 0)
+                        })
+                        .Take(7)
+                        .ToList()
                 });
 
         return new ApiUsageStatus
@@ -160,6 +174,7 @@ public class DashboardService : IDashboardService
             TotalTokensWeek = weekUsage.Sum(u => u.TokensUsed ?? 0),
             AverageResponseTime = weekUsage.Any() ? weekUsage.Average(u => u.ResponseTimeMs) : 0,
             ErrorCount = weekUsage.Count(u => !u.Success),
+            SuccessRate = weekUsage.Any() ? (int)((weekUsage.Count(u => u.Success) / (double)weekUsage.Count()) * 100) : 100,
             ByService = byService,
             RecentCalls = recentUsage.Take(50).Select(u => new ApiUsageEntry
             {
@@ -366,44 +381,7 @@ public class JobInfo
     public DateTime? NextExecution { get; set; }
 }
 
-/// <summary>
-/// API usage status response
-/// </summary>
-public class ApiUsageStatus
-{
-    public int TotalCallsToday { get; set; }
-    public int TotalCallsWeek { get; set; }
-    public int TotalTokensToday { get; set; }
-    public int TotalTokensWeek { get; set; }
-    public double AverageResponseTime { get; set; }
-    public int ErrorCount { get; set; }
-    public Dictionary<string, ServiceUsage> ByService { get; set; } = new();
-    public List<ApiUsageEntry> RecentCalls { get; set; } = new();
-}
 
-/// <summary>
-/// Per-service usage statistics
-/// </summary>
-public class ServiceUsage
-{
-    public int TotalCalls { get; set; }
-    public int TotalTokens { get; set; }
-    public double AverageResponseTime { get; set; }
-    public int ErrorCount { get; set; }
-}
-
-/// <summary>
-/// Individual API usage entry
-/// </summary>
-public class ApiUsageEntry
-{
-    public DateTime Timestamp { get; set; }
-    public string Service { get; set; } = string.Empty;
-    public int TokensUsed { get; set; }
-    public long ResponseTimeMs { get; set; }
-    public bool Success { get; set; }
-    public string? ErrorMessage { get; set; }
-}
 
 /// <summary>
 /// Error log entry
