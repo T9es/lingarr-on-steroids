@@ -625,5 +625,91 @@
       "radarr": "Radarr",
       "sonarr": "Sonarr"
     }
+  },
+  "help": {
+    "onboarding": {
+      "title": "Asystent wdrożenia",
+      "description": "Kreator wdrożenia pomaga skonfigurować Lingarr po raz pierwszy. Poprowadzi Cię przez połączenie Radarr/Sonarr, wybór usługi tłumaczenia i wybór języków.",
+      "completed": "Wdrożenie zostało wcześniej ukończone.",
+      "skipped": "Wdrożenie zostało wcześniej pominięte.",
+      "startButton": "Uruchom kreatora wdrożenia"
+    },
+    "about": {
+      "title": "O Lingarr",
+      "description": "Lingarr on Steroids to wyspecjalizowany fork Lingarr przebudowany pod kątem zwiększonej niezawodności, wydajności i opłacalnego wykorzystania AI w procesach tłumaczenia napisów.",
+      "version": "Wersja:",
+      "viewOnGithub": "Zobacz na GitHub",
+      "loadingDocs": "Ładowanie dokumentacji...",
+      "failedToLoad": "Nie udało się załadować dokumentacji: "
+    }
+  },
+  "common": {
+    "selectItems": "Wybierz elementy...",
+    "selectSourceLanguageFirst": "Wybierz najpierw język źródłowy.",
+    "searchMedia": "Szukaj mediów...",
+    "refresh": "Odśwież",
+    "close": "Zamknij",
+    "loading": "Ładowanie...",
+    "showMore": "Pokaż więcej",
+    "noMoreErrors": "Brak więcej błędów",
+    "orderBy": "Sortuj według",
+    "addNew": "Dodaj nowy",
+    "addRadarr": "Dodaj Radarr",
+    "addSonarr": "Dodaj Sonarr",
+    "noMediaFound": "Nie znaleziono multimediów",
+    "noMediaDescription": "Wygląda na to, że Twoje media nie zostały jeszcze zebrane. Nie martw się, możemy to naprawić!",
+    "nextSteps": "Następne kroki:",
+    "checkIntegrationSettings": "Sprawdź ustawienia integracji",
+    "ensureConnectionsConfigured": "Upewnij się, że wszystkie połączenia są prawidłowo skonfigurowane",
+    "waitFewMinutes": "Poczekaj kilka minut, aż aplikacja zbierze Twoje media",
+    "goToSettings": "Przejdź do ustawień"
+  },
+  "services": {
+    "serviceNames": {
+      "libretranslate": "LibreTranslate",
+      "openai": "OpenAI",
+      "anthropic": "Anthropic",
+      "localai": "Lokalne AI (Niestandardowe)",
+      "deepl": "DeepL",
+      "gemini": "Google Gemini",
+      "deepseek": "DeepSeek",
+      "google": "Google Translate",
+      "bing": "Bing Translate",
+      "microsoft": "Microsoft Translator",
+      "yandex": "Yandex Translate",
+      "chutes": "Chutes.ai"
+    }
+  },
+  "subtitleSelector": {
+    "title": "Wybierz źródło napisów",
+    "loadingSubtitles": "Ładowanie napisów...",
+    "stream": "Strumień",
+    "incompleteSubtitle": "Te napisy mogą być niekompletne (Wymuszone/Tylko znaki)",
+    "selectSubtitle": "Wybierz napisy",
+    "selectSubtitleDescription": "Wybierz strumień napisów do użycia do tłumaczenia:",
+    "extractAndTranslate": "Wyodrębnij i przetłumacz",
+    "queuing": "Kolejkowanie...",
+    "selected": "Wybrane:",
+    "cancel": "Anuluj"
+  },
+  "contextMenu": {
+    "translateTo": "Tłumacz na ..."
+  },
+  "jobs": {
+    "noJobsScheduled": "Brak zaplanowanych zadań"
+  },
+  "onboardingSteps": {
+    "connectServices": "Połącz swoje usługi",
+    "connectServicesDesc": "Połącz Radarr i Sonarr, aby zsynchronizować bibliotekę multimediów",
+    "chooseService": "Wybierz usługę tłumaczenia",
+    "chooseServiceDesc": "Wybierz, jak chcesz tłumaczyć napisy",
+    "configureService": "Skonfiguruj usługę",
+    "configureServiceDesc": "Skonfiguruj poświadczenia usługi tłumaczenia",
+    "selectLanguages": "Wybierz języki",
+    "selectLanguagesDesc": "Wybierz języki źródłowe i docelowe do tłumaczenia",
+    "translationSettings": "Ustawienia tłumaczenia",
+    "translationSettingsDesc": "Skonfiguruj tłumaczenie wsadowe i przetwarzanie napisów",
+    "setupComplete": "Konfiguracja zakończona",
+    "setupCompleteDesc": "Możesz zacząć tłumaczyć"
   }
 }

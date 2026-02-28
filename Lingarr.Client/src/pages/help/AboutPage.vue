@@ -1,15 +1,13 @@
 <template>
     <div class="space-y-6 p-6">
-        <CardComponent title="About Lingarr">
+        <CardComponent :title="translate('help.about.title')">
             <template #description>
-                Lingarr on Steroids is a specialized fork of Lingarr re-engineered for enhanced
-                reliability, performance, and cost-effective AI usage in subtitle translation
-                workflows.
+                {{ translate('help.about.description') }}
             </template>
             <template #content>
                 <!-- Version Info -->
                 <div class="mb-4">
-                    <span class="text-secondary-content">Version:</span>
+                    <span class="text-secondary-content">{{ translate('help.about.version') }}</span>
                     <span class="ml-2 font-semibold">{{ currentVersion }}</span>
                 </div>
 
@@ -20,16 +18,16 @@
                     rel="noopener noreferrer"
                     class="text-accent mb-4 flex items-center gap-2 hover:brightness-125">
                     <GithubIcon class="h-4 w-4" />
-                    <span>View on GitHub</span>
+                    <span>{{ translate('help.about.viewOnGithub') }}</span>
                 </a>
 
                 <!-- README Content -->
                 <div v-if="loading" class="flex items-center gap-2">
                     <LoaderCircleIcon class="h-5 w-5 animate-spin" />
-                    <span>Loading documentation...</span>
+                    <span>{{ translate('help.about.loadingDocs') }}</span>
                 </div>
                 <div v-else-if="error" class="text-red-500">
-                    Failed to load documentation: {{ error }}
+                    {{ translate('help.about.failedToLoad') }}{{ error }}
                 </div>
                 <div
                     v-else
@@ -47,6 +45,9 @@ import CardComponent from '@/components/common/CardComponent.vue'
 import GithubIcon from '@/components/icons/GithubIcon.vue'
 import LoaderCircleIcon from '@/components/icons/LoaderCircleIcon.vue'
 import { useInstanceStore } from '@/store/instance'
+import { useI18n } from '@/plugins/i18n'
+
+const { translate } = useI18n()
 
 // Configure marked for GitHub Flavored Markdown
 marked.setOptions({

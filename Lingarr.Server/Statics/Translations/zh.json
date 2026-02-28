@@ -625,5 +625,91 @@
       "radarr": "Radarr",
       "sonarr": "Sonarr"
     }
+  },
+  "help": {
+    "onboarding": {
+      "title": "入门助手",
+      "description": "入门向导帮助您首次配置 Lingarr。它将指导您连接 Radarr/Sonarr、选择翻译服务以及选择您的语言。",
+      "completed": "之前已完成入门。",
+      "skipped": "之前已跳过入门。",
+      "startButton": "启动入门向导"
+    },
+    "about": {
+      "title": "关于 Lingarr",
+      "description": "Lingarr on Steroids 是 Lingarr 的专业分支，经过重新设计，提高了可靠性、性能和字幕翻译工作流程中的成本效益 AI 使用。",
+      "version": "版本：",
+      "viewOnGithub": "在 GitHub 上查看",
+      "loadingDocs": "正在加载文档...",
+      "failedToLoad": "加载文档失败："
+    }
+  },
+  "common": {
+    "selectItems": "选择项目...",
+    "selectSourceLanguageFirst": "请先选择源语言。",
+    "searchMedia": "搜索媒体...",
+    "refresh": "刷新",
+    "close": "关闭",
+    "loading": "加载中...",
+    "showMore": "显示更多",
+    "noMoreErrors": "没有更多错误",
+    "orderBy": "排序方式",
+    "addNew": "新增",
+    "addRadarr": "添加 Radarr",
+    "addSonarr": "添加 Sonarr",
+    "noMediaFound": "未找到媒体",
+    "noMediaDescription": "看起来您的媒体尚未收集。别担心，我们可以解决这个问题！",
+    "nextSteps": "后续步骤：",
+    "checkIntegrationSettings": "检查您的集成设置",
+    "ensureConnectionsConfigured": "确保所有连接配置正确",
+    "waitFewMinutes": "等待几分钟，让应用程序收集您的媒体",
+    "goToSettings": "前往设置"
+  },
+  "services": {
+    "serviceNames": {
+      "libretranslate": "LibreTranslate",
+      "openai": "OpenAI",
+      "anthropic": "Anthropic",
+      "localai": "本地 AI（自定义）",
+      "deepl": "DeepL",
+      "gemini": "Google Gemini",
+      "deepseek": "DeepSeek",
+      "google": "Google 翻译",
+      "bing": "Bing 翻译",
+      "microsoft": "Microsoft 翻译器",
+      "yandex": "Yandex 翻译",
+      "chutes": "Chutes.ai"
+    }
+  },
+  "subtitleSelector": {
+    "title": "选择字幕来源",
+    "loadingSubtitles": "正在加载字幕...",
+    "stream": "流",
+    "incompleteSubtitle": "此字幕可能不完整（强制/仅符号）",
+    "selectSubtitle": "选择字幕",
+    "selectSubtitleDescription": "选择要用于翻译的字幕流：",
+    "extractAndTranslate": "提取并翻译",
+    "queuing": "正在排队...",
+    "selected": "已选择：",
+    "cancel": "取消"
+  },
+  "contextMenu": {
+    "translateTo": "翻译为 ..."
+  },
+  "jobs": {
+    "noJobsScheduled": "没有计划的任务"
+  },
+  "onboardingSteps": {
+    "connectServices": "连接您的服务",
+    "connectServicesDesc": "连接 Radarr 和 Sonarr 以同步您的媒体库",
+    "chooseService": "选择翻译服务",
+    "chooseServiceDesc": "选择您想要翻译字幕的方式",
+    "configureService": "配置服务",
+    "configureServiceDesc": "设置您的翻译服务凭据",
+    "selectLanguages": "选择语言",
+    "selectLanguagesDesc": "选择翻译的源语言和目标语言",
+    "translationSettings": "翻译设置",
+    "translationSettingsDesc": "配置批量翻译和字幕处理",
+    "setupComplete": "设置完成",
+    "setupCompleteDesc": "您已准备好开始翻译"
   }
 }

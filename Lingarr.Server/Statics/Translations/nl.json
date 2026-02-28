@@ -625,5 +625,91 @@
       "radarr": "Radarr",
       "sonarr": "Sonarr"
     }
+  },
+  "help": {
+    "onboarding": {
+      "title": "Onboarding Assistent",
+      "description": "De onboarding wizard helpt je Lingarr voor de eerste keer te configureren. Het begeleidt je door het verbinden van Radarr/Sonarr, het selecteren van een vertaalservice en het kiezen van je talen.",
+      "completed": "Onboarding is eerder voltooid.",
+      "skipped": "Onboarding is eerder overgeslagen.",
+      "startButton": "Start Onboarding Wizard"
+    },
+    "about": {
+      "title": "Over Lingarr",
+      "description": "Lingarr on Steroids is een gespecialiseerde fork van Lingarr opnieuw ontworpen voor verbeterde betrouwbaarheid, prestaties en kosteneffectief AI-gebruik in ondertitelingsworkflows.",
+      "version": "Versie:",
+      "viewOnGithub": "Bekijk op GitHub",
+      "loadingDocs": "Documentatie laden...",
+      "failedToLoad": "Documentatie laden mislukt: "
+    }
+  },
+  "common": {
+    "selectItems": "Selecteer items...",
+    "selectSourceLanguageFirst": "Selecteer eerst een brontaal.",
+    "searchMedia": "Media zoeken...",
+    "refresh": "Vernieuwen",
+    "close": "Sluiten",
+    "loading": "Laden...",
+    "showMore": "Toon meer",
+    "noMoreErrors": "Geen fouten meer",
+    "orderBy": "Sorteer op",
+    "addNew": "Toevoegen",
+    "addRadarr": "Radarr toevoegen",
+    "addSonarr": "Sonarr toevoegen",
+    "noMediaFound": "Geen media gevonden",
+    "noMediaDescription": "Het lijkt erop dat je media nog niet is verzameld. Maak je geen zorgen, we kunnen dat oplossen!",
+    "nextSteps": "Volgende stappen:",
+    "checkIntegrationSettings": "Controleer je integratie-instellingen",
+    "ensureConnectionsConfigured": "Zorg dat alle verbindingen correct zijn geconfigureerd",
+    "waitFewMinutes": "Wacht een paar minuten tot de applicatie je media verzamelt",
+    "goToSettings": "Ga naar Instellingen"
+  },
+  "services": {
+    "serviceNames": {
+      "libretranslate": "LibreTranslate",
+      "openai": "OpenAI",
+      "anthropic": "Anthropic",
+      "localai": "Lokale AI (Aangepast)",
+      "deepl": "DeepL",
+      "gemini": "Google Gemini",
+      "deepseek": "DeepSeek",
+      "google": "Google Translate",
+      "bing": "Bing Translate",
+      "microsoft": "Microsoft Translator",
+      "yandex": "Yandex Translate",
+      "chutes": "Chutes.ai"
+    }
+  },
+  "subtitleSelector": {
+    "title": "Ondertitelbron selecteren",
+    "loadingSubtitles": "Ondertitels laden...",
+    "stream": "Stream",
+    "incompleteSubtitle": "Deze ondertitel is mogelijk onvolledig (Geforceerd/Alleen tekens)",
+    "selectSubtitle": "Selecteer een ondertitel",
+    "selectSubtitleDescription": "Selecteer een ondertitelstream om te gebruiken voor vertaling:",
+    "extractAndTranslate": "Extraheren & Vertalen",
+    "queuing": "In de wacht plaatsen...",
+    "selected": "Geselecteerd:",
+    "cancel": "Annuleren"
+  },
+  "contextMenu": {
+    "translateTo": "Vertalen naar ..."
+  },
+  "jobs": {
+    "noJobsScheduled": "Geen taken gepland"
+  },
+  "onboardingSteps": {
+    "connectServices": "Verbind je services",
+    "connectServicesDesc": "Verbind Radarr en Sonarr om je mediabibliotheek te synchroniseren",
+    "chooseService": "Kies vertaalservice",
+    "chooseServiceDesc": "Selecteer hoe je ondertitels wilt vertalen",
+    "configureService": "Service configureren",
+    "configureServiceDesc": "Stel je vertaalservice referenties in",
+    "selectLanguages": "Talen selecteren",
+    "selectLanguagesDesc": "Kies bron- en doeltalen voor vertaling",
+    "translationSettings": "Vertaalinstellingen",
+    "translationSettingsDesc": "Configureer batchvertaling en ondertitelverwerking",
+    "setupComplete": "Installatie voltooid",
+    "setupCompleteDesc": "Je bent klaar om te beginnen met vertalen"
   }
 }

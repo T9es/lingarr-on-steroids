@@ -625,5 +625,91 @@
       "radarr": "Radarr",
       "sonarr": "Sonarr"
     }
+  },
+  "help": {
+    "onboarding": {
+      "title": "Onboarding-Assistent",
+      "description": "Der Onboarding-Assistent hilft Ihnen, Lingarr zum ersten Mal einzurichten. Er führt Sie durch das Verbinden von Radarr/Sonarr, die Auswahl eines Übersetzungsdienstes und die Auswahl Ihrer Sprachen.",
+      "completed": "Onboarding wurde bereits abgeschlossen.",
+      "skipped": "Onboarding wurde zuvor übersprungen.",
+      "startButton": "Onboarding-Assistent starten"
+    },
+    "about": {
+      "title": "Über Lingarr",
+      "description": "Lingarr on Steroids ist ein spezialisierter Fork von Lingarr, der für verbesserte Zuverlässigkeit, Leistung und kosteneffiziente KI-Nutzung bei Untertitelübersetzungs-Workflows neu entwickelt wurde.",
+      "version": "Version:",
+      "viewOnGithub": "Auf GitHub ansehen",
+      "loadingDocs": "Dokumentation laden...",
+      "failedToLoad": "Dokumentation konnte nicht geladen werden: "
+    }
+  },
+  "common": {
+    "selectItems": "Elemente auswählen...",
+    "selectSourceLanguageFirst": "Wählen Sie zuerst eine Quellsprache.",
+    "searchMedia": "Medien suchen...",
+    "refresh": "Aktualisieren",
+    "close": "Schließen",
+    "loading": "Wird geladen...",
+    "showMore": "Mehr anzeigen",
+    "noMoreErrors": "Keine weiteren Fehler",
+    "orderBy": "Sortieren nach",
+    "addNew": "Neu hinzufügen",
+    "addRadarr": "Radarr hinzufügen",
+    "addSonarr": "Sonarr hinzufügen",
+    "noMediaFound": "Keine Medien gefunden",
+    "noMediaDescription": "Es sieht so aus, als ob Ihre Medien noch nicht gesammelt wurden. Keine Sorge, wir können das beheben!",
+    "nextSteps": "Nächste Schritte:",
+    "checkIntegrationSettings": "Überprüfen Sie Ihre Integrationseinstellungen",
+    "ensureConnectionsConfigured": "Stellen Sie sicher, dass alle Verbindungen richtig konfiguriert sind",
+    "waitFewMinutes": "Warten Sie ein paar Minuten, bis die Anwendung Ihre Medien gesammelt hat",
+    "goToSettings": "Zu den Einstellungen"
+  },
+  "services": {
+    "serviceNames": {
+      "libretranslate": "LibreTranslate",
+      "openai": "OpenAI",
+      "anthropic": "Anthropic",
+      "localai": "Lokale KI (Benutzerdefiniert)",
+      "deepl": "DeepL",
+      "gemini": "Google Gemini",
+      "deepseek": "DeepSeek",
+      "google": "Google Translate",
+      "bing": "Bing Translate",
+      "microsoft": "Microsoft Translator",
+      "yandex": "Yandex Translate",
+      "chutes": "Chutes.ai"
+    }
+  },
+  "subtitleSelector": {
+    "title": "Untertitelquelle auswählen",
+    "loadingSubtitles": "Untertitel werden geladen...",
+    "stream": "Stream",
+    "incompleteSubtitle": "Dieser Untertitel ist möglicherweise unvollständig (Erzwungen/Nur Zeichen)",
+    "selectSubtitle": "Untertitel auswählen",
+    "selectSubtitleDescription": "Wählen Sie einen Untertitel-Stream zur Verwendung für die Übersetzung:",
+    "extractAndTranslate": "Extrahieren & Übersetzen",
+    "queuing": "Wird eingereiht...",
+    "selected": "Ausgewählt:",
+    "cancel": "Abbrechen"
+  },
+  "contextMenu": {
+    "translateTo": "Übersetzen nach ..."
+  },
+  "jobs": {
+    "noJobsScheduled": "Keine Aufgaben geplant"
+  },
+  "onboardingSteps": {
+    "connectServices": "Verbinden Sie Ihre Dienste",
+    "connectServicesDesc": "Verbinden Sie Radarr und Sonarr, um Ihre Medienbibliothek zu synchronisieren",
+    "chooseService": "Übersetzungsdienst auswählen",
+    "chooseServiceDesc": "Wählen Sie, wie Sie Untertitel übersetzen möchten",
+    "configureService": "Dienst konfigurieren",
+    "configureServiceDesc": "Richten Sie Ihre Übersetzungsdienst-Anmeldedaten ein",
+    "selectLanguages": "Sprachen auswählen",
+    "selectLanguagesDesc": "Wählen Sie Quell- und Zielsprachen für die Übersetzung",
+    "translationSettings": "Übersetzungseinstellungen",
+    "translationSettingsDesc": "Stellen Sie Stapelübersetzung und Untertitelverarbeitung ein",
+    "setupComplete": "Einrichtung abgeschlossen",
+    "setupCompleteDesc": "Sie sind bereit, mit der Übersetzung zu beginnen"
   }
 }

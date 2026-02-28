@@ -625,5 +625,91 @@
       "radarr": "Radarr",
       "sonarr": "Sonarr"
     }
+  },
+  "help": {
+    "onboarding": {
+      "title": "Onboarding Assistant",
+      "description": "The onboarding wizard helps you configure Lingarr for the first time. It will guide you through connecting Radarr/Sonarr, selecting a translation service, and choosing your languages.",
+      "completed": "Onboarding was completed previously.",
+      "skipped": "Onboarding was skipped previously.",
+      "startButton": "Start Onboarding Wizard"
+    },
+    "about": {
+      "title": "About Lingarr",
+      "description": "Lingarr on Steroids is a specialized fork of Lingarr re-engineered for enhanced reliability, performance, and cost-effective AI usage in subtitle translation workflows.",
+      "version": "Version:",
+      "viewOnGithub": "View on GitHub",
+      "loadingDocs": "Loading documentation...",
+      "failedToLoad": "Failed to load documentation: "
+    }
+  },
+  "common": {
+    "selectItems": "Select items...",
+    "selectSourceLanguageFirst": "Select a source language first.",
+    "searchMedia": "Search media...",
+    "refresh": "Refresh",
+    "close": "Close",
+    "loading": "Loading...",
+    "showMore": "Show More",
+    "noMoreErrors": "No more errors",
+    "orderBy": "Order by",
+    "addNew": "Add new",
+    "addRadarr": "Add Radarr",
+    "addSonarr": "Add Sonarr",
+    "noMediaFound": "No Media Found",
+    "noMediaDescription": "It looks like your media hasn't been collected yet. Don't worry, we can fix that!",
+    "nextSteps": "Next steps:",
+    "checkIntegrationSettings": "Check your integration settings",
+    "ensureConnectionsConfigured": "Ensure all connections are properly configured",
+    "waitFewMinutes": "Wait a few minutes for the application to collect your media",
+    "goToSettings": "Go to Settings"
+  },
+  "services": {
+    "serviceNames": {
+      "libretranslate": "LibreTranslate",
+      "openai": "OpenAI",
+      "anthropic": "Anthropic",
+      "localai": "Local AI (Custom)",
+      "deepl": "DeepL",
+      "gemini": "Google Gemini",
+      "deepseek": "DeepSeek",
+      "google": "Google Translate",
+      "bing": "Bing Translate",
+      "microsoft": "Microsoft Translator",
+      "yandex": "Yandex Translate",
+      "chutes": "Chutes.ai"
+    }
+  },
+  "subtitleSelector": {
+    "title": "Select Subtitle Source",
+    "loadingSubtitles": "Loading subtitles...",
+    "stream": "Stream",
+    "incompleteSubtitle": "This subtitle may be incomplete (Forced/Signs-only)",
+    "selectSubtitle": "Select a subtitle",
+    "selectSubtitleDescription": "Select a subtitle stream to use for translation:",
+    "extractAndTranslate": "Extract & Translate",
+    "queuing": "Queuing...",
+    "selected": "Selected:",
+    "cancel": "Cancel"
+  },
+  "contextMenu": {
+    "translateTo": "Translate to ..."
+  },
+  "jobs": {
+    "noJobsScheduled": "No jobs scheduled"
+  },
+  "onboardingSteps": {
+    "connectServices": "Connect Your Services",
+    "connectServicesDesc": "Connect Radarr and Sonarr to sync your media library",
+    "chooseService": "Choose Translation Service",
+    "chooseServiceDesc": "Select how you want subtitles translated",
+    "configureService": "Configure Service",
+    "configureServiceDesc": "Set up your translation service credentials",
+    "selectLanguages": "Select Languages",
+    "selectLanguagesDesc": "Choose source and target languages for translation",
+    "translationSettings": "Translation Settings",
+    "translationSettingsDesc": "Configure batch translation and subtitle processing",
+    "setupComplete": "Setup Complete",
+    "setupCompleteDesc": "You're ready to start translating"
   }
 }

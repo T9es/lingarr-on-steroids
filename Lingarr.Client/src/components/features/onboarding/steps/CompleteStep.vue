@@ -69,7 +69,7 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useOnboardingStore } from '@/store/onboarding'
 import { useSettingStore } from '@/store/setting'
-import { SETTINGS, SERVICE_TYPE } from '@/ts'
+import { SETTINGS } from '@/ts'
 import type { ILanguage } from '@/ts/language'
 import CheckMarkCicleIcon from '@/components/icons/CheckMarkCicleIcon.vue'
 import { useI18n } from '@/plugins/i18n'
@@ -88,22 +88,11 @@ const serviceName = computed(() => {
     const serviceType = settingStore.getSetting(SETTINGS.SERVICE_TYPE) as string
     if (!serviceType) return null
 
-    const serviceNames: Record<string, string> = {
-        [SERVICE_TYPE.LIBRETRANSLATE]: 'LibreTranslate',
-        [SERVICE_TYPE.OPENAI]: 'OpenAI',
-        [SERVICE_TYPE.ANTHROPIC]: 'Anthropic',
-        [SERVICE_TYPE.LOCALAI]: 'LocalAI',
-        [SERVICE_TYPE.DEEPL]: 'DeepL',
-        [SERVICE_TYPE.GEMINI]: 'Google Gemini',
-        [SERVICE_TYPE.DEEPSEEK]: 'DeepSeek',
-        [SERVICE_TYPE.GOOGLE]: 'Google Translate',
-        [SERVICE_TYPE.BING]: 'Bing Translate',
-        [SERVICE_TYPE.MICROSOFT]: 'Microsoft Translator',
-        [SERVICE_TYPE.YANDEX]: 'Yandex Translate',
-        [SERVICE_TYPE.CHUTES]: 'Chutes.ai'
-    }
-
-    return serviceNames[serviceType] || serviceType
+    const serviceKey = `services.serviceNames.${serviceType}`
+    const translatedName = translate(serviceKey)
+    
+    // If translation key exists, return translated name, otherwise use the key as fallback
+    return translatedName !== serviceKey ? translatedName : serviceType
 })
 
 // Get source language names

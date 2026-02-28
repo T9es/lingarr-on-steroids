@@ -7,7 +7,7 @@
             ref="excludeClickOutside"
             class="border-accent flex h-12 cursor-pointer items-center justify-between rounded-md border px-4 py-2"
             @click="toggleDropdown">
-            <span v-if="!selected" class="!text-secondary-content">{{ placeholder }}</span>
+            <span v-if="!selected" class="!text-secondary-content">{{ displayPlaceholder }}</span>
             <div v-else class="flex max-h-12 flex-wrap gap-2 overflow-auto">
                 <span
                     class="bg-accent flex cursor-pointer items-center rounded-md px-3 py-1 text-sm font-medium">
@@ -32,7 +32,7 @@
                     class="border-border text-primary-content w-full rounded border bg-transparent px-2 py-1 text-sm outline-hidden"
                     :placeholder="translate('settings.services.modelSearchPlaceholder')" />
             </li>
-            <li v-if="!filteredOptions.length" class="text-primary-content p-3">{{ noOptions }}</li>
+            <li v-if="!filteredOptions.length" class="text-primary-content p-3">{{ displayNoOptions }}</li>
             <li
                 v-for="(option, index) in filteredOptions"
                 :key="`${option.value}-${index}`"
@@ -72,8 +72,10 @@ const props = withDefaults(
         label: '',
         options: () => [],
         selected: '',
-        placeholder: 'Select items...',
-        noOptions: 'Select a source language first.',
+        disabled: false,
+        loadOnOpen: false,
+        placeholder: '',
+        noOptions: '',
         selectedLabel: '',
         enableSearch: false
     }
@@ -81,6 +83,10 @@ const props = withDefaults(
 
 const emit = defineEmits(['update:selected', 'fetch-options'])
 const { translate } = useI18n()
+
+// Computed properties for placeholder and noOptions that use translations as defaults
+const displayPlaceholder = computed(() => props.placeholder || translate('common.selectItems'))
+const displayNoOptions = computed(() => props.noOptions || translate('common.selectSourceLanguageFirst'))
 
 const isOpen: Ref<boolean> = ref(false)
 const isLoading: Ref<boolean> = ref(false)
