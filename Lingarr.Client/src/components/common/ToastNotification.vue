@@ -30,7 +30,7 @@
                     </div>
                     <div class="ml-4 flex shrink-0">
                         <button class="inline-flex rounded-md bg-white" @click="close">
-                            <span class="sr-only">Close</span>
+                            <span class="sr-only">{{ translate('common.close') }}</span>
                             <TimesIcon class="h-5 w-5" />
                         </button>
                     </div>
@@ -54,6 +54,9 @@ import CheckMarkCicleIcon from '@/components/icons/CheckMarkCicleIcon.vue'
 import TimesCircleIcon from '@/components/icons/TimesCircleIcon.vue'
 import ExclamationIcon from '@/components/icons/ExclamationIcon.vue'
 import TimesIcon from '@/components/icons/TimesIcon.vue'
+import { useI18n } from '@/plugins/i18n'
+
+const { translate } = useI18n()
 
 type Status = 'success' | 'error' | 'info'
 

@@ -1,23 +1,21 @@
 <template>
     <div class="space-y-6 p-6">
-        <CardComponent title="Onboarding Assistant">
+        <CardComponent :title="translate('help.onboarding.title')">
             <template #description>
-                The onboarding wizard helps you configure Lingarr for the first time. It will guide
-                you through connecting Radarr/Sonarr, selecting a translation service, and choosing
-                your languages.
+                {{ translate('help.onboarding.description') }}
             </template>
             <template #content>
                 <div class="flex flex-col items-center justify-center space-y-4">
                     <div v-if="onboardingCompleted" class="text-green-500">
-                        Onboarding was completed previously.
+                        {{ translate('help.onboarding.completed') }}
                     </div>
                     <div v-else-if="onboardingSkipped" class="text-yellow-500">
-                        Onboarding was skipped previously.
+                        {{ translate('help.onboarding.skipped') }}
                     </div>
                     <button
                         class="bg-accent rounded-md px-4 py-2 text-white transition-all hover:brightness-125"
                         @click="startOnboarding">
-                        Start Onboarding Wizard
+                        {{ translate('help.onboarding.startButton') }}
                     </button>
                 </div>
             </template>
@@ -31,6 +29,9 @@ import CardComponent from '@/components/common/CardComponent.vue'
 import { useOnboardingStore } from '@/store/onboarding'
 import { useSettingStore } from '@/store/setting'
 import { SETTINGS } from '@/ts/setting'
+import { useI18n } from '@/plugins/i18n'
+
+const { translate } = useI18n()
 
 const onboardingStore = useOnboardingStore()
 const settingStore = useSettingStore()

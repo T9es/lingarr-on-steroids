@@ -625,5 +625,91 @@
       "radarr": "Radarr",
       "sonarr": "Sonarr"
     }
+  },
+  "help": {
+    "onboarding": {
+      "title": "Assistant d'onboarding",
+      "description": "L'assistant d'onboarding vous aide à configurer Lingarr pour la première fois. Il vous guidera à travers la connexion de Radarr/Sonarr, la sélection d'un service de traduction et le choix de vos langues.",
+      "completed": "L'onboarding a été terminé précédemment.",
+      "skipped": "L'onboarding a été sauté précédemment.",
+      "startButton": "Démarrer l'assistant d'onboarding"
+    },
+    "about": {
+      "title": "À propos de Lingarr",
+      "description": "Lingarr on Steroids est un fork spécialisé de Lingarr ré-engineered pour une fiabilité améliorée, des performances et une utilisation IA rentable dans les workflows de traduction de sous-titres.",
+      "version": "Version :",
+      "viewOnGithub": "Voir sur GitHub",
+      "loadingDocs": "Chargement de la documentation...",
+      "failedToLoad": "Échec du chargement de la documentation : "
+    }
+  },
+  "common": {
+    "selectItems": "Sélectionner des éléments...",
+    "selectSourceLanguageFirst": "Sélectionnez d'abord une langue source.",
+    "searchMedia": "Rechercher des médias...",
+    "refresh": "Actualiser",
+    "close": "Fermer",
+    "loading": "Chargement...",
+    "showMore": "Afficher plus",
+    "noMoreErrors": "Plus d'erreurs",
+    "orderBy": "Trier par",
+    "addNew": "Ajouter",
+    "addRadarr": "Ajouter Radarr",
+    "addSonarr": "Ajouter Sonarr",
+    "noMediaFound": "Aucun média trouvé",
+    "noMediaDescription": "Il semble que vos médias n'aient pas encore été collectés. Ne vous inquiétez pas, nous pouvons résoudre cela !",
+    "nextSteps": "Étapes suivantes :",
+    "checkIntegrationSettings": "Vérifiez vos paramètres d'intégration",
+    "ensureConnectionsConfigured": "Assurez-vous que toutes les connexions sont correctement configurées",
+    "waitFewMinutes": "Attendez quelques minutes pour que l'application collecte vos médias",
+    "goToSettings": "Aller aux paramètres"
+  },
+  "services": {
+    "serviceNames": {
+      "libretranslate": "LibreTranslate",
+      "openai": "OpenAI",
+      "anthropic": "Anthropic",
+      "localai": "IA locale (Personnalisé)",
+      "deepl": "DeepL",
+      "gemini": "Google Gemini",
+      "deepseek": "DeepSeek",
+      "google": "Google Translate",
+      "bing": "Bing Translate",
+      "microsoft": "Microsoft Translator",
+      "yandex": "Yandex Translate",
+      "chutes": "Chutes.ai"
+    }
+  },
+  "subtitleSelector": {
+    "title": "Sélectionner la source des sous-titres",
+    "loadingSubtitles": "Chargement des sous-titres...",
+    "stream": "Stream",
+    "incompleteSubtitle": "Ce sous-titre peut être incomplet (Forcé/Signes uniquement)",
+    "selectSubtitle": "Sélectionner un sous-titre",
+    "selectSubtitleDescription": "Sélectionnez un flux de sous-titres à utiliser pour la traduction:",
+    "extractAndTranslate": "Extraire & Traduire",
+    "queuing": "Mise en file d'attente...",
+    "selected": "Sélectionné:",
+    "cancel": "Annuler"
+  },
+  "contextMenu": {
+    "translateTo": "Traduire vers ..."
+  },
+  "jobs": {
+    "noJobsScheduled": "Aucune tâche planifiée"
+  },
+  "onboardingSteps": {
+    "connectServices": "Connectez vos services",
+    "connectServicesDesc": "Connectez Radarr et Sonarr pour synchroniser votre bibliothèque multimédia",
+    "chooseService": "Choisir le service de traduction",
+    "chooseServiceDesc": "Sélectionnez comment vous voulez traduire les sous-titres",
+    "configureService": "Configurer le service",
+    "configureServiceDesc": "Configurez les identifiants de votre service de traduction",
+    "selectLanguages": "Sélectionner les langues",
+    "selectLanguagesDesc": "Choisissez les langues source et cible pour la traduction",
+    "translationSettings": "Paramètres de traduction",
+    "translationSettingsDesc": "Configurez la traduction par lots et le traitement des sous-titres",
+    "setupComplete": "Configuration terminée",
+    "setupCompleteDesc": "Vous êtes prêt à commencer à traduire"
   }
 }
