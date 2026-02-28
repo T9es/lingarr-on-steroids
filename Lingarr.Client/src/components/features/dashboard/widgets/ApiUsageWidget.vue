@@ -68,9 +68,9 @@ const fetchApiUsage = async () => {
         const byService = data.ByService || data.byService || {}
         apiUsage.value = Object.entries(byService).map(([service, usage]: [string, any]) => ({
             service,
-            callsToday: usage.TotalCalls || usage.totalCalls || 0,
-            callsWeek: usage.TotalCalls || usage.totalCalls || 0,
-            callsMonth: usage.TotalCalls || usage.totalCalls || 0,
+            callsToday: usage.CallsToday || usage.callsToday || 0,
+            callsWeek: usage.CallsWeek || usage.callsWeek || 0,
+            callsMonth: usage.CallsMonth || usage.callsMonth || 0,
             tokensUsed: usage.TotalTokens || usage.totalTokens || 0,
             totalTokens: usage.TotalTokens || usage.totalTokens || 0,
             averageResponseTime: Math.round(usage.AverageResponseTime || usage.averageResponseTime || 0),
@@ -224,19 +224,19 @@ onUnmounted(() => {
             <div class="bg-secondary/30 rounded-md p-3">
                 <div class="grid grid-cols-3 gap-2 text-xs">
                     <div class="text-center">
-                        <div class="text-primary-content/50 tracking-wider uppercase">Today</div>
+                        <div class="text-primary-content/50 tracking-wider uppercase">{{ i18n.translate('statistics.today') }}</div>
                         <div class="text-primary-content mt-0.5 text-lg font-bold">
                             {{ formatNumber(summaryStats.totalCallsToday) }}
                         </div>
                     </div>
                     <div class="text-center">
-                        <div class="text-primary-content/50 tracking-wider uppercase">Week</div>
+                        <div class="text-primary-content/50 tracking-wider uppercase">{{ i18n.translate('statistics.week') }}</div>
                         <div class="text-primary-content mt-0.5 text-lg font-bold">
                             {{ formatNumber(summaryStats.totalCallsWeek) }}
                         </div>
                     </div>
                     <div class="text-center">
-                        <div class="text-primary-content/50 tracking-wider uppercase">Avg</div>
+                        <div class="text-primary-content/50 tracking-wider uppercase">{{ i18n.translate('statistics.avgResponse') }}</div>
                         <div class="text-primary-content mt-0.5 text-lg font-bold">
                             {{ formatResponseTime(summaryStats.averageResponseTime) }}
                         </div>
@@ -270,7 +270,7 @@ onUnmounted(() => {
                         </div>
 
                         <div class="mx-3 text-primary-content text-sm font-semibold">
-                            {{ formatNumber(usage.callsWeek) }} calls
+                            {{ formatNumber(usage.callsWeek) }} {{ i18n.translate('statistics.calls') }}
                         </div>
 
                         <div
@@ -284,9 +284,9 @@ onUnmounted(() => {
 
                     <div class="border-secondary/20 border-t px-3 pb-3 pt-1">
                         <div class="text-primary-content/60 flex items-center gap-2 text-xs">
-                            <span>Today: <span class="text-primary-content font-medium">{{ formatNumber(usage.callsToday) }}</span></span>
+                            <span>{{ i18n.translate('statistics.today') }}: <span class="text-primary-content font-medium">{{ formatNumber(usage.callsToday) }}</span></span>
                             <span>•</span>
-                            <span>Week: <span class="text-primary-content font-medium">{{ formatNumber(usage.callsWeek) }}</span></span>
+                            <span>{{ i18n.translate('statistics.week') }}: <span class="text-primary-content font-medium">{{ formatNumber(usage.callsWeek) }}</span></span>
                             <span>•</span>
                             <span>⚡ {{ formatResponseTime(usage.averageResponseTime) }}</span>
                         </div>
@@ -310,7 +310,7 @@ onUnmounted(() => {
                                 <div v-if="usage.totalTokens > 0" class="bg-secondary/30 rounded-md p-2">
                                     <div class="text-primary-content/50 flex items-center gap-1">
                                         <span>💬</span>
-                                        <span>Tokens</span>
+                                        <span>{{ i18n.translate('statistics.tokens') }}</span>
                                     </div>
                                     <div class="text-primary-content mt-1 font-semibold">
                                         {{ formatNumber(usage.totalTokens) }}
@@ -320,7 +320,7 @@ onUnmounted(() => {
                                 <div class="bg-secondary/30 rounded-md p-2">
                                     <div class="text-primary-content/50 flex items-center gap-1">
                                         <span>✓</span>
-                                        <span>Success</span>
+                                        <span>{{ i18n.translate('statistics.success') }}</span>
                                     </div>
                                     <div
                                         class="mt-1 font-semibold"
@@ -338,7 +338,7 @@ onUnmounted(() => {
                                     class="bg-red-500/10 rounded-md p-2">
                                     <div class="text-primary-content/50 flex items-center gap-1">
                                         <span>⚠</span>
-                                        <span>Errors</span>
+                                        <span>{{ i18n.translate('statistics.errors') }}</span>
                                     </div>
                                     <div class="text-red-500 mt-1 font-semibold">
                                         {{ usage.errorCount }}
@@ -348,7 +348,7 @@ onUnmounted(() => {
                                 <div class="bg-secondary/30 rounded-md p-2">
                                     <div class="text-primary-content/50 flex items-center gap-1">
                                         <span>📅</span>
-                                        <span>Month</span>
+                                        <span>{{ i18n.translate('statistics.month') }}</span>
                                     </div>
                                     <div class="text-primary-content mt-1 font-semibold">
                                         {{ formatNumber(usage.callsMonth) }}

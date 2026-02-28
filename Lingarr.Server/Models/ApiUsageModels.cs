@@ -20,6 +20,9 @@ public class ServiceUsage
     public double AverageResponseTime { get; set; }
     public int ErrorCount { get; set; }
     public int SuccessRate { get; set; }
+    public int CallsToday { get; set; }
+    public int CallsWeek { get; set; }
+    public int CallsMonth { get; set; }
     public List<DailyUsage> DailyBreakdown { get; set; } = new();
 }
 

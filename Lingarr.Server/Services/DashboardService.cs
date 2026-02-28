@@ -145,25 +145,35 @@ public class DashboardService : IDashboardService
             .GroupBy(u => u.Service)
             .ToDictionary(
                 g => g.Key,
-                g => new ServiceUsage
+                g =>
                 {
-                    TotalCalls = g.Count(),
-                    TotalTokens = g.Sum(u => u.TokensUsed ?? 0),
-                    AverageResponseTime = g.Average(u => u.ResponseTimeMs),
-                    ErrorCount = g.Count(u => !u.Success),
-                    SuccessRate = g.Any() ? (int)((g.Count(u => u.Success) / (double)g.Count()) * 100) : 100,
+                    var serviceUsage = g.ToList();
+                    var today = DateTime.UtcNow.Date;
+                    var todayUsage = serviceUsage.Where(u => u.Timestamp.Date == today).ToList();
                     
-                    DailyBreakdown = g
-                        .GroupBy(u => u.Timestamp.Date)
-                        .OrderBy(d => d.Key)
-                        .Select(d => new DailyUsage
-                        {
-                            Date = d.Key,
-                            CallCount = d.Count(),
-                            TokenCount = d.Sum(u => u.TokensUsed ?? 0)
-                        })
-                        .Take(7)
-                        .ToList()
+                    return new ServiceUsage
+                    {
+                        TotalCalls = serviceUsage.Count(),
+                        TotalTokens = serviceUsage.Sum(u => u.TokensUsed ?? 0),
+                        AverageResponseTime = serviceUsage.Any() ? serviceUsage.Average(u => u.ResponseTimeMs) : 0,
+                        ErrorCount = serviceUsage.Count(u => !u.Success),
+                        SuccessRate = serviceUsage.Any() ? (int)((serviceUsage.Count(u => u.Success) / (double)serviceUsage.Count()) * 100) : 100,
+                        CallsToday = todayUsage.Count(),
+                        CallsWeek = serviceUsage.Count(),
+                        CallsMonth = serviceUsage.Count(),
+                        
+                        DailyBreakdown = serviceUsage
+                            .GroupBy(u => u.Timestamp.Date)
+                            .OrderBy(d => d.Key)
+                            .Select(d => new DailyUsage
+                            {
+                                Date = d.Key,
+                                CallCount = d.Count(),
+                                TokenCount = d.Sum(u => u.TokensUsed ?? 0)
+                            })
+                            .Take(7)
+                            .ToList()
+                    };
                 });
 
         return new ApiUsageStatus
