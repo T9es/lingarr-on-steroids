@@ -272,6 +272,32 @@ Lingarr.sln
 
 ## Agent Instructions
 
+### Planning Rules
+
+#### The Rule
+A plan is a CONTRACT. If you cannot specify exact file paths, function 
+signatures, and data flow, you do not understand the task enough to plan it.
+
+#### Every Plan Must Include:
+
+1. **Change Inventory** — For each file: path, what changes, why, 
+   dependencies on other changes.
+
+2. **Data Flow** — Trace from user action to storage. What transforms 
+   at each step? What new types/structures are introduced?
+
+3. **Impact & Risk** — What existing code depends on what you're changing? 
+   What breaks if applied partially? What do you NOT know? (State unknowns 
+   explicitly. Do not proceed past critical unknowns.)
+
+4. **Verification** — Exact commands to validate. Test cases. Manual checks.
+
+#### Reject if:
+- File paths are guessed or incomplete
+- Edge cases say "handle appropriately" without specifics
+- "TBD" or "TODO" appears anywhere
+- Plan lacks concrete function/method names
+
 ### Mandatory Verification Before Commit
 
 **After ANY code changes, you MUST run ALL applicable verification commands:**
