@@ -563,7 +563,7 @@
     "tooltipStale": "需要重新分析",
     "tooltipUnknown": "尚未分析",
     "tooltipNotApplicable": "不适用 / 无源",
-    "tooltipNoSuitableSubtitles": "未找到合适的字幕轨道（全部为稀疏/标志和歌曲）",
+    "tooltipNoSuitableSubtitles": "未找到合适的字幕轨道（全部为强制/仅外语及歌曲）",
     "tooltipFailed": "翻译失败。需要手动重试。",
     "tooltipAwaitingSource": "等待源字幕出现"
   },
@@ -583,7 +583,7 @@
       "sonarrPlaceholder": "Sonarr实例"
     },
     "addInstance": {
-      "addNew": "添加新",
+      "addNew": "新增",
       "addRadarr": "添加Radarr",
       "addSonarr": "添加Sonarr"
     },
@@ -683,7 +683,7 @@
   "subtitleSelector": {
     "title": "选择字幕来源",
     "loadingSubtitles": "正在加载字幕...",
-    "stream": "流",
+    "stream": "字幕轨",
     "incompleteSubtitle": "此字幕可能不完整（强制/仅符号）",
     "selectSubtitle": "选择字幕",
     "selectSubtitleDescription": "选择要用于翻译的字幕流：",

@@ -555,7 +555,7 @@
     "unknown": "Inconnu",
     "notApplicable": "N/A",
     "noSuitableSubtitles": "Pas de source",
-    "failed": "Échoué",
+"failed": "Échec",
     "awaitingSource": "En attente de source",
     "tooltipComplete": "Toutes les traductions terminées",
     "tooltipInProgress": "Traduction en cours",
@@ -563,7 +563,7 @@
     "tooltipStale": "Nécessite une réanalyse",
     "tooltipUnknown": "Pas encore analysé",
     "tooltipNotApplicable": "Non applicable / Pas de source",
-    "tooltipNoSuitableSubtitles": "Aucune piste de sous-titres appropriée trouvée (toutes sont éparses/Signs & Songs)",
+    "tooltipNoSuitableSubtitles": "Aucune piste de sous-titres appropriée trouvée (toutes sont incomplètes/forcées)",
     "tooltipFailed": "Traduction échouée. Réessai manuel nécessaire.",
     "tooltipAwaitingSource": "En attente de l'apparition du sous-titre source"
   },
@@ -583,7 +583,7 @@
       "sonarrPlaceholder": "Instance Sonarr"
     },
     "addInstance": {
-      "addNew": "Ajouter nouveau",
+      "addNew": "Ajouter une nouvelle",
       "addRadarr": "Ajouter Radarr",
       "addSonarr": "Ajouter Sonarr"
     },
@@ -618,7 +618,7 @@
       "parallelDescription": "Contrôlez combien de traductions peuvent s'exécuter simultanément.",
       "taggingTitle": "Balisage de sous-titres",
       "taggingDescription": "Marquez les sous-titres traduits pour les identifier dans votre lecteur multimédia.",
-      "retries": "réessais",
+      "retries": "tentatives",
       "concurrent": "simultanées"
     },
     "integration": {
@@ -628,15 +628,15 @@
   },
   "help": {
     "onboarding": {
-      "title": "Assistant d'onboarding",
+      "title": "Assistant de configuration",
       "description": "L'assistant d'onboarding vous aide à configurer Lingarr pour la première fois. Il vous guidera à travers la connexion de Radarr/Sonarr, la sélection d'un service de traduction et le choix de vos langues.",
       "completed": "L'onboarding a été terminé précédemment.",
-      "skipped": "L'onboarding a été sauté précédemment.",
+      "skipped": "L'assistant de configuration a été ignoré précédemment.",
       "startButton": "Démarrer l'assistant d'onboarding"
     },
     "about": {
       "title": "À propos de Lingarr",
-      "description": "Lingarr on Steroids est un fork spécialisé de Lingarr ré-engineered pour une fiabilité améliorée, des performances et une utilisation IA rentable dans les workflows de traduction de sous-titres.",
+      "description": "Lingarr on Steroids est un fork spécialisé de Lingarr repensé pour une fiabilité améliorée, des performances et une utilisation IA rentable dans les workflows de traduction de sous-titres.",
       "version": "Version :",
       "viewOnGithub": "Voir sur GitHub",
       "loadingDocs": "Chargement de la documentation...",
@@ -653,7 +653,7 @@
     "showMore": "Afficher plus",
     "noMoreErrors": "Plus d'erreurs",
     "orderBy": "Trier par",
-    "addNew": "Ajouter",
+    "addNew": "Ajouter une nouvelle",
     "addRadarr": "Ajouter Radarr",
     "addSonarr": "Ajouter Sonarr",
     "noMediaFound": "Aucun média trouvé",

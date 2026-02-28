@@ -563,7 +563,7 @@
     "tooltipStale": "Neuanalyse erforderlich",
     "tooltipUnknown": "Noch nicht analysiert",
     "tooltipNotApplicable": "Nicht anwendbar / Keine Quelle",
-    "tooltipNoSuitableSubtitles": "Keine geeigneten Untertitelspuren gefunden (alle sind spärlich/Signs & Songs)",
+    "tooltipNoSuitableSubtitles": "Keine geeigneten Untertitelspuren gefunden (alle sind unvollständig/erzwungen)",
     "tooltipFailed": "Übersetzung fehlgeschlagen. Manuelle Wiederholung erforderlich.",
     "tooltipAwaitingSource": "Warte auf Erscheinen des Quell-Untertitels"
   },
@@ -619,7 +619,7 @@
       "taggingTitle": "Untertitel-Tagging",
       "taggingDescription": "Taggen Sie übersetzte Untertitel, um sie in Ihrem Mediaplayer zu identifizieren.",
       "retries": "Wiederholungen",
-      "concurrent": "parallel"
+      "concurrent": "parallele"
     },
     "integration": {
       "radarr": "Radarr",

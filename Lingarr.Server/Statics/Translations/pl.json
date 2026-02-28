@@ -563,7 +563,7 @@
     "tooltipStale": "Wymaga ponownej analizy",
     "tooltipUnknown": "Jeszcze nie analizowane",
     "tooltipNotApplicable": "Nie dotyczy / Brak źródła",
-    "tooltipNoSuitableSubtitles": "Nie znaleziono odpowiednich ścieżek napisów (wszystkie są rzadkie/znaki i piosenki)",
+    "tooltipNoSuitableSubtitles": "Nie znaleziono odpowiednich ścieżek napisów (wszystkie są wymuszone/znaki i piosenki)",
     "tooltipFailed": "Tłumaczenie nieudane. Wymaga ręcznego ponowienia.",
     "tooltipAwaitingSource": "Oczekiwanie na pojawienie się napisów źródłowych"
   },
@@ -683,7 +683,7 @@
   "subtitleSelector": {
     "title": "Wybierz źródło napisów",
     "loadingSubtitles": "Ładowanie napisów...",
-    "stream": "Strumień",
+    "stream": "Ścieżka",
     "incompleteSubtitle": "Te napisy mogą być niekompletne (Wymuszone/Tylko znaki)",
     "selectSubtitle": "Wybierz napisy",
     "selectSubtitleDescription": "Wybierz strumień napisów do użycia do tłumaczenia:",
