@@ -6,96 +6,96 @@
 [![License](https://img.shields.io/badge/license-AGPL--3.0-green.svg?style=for-the-badge)](LICENSE)
 [![Discord](https://img.shields.io/discord/1293119073739210885?style=for-the-badge&logo=discord&logoColor=white&label=discord&color=7289DA)](https://discord.gg/HkubmH2rcR)
 
-**Subtitulado que realmente funciona** - para gente que gestiona bibliotecas de medios a gran escala.
+**Traducción de subtítulos que realmente funciona** - para quienes gestionan bibliotecas de medios a gran escala.
 
-[English](Readme.MD) | [Deutsch](Readme.de.md) | [Polski](Readme.pl.md) | [Nederlands](Readme.nl.md) | [Francais](Readme.fr.md) | [Espanol](Readme.es.md) | [Chinese](Readme.zh.md)
-
----
-
-> **Actualizando desde v1.x?** La version 2.0.0 tiene cambios importantes - MySQL/MariaDB eliminado, la configuracion NO se migra, se requiere inicio limpio. Ver abajo para detalles.
+[English](Readme.MD) | [Deutsch](Readme.de.md) | [Polski](Readme.pl.md) | [Nederlands](Readme.nl.md) | [Français](Readme.fr.md) | [Español](Readme.es.md) | [Chinese](Readme.zh.md)
 
 ---
 
-## Que es esto?
-
-Lingarr on Steroids es un fork de [Lingarr](https://github.com/lingarr-translate/lingarr). Mantuvimos la idea central (traducir subtitulos via Radarr/Sonarr) pero reconstruimos la mayoria del backend y añadimos muchas mejoras de UI.
-
-Empezo porque el Lingarr original tuvo problemas de fiabilidad bajo carga. Necesitabamos algo que no se cayera cuando tienes miles de programas.
+> **¿Actualizando desde v1.x?** La versión 2.0.0 tiene cambios importantes - se ha eliminado MySQL/MariaDB, la configuración NO se migra, se requiere una instalación limpia. Ver abajo para más detalles.
 
 ---
 
-## Que cambiamos
+## ¿Qué es esto?
+
+Lingarr on Steroids es un fork de [Lingarr](https://github.com/lingarr-translate/lingarr). Mantuvimos la idea central (traducir subtítulos vía Radarr/Sonarr) pero reconstruimos la mayoría del backend y añadimos muchas mejoras a la interfaz de usuario (UI).
+
+Empezó porque el Lingarr original tenía problemas de fiabilidad bajo carga. Necesitábamos algo que no se cayera cuando tienes miles de series o películas.
+
+---
+
+## ¿Qué cambiamos?
 
 ### Backend
 
-| Que | Por qué |
+| Qué | Por qué |
 |------|-----|
-| Worker de traduccion personalizado | Hangfire se ahogaba con colas grandes. Escribimos nuestro propio BackgroundService que maneja 1-20 workers paralelos, colas de prioridad, y auto-recuperacion de crashes. |
-| PostgreSQL por defecto | SQLite se bloquea con workers concurrentes. El MVCC en PostgreSQL realmente funciona. Mantuvimos SQLite como opcion para setups pequenos. |
-| Seguimiento de traduccion de 9 estados | El original no teniabuena forma de responder "que necesita traduccir?". Añadimos estados (Unknown, Pending, InProgress, Complete, Stale, AwaitingSource, NoSuitableSubtitles, Failed, Interrupted) para que las consultas sean rapidas. |
-| Soporte multi-instancia | Una instancia de Radarr/Sonarr no es suficiente para algunos. Ahora puedes conectar multiples servidores *arr a un Lingarr. |
-| Reparacion diferida | Las lineas fallidas se reintentan con contexto circundante (10 lineas por defecto). La calidad de traduccion LLM mejora significativamente cuando la IA puede ver que pasa antes/despues. |
+| Worker de traducción personalizado | Hangfire se ahogaba con colas grandes. Escribimos nuestro propio BackgroundService que maneja de 1 a 20 procesos paralelos, colas de prioridad y recuperación automática ante fallos. |
+| PostgreSQL por defecto | SQLite se bloquea con procesos concurrentes. El MVCC en PostgreSQL realmente funciona. Mantuvimos SQLite como opción para configuraciones pequeñas. |
+| Seguimiento de traducción de 9 estados | El original no tenía una buena forma de responder "¿Qué necesita traducción?". Añadimos estados (Desconocido, Pendiente, En Progreso, Completado, Obsoleto, Esperando Fuente, Sin subtítulos adecuados, Fallido, Interrumpido) para que las consultas sean rápidas. |
+| Soporte multi-instancia | Una instancia de Radarr/Sonarr no es suficiente para algunos. Ahora puedes conectar múltiples servidores *arr a un solo Lingarr. |
+| Reparación diferida | Las líneas fallidas se reintentan con el contexto circundante (10 líneas por defecto). La calidad de la traducción LLM mejora significativamente cuando la IA puede ver qué pasa antes y después. |
 
-### Procesamiento de subtitulos
+### Procesamiento de subtítulos
 
-- **Extraccion FFmpeg** - extrae subtitulos de contenedores MKV/MP4 cuando estan embedidos
-- **Limpieza ASS/SSA** - elimina comandos de dibujo, simbolos musicales, placeholders de efectos de sonido, URLs
-- **Filtro de tracks escasos** - salta tracks con <100 entradas (simbolos, canciones)
-- **Descubrimiento de subtitulos externos** - encuentra archivos de subtitulos que anyades manualmente y los rastrea
+- **Extracción FFmpeg** - extrae subtítulos de contenedores MKV/MP4 cuando están incrustados
+- **Limpieza ASS/SSA** - elimina comandos de dibujo, símbolos musicales, etiquetas de efectos de sonido y URLs
+- **Filtro de pistas escasas** - omite pistas con <100 líneas (símbolos, canciones)
+- **Descubrimiento de subtítulos externos** - encuentra archivos de subtítulos que añades manualmente y los rastrea
 
 ### UI/UX
 
-- **Widgets de dashboard** - layout drag-and-drop, actualizaciones en tiempo real via SignalR
-- **Widget de cola** - muestra que esta corriendo, que esta programado, que fallo
-- **Historial de traduccion** - grafico + lista mostrando que se tradujo cuando
-- **Rastreador de uso API** - graficos sparkline mostrando gasto por servicio
-- **Wizard de onboarding** - primer ajuste te guia a traves de la config de Radarr/Sonarr
-- **Soporte de temas** - oscuro/claro con variables CSS para que coincida con tu setup
+- **Widgets del panel de control** - diseño de arrastrar y soltar, actualizaciones en tiempo real vía SignalR
+- **Widget de cola de tareas** - muestra qué está en ejecución, qué está programado y qué falló
+- **Historial de traducción** - gráfico + lista mostrando qué se tradujo y cuándo
+- **Rastreador de uso de API** - minigráficos (sparklines) mostrando el gasto por servicio
+- **Asistente de configuración** - el ajuste inicial te guía a través de la configuración de Radarr/Sonarr
+- **Soporte de temas** - oscuro/claro con variables CSS para que coincida con tu configuración
 - **7 idiomas** - EN, NL, DE, FR, ES, PL, ZH
-- **Deteccion offline** - muestra cuando la app es inalcanzable
+- **Detección offline** - muestra cuándo la app está inalcanzable (desconectada)
 
 ### Fiabilidad
 
-- **Limpieza de huerfanos** - detecta cuando una actualizacion renombra el archivo y tus traducciones AI ahora son huerfanas
-- **Chequeo de integridad bulk** - valida cada traduccion en tu biblioteca
-- **Limpieza de trabajos fantasma** - elimina trabajos atascados que nunca terminaron
-- **Backoff exponencial** - reintenta con jitter para no golpear APIs fallidas
+- **Limpieza de archivos huérfanos** - detecta cuando una actualización renombra el archivo y tus traducciones IA quedan huérfanas
+- **Comprobación de integridad masiva** - valida cada traducción en tu biblioteca
+- **Limpieza de tareas fantasma** - elimina tareas atascadas que nunca terminaron
+- **Retroceso exponencial (Backoff)** - reintenta con retraso (jitter) para no saturar las APIs fallidas
 
 ---
 
 ## Servicios soportados
 
 **IA:**
-- OpenAI (GPT)
-- Anthropic (Claude)
-- Google Gemini
-- DeepSeek
-- Chutes.ai (con seguimiento de cuota y pausa auto)
+- [OpenAI](https://openai.com/) (GPT)
+- [Anthropic](https://www.anthropic.com/) (Claude)
+- [Google Gemini](https://gemini.google.com/)
+- [DeepSeek](https://deepseek.com/)
+- [Chutes.ai](https://chutes.ai/) (con seguimiento de cuota y pausa automática)
 - LocalAI / Ollama (autoalojado)
 
 **APIs en la nube:**
-- LibreTranslate
-- DeepL
-- Google Translate
-- Bing Translate
-- Yandex Translate
-- Azure Translator
+- [LibreTranslate](https://libretranslate.com/)
+- [DeepL](https://www.deepl.com/)
+- [Google Translate](https://translate.google.com/)
+- [Bing Translate](https://www.bing.com/translator)
+- [Yandex Translate](https://translate.yandex.com/)
+- [Azure Translator](https://www.microsoft.com/en-us/translator/business/translator-api/)
 
 ---
 
 ## Empezando
 
-### Tags de imagen Docker
+### Etiquetas de imagen Docker
 
-| Tag | Descripcion | Arquitecturas |
+| Etiqueta | Descripción | Arquitecturas |
 |-----|-------------|---------------|
-| `latest` | Ultimo lanzamiento estable | `linux/amd64`, `linux/arm64` |
-| `1.2.3` | Version especifica | `linux/amd64`, `linux/arm64` |
-| `main` | Build de desarrollo | `linux/amd64`, `linux/arm64` |
+| `latest` | Última versión estable | `linux/amd64`, `linux/arm64` |
+| `1.2.3` | Versión específica | `linux/amd64`, `linux/arm64` |
+| `main` | Versión de desarrollo | `linux/amd64`, `linux/arm64` |
 
-> **Nota:** Todas las imagenes soportan tanto AMD64 (Intel/AMD) como ARM64 (Raspberry Pi, Apple Silicon).
+Se recomienda PostgreSQL. SQLite funciona para configuraciones pequeñas (usuario único, <1000 elementos multimedia).
 
-PostgreSQL es recomendado. SQLite funciona para setups pequenos (usuario unico, <1000 items de medios).
+> **Nota:** Todas las imágenes soportan tanto AMD64 (Intel/AMD) como ARM64 (Raspberry Pi, Apple Silicon).
 
 ### PostgreSQL (recomendado)
 
@@ -107,7 +107,7 @@ services:
     image: ree0/lingarr-on-steroids:latest
     container_name: lingarr
     environment:
-      - TZ=Your/Timezone
+      - TZ=Europe/Madrid
       - DB_CONNECTION=postgresql
       - DB_HOST=postgres
       - DB_PORT=5432
@@ -144,7 +144,7 @@ volumes:
   postgres_data:
 ```
 
-### SQLite (inicio rapido)
+### SQLite (inicio rápido)
 
 ```yaml
 version: "3.8"
@@ -153,7 +153,7 @@ services:
   lingarr:
     image: ree0/lingarr-on-steroids:latest
     environment:
-      - TZ=Your/Timezone
+      - TZ=Europe/Madrid
       - DB_CONNECTION=sqlite
     volumes:
       - ./movies:/movies
@@ -166,9 +166,9 @@ services:
 
 ---
 
-## Configuracion
+## Configuración
 
-| Variable | Descripcion | Por defecto |
+| Variable | Descripción | Por defecto |
 |----------|-------------|------------|
 | `ASPNETCORE_URLS` | Puerto | `http://+:9876` |
 | `DB_CONNECTION` | `postgresql` o `sqlite` | `postgresql` |
@@ -176,23 +176,23 @@ services:
 | `DB_PORT` | Puerto de PostgreSQL | `5432` |
 | `DB_DATABASE` | Nombre de la base de datos | - |
 | `DB_USERNAME` | Usuario de la BD | - |
-| `DB_PASSWORD` | Contrasena de la BD | - |
+| `DB_PASSWORD` | Contraseña de la BD | - |
 | `RADARR_URL` | Tu URL de Radarr | - |
 | `RADARR_API_KEY` | Clave API de Radarr | - |
 | `SONARR_URL` | Tu URL de Sonarr | - |
 | `SONARR_API_KEY` | Clave API de Sonarr | - |
 
-Lista completa en [Settings.MD](Settings.MD).
+Lista completa de configuraciones en [Settings.MD](Settings.MD).
 
 ---
 
-## Creditos
+## Créditos
 
 Lingarr original por [rowanfuchs](https://github.com/lingarr-translate/lingarr).
 
 Iconos: [Lucide](https://lucide.dev/icons).  
-Parsing de subtitulos: [AlexPoint](https://github.com/AlexPoint/SubtitlesParser).  
-Traduccion: LibreTranslate, biblioteca GTranslate.
+Análisis de subtítulos: [AlexPoint](https://github.com/AlexPoint/SubtitlesParser).  
+Traducción: LibreTranslate, biblioteca GTranslate.
 
 ---
 

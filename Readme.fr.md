@@ -6,21 +6,21 @@
 [![License](https://img.shields.io/badge/license-AGPL--3.0-green.svg?style=for-the-badge)](LICENSE)
 [![Discord](https://img.shields.io/discord/1293119073739210885?style=for-the-badge&logo=discord&logoColor=white&label=discord&color=7289DA)](https://discord.gg/HkubmH2rcR)
 
-**Le sous-titrage qui fonctionne vraiment** - pour les gens qui gerent des bibliotheques mediatiques a grande echelle.
+**La traduction de sous-titres qui fonctionne vraiment** - pour les personnes gérant des médiathèques à grande échelle.
 
-[English](Readme.MD) | [Deutsch](Readme.de.md) | [Polski](Readme.pl.md) | [Nederlands](Readme.nl.md) | [Francais](Readme.fr.md) | [Espanol](Readme.es.md) | [Chinese](Readme.zh.md)
+[English](Readme.MD) | [Deutsch](Readme.de.md) | [Polski](Readme.pl.md) | [Nederlands](Readme.nl.md) | [Français](Readme.fr.md) | [Español](Readme.es.md) | [Chinese](Readme.zh.md)
 
 ---
 
-> **Mise a jour depuis v1.x?** La version 2.0.0 apporte des changements cassants - MySQL/MariaDB supprime, les parametres NE SONT PAS migres, nouveau depart requis. Voir ci-dessous pour les details.
+> **Mise à niveau depuis la v1.x ?** La version 2.0.0 comporte des changements majeurs - MySQL/MariaDB a été supprimé, les paramètres ne sont PAS migrés, une installation propre est requise. Voir ci-dessous pour plus de détails.
 
 ---
 
 ## Qu'est-ce que c'est ?
 
-Lingarr on Steroids est un fork de [Lingarr](https://github.com/lingarr-translate/lingarr). Nous avons gardé l'idée de base (traduire les sous-titres via Radarr/Sonarr) mais avons reconstruit la majeure partie du backend et ajouté beaucoup d'amélioration UI.
+Lingarr on Steroids est un fork de [Lingarr](https://github.com/lingarr-translate/lingarr). Nous avons gardé l'idée de base (traduire les sous-titres via Radarr/Sonarr) mais nous avons reconstruit la majeure partie du backend et ajouté de nombreuses améliorations de l'interface utilisateur.
 
-Ça a commencé parce que Lingarr original avait des problèmes de fiabilité sous charge. Nous avions besoin de quelque chose qui ne s'effondrerait pas quand vous avez des milliers d'émissions.
+Tout a commencé parce que le Lingarr original avait des problèmes de fiabilité sous charge. Nous avions besoin de quelque chose qui ne plante pas quand on a des milliers de séries ou de films.
 
 ---
 
@@ -30,74 +30,74 @@ Lingarr on Steroids est un fork de [Lingarr](https://github.com/lingarr-translat
 
 | Quoi | Pourquoi |
 |------|-----|
-| Worker de traduction personnalisé | Hangfire s'étouffait sur les grandes files. Nous avons écrit notre propre BackgroundService qui gère 1-20 workers parallèles, des files de priorité, et récupération automatique après crash. |
-| PostgreSQL par défaut | SQLite se bloque avec les workersconcurrents. Le MVCC dans PostgreSQL fonctionne réellement. Nous avons gardé SQLite comme option pour les petites configurations. |
-| Suivi de traduction à 9 états | L'original n'avait pas de bonne façon de répondre "quoi doit être traduit ?". Nous avons ajouté des états (Unknown, Pending, InProgress, Complete, Stale, AwaitingSource, NoSuitableSubtitles, Failed, Interrupted) pour que les requêtes soient rapides. |
-| Support multi-instance | Une instance Radarr/Sonarr ne suffit pas pour certains. Vous pouvez maintenant connecter plusieurs serveurs *arr à un seul Lingarr. |
-| Réparation différée | Les lignes échouées sont réessayées avec le contexte environnant (10 lignes par défaut). La qualité de traduction LLM augmente considérablement quand l'IA peut voir ce qui se passe avant/après. |
+| Worker de traduction personnalisé | Hangfire s'étouffait avec de grandes files d'attente. Nous avons écrit notre propre processus en arrière-plan qui gère 1 à 20 workers simultanés, des files d'attente prioritaires et une récupération automatique en cas de plantage. |
+| PostgreSQL par défaut | SQLite se bloque avec des requêtes simultanées. Le MVCC de PostgreSQL fonctionne vraiment. Nous avons conservé SQLite comme option pour les petites configurations. |
+| Suivi des traductions à 9 états | L'original n'avait pas de bon moyen de répondre à la question "Qu'est-ce qui doit être traduit ?". Nous avons ajouté des états (Inconnu, En attente, En cours, Terminé, Obsolète, En attente de source, Aucun sous-titre approprié, Échoué, Interrompu) pour des requêtes ultra-rapides. |
+| Support multi-instances | Une instance Radarr/Sonarr n'est pas suffisante pour certains. Vous pouvez désormais connecter plusieurs serveurs *arr à un seul Lingarr. |
+| Réparation différée | Les lignes échouées sont relancées avec le contexte environnant (10 lignes par défaut). La qualité de la traduction LLM (IA) s'améliore considérablement lorsque l'IA peut voir ce qui se passe avant et après. |
 
 ### Traitement des sous-titres
 
-- **Extraction FFmpeg** --extrait les sous-titres des conteneurs MKV/MP4 quand ils sont embarqués
-- **Nettoyage ASS/SSA** -supprime les commandes de dessin, symboles musicaux, placeholders d'effets sonores, URLs
-- **Filtre de tracks sparses** -saute les tracks avec <100 entrées (signes, chansons)
-- **Découverte de sous-titres externes** -trouve les fichiers de sous-titres que vous ajoutez manuellement et les suit
+- **Extraction FFmpeg** - extrait les sous-titres des conteneurs MKV/MP4 lorsqu'ils sont intégrés
+- **Nettoyage ASS/SSA** - supprime les commandes de dessin, symboles musicaux, balises d'effets sonores et URLs
+- **Filtre de pistes clairsemées** - ignore les pistes avec <100 lignes (souvent juste des panneaux ou des chansons)
+- **Détection de sous-titres externes** - trouve les fichiers de sous-titres que vous ajoutez manuellement et les suit
 
 ### UI/UX
 
-- **Widgets dashboard** -disposition glisser-déposer, mises à jour en temps réel via SignalR
-- **Widget file d'attente** -montre ce qui tourne, ce qui est planifié, ce qui est échoué
-- **Historique de traduction** -graphique + liste montrant quoi traduit quand
-- **Suivi usage API** -graphiques sparkline montrant les dépenses par service
-- **Assistant onboarding** -premier démarrage vous guide à travers la config Radarr/Sonarr
-- **Support thème** -sombre/clair avec variables CSS pour correspondre à votre config
-- **7 langues** -EN, NL, DE, FR, ES, PL, ZH
-- **Détection offline** -affiche quand l'app est inaccessible
+- **Widgets du tableau de bord** - interface en glisser-déposer, mises à jour en temps réel via SignalR
+- **Widget de file d'attente** - montre ce qui est en cours d'exécution, programmé ou a échoué
+- **Historique de traduction** - graphique + liste montrant ce qui a été traduit et quand
+- **Suivi de l'utilisation de l'API** - mini-graphiques montrant les dépenses par service
+- **Assistant de configuration** - guide l'utilisateur pas-à-pas lors de la première configuration de Radarr/Sonarr
+- **Support de thèmes** - sombre/clair avec des variables CSS pour correspondre à votre setup
+- **7 langues** - EN, NL, DE, FR, ES, PL, ZH
+- **Détection hors ligne** - indique quand l'application est inaccessible
 
 ### Fiabilité
 
-- **Nettoyage des orphelins** -détecte quand une mise à niveau renomme le fichier et que vos traductions AI sont maintenant orphelines
-- **Vérification d'intégrité en masse** -valide chaque traduction dans votre bibliothèque
-- **Nettoyage des jobs fantômes** -supprime les jobs bloqués qui n'ont jamais terminé
-- **Backoff exponentiel** -réessaie avec du jitter pour ne pas surcharger les APIs_FAILED
+- **Nettoyage des fichiers orphelins** - détecte lorsqu'une mise à niveau renomme le fichier et que vos traductions IA sont désormais orphelines
+- **Vérification d'intégrité en masse** - valide chaque traduction dans votre bibliothèque
+- **Nettoyage des tâches fantômes** - supprime les tâches bloquées qui ne se sont jamais terminées
+- **Temporisation exponentielle (Backoff)** - réessaye avec un délai aléatoire pour ne pas surcharger les API défaillantes
 
 ---
 
-## Services supportés
+## Services pris en charge
 
 **IA :**
-- OpenAI (GPT)
-- Anthropic (Claude)
-- Google Gemini
-- DeepSeek
-- Chutes.ai (avec suivi de quota et pause auto)
-- LocalAI / Ollama (auto-heberge)
+- [OpenAI](https://openai.com/) (GPT)
+- [Anthropic](https://www.anthropic.com/) (Claude)
+- [Google Gemini](https://gemini.google.com/)
+- [DeepSeek](https://deepseek.com/)
+- [Chutes.ai](https://chutes.ai/) (avec suivi des quotas et pause automatique)
+- LocalAI / Ollama (auto-hébergé)
 
-**APIs cloud :**
-- LibreTranslate
-- DeepL
-- Google Translate
-- Bing Translate
-- Yandex Translate
-- Azure Translator
+**API Cloud :**
+- [LibreTranslate](https://libretranslate.com/)
+- [DeepL](https://www.deepl.com/)
+- [Google Translate](https://translate.google.com/)
+- [Bing Translate](https://www.bing.com/translator)
+- [Yandex Translate](https://translate.yandex.com/)
+- [Azure Translator](https://www.microsoft.com/en-us/translator/business/translator-api/)
 
 ---
 
-## Pour commencer
+## Mise en route
 
-### Tags d'image Docker
+### Tags de l'image Docker
 
 | Tag | Description | Architectures |
 |-----|-------------|---------------|
-| `latest` | Derniere version stable | `linux/amd64`, `linux/arm64` |
-| `1.2.3` | Version specifique | `linux/amd64`, `linux/arm64` |
-| `main` | Build de developpement | `linux/amd64`, `linux/arm64` |
+| `latest` | Dernière version stable | `linux/amd64`, `linux/arm64` |
+| `1.2.3` | Version spécifique | `linux/amd64`, `linux/arm64` |
+| `main` | Version de développement | `linux/amd64`, `linux/arm64` |
 
-> **Note:** Toutes les images supportent AMD64 (Intel/AMD) et ARM64 (Raspberry Pi, Apple Silicon).
+PostgreSQL est recommandé. SQLite fonctionne pour les petites configurations (utilisateur unique, <1000 médias).
 
-PostgreSQL est recommande. SQLite fonctionne pour les petites configurations (utilisateur unique, <1000 elements media).
+> **Remarque :** Toutes les images prennent en charge à la fois l'AMD64 (Intel/AMD) et l'ARM64 (Raspberry Pi, Apple Silicon).
 
-### PostgreSQL (recommande)
+### PostgreSQL (recommandé)
 
 ```yaml
 version: "3.8"
@@ -107,7 +107,7 @@ services:
     image: ree0/lingarr-on-steroids:latest
     container_name: lingarr
     environment:
-      - TZ=Your/Timezone
+      - TZ=Europe/Paris
       - DB_CONNECTION=postgresql
       - DB_HOST=postgres
       - DB_PORT=5432
@@ -153,7 +153,7 @@ services:
   lingarr:
     image: ree0/lingarr-on-steroids:latest
     environment:
-      - TZ=Your/Timezone
+      - TZ=Europe/Paris
       - DB_CONNECTION=sqlite
     volumes:
       - ./movies:/movies
@@ -168,21 +168,21 @@ services:
 
 ## Configuration
 
-| Variable | Description | Défaut |
-|----------|-------------|--------|
+| Variable | Description | Par défaut |
+|----------|-------------|------------|
 | `ASPNETCORE_URLS` | Port | `http://+:9876` |
 | `DB_CONNECTION` | `postgresql` ou `sqlite` | `postgresql` |
 | `DB_HOST` | Hôte PostgreSQL | - |
 | `DB_PORT` | Port PostgreSQL | `5432` |
-| `DB_DATABASE` | Nom de la database | - |
-| `DB_USERNAME` | Nom utilisateur DB | - |
-| `DB_PASSWORD` | Mot de passe DB | - |
+| `DB_DATABASE` | Nom de la base de données | - |
+| `DB_USERNAME` | Utilisateur de la BDD | - |
+| `DB_PASSWORD` | Mot de passe de la BDD | - |
 | `RADARR_URL` | Votre URL Radarr | - |
 | `RADARR_API_KEY` | Clé API Radarr | - |
 | `SONARR_URL` | Votre URL Sonarr | - |
 | `SONARR_API_KEY` | Clé API Sonarr | - |
 
-Liste complète dans [Settings.MD](Settings.MD).
+Liste complète des paramètres dans [Settings.MD](Settings.MD).
 
 ---
 
@@ -191,7 +191,7 @@ Liste complète dans [Settings.MD](Settings.MD).
 Lingarr original par [rowanfuchs](https://github.com/lingarr-translate/lingarr).
 
 Icônes : [Lucide](https://lucide.dev/icons).  
-Parsing sous-titres : [AlexPoint](https://github.com/AlexPoint/SubtitlesParser).  
+Analyse des sous-titres : [AlexPoint](https://github.com/AlexPoint/SubtitlesParser).  
 Traduction : LibreTranslate, bibliothèque GTranslate.
 
 ---

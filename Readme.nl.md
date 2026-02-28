@@ -6,80 +6,80 @@
 [![License](https://img.shields.io/badge/license-AGPL--3.0-green.svg?style=for-the-badge)](LICENSE)
 [![Discord](https://img.shields.io/discord/1293119073739210885?style=for-the-badge&logo=discord&logoColor=white&label=discord&color=7289DA)](https://discord.gg/HkubmH2rcR)
 
-**Ondertiteling die echter werkt** - voor mensen die mediabibliotheken op schaal draaien.
+**Ondertiteling vertalen die écht werkt** - voor mensen die grote mediabibliotheken beheren.
 
-[English](Readme.MD) | [Deutsch](Readme.de.md) | [Polski](Readme.pl.md) | [Nederlands](Readme.nl.md) | [Francais](Readme.fr.md) | [Espanol](Readme.es.md) | [Chinese](Readme.zh.md)
+[English](Readme.MD) | [Deutsch](Readme.de.md) | [Polski](Readme.pl.md) | [Nederlands](Readme.nl.md) | [Français](Readme.fr.md) | [Español](Readme.es.md) | [Chinese](Readme.zh.md)
 
 ---
 
-> **Upgraden van v1.x?** Versie 2.0.0 heeft brekende wijzigingen - MySQL/MariaDB verwijderd, instellingen worden NIET gemigreerd, nieuwe start nodig. Zie hieronder voor details.
+> **Upgrade vanaf v1.x?** Versie 2.0.0 bevat breaking changes - MySQL/MariaDB verwijderd, instellingen worden NIET gemigreerd, een schone installatie is vereist. Zie hieronder voor details.
 
 ---
 
 ## Wat is dit?
 
-Lingarr on Steroids is een fork van [Lingarr](https://github.com/lingarr-translate/lingarr). We hebben het basisidee behouden (ondertiteling vertalen via Radarr/Sonarr) maar het grootste deel van de backend opnieuw gebouwd en veel UI-verbeteringen toegevoegd.
+Lingarr on Steroids is een fork van [Lingarr](https://github.com/lingarr-translate/lingarr). We hebben het kernidee behouden (ondertitels vertalen via Radarr/Sonarr) maar de meeste backend herbouwd en veel UI-verbeteringen toegevoegd.
 
-Het begon omdat de originele Lingarr betrouwbaarheidsproblemen had onder belasting. We hadden iets nodig dat niet zou vallen wanneer je duizenden series hebt.
+Het is gestart omdat het originele Lingarr betrouwbaarheidsproblemen had onder grote belasting. We hadden iets nodig dat niet zou crashen wanneer je duizenden series en films hebt.
 
 ---
 
-## Wat we veranderden
+## Wat we hebben veranderd
 
 ### Backend
 
 | Wat | Waarom |
 |------|-----|
-| Custom vertaal-worker | Hangfire verstopte op grote wachtrijen. We hebben onze eigen BackgroundService geschreven die 1-20 parallelle workers, prioriteitswachtrijen en auto-herstel na crashes afhandelt. |
-| PostgreSQL standaard | SQLite vergrendelt met gelijktijdige workers. MVCC in PostgreSQL werkt daadwerkelijk. We hebben SQLite als optie gehouden voor kleine setups. |
-| 9-status vertaling-tracking | Het origineel had geen goede manier om te beantwoorden "wat moet vertaald worden?". We voegden statussen toe (Unknown, Pending, InProgress, Complete, Stale, AwaitingSource, NoSuitableSubtitles, Failed, Interrupted) zodat query's snel zijn. |
-| Multi-instance ondersteuning | Eén Radarr/Sonarr instantie is niet genoeg voor sommige mensen. Je kunt nu meerdere *arr-servers op één Lingarr aansluiten. |
-| Uitgestelde reparatie | Mislukte regels worden opnieuw geprobeerd met omliggende.context (10 regels standaard). LLM-vertalingskwaliteit stijgt aanzienlijk wanneer de AI kan zien wat ervoor/erna gebeurt. |
+| Aangepaste vertalingsworker | Hangfire liep vast bij grote wachtrijen. We schreven onze eigen BackgroundService die 1-20 parallelle workers afhandelt, prioriteitswachtrijen en auto-herstel bij crashes. |
+| Standaard PostgreSQL | SQLite loopt vast bij gelijktijdige workers. MVCC in PostgreSQL werkt wél. We hebben SQLite behouden als optie voor kleine setups. |
+| 9-status vertalings-tracking | Het origineel had geen goede manier om te antwoorden "wat moet er vertaald worden?". We voegden statussen toe (Onbekend, In de wacht, Bezig, Voltooid, Verouderd, Wacht op bron, Geen geschikte ondertitels, Mislukt, Onderbroken) zodat queries snel zijn. |
+| Multi-instantie ondersteuning | Eén Radarr/Sonarr instantie is niet genoeg voor sommigen. Je kan nu meerdere *arr servers verbinden met één Lingarr. |
+| Uitgestelde reparatie | Mislukte regels worden opnieuw geprobeerd met omliggende context (standaard 10 regels). LLM-vertalingskwaliteit verbetert aanzienlijk wanneer de AI kan zien wat er voor/na gebeurt. |
 
-### Ondertiteling verwerken
+### Ondertiteling verwerking
 
-- **FFmpeg extractie** - haalt ondertiteling uit MKV/MP4-containers wanneer ze ingesloten is
-- **ASS/SSA opschoning** - verwijdert tekenopdrachten, muzieksymbolen, geluidseffect-placeholders, URL's
-- **Dunne track-filter** - slaat tracks met <100 entries over (tekens, liedjes)
-- **Externe ondertitel-ontdekking** - vindt ondertitelbestanden die je handmatig toevoegt en houdt ze bij
+- **FFmpeg extractie** - haalt ondertitels uit MKV/MP4-containers wanneer ze zijn ingesloten
+- **ASS/SSA opschonen** - verwijdert tekencommando's, muzieksymbolen, geluidseffect tags en URLs
+- **Gedeeltelijke track filter** - slaat tracks over met <100 regels (bijv. alleen borden, liedjes)
+- **Externe ondertitels ontdekking** - vindt handmatig toegevoegde ondertitelingsbestanden en trackt ze
 
 ### UI/UX
 
-- **Dashboard widgets** - drag-and-drop indeling, real-time updates via SignalR
-- **Wachtrij-widget** - toont wat draait, wat gepland is, wat mislukt is
-- **Vertalingsgeschiedenis** - chart + lijst die toont wat wanneer vertaald werd
-- **API-gebruik-tracker** - sparkline-diagrammen die uitgave per dienst tonen
-- **Onboarding-wizard** - eerste keer setup gidst je door Radarr/Sonarr-config
-- **Thema-ondersteuning** - donker/licht met CSS-variabelen zodat je kunt matchen met je setup
+- **Dashboard widgets** - sleepbare (drag-and-drop) lay-out, real-time updates via SignalR
+- **Wachtrij widget** - laat zien wat er draait, wat is gepland, wat is mislukt
+- **Vertalingsgeschiedenis** - grafiek + lijst die laat zien wat en wanneer is vertaald
+- **API-gebruik tracker** - minigrafiekjes die de kosten per dienst laten zien
+- **Setup-assistent** - begeleidt je bij de eerste instelling met Radarr/Sonarr
+- **Thema-ondersteuning** - donker/licht met CSS variabelen om bij je setup te passen
 - **7 talen** - EN, NL, DE, FR, ES, PL, ZH
-- **Offline-detectie** - toont wanneer de app onbereikbaar is
+- **Offline detectie** - toont wanneer de app onbereikbaar is
 
 ### Betrouwbaarheid
 
-- **Weesopruiming** - detecteert wanneer upgrade de bestandsnaam verandert en je AI-vertalingen nu wezen zijn
-- **Bulk integriteitscontrole** - valideert elke vertaling in je bibliotheek
-- **Spookjob-opruiming** - verwijdert vastgelopen jobs die nooit eindigden
-- **Exponentiële backoff** - herhaalt met jitter zodat je geen mislukte API's blijft bestoken
+- **Verweesde bestanden opschonen** - detecteert wanneer een upgrade de bestandsnaam wijzigt waardoor je AI-vertalingen ongebruikt raken
+- **Massa-integriteitscontrole** - valideert elke vertaling in je bibliotheek
+- **Vastgelopen taken opschonen** - verwijdert vastzittende taken die nooit klaar zijn
+- **Exponentiële vertraging (Backoff)** - probeert het opnieuw met willekeurige vertraging (jitter) om API's bij storingen niet te overbelasten
 
 ---
 
 ## Ondersteunde diensten
 
 **AI:**
-- OpenAI (GPT)
-- Anthropic (Claude)
-- Google Gemini
-- DeepSeek
-- Chutes.ai (met quota-tracking & auto-pauze)
-- LocalAI / Ollama (zelfgehost)
+- [OpenAI](https://openai.com/) (GPT)
+- [Anthropic](https://www.anthropic.com/) (Claude)
+- [Google Gemini](https://gemini.google.com/)
+- [DeepSeek](https://deepseek.com/)
+- [Chutes.ai](https://chutes.ai/) (met quota-tracking & automatische pauze)
+- LocalAI / Ollama (zelf-gehost)
 
-**Cloud API's:**
-- LibreTranslate
-- DeepL
-- Google Translate
-- Bing Translate
-- Yandex Translate
-- Azure Translator
+**Cloud APIs:**
+- [LibreTranslate](https://libretranslate.com/)
+- [DeepL](https://www.deepl.com/)
+- [Google Translate](https://translate.google.com/)
+- [Bing Translate](https://www.bing.com/translator)
+- [Yandex Translate](https://translate.yandex.com/)
+- [Azure Translator](https://www.microsoft.com/en-us/translator/business/translator-api/)
 
 ---
 
@@ -88,14 +88,14 @@ Het begon omdat de originele Lingarr betrouwbaarheidsproblemen had onder belasti
 ### Docker image tags
 
 | Tag | Beschrijving | Architecturen |
-|-----|--------------|---------------|
+|-----|-------------|---------------|
 | `latest` | Nieuwste stabiele release | `linux/amd64`, `linux/arm64` |
 | `1.2.3` | Specifieke versie | `linux/amd64`, `linux/arm64` |
-| `main` | Ontwikkelingsbuild | `linux/amd64`, `linux/arm64` |
+| `main` | Ontwikkelingsversie | `linux/amd64`, `linux/arm64` |
+
+PostgreSQL is aanbevolen. SQLite werkt voor kleine setups (enkele gebruiker, <1000 media-items).
 
 > **Let op:** Alle images ondersteunen zowel AMD64 (Intel/AMD) als ARM64 (Raspberry Pi, Apple Silicon).
-
-PostgreSQL wordt aanbevolen. SQLite werkt voor kleine setups (single gebruiker, <1000 media-items).
 
 ### PostgreSQL (aanbevolen)
 
@@ -107,7 +107,7 @@ services:
     image: ree0/lingarr-on-steroids:latest
     container_name: lingarr
     environment:
-      - TZ=Your/Timezone
+      - TZ=Europe/Amsterdam
       - DB_CONNECTION=postgresql
       - DB_HOST=postgres
       - DB_PORT=5432
@@ -144,7 +144,7 @@ volumes:
   postgres_data:
 ```
 
-### SQLite (snelstart)
+### SQLite (snel starten)
 
 ```yaml
 version: "3.8"
@@ -153,7 +153,7 @@ services:
   lingarr:
     image: ree0/lingarr-on-steroids:latest
     environment:
-      - TZ=Your/Timezone
+      - TZ=Europe/Amsterdam
       - DB_CONNECTION=sqlite
     volumes:
       - ./movies:/movies
@@ -169,11 +169,11 @@ services:
 ## Configuratie
 
 | Variabele | Beschrijving | Standaard |
-|-----------|--------------|-----------|
+|----------|-------------|---------|
 | `ASPNETCORE_URLS` | Poort | `http://+:9876` |
 | `DB_CONNECTION` | `postgresql` of `sqlite` | `postgresql` |
 | `DB_HOST` | PostgreSQL host | - |
-| `DB_PORT` | PostgreSQL port | `5432` |
+| `DB_PORT` | PostgreSQL poort | `5432` |
 | `DB_DATABASE` | Database naam | - |
 | `DB_USERNAME` | DB gebruikersnaam | - |
 | `DB_PASSWORD` | DB wachtwoord | - |
@@ -191,12 +191,12 @@ Volledige lijst in [Settings.MD](Settings.MD).
 Originele Lingarr door [rowanfuchs](https://github.com/lingarr-translate/lingarr).
 
 Iconen: [Lucide](https://lucide.dev/icons).  
-Ondertiteling-parsing: [AlexPoint](https://github.com/AlexPoint/SubtitlesParser).  
-Vertaling: LibreTranslate, GTranslate bibliotheek.
+Ondertitel verwerking: [AlexPoint](https://github.com/AlexPoint/SubtitlesParser).  
+Vertaling: LibreTranslate, GTranslate-bibliotheek.
 
 ---
 
-## Bedankt
+## Dank aan
 
 - [selfh.st](https://selfh.st/?ref=lingarr)
 - [r/selfhosted](https://www.reddit.com/r/selfhosted/)
