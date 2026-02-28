@@ -1,141 +1,164 @@
 <template>
-    <div class="space-y-6">
-        <!-- Batch Translation Section -->
-        <div>
-            <h3 class="text-primary-content mb-2 text-lg font-semibold">
-                {{ translate('settings.translation.title') }}
-            </h3>
-            <p class="text-secondary-content mb-4 text-sm">
-                {{ translate('settings.translation.description') }}
-            </p>
+    <div class="space-y-3">
+        <p class="text-secondary-content -mt-2 mb-4 text-sm">
+            {{ translate('settings.translation.description') }}
+        </p>
 
-            <div class="grid grid-cols-2 gap-4">
-                <!-- Use Batch Translation -->
-                <div class="flex items-center justify-between">
-                    <div>
+        <!-- Batch Translation Section -->
+        <details class="border-accent group rounded-md border">
+            <summary
+                class="flex cursor-pointer items-center justify-between bg-secondary/50 px-4 py-3 list-none hover:bg-secondary/70">
+                <div class="flex items-center gap-3">
+                    <span class="text-primary-content font-semibold">
+                        {{ translate('settings.translation.title') }}
+                    </span>
+                    <span class="text-secondary-content text-sm">
+                        ({{
+                            useBatchTranslation === 'true'
+                                ? translate('common.enabled')
+                                : translate('common.disabled')
+                        }})
+                    </span>
+                </div>
+                <CaretRightIcon
+                    class="text-secondary-content h-4 w-4 transition-transform group-open:rotate-90" />
+            </summary>
+            <div class="space-y-4 px-4 pb-4 pt-2">
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <span class="text-primary-content font-semibold">
+                                {{ translate('settings.translation.useBatchTranslation') }}
+                            </span>
+                            <p class="text-secondary-content text-xs">
+                                {{ translate('settings.translation.useBatchTranslationDescription') }}
+                            </p>
+                        </div>
+                        <ToggleButton v-model="useBatchTranslation">
+                            <span class="text-primary-content text-sm font-medium">
+                                {{
+                                    useBatchTranslation === 'true'
+                                        ? translate('common.enabled')
+                                        : translate('common.disabled')
+                                }}
+                            </span>
+                        </ToggleButton>
+                    </div>
+
+                    <div v-if="useBatchTranslation === 'true'">
                         <span class="text-primary-content font-semibold">
-                            {{ translate('settings.translation.useBatchTranslation') }}
+                            {{ translate('settings.translation.maxBatchSize') }}
                         </span>
                         <p class="text-secondary-content text-xs">
-                            {{ translate('settings.translation.useBatchTranslationDescription') }}
+                            {{ translate('settings.translation.maxBatchSizeDescription') }}
                         </p>
+                        <InputComponent
+                            v-model="maxBatchSize"
+                            validation-type="number"
+                            placeholder="50"
+                            @update:validation="(val) => (isValid.maxBatchSize = val)" />
                     </div>
-                    <ToggleButton v-model="useBatchTranslation">
-                        <span class="text-primary-content text-sm font-medium">
-                            {{
-                                useBatchTranslation === 'true'
-                                    ? translate('common.enabled')
-                                    : translate('common.disabled')
-                            }}
+
+                    <div v-if="useBatchTranslation === 'true'">
+                        <span class="text-primary-content font-semibold">
+                            {{ translate('settings.translation.batchRetryMode') }}
                         </span>
-                    </ToggleButton>
-                </div>
-
-                <!-- Max Batch Size -->
-                <div v-if="useBatchTranslation === 'true'">
-                    <span class="text-primary-content font-semibold">
-                        {{ translate('settings.translation.maxBatchSize') }}
-                    </span>
-                    <p class="text-secondary-content text-xs">
-                        {{ translate('settings.translation.maxBatchSizeDescription') }}
-                    </p>
-                    <InputComponent
-                        v-model="maxBatchSize"
-                        validation-type="number"
-                        placeholder="50"
-                        @update:validation="(val) => (isValid.maxBatchSize = val)" />
-                </div>
-
-                <!-- Batch Retry Mode -->
-                <div v-if="useBatchTranslation === 'true'">
-                    <span class="text-primary-content font-semibold">
-                        {{ translate('settings.translation.batchRetryMode') }}
-                    </span>
-                    <p class="text-secondary-content text-xs">
-                        {{ translate('settings.translation.batchRetryModeDescription') }}
-                    </p>
-                    <select
-                        v-model="batchRetryMode"
-                        class="border-accent bg-primary text-primary-content focus:ring-accent mt-2 h-10 w-full cursor-pointer rounded-md border px-3 py-2 focus:ring-2 focus:outline-none">
-                        <option value="deferred">
-                            {{ translate('settings.translation.batchRetryModeDeferred') }}
-                        </option>
-                        <option value="immediate">
-                            {{ translate('settings.translation.batchRetryModeImmediate') }}
-                        </option>
-                    </select>
+                        <p class="text-secondary-content text-xs">
+                            {{ translate('settings.translation.batchRetryModeDescription') }}
+                        </p>
+                        <select
+                            v-model="batchRetryMode"
+                            class="border-accent bg-primary text-primary-content focus:ring-accent mt-2 h-10 w-full cursor-pointer rounded-md border px-3 py-2 focus:ring-2 focus:outline-none">
+                            <option value="deferred">
+                                {{ translate('settings.translation.batchRetryModeDeferred') }}
+                            </option>
+                            <option value="immediate">
+                                {{ translate('settings.translation.batchRetryModeImmediate') }}
+                            </option>
+                        </select>
+                    </div>
                 </div>
             </div>
-        </div>
+        </details>
 
         <!-- Retry Settings Section -->
-        <div>
-            <h3 class="text-primary-content mb-2 text-lg font-semibold">
-                {{ translate('onboarding.settings.retryTitle') }}
-            </h3>
-            <p class="text-secondary-content mb-4 text-sm">
-                {{ translate('onboarding.settings.retryDescription') }}
-            </p>
-
-            <div class="grid grid-cols-3 gap-4">
-                <!-- Max Retries -->
-                <div>
+        <details class="border-accent group rounded-md border">
+            <summary
+                class="flex cursor-pointer items-center justify-between bg-secondary/50 px-4 py-3 list-none hover:bg-secondary/70">
+                <div class="flex items-center gap-3">
                     <span class="text-primary-content font-semibold">
-                        {{ translate('settings.translation.maxRetries') }}
+                        {{ translate('onboarding.settings.retryTitle') }}
                     </span>
-                    <p class="text-secondary-content text-xs">
-                        {{ translate('settings.translation.maxRetriesDescription') }}
-                    </p>
-                    <InputComponent
-                        v-model="maxRetries"
-                        validation-type="number"
-                        placeholder="3"
-                        @update:validation="(val) => (isValid.maxRetries = val)" />
+                    <span class="text-secondary-content text-sm">
+                        ({{ maxRetries }} {{ translate('onboarding.settings.retries') }})
+                    </span>
                 </div>
+                <CaretRightIcon
+                    class="text-secondary-content h-4 w-4 transition-transform group-open:rotate-90" />
+            </summary>
+            <div class="space-y-4 px-4 pb-4 pt-2">
+                <div class="grid grid-cols-3 gap-4">
+                    <div>
+                        <span class="text-primary-content font-semibold">
+                            {{ translate('settings.translation.maxRetries') }}
+                        </span>
+                        <p class="text-secondary-content text-xs">
+                            {{ translate('settings.translation.maxRetriesDescription') }}
+                        </p>
+                        <InputComponent
+                            v-model="maxRetries"
+                            validation-type="number"
+                            placeholder="3"
+                            @update:validation="(val) => (isValid.maxRetries = val)" />
+                    </div>
 
-                <!-- Retry Delay -->
-                <div>
-                    <span class="text-primary-content font-semibold">
-                        {{ translate('settings.translation.retryDelay') }}
-                    </span>
-                    <p class="text-secondary-content text-xs">
-                        {{ translate('settings.translation.retryDelayDescription') }}
-                    </p>
-                    <InputComponent
-                        v-model="retryDelay"
-                        validation-type="number"
-                        placeholder="1000"
-                        @update:validation="(val) => (isValid.retryDelay = val)" />
-                </div>
+                    <div>
+                        <span class="text-primary-content font-semibold">
+                            {{ translate('settings.translation.retryDelay') }}
+                        </span>
+                        <p class="text-secondary-content text-xs">
+                            {{ translate('settings.translation.retryDelayDescription') }}
+                        </p>
+                        <InputComponent
+                            v-model="retryDelay"
+                            validation-type="number"
+                            placeholder="1000"
+                            @update:validation="(val) => (isValid.retryDelay = val)" />
+                    </div>
 
-                <!-- Retry Delay Multiplier -->
-                <div>
-                    <span class="text-primary-content font-semibold">
-                        {{ translate('settings.translation.retryDelayMultiplier') }}
-                    </span>
-                    <p class="text-secondary-content text-xs">
-                        {{ translate('settings.translation.retryDelayMultiplierDescription') }}
-                    </p>
-                    <InputComponent
-                        v-model="retryDelayMultiplier"
-                        validation-type="number"
-                        placeholder="2"
-                        @update:validation="(val) => (isValid.retryDelayMultiplier = val)" />
+                    <div>
+                        <span class="text-primary-content font-semibold">
+                            {{ translate('settings.translation.retryDelayMultiplier') }}
+                        </span>
+                        <p class="text-secondary-content text-xs">
+                            {{ translate('settings.translation.retryDelayMultiplierDescription') }}
+                        </p>
+                        <InputComponent
+                            v-model="retryDelayMultiplier"
+                            validation-type="number"
+                            placeholder="2"
+                            @update:validation="(val) => (isValid.retryDelayMultiplier = val)" />
+                    </div>
                 </div>
             </div>
-        </div>
+        </details>
 
         <!-- Parallel Translations Section -->
-        <div>
-            <h3 class="text-primary-content mb-2 text-lg font-semibold">
-                {{ translate('onboarding.settings.parallelTitle') }}
-            </h3>
-            <p class="text-secondary-content mb-4 text-sm">
-                {{ translate('onboarding.settings.parallelDescription') }}
-            </p>
-
-            <div class="grid grid-cols-2 gap-4">
-                <!-- Max Parallel Translations -->
+        <details class="border-accent group rounded-md border">
+            <summary
+                class="flex cursor-pointer items-center justify-between bg-secondary/50 px-4 py-3 list-none hover:bg-secondary/70">
+                <div class="flex items-center gap-3">
+                    <span class="text-primary-content font-semibold">
+                        {{ translate('onboarding.settings.parallelTitle') }}
+                    </span>
+                    <span class="text-secondary-content text-sm">
+                        ({{ maxParallelTranslations }} {{ translate('onboarding.settings.concurrent') }})
+                    </span>
+                </div>
+                <CaretRightIcon
+                    class="text-secondary-content h-4 w-4 transition-transform group-open:rotate-90" />
+            </summary>
+            <div class="space-y-4 px-4 pb-4 pt-2">
                 <div>
                     <span class="text-primary-content font-semibold">
                         {{ translate('settings.translation.maxParallelTranslations') }}
@@ -158,142 +181,156 @@
                         @update:validation="(val) => (isValid.maxParallelTranslations = val)" />
                 </div>
             </div>
-        </div>
+        </details>
 
         <!-- Subtitle Processing Section -->
-        <div>
-            <h3 class="text-primary-content mb-2 text-lg font-semibold">
-                {{ translate('settings.subtitle.title') }}
-            </h3>
-            <p class="text-secondary-content mb-4 text-sm">
-                {{ translate('settings.subtitle.description') }}
-            </p>
-
-            <div class="grid grid-cols-2 gap-4">
-                <!-- Fix Overlapping Subtitles -->
-                <div class="flex items-center justify-between">
-                    <div>
-                        <span class="text-primary-content font-semibold">
-                            {{ translate('settings.subtitle.fixOverlappingSubtitles') }}
-                        </span>
-                        <p class="text-secondary-content text-xs">
-                            {{ translate('settings.subtitle.fixOverlappingSubtitlesDescription') }}
-                        </p>
-                    </div>
-                    <ToggleButton v-model="fixOverlappingSubtitles">
-                        <span class="text-primary-content text-sm font-medium">
-                            {{
-                                fixOverlappingSubtitles === 'true'
-                                    ? translate('common.enabled')
-                                    : translate('common.disabled')
-                            }}
-                        </span>
-                    </ToggleButton>
+        <details class="border-accent group rounded-md border">
+            <summary
+                class="flex cursor-pointer items-center justify-between bg-secondary/50 px-4 py-3 list-none hover:bg-secondary/70">
+                <div class="flex items-center gap-3">
+                    <span class="text-primary-content font-semibold">
+                        {{ translate('settings.subtitle.title') }}
+                    </span>
+                    <span class="text-secondary-content text-sm">
+                        ({{ enabledSubtitleProcessingCount }}/3)
+                    </span>
                 </div>
-
-                <!-- Strip Subtitle Formatting -->
-                <div class="flex items-center justify-between">
-                    <div>
-                        <span class="text-primary-content font-semibold">
-                            {{ translate('settings.subtitle.stripSubtitleFormatting') }}
-                        </span>
-                        <p class="text-secondary-content text-xs">
-                            {{ translate('settings.subtitle.stripSubtitleFormattingDescription') }}
-                        </p>
+                <CaretRightIcon
+                    class="text-secondary-content h-4 w-4 transition-transform group-open:rotate-90" />
+            </summary>
+            <div class="space-y-4 px-4 pb-4 pt-2">
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <span class="text-primary-content font-semibold">
+                                {{ translate('settings.subtitle.fixOverlappingSubtitles') }}
+                            </span>
+                            <p class="text-secondary-content text-xs">
+                                {{ translate('settings.subtitle.fixOverlappingSubtitlesDescription') }}
+                            </p>
+                        </div>
+                        <ToggleButton v-model="fixOverlappingSubtitles">
+                            <span class="text-primary-content text-sm font-medium">
+                                {{
+                                    fixOverlappingSubtitles === 'true'
+                                        ? translate('common.enabled')
+                                        : translate('common.disabled')
+                                }}
+                            </span>
+                        </ToggleButton>
                     </div>
-                    <ToggleButton v-model="stripSubtitleFormatting">
-                        <span class="text-primary-content text-sm font-medium">
-                            {{
-                                stripSubtitleFormatting === 'true'
-                                    ? translate('common.enabled')
-                                    : translate('common.disabled')
-                            }}
-                        </span>
-                    </ToggleButton>
-                </div>
 
-                <!-- Add Translator Info -->
-                <div class="flex items-center justify-between">
-                    <div>
-                        <span class="text-primary-content font-semibold">
-                            {{ translate('settings.subtitle.addTranslatorInfo') }}
-                        </span>
-                        <p class="text-secondary-content text-xs">
-                            {{ translate('settings.subtitle.addTranslatorInfoDescription') }}
-                        </p>
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <span class="text-primary-content font-semibold">
+                                {{ translate('settings.subtitle.stripSubtitleFormatting') }}
+                            </span>
+                            <p class="text-secondary-content text-xs">
+                                {{ translate('settings.subtitle.stripSubtitleFormattingDescription') }}
+                            </p>
+                        </div>
+                        <ToggleButton v-model="stripSubtitleFormatting">
+                            <span class="text-primary-content text-sm font-medium">
+                                {{
+                                    stripSubtitleFormatting === 'true'
+                                        ? translate('common.enabled')
+                                        : translate('common.disabled')
+                                }}
+                            </span>
+                        </ToggleButton>
                     </div>
-                    <ToggleButton v-model="addTranslatorInfo">
-                        <span class="text-primary-content text-sm font-medium">
-                            {{
-                                addTranslatorInfo === 'true'
-                                    ? translate('common.enabled')
-                                    : translate('common.disabled')
-                            }}
-                        </span>
-                    </ToggleButton>
+
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <span class="text-primary-content font-semibold">
+                                {{ translate('settings.subtitle.addTranslatorInfo') }}
+                            </span>
+                            <p class="text-secondary-content text-xs">
+                                {{ translate('settings.subtitle.addTranslatorInfoDescription') }}
+                            </p>
+                        </div>
+                        <ToggleButton v-model="addTranslatorInfo">
+                            <span class="text-primary-content text-sm font-medium">
+                                {{
+                                    addTranslatorInfo === 'true'
+                                        ? translate('common.enabled')
+                                        : translate('common.disabled')
+                                }}
+                            </span>
+                        </ToggleButton>
+                    </div>
                 </div>
             </div>
-        </div>
+        </details>
 
         <!-- Subtitle Tagging Section -->
-        <div>
-            <h3 class="text-primary-content mb-2 text-lg font-semibold">
-                {{ translate('onboarding.settings.taggingTitle') }}
-            </h3>
-            <p class="text-secondary-content mb-4 text-sm">
-                {{ translate('onboarding.settings.taggingDescription') }}
-            </p>
+        <details class="border-accent group rounded-md border">
+            <summary
+                class="flex cursor-pointer items-center justify-between bg-secondary/50 px-4 py-3 list-none hover:bg-secondary/70">
+                <div class="flex items-center gap-3">
+                    <span class="text-primary-content font-semibold">
+                        {{ translate('onboarding.settings.taggingTitle') }}
+                    </span>
+                    <span class="text-secondary-content text-sm">
+                        ({{
+                            useSubtitleTagging === 'true'
+                                ? translate('common.enabled')
+                                : translate('common.disabled')
+                        }})
+                    </span>
+                </div>
+                <CaretRightIcon
+                    class="text-secondary-content h-4 w-4 transition-transform group-open:rotate-90" />
+            </summary>
+            <div class="space-y-4 px-4 pb-4 pt-2">
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <span class="text-primary-content font-semibold">
+                                {{ translate('settings.subtitle.useSubtitleTagging') }}
+                            </span>
+                            <p class="text-secondary-content text-xs">
+                                {{ translate('settings.subtitle.useSubtitleTaggingDescription') }}
+                            </p>
+                        </div>
+                        <ToggleButton v-model="useSubtitleTagging">
+                            <span class="text-primary-content text-sm font-medium">
+                                {{
+                                    useSubtitleTagging === 'true'
+                                        ? translate('common.enabled')
+                                        : translate('common.disabled')
+                                }}
+                            </span>
+                        </ToggleButton>
+                    </div>
 
-            <div class="grid grid-cols-2 gap-4">
-                <!-- Use Subtitle Tagging -->
-                <div class="flex items-center justify-between">
-                    <div>
+                    <div v-if="useSubtitleTagging === 'true'">
                         <span class="text-primary-content font-semibold">
-                            {{ translate('settings.subtitle.useSubtitleTagging') }}
+                            {{ translate('settings.subtitle.subtitleTag') }}
+                        </span>
+                        <InputComponent
+                            v-model="subtitleTag"
+                            validation-type="string"
+                            placeholder="AI"
+                            @update:validation="(val) => (isValid.subtitleTag = val)" />
+                    </div>
+
+                    <div v-if="useSubtitleTagging === 'true'">
+                        <span class="text-primary-content font-semibold">
+                            {{ translate('settings.subtitle.subtitleTagShort') }}
                         </span>
                         <p class="text-secondary-content text-xs">
-                            {{ translate('settings.subtitle.useSubtitleTaggingDescription') }}
+                            {{ translate('settings.subtitle.subtitleTagShortDescription') }}
                         </p>
+                        <InputComponent
+                            v-model="subtitleTagShort"
+                            validation-type="string"
+                            placeholder="AI"
+                            @update:validation="(val) => (isValid.subtitleTagShort = val)" />
                     </div>
-                    <ToggleButton v-model="useSubtitleTagging">
-                        <span class="text-primary-content text-sm font-medium">
-                            {{
-                                useSubtitleTagging === 'true'
-                                    ? translate('common.enabled')
-                                    : translate('common.disabled')
-                            }}
-                        </span>
-                    </ToggleButton>
-                </div>
-
-                <!-- Subtitle Tag -->
-                <div v-if="useSubtitleTagging === 'true'">
-                    <span class="text-primary-content font-semibold">
-                        {{ translate('settings.subtitle.subtitleTag') }}
-                    </span>
-                    <InputComponent
-                        v-model="subtitleTag"
-                        validation-type="string"
-                        placeholder="AI"
-                        @update:validation="(val) => (isValid.subtitleTag = val)" />
-                </div>
-
-                <!-- Subtitle Tag Short -->
-                <div v-if="useSubtitleTagging === 'true'">
-                    <span class="text-primary-content font-semibold">
-                        {{ translate('settings.subtitle.subtitleTagShort') }}
-                    </span>
-                    <p class="text-secondary-content text-xs">
-                        {{ translate('settings.subtitle.subtitleTagShortDescription') }}
-                    </p>
-                    <InputComponent
-                        v-model="subtitleTagShort"
-                        validation-type="string"
-                        placeholder="AI"
-                        @update:validation="(val) => (isValid.subtitleTagShort = val)" />
                 </div>
             </div>
-        </div>
+        </details>
     </div>
 </template>
 
@@ -303,12 +340,21 @@ import { useSettingStore } from '@/store/setting'
 import { SETTINGS } from '@/ts'
 import InputComponent from '@/components/common/InputComponent.vue'
 import ToggleButton from '@/components/common/ToggleButton.vue'
+import CaretRightIcon from '@/components/icons/CaretRightIcon.vue'
 import { useI18n } from '@/plugins/i18n'
 import axios from 'axios'
 
 const { translate } = useI18n()
 const settingsStore = useSettingStore()
 const maxConcurrentLimit = ref<number>(20)
+
+const enabledSubtitleProcessingCount = computed(() => {
+    let count = 0
+    if (fixOverlappingSubtitles.value === 'true') count++
+    if (stripSubtitleFormatting.value === 'true') count++
+    if (addTranslatorInfo.value === 'true') count++
+    return count
+})
 
 const isValid = reactive({
     maxBatchSize: true,

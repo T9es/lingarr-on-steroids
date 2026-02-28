@@ -617,7 +617,9 @@
       "parallelTitle": "Parallel Translations",
       "parallelDescription": "Control how many translations can run simultaneously.",
       "taggingTitle": "Subtitle Tagging",
-      "taggingDescription": "Tag translated subtitles to identify them in your media player."
+      "taggingDescription": "Tag translated subtitles to identify them in your media player.",
+      "retries": "retries",
+      "concurrent": "concurrent"
     },
     "integration": {
       "radarr": "Radarr",

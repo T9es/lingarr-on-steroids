@@ -617,7 +617,9 @@
       "parallelTitle": "Traductions parallèles",
       "parallelDescription": "Contrôlez combien de traductions peuvent s'exécuter simultanément.",
       "taggingTitle": "Balisage de sous-titres",
-      "taggingDescription": "Marquez les sous-titres traduits pour les identifier dans votre lecteur multimédia."
+      "taggingDescription": "Marquez les sous-titres traduits pour les identifier dans votre lecteur multimédia.",
+      "retries": "réessais",
+      "concurrent": "simultanées"
     },
     "integration": {
       "radarr": "Radarr",

@@ -617,7 +617,9 @@
       "parallelTitle": "并行翻译",
       "parallelDescription": "控制可以同时运行多少个翻译。",
       "taggingTitle": "字幕标记",
-      "taggingDescription": "标记翻译的字幕，以便在媒体播放器中识别它们。"
+      "taggingDescription": "标记翻译的字幕，以便在媒体播放器中识别它们。",
+      "retries": "次重试",
+      "concurrent": "并发"
     },
     "integration": {
       "radarr": "Radarr",

@@ -617,7 +617,9 @@
       "parallelTitle": "Parallelle vertalingen",
       "parallelDescription": "Bepaal hoeveel vertalingen tegelijkertijd kunnen draaien.",
       "taggingTitle": "Ondertitel tagging",
-      "taggingDescription": "Tag vertaalde ondertitels om ze te identificeren in je mediaspeler."
+      "taggingDescription": "Tag vertaalde ondertitels om ze te identificeren in je mediaspeler.",
+      "retries": "herhalingen",
+      "concurrent": "gelijktijdig"
     },
     "integration": {
       "radarr": "Radarr",

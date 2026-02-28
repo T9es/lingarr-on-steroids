@@ -13,6 +13,7 @@
                     
                     <!-- Theme Selector -->
                     <button
+                        ref="themeButtonRef"
                         class="inline-flex h-10 w-10 cursor-pointer items-center justify-center"
                         @click="toggleThemeDropdown">
                         <ThemeIcon

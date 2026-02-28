@@ -617,7 +617,9 @@
       "parallelTitle": "Parallele Übersetzungen",
       "parallelDescription": "Steuern Sie, wie viele Übersetzungen gleichzeitig ausgeführt werden können.",
       "taggingTitle": "Untertitel-Tagging",
-      "taggingDescription": "Taggen Sie übersetzte Untertitel, um sie in Ihrem Mediaplayer zu identifizieren."
+      "taggingDescription": "Taggen Sie übersetzte Untertitel, um sie in Ihrem Mediaplayer zu identifizieren.",
+      "retries": "Wiederholungen",
+      "concurrent": "parallel"
     },
     "integration": {
       "radarr": "Radarr",

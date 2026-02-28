@@ -11,7 +11,7 @@
                     <div v-if="onboardingCompleted" class="text-green-500">
                         Onboarding was completed previously.
                     </div>
-                    <div v-if="onboardingSkipped" class="text-yellow-500">
+                    <div v-else-if="onboardingSkipped" class="text-yellow-500">
                         Onboarding was skipped previously.
                     </div>
                     <button

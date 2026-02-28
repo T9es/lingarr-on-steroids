@@ -617,7 +617,9 @@
       "parallelTitle": "Równoległe tłumaczenia",
       "parallelDescription": "Kontroluj, ile tłumaczeń może działać jednocześnie.",
       "taggingTitle": "Tagowanie napisów",
-      "taggingDescription": "Oznacz przetłumaczone napisy, aby zidentyfikować je w odtwarzaczu multimedialnym."
+      "taggingDescription": "Oznacz przetłumaczone napisy, aby zidentyfikować je w odtwarzaczu multimedialnym.",
+      "retries": "prób",
+      "concurrent": "jednoczesnych"
     },
     "integration": {
       "radarr": "Radarr",

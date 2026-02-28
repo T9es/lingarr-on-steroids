@@ -617,7 +617,9 @@
       "parallelTitle": "Traducciones paralelas",
       "parallelDescription": "Controla cuántas traducciones pueden ejecutarse simultáneamente.",
       "taggingTitle": "Etiquetado de subtítulos",
-      "taggingDescription": "Etiqueta los subtítulos traducidos para identificarlos en tu reproductor multimedia."
+      "taggingDescription": "Etiqueta los subtítulos traducidos para identificarlos en tu reproductor multimedia.",
+      "retries": "reintentos",
+      "concurrent": "simultáneas"
     },
     "integration": {
       "radarr": "Radarr",

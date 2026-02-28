@@ -13,7 +13,7 @@
             <span v-else class="text-primary-content">{{ displayLabel }}</span>
             <CaretRightIcon
                 :class="{ 'rotate-90': isOpen }"
-                class="arrow-right h-5 w-5 transition-transform duration-200" />
+                class="arrow-right text-secondary-content h-5 w-5 transition-transform duration-200" />
         </div>
         <ul
             v-show="isOpen"
