@@ -476,7 +476,7 @@ const MediaOverviewContent = defineComponent({
                         h(
                             'div',
                             {
-                                class: 'bg-secondary/50 mt-2 h-1.5 w-full overflow-hidden rounded-full'
+                                class: 'bg-primary-content/10 mt-2 h-1.5 w-full overflow-hidden rounded-full'
                             },
                             [
                                 h('div', {
@@ -510,7 +510,7 @@ const MediaOverviewContent = defineComponent({
                         h(
                             'div',
                             {
-                                class: 'bg-secondary/50 mt-2 h-1.5 w-full overflow-hidden rounded-full'
+                                class: 'bg-primary-content/10 mt-2 h-1.5 w-full overflow-hidden rounded-full'
                             },
                             [
                                 h('div', {
