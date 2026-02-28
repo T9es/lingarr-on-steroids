@@ -120,9 +120,10 @@ export function createI18nPlugin(options: I18nPluginOptions = {}) {
     }
 
     const setLocale = async (locale: string) => {
+        // Save preference to backend database
         await services.setting.setSetting('locale', locale)
+        // Dynamically reload translations (Vue reactivity handles UI updates)
         await loadTranslations(false)
-        window.location.reload()
     }
 
     const i18n: I18n = {
