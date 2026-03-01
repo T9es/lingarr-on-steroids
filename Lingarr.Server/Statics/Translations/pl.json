@@ -705,8 +705,17 @@
     "selectLanguages": "Wybierz języki",
     "selectLanguagesDesc": "Wybierz języki źródłowe i docelowe do tłumaczenia",
     "translationSettings": "Ustawienia tłumaczenia",
-    "translationSettingsDesc": "Skonfiguruj tłumaczenie wsadowe i przetwarzanie napisów",
+    "translationSettingsDesc": "Skonfiguruj tłaczenie wsadowe i przetwarzanie napisów",
     "setupComplete": "Konfiguracja zakończona",
     "setupCompleteDesc": "Możesz zacząć tłumaczyć"
+  },
+  "onboarding": {
+    "welcome": {
+      "title": "Witaj w Lingarr",
+      "description": "Skonfiguruj workflow tłumaczenia biblioteki multimediów w kilku prostych krokach. Połącz Radarr/Sonarr, wybierz usługę tłumaczenia i zacznij tłumaczyć napisy.",
+      "startButton": "Rozpocznij konfigurację",
+      "skipButton": "Pomiń na razie"
+    }
   }
+}
 }

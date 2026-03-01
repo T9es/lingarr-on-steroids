@@ -2,6 +2,12 @@
     "version": 1,
     "steps": [
         {
+            "id": "welcome",
+            "title": "Welcome to Lingarr",
+            "component": "WelcomeStep",
+            "description": "Set up your media library translation"
+        },
+        {
             "id": "integration",
             "title": "Connect Your Services",
             "component": "IntegrationStep",

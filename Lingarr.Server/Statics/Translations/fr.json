@@ -708,5 +708,13 @@
     "translationSettingsDesc": "Configurez la traduction par lots et le traitement des sous-titres",
     "setupComplete": "Configuration terminée",
     "setupCompleteDesc": "Vous êtes prêt à commencer à traduire"
+  },
+  "onboarding": {
+    "welcome": {
+      "title": "Bienvenue sur Lingarr",
+      "description": "Configurez votre flux de travail de traduction de bibliothèque multimédia en quelques étapes. Connectez Radarr/Sonarr, sélectionnez un service de traduction et commencez à traduire les sous-titres.",
+      "startButton": "Démarrer la configuration",
+      "skipButton": "Passer pour l'instant"
+    }
   }
 }

@@ -7,7 +7,7 @@
         <!-- Batch Translation Section -->
         <details class="border-accent group rounded-md border">
             <summary
-                class="flex cursor-pointer items-center justify-between bg-secondary/50 px-4 py-3 list-none hover:bg-secondary/70">
+                class="bg-secondary/50 hover:bg-secondary/70 flex cursor-pointer list-none items-center justify-between px-4 py-3">
                 <div class="flex items-center gap-3">
                     <span class="text-primary-content font-semibold">
                         {{ translate('settings.translation.title') }}
@@ -23,7 +23,7 @@
                 <CaretRightIcon
                     class="text-secondary-content h-4 w-4 transition-transform group-open:rotate-90" />
             </summary>
-            <div class="space-y-4 px-4 pb-4 pt-2">
+            <div class="space-y-4 px-4 pt-2 pb-4">
                 <div class="grid grid-cols-2 gap-4">
                     <div class="flex items-center justify-between">
                         <div>
@@ -31,7 +31,9 @@
                                 {{ translate('settings.translation.useBatchTranslation') }}
                             </span>
                             <p class="text-secondary-content text-xs">
-                                {{ translate('settings.translation.useBatchTranslationDescription') }}
+                                {{
+                                    translate('settings.translation.useBatchTranslationDescription')
+                                }}
                             </p>
                         </div>
                         <ToggleButton v-model="useBatchTranslation">
@@ -84,7 +86,7 @@
         <!-- Retry Settings Section -->
         <details class="border-accent group rounded-md border">
             <summary
-                class="flex cursor-pointer items-center justify-between bg-secondary/50 px-4 py-3 list-none hover:bg-secondary/70">
+                class="bg-secondary/50 hover:bg-secondary/70 flex cursor-pointer list-none items-center justify-between px-4 py-3">
                 <div class="flex items-center gap-3">
                     <span class="text-primary-content font-semibold">
                         {{ translate('onboarding.settings.retryTitle') }}
@@ -96,7 +98,7 @@
                 <CaretRightIcon
                     class="text-secondary-content h-4 w-4 transition-transform group-open:rotate-90" />
             </summary>
-            <div class="space-y-4 px-4 pb-4 pt-2">
+            <div class="space-y-4 px-4 pt-2 pb-4">
                 <div class="grid grid-cols-3 gap-4">
                     <div>
                         <span class="text-primary-content font-semibold">
@@ -146,19 +148,20 @@
         <!-- Parallel Translations Section -->
         <details class="border-accent group rounded-md border">
             <summary
-                class="flex cursor-pointer items-center justify-between bg-secondary/50 px-4 py-3 list-none hover:bg-secondary/70">
+                class="bg-secondary/50 hover:bg-secondary/70 flex cursor-pointer list-none items-center justify-between px-4 py-3">
                 <div class="flex items-center gap-3">
                     <span class="text-primary-content font-semibold">
                         {{ translate('onboarding.settings.parallelTitle') }}
                     </span>
                     <span class="text-secondary-content text-sm">
-                        ({{ maxParallelTranslations }} {{ translate('onboarding.settings.concurrent') }})
+                        ({{ maxParallelTranslations }}
+                        {{ translate('onboarding.settings.concurrent') }})
                     </span>
                 </div>
                 <CaretRightIcon
                     class="text-secondary-content h-4 w-4 transition-transform group-open:rotate-90" />
             </summary>
-            <div class="space-y-4 px-4 pb-4 pt-2">
+            <div class="space-y-4 px-4 pt-2 pb-4">
                 <div>
                     <span class="text-primary-content font-semibold">
                         {{ translate('settings.translation.maxParallelTranslations') }}
@@ -186,7 +189,7 @@
         <!-- Subtitle Processing Section -->
         <details class="border-accent group rounded-md border">
             <summary
-                class="flex cursor-pointer items-center justify-between bg-secondary/50 px-4 py-3 list-none hover:bg-secondary/70">
+                class="bg-secondary/50 hover:bg-secondary/70 flex cursor-pointer list-none items-center justify-between px-4 py-3">
                 <div class="flex items-center gap-3">
                     <span class="text-primary-content font-semibold">
                         {{ translate('settings.subtitle.title') }}
@@ -198,7 +201,7 @@
                 <CaretRightIcon
                     class="text-secondary-content h-4 w-4 transition-transform group-open:rotate-90" />
             </summary>
-            <div class="space-y-4 px-4 pb-4 pt-2">
+            <div class="space-y-4 px-4 pt-2 pb-4">
                 <div class="grid grid-cols-2 gap-4">
                     <div class="flex items-center justify-between">
                         <div>
@@ -206,7 +209,11 @@
                                 {{ translate('settings.subtitle.fixOverlappingSubtitles') }}
                             </span>
                             <p class="text-secondary-content text-xs">
-                                {{ translate('settings.subtitle.fixOverlappingSubtitlesDescription') }}
+                                {{
+                                    translate(
+                                        'settings.subtitle.fixOverlappingSubtitlesDescription'
+                                    )
+                                }}
                             </p>
                         </div>
                         <ToggleButton v-model="fixOverlappingSubtitles">
@@ -226,7 +233,11 @@
                                 {{ translate('settings.subtitle.stripSubtitleFormatting') }}
                             </span>
                             <p class="text-secondary-content text-xs">
-                                {{ translate('settings.subtitle.stripSubtitleFormattingDescription') }}
+                                {{
+                                    translate(
+                                        'settings.subtitle.stripSubtitleFormattingDescription'
+                                    )
+                                }}
                             </p>
                         </div>
                         <ToggleButton v-model="stripSubtitleFormatting">
@@ -266,7 +277,7 @@
         <!-- Subtitle Tagging Section -->
         <details class="border-accent group rounded-md border">
             <summary
-                class="flex cursor-pointer items-center justify-between bg-secondary/50 px-4 py-3 list-none hover:bg-secondary/70">
+                class="bg-secondary/50 hover:bg-secondary/70 flex cursor-pointer list-none items-center justify-between px-4 py-3">
                 <div class="flex items-center gap-3">
                     <span class="text-primary-content font-semibold">
                         {{ translate('onboarding.settings.taggingTitle') }}
@@ -282,7 +293,7 @@
                 <CaretRightIcon
                     class="text-secondary-content h-4 w-4 transition-transform group-open:rotate-90" />
             </summary>
-            <div class="space-y-4 px-4 pb-4 pt-2">
+            <div class="space-y-4 px-4 pt-2 pb-4">
                 <div class="grid grid-cols-2 gap-4">
                     <div class="flex items-center justify-between">
                         <div>

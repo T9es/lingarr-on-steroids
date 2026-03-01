@@ -8,16 +8,18 @@
             <p class="text-secondary-content mb-3 text-sm">
                 {{ translate('onboarding.service.aiServicesDescription') }}
             </p>
-            <div class="grid grid-cols-2 gap-2">
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <button
                     v-for="service in aiServices"
                     :key="service.value"
                     :class="[
-                        'border-accent rounded-md border p-3 text-left transition-colors',
-                        selectedService === service.value ? 'bg-accent/20' : 'hover:bg-accent/10'
+                        'border-accent rounded-md border p-4 text-left transition-all hover:-translate-y-1 hover:shadow-lg',
+                        selectedService === service.value
+                            ? 'bg-accent/20 ring-accent ring-2'
+                            : 'hover:bg-accent/10'
                     ]"
                     @click="selectService(service.value)">
-                    <span class="text-primary-content text-sm font-medium">
+                    <span class="text-primary-content block font-medium">
                         {{ service.label }}
                     </span>
                 </button>
@@ -32,16 +34,18 @@
             <p class="text-secondary-content mb-3 text-sm">
                 {{ translate('onboarding.service.cloudApisDescription') }}
             </p>
-            <div class="grid grid-cols-2 gap-2">
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <button
                     v-for="service in cloudServices"
                     :key="service.value"
                     :class="[
-                        'border-accent rounded-md border p-3 text-left transition-colors',
-                        selectedService === service.value ? 'bg-accent/20' : 'hover:bg-accent/10'
+                        'border-accent rounded-md border p-4 text-left transition-all hover:-translate-y-1 hover:shadow-lg',
+                        selectedService === service.value
+                            ? 'bg-accent/20 ring-accent ring-2'
+                            : 'hover:bg-accent/10'
                     ]"
                     @click="selectService(service.value)">
-                    <span class="text-primary-content text-sm font-medium">
+                    <span class="text-primary-content block font-medium">
                         {{ service.label }}
                     </span>
                 </button>
@@ -56,16 +60,18 @@
             <p class="text-secondary-content mb-3 text-sm">
                 {{ translate('onboarding.service.freeWebApisDescription') }}
             </p>
-            <div class="grid grid-cols-2 gap-2">
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <button
                     v-for="service in freeServices"
                     :key="service.value"
                     :class="[
-                        'border-accent rounded-md border p-3 text-left transition-colors',
-                        selectedService === service.value ? 'bg-accent/20' : 'hover:bg-accent/10'
+                        'border-accent rounded-md border p-4 text-left transition-all hover:-translate-y-1 hover:shadow-lg',
+                        selectedService === service.value
+                            ? 'bg-accent/20 ring-accent ring-2'
+                            : 'hover:bg-accent/10'
                     ]"
                     @click="selectService(service.value)">
-                    <span class="text-primary-content text-sm font-medium">
+                    <span class="text-primary-content block font-medium">
                         {{ service.label }}
                     </span>
                 </button>

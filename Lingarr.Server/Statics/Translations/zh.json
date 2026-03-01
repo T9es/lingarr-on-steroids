@@ -708,5 +708,13 @@
     "translationSettingsDesc": "配置批量翻译和字幕处理",
     "setupComplete": "设置完成",
     "setupCompleteDesc": "您已准备好开始翻译"
+  },
+  "onboarding": {
+    "welcome": {
+      "title": "欢迎使用 Lingarr",
+      "description": "只需几个步骤即可设置媒体库翻译工作流。连接 Radarr/Sonarr，选择翻译服务，然后开始翻译字幕。",
+      "startButton": "开始设置",
+      "skipButton": "暂时跳过"
+    }
   }
 }

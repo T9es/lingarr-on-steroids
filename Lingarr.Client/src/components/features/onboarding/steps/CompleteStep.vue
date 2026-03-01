@@ -90,7 +90,7 @@ const serviceName = computed(() => {
 
     const serviceKey = `services.serviceNames.${serviceType}`
     const translatedName = translate(serviceKey)
-    
+
     // If translation key exists, return translated name, otherwise use the key as fallback
     return translatedName !== serviceKey ? translatedName : serviceType
 })

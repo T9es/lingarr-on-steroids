@@ -1,5 +1,6 @@
 <template>
-    <div class="border-accent bg-secondary rounded-md border p-4">
+    <div
+        class="border-accent bg-secondary rounded-md border p-4 transition-all hover:-translate-y-1 hover:shadow-lg">
         <!-- Header with icon, name input, and X button -->
         <div class="mb-4 flex items-center gap-2">
             <div class="relative flex-1">

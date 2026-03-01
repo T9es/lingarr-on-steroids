@@ -2,17 +2,29 @@
     <div class="space-y-8">
         <!-- Radarr Section -->
         <div>
-            <div class="mb-3 flex items-center gap-2">
+            <div class="mb-4 flex items-center gap-2">
                 <RadarrIcon class="text-primary-content h-6 w-6" />
                 <h3 class="text-primary-content text-lg font-semibold">Radarr</h3>
             </div>
-            <div class="flex flex-wrap gap-4">
+            <!-- Empty state for Radarr -->
+            <div
+                v-if="onboardingStore.radarrInstances.length === 0"
+                class="border-accent/30 bg-primary/50 rounded-lg border-2 border-dashed p-8 text-center">
+                <RadarrIcon class="text-secondary-content mx-auto mb-3 h-10 w-10 opacity-50" />
+                <p class="text-secondary-content mb-3">No Radarr instances added yet</p>
+                <button
+                    class="bg-accent text-primary-content hover:bg-accent/80 rounded-md px-4 py-2 text-sm font-medium transition-colors"
+                    @click="addRadarrInstance">
+                    Add your first Radarr instance
+                </button>
+            </div>
+            <!-- Instance cards grid -->
+            <div v-else class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 <InstanceCard
                     v-for="instance in onboardingStore.radarrInstances"
                     :key="instance.id"
                     :instance="instance"
                     type="radarr"
-                    class="w-full md:w-[calc(50%-0.5rem)] xl:w-[calc(33.333%-0.667rem)]"
                     :connection-status="getConnectionStatus('radarr', instance.id)"
                     @update:instance="updateRadarrInstance(instance.id, $event)"
                     @remove="removeRadarrInstance(instance.id)"
@@ -21,24 +33,35 @@
                 <AddInstanceButton
                     v-if="onboardingStore.radarrInstances.length < 5"
                     type="radarr"
-                    class="w-full md:w-[calc(50%-0.5rem)] xl:w-[calc(33.333%-0.667rem)]"
                     @add="addRadarrInstance" />
             </div>
         </div>
 
         <!-- Sonarr Section -->
         <div>
-            <div class="mb-3 flex items-center gap-2">
+            <div class="mb-4 flex items-center gap-2">
                 <SonarrIcon class="text-primary-content h-6 w-6" />
                 <h3 class="text-primary-content text-lg font-semibold">Sonarr</h3>
             </div>
-            <div class="flex flex-wrap gap-4">
+            <!-- Empty state for Sonarr -->
+            <div
+                v-if="onboardingStore.sonarrInstances.length === 0"
+                class="border-accent/30 bg-primary/50 rounded-lg border-2 border-dashed p-8 text-center">
+                <SonarrIcon class="text-secondary-content mx-auto mb-3 h-10 w-10 opacity-50" />
+                <p class="text-secondary-content mb-3">No Sonarr instances added yet</p>
+                <button
+                    class="bg-accent text-primary-content hover:bg-accent/80 rounded-md px-4 py-2 text-sm font-medium transition-colors"
+                    @click="addSonarrInstance">
+                    Add your first Sonarr instance
+                </button>
+            </div>
+            <!-- Instance cards grid -->
+            <div v-else class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 <InstanceCard
                     v-for="instance in onboardingStore.sonarrInstances"
                     :key="instance.id"
                     :instance="instance"
                     type="sonarr"
-                    class="w-full md:w-[calc(50%-0.5rem)] xl:w-[calc(33.333%-0.667rem)]"
                     :connection-status="getConnectionStatus('sonarr', instance.id)"
                     @update:instance="updateSonarrInstance(instance.id, $event)"
                     @remove="removeSonarrInstance(instance.id)"
@@ -47,7 +70,6 @@
                 <AddInstanceButton
                     v-if="onboardingStore.sonarrInstances.length < 5"
                     type="sonarr"
-                    class="w-full md:w-[calc(50%-0.5rem)] xl:w-[calc(33.333%-0.667rem)]"
                     @add="addSonarrInstance" />
             </div>
         </div>
