@@ -657,7 +657,8 @@
       "version": "Version :",
       "viewOnGithub": "Voir sur GitHub",
       "loadingDocs": "Chargement de la documentation...",
-      "failedToLoad": "Échec du chargement de la documentation : "
+      "failedToLoad": "Échec du chargement de la documentation : ",
+      "checkUpdates": "Rechercher des mises à jour"
     }
   },
   "services": {

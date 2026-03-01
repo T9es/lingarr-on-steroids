@@ -657,7 +657,8 @@
       "version": "版本：",
       "viewOnGithub": "在 GitHub 上查看",
       "loadingDocs": "正在加载文档...",
-      "failedToLoad": "加载文档失败："
+      "failedToLoad": "加载文档失败：",
+      "checkUpdates": "检查更新"
     }
   },
   "services": {

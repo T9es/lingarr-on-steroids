@@ -657,7 +657,8 @@
       "version": "Versie:",
       "viewOnGithub": "Bekijk op GitHub",
       "loadingDocs": "Documentatie laden...",
-      "failedToLoad": "Documentatie laden mislukt: "
+      "failedToLoad": "Documentatie laden mislukt: ",
+      "checkUpdates": "Controleren op updates"
     }
   },
   "services": {
@@ -705,7 +706,16 @@
     "selectLanguagesDesc": "Kies bron- en doeltalen voor vertaling",
     "translationSettings": "Vertaalinstellingen",
     "translationSettingsDesc": "Configureer batchvertaling en ondertitelverwerking",
-    "setupComplete": "Installatie voltooid",
+    "setupComplete": "Installatie voltooid"
+  },
+  "onboarding": {
+    "welcome": {
+      "title": "Welkom bij Lingarr",
+      "description": "Stel je mediabibliotheek vertaalwerkstroom in een paar stappen in. Verbind je Radarr/Sonarr, kies een vertaalservice en begin met het vertalen van ondertitels.",
+      "startButton": "Installatie starten",
+      "skipButton": "Overslaan voor nu"
+    }
+  },
     "setupCompleteDesc": "Je bent klaar om te beginnen met vertalen"
   }
 }

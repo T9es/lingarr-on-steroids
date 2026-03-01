@@ -657,7 +657,8 @@
       "version": "Version:",
       "viewOnGithub": "Auf GitHub ansehen",
       "loadingDocs": "Dokumentation laden...",
-      "failedToLoad": "Dokumentation konnte nicht geladen werden: "
+      "failedToLoad": "Dokumentation konnte nicht geladen werden: ",
+      "checkUpdates": "Nach Updates suchen"
     }
   },
   "services": {
@@ -707,5 +708,13 @@
     "translationSettingsDesc": "Stellen Sie Stapelübersetzung und Untertitelverarbeitung ein",
     "setupComplete": "Einrichtung abgeschlossen",
     "setupCompleteDesc": "Sie sind bereit, mit der Übersetzung zu beginnen"
+  },
+  "onboarding": {
+    "welcome": {
+      "title": "Willkommen bei Lingarr",
+      "description": "Richten Sie Ihren Medienbibliothek-Übersetzungsworkflow in wenigen Schritten ein. Verbinden Sie Radarr/Sonarr, wählen Sie einen Übersetzungsdienst und beginnen Sie mit der Untertitelübersetzung.",
+      "startButton": "Einrichtung starten",
+      "skipButton": "Jetzt überspringen"
+    }
   }
 }
