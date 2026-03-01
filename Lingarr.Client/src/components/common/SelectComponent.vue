@@ -32,7 +32,9 @@
                     class="border-border text-primary-content w-full rounded border bg-transparent px-2 py-1 text-sm outline-hidden"
                     :placeholder="translate('settings.services.modelSearchPlaceholder')" />
             </li>
-            <li v-if="!filteredOptions.length" class="text-primary-content p-3">{{ displayNoOptions }}</li>
+            <li v-if="!filteredOptions.length" class="text-primary-content p-3">
+                {{ displayNoOptions }}
+            </li>
             <li
                 v-for="(option, index) in filteredOptions"
                 :key="`${option.value}-${index}`"
@@ -86,7 +88,9 @@ const { translate } = useI18n()
 
 // Computed properties for placeholder and noOptions that use translations as defaults
 const displayPlaceholder = computed(() => props.placeholder || translate('common.selectItems'))
-const displayNoOptions = computed(() => props.noOptions || translate('common.selectSourceLanguageFirst'))
+const displayNoOptions = computed(
+    () => props.noOptions || translate('common.selectSourceLanguageFirst')
+)
 
 const isOpen: Ref<boolean> = ref(false)
 const isLoading: Ref<boolean> = ref(false)

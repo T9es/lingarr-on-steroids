@@ -8,16 +8,20 @@
             <template #content>
                 <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div class="flex items-center gap-3">
-                        <span class="text-secondary-content">{{ translate('help.about.version') }}</span>
-                        <span class="text-lg font-semibold text-primary-content">{{ currentVersion }}</span>
+                        <span class="text-secondary-content">
+                            {{ translate('help.about.version') }}
+                        </span>
+                        <span class="text-primary-content text-lg font-semibold">
+                            {{ currentVersion }}
+                        </span>
                         <span
                             v-if="version.isDevBuild"
-                            class="rounded-full bg-orange-500/20 px-2.5 py-0.5 text-xs font-medium text-orange-400 border border-orange-500/30">
+                            class="rounded-full border border-orange-500/30 bg-orange-500/20 px-2.5 py-0.5 text-xs font-medium text-orange-400">
                             Dev Build
                         </span>
                         <span
                             v-if="version.newVersion"
-                            class="rounded-full bg-green-500/20 px-2.5 py-0.5 text-xs font-medium text-green-400 border border-green-500/30">
+                            class="rounded-full border border-green-500/30 bg-green-500/20 px-2.5 py-0.5 text-xs font-medium text-green-400">
                             Update Available
                         </span>
                     </div>
@@ -25,14 +29,18 @@
                         <button
                             @click="checkForUpdates"
                             :disabled="checkingUpdates"
-                            class="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-primary-content transition-opacity hover:opacity-90 disabled:opacity-50">
-                            {{ checkingUpdates ? translate('common.loading') : translate('help.about.checkUpdates') }}
+                            class="bg-accent text-primary-content rounded-md px-3 py-1.5 text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-50">
+                            {{
+                                checkingUpdates
+                                    ? translate('common.loading')
+                                    : translate('help.about.checkUpdates')
+                            }}
                         </button>
                         <a
                             href="https://github.com/T9es/lingarr-on-steroids"
                             target="_blank"
                             rel="noopener noreferrer"
-                            class="flex items-center gap-2 rounded-md bg-primary/50 px-3 py-1.5 text-sm font-medium text-primary-content transition-colors hover:bg-primary/70 border border-accent/30">
+                            class="bg-primary/50 text-primary-content hover:bg-primary/70 border-accent/30 flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors">
                             <GithubIcon class="h-4 w-4" />
                             <span>{{ translate('help.about.viewOnGithub') }}</span>
                         </a>
@@ -42,12 +50,16 @@
         </CardComponent>
 
         <!-- README Content -->
-        <div class="rounded-md bg-secondary/30 p-6 shadow-md">
+        <div class="bg-secondary/30 rounded-md p-6 shadow-md">
             <div v-if="loading" class="flex items-center gap-2 py-8">
                 <LoaderCircleIcon class="h-5 w-5 animate-spin" />
-                <span class="text-secondary-content">{{ translate('help.about.loadingDocs') }}</span>
+                <span class="text-secondary-content">
+                    {{ translate('help.about.loadingDocs') }}
+                </span>
             </div>
-            <div v-else-if="error" class="rounded-md border border-red-500/30 bg-red-500/10 p-4 text-red-400">
+            <div
+                v-else-if="error"
+                class="rounded-md border border-red-500/30 bg-red-500/10 p-4 text-red-400">
                 {{ translate('help.about.failedToLoad') }}{{ error }}
             </div>
             <div
@@ -86,8 +98,14 @@ const readmeContent = ref('')
 function transformLinks(content: string): string {
     return content
         .replace(/\]\(\./g, '](https://github.com/T9es/lingarr-on-steroids/blob/main/.')
-        .replace(/\]\(LICENSE\)/g, '](https://github.com/T9es/lingarr-on-steroids/blob/main/LICENSE)')
-        .replace(/\]\(LICENSE\)/g, '](https://github.com/T9es/lingarr-on-steroids/blob/main/LICENSE)')
+        .replace(
+            /\]\(LICENSE\)/g,
+            '](https://github.com/T9es/lingarr-on-steroids/blob/main/LICENSE)'
+        )
+        .replace(
+            /\]\(LICENSE\)/g,
+            '](https://github.com/T9es/lingarr-on-steroids/blob/main/LICENSE)'
+        )
 }
 
 async function fetchReadme() {

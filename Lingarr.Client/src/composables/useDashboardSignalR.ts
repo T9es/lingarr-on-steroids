@@ -82,7 +82,7 @@ export function useDashboardSignalR() {
                 return
             }
 
-// Filter for running translations only (exclude system jobs like SyncMovieJob)
+            // Filter for running translations only (exclude system jobs like SyncMovieJob)
             const runningJobs = rawJobs.filter(
                 (job: { state?: string; State?: string; jobName?: string; JobName?: string }) => {
                     const state = job?.state || job?.State

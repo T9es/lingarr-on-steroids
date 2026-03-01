@@ -7,25 +7,40 @@
             @click="isOpen = false"></div>
         <!-- Aside -->
         <aside
-            :class="isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'"
-            class="border-accent bg-secondary fixed top-0 left-0 z-50 flex h-full w-64 flex-col overflow-hidden border-r transition-transform duration-300 ease-in-out md:sticky">
+            :class="
+                isOpen ? 'w-64 translate-x-0' : 'w-64 -translate-x-full md:w-20 md:translate-x-0'
+            "
+            class="border-accent bg-secondary fixed top-0 left-0 z-50 flex h-full shrink-0 flex-col overflow-hidden border-r transition-all duration-300 ease-in-out md:sticky">
             <TimesIcon
                 class="absolute top-1 right-1 block h-6 w-6 cursor-pointer md:hidden"
                 @click="isOpen = false" />
             <div class="flex h-16 items-center justify-center">
-                <h1 class="text-xl font-bold">Lingarr</h1>
+                <h1
+                    v-show="isOpen"
+                    class="truncate text-xl font-bold transition-opacity duration-300">
+                    Lingarr
+                </h1>
+                <h1
+                    v-show="!isOpen"
+                    class="truncate text-xl font-bold transition-opacity duration-300">
+                    L
+                </h1>
             </div>
             <!-- Navigation -->
-            <nav class="grow overflow-y-auto p-6">
-                <ul class="space-y-4">
+            <nav class="grow overflow-x-hidden overflow-y-auto py-6">
+                <ul class="space-y-2 px-2">
                     <li v-for="(item, index) in menuItems" :key="index">
                         <router-link
                             :to="{ name: item.route }"
-                            class="flex w-full items-center justify-start hover:brightness-150"
-                            :class="{ 'brightness-150': isActive(item) }"
-                            @click="isOpen = false">
-                            <component :is="item.icon" class="mr-2 h-4 w-4" />
-                            <div class="relative">
+                            class="hover:bg-primary/30 flex w-full items-center px-3 py-2 transition-colors"
+                            :class="[
+                                isActive(item)
+                                    ? 'bg-primary/50 text-accent border-accent border-l-4 pl-2'
+                                    : 'text-primary-content border-l-4 border-transparent pl-2'
+                            ]"
+                            @click="closeOnMobile">
+                            <component :is="item.icon" class="mr-3 h-5 w-5 shrink-0" />
+                            <div v-show="isOpen" class="relative truncate">
                                 {{ item.label }}
 
                                 <span
@@ -38,8 +53,18 @@
                     </li>
                 </ul>
             </nav>
+            <!-- Toggle button -->
+            <button
+                class="border-accent/30 hover:bg-primary/30 text-primary-content/70 hover:text-primary-content hidden w-full items-center justify-center border-t p-4 transition-colors md:flex"
+                @click="isOpen = !isOpen">
+                <CaretRightIcon
+                    class="h-5 w-5 transition-transform"
+                    :class="isOpen ? 'rotate-180' : ''" />
+            </button>
             <!-- Version and media section -->
-            <div class="pointer-events-none h-64 w-full">
+            <div
+                v-show="isOpen"
+                class="border-accent/30 relative mt-auto min-h-[12rem] w-full flex-none overflow-hidden border-t">
                 <img
                     v-if="instanceStore.getPoster"
                     :src="`/api/image/${instanceStore.getPoster}`"
@@ -103,11 +128,18 @@ import LanguageIcon from '@/components/icons/LanguageIcon.vue'
 import TestIcon from '@/components/icons/TestIcon.vue'
 import GithubIcon from '@/components/icons/GithubIcon.vue'
 import QuestionMarkCircleIcon from '@/components/icons/QuestionMarkCircleIcon.vue'
+import CaretRightIcon from '@/components/icons/CaretRightIcon.vue'
 
 const translationRequestStore = useTranslationRequestStore()
 const instanceStore = useInstanceStore()
 const route = useRoute()
 const { translate } = useI18n()
+
+function closeOnMobile() {
+    if (window.innerWidth < 768) {
+        isOpen.value = false
+    }
+}
 
 const activeRequests: ComputedRef<number> = computed(
     () => translationRequestStore.getActiveTranslationRequests

@@ -98,7 +98,7 @@ export interface ITranslationRequestService {
         sortBy: string,
         ascending: boolean
     ): Promise<T>
-cancel<T>(translationRequest: ITranslationRequest): Promise<T>
+    cancel<T>(translationRequest: ITranslationRequest): Promise<T>
     remove<T>(translationRequest: ITranslationRequest): Promise<T>
     retry<T>(translationRequest: ITranslationRequest): Promise<T>
     retryAllFailed<T>(): Promise<T>
@@ -141,7 +141,10 @@ export interface IDashboardService {
     getJobs<T>(): Promise<T>
     getApiUsage<T>(): Promise<T>
     clearFailedJobs(): Promise<{ cleared: number }>
-    getFailedJobs(offset?: number, limit?: number): Promise<{
+    getFailedJobs(
+        offset?: number,
+        limit?: number
+    ): Promise<{
         jobs: any[]
         totalCount: number
         hasMore: boolean

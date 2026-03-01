@@ -105,7 +105,7 @@ const service = (
                 })
         })
     },
-retryAllFailed<T>(): Promise<T> {
+    retryAllFailed<T>(): Promise<T> {
         return new Promise((resolve, reject) => {
             http.post(`${resource}/retry-all-failed`)
                 .then((response: AxiosResponse<T>) => {

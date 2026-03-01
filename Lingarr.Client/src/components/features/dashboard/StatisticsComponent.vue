@@ -27,7 +27,7 @@
             </div>
         </div>
 
-<!-- Config Mode Instructions -->
+        <!-- Config Mode Instructions -->
         <div v-if="isConfigMode" class="bg-accent/10 border-accent/30 rounded-md border p-3">
             <p class="text-primary-content/80 text-sm">
                 <span class="font-medium">
@@ -41,9 +41,7 @@
         </div>
 
         <!-- Loading State -->
-        <div
-            v-if="isLayoutLoading"
-            class="flex min-h-[400px] items-center justify-center">
+        <div v-if="isLayoutLoading" class="flex min-h-[400px] items-center justify-center">
             <LoaderCircleIcon class="text-accent h-8 w-8 animate-spin" />
         </div>
 
@@ -130,7 +128,7 @@
                         'Are you sure you want to reset the dashboard layout to defaults? This cannot be undone.'
                     }}
                 </p>
-<div class="flex justify-end gap-2">
+                <div class="flex justify-end gap-2">
                     <button
                         @click="showResetConfirmation = false"
                         class="text-primary-content/60 hover:text-primary-content rounded-md px-4 py-2 text-sm transition-colors hover:bg-white/5">
@@ -251,8 +249,6 @@ const loading = ref(true)
 const error = ref<string | null>(null)
 const statistics = ref<Statistics>()
 const dailyStats = ref<DailyStatistic[]>()
-
-
 
 const activeTranslations = computed(() => getActiveTranslations())
 
@@ -455,79 +451,70 @@ const MediaOverviewContent = defineComponent({
 
             return h('div', { class: 'bg-primary rounded-lg p-4 shadow-sm' }, [
                 h('div', { class: 'flex gap-6' }, [
-                    h(
-                        'div',
-                        { class: 'flex-1 bg-secondary/30 rounded-md p-3' },
-                        [
-                            h('div', { class: 'text-primary-content/60 text-xs font-medium' }, [
-                                translate('statistics.movies')
-                            ]),
-                            h('div', { class: 'flex items-baseline gap-2 mt-1' }, [
-                                h(
-                                    'span',
-                                    { class: 'text-primary-content text-xl font-bold' },
-                                    formatNumber(props.statistics!.totalMovies)
-                                ),
-                                h(
-                                    'span',
-                                    { class: 'text-accent text-sm' },
-                                    `${formatNumber(moviesTranslated)} translated`
-                                )
-                            ]),
+                    h('div', { class: 'flex-1 bg-secondary/30 rounded-md p-3' }, [
+                        h('div', { class: 'text-primary-content/60 text-xs font-medium' }, [
+                            translate('statistics.movies')
+                        ]),
+                        h('div', { class: 'flex items-baseline gap-2 mt-1' }, [
                             h(
-                                'div',
-                                {
-                                    class: 'bg-primary-content/10 mt-2 h-1.5 w-full overflow-hidden rounded-full'
-                                },
-                                [
-                                    h('div', {
-                                        class: 'bg-accent h-full rounded-full transition-all duration-500',
-                                        style: { width: `${moviesPercentage}%` }
-                                    })
-                                ]
+                                'span',
+                                { class: 'text-primary-content text-xl font-bold' },
+                                formatNumber(props.statistics!.totalMovies)
+                            ),
+                            h(
+                                'span',
+                                { class: 'text-accent text-sm' },
+                                `${formatNumber(moviesTranslated)} translated`
                             )
-                        ]
-                    ),
+                        ]),
+                        h(
+                            'div',
+                            {
+                                class: 'bg-primary-content/10 mt-2 h-1.5 w-full overflow-hidden rounded-full'
+                            },
+                            [
+                                h('div', {
+                                    class: 'bg-accent h-full rounded-full transition-all duration-500',
+                                    style: { width: `${moviesPercentage}%` }
+                                })
+                            ]
+                        )
+                    ]),
                     h('div', { class: 'w-px bg-secondary/50' }),
-                    h(
-                        'div',
-                        { class: 'flex-1 bg-secondary/30 rounded-md p-3' },
-                        [
-                            h('div', { class: 'text-primary-content/60 text-xs font-medium' }, [
-                                translate('statistics.tvShows')
-                            ]),
-                            h('div', { class: 'flex items-baseline gap-2 mt-1' }, [
-                                h(
-                                    'span',
-                                    { class: 'text-primary-content text-xl font-bold' },
-                                    formatNumber(props.statistics!.totalEpisodes)
-                                ),
-                                h(
-                                    'span',
-                                    { class: 'text-accent text-sm' },
-                                    `${formatNumber(episodesTranslated)} translated`
-                                )
-                            ]),
+                    h('div', { class: 'flex-1 bg-secondary/30 rounded-md p-3' }, [
+                        h('div', { class: 'text-primary-content/60 text-xs font-medium' }, [
+                            translate('statistics.tvShows')
+                        ]),
+                        h('div', { class: 'flex items-baseline gap-2 mt-1' }, [
                             h(
-                                'div',
-                                {
-                                    class: 'bg-primary-content/10 mt-2 h-1.5 w-full overflow-hidden rounded-full'
-                                },
-                                [
-                                    h('div', {
-                                        class: 'bg-accent h-full rounded-full transition-all duration-500',
-                                        style: { width: `${episodesPercentage}%` }
-                                    })
-                                ]
+                                'span',
+                                { class: 'text-primary-content text-xl font-bold' },
+                                formatNumber(props.statistics!.totalEpisodes)
+                            ),
+                            h(
+                                'span',
+                                { class: 'text-accent text-sm' },
+                                `${formatNumber(episodesTranslated)} translated`
                             )
-                        ]
-                    )
+                        ]),
+                        h(
+                            'div',
+                            {
+                                class: 'bg-primary-content/10 mt-2 h-1.5 w-full overflow-hidden rounded-full'
+                            },
+                            [
+                                h('div', {
+                                    class: 'bg-accent h-full rounded-full transition-all duration-500',
+                                    style: { width: `${episodesPercentage}%` }
+                                })
+                            ]
+                        )
+                    ])
                 ])
             ])
         }
     }
 })
-
 </script>
 
 <style>

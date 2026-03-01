@@ -117,7 +117,7 @@ const fetchHourlyStatistics = async () => {
 
 const filteredCount = computed(() => {
     const daily = props.dailyStatistics || []
-    
+
     switch (selectedFilter.value) {
         case '24h':
             return hourlyStatistics.value.reduce((acc, h) => acc + h.translationCount, 0)
@@ -163,7 +163,7 @@ const trend = computed(() => {
     const daily = props.dailyStatistics || []
     const now = new Date()
     let periodDays = 7
-    
+
     switch (selectedFilter.value) {
         case '24h':
             periodDays = 1
@@ -186,7 +186,7 @@ const trend = computed(() => {
         case 'all':
             return { direction: 'flat' as const, percentage: 0 }
     }
-    
+
     const currentStart = new Date(now)
     currentStart.setDate(currentStart.getDate() - periodDays)
     const prevStart = new Date(currentStart)
@@ -209,7 +209,12 @@ const trend = computed(() => {
     if (prevPeriod === 0) return { direction: 'flat' as const, percentage: 0 }
     const percentage = Math.round(((currentPeriod - prevPeriod) / prevPeriod) * 100)
     return {
-        direction: percentage > 5 ? 'up' as const : percentage < -5 ? 'down' as const : 'flat' as const,
+        direction:
+            percentage > 5
+                ? ('up' as const)
+                : percentage < -5
+                  ? ('down' as const)
+                  : ('flat' as const),
         percentage: Math.abs(percentage)
     }
 })
@@ -236,7 +241,7 @@ const getCssVariable = (variableName: string): string => {
 
 const chartData = computed(() => {
     const daily = props.dailyStatistics || []
-    
+
     if (selectedFilter.value === '24h') {
         if (!hourlyStatistics.value.length) return null
         return {
@@ -253,10 +258,10 @@ const chartData = computed(() => {
             ]
         }
     }
-    
+
     let data = daily
     let maxItems = 14
-    
+
     switch (selectedFilter.value) {
         case '7d':
             maxItems = 7
@@ -281,7 +286,7 @@ const chartData = computed(() => {
             maxItems = daily.length
             break
     }
-    
+
     const sliced = data.slice(-maxItems)
     if (!sliced.length) return null
 
@@ -382,7 +387,7 @@ const timeFilterOptions = [
             <div class="flex items-center gap-2">
                 <select
                     v-model="selectedFilter"
-                    class="bg-secondary text-primary-content rounded-md border-0 px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-accent">
+                    class="bg-secondary text-primary-content focus:ring-accent rounded-md border-0 px-2 py-1 text-xs outline-none focus:ring-1">
                     <option v-for="opt in timeFilterOptions" :key="opt.value" :value="opt.value">
                         {{ opt.label }}
                     </option>

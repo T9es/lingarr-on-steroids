@@ -44,7 +44,9 @@ const fetchJobs = async () => {
     error.value = null
 
     try {
-        const data = await services.dashboard.getJobs<{ jobs: JobInfo[]; Jobs: JobInfo[] } | JobInfo[]>()
+        const data = await services.dashboard.getJobs<
+            { jobs: JobInfo[]; Jobs: JobInfo[] } | JobInfo[]
+        >()
         const rawJobs = Array.isArray(data) ? data : (data as any).jobs || (data as any).Jobs || []
 
         jobs.value = rawJobs.map((job: any) => ({
@@ -63,7 +65,7 @@ const fetchJobs = async () => {
             error: job.ErrorMessage || job.error,
             queue: job.Queue || job.queue
         }))
-        
+
         await fetchFailedJobs(0, 10)
     } catch (e) {
         error.value = 'Failed to fetch job queue'
@@ -87,13 +89,13 @@ const fetchFailedJobs = async (offset: number, limit: number) => {
             failedAt: job.FailedAt || job.failedAt,
             error: job.ErrorMessage || job.errorMessage || job.error
         }))
-        
+
         if (offset === 0) {
             failedJobsList.value = normalizedJobs
         } else {
             failedJobsList.value = [...failedJobsList.value, ...normalizedJobs]
         }
-        
+
         failedJobsTotal.value = response.totalCount
         failedJobsOffset.value = offset + limit
         hasMoreFailedJobs.value = response.hasMore
@@ -147,9 +149,7 @@ onUnmounted(() => {
     }
 })
 
-const runningJobs = computed(() =>
-    jobs.value.filter((j) => j.state === 'running')
-)
+const runningJobs = computed(() => jobs.value.filter((j) => j.state === 'running'))
 
 const jobPriority = (jobName: string): number => {
     if (jobName === 'SyncShowJob') return 1
@@ -177,14 +177,14 @@ const getCountdown = (dateStr?: string): { text: string; seconds: number } => {
     const target = new Date(dateStr).getTime()
     const diff = target - now.value
     const seconds = Math.floor(diff / 1000)
-    
+
     if (diff <= 0) return { text: 'now', seconds: 0 }
-    
+
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
     const hours = Math.floor(mins / 60)
     const days = Math.floor(hours / 24)
-    
+
     if (days > 0) {
         const remainingHours = hours % 24
         if (remainingHours > 0) return { text: `${days}d ${remainingHours}h`, seconds }
@@ -248,7 +248,9 @@ const triggerJob = async (jobName: string) => {
                 :disabled="isLoading"
                 class="text-primary-content/50 hover:text-primary-content p-1 transition-colors"
                 :title="i18n.translate('statistics.refresh')">
-                <RefreshIcon class="h-4 w-4" :class="{ 'animate-spin': localLoading || isLoading }" />
+                <RefreshIcon
+                    class="h-4 w-4"
+                    :class="{ 'animate-spin': localLoading || isLoading }" />
             </button>
         </div>
 
@@ -291,7 +293,7 @@ const triggerJob = async (jobName: string) => {
 
             <!-- Scheduled Jobs -->
             <div v-if="scheduledJobs.length > 0">
-                <h4 class="mb-1.5 text-xs font-medium text-primary-content/50">
+                <h4 class="text-primary-content/50 mb-1.5 text-xs font-medium">
                     Scheduled ({{ scheduledJobs.length }})
                 </h4>
                 <div class="space-y-1.5">
@@ -313,7 +315,7 @@ const triggerJob = async (jobName: string) => {
                             </div>
                         </div>
                         <div class="text-primary-content/50 mt-0.5 text-xs">
-                            <span v-if="job.nextExecution" class="font-medium text-accent">
+                            <span v-if="job.nextExecution" class="text-accent font-medium">
                                 In {{ getCountdown(job.nextExecution).text }}
                             </span>
                             <span v-else-if="job.lastExecution">

@@ -61,7 +61,9 @@ const fetchApiUsage = async () => {
         summaryStats.value = {
             totalCallsToday: data.TotalCallsToday || data.totalCallsToday || 0,
             totalCallsWeek: data.TotalCallsWeek || data.totalCallsWeek || 0,
-            averageResponseTime: Math.round(data.AverageResponseTime || data.averageResponseTime || 0),
+            averageResponseTime: Math.round(
+                data.AverageResponseTime || data.averageResponseTime || 0
+            ),
             successRate: data.SuccessRate || data.successRate || 100
         }
 
@@ -73,7 +75,9 @@ const fetchApiUsage = async () => {
             callsMonth: usage.CallsMonth || usage.callsMonth || 0,
             tokensUsed: usage.TotalTokens || usage.totalTokens || 0,
             totalTokens: usage.TotalTokens || usage.totalTokens || 0,
-            averageResponseTime: Math.round(usage.AverageResponseTime || usage.averageResponseTime || 0),
+            averageResponseTime: Math.round(
+                usage.AverageResponseTime || usage.averageResponseTime || 0
+            ),
             errorCount: usage.ErrorCount || usage.errorCount || 0,
             successRate: usage.SuccessRate || usage.successRate || 100,
             dailyBreakdown: usage.DailyBreakdown || usage.dailyBreakdown || []
@@ -144,22 +148,24 @@ const getChartOptions = () => ({
 })
 
 const getChartData = (dailyBreakdown: any[], color: string) => {
-    const labels = dailyBreakdown.map(d => {
+    const labels = dailyBreakdown.map((d) => {
         const date = new Date(d.date)
         return date.toLocaleDateString('en-US', { weekday: 'short' })
     })
-    
-    const data = dailyBreakdown.map(d => d.callCount)
-    
+
+    const data = dailyBreakdown.map((d) => d.callCount)
+
     return {
         labels,
-        datasets: [{
-            data,
-            borderColor: color,
-            backgroundColor: color + '20',
-            fill: true,
-            tension: 0.4
-        }]
+        datasets: [
+            {
+                data,
+                borderColor: color,
+                backgroundColor: color + '20',
+                fill: true,
+                tension: 0.4
+            }
+        ]
     }
 }
 
@@ -171,13 +177,14 @@ const SparklineChart = defineComponent({
     setup(props) {
         const chartData = computed(() => getChartData(props.data, props.color))
         const chartOptions = getChartOptions()
-        
-        return () => h('div', { class: 'h-16 w-full' }, [
-            h(Line, {
-                data: chartData.value,
-                options: chartOptions
-            })
-        ])
+
+        return () =>
+            h('div', { class: 'h-16 w-full' }, [
+                h(Line, {
+                    data: chartData.value,
+                    options: chartOptions
+                })
+            ])
     }
 })
 
@@ -206,7 +213,9 @@ onUnmounted(() => {
                 :disabled="isLoading"
                 class="text-primary-content/50 hover:text-primary-content p-1 transition-colors"
                 :title="i18n.translate('statistics.refresh')">
-                <RefreshIcon class="h-4 w-4" :class="{ 'animate-spin': localLoading || isLoading }" />
+                <RefreshIcon
+                    class="h-4 w-4"
+                    :class="{ 'animate-spin': localLoading || isLoading }" />
             </button>
         </div>
 
@@ -224,19 +233,25 @@ onUnmounted(() => {
             <div class="bg-secondary/30 rounded-md p-3">
                 <div class="grid grid-cols-3 gap-2 text-xs">
                     <div class="text-center">
-                        <div class="text-primary-content/50 tracking-wider uppercase">{{ i18n.translate('statistics.today') }}</div>
+                        <div class="text-primary-content/50 tracking-wider uppercase">
+                            {{ i18n.translate('statistics.today') }}
+                        </div>
                         <div class="text-primary-content mt-0.5 text-lg font-bold">
                             {{ formatNumber(summaryStats.totalCallsToday) }}
                         </div>
                     </div>
                     <div class="text-center">
-                        <div class="text-primary-content/50 tracking-wider uppercase">{{ i18n.translate('statistics.week') }}</div>
+                        <div class="text-primary-content/50 tracking-wider uppercase">
+                            {{ i18n.translate('statistics.week') }}
+                        </div>
                         <div class="text-primary-content mt-0.5 text-lg font-bold">
                             {{ formatNumber(summaryStats.totalCallsWeek) }}
                         </div>
                     </div>
                     <div class="text-center">
-                        <div class="text-primary-content/50 tracking-wider uppercase">{{ i18n.translate('statistics.avgResponse') }}</div>
+                        <div class="text-primary-content/50 tracking-wider uppercase">
+                            {{ i18n.translate('statistics.avgResponse') }}
+                        </div>
                         <div class="text-primary-content mt-0.5 text-lg font-bold">
                             {{ formatResponseTime(summaryStats.averageResponseTime) }}
                         </div>
@@ -248,45 +263,64 @@ onUnmounted(() => {
                 <div
                     v-for="usage in apiUsage"
                     :key="usage.service"
-                    class="bg-primary rounded-lg border border-secondary/20 shadow-sm transition-all duration-200 hover:bg-primary/80"
-                    :class="expandedService === usage.service && 'ring-1 ring-accent/30'">
-                    
+                    class="bg-primary border-secondary/20 hover:bg-primary/80 rounded-lg border shadow-sm transition-all duration-200"
+                    :class="expandedService === usage.service && 'ring-accent/30 ring-1'">
                     <div
                         @click="toggleService(usage.service)"
                         class="flex cursor-pointer items-center justify-between p-3">
-                        
-                        <div class="flex items-center gap-2 min-w-0 flex-1">
+                        <div class="flex min-w-0 flex-1 items-center gap-2">
                             <span
                                 class="h-2 w-2 rounded-full"
                                 :class="
-                                    usage.errorCount > 0 ? 'bg-red-500' :
-                                    usage.successRate >= 95 ? 'bg-green-500' :
-                                    'bg-yellow-500'
+                                    usage.errorCount > 0
+                                        ? 'bg-red-500'
+                                        : usage.successRate >= 95
+                                          ? 'bg-green-500'
+                                          : 'bg-yellow-500'
                                 "></span>
-                            
+
                             <span class="text-primary-content truncate text-sm font-medium">
                                 {{ usage.service }}
                             </span>
                         </div>
 
-                        <div class="mx-3 text-primary-content text-sm font-semibold">
-                            {{ formatNumber(usage.callsWeek) }} {{ i18n.translate('statistics.calls') }}
+                        <div class="text-primary-content mx-3 text-sm font-semibold">
+                            {{ formatNumber(usage.callsWeek) }}
+                            {{ i18n.translate('statistics.calls') }}
                         </div>
 
                         <div
                             class="text-primary-content/50 transition-transform duration-200"
                             :class="expandedService === usage.service && 'rotate-90'">
-                            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                            <svg
+                                class="h-4 w-4"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor">
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M9 5l7 7-7 7" />
                             </svg>
                         </div>
                     </div>
 
-                    <div class="border-secondary/20 border-t px-3 pb-3 pt-1">
+                    <div class="border-secondary/20 border-t px-3 pt-1 pb-3">
                         <div class="text-primary-content/60 flex items-center gap-2 text-xs">
-                            <span>{{ i18n.translate('statistics.today') }}: <span class="text-primary-content font-medium">{{ formatNumber(usage.callsToday) }}</span></span>
+                            <span>
+                                {{ i18n.translate('statistics.today') }}:
+                                <span class="text-primary-content font-medium">
+                                    {{ formatNumber(usage.callsToday) }}
+                                </span>
+                            </span>
                             <span>•</span>
-                            <span>{{ i18n.translate('statistics.week') }}: <span class="text-primary-content font-medium">{{ formatNumber(usage.callsWeek) }}</span></span>
+                            <span>
+                                {{ i18n.translate('statistics.week') }}:
+                                <span class="text-primary-content font-medium">
+                                    {{ formatNumber(usage.callsWeek) }}
+                                </span>
+                            </span>
                             <span>•</span>
                             <span>⚡ {{ formatResponseTime(usage.averageResponseTime) }}</span>
                         </div>
@@ -299,7 +333,9 @@ onUnmounted(() => {
                         leave-active-class="transition-all duration-200 ease-in"
                         leave-from-class="max-h-48 opacity-100"
                         leave-to-class="max-h-0 opacity-0">
-                        <div v-if="expandedService === usage.service" class="border-secondary/20 border-t p-3">
+                        <div
+                            v-if="expandedService === usage.service"
+                            class="border-secondary/20 border-t p-3">
                             <div v-if="usage.dailyBreakdown?.length > 0" class="mb-3">
                                 <SparklineChart
                                     :data="usage.dailyBreakdown"
@@ -307,7 +343,9 @@ onUnmounted(() => {
                             </div>
 
                             <div class="grid grid-cols-2 gap-3 text-xs">
-                                <div v-if="usage.totalTokens > 0" class="bg-secondary/30 rounded-md p-2">
+                                <div
+                                    v-if="usage.totalTokens > 0"
+                                    class="bg-secondary/30 rounded-md p-2">
                                     <div class="text-primary-content/50 flex items-center gap-1">
                                         <span>💬</span>
                                         <span>{{ i18n.translate('statistics.tokens') }}</span>
@@ -325,9 +363,11 @@ onUnmounted(() => {
                                     <div
                                         class="mt-1 font-semibold"
                                         :class="
-                                            usage.successRate >= 95 ? 'text-green-500' :
-                                            usage.successRate >= 80 ? 'text-yellow-500' :
-                                            'text-red-500'
+                                            usage.successRate >= 95
+                                                ? 'text-green-500'
+                                                : usage.successRate >= 80
+                                                  ? 'text-yellow-500'
+                                                  : 'text-red-500'
                                         ">
                                         {{ usage.successRate }}%
                                     </div>
@@ -335,12 +375,12 @@ onUnmounted(() => {
 
                                 <div
                                     v-if="usage.errorCount > 0"
-                                    class="bg-red-500/10 rounded-md p-2">
+                                    class="rounded-md bg-red-500/10 p-2">
                                     <div class="text-primary-content/50 flex items-center gap-1">
                                         <span>⚠</span>
                                         <span>{{ i18n.translate('statistics.errors') }}</span>
                                     </div>
-                                    <div class="text-red-500 mt-1 font-semibold">
+                                    <div class="mt-1 font-semibold text-red-500">
                                         {{ usage.errorCount }}
                                     </div>
                                 </div>

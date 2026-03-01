@@ -17,7 +17,9 @@
                     <div class="flex w-full max-w-lg flex-col rounded-lg bg-black p-4" @click.stop>
                         <!-- Header -->
                         <div class="mb-4 flex items-center justify-between">
-                            <h3 class="text-lg font-semibold">{{ translate('subtitleSelector.title') }}</h3>
+                            <h3 class="text-lg font-semibold">
+                                {{ translate('subtitleSelector.title') }}
+                            </h3>
                             <button class="text-gray-400 hover:text-white" @click="$emit('close')">
                                 <svg
                                     class="h-6 w-6"
@@ -58,7 +60,9 @@
                                     fill="currentColor"
                                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                             </svg>
-                            <span class="ml-2">{{ translate('subtitleSelector.loadingSubtitles') }}</span>
+                            <span class="ml-2">
+                                {{ translate('subtitleSelector.loadingSubtitles') }}
+                            </span>
                         </div>
 
                         <!-- Error State -->
@@ -118,7 +122,10 @@
                                             </div>
                                             <div
                                                 class="mt-1 flex items-center gap-2 text-sm text-gray-400">
-                                                <span>{{ translate('subtitleSelector.stream') }} {{ subtitle.streamIndex }}</span>
+                                                <span>
+                                                    {{ translate('subtitleSelector.stream') }}
+                                                    {{ subtitle.streamIndex }}
+                                                </span>
                                                 <span>•</span>
                                                 <span
                                                     :class="

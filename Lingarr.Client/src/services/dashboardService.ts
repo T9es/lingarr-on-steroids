@@ -31,7 +31,10 @@ export const dashboardService = (axios: AxiosStatic) => ({
         return response.data
     },
 
-    getFailedJobs: async (offset: number = 0, limit: number = 10): Promise<{
+    getFailedJobs: async (
+        offset: number = 0,
+        limit: number = 10
+    ): Promise<{
         jobs: any[]
         totalCount: number
         hasMore: boolean

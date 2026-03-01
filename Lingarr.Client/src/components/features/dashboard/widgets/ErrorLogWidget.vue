@@ -135,7 +135,9 @@ const warningCount = () => errors.value.filter((e) => e.type === 'warning').leng
                 :disabled="isLoading"
                 class="text-secondary-content hover:text-primary-content p-1 transition-colors"
                 :title="i18n.translate('statistics.refresh')">
-                <RefreshIcon class="h-4 w-4" :class="{ 'animate-spin': localLoading || isLoading }" />
+                <RefreshIcon
+                    class="h-4 w-4"
+                    :class="{ 'animate-spin': localLoading || isLoading }" />
             </button>
         </div>
 

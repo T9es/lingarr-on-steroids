@@ -13,11 +13,14 @@ import { useI18n } from '@/plugins/i18n'
 
 const { translate } = useI18n()
 
-const props = withDefaults(defineProps<{
-    loading?: boolean
-}>(), {
-    loading: false
-})
+const props = withDefaults(
+    defineProps<{
+        loading?: boolean
+    }>(),
+    {
+        loading: false
+    }
+)
 
 const emit = defineEmits<{
     (e: 'click'): void
@@ -29,11 +32,11 @@ const isLoading = computed(() => props.loading || localLoading.value)
 
 async function handleClick() {
     if (isLoading.value) return
-    
+
     localLoading.value = true
     emit('toggle:update', true)
     emit('click')
-    
+
     if (!props.loading) {
         setTimeout(() => {
             localLoading.value = false

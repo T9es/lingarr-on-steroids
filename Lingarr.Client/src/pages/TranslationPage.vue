@@ -124,7 +124,7 @@
                         </div>
                     </div>
 
-<!-- Failed translations -->
+                    <!-- Failed translations -->
                     <div class="border-accent bg-secondary rounded-md border p-4 shadow-sm">
                         <div class="mb-3 flex items-center justify-between">
                             <h2 class="text-sm font-semibold tracking-wide uppercase">
@@ -132,7 +132,7 @@
                             </h2>
                             <div v-if="failedRequests.length" class="flex gap-2">
                                 <button
-                                    class="border-red-500/50 text-red-400 hover:bg-red-500/20 cursor-pointer rounded-md border px-3 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+                                    class="cursor-pointer rounded-md border border-red-500/50 px-3 py-1 text-xs text-red-400 transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-60"
                                     :disabled="removingFailed || retryingFailed"
                                     @click="showRemoveConfirm = true">
                                     {{ translate('translations.removeAllFailed') }}
@@ -194,7 +194,7 @@
                                 </div>
                             </div>
                         </div>
-<div v-else class="text-secondary-content py-4 text-center text-sm">
+                        <div v-else class="text-secondary-content py-4 text-center text-sm">
                             {{ translate('translations.noFailedTranslations') }}
                         </div>
                     </div>
@@ -203,7 +203,8 @@
                     <div
                         v-if="showRemoveConfirm"
                         class="bg-secondary/80 fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm">
-                        <div class="bg-secondary border-secondary mx-4 max-w-sm rounded-lg border p-6">
+                        <div
+                            class="bg-secondary border-secondary mx-4 max-w-sm rounded-lg border p-6">
                             <h3 class="text-primary-content mb-2 text-lg font-semibold">
                                 {{ translate('translations.removeAllFailed') }}
                             </h3>

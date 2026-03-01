@@ -72,7 +72,14 @@
                                     " />
                             </div>
                             <div class="col-span-3 flex flex-wrap items-center gap-2 px-4 py-2">
-                                <template v-for="item in getAllSubtitles(group.movies[0]).slice(0, isSubtitlesExpanded(group.movies[0].id) ? undefined : MAX_VISIBLE_SUBTITLES)" :key="item.key">
+                                <template
+                                    v-for="item in getAllSubtitles(group.movies[0]).slice(
+                                        0,
+                                        isSubtitlesExpanded(group.movies[0].id)
+                                            ? undefined
+                                            : MAX_VISIBLE_SUBTITLES
+                                    )"
+                                    :key="item.key">
                                     <ContextMenu
                                         v-if="item.type === 'external'"
                                         :subtitle="item.data as ISubtitle"
@@ -84,7 +91,8 @@
                                             <span
                                                 v-if="(item.data as ISubtitle).caption"
                                                 class="text-primary-content/50">
-                                                - {{ (item.data as ISubtitle).caption.toUpperCase() }}
+                                                -
+                                                {{ (item.data as ISubtitle).caption.toUpperCase() }}
                                             </span>
                                         </BadgeComponent>
                                     </ContextMenu>
@@ -95,13 +103,27 @@
                                         :media-type="MEDIA_TYPE.MOVIE"
                                         @update:toggle="toggleMovie(group.movies[0])"
                                         v-slot="{ isExtracting }">
-                                        <BadgeComponent :classes="getEmbeddedBadgeClasses(item.data as IEmbeddedSubtitle)">
+                                        <BadgeComponent
+                                            :classes="
+                                                getEmbeddedBadgeClasses(
+                                                    item.data as IEmbeddedSubtitle
+                                                )
+                                            ">
                                             <span class="mr-1">📦</span>
-                                            {{ formatEmbeddedLanguage(item.data as IEmbeddedSubtitle) }}
+                                            {{
+                                                formatEmbeddedLanguage(
+                                                    item.data as IEmbeddedSubtitle
+                                                )
+                                            }}
                                             <span
                                                 v-if="(item.data as IEmbeddedSubtitle).title"
                                                 class="ml-1 text-amber-200/70">
-                                                ({{ truncate((item.data as IEmbeddedSubtitle).title, 10) }})
+                                                ({{
+                                                    truncate(
+                                                        (item.data as IEmbeddedSubtitle).title,
+                                                        10
+                                                    )
+                                                }})
                                             </span>
                                             <span
                                                 v-if="(item.data as IEmbeddedSubtitle).isForced"
@@ -120,10 +142,17 @@
                                     </ContextMenu>
                                 </template>
                                 <button
-                                    v-if="getAllSubtitles(group.movies[0]).length > MAX_VISIBLE_SUBTITLES"
-                                    class="cursor-pointer rounded-full border border-accent px-3 py-1 text-xs font-semibold text-secondary-content hover:bg-accent/20"
+                                    v-if="
+                                        getAllSubtitles(group.movies[0]).length >
+                                        MAX_VISIBLE_SUBTITLES
+                                    "
+                                    class="border-accent text-secondary-content hover:bg-accent/20 cursor-pointer rounded-full border px-3 py-1 text-xs font-semibold"
                                     @click="toggleSubtitles(group.movies[0].id)">
-                                    {{ isSubtitlesExpanded(group.movies[0].id) ? 'Show less' : `+${getAllSubtitles(group.movies[0]).length - MAX_VISIBLE_SUBTITLES} more` }}
+                                    {{
+                                        isSubtitlesExpanded(group.movies[0].id)
+                                            ? 'Show less'
+                                            : `+${getAllSubtitles(group.movies[0]).length - MAX_VISIBLE_SUBTITLES} more`
+                                    }}
                                 </button>
                             </div>
                             <div class="col-span-1 flex flex-wrap items-center gap-2 px-4 py-2">
@@ -246,7 +275,14 @@
                                         " />
                                 </div>
                                 <div class="col-span-3 flex flex-wrap items-center gap-2 px-4 py-2">
-                                    <template v-for="itemSub in getAllSubtitles(item).slice(0, isSubtitlesExpanded(item.id) ? undefined : MAX_VISIBLE_SUBTITLES)" :key="itemSub.key">
+                                    <template
+                                        v-for="itemSub in getAllSubtitles(item).slice(
+                                            0,
+                                            isSubtitlesExpanded(item.id)
+                                                ? undefined
+                                                : MAX_VISIBLE_SUBTITLES
+                                        )"
+                                        :key="itemSub.key">
                                         <ContextMenu
                                             v-if="itemSub.type === 'external'"
                                             :subtitle="itemSub.data as ISubtitle"
@@ -254,11 +290,20 @@
                                             :media-type="MEDIA_TYPE.MOVIE"
                                             @update:toggle="toggleMovie(item)">
                                             <BadgeComponent>
-                                                {{ (itemSub.data as ISubtitle).language.toUpperCase() }}
+                                                {{
+                                                    (
+                                                        itemSub.data as ISubtitle
+                                                    ).language.toUpperCase()
+                                                }}
                                                 <span
                                                     v-if="(itemSub.data as ISubtitle).caption"
                                                     class="text-primary-content/50">
-                                                    - {{ (itemSub.data as ISubtitle).caption.toUpperCase() }}
+                                                    -
+                                                    {{
+                                                        (
+                                                            itemSub.data as ISubtitle
+                                                        ).caption.toUpperCase()
+                                                    }}
                                                 </span>
                                             </BadgeComponent>
                                         </ContextMenu>
@@ -269,21 +314,41 @@
                                             :media-type="MEDIA_TYPE.MOVIE"
                                             @update:toggle="toggleMovie(item)"
                                             v-slot="{ isExtracting }">
-                                            <BadgeComponent :classes="getEmbeddedBadgeClasses(itemSub.data as IEmbeddedSubtitle)">
+                                            <BadgeComponent
+                                                :classes="
+                                                    getEmbeddedBadgeClasses(
+                                                        itemSub.data as IEmbeddedSubtitle
+                                                    )
+                                                ">
                                                 <span class="mr-1">📦</span>
-                                                {{ formatEmbeddedLanguage(itemSub.data as IEmbeddedSubtitle) }}
+                                                {{
+                                                    formatEmbeddedLanguage(
+                                                        itemSub.data as IEmbeddedSubtitle
+                                                    )
+                                                }}
                                                 <span
                                                     v-if="(itemSub.data as IEmbeddedSubtitle).title"
                                                     class="ml-1 text-amber-200/70">
-                                                    ({{ truncate((itemSub.data as IEmbeddedSubtitle).title, 10) }})
+                                                    ({{
+                                                        truncate(
+                                                            (itemSub.data as IEmbeddedSubtitle)
+                                                                .title,
+                                                            10
+                                                        )
+                                                    }})
                                                 </span>
                                                 <span
-                                                    v-if="(itemSub.data as IEmbeddedSubtitle).isForced"
+                                                    v-if="
+                                                        (itemSub.data as IEmbeddedSubtitle).isForced
+                                                    "
                                                     class="ml-1 text-xs opacity-70">
                                                     F
                                                 </span>
                                                 <span
-                                                    v-if="(itemSub.data as IEmbeddedSubtitle).isDefault"
+                                                    v-if="
+                                                        (itemSub.data as IEmbeddedSubtitle)
+                                                            .isDefault
+                                                    "
                                                     class="ml-1 text-xs opacity-70">
                                                     D
                                                 </span>
@@ -295,9 +360,13 @@
                                     </template>
                                     <button
                                         v-if="getAllSubtitles(item).length > MAX_VISIBLE_SUBTITLES"
-                                        class="cursor-pointer rounded-full border border-accent px-3 py-1 text-xs font-semibold text-secondary-content hover:bg-accent/20"
+                                        class="border-accent text-secondary-content hover:bg-accent/20 cursor-pointer rounded-full border px-3 py-1 text-xs font-semibold"
                                         @click="toggleSubtitles(item.id)">
-                                        {{ isSubtitlesExpanded(item.id) ? 'Show less' : `+${getAllSubtitles(item).length - MAX_VISIBLE_SUBTITLES} more` }}
+                                        {{
+                                            isSubtitlesExpanded(item.id)
+                                                ? 'Show less'
+                                                : `+${getAllSubtitles(item).length - MAX_VISIBLE_SUBTITLES} more`
+                                        }}
                                     </button>
                                 </div>
                                 <div class="col-span-1 flex flex-wrap items-center gap-2 px-4 py-2">

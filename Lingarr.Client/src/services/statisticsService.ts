@@ -14,7 +14,7 @@ const service = (http: AxiosStatic, resource = '/api/statistics'): IStatisticsSe
         })
     },
 
-getDailyStatistics<T>(days?: number): Promise<T> {
+    getDailyStatistics<T>(days?: number): Promise<T> {
         return new Promise((resolve, reject) => {
             const url = days ? `${resource}/daily/${days}` : `${resource}/daily`
             http.get(url)

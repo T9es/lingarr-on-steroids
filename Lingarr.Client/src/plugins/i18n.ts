@@ -17,26 +17,26 @@ export const I18nInjectionKey: InjectionKey<I18n> = Symbol('i18n')
 function detectBrowserLocale(): ILocale {
     // Get browser languages (most recent browsers support navigator.languages)
     const browserLanguages = navigator.languages || [navigator.language]
-    
+
     // Try each browser language preference in order
     for (const browserLang of browserLanguages) {
         if (!browserLang) continue
-        
+
         // Extract primary language code (e.g., 'de' from 'de-DE' or 'de-AT')
         const primaryCode = browserLang.split('-')[0].toLowerCase()
-        
+
         // Check if we support this language
         if (SUPPORTED_LOCALES.includes(primaryCode as ILocale)) {
             return primaryCode as ILocale
         }
-        
+
         // Special case: Try to match Chinese variants
         // zh-CN, zh-TW, zh-HK all map to our 'zh' (Simplified Chinese)
         if (primaryCode === 'zh') {
             return 'zh'
         }
     }
-    
+
     // Ultimate fallback: English
     return 'en'
 }
@@ -47,12 +47,12 @@ function detectBrowserLocale(): ILocale {
  */
 function validateLocale(locale: string | null | undefined): ILocale {
     if (!locale) return 'en'
-    
+
     // Check if it's a valid supported locale
     if (SUPPORTED_LOCALES.includes(locale as ILocale)) {
         return locale as ILocale
     }
-    
+
     // Invalid locale, fallback to English
     console.warn(`Invalid locale "${locale}" provided. Falling back to English.`)
     return 'en'
@@ -60,7 +60,7 @@ function validateLocale(locale: string | null | undefined): ILocale {
 
 export function createI18nPlugin(options: I18nPluginOptions = {}) {
     const localStorage = useLocalStorage()
-    
+
     // Priority chain for initial locale:
     // 1. User's explicit choice stored in localStorage
     // 2. Default locale from plugin options (if configured)
@@ -68,7 +68,7 @@ export function createI18nPlugin(options: I18nPluginOptions = {}) {
     // 4. Ultimate fallback to English
     const storedLocale = localStorage.getItem<string>('locale')
     const defaultLocale = options.defaultLocale ? validateLocale(options.defaultLocale) : null
-    
+
     let initialLocale: ILocale
     if (storedLocale && typeof storedLocale === 'string') {
         initialLocale = validateLocale(storedLocale)
@@ -77,7 +77,7 @@ export function createI18nPlugin(options: I18nPluginOptions = {}) {
     } else {
         initialLocale = detectBrowserLocale()
     }
-    
+
     const currentLocale: Ref<string> = ref(initialLocale)
     const messages = ref<Record<string, Translations>>({})
     const availableLanguages: Ref<Language[]> = ref<Language[]>([])

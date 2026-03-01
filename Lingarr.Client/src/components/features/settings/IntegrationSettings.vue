@@ -14,14 +14,16 @@
         </template>
         <template #content>
             <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-<!-- All Instances -->
+                <!-- All Instances -->
                 <InstanceCard
                     v-for="item in localInstances"
                     :key="`${item.type}-${item.instance.id}`"
                     :instance="item.instance"
                     :type="item.type"
                     :connection-status="getConnectionStatus(item.type, item.instance.id)"
-                    @update:instance="(inst) => updateLocalInstance(item.instance.id, inst, item.type)"
+                    @update:instance="
+                        (inst) => updateLocalInstance(item.instance.id, inst, item.type)
+                    "
                     @remove="removeLocalInstance(item.instance.id, item.type)"
                     @test-connection="testConnection(item.type, item.instance)" />
 
@@ -278,12 +280,14 @@ const loadInstancesFromStore = (): void => {
         const legacyUrl = settingsStore.getSetting(SETTINGS.RADARR_URL) as string
         const legacyKey = settingsStore.getSetting(SETTINGS.RADARR_API_KEY) as string
         if (legacyUrl && legacyKey) {
-            radarrInsts = [{
-                id: 'default',
-                name: 'Radarr',
-                url: legacyUrl,
-                apiKey: legacyKey
-            }]
+            radarrInsts = [
+                {
+                    id: 'default',
+                    name: 'Radarr',
+                    url: legacyUrl,
+                    apiKey: legacyKey
+                }
+            ]
         }
     }
 
@@ -291,12 +295,14 @@ const loadInstancesFromStore = (): void => {
         const legacyUrl = settingsStore.getSetting(SETTINGS.SONARR_URL) as string
         const legacyKey = settingsStore.getSetting(SETTINGS.SONARR_API_KEY) as string
         if (legacyUrl && legacyKey) {
-            sonarrInsts = [{
-                id: 'default',
-                name: 'Sonarr',
-                url: legacyUrl,
-                apiKey: legacyKey
-            }]
+            sonarrInsts = [
+                {
+                    id: 'default',
+                    name: 'Sonarr',
+                    url: legacyUrl,
+                    apiKey: legacyKey
+                }
+            ]
         }
     }
 
@@ -378,7 +384,11 @@ const handleAddInstance = (type: 'radarr' | 'sonarr'): void => {
 }
 
 // Update local instance
-const updateLocalInstance = (id: string, updatedInstance: IInstance, type: 'radarr' | 'sonarr'): void => {
+const updateLocalInstance = (
+    id: string,
+    updatedInstance: IInstance,
+    type: 'radarr' | 'sonarr'
+): void => {
     const index = localInstances.value.findIndex(
         (wrapper) => wrapper.instance.id === id && wrapper.type === type
     )

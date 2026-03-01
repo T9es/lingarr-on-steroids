@@ -50,7 +50,12 @@
             </div>
             <div class="col-span-4 pr-4 md:col-span-4">
                 <div v-if="episode?.fileName" class="flex flex-wrap items-center gap-2 py-2">
-                    <template v-for="item in getAllSubtitles(episode).slice(0, isSubtitlesExpanded(episode.id) ? undefined : MAX_VISIBLE_SUBTITLES)" :key="item.key">
+                    <template
+                        v-for="item in getAllSubtitles(episode).slice(
+                            0,
+                            isSubtitlesExpanded(episode.id) ? undefined : MAX_VISIBLE_SUBTITLES
+                        )"
+                        :key="item.key">
                         <ContextMenu
                             v-if="item.type === 'external'"
                             :media-type="MEDIA_TYPE.EPISODE"
@@ -58,7 +63,9 @@
                             :subtitle="item.data as ISubtitle">
                             <BadgeComponent>
                                 {{ (item.data as ISubtitle).language.toUpperCase() }}
-                                <span v-if="(item.data as ISubtitle).caption" class="text-primary-content/50">
+                                <span
+                                    v-if="(item.data as ISubtitle).caption"
+                                    class="text-primary-content/50">
                                     - {{ (item.data as ISubtitle).caption.toUpperCase() }}
                                 </span>
                             </BadgeComponent>
@@ -69,16 +76,23 @@
                             :media="episode"
                             :media-type="MEDIA_TYPE.EPISODE"
                             v-slot="{ isExtracting }">
-                            <BadgeComponent :classes="getEmbeddedBadgeClasses(item.data as IEmbeddedSubtitle)">
+                            <BadgeComponent
+                                :classes="getEmbeddedBadgeClasses(item.data as IEmbeddedSubtitle)">
                                 <span class="mr-1">📦</span>
                                 {{ formatEmbeddedLanguage(item.data as IEmbeddedSubtitle) }}
-                                <span v-if="(item.data as IEmbeddedSubtitle).title" class="ml-1 text-amber-200/70">
+                                <span
+                                    v-if="(item.data as IEmbeddedSubtitle).title"
+                                    class="ml-1 text-amber-200/70">
                                     ({{ truncate((item.data as IEmbeddedSubtitle).title, 10) }})
                                 </span>
-                                <span v-if="(item.data as IEmbeddedSubtitle).isForced" class="ml-1 text-xs opacity-70">
+                                <span
+                                    v-if="(item.data as IEmbeddedSubtitle).isForced"
+                                    class="ml-1 text-xs opacity-70">
                                     F
                                 </span>
-                                <span v-if="(item.data as IEmbeddedSubtitle).isDefault" class="ml-1 text-xs opacity-70">
+                                <span
+                                    v-if="(item.data as IEmbeddedSubtitle).isDefault"
+                                    class="ml-1 text-xs opacity-70">
                                     D
                                 </span>
                                 <LoaderCircleIcon
@@ -89,9 +103,13 @@
                     </template>
                     <button
                         v-if="getAllSubtitles(episode).length > MAX_VISIBLE_SUBTITLES"
-                        class="cursor-pointer rounded-full border border-accent px-3 py-1 text-xs font-semibold text-secondary-content hover:bg-accent/20"
+                        class="border-accent text-secondary-content hover:bg-accent/20 cursor-pointer rounded-full border px-3 py-1 text-xs font-semibold"
                         @click="toggleSubtitles(episode.id)">
-                        {{ isSubtitlesExpanded(episode.id) ? 'Show less' : `+${getAllSubtitles(episode).length - MAX_VISIBLE_SUBTITLES} more` }}
+                        {{
+                            isSubtitlesExpanded(episode.id)
+                                ? 'Show less'
+                                : `+${getAllSubtitles(episode).length - MAX_VISIBLE_SUBTITLES} more`
+                        }}
                     </button>
                 </div>
             </div>

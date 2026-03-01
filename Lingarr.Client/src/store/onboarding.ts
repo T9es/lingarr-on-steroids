@@ -47,15 +47,11 @@ export const useOnboardingStore = defineStore('onboarding', () => {
         isActive.value = false
     }
 
-async function complete(): Promise<void> {
+    async function complete(): Promise<void> {
         const settingStore = useSettingStore()
 
-        const validRadarrInstances = radarrInstances.value.filter(
-            (inst) => inst.url && inst.apiKey
-        )
-        const validSonarrInstances = sonarrInstances.value.filter(
-            (inst) => inst.url && inst.apiKey
-        )
+        const validRadarrInstances = radarrInstances.value.filter((inst) => inst.url && inst.apiKey)
+        const validSonarrInstances = sonarrInstances.value.filter((inst) => inst.url && inst.apiKey)
 
         // Save instance configurations to database AND update local store
         // Using updateSetting ensures the local store is updated immediately,
@@ -115,7 +111,7 @@ async function complete(): Promise<void> {
     function migrateLegacySettings(): void {
         const settingStore = useSettingStore()
 
-// Helper to parse instances from store
+        // Helper to parse instances from store
         const parseInstances = (value: string | IInstance[] | undefined): IInstance[] => {
             if (!value) return []
             if (Array.isArray(value)) return value
