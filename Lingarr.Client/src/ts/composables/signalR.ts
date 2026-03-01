@@ -36,6 +36,23 @@ export type EventCallbacks = {
         error: string | null
         progressPercent: number
     }) => void
+    AssVerificationProgress: (stats: {
+        total: number
+        processedCount: number
+        isComplete: boolean
+        isRunning: boolean
+        error: string | null
+        progressPercent: number
+    }) => void
+    SubtitleTypeValidationProgress: (stats: {
+        total: number
+        processedCount: number
+        incompleteCount: number
+        isComplete: boolean
+        isRunning: boolean
+        error: string | null
+        progressPercent: number
+    }) => void
 }
 
 export interface Hub {

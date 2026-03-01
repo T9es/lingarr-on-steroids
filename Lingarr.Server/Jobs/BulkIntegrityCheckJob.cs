@@ -159,25 +159,6 @@ public class BulkIntegrityCheckJob
                 }
             }
 
-            // After line count integrity check, validate subtitle types
-            _logger.LogInformation("Starting subtitle type validation for completed translations");
-            
-            try
-            {
-                var subtitleTypeSummary = await _integrityService.ValidateAllSubtitleTypesAsync(default);
-                
-                stats.IncompleteSubtitleCount = subtitleTypeSummary.IncompleteCount;
-                stats.IncompleteSubtitles = subtitleTypeSummary.FlaggedItems;
-                
-                _logger.LogInformation(
-                    "Subtitle type validation complete: {Total} scanned, {Incomplete} incomplete subtitles found",
-                    subtitleTypeSummary.TotalScanned, subtitleTypeSummary.IncompleteCount);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Subtitle type validation failed during bulk integrity check");
-            }
-
             stats.IsComplete = true;
             stats.IsRunning = false;
             await SendProgress(stats);

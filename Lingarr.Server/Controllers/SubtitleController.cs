@@ -1,6 +1,8 @@
+using Hangfire;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
+using Lingarr.Server.Jobs;
 using Lingarr.Server.Models;
 using Lingarr.Server.Models.Api;
 using Lingarr.Server.Models.FileSystem;
@@ -48,26 +50,52 @@ public class SubtitleController : ControllerBase
     /// Scans all translated subtitle files for ASS drawing command artifacts.
     /// Used to detect files that may contain hallucinated vector drawing garbage.
     /// </summary>
-    /// <param name="ct">Cancellation token</param>
-    /// <returns>Returns result containing list of flagged files</returns>
+    /// <returns>Returns job ID</returns>
     [HttpPost("verify-ass")]
-    public async Task<ActionResult<AssVerificationResult>> VerifyAssIntegrity(CancellationToken ct)
+    public ActionResult<string> VerifyAssIntegrity()
     {
-        var result = await _integrityService.VerifyAssIntegrityAsync(ct);
-        return Ok(result);
+        var jobId = BackgroundJob.Enqueue<VerifyAssIntegrityJob>(job => job.Execute());
+        return Ok(new { jobId });
+    }
+
+    /// <summary>
+    /// Gets the current status of the ASS verification job.
+    /// </summary>
+    [HttpGet("verify-ass/status")]
+    public ActionResult GetAssVerificationStatus()
+    {
+        var current = Jobs.AssVerificationStats.Current;
+        if (current == null)
+        {
+            return Ok(new { isRunning = false });
+        }
+        return Ok(current);
     }
 
     /// <summary>
     /// Scans all completed translations for potentially incomplete source subtitles.
     /// Detects Forced or Signs-only subtitles that should be re-translated.
     /// </summary>
-    /// <param name="ct">Cancellation token</param>
-    /// <returns>Returns summary of incomplete subtitle findings</returns>
+    /// <returns>Returns job ID</returns>
     [HttpPost("validate-subtitle-types")]
-    public async Task<ActionResult<SubtitleTypeCheckSummary>> ValidateSubtitleTypes(CancellationToken ct)
+    public ActionResult<string> ValidateSubtitleTypes()
     {
-        var result = await _integrityService.ValidateAllSubtitleTypesAsync(ct);
-        return Ok(result);
+        var jobId = BackgroundJob.Enqueue<SubtitleTypeValidationJob>(job => job.Execute());
+        return Ok(new { jobId });
+    }
+
+    /// <summary>
+    /// Gets the current status of the subtitle type validation job.
+    /// </summary>
+    [HttpGet("validate-subtitle-types/status")]
+    public ActionResult GetSubtitleTypeValidationStatus()
+    {
+        var current = Jobs.SubtitleTypeValidationStats.Current;
+        if (current == null)
+        {
+            return Ok(new { isRunning = false });
+        }
+        return Ok(current);
     }
 
     /// <summary>

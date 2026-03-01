@@ -127,10 +127,10 @@
                     <!-- Action Button -->
                     <div class="flex items-center justify-center">
                         <button
-                            :disabled="subtitleTypeIsRunning"
+                            :disabled="subtitleTypeHasStarted"
                             class="bg-accent hover:bg-accent/80 disabled:bg-base-300 rounded px-6 py-3 font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:text-gray-500"
                             @click="startSubtitleTypeValidation">
-                            <span v-if="subtitleTypeIsRunning" class="flex items-center">
+                            <span v-if="subtitleTypeHasStarted" class="flex items-center">
                                 <svg
                                     class="mr-2 h-5 w-5 animate-spin"
                                     xmlns="http://www.w3.org/2000/svg"
@@ -148,7 +148,7 @@
                                         fill="currentColor"
                                         d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                 </svg>
-                                Scanning...
+                                {{ Math.round(subtitleTypeValidationStats.progressPercent) }}% ({{ subtitleTypeValidationStats.processedCount }}/{{ subtitleTypeValidationStats.total }})
                             </span>
                             <span v-else>Check Subtitle Sources</span>
                         </button>
@@ -291,10 +291,10 @@
                     <!-- Action Button -->
                     <div class="flex items-center justify-center">
                         <button
-                            :disabled="assIsRunning"
+                            :disabled="assHasStarted"
                             class="bg-accent hover:bg-accent/80 disabled:bg-base-300 rounded px-6 py-3 font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:text-gray-500"
                             @click="startAssVerification">
-                            <span v-if="assIsRunning" class="flex items-center">
+                            <span v-if="assHasStarted" class="flex items-center">
                                 <svg
                                     class="mr-2 h-5 w-5 animate-spin"
                                     xmlns="http://www.w3.org/2000/svg"
@@ -312,7 +312,7 @@
                                         fill="currentColor"
                                         d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                 </svg>
-                                Scanning...
+                                {{ Math.round(assValidationStats.progressPercent) }}% ({{ assValidationStats.processedCount }}/{{ assValidationStats.total }})
                             </span>
                             <span v-else>Verify ASS Integrity</span>
                         </button>
@@ -497,7 +497,28 @@ interface SubtitleTypeCheckSummary {
     flaggedItems: SubtitleTypeCheckResult[]
 }
 
-const subtitleTypeIsRunning = ref(false)
+// Subtitle Type Validation Stats
+interface SubtitleTypeValidationStats {
+    total: number
+    processedCount: number
+    incompleteCount: number
+    isComplete: boolean
+    isRunning: boolean
+    error: string | null
+    progressPercent: number
+}
+
+const subtitleTypeValidationStats = reactive<SubtitleTypeValidationStats>({
+    total: 0,
+    processedCount: 0,
+    incompleteCount: 0,
+    isComplete: false,
+    isRunning: false,
+    error: null,
+    progressPercent: 0
+})
+
+const subtitleTypeHasStarted = ref(false)
 const subtitleTypeResult = ref<SubtitleTypeCheckSummary | null>(null)
 const expandedSubtitleTypeItems = ref<number[]>([])
 
@@ -552,21 +573,31 @@ const toggleSubtitleTypeExpand = (translationId: number) => {
     }
 }
 
+const handleSubtitleTypeValidationProgress = (newStats: SubtitleTypeValidationStats) => {
+    Object.assign(subtitleTypeValidationStats, newStats)
+    if (newStats.isComplete) {
+        subtitleTypeHasStarted.value = false
+    }
+}
+
 const startSubtitleTypeValidation = async () => {
     try {
-        subtitleTypeIsRunning.value = true
-        const response = await axios.post('/api/subtitle/validate-subtitle-types')
-        subtitleTypeResult.value = response.data
-
-        // Persist result
-        await axios.post('/api/setting', {
-            key: 'subtitle_type_validation_last_result',
-            value: JSON.stringify(response.data)
+        subtitleTypeHasStarted.value = true
+        Object.assign(subtitleTypeValidationStats, {
+            total: 0,
+            processedCount: 0,
+            incompleteCount: 0,
+            isComplete: false,
+            isRunning: true,
+            error: null,
+            progressPercent: 0
         })
+
+        await axios.post('/api/subtitle/validate-subtitle-types')
     } catch (error) {
         console.error('Failed to start subtitle type validation:', error)
-    } finally {
-        subtitleTypeIsRunning.value = false
+        subtitleTypeHasStarted.value = false
+        subtitleTypeValidationStats.isRunning = false
     }
 }
 
@@ -732,13 +763,46 @@ onMounted(async () => {
         console.debug('No existing subtitle type validation result')
     }
 
+    try {
+        const assStatusResponse = await axios.get('/api/subtitle/verify-ass/status')
+        if (assStatusResponse.data.isRunning) {
+            Object.assign(assValidationStats, assStatusResponse.data)
+            assHasStarted.value = true
+        } else {
+            const assResultResponse = await axios.get(
+                '/api/setting/subtitle_ass_verification_last_result'
+            )
+            if (assResultResponse.data) {
+                assResult.value = JSON.parse(assResultResponse.data)
+            }
+        }
+    } catch (error) {
+        console.debug('No existing ASS verification result')
+    }
+
+    try {
+        const subtitleTypeStatusResponse = await axios.get(
+            '/api/subtitle/validate-subtitle-types/status'
+        )
+        if (subtitleTypeStatusResponse.data.isRunning) {
+            Object.assign(subtitleTypeValidationStats, subtitleTypeStatusResponse.data)
+            subtitleTypeHasStarted.value = true
+        }
+    } catch (error) {
+        console.debug('No existing subtitle type validation status')
+    }
+
     hubConnection.value = await signalR.connect('JobProgress', '/signalr/JobProgress')
     await hubConnection.value.joinGroup({ group: 'JobProgress' })
     hubConnection.value.on('BulkIntegrityProgress', handleProgress)
+    hubConnection.value.on('AssVerificationProgress', handleAssVerificationProgress)
+    hubConnection.value.on('SubtitleTypeValidationProgress', handleSubtitleTypeValidationProgress)
 })
 
 onUnmounted(() => {
     hubConnection.value?.off('BulkIntegrityProgress', handleProgress)
+    hubConnection.value?.off('AssVerificationProgress', handleAssVerificationProgress)
+    hubConnection.value?.off('SubtitleTypeValidationProgress', handleSubtitleTypeValidationProgress)
 })
 
 // ASS Verification
@@ -759,7 +823,25 @@ interface AssVerificationResult {
     flaggedItems: AssVerificationItem[]
 }
 
-const assIsRunning = ref(false)
+interface AssVerificationStats {
+    total: number
+    processedCount: number
+    isComplete: boolean
+    isRunning: boolean
+    error: string | null
+    progressPercent: number
+}
+
+const assValidationStats = reactive<AssVerificationStats>({
+    total: 0,
+    processedCount: 0,
+    isComplete: false,
+    isRunning: false,
+    error: null,
+    progressPercent: 0
+})
+
+const assHasStarted = ref(false)
 const assResult = ref<AssVerificationResult | null>(null)
 const expandedItems = ref<string[]>([])
 
@@ -771,21 +853,30 @@ const toggleExpand = (path: string) => {
     }
 }
 
+const handleAssVerificationProgress = (newStats: AssVerificationStats) => {
+    Object.assign(assValidationStats, newStats)
+    if (newStats.isComplete) {
+        assHasStarted.value = false
+    }
+}
+
 const startAssVerification = async () => {
     try {
-        assIsRunning.value = true
-        const response = await axios.post('/api/subtitle/verify-ass')
-        assResult.value = response.data
-
-        // Persist result
-        await axios.post('/api/setting', {
-            key: 'subtitle_ass_verification_last_result',
-            value: JSON.stringify(response.data)
+        assHasStarted.value = true
+        Object.assign(assValidationStats, {
+            total: 0,
+            processedCount: 0,
+            isComplete: false,
+            isRunning: true,
+            error: null,
+            progressPercent: 0
         })
+
+        await axios.post('/api/subtitle/verify-ass')
     } catch (error) {
         console.error('Failed to start ASS verification:', error)
-    } finally {
-        assIsRunning.value = false
+        assHasStarted.value = false
+        assValidationStats.isRunning = false
     }
 }
 
