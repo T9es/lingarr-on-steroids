@@ -641,6 +641,12 @@
     "integration": {
       "radarr": "Radarr",
       "sonarr": "Sonarr"
+    },
+    "welcome": {
+      "title": "Welcome to Lingarr",
+      "description": "Set up your media library translation workflow in just a few steps. Connect your Radarr/Sonarr, choose a translation service, and start translating subtitles.",
+      "startButton": "Start Setup",
+      "skipButton": "Skip for now"
     }
   },
   "help": {
@@ -661,12 +667,6 @@
       "checkUpdates": "Check for Updates",
       "devBuild": "Dev Build",
       "updateAvailable": "Update Available"
-    },
-    "welcome": {
-      "title": "Welcome to Lingarr",
-      "description": "Set up your media library translation workflow in just a few steps. Connect your Radarr/Sonarr, choose a translation service, and start translating subtitles.",
-      "startButton": "Start Setup",
-      "skipButton": "Skip for now"
     }
   },
   "services": {
