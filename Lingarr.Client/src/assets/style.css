@@ -131,11 +131,11 @@
 }
 
 *::-webkit-scrollbar-track {
-    @apply bg-primary;
+    @apply bg-primary/50;
 }
 
 *::-webkit-scrollbar-thumb {
-    @apply bg-accent rounded-md;
+    @apply bg-secondary-content/30 rounded-md;
     @apply h-2 w-2;
 }
 

@@ -15,10 +15,10 @@
                     enter-from-class="scale-90"
                     leave-to-class="scale-90">
                     <div
-                        class="flex h-96 w-full max-w-md flex-col rounded-lg bg-black p-2"
+                        class="flex h-96 w-full max-w-md flex-col rounded-lg bg-primary border border-secondary p-2 shadow-xl"
                         @click.stop>
                         <div class="shell-scroll grow overflow-auto text-sm">
-                            <div class="mb-2 text-gray-400">
+                            <div class="mb-2 text-primary-content/70">
                                 <div v-if="currentPath.length > 0" class="flex items-center p-1">
                                     <button class="mr-2" @click="navigateUp">
                                         <svg
@@ -61,14 +61,14 @@
                                     </div>
                                 </div>
                             </div>
-                            <div class="space-y-1 text-gray-400 select-none">
+                            <div class="space-y-1 text-primary-content/70 select-none">
                                 <div
                                     v-for="dir in directoryContents"
                                     :key="dir.fullPath"
                                     class="flex cursor-pointer items-center rounded-md p-1 transition duration-300"
                                     :class="{
-                                        'bg-gray-900': highlightedDirectory === dir,
-                                        'hover:brightness-150': highlightedDirectory !== dir
+                                        'bg-secondary': highlightedDirectory === dir,
+                                        'hover:bg-secondary/70': highlightedDirectory !== dir
                                     }"
                                     @click="highlightDirectory(dir)"
                                     @dblclick="browseDirectory(dir)">
@@ -90,7 +90,7 @@
                         </div>
                         <div class="flex justify-end pt-2">
                             <div
-                                class="inline-flex cursor-pointer items-center rounded-md border border-gray-600 px-4 py-1 text-gray-400 transition duration-300 hover:border-gray-500 hover:text-gray-400"
+                                class="inline-flex cursor-pointer items-center rounded-md border border-secondary-content/40 px-4 py-1 text-primary-content/70 transition duration-300 hover:border-secondary-content hover:text-primary-content"
                                 @click="selectDirectory">
                                 Select
                             </div>

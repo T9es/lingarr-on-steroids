@@ -7,7 +7,7 @@
             ref="excludeClickOutside"
             class="border-accent flex h-12 cursor-pointer items-center justify-between rounded-md border px-4 py-2"
             @click="toggleDropdown">
-            <span v-if="!displayLabel" class="text-gray-400">
+            <span v-if="!displayLabel" class="text-primary-content/60">
                 {{ translate('settings.automation.translationScheduleLabel') }}
             </span>
             <span v-else class="text-primary-content">{{ displayLabel }}</span>
@@ -38,7 +38,7 @@
                 validation-type="cron"
                 @update:validation="(val) => (customCronIsValid = val)"
                 @update:model-value="handleCustomCronChange" />
-            <p class="text-xs text-gray-400">
+            <p class="text-xs text-primary-content/60">
                 Format:
                 <code class="bg-accent/30 rounded px-1">minute</code>
                 <code class="bg-accent/30 rounded px-1">hour</code>

@@ -44,9 +44,9 @@ const badgeClasses = computed(() => {
         case TRANSLATION_STATE.PENDING:
             return 'bg-orange-900/50 text-orange-300 border border-orange-500/50'
         case TRANSLATION_STATE.STALE:
-            return 'bg-gray-700/50 text-gray-300 border border-gray-500/50'
+            return 'bg-secondary/50 text-secondary-content border border-secondary-content/30'
         case TRANSLATION_STATE.NOT_APPLICABLE:
-            return 'bg-gray-800/30 text-gray-500 border border-gray-700/30 opacity-50'
+            return 'bg-primary/50 text-primary-content/50 border border-primary-content/20 opacity-50'
         case TRANSLATION_STATE.NO_SUITABLE_SUBTITLES:
             return 'bg-red-900/50 text-red-300 border border-red-500/50'
         case TRANSLATION_STATE.FAILED:
@@ -55,7 +55,7 @@ const badgeClasses = computed(() => {
             return 'bg-blue-900/50 text-blue-300 border border-blue-500/50'
         case TRANSLATION_STATE.UNKNOWN:
         default:
-            return 'bg-gray-800/50 text-gray-400 border border-gray-600/50 opacity-60'
+            return 'bg-primary/70 text-primary-content/60 border border-primary-content/30 opacity-60'
     }
 })
 

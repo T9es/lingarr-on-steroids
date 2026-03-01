@@ -20,9 +20,9 @@
                 </div>
             </div>
 
-            <div class="w-full px-4">
+            <div class="w-full overflow-x-auto px-4">
                 <!-- Shows -->
-                <div class="border-accent grid grid-cols-12 border-b font-bold">
+                <div class="border-accent grid min-w-[700px] grid-cols-12 border-b font-bold">
                     <div class="col-span-6 px-4 py-2">{{ translate('tvShows.title') }}</div>
                     <div class="col-span-1 px-4 py-2">
                         <span class="hidden md:block">
@@ -53,7 +53,7 @@
                     <!-- Single show - normal display -->
                     <template v-if="group.shows.length === 1">
                         <div
-                            class="border-accent grid cursor-pointer grid-cols-12 border-b"
+                            class="border-accent hover:bg-secondary/50 grid cursor-pointer grid-cols-12 border-b transition-colors"
                             @click="toggleShow(group.shows[0])">
                             <div class="col-span-6 flex items-center px-4 py-2">
                                 <CaretButton
@@ -154,7 +154,7 @@
                         <template v-if="isGroupExpanded(group.key)">
                             <div v-for="item in group.shows" :key="item.id">
                                 <div
-                                    class="border-accent/50 bg-secondary/20 grid cursor-pointer grid-cols-12 border-b"
+                                    class="border-accent/50 hover:bg-secondary/50 grid cursor-pointer grid-cols-12 border-b transition-colors"
                                     @click="toggleShow(item)">
                                     <div class="col-span-6 flex items-center px-4 py-2">
                                         <CaretButton

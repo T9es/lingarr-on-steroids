@@ -1,5 +1,5 @@
 ﻿<template>
-    <div ref="clickOutside" class="relative z-10 inline-block text-left">
+    <div ref="clickOutside" class="relative z-50 inline-block text-left">
         <div
             class="inline-flex h-10 w-10 cursor-pointer items-center justify-center"
             @click="toggleDropdown">
@@ -16,7 +16,7 @@
             <div
                 v-if="isOpen"
                 :class="getClasses()"
-                class="border-accent bg-secondary absolute right-0 mt-2 origin-top-right rounded-md border shadow-lg">
+                class="border-accent bg-secondary absolute right-0 mt-2 origin-top-right rounded-md border shadow-xl">
                 <slot name="content"></slot>
             </div>
         </transition>

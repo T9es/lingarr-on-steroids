@@ -20,8 +20,8 @@
                 </div>
             </div>
 
-            <div class="w-full px-4">
-                <div class="border-accent grid grid-cols-14 border-b font-bold">
+            <div class="w-full overflow-x-auto px-4">
+                <div class="border-accent grid min-w-[900px] grid-cols-14 border-b font-bold">
                     <div class="col-span-3 px-4 py-2">{{ translate('movies.title') }}</div>
                     <div
                         class="col-span-1 flex items-center justify-center px-2 py-2"
@@ -60,7 +60,7 @@
                 <template v-for="group in groupedMovies" :key="group.key">
                     <!-- Single movie - normal display -->
                     <template v-if="group.movies.length === 1">
-                        <div class="border-accent grid grid-cols-14 border-b">
+                        <div class="border-accent hover:bg-secondary/50 grid grid-cols-14 border-b transition-colors">
                             <div class="col-span-3 px-4 py-2">
                                 {{ group.movies[0].title }}
                             </div>
@@ -261,7 +261,7 @@
                             <div
                                 v-for="item in group.movies"
                                 :key="item.id"
-                                class="border-accent/50 bg-secondary/20 grid grid-cols-14 border-b">
+                                class="border-accent/50 hover:bg-secondary/50 grid grid-cols-14 border-b transition-colors">
                                 <div class="col-span-3 px-4 py-2">
                                     <span class="text-secondary-content mr-2 text-sm">
                                         {{ getInstanceName(item.sourceInstanceId) }}:
@@ -676,7 +676,7 @@ const truncate = (str: string | null | undefined, len: number): string => {
 const getEmbeddedBadgeClasses = (sub: IEmbeddedSubtitle): string => {
     if (!sub.isTextBased) {
         // Image-based (PGS/VobSub) - gray, non-clickable
-        return 'cursor-not-allowed text-gray-400 border-gray-500 bg-gray-700/50 opacity-60'
+        return 'cursor-not-allowed text-secondary-content/50 border-secondary-content/30 bg-secondary/30 opacity-60'
     }
     if (sub.isExtracted) {
         // Extracted - green tint

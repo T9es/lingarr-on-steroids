@@ -136,7 +136,7 @@
                     </button>
                     <button
                         @click="confirmReset"
-                        class="rounded-md bg-red-500/80 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-500">
+                        class="rounded-md bg-red-500/80 px-4 py-2 text-sm font-medium text-primary-content transition-colors hover:bg-red-500">
                         {{ translate('statistics.resetLayout') || 'Reset' }}
                     </button>
                 </div>

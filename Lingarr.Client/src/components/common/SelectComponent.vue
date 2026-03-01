@@ -29,7 +29,7 @@
                 <input
                     v-model="searchQuery"
                     type="text"
-                    class="border-border text-primary-content w-full rounded border bg-transparent px-2 py-1 text-sm outline-hidden"
+                    class="border-border text-primary-content w-full rounded border bg-transparent px-2 py-1 text-sm outline-hidden focus:ring-2 focus:ring-accent focus:border-transparent"
                     :placeholder="translate('settings.services.modelSearchPlaceholder')" />
             </li>
             <li v-if="!filteredOptions.length" class="text-primary-content p-3">

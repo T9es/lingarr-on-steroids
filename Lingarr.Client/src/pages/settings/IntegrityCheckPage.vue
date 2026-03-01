@@ -10,7 +10,7 @@
                     <div class="flex items-center justify-center">
                         <button
                             :disabled="isRunning"
-                            class="bg-accent hover:bg-accent/80 disabled:bg-base-300 rounded px-6 py-3 font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:text-gray-500"
+                            class="bg-accent hover:bg-accent/80 disabled:bg-base-300 rounded px-6 py-3 font-semibold text-primary-content transition-colors disabled:cursor-not-allowed disabled:text-primary-content/50"
                             @click="startBulkCheck">
                             <span v-if="isRunning" class="flex items-center">
                                 <svg
@@ -128,7 +128,7 @@
                     <div class="flex items-center justify-center">
                         <button
                             :disabled="subtitleTypeHasStarted"
-                            class="bg-accent hover:bg-accent/80 disabled:bg-base-300 rounded px-6 py-3 font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:text-gray-500"
+                            class="bg-accent hover:bg-accent/80 disabled:bg-base-300 rounded px-6 py-3 font-semibold text-primary-content transition-colors disabled:cursor-not-allowed disabled:text-primary-content/50"
                             @click="startSubtitleTypeValidation">
                             <span v-if="subtitleTypeHasStarted" class="flex items-center">
                                 <svg
@@ -190,7 +190,7 @@
                             <div class="flex items-center justify-between">
                                 <h4 class="font-semibold">Flagged Incomplete Subtitles</h4>
                                 <button
-                                    class="bg-accent hover:bg-accent/80 rounded px-4 py-2 text-sm font-semibold text-white"
+                                    class="bg-accent hover:bg-accent/80 rounded px-4 py-2 text-sm font-semibold text-primary-content"
                                     @click="requeueAllIncomplete">
                                     Auto-fix All
                                 </button>
@@ -221,7 +221,7 @@
                                                 </span>
                                                 <span
                                                     v-if="item.dismissed"
-                                                    class="rounded bg-gray-500/20 px-2 py-0.5 text-xs text-gray-400">
+                                                    class="rounded bg-secondary-content/20 px-2 py-0.5 text-xs text-secondary-content/70">
                                                     Dismissed
                                                 </span>
                                             </div>
@@ -247,7 +247,7 @@
                                             </button>
                                             <button
                                                 v-if="!item.isQueued && !item.dismissed"
-                                                class="rounded bg-gray-500/20 px-2 py-1 text-xs text-gray-400 hover:bg-gray-500/30"
+                                                class="rounded bg-secondary-content/20 px-2 py-1 text-xs text-secondary-content/70 hover:bg-secondary-content/30"
                                                 @click.stop="dismissSubtitleType(item)">
                                                 Dismiss
                                             </button>
@@ -294,7 +294,7 @@
                     <div class="flex items-center justify-center">
                         <button
                             :disabled="assHasStarted"
-                            class="bg-accent hover:bg-accent/80 disabled:bg-base-300 rounded px-6 py-3 font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:text-gray-500"
+                            class="bg-accent hover:bg-accent/80 disabled:bg-base-300 rounded px-6 py-3 font-semibold text-primary-content transition-colors disabled:cursor-not-allowed disabled:text-primary-content/50"
                             @click="startAssVerification">
                             <span v-if="assHasStarted" class="flex items-center">
                                 <svg
@@ -353,7 +353,7 @@
                             <div class="flex items-center justify-between">
                                 <h4 class="font-semibold">Flagged Files</h4>
                                 <button
-                                    class="bg-accent hover:bg-accent/80 rounded px-4 py-2 text-sm font-semibold text-white"
+                                    class="bg-accent hover:bg-accent/80 rounded px-4 py-2 text-sm font-semibold text-primary-content"
                                     @click="requeueAll">
                                     Requeue All for Translation
                                 </button>

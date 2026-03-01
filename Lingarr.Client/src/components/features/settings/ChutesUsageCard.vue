@@ -5,7 +5,7 @@
                 <p class="font-semibold">
                     {{ translate('settings.services.chutesUsageTitle') }}
                 </p>
-                <p class="text-sm text-gray-400">
+                <p class="text-sm text-secondary-content/80">
                     <span v-if="usage?.plan">
                         {{ translate('settings.services.chutesPlan', { plan: usage.plan }) }}
                     </span>
@@ -83,7 +83,7 @@
                 </div>
             </div>
             <div class="mt-2 text-sm">
-                <p class="text-gray-400">
+                <p class="text-secondary-content/80">
                     {{ translate('settings.services.lastSynced') }}
                 </p>
                 <p class="font-semibold">

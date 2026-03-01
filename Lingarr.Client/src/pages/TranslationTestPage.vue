@@ -132,14 +132,14 @@
                 <div class="flex gap-2">
                     <button
                         v-if="!isRunning"
-                        class="bg-accent hover:bg-accent/80 cursor-pointer rounded px-4 py-2 text-sm font-medium text-white transition"
+                        class="bg-accent hover:bg-accent/80 cursor-pointer rounded px-4 py-2 text-sm font-medium text-primary-content transition"
                         :disabled="!canStart"
                         @click="startTest">
                         {{ translate('translationTest.startTest') }}
                     </button>
                     <button
                         v-else
-                        class="bg-error hover:bg-error/80 cursor-pointer rounded px-4 py-2 text-sm font-medium text-white transition"
+                        class="bg-error hover:bg-error/80 cursor-pointer rounded px-4 py-2 text-sm font-medium text-primary-content transition"
                         @click="cancelTest">
                         {{ translate('translationTest.cancel') }}
                     </button>
@@ -189,7 +189,7 @@
                                 ⬇ Original
                             </button>
                             <button
-                                class="bg-accent hover:bg-accent/80 rounded px-2 py-1 text-xs text-white transition"
+                                class="bg-accent hover:bg-accent/80 rounded px-2 py-1 text-xs text-primary-content transition"
                                 @click="downloadTranslated">
                                 ⬇ Translated
                             </button>
@@ -226,7 +226,7 @@
                 <div class="bg-tertiary flex items-center justify-between px-4 py-2">
                     <h2 class="text-sm font-semibold">{{ translate('translationTest.logs') }}</h2>
                     <button
-                        class="bg-warning hover:bg-warning/80 cursor-pointer rounded px-2 py-1 text-xs text-white transition"
+                        class="bg-warning hover:bg-warning/80 cursor-pointer rounded px-2 py-1 text-xs text-primary-content transition"
                         @click="clearLogs">
                         {{ translate('translationTest.clearLogs') }}
                     </button>
@@ -237,7 +237,7 @@
                     class="bg-primary h-[40vh] overflow-y-auto p-2 font-mono text-xs">
                     <div
                         v-if="logs.length === 0"
-                        class="flex h-full items-center justify-center text-gray-500">
+                        class="flex h-full items-center justify-center text-secondary-content/60">
                         {{ translate('translationTest.waitingForLogs') }}
                     </div>
 
@@ -245,14 +245,14 @@
                         v-for="(log, index) in logs"
                         :key="index"
                         class="border-secondary/30 border-b py-1">
-                        <span class="mr-2 text-gray-400">{{ formatTime(log.timestamp) }}</span>
+                        <span class="mr-2 text-secondary-content/70">{{ formatTime(log.timestamp) }}</span>
                         <span :class="getLogLevelClass(log.level)" class="mr-2 font-semibold">
                             [{{ log.level }}]
                         </span>
                         <span>{{ log.message }}</span>
                         <div
                             v-if="log.details"
-                            class="ml-4 text-xs whitespace-pre-wrap text-gray-500">
+                            class="ml-4 text-xs whitespace-pre-wrap text-secondary-content/60">
                             {{ log.details }}
                         </div>
                     </div>

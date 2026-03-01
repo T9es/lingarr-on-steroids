@@ -76,13 +76,13 @@
                     <!-- Dev Build Badge - shown when running a dev/alpha/beta build -->
                     <BadgeComponent
                         v-if="instanceStore.getVersion.isDevBuild"
-                        classes="text-white border-purple-200 bg-purple-500/50">
+                        classes="text-primary-content border-purple-300 bg-purple-500/30">
                         {{ translate('common.devBuild') }}
                     </BadgeComponent>
                     <!-- Update Available Badge - shown for release builds with updates -->
                     <BadgeComponent
                         v-else-if="instanceStore.getVersion.newVersion"
-                        classes="text-white border-green-200 bg-green-500/50">
+                        classes="text-primary-content border-green-300 bg-green-500/30">
                         {{
                             translate('common.updateAvailable').format({
                                 version: instanceStore.getVersion.latestVersion
@@ -90,7 +90,7 @@
                         }}
                     </BadgeComponent>
                     <!-- Current Version Badge - shown for release builds on latest version -->
-                    <BadgeComponent v-else classes="text-white border-gray-200 bg-gray-500/50">
+                    <BadgeComponent v-else classes="text-primary-content border-primary-content/30 bg-secondary/50">
                         {{
                             translate('common.currentVersion').format({
                                 version: instanceStore.getVersion.currentVersion
@@ -101,7 +101,7 @@
                         href="https://github.com/lingarr-translate/lingarr"
                         target="_blank"
                         rel="noopener noreferrer"
-                        class="pointer-events-auto flex items-center gap-1.5 text-xs text-gray-400 transition-colors hover:text-white">
+                        class="pointer-events-auto flex items-center gap-1.5 text-xs text-primary-content/60 transition-colors hover:text-primary-content">
                         <GithubIcon class="h-3.5 w-3.5" />
                         <span>{{ translate('common.basedOnLingarr') }}</span>
                     </a>

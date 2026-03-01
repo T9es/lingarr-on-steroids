@@ -276,7 +276,7 @@ const truncate = (str: string | null | undefined, len: number): string => {
 const getEmbeddedBadgeClasses = (sub: IEmbeddedSubtitle): string => {
     if (!sub.isTextBased) {
         // Image-based (PGS/VobSub) - gray, non-clickable
-        return 'cursor-not-allowed text-gray-400 border-gray-500 bg-gray-700/50 opacity-60'
+        return 'cursor-not-allowed text-secondary-content/50 border-secondary-content/30 bg-secondary/30 opacity-60'
     }
     if (sub.isExtracted) {
         // Extracted - green tint

@@ -4,7 +4,7 @@
             ref="excludeClickOutside"
             class="border-accent flex h-12 cursor-pointer items-center justify-between rounded-md border px-4 py-2"
             @click="toggleDropdown">
-            <span v-if="selectedItems.length === 0" class="text-gray-400">
+            <span v-if="selectedItems.length === 0" class="text-primary-content/50">
                 {{ translate('settings.translate.languageSelectPlaceholder') }}
             </span>
             <div v-else class="flex max-h-12 flex-wrap gap-2 overflow-auto">

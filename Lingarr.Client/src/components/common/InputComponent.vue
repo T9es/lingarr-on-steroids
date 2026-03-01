@@ -90,7 +90,7 @@ onMounted(() => {
 const showPassword = ref(false)
 const inputClasses = computed(() => [
     '[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none',
-    'w-full rounded-md border bg-transparent !text-primary-content outline-hidden transition-colors duration-200',
+    'w-full rounded-md border bg-transparent !text-primary-content outline-hidden transition-colors duration-200 focus:ring-2 focus:ring-accent focus:border-transparent',
     {
         'px-6 py-3 text-lg': props.size === 'lg',
         'px-4 py-2': props.size === 'md',
