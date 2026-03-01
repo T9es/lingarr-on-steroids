@@ -658,7 +658,9 @@
       "viewOnGithub": "View on GitHub",
       "loadingDocs": "Loading documentation...",
       "failedToLoad": "Failed to load documentation: ",
-      "checkUpdates": "Check for Updates"
+      "checkUpdates": "Check for Updates",
+      "devBuild": "Dev Build",
+      "updateAvailable": "Update Available"
     },
     "welcome": {
       "title": "Welcome to Lingarr",

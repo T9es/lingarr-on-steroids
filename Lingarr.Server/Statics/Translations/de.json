@@ -658,7 +658,9 @@
       "viewOnGithub": "Auf GitHub ansehen",
       "loadingDocs": "Dokumentation laden...",
       "failedToLoad": "Dokumentation konnte nicht geladen werden: ",
-      "checkUpdates": "Nach Updates suchen"
+      "checkUpdates": "Nach Updates suchen",
+      "devBuild": "Entwickler-Build",
+      "updateAvailable": "Update verfügbar"
     }
   },
   "services": {

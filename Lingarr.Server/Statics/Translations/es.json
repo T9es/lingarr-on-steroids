@@ -658,7 +658,9 @@
       "viewOnGithub": "Ver en GitHub",
       "loadingDocs": "Cargando documentación...",
       "failedToLoad": "Error al cargar la documentación: ",
-      "checkUpdates": "Buscar actualizaciones"
+      "checkUpdates": "Buscar actualizaciones",
+      "devBuild": "Dev Build",
+      "updateAvailable": "Actualización disponible"
     }
   },
   "services": {

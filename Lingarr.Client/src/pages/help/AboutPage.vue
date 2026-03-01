@@ -17,12 +17,12 @@
                         <span
                             v-if="version.isDevBuild"
                             class="rounded-full border border-orange-500/30 bg-orange-500/20 px-2.5 py-0.5 text-xs font-medium text-orange-400">
-                            Dev Build
+                            {{ translate('help.about.devBuild') }}
                         </span>
                         <span
                             v-if="version.newVersion"
                             class="rounded-full border border-green-500/30 bg-green-500/20 px-2.5 py-0.5 text-xs font-medium text-green-400">
-                            Update Available
+                            {{ translate('help.about.updateAvailable') }}
                         </span>
                     </div>
                     <div class="flex items-center gap-3">

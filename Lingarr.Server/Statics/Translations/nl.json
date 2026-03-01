@@ -658,7 +658,9 @@
       "viewOnGithub": "Bekijk op GitHub",
       "loadingDocs": "Documentatie laden...",
       "failedToLoad": "Documentatie laden mislukt: ",
-      "checkUpdates": "Controleren op updates"
+      "checkUpdates": "Controleren op updates",
+      "devBuild": "Dev-versie",
+      "updateAvailable": "Update beschikbaar"
     }
   },
   "services": {
