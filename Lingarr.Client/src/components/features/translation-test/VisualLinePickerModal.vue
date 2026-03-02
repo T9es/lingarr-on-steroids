@@ -1,18 +1,28 @@
 <template>
-    <ModalComponent :is-open="true" @close="$emit('close')">
+    <ModalComponent :is-open="true" size="lg" @close="$emit('close')">
         <template #header>
             {{ translate('translationTest.selectLines') }}
         </template>
 
         <div class="space-y-2">
             <div class="flex items-center justify-between border-b border-secondary/30 pb-2">
-                <span class="text-secondary-content text-sm">
-                    {{ selectedCount }} {{ translate('translationTest.linesSelected') }}
-                    ({{ startLine }}-{{ endLine }})
-                </span>
-                <button @click="selectAll" class="text-accent text-sm hover:underline">
-                    {{ translate('translationTest.selectAll') }}
-                </button>
+                <div class="flex items-center gap-4">
+                    <span class="text-secondary-content text-sm">
+                        {{ selectedCount }} {{ translate('translationTest.linesSelected') }}
+                        ({{ startLine }}-{{ endLine }})
+                    </span>
+                    <span class="text-secondary-content text-xs">
+                        {{ translate('translationTest.shiftClickHint') }}
+                    </span>
+                </div>
+                <div class="flex gap-2">
+                    <button @click="clearSelection" class="text-secondary-content text-sm hover:underline">
+                        {{ translate('translationTest.clearSelection') }}
+                    </button>
+                    <button @click="selectAll" class="text-accent text-sm hover:underline">
+                        {{ translate('translationTest.selectAll') }}
+                    </button>
+                </div>
             </div>
 
             <div v-if="loading" class="flex h-64 items-center justify-center">
@@ -24,12 +34,12 @@
             <div
                 v-else
                 ref="scrollContainer"
-                class="h-80 overflow-y-auto font-mono text-xs"
+                class="max-h-[70vh] overflow-y-auto font-mono text-xs"
                 @scroll="onScroll">
                 <div
                     v-for="line in visibleLines"
                     :key="line.position"
-                    @click="toggleLine(line.position)"
+                    @click="toggleLine(line.position, $event)"
                     :class="{
                         'bg-accent/20': isInRange(line.position),
                         'bg-primary hover:bg-accent/10': !isInRange(line.position)
@@ -41,7 +51,7 @@
                     <span class="w-20 text-secondary-content/60">
                         {{ line.startTime }}
                     </span>
-                    <span class="flex-1 whitespace-pre-wrap">{{ line.text }}</span>
+                    <span class="flex-1 whitespace-pre-wrap text-primary-content">{{ line.text }}</span>
                 </div>
             </div>
         </div>
@@ -90,6 +100,7 @@ const lines = ref<SubtitleLine[]>([])
 const loading = ref(true)
 const startLine = ref(props.selectedStart ?? 1)
 const endLine = ref(props.selectedEnd ?? 1)
+const lastClicked = ref<number | null>(null)
 const scrollContainer = ref<HTMLElement | null>(null)
 const scrollTop = ref(0)
 const lineHeight = 24
@@ -107,14 +118,24 @@ function isInRange(position: number): boolean {
     return position >= startLine.value && position <= endLine.value
 }
 
-function toggleLine(position: number) {
-    if (position < startLine.value) {
+function toggleLine(position: number, event: MouseEvent) {
+    if (event.shiftKey && lastClicked.value !== null) {
+        startLine.value = Math.min(lastClicked.value, position)
+        endLine.value = Math.max(lastClicked.value, position)
+    } else if (isInRange(position) && startLine.value !== endLine.value) {
         startLine.value = position
-    } else if (position > endLine.value) {
         endLine.value = position
-    } else if (startLine.value === endLine.value) {
-        endLine.value = position
+    } else if (position < startLine.value || position > endLine.value) {
+        if (position < startLine.value) startLine.value = position
+        else endLine.value = position
     }
+    lastClicked.value = position
+}
+
+function clearSelection() {
+    startLine.value = 1
+    endLine.value = 1
+    lastClicked.value = null
 }
 
 function selectAll() {

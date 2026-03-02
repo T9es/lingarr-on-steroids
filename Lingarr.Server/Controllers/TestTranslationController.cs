@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Lingarr.Core.Data;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Interfaces.Services;
@@ -258,41 +259,255 @@ public class TestTranslationController : ControllerBase
     }
 
     /// <summary>
-    /// Get subtitle preview for visual line picker.
+    /// Search with hierarchical show→season→episode structure and fuzzy matching.
+    /// Supports queries like "juju e4" to find specific episodes.
     /// </summary>
-    [HttpGet("subtitle-preview")]
-    public async Task<ActionResult> GetSubtitlePreview(
-        string path,
+    [HttpGet("search-hierarchical")]
+    public async Task<ActionResult<MediaSearchResult>> SearchHierarchical(
+        string query,
+        int limit = 20,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrEmpty(path))
+        if (string.IsNullOrWhiteSpace(query))
         {
-            return BadRequest(new { Message = "Path is required" });
+            return Ok(new MediaSearchResult());
         }
+
+        var normalized = query.Trim().ToLowerInvariant();
+        limit = Math.Clamp(limit, 1, 50);
+
+        var result = new MediaSearchResult();
 
         try
         {
-            var subtitles = await _subtitleService.ReadSubtitles(path);
+            var episodePattern = ParseEpisodeQuery(normalized);
             
-            var lines = subtitles.Select(s => new
-            {
-                Position = s.Position,
-                StartTime = FormatTimestamp(s.StartTime),
-                EndTime = FormatTimestamp(s.EndTime),
-                Text = string.Join(" ", s.Lines)
-            }).ToList();
+            var movies = await SearchMovies(normalized, limit, cancellationToken);
+            result.Movies = movies
+                .Select(m => new MovieSearchResult
+                {
+                    Title = m.DisplayTitle,
+                    MovieId = m.MediaId,
+                    PosterPath = m.PosterPath,
+                    Year = m.Year,
+                    Subtitles = m.Subtitles.Select(s => new SubtitleInfo
+                    {
+                        Path = s.Path,
+                        Language = s.Language,
+                        FileName = s.FileName
+                    }).ToList()
+                })
+                .ToList();
 
-            return Ok(new
-            {
-                TotalLines = subtitles.Count,
-                Lines = lines
-            });
+            var shows = await SearchShows(normalized, episodePattern, limit, cancellationToken);
+            result.Shows = shows;
+
+            return Ok(result);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to read subtitle file: {Path}", path);
-            return StatusCode(500, new { Message = $"Failed to read subtitle file: {ex.Message}" });
+            _logger.LogError(ex, "Error searching media for test translation with query {Query}", query);
+            return StatusCode(500, "Failed to search media for test translation.");
         }
+    }
+
+    private EpisodeQueryPattern? ParseEpisodeQuery(string query)
+    {
+        var patterns = new[]
+        {
+            Regex.Match(query, @"s(\d+)\s*e(\d+)"),
+            Regex.Match(query, @"s(\d+)e(\d+)"),
+            Regex.Match(query, @"(\d+)x(\d+)"),
+            Regex.Match(query, @"\be(\d+)\b"),
+            Regex.Match(query, @"ep(\d+)\b")
+        };
+
+        foreach (var match in patterns)
+        {
+            if (match.Success)
+            {
+                var season = match.Groups.Count > 1 && int.TryParse(match.Groups[1].Value, out var s) ? s : (int?)null;
+                var episode = int.TryParse(match.Groups[^1].Value, out var e) ? e : (int?)null;
+                
+                var showTitle = Regex.Replace(query, @"(s\d+\s*e\d+|s\d+e\d+|\d+x\d+|\bep\d+|\be\d+)\b", "").Trim();
+                
+                return new EpisodeQueryPattern
+                {
+                    ShowTitle = showTitle,
+                    SeasonNumber = season,
+                    EpisodeNumber = episode
+                };
+            }
+        }
+
+        return null;
+    }
+
+    private async Task<List<TestTranslationSearchResult>> SearchMovies(
+        string query, 
+        int limit, 
+        CancellationToken cancellationToken)
+    {
+        var movieQuery = _dbContext.Movies
+            .Include(m => m.Images)
+            .AsQueryable();
+
+        movieQuery = movieQuery.Where(m =>
+            EF.Functions.ILike(m.Title, $"%{query}%") ||
+            (m.FileName != null && EF.Functions.ILike(m.FileName, $"%{query}%")));
+
+        var movies = await movieQuery
+            .OrderByDescending(m => m.DateAdded)
+            .Take(limit)
+            .ToListAsync(cancellationToken);
+
+        var results = new List<TestTranslationSearchResult>();
+
+        foreach (var movie in movies)
+        {
+            if (string.IsNullOrEmpty(movie.Path))
+                continue;
+
+            var subtitles = await _subtitleService.GetAllSubtitles(movie.Path);
+            if (subtitles.Count == 0)
+                continue;
+
+            var posterImage = movie.Images.FirstOrDefault(img => img.Type == "poster");
+            var year = ExtractYearFromPath(movie.Path);
+
+            results.Add(new TestTranslationSearchResult
+            {
+                DisplayTitle = movie.Title,
+                MediaType = MediaType.Movie,
+                MediaId = movie.Id,
+                PosterPath = posterImage != null ? $"movie{posterImage.Path}" : null,
+                Year = year,
+                Subtitles = subtitles
+            });
+        }
+
+        return results;
+    }
+
+    private async Task<List<ShowSearchResult>> SearchShows(
+        string query,
+        EpisodeQueryPattern? episodePattern,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        var showTitle = episodePattern?.ShowTitle ?? query;
+        
+        var showQuery = _dbContext.Shows
+            .Include(s => s.Images)
+            .Include(s => s.Seasons)
+            .ThenInclude(se => se.Episodes)
+            .AsQueryable();
+
+        showQuery = showQuery.Where(s => EF.Functions.ILike(s.Title, $"%{showTitle}%"));
+
+        var shows = await showQuery
+            .OrderByDescending(s => s.DateAdded)
+            .Take(limit)
+            .ToListAsync(cancellationToken);
+
+        var results = new List<ShowSearchResult>();
+
+        foreach (var show in shows)
+        {
+            if (string.IsNullOrEmpty(show.Path))
+                continue;
+
+            var posterImage = show.Images.FirstOrDefault(img => img.Type == "poster");
+            var year = ExtractYearFromPath(show.Path);
+
+            var showResult = new ShowSearchResult
+            {
+                Title = show.Title,
+                ShowId = show.Id,
+                PosterPath = posterImage != null ? $"show{posterImage.Path}" : null,
+                Year = year,
+                Seasons = []
+            };
+
+            var seasonGroups = show.Seasons
+                .Where(se => se.Episodes.Any())
+                .GroupBy(se => se.SeasonNumber);
+
+            foreach (var seasonGroup in seasonGroups)
+            {
+                var seasonPreview = new SeasonPreview
+                {
+                    SeasonNumber = seasonGroup.Key,
+                    Episodes = []
+                };
+
+                foreach (var season in seasonGroup)
+                {
+                    var episodes = season.Episodes
+                        .Where(e => e.Path != null || e.Season.Path != null)
+                        .OrderBy(e => e.EpisodeNumber);
+
+                    foreach (var episode in episodes)
+                    {
+                        if (episodePattern != null)
+                        {
+                            if (episodePattern.EpisodeNumber.HasValue && 
+                                episode.EpisodeNumber != episodePattern.EpisodeNumber.Value)
+                                continue;
+                            
+                            if (episodePattern.SeasonNumber.HasValue && 
+                                season.SeasonNumber != episodePattern.SeasonNumber.Value)
+                                continue;
+                        }
+
+                        var basePath = episode.Path ?? season.Path;
+                        if (string.IsNullOrEmpty(basePath))
+                            continue;
+
+                        var subtitles = await _subtitleService.GetAllSubtitles(basePath);
+                        if (subtitles.Count == 0)
+                            continue;
+
+                        if (!string.IsNullOrEmpty(episode.FileName))
+                        {
+                            var fileName = episode.FileName.ToLowerInvariant();
+                            subtitles = subtitles
+                                .Where(s => s.FileName.ToLowerInvariant().Contains(fileName))
+                                .ToList();
+
+                            if (subtitles.Count == 0)
+                                continue;
+                        }
+
+                        seasonPreview.Episodes.Add(new EpisodePreview
+                        {
+                            EpisodeId = episode.Id,
+                            EpisodeNumber = episode.EpisodeNumber,
+                            Title = episode.Title,
+                            SeasonNumber = season.SeasonNumber,
+                            Subtitles = subtitles.Select(s => new SubtitleInfo
+                            {
+                                Path = s.Path,
+                                Language = s.Language,
+                                FileName = s.FileName
+                            }).ToList()
+                        });
+                    }
+                }
+
+                if (seasonPreview.Episodes.Any())
+                {
+                    showResult.Seasons.Add(seasonPreview);
+                }
+            }
+
+            if (showResult.Seasons.Any())
+            {
+                results.Add(showResult);
+            }
+        }
+
+        return results;
     }
 
 private static string FormatTimestamp(int milliseconds)

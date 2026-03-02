@@ -95,7 +95,12 @@
       "viewExisting": "Vorhandene anzeigen",
       "createNew": "Neuen Test erstellen"
     },
-    "confirmClearAll": "Möchten Sie wirklich den gesamten Testverlauf löschen?"
+    "confirmClearAll": "Möchten Sie wirklich den gesamten Testverlauf löschen?",
+    "shiftClickHint": "Umschalttaste+Klick zum Erweitern",
+    "clearSelection": "Auswahl löschen",
+    "episodesWithSubtitles": "Episoden mit Untertiteln",
+    "season": "Staffel",
+    "episodes": "Episoden"
   },
   "statistics": {
     "notAvailable": "Nicht verfügbar",

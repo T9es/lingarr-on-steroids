@@ -95,7 +95,12 @@
       "viewExisting": "View Existing",
       "createNew": "Create New Test"
     },
-    "confirmClearAll": "Are you sure you want to clear all test history?"
+    "confirmClearAll": "Are you sure you want to clear all test history?",
+    "shiftClickHint": "Shift+click to extend range",
+    "clearSelection": "Clear selection",
+    "episodesWithSubtitles": "episodes with subtitles",
+    "season": "Season",
+    "episodes": "episodes"
   },
   "statistics": {
     "notAvailable": "Not available",

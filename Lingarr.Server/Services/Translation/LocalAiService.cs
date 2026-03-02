@@ -18,6 +18,7 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
 {
     private readonly HttpClient _httpClient;
     private readonly IDashboardService? _dashboardService;
+    private readonly ITokenUsageService? _tokenUsageService;
     private const string ServiceName = "localai";
     private string? _model;
     private string? _endpoint;
@@ -36,11 +37,13 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
         ISettingService settings,
         HttpClient httpClient,
         ILogger<LocalAiService> logger,
-        IDashboardService? dashboardService = null)
+        IDashboardService? dashboardService = null,
+        ITokenUsageService? tokenUsageService = null)
         : base(settings, logger, "/app/Statics/ai_languages.json")
     {
         _httpClient = httpClient;
         _dashboardService = dashboardService;
+        _tokenUsageService = tokenUsageService;
     }
 
     /// <summary>
@@ -135,6 +138,12 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
         CancellationToken cancellationToken)
     {
         await InitializeAsync(sourceLanguage, targetLanguage);
+
+        var tokenLimitEnabled = await _settings.GetSetting(SettingKeys.Translation.TokenLimits.LocalAiTokenLimitEnabled);
+        if (_tokenUsageService != null && tokenLimitEnabled == "true")
+        {
+            await _tokenUsageService.EnsureTokensAvailableAsync(ServiceName, cancellationToken);
+        }
 
         text = ApplyContextIfEnabled(text, contextLinesBefore, contextLinesAfter);
         using var retry = new CancellationTokenSource();

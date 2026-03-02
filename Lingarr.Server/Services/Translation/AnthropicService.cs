@@ -18,6 +18,7 @@ public class AnthropicService : BaseLanguageService, ITranslationService, IBatch
     private readonly string? _endpoint = "https://api.anthropic.com/v1";
     private readonly HttpClient _httpClient;
     private readonly IDashboardService? _dashboardService;
+    private readonly ITokenUsageService? _tokenUsageService;
     private const string ServiceName = "anthropic";
     private string? _model;
     private string? _prompt;
@@ -34,11 +35,13 @@ public class AnthropicService : BaseLanguageService, ITranslationService, IBatch
     public AnthropicService(ISettingService settings,
         HttpClient httpClient,
         ILogger<AnthropicService> logger,
-        IDashboardService? dashboardService = null)
+        IDashboardService? dashboardService = null,
+        ITokenUsageService? tokenUsageService = null)
         : base(settings, logger, "/app/Statics/ai_languages.json")
     {
         _httpClient = httpClient;
         _dashboardService = dashboardService;
+        _tokenUsageService = tokenUsageService;
     }
 
     /// <summary>
@@ -129,6 +132,11 @@ public class AnthropicService : BaseLanguageService, ITranslationService, IBatch
     {
         await InitializeAsync(sourceLanguage, targetLanguage);
 
+        if (_tokenUsageService != null)
+        {
+            await _tokenUsageService.EnsureTokensAvailableAsync(ServiceName, cancellationToken);
+        }
+
         text = ApplyContextIfEnabled(text, contextLinesBefore, contextLinesAfter);
         using var retry = new CancellationTokenSource();
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, retry.Token);
@@ -183,11 +191,18 @@ public class AnthropicService : BaseLanguageService, ITranslationService, IBatch
                 
                 if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var usageProp))
                 {
-                    int totalTokens = 0;
-                    if (usageProp.TryGetProperty("input_tokens", out var inputTokens)) totalTokens += inputTokens.GetInt32();
-                    if (usageProp.TryGetProperty("output_tokens", out var outputTokens)) totalTokens += outputTokens.GetInt32();
+                    int inputTokens = 0;
+                    int outputTokens = 0;
+                    if (usageProp.TryGetProperty("input_tokens", out var inputTokensProp)) inputTokens = inputTokensProp.GetInt32();
+                    if (usageProp.TryGetProperty("output_tokens", out var outputTokensProp)) outputTokens = outputTokensProp.GetInt32();
+                    int totalTokens = inputTokens + outputTokens;
                     
                     await _dashboardService.LogApiUsage(ServiceName, totalTokens > 0 ? totalTokens : null, stopwatch.ElapsedMilliseconds, true);
+                    
+                    if (_tokenUsageService != null)
+                    {
+                        await _tokenUsageService.RecordUsageAsync(ServiceName, inputTokens, outputTokens);
+                    }
                 }
                 else if (_dashboardService != null)
                 {
@@ -388,11 +403,18 @@ public class AnthropicService : BaseLanguageService, ITranslationService, IBatch
 
         if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var usageProp))
         {
-            int totalTokens = 0;
-            if (usageProp.TryGetProperty("input_tokens", out var inputTokens)) totalTokens += inputTokens.GetInt32();
-            if (usageProp.TryGetProperty("output_tokens", out var outputTokens)) totalTokens += outputTokens.GetInt32();
+            int inputTokens = 0;
+            int outputTokens = 0;
+            if (usageProp.TryGetProperty("input_tokens", out var inputTokensProp)) inputTokens = inputTokensProp.GetInt32();
+            if (usageProp.TryGetProperty("output_tokens", out var outputTokensProp)) outputTokens = outputTokensProp.GetInt32();
+            int totalTokens = inputTokens + outputTokens;
             
             await _dashboardService.LogApiUsage(ServiceName, totalTokens > 0 ? totalTokens : null, stopwatch.ElapsedMilliseconds, true);
+            
+            if (_tokenUsageService != null)
+            {
+                await _tokenUsageService.RecordUsageAsync(ServiceName, inputTokens, outputTokens);
+            }
         }
         else if (_dashboardService != null)
         {

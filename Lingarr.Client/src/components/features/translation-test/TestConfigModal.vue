@@ -58,7 +58,7 @@
                         type="number"
                         min="1"
                         :max="totalLines"
-                        class="bg-primary border-accent w-24 rounded border px-3 py-2 text-sm" />
+                        class="bg-primary border-accent text-primary-content w-24 rounded border px-3 py-2 text-sm" />
                     <span class="text-secondary-content ml-2 text-sm">
                         {{ translate('translationTest.ofLines', { count: totalLines }) }}
                     </span>
@@ -70,14 +70,14 @@
                         type="number"
                         min="1"
                         :max="totalLines"
-                        class="bg-primary border-accent w-20 rounded border px-3 py-2 text-sm" />
+                        class="bg-primary border-accent text-primary-content w-20 rounded border px-3 py-2 text-sm" />
                     <span class="text-secondary-content">{{ translate('translationTest.to') }}</span>
                     <input
                         v-model.number="endLine"
                         type="number"
                         min="1"
                         :max="totalLines"
-                        class="bg-primary border-accent w-20 rounded border px-3 py-2 text-sm" />
+                        class="bg-primary border-accent text-primary-content w-20 rounded border px-3 py-2 text-sm" />
                     <button
                         @click="showVisualPicker = true"
                         class="bg-accent text-primary-content rounded px-3 py-2 text-sm">
@@ -88,12 +88,12 @@
 
             <div class="grid grid-cols-2 gap-4">
                 <div>
-                    <label class="mb-2 block text-sm font-medium">
+                    <label class="mb-2 block text-sm font-medium text-primary-content">
                         {{ translate('translationTest.sourceLanguage') }}
                     </label>
                     <select
                         v-model="sourceLanguage"
-                        class="bg-primary border-accent w-full rounded border px-3 py-2 text-sm">
+                        class="bg-primary border-accent text-primary-content w-full rounded border px-3 py-2 text-sm">
                         <option
                             v-for="lang in availableSourceLanguages"
                             :key="lang.code"
@@ -103,12 +103,12 @@
                     </select>
                 </div>
                 <div>
-                    <label class="mb-2 block text-sm font-medium">
+                    <label class="mb-2 block text-sm font-medium text-primary-content">
                         {{ translate('translationTest.targetLanguage') }}
                     </label>
                     <select
                         v-model="targetLanguage"
-                        class="bg-primary border-accent w-full rounded border px-3 py-2 text-sm">
+                        class="bg-primary border-accent text-primary-content w-full rounded border px-3 py-2 text-sm">
                         <option
                             v-for="lang in availableTargetLanguages"
                             :key="lang.code"

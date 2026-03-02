@@ -6,7 +6,8 @@
                 class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
                 @click.self="$emit('close')">
                 <div
-                    class="bg-secondary max-h-[90vh] w-full max-w-2xl overflow-hidden rounded-lg shadow-xl">
+                    :class="sizeClasses"
+                    class="bg-secondary max-h-[90vh] w-full overflow-hidden rounded-lg shadow-xl">
                     <div
                         class="border-accent flex items-center justify-between border-b px-4 py-3">
                         <h2 class="text-lg font-semibold">
@@ -42,13 +43,28 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{
+import { computed } from 'vue'
+
+const props = withDefaults(defineProps<{
     isOpen: boolean
-}>()
+    size?: 'sm' | 'md' | 'lg' | 'xl'
+}>(), {
+    size: 'md'
+})
 
 defineEmits<{
     close: []
 }>()
+
+const sizeClasses = computed(() => {
+    switch (props.size) {
+        case 'sm': return 'max-w-md'
+        case 'md': return 'max-w-2xl'
+        case 'lg': return 'max-w-4xl'
+        case 'xl': return 'max-w-6xl'
+        default: return 'max-w-2xl'
+    }
+})
 </script>
 
 <style scoped>

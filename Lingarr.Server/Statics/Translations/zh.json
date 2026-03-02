@@ -95,7 +95,12 @@
       "viewExisting": "查看现有",
       "createNew": "创建新测试"
     },
-    "confirmClearAll": "您确定要清除所有测试历史吗？"
+    "confirmClearAll": "您确定要清除所有测试历史吗？",
+    "shiftClickHint": "Shift+ 点击以扩展范围",
+    "clearSelection": "清除选择",
+    "episodesWithSubtitles": "有字幕的剧集",
+    "season": "季",
+    "episodes": "集"
   },
   "statistics": {
     "notAvailable": "不可用",

@@ -20,6 +20,7 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
     private readonly string? _endpoint = "https://generativelanguage.googleapis.com/v1beta";
     private readonly HttpClient _httpClient;
     private readonly IDashboardService? _dashboardService;
+    private readonly ITokenUsageService? _tokenUsageService;
     private const string ServiceName = "gemini";
     private string? _model;
     private string? _apiKey;
@@ -36,11 +37,13 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
         ISettingService settings,
         HttpClient httpClient,
         ILogger<GoogleGeminiService> logger,
-        IDashboardService? dashboardService = null)
+        IDashboardService? dashboardService = null,
+        ITokenUsageService? tokenUsageService = null)
         : base(settings, logger, "/app/Statics/ai_languages.json")
     {
         _httpClient = httpClient;
         _dashboardService = dashboardService;
+        _tokenUsageService = tokenUsageService;
     }
 
     /// <summary>
@@ -127,6 +130,11 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
         CancellationToken cancellationToken)
     {
         await InitializeAsync(sourceLanguage, targetLanguage);
+
+        if (_tokenUsageService != null)
+        {
+            await _tokenUsageService.EnsureTokensAvailableAsync(ServiceName, cancellationToken);
+        }
 
         text = ApplyContextIfEnabled(text, contextLinesBefore, contextLinesAfter);
         using var retry = new CancellationTokenSource();
@@ -489,6 +497,14 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
                 tokensUsed = geminiResponse.UsageMetadata.PromptTokenCount + geminiResponse.UsageMetadata.CandidatesTokenCount;
             }
             await _dashboardService.LogApiUsage(ServiceName, tokensUsed, stopwatch.ElapsedMilliseconds, true);
+        }
+
+        if (_tokenUsageService != null && geminiResponse?.UsageMetadata != null)
+        {
+            await _tokenUsageService.RecordUsageAsync(
+                ServiceName,
+                geminiResponse.UsageMetadata.PromptTokenCount,
+                geminiResponse.UsageMetadata.CandidatesTokenCount);
         }
 
         if (geminiResponse?.Candidates == null || geminiResponse.Candidates.Count == 0 ||

@@ -32,6 +32,7 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
     protected bool _initialized;
     protected readonly SemaphoreSlim _initLock = new(1, 1);
     protected readonly IDashboardService? _dashboardService;
+    protected readonly ITokenUsageService? _tokenUsageService;
 
     // retry settings
     protected int _maxRetries;
@@ -42,12 +43,14 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
         ISettingService settings,
         ILogger<OpenAiService> logger,
         HttpClient? httpClient = null,
-        IDashboardService? dashboardService = null)
+        IDashboardService? dashboardService = null,
+        ITokenUsageService? tokenUsageService = null)
         : base(settings, logger, "/app/Statics/ai_languages.json")
     {
         _httpClient = httpClient ?? new HttpClient();
         _endpoint = EndpointBase;
         _dashboardService = dashboardService;
+        _tokenUsageService = tokenUsageService;
     }
 
     /// <summary>
@@ -136,6 +139,11 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
     {
         await InitializeAsync(sourceLanguage, targetLanguage);
 
+        if (_tokenUsageService != null)
+        {
+            await _tokenUsageService.EnsureTokensAvailableAsync(ServiceName, cancellationToken);
+        }
+
         text = ApplyContextIfEnabled(text, contextLinesBefore, contextLinesAfter);
         using var retry = new CancellationTokenSource();
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, retry.Token);
@@ -215,6 +223,14 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
                         completionResponse.Usage?.TotalTokens,
                         stopwatch.ElapsedMilliseconds,
                         success: true);
+                }
+
+                if (_tokenUsageService != null && completionResponse.Usage != null)
+                {
+                    await _tokenUsageService.RecordUsageAsync(
+                        ServiceName,
+                        completionResponse.Usage.PromptTokens,
+                        completionResponse.Usage.CompletionTokens);
                 }
 
                 return completionResponse.Choices[0].Message.Content;

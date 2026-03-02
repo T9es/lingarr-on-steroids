@@ -72,6 +72,19 @@ public static class SettingKeys
             public const string RequestBuffer = "chutes_request_buffer";
         }
 
+        public static class TokenLimits
+        {
+            public const string OpenAiTokenLimit = "openai_token_limit";
+            public const string AnthropicTokenLimit = "anthropic_token_limit";
+            public const string GeminiTokenLimit = "gemini_token_limit";
+            public const string DeepSeekTokenLimit = "deepseek_token_limit";
+            public const string LocalAiTokenLimit = "localai_token_limit";
+            public const string ChutesTokenLimit = "chutes_token_limit";
+            public const string LocalAiTokenLimitEnabled = "localai_token_limit_enabled";
+            public const string ChutesMode = "chutes_mode";
+            public const string TokenLimitResetTime = "token_limit_reset_time";
+        }
+
         public static class LibreTranslate
         {
             public const string Url = "libretranslate_url";

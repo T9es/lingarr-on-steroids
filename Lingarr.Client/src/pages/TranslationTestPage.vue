@@ -26,44 +26,52 @@
                             {{ translate('common.loading') }}
                         </div>
 
-                        <div v-else-if="searchResults.length === 0 && searchQuery.trim().length >= 2" class="text-secondary-content py-4 text-center text-sm">
+                        <div v-else-if="hierarchicalSearchResults.movies.length === 0 && hierarchicalSearchResults.shows.length === 0 && searchQuery.trim().length >= 2" class="text-secondary-content py-4 text-center text-sm">
                             {{ translate('translationTest.noSearchResults') }}
                         </div>
 
-                        <div v-else class="grid max-h-80 gap-2 overflow-y-auto">
+                        <div v-else class="space-y-3 max-h-[60vh] overflow-y-auto">
+                            <!-- Movies -->
                             <div
-                                v-for="result in searchResults"
-                                :key="`${result.mediaType}-${result.mediaId}`"
+                                v-for="movie in hierarchicalSearchResults.movies"
+                                :key="`movie-${movie.movieId}`"
                                 class="bg-tertiary hover:bg-tertiary/80 cursor-pointer rounded-lg p-3 transition"
-                                @click="openConfigModal(result)">
+                                @click="openConfigModalFromMovie(movie)">
                                 <div class="flex gap-3">
                                     <img
-                                        v-if="result.posterPath"
-                                        :src="`/api/image/${result.posterPath}`"
+                                        v-if="movie.posterPath"
+                                        :src="`/api/image/${movie.posterPath}`"
                                         class="h-16 w-12 rounded object-cover"
                                         @error="($event.target as HTMLImageElement).style.display = 'none'" />
                                     <div class="flex-1">
                                         <div class="flex items-start justify-between gap-2">
-                                            <h3 class="text-sm font-semibold">{{ result.displayTitle }}</h3>
+                                            <h3 class="text-sm font-semibold text-primary-content">{{ movie.title }}</h3>
                                             <span class="bg-accent/20 text-accent rounded px-1.5 py-0.5 text-[10px]">
-                                                {{ result.mediaType === 'Movie' ? 'Movie' : 'TV' }}
+                                                Movie
                                             </span>
                                         </div>
-                                        <p v-if="result.year" class="text-secondary-content text-xs">{{ result.year }}</p>
+                                        <p v-if="movie.year" class="text-secondary-content text-xs">{{ movie.year }}</p>
                                         <div class="mt-1 flex flex-wrap gap-1">
                                             <span
-                                                v-for="subtitle in result.subtitles.slice(0, 4)"
+                                                v-for="subtitle in movie.subtitles.slice(0, 4)"
                                                 :key="subtitle.path"
                                                 class="bg-primary text-primary-content rounded px-1.5 py-0.5 text-[10px]">
                                                 {{ subtitle.language?.toUpperCase() || '??' }}
                                             </span>
-                                            <span v-if="result.subtitles.length > 4" class="text-secondary-content text-[10px]">
-                                                +{{ result.subtitles.length - 4 }}
+                                            <span v-if="movie.subtitles.length > 4" class="text-secondary-content text-[10px]">
+                                                +{{ movie.subtitles.length - 4 }}
                                             </span>
                                         </div>
                                     </div>
                                 </div>
                             </div>
+
+                            <!-- Shows -->
+                            <ShowResultCard
+                                v-for="show in hierarchicalSearchResults.shows"
+                                :key="`show-${show.showId}`"
+                                :show="show"
+                                @select="openConfigModalFromEpisode" />
                         </div>
                     </div>
 
@@ -121,11 +129,11 @@
         v-if="configModalOpen"
         :is-open="configModalOpen"
         :subtitle-path="selectedSubtitlePath"
-        :title="selectedMedia?.displayTitle"
-        :poster-path="selectedMedia?.posterPath"
-        :year="selectedMedia?.year"
+        :title="selectedEpisode ? `${selectedShow?.title} - ${selectedEpisode.displayTitle} - ${selectedEpisode.title}` : (hierarchicalSearchResults.movies.find((m: MovieResult) => m.subtitles.some((s: Subtitle) => s.path === selectedSubtitlePath))?.title)"
+        :poster-path="selectedShow?.posterPath || hierarchicalSearchResults.movies.find((m: MovieResult) => m.subtitles.some((s: Subtitle) => s.path === selectedSubtitlePath))?.posterPath"
+        :year="selectedShow?.year || hierarchicalSearchResults.movies.find((m: MovieResult) => m.subtitles.some((s: Subtitle) => s.path === selectedSubtitlePath))?.year"
         :total-lines="selectedTotalLines"
-        :default-source-language="selectedSubtitle?.language || 'en'"
+        :default-source-language="defaultSourceLanguage"
         :default-target-language="defaultTargetLanguage"
         :available-source-languages="availableLanguages"
         :available-target-languages="availableLanguages"
@@ -134,27 +142,54 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, nextTick } from 'vue'
+import { ref, watch, onMounted, nextTick, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from '@/plugins/i18n'
+import { useSettingStore } from '@/store/setting'
+import { SETTINGS, ILanguage } from '@/ts'
 import useDebounce from '@/composables/useDebounce'
 import PageLayout from '@/components/layout/PageLayout.vue'
 import TestConfigModal from '@/components/features/translation-test/TestConfigModal.vue'
 import TestHistoryList from '@/components/features/translation-test/TestHistoryList.vue'
 import TestDebugPanel from '@/components/features/translation-test/TestDebugPanel.vue'
+import ShowResultCard from '@/components/features/translation-test/ShowResultCard.vue'
 
 interface Subtitle {
     path: string
     language?: string
 }
 
-interface SearchResult {
-    displayTitle: string
-    mediaType: string
-    mediaId: number
+interface MovieResult {
+    title: string
+    movieId: number
     posterPath?: string
     year?: number
     subtitles: Subtitle[]
+}
+
+interface EpisodePreview {
+    episodeId: number
+    episodeNumber: number
+    title: string
+    displayTitle: string
+    seasonNumber: number
+    subtitles: Subtitle[]
+}
+
+interface ShowSearchResult {
+    title: string
+    showId: number
+    posterPath?: string
+    year?: number
+    seasons: {
+        seasonNumber: number
+        episodes: EpisodePreview[]
+    }[]
+}
+
+interface MediaSearchResult {
+    movies: MovieResult[]
+    shows: ShowSearchResult[]
 }
 
 interface LogEntry {
@@ -178,9 +213,10 @@ interface TestResultDetail {
 
 const { translate } = useI18n()
 const route = useRoute()
+const settingStore = useSettingStore()
 
 const searchQuery = ref('')
-const searchResults = ref<SearchResult[]>([])
+const hierarchicalSearchResults = ref<MediaSearchResult>({ movies: [], shows: [] })
 const isSearching = ref(false)
 const isRunning = ref(false)
 const logs = ref<LogEntry[]>([])
@@ -189,40 +225,40 @@ const activeTestResult = ref<TestResultDetail | null>(null)
 const historyList = ref<{ loadHistory: () => void } | null>(null)
 
 const configModalOpen = ref(false)
-const selectedMedia = ref<SearchResult | null>(null)
 const selectedSubtitle = ref<Subtitle | null>(null)
 const selectedSubtitlePath = ref('')
 const selectedTotalLines = ref(100)
+const selectedShow = ref<ShowSearchResult | null>(null)
+const selectedEpisode = ref<EpisodePreview | null>(null)
 
-const defaultTargetLanguage = ref('pl')
+const sourceLanguages = computed(() => 
+    (settingStore.getSetting(SETTINGS.SOURCE_LANGUAGES) as ILanguage[]) || []
+)
+const targetLanguages = computed(() => 
+    (settingStore.getSetting(SETTINGS.TARGET_LANGUAGES) as ILanguage[]) || []
+)
 
-const availableLanguages = ref([
-    { code: 'en', name: 'English' },
-    { code: 'pl', name: 'Polish' },
-    { code: 'de', name: 'German' },
-    { code: 'fr', name: 'French' },
-    { code: 'es', name: 'Spanish' },
-    { code: 'nl', name: 'Dutch' },
-    { code: 'it', name: 'Italian' },
-    { code: 'pt', name: 'Portuguese' },
-    { code: 'ru', name: 'Russian' },
-    { code: 'ja', name: 'Japanese' },
-    { code: 'zh', name: 'Chinese' },
-    { code: 'ko', name: 'Korean' }
-])
+const defaultSourceLanguage = computed(() => sourceLanguages.value[0]?.code || 'en')
+const defaultTargetLanguage = computed(() => targetLanguages.value[0]?.code || 'pl')
+
+const availableLanguages = computed(() => {
+    const allLangs = [...sourceLanguages.value, ...targetLanguages.value]
+    const unique = new Map(allLangs.map(l => [l.code, l]))
+    return Array.from(unique.values()).map(l => ({ code: l.code, name: l.name }))
+})
 
 const performSearch = useDebounce(async (value: string) => {
     const trimmed = value.trim()
     if (trimmed.length < 2) {
-        searchResults.value = []
+        hierarchicalSearchResults.value = { movies: [], shows: [] }
         return
     }
 
     isSearching.value = true
     try {
-        const response = await fetch(`/api/test-translation/search?query=${encodeURIComponent(trimmed)}`)
+        const response = await fetch(`/api/test-translation/search-hierarchical?query=${encodeURIComponent(trimmed)}`)
         if (response.ok) {
-            searchResults.value = await response.json()
+            hierarchicalSearchResults.value = await response.json()
         }
     } catch (error) {
         console.error('Search failed:', error)
@@ -233,18 +269,40 @@ const performSearch = useDebounce(async (value: string) => {
 
 watch(searchQuery, (value) => {
     if (value) performSearch(value)
-    else searchResults.value = []
+    else hierarchicalSearchResults.value = { movies: [], shows: [] }
 })
 
-async function openConfigModal(result: SearchResult) {
-    if (result.subtitles.length === 0) return
+async function openConfigModalFromMovie(movie: MovieResult) {
+    if (movie.subtitles.length === 0) return
     
-    selectedMedia.value = result
-    selectedSubtitle.value = result.subtitles[0]
-    selectedSubtitlePath.value = result.subtitles[0].path
+    selectedShow.value = null
+    selectedEpisode.value = null
+    selectedSubtitle.value = movie.subtitles[0]
+    selectedSubtitlePath.value = movie.subtitles[0].path
     
     try {
-        const response = await fetch(`/api/test-translation/subtitle-preview?path=${encodeURIComponent(result.subtitles[0].path)}`)
+        const response = await fetch(`/api/test-translation/subtitle-preview?path=${encodeURIComponent(movie.subtitles[0].path)}`)
+        if (response.ok) {
+            const data = await response.json()
+            selectedTotalLines.value = data.totalLines || 100
+        }
+    } catch {
+        selectedTotalLines.value = 100
+    }
+    
+    configModalOpen.value = true
+}
+
+async function openConfigModalFromEpisode(episode: EpisodePreview, show: ShowSearchResult) {
+    if (episode.subtitles.length === 0) return
+    
+    selectedShow.value = show
+    selectedEpisode.value = episode
+    selectedSubtitle.value = episode.subtitles[0]
+    selectedSubtitlePath.value = episode.subtitles[0].path
+    
+    try {
+        const response = await fetch(`/api/test-translation/subtitle-preview?path=${encodeURIComponent(episode.subtitles[0].path)}`)
         if (response.ok) {
             const data = await response.json()
             selectedTotalLines.value = data.totalLines || 100
@@ -258,7 +316,8 @@ async function openConfigModal(result: SearchResult) {
 
 function closeConfigModal() {
     configModalOpen.value = false
-    selectedMedia.value = null
+    selectedShow.value = null
+    selectedEpisode.value = null
     selectedSubtitle.value = null
 }
 
@@ -286,8 +345,8 @@ async function handleStartTest(config: {
                 startLine: config.startLine,
                 endLine: config.endLine,
                 maxLines: config.maxLines,
-                mediaId: selectedMedia.value?.mediaId,
-                mediaType: selectedMedia.value?.mediaType
+                mediaId: selectedEpisode.value?.episodeId || (selectedShow.value ? null : null),
+                mediaType: selectedEpisode.value ? 'Episode' : (selectedShow.value ? 'Show' : 'Movie')
             })
         })
 
@@ -394,18 +453,6 @@ onMounted(async () => {
             }
         } catch {
             selectedTotalLines.value = 100
-        }
-        
-        selectedMedia.value = {
-            displayTitle: (route.query.title as string) || 'Test',
-            mediaType: (route.query.mediaType as string) || 'Movie',
-            mediaId: route.query.mediaId ? parseInt(route.query.mediaId as string) : 0,
-            subtitles: [{ path: selectedSubtitlePath.value, language: route.query.sourceLanguage as string }]
-        }
-        selectedSubtitle.value = selectedMedia.value.subtitles[0]
-        
-        if (route.query.targetLanguage) {
-            defaultTargetLanguage.value = route.query.targetLanguage as string
         }
         
         configModalOpen.value = true

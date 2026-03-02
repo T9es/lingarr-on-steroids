@@ -95,7 +95,12 @@
       "viewExisting": "Bestaande bekijken",
       "createNew": "Nieuwe test maken"
     },
-    "confirmClearAll": "Weet u zeker dat u alle testgeschiedenis wilt wissen?"
+    "confirmClearAll": "Weet u zeker dat u alle testgeschiedenis wilt wissen?",
+    "shiftClickHint": "Shift+klik om bereik uit te breiden",
+    "clearSelection": "Selectie wissen",
+    "episodesWithSubtitles": "afleveringen met ondertitels",
+    "season": "Seizoen",
+    "episodes": "afleveringen"
   },
   "statistics": {
     "notAvailable": "Niet beschikbaar",

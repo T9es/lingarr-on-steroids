@@ -28,6 +28,16 @@ public class ApiUsageLog
     public int? TokensUsed { get; set; }
     
     /// <summary>
+    /// Number of prompt/input tokens (for pricing calculations)
+    /// </summary>
+    public int? PromptTokens { get; set; }
+    
+    /// <summary>
+    /// Number of completion/output tokens (for limit tracking)
+    /// </summary>
+    public int? CompletionTokens { get; set; }
+    
+    /// <summary>
     /// Response time in milliseconds
     /// </summary>
     public long ResponseTimeMs { get; set; }

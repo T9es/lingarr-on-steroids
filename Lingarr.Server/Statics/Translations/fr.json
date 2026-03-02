@@ -95,7 +95,12 @@
       "viewExisting": "Voir l'existant",
       "createNew": "Créer un nouveau test"
     },
-    "confirmClearAll": "Êtes-vous sûr de vouloir effacer tout l'historique des tests ?"
+    "confirmClearAll": "Êtes-vous sûr de vouloir effacer tout l'historique des tests ?",
+    "shiftClickHint": "Maj+clic pour étendre la plage",
+    "clearSelection": "Effacer la sélection",
+    "episodesWithSubtitles": "épisodes avec sous-titres",
+    "season": "Saison",
+    "episodes": "épisodes"
   },
   "statistics": {
     "notAvailable": "Non disponible",

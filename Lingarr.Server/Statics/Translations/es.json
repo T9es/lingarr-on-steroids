@@ -95,7 +95,12 @@
       "viewExisting": "Ver existente",
       "createNew": "Crear nueva prueba"
     },
-    "confirmClearAll": "¿Está seguro de que desea limpiar todo el historial de pruebas?"
+    "confirmClearAll": "¿Está seguro de que desea limpiar todo el historial de pruebas?",
+    "shiftClickHint": "Mayús+clic para extender el rango",
+    "clearSelection": "Limpiar selección",
+    "episodesWithSubtitles": "episodios con subtítulos",
+    "season": "Temporada",
+    "episodes": "episodios"
   },
   "statistics": {
     "notAvailable": "No disponible",
