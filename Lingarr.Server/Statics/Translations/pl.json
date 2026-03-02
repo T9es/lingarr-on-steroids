@@ -397,6 +397,24 @@
       "chutesRequestBufferDescription": "Zatrzymaj tłumaczenia, gdy pozostałe dzienne żądania osiągną ten bufor. Pomaga uniknąć przekroczenia limitów przy równoległych tłumaczeniach.",
       "chutesRequestBufferError": "Proszę wprowadzić prawidłową liczbę"
     },
+    "tokenUsage": {
+      "title": "Limity Użycia Tokenów",
+      "description": "Ustaw dzienne limity tokenów wyjściowych, aby kontrolować koszty API.",
+      "outputTokensToday": "Tokeny Wyjściowe Dzisiaj",
+      "dailyLimit": "Dzienny Limit Tokenów",
+      "unlimitedPlaceholder": "Pozostaw puste dla nieograniczonego",
+      "resetTime": "Czas Resetu (UTC)",
+      "pricingWarning": "Liczby tokenów są szacunkowe. Sprawdź stronę cenową swojego dostawcy, aby uzyskać dokładne koszty za milion tokenów wejściowych/wyjściowych.",
+      "limitReached": "Osiągnięto limit tokenów. Tłumaczenia wstrzymane do czasu resetu.",
+      "tokensReset": "Limit tokenów zostanie zresetowany o {time} UTC"
+    },
+    "chutes": {
+      "mode": {
+        "label": "Tryb Użycia",
+        "subscription": "Subskrypcja",
+        "payg": "PAYG (Tokeny)"
+      }
+    },
     "translate": {
       "sourceAndTargetTitle": "Tłumaczenie źródłowe i docelowe",
       "sourceAndTargetDescription": "Wybierz język źródłowy i docelowy. Zarówno źródło, jak i cel są używane do żądania tłumaczeń.",

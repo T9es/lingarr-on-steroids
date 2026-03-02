@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Sockets;
@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json;
 using Lingarr.Core.Configuration;
 using Lingarr.Server.Interfaces.Services;
+using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models;
 using Lingarr.Server.Models.Batch;
 using Lingarr.Server.Models.Batch.Response;
@@ -29,8 +30,9 @@ public class DeepSeekService : OpenAiService
         ISettingService settings,
         ILogger<DeepSeekService> logger,
         IHttpClientFactory httpClientFactory,
-        IDashboardService? dashboardService = null)
-        : base(settings, logger, httpClientFactory.CreateClient(nameof(DeepSeekService)), dashboardService)
+        IDashboardService? dashboardService = null,
+        ITokenUsageService? tokenUsageService = null)
+        : base(settings, logger, httpClientFactory.CreateClient(nameof(DeepSeekService)), dashboardService, tokenUsageService)
     {
     }
 

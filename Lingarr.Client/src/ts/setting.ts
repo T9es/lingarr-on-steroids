@@ -90,7 +90,18 @@ export const SETTINGS = {
     ONBOARDING_COMPLETED: 'onboarding_completed',
     ONBOARDING_SKIPPED: 'onboarding_skipped',
     ONBOARDING_CURRENT_STEP: 'onboarding_current_step',
-    ONBOARDING_STEP_PROGRESS: 'onboarding_step_progress'
+    ONBOARDING_STEP_PROGRESS: 'onboarding_step_progress',
+    
+    // Token limits
+    OPENAI_TOKEN_LIMIT: 'openai_token_limit',
+    ANTHROPIC_TOKEN_LIMIT: 'anthropic_token_limit',
+    GEMINI_TOKEN_LIMIT: 'gemini_token_limit',
+    DEEPSEEK_TOKEN_LIMIT: 'deepseek_token_limit',
+    LOCALAI_TOKEN_LIMIT: 'localai_token_limit',
+    LOCALAI_TOKEN_LIMIT_ENABLED: 'localai_token_limit_enabled',
+    CHUTES_TOKEN_LIMIT: 'chutes_token_limit',
+    CHUTES_MODE: 'chutes_mode',
+    TOKEN_LIMIT_RESET_TIME: 'token_limit_reset_time'
 } as const
 
 export interface ISettings {
@@ -176,6 +187,16 @@ export interface ISettings {
     onboarding_skipped: string
     onboarding_current_step: string
     onboarding_step_progress: string
+    // Token limits
+    openai_token_limit: string
+    anthropic_token_limit: string
+    gemini_token_limit: string
+    deepseek_token_limit: string
+    localai_token_limit: string
+    localai_token_limit_enabled: string
+    chutes_token_limit: string
+    chutes_mode: string
+    token_limit_reset_time: string
 }
 
 export interface ICustomAiParams {

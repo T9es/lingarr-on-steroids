@@ -9,12 +9,15 @@ public class TranslationFactory : ITranslationServiceFactory
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<TranslationFactory> _logger;
+    private readonly ITokenUsageService? _tokenUsageService;
 
     public TranslationFactory(IServiceProvider serviceProvider,
-        ILogger<TranslationFactory> logger)
+        ILogger<TranslationFactory> logger,
+        ITokenUsageService? tokenUsageService = null)
     {
         _serviceProvider = serviceProvider;
         _logger = logger;
+        _tokenUsageService = tokenUsageService;
     }
 
     /// <inheritdoc />
@@ -64,35 +67,40 @@ public class TranslationFactory : ITranslationServiceFactory
                 _serviceProvider.GetRequiredService<ISettingService>(),
                 _serviceProvider.GetRequiredService<ILogger<OpenAiService>>(),
                 _serviceProvider.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(OpenAiService)),
-                _serviceProvider.GetService<IDashboardService>()
+                _serviceProvider.GetService<IDashboardService>(),
+                _tokenUsageService
             ),
 
             "anthropic" => new AnthropicService(
                 _serviceProvider.GetRequiredService<ISettingService>(),
                 _serviceProvider.GetRequiredService<HttpClient>(),
                 _serviceProvider.GetRequiredService<ILogger<AnthropicService>>(),
-                _serviceProvider.GetService<IDashboardService>()
+                _serviceProvider.GetService<IDashboardService>(),
+                _tokenUsageService
             ),
 
             "localai" => new LocalAiService(
                 _serviceProvider.GetRequiredService<ISettingService>(),
                 _serviceProvider.GetRequiredService<HttpClient>(),
                 _serviceProvider.GetRequiredService<ILogger<LocalAiService>>(),
-                _serviceProvider.GetService<IDashboardService>()
+                _serviceProvider.GetService<IDashboardService>(),
+                _tokenUsageService
             ),
 
             "deepseek" => new DeepSeekService(
                 _serviceProvider.GetRequiredService<ISettingService>(),
                 _serviceProvider.GetRequiredService<ILogger<DeepSeekService>>(),
                 _serviceProvider.GetRequiredService<IHttpClientFactory>(),
-                _serviceProvider.GetService<IDashboardService>()
+                _serviceProvider.GetService<IDashboardService>(),
+                _tokenUsageService
             ),
 
             "gemini" => new GoogleGeminiService(
                 _serviceProvider.GetRequiredService<ISettingService>(),
                 _serviceProvider.GetRequiredService<HttpClient>(),
                 _serviceProvider.GetRequiredService<ILogger<GoogleGeminiService>>(),
-                _serviceProvider.GetService<IDashboardService>()
+                _serviceProvider.GetService<IDashboardService>(),
+                _tokenUsageService
             ),
 
             "chutes" => new ChutesAiService(
@@ -100,7 +108,8 @@ public class TranslationFactory : ITranslationServiceFactory
                 _serviceProvider.GetRequiredService<ILogger<ChutesAiService>>(),
                 _serviceProvider.GetRequiredService<IChutesUsageService>(),
                 _serviceProvider.GetRequiredService<IHttpClientFactory>(),
-                _serviceProvider.GetService<IDashboardService>()
+                _serviceProvider.GetService<IDashboardService>(),
+                _tokenUsageService
             ),
 
             _ => throw new ArgumentException("Unsupported translation service type", nameof(serviceType))

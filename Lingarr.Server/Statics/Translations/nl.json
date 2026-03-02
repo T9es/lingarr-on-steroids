@@ -397,6 +397,24 @@
       "chutesRequestBufferDescription": "Stop vertalingen wanneer resterende dagelijkse verzoeken deze buffer bereiken. Helpt overschrijding van limieten te voorkomen bij parallelle vertalingen.",
       "chutesRequestBufferError": "Voer een geldig nummer in"
     },
+    "tokenUsage": {
+      "title": "Tokengebruikslimieten",
+      "description": "Stel dagelijkse output-tokenlimieten in om API-kosten te beheren.",
+      "outputTokensToday": "Outputvandaag",
+      "dailyLimit": "Dagelijkse Tokenlimiet",
+      "unlimitedPlaceholder": "Laat leeg voor onbeperkt",
+      "resetTime": "Reset Tijd (UTC)",
+      "pricingWarning": "Tokenaantallen zijn schattingen. Controleer uw provider's prijzenpagina voor exacte kosten per miljoen input/output tokens.",
+      "limitReached": "Tokenlimiet bereikt. Vertalingen gepauzeerd tot resettijd.",
+      "tokensReset": "Tokenlimiet wordt gereset om {time} UTC"
+    },
+    "chutes": {
+      "mode": {
+        "label": "Gebruiksmodus",
+        "subscription": "Abonnement",
+        "payg": "PAYG (Tokens)"
+      }
+    },
     "translate": {
       "sourceAndTargetTitle": "Bron- en doelvertaling",
       "sourceAndTargetDescription": "Selecteer een bron- en doeltaal. Zowel de bron als het doel worden gebruikt om vertalingen aan te vragen.",

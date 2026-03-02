@@ -397,6 +397,24 @@
       "chutesRequestBufferDescription": "Arrêter les traductions lorsque les requêtes quotidiennes restantes atteignent ce tampon. Aide à éviter de dépasser les limites avec les traductions parallèles.",
       "chutesRequestBufferError": "Veuillez entrer un nombre valide"
     },
+    "tokenUsage": {
+      "title": "Limites d'Utilisation des Tokens",
+      "description": "Définir des limites quotidiennes de tokens de sortie pour contrôler les coûts API.",
+      "outputTokensToday": "Tokens de Sortie Aujourd'hui",
+      "dailyLimit": "Limite Quotidienne de Tokens",
+      "unlimitedPlaceholder": "Laisser vide pour illimité",
+      "resetTime": "Heure de Réinitialisation (UTC)",
+      "pricingWarning": "Les nombres de tokens sont des estimations. Vérifiez la page de tarification de votre fournisseur pour les coûts exacts par million de tokens d'entrée/sortie.",
+      "limitReached": "Limite de tokens atteinte. Traductions en pause jusqu'à l'heure de réinitialisation.",
+      "tokensReset": "La limite de tokens sera réinitialisée à {time} UTC"
+    },
+    "chutes": {
+      "mode": {
+        "label": "Mode d'Utilisation",
+        "subscription": "Abonnement",
+        "payg": "PAYG (Tokens)"
+      }
+    },
     "translate": {
       "sourceAndTargetTitle": "Traduction source et cible",
       "sourceAndTargetDescription": "Sélectionnez une langue source et cible. La source et la cible sont utilisées pour demander des traductions.",

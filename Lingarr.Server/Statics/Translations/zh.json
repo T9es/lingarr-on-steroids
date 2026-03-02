@@ -397,6 +397,24 @@
       "chutesRequestBufferDescription": "当剩余的每日请求达到此缓冲时停止翻译。有助于防止并行翻译时超过限制。",
       "chutesRequestBufferError": "请输入有效的数字"
     },
+    "tokenUsage": {
+      "title": "Token 使用限制",
+      "description": "设置每日输出 token 限制以控制 API 成本。",
+      "outputTokensToday": "今日输出 Token",
+      "dailyLimit": "每日 Token 限制",
+      "unlimitedPlaceholder": "留空表示无限制",
+      "resetTime": "重置时间 (UTC)",
+      "pricingWarning": "Token 数量为估算值。请查看您的提供商定价页面以获取每百万输入/输出 token 的确切费用。",
+      "limitReached": "已达到 Token 限制。翻译已暂停直至重置时间。",
+      "tokensReset": "Token 限制将于{time} UTC 重置"
+    },
+    "chutes": {
+      "mode": {
+        "label": "使用模式",
+        "subscription": "订阅",
+        "payg": "按量付费 (Tokens)"
+      }
+    },
     "translate": {
       "sourceAndTargetTitle": "源和目标翻译",
       "sourceAndTargetDescription": "选择源语言和目标语言。源和目标都用于请求翻译。",

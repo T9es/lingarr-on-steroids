@@ -14,6 +14,7 @@ export interface Services {
     subtitle: ISubtitleService
     translate: ITranslateService
     chutes: IChutesService
+    tokenUsage: ITokenUsageService
     translationRequest: ITranslationRequestService
     version: IVersionService
     media: IMediaService
@@ -85,6 +86,12 @@ export interface ITranslateService {
 
 export interface IChutesService {
     getUsage<T>(forceRefresh?: boolean): Promise<T>
+}
+
+export interface ITokenUsageService {
+    getUsage<T>(service: string): Promise<T>
+    setChutesMode(mode: 'subscription' | 'payg'): Promise<void>
+    getChutesMode<T>(): Promise<T>
 }
 
 export interface ITranslationRequestService {

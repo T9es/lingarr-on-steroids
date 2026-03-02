@@ -150,6 +150,7 @@ public static class ServiceCollectionExtensions
         builder.Services.AddTransient<PathConversionService>();
         builder.Services.AddScoped<IStatisticsService, StatisticsService>();
         builder.Services.AddScoped<IChutesUsageService, ChutesUsageService>();
+        builder.Services.AddScoped<ITokenUsageService, TokenUsageService>();
         
         // Translation worker service (singleton BackgroundService that manages translation workers)
         builder.Services.AddSingleton<ITranslationWorkerService, TranslationWorkerService>();

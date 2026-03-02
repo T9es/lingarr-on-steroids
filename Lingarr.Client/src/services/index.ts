@@ -12,6 +12,7 @@ import { directoryService } from '@/services/directoryService'
 import { statisticsService } from '@/services/statisticsService'
 import { logsService } from '@/services/logsService'
 import { chutesService } from '@/services/chutesService'
+import { tokenUsageService } from '@/services/tokenUsageService'
 import { dashboardService } from '@/services/dashboardService'
 
 const services = (axios: AxiosStatic): Services => ({
@@ -19,6 +20,7 @@ const services = (axios: AxiosStatic): Services => ({
     subtitle: subtitleService(axios),
     translate: translateService(axios),
     chutes: chutesService(axios),
+    tokenUsage: tokenUsageService(axios),
     translationRequest: translationRequestService(axios),
     version: versionService(axios),
     media: mediaService(axios),
