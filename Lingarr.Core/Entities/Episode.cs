@@ -1,4 +1,5 @@
-﻿using System.ComponentModel.DataAnnotations.Schema;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
 using Lingarr.Core.Enum;
 using Lingarr.Core.Interfaces;
@@ -8,6 +9,14 @@ namespace Lingarr.Core.Entities;
 public class Episode : BaseEntity, IMedia
 {
     public required int SonarrId { get; set; }
+    
+    /// <summary>
+    /// Identifier for the Sonarr instance this episode was synced from.
+    /// Propagated from parent Show during sync for efficient querying.
+    /// </summary>
+    [MaxLength(100)]
+    public string? SourceInstanceId { get; set; }
+    
     public required int EpisodeNumber { get; set; }
     public required string Title { get; set; }
     public string? FileName { get; set; } = string.Empty;

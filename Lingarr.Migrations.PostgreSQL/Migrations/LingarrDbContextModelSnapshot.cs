@@ -240,6 +240,11 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("sonarr_id");
 
+                    b.Property<string>("SourceInstanceId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("source_instance_id");
+
                     b.Property<int>("StateSettingsVersion")
                         .HasColumnType("integer")
                         .HasColumnName("state_settings_version");

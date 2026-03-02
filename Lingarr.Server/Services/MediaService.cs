@@ -1,4 +1,5 @@
-﻿using Lingarr.Core.Data;
+﻿using Lingarr.Core.Configuration;
+using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Models;
@@ -20,8 +21,9 @@ public class MediaService : IMediaService
     private readonly IShowSyncService _showSyncService;
     private readonly IRadarrService _radarrService;
     private readonly IMovieSyncService _movieSyncService;
-    private readonly ILogger<MediaService> _logger;
     private readonly IMediaSubtitleProcessor _mediaSubtitleProcessor;
+    private readonly ISettingService _settingService;
+    private readonly ILogger<MediaService> _logger;
 
     public MediaService(LingarrDbContext dbContext, 
         ISubtitleService subtitleService,
@@ -30,6 +32,7 @@ public class MediaService : IMediaService
         IRadarrService radarrService,
         IMovieSyncService movieSyncService,
         IMediaSubtitleProcessor mediaSubtitleProcessor,
+        ISettingService settingService,
         ILogger<MediaService> logger)
     {
         _dbContext = dbContext;
@@ -39,7 +42,72 @@ public class MediaService : IMediaService
         _radarrService = radarrService;
         _movieSyncService = movieSyncService;
         _mediaSubtitleProcessor = mediaSubtitleProcessor;
+        _settingService = settingService;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Gets the Radarr instance URL and API key from the instance ID
+    /// </summary>
+    private async Task<(string Url, string ApiKey)> GetRadarrInstanceConfig(string instanceId)
+    {
+        var instancesJson = await _settingService.GetSetting(SettingKeys.Integration.RadarrInstances);
+        
+        if (!string.IsNullOrEmpty(instancesJson))
+        {
+            try
+            {
+                var instances = System.Text.Json.JsonSerializer.Deserialize<List<Lingarr.Server.Models.RadarrInstance>>(
+                    instancesJson, 
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                var instance = instances?.FirstOrDefault(i => i.Id == instanceId);
+                if (instance != null)
+                {
+                    return (instance.Url, instance.ApiKey);
+                }
+            }
+            catch (System.Text.Json.JsonException ex)
+            {
+                _logger.LogWarning(ex, "Failed to deserialize Radarr instances from settings");
+            }
+        }
+
+        // Fall back to single instance settings
+        var url = await _settingService.GetSetting(SettingKeys.Integration.RadarrUrl);
+        var apiKey = await _settingService.GetSetting(SettingKeys.Integration.RadarrApiKey);
+        return (url ?? string.Empty, apiKey ?? string.Empty);
+    }
+
+    /// <summary>
+    /// Gets the Sonarr instance URL and API key from the instance ID
+    /// </summary>
+    private async Task<(string Url, string ApiKey)> GetSonarrInstanceConfig(string instanceId)
+    {
+        var instancesJson = await _settingService.GetSetting(SettingKeys.Integration.SonarrInstances);
+        
+        if (!string.IsNullOrEmpty(instancesJson))
+        {
+            try
+            {
+                var instances = System.Text.Json.JsonSerializer.Deserialize<List<Lingarr.Server.Models.SonarrInstance>>(
+                    instancesJson, 
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                var instance = instances?.FirstOrDefault(i => i.Id == instanceId);
+                if (instance != null)
+                {
+                    return (instance.Url, instance.ApiKey);
+                }
+            }
+            catch (System.Text.Json.JsonException ex)
+            {
+                _logger.LogWarning(ex, "Failed to deserialize Sonarr instances from settings");
+            }
+        }
+
+        // Fall back to single instance settings
+        var url = await _settingService.GetSetting(SettingKeys.Integration.SonarrUrl);
+        var apiKey = await _settingService.GetSetting(SettingKeys.Integration.SonarrApiKey);
+        return (url ?? string.Empty, apiKey ?? string.Empty);
     }
     
     /// <inheritdoc />
@@ -116,17 +184,9 @@ public class MediaService : IMediaService
     /// <inheritdoc />
     public async Task<int> GetMovieIdOrSyncFromRadarrMovieId(int movieId, string? sourceInstanceId = null)
     {
-        var query = _dbContext.Movies.AsQueryable();
+        var instanceId = sourceInstanceId ?? "default";
         
-        if (sourceInstanceId != null)
-        {
-            query = query.Where(s => s.RadarrId == movieId && s.SourceInstanceId == sourceInstanceId);
-        }
-        else
-        {
-            query = query.Where(s => s.RadarrId == movieId);
-        }
-        
+        var query = _dbContext.Movies.Where(s => s.RadarrId == movieId && s.SourceInstanceId == instanceId);
         var movie = await query.FirstOrDefaultAsync();
         if (movie != null)
         {
@@ -134,17 +194,25 @@ public class MediaService : IMediaService
         }
 
         // Movie not found, maybe out of sync.
-        // Sync the movie
+        // Sync the movie from the correct instance
         try
         {
-            var movieFetched = await _radarrService.GetMovie(movieId);
+            var (url, apiKey) = await GetRadarrInstanceConfig(instanceId);
+            
+            if (string.IsNullOrEmpty(url) || string.IsNullOrEmpty(apiKey))
+            {
+                _logger.LogWarning("No Radarr instance config found for instanceId '{InstanceId}'", instanceId);
+                return 0;
+            }
+            
+            var movieFetched = await _radarrService.GetMovie(movieId, url, apiKey);
             if (movieFetched == null)
             {
                 // Unknown movie
                 return 0;
             }
 
-            var movieEntity = await _movieSyncService.SyncMovie(movieFetched, "default");
+            var movieEntity = await _movieSyncService.SyncMovie(movieFetched, instanceId);
             if (movieEntity == null)
             {
                 // Movie had no file
@@ -156,12 +224,14 @@ public class MediaService : IMediaService
         catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
             // Movie doesn't exist in Radarr
-            _logger.LogWarning("Movie with Radarr ID {MovieId} not found in Radarr (404)", movieId);
+            _logger.LogWarning("Movie with Radarr ID {MovieId} not found in instance '{InstanceId}' (404)", 
+                movieId, instanceId);
             return 0;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to fetch or sync movie with Radarr ID {MovieId}", movieId);
+            _logger.LogError(ex, "Failed to fetch or sync movie with Radarr ID {MovieId} from instance '{InstanceId}'", 
+                movieId, instanceId);
             return 0;
         }
     }
@@ -169,16 +239,12 @@ public class MediaService : IMediaService
     /// <inheritdoc />
     public async Task<int> GetEpisodeIdOrSyncFromSonarrEpisodeId(int episodeNumber, string? sourceInstanceId = null)
     {
-        var query = _dbContext.Episodes.AsQueryable();
+        var instanceId = sourceInstanceId ?? "default";
         
-        if (sourceInstanceId != null)
-        {
-            query = query.Where(s => s.SonarrId == episodeNumber && s.Season.Show.SourceInstanceId == sourceInstanceId);
-        }
-        else
-        {
-            query = query.Where(s => s.SonarrId == episodeNumber);
-        }
+        var query = _dbContext.Episodes
+            .Include(e => e.Season)
+            .ThenInclude(s => s.Show)
+            .Where(e => e.SonarrId == episodeNumber && e.SourceInstanceId == instanceId);
         
         var episode = await query.FirstOrDefaultAsync();
         if (episode != null)
@@ -187,10 +253,18 @@ public class MediaService : IMediaService
         }
 
         // Episode not found, maybe out of sync.
-        // Sync the show
+        // Sync the show from the correct instance
         try
         {
-            var episodeFetched = await _sonarrService.GetEpisode(episodeNumber);
+            var (url, apiKey) = await GetSonarrInstanceConfig(instanceId);
+            
+            if (string.IsNullOrEmpty(url) || string.IsNullOrEmpty(apiKey))
+            {
+                _logger.LogWarning("No Sonarr instance config found for instanceId '{InstanceId}'", instanceId);
+                return 0;
+            }
+            
+            var episodeFetched = await _sonarrService.GetEpisode(episodeNumber, url, apiKey);
             if (episodeFetched == null)
             {
                 // Unknown episode
@@ -203,7 +277,7 @@ public class MediaService : IMediaService
                 return 0;
             }
 
-            var show = await _showSyncService.SyncShow(episodeFetched.Show, "default");
+            var show = await _showSyncService.SyncShow(episodeFetched.Show, instanceId);
             // Find the episode id or return 0 if not found
             if (show == null)
             {
@@ -212,12 +286,13 @@ public class MediaService : IMediaService
             }
             return show.Seasons
                 .SelectMany(s => s.Episodes)
-                .FirstOrDefault(e => e.SonarrId == episodeNumber)?.Id ?? 0;
+                .FirstOrDefault(e => e.SonarrId == episodeNumber && e.SourceInstanceId == instanceId)?.Id ?? 0;
         }
         catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
             // Episode doesn't exist in Sonarr
-            _logger.LogWarning("Episode with Sonarr ID {EpisodeId} not found in Sonarr (404)", episodeNumber);
+            _logger.LogWarning("Episode with Sonarr ID {EpisodeId} not found in instance '{InstanceId}' (404)", 
+                episodeNumber, instanceId);
             try
             {
                 // Attempt a more comprehensive resync of all shows in case the Sonarr ID is stale
@@ -229,7 +304,9 @@ public class MediaService : IMediaService
                     var showsWithInstanceId = shows.Select(s => (s, "default")).ToList();
                     await _showSyncService.SyncShows(showsWithInstanceId);
                     // Try to find the episode again after resync
-                    var matchedEpisode = await _dbContext.Episodes.Where(s => s.SonarrId == episodeNumber).FirstOrDefaultAsync();
+                    var matchedEpisode = await _dbContext.Episodes
+                        .Where(e => e.SonarrId == episodeNumber && e.SourceInstanceId == instanceId)
+                        .FirstOrDefaultAsync();
                     if (matchedEpisode != null)
                     {
                         return matchedEpisode.Id;
@@ -244,7 +321,8 @@ public class MediaService : IMediaService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to fetch or sync episode with Sonarr ID {EpisodeId}", episodeNumber);
+            _logger.LogError(ex, "Failed to fetch or sync episode with Sonarr ID {EpisodeId} from instance '{InstanceId}'", 
+                episodeNumber, instanceId);
             return 0;
         }
     }

@@ -33,15 +33,24 @@ public class MediaServiceTests
         await context.SaveChangesAsync();
 
         var sonarrMock = new Mock<ISonarrService>();
-        // var showSyncServiceMock = new Mock<IShowSyncService>(); (already declared below)
         var radarrMock = new Mock<IRadarrService>();
         var movieSyncMock = new Mock<IMovieSyncService>();
         var subtitleMock = new Mock<ISubtitleService>();
+        var showSyncServiceMock = new Mock<IShowSyncService>();
+        var mediaSubtitleProcessorMock = new Mock<IMediaSubtitleProcessor>();
+        var settingServiceMock = new Mock<ISettingService>();
         var logger = NullLogger<MediaService>.Instance;
 
-        // Configure Sonarr to throw HttpRequestException with 404 status
+        // Configure setting service to return empty instance config and fallback credentials
+        settingServiceMock
+            .SetupSequence(s => s.GetSetting(It.IsAny<string>()))
+            .ReturnsAsync(string.Empty)  // SonarrInstances - empty, use fallback
+            .ReturnsAsync("http://test.sonarr.com")  // SonarrUrl
+            .ReturnsAsync("test-api-key");  // SonarrApiKey
+
+        // Configure Sonarr to throw HttpRequestException with 404 status for instance-aware overload
         sonarrMock
-            .Setup(s => s.GetEpisode(It.IsAny<int>()))
+            .Setup(s => s.GetEpisode(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>()))
             .ThrowsAsync(new HttpRequestException("Not found", null, HttpStatusCode.NotFound));
 
         // Configure GetShows to return a sample list when called
@@ -60,9 +69,6 @@ public class MediaServiceTests
                 }
             });
 
-        var showSyncServiceMock = new Mock<IShowSyncService>();
-        var mediaSubtitleProcessorMock = new Mock<IMediaSubtitleProcessor>();
-
         var mediaService = new MediaService(context,
             subtitleMock.Object,
             sonarrMock.Object,
@@ -70,13 +76,14 @@ public class MediaServiceTests
             radarrMock.Object,
             movieSyncMock.Object,
             mediaSubtitleProcessorMock.Object,
+            settingServiceMock.Object,
             logger);
 
         // Act
         var result = await mediaService.GetEpisodeIdOrSyncFromSonarrEpisodeId(150);
 
         // Assert
-        sonarrMock.Verify(s => s.GetEpisode(150), Times.Once);
+        sonarrMock.Verify(s => s.GetEpisode(150, It.IsAny<string>(), It.IsAny<string>()), Times.Once);
         sonarrMock.Verify(s => s.GetShows(), Times.Once);
         showSyncServiceMock.Verify(s => s.SyncShows(It.IsAny<List<(Lingarr.Server.Models.Integrations.SonarrShow Show, string InstanceId)>>()), Times.Once);
         Assert.Equal(0, result);
@@ -129,6 +136,7 @@ public class MediaServiceTests
         var movieSyncMock = new Mock<IMovieSyncService>();
         var subtitleMock = new Mock<ISubtitleService>();
         var mediaSubtitleProcessorMock = new Mock<IMediaSubtitleProcessor>();
+        var settingServiceMock = new Mock<ISettingService>();
         var logger = NullLogger<MediaService>.Instance;
 
         var mediaService = new MediaService(context,
@@ -138,6 +146,7 @@ public class MediaServiceTests
             radarrMock.Object,
             movieSyncMock.Object,
             mediaSubtitleProcessorMock.Object,
+            settingServiceMock.Object,
             logger);
 
         // Act

@@ -41,28 +41,27 @@ public class EpisodeSync : IEpisodeSync
     }
 
     /// <inheritdoc />
-    public async Task SyncEpisodes(SonarrShow show, Season season, string? instanceUrl = null, string? instanceApiKey = null)
+    public async Task SyncEpisodes(
+        SonarrShow show, 
+        Season season, 
+        string instanceId,
+        string instanceUrl, 
+        string instanceApiKey)
     {
-        // Use the appropriate overload based on whether instance params are provided
-        var episodes = instanceUrl != null && instanceApiKey != null
-            ? await _sonarrService.GetEpisodes(show.Id, season.SeasonNumber, instanceUrl, instanceApiKey)
-            : await _sonarrService.GetEpisodes(show.Id, season.SeasonNumber);
+        var episodes = await _sonarrService.GetEpisodes(show.Id, season.SeasonNumber, instanceUrl, instanceApiKey);
         if (episodes == null) return;
 
         var syncedEpisodes = new List<(Episode Entity, bool NeedsIndexing, string? OldPath, string? OldFileName)>();
 
         foreach (var episode in episodes.Where(e => e.HasFile))
         {
-            // Use the appropriate overload based on whether instance params are provided
-            var episodePathResult = instanceUrl != null && instanceApiKey != null
-                ? await _sonarrService.GetEpisodePath(episode.Id, instanceUrl, instanceApiKey)
-                : await _sonarrService.GetEpisodePath(episode.Id);
+            var episodePathResult = await _sonarrService.GetEpisodePath(episode.Id, instanceUrl, instanceApiKey);
             var episodePath = _pathConversionService.ConvertAndMapPath(
                 episodePathResult?.EpisodeFile.Path ?? string.Empty,
                 MediaType.Show
             );
             
-            var (entity, needsIndexing, oldPath, oldFileName) = await UpdateEpisodeMetadata(episode, episodePath, season, episodePathResult?.EpisodeFile.DateAdded);
+            var (entity, needsIndexing, oldPath, oldFileName) = await UpdateEpisodeMetadata(episode, episodePath, season, episodePathResult?.EpisodeFile.DateAdded, instanceId);
             syncedEpisodes.Add((entity, needsIndexing, oldPath, oldFileName));
         }
 
@@ -129,7 +128,12 @@ public class EpisodeSync : IEpisodeSync
     /// Updates or creates the episode entity metadata without saving to DB.
     /// Returns the entity, whether it needs indexing, and old path/filename if changed.
     /// </summary>
-    private async Task<(Episode Entity, bool NeedsIndexing, string? OldPath, string? OldFileName)> UpdateEpisodeMetadata(SonarrEpisode episode, string episodePath, Season season, DateTime? dateAdded)
+    private async Task<(Episode Entity, bool NeedsIndexing, string? OldPath, string? OldFileName)> UpdateEpisodeMetadata(
+        SonarrEpisode episode, 
+        string episodePath, 
+        Season season, 
+        DateTime? dateAdded,
+        string instanceId)
     {
         var episodeEntity = season.Episodes.FirstOrDefault(se => se.SonarrId == episode.Id);
         
@@ -147,7 +151,8 @@ public class EpisodeSync : IEpisodeSync
                 FileName = Path.GetFileNameWithoutExtension(episodePath),
                 Path = Path.GetDirectoryName(episodePath),
                 Season = season,
-                DateAdded = dateAdded?.ToUniversalTime()
+                DateAdded = dateAdded?.ToUniversalTime(),
+                SourceInstanceId = instanceId
             };
             season.Episodes.Add(episodeEntity);
         }

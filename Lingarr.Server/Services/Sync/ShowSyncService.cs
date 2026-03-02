@@ -59,7 +59,7 @@ public class ShowSyncService : IShowSyncService
             foreach (var season in show.Seasons)
             {
                 var seasonEntity = await _seasonSync.SyncSeason(showEntity, show, season, instanceUrl, instanceApiKey);
-                await _episodeSync.SyncEpisodes(show, seasonEntity, instanceUrl, instanceApiKey);
+                await _episodeSync.SyncEpisodes(show, seasonEntity, instanceId, instanceUrl, instanceApiKey);
             }
             
             processedCount++;
@@ -85,7 +85,7 @@ public class ShowSyncService : IShowSyncService
         foreach (var season in show.Seasons)
         {
             var seasonEntity = await _seasonSync.SyncSeason(showEntity, show, season, instanceUrl, instanceApiKey);
-            await _episodeSync.SyncEpisodes(show, seasonEntity, instanceUrl, instanceApiKey);
+            await _episodeSync.SyncEpisodes(show, seasonEntity, instanceId, instanceUrl, instanceApiKey);
         }
 
         await _dbContext.SaveChangesAsync();
