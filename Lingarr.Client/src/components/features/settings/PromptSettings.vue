@@ -112,11 +112,11 @@ const isValid = reactive({
 })
 
 const useBatchTranslation = computed(
-    () => settingsStore.getSetting(SETTINGS.USE_BATCH_TRANSLATION) as string
+    () => (settingsStore.getSetting(SETTINGS.USE_BATCH_TRANSLATION) as string) ?? 'false'
 )
 
 const aiContextPromptEnabled = computed({
-    get: (): string => settingsStore.getSetting(SETTINGS.AI_CONTEXT_PROMPT_ENABLED) as string,
+    get: (): string => (settingsStore.getSetting(SETTINGS.AI_CONTEXT_PROMPT_ENABLED) as string) ?? 'false',
     set: (newValue: string): void => {
         settingsStore.updateSetting(SETTINGS.AI_CONTEXT_PROMPT_ENABLED, newValue, true)
         saveNotification.value?.show()
@@ -124,7 +124,7 @@ const aiContextPromptEnabled = computed({
 })
 
 const contextBefore = computed({
-    get: () => settingsStore.getSetting(SETTINGS.AI_CONTEXT_BEFORE) as string,
+    get: () => (settingsStore.getSetting(SETTINGS.AI_CONTEXT_BEFORE) as string) ?? '',
     set: (newValue: string) => {
         settingsStore.updateSetting(SETTINGS.AI_CONTEXT_BEFORE, newValue, isValid.contextBefore)
         if (isValid.contextBefore) {
@@ -134,7 +134,7 @@ const contextBefore = computed({
 })
 
 const contextAfter = computed({
-    get: () => settingsStore.getSetting(SETTINGS.AI_CONTEXT_AFTER) as string,
+    get: () => (settingsStore.getSetting(SETTINGS.AI_CONTEXT_AFTER) as string) ?? '',
     set: (newValue: string) => {
         settingsStore.updateSetting(SETTINGS.AI_CONTEXT_AFTER, newValue, isValid.contextAfter)
         if (isValid.contextAfter) {
@@ -144,7 +144,7 @@ const contextAfter = computed({
 })
 
 const batchContextEnabled = computed({
-    get: (): string => settingsStore.getSetting(SETTINGS.BATCH_CONTEXT_ENABLED) as string,
+    get: (): string => (settingsStore.getSetting(SETTINGS.BATCH_CONTEXT_ENABLED) as string) ?? 'false',
     set: (newValue: string): void => {
         settingsStore.updateSetting(SETTINGS.BATCH_CONTEXT_ENABLED, newValue, true)
         saveNotification.value?.show()
@@ -152,7 +152,7 @@ const batchContextEnabled = computed({
 })
 
 const batchContextBefore = computed({
-    get: () => settingsStore.getSetting(SETTINGS.BATCH_CONTEXT_BEFORE) as string,
+    get: () => (settingsStore.getSetting(SETTINGS.BATCH_CONTEXT_BEFORE) as string) ?? '',
     set: (newValue: string) => {
         settingsStore.updateSetting(
             SETTINGS.BATCH_CONTEXT_BEFORE,
@@ -166,7 +166,7 @@ const batchContextBefore = computed({
 })
 
 const batchContextAfter = computed({
-    get: () => settingsStore.getSetting(SETTINGS.BATCH_CONTEXT_AFTER) as string,
+    get: () => (settingsStore.getSetting(SETTINGS.BATCH_CONTEXT_AFTER) as string) ?? '',
     set: (newValue: string) => {
         settingsStore.updateSetting(
             SETTINGS.BATCH_CONTEXT_AFTER,

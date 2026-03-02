@@ -395,6 +395,7 @@ public class TestTranslationController : ControllerBase
     {
         var movieQuery = _dbContext.Movies
             .Include(m => m.Images)
+            .Include(m => m.EmbeddedSubtitles)
             .AsQueryable();
 
         // Priority: prefix match > substring match > filename match
@@ -434,7 +435,20 @@ public class TestTranslationController : ControllerBase
                     MediaId = movie.Id,
                     PosterPath = posterImage != null ? $"movie{posterImage.Path}" : null,
                     Year = year,
-                    Subtitles = subtitles
+                    Subtitles = subtitles,
+                    EmbeddedSubtitles = movie.EmbeddedSubtitles
+                        .Where(e => e.IsTextBased)
+                        .Select(e => new EmbeddedSubtitleInfo
+                        {
+                            StreamIndex = e.StreamIndex,
+                            Language = e.Language,
+                            Title = e.Title,
+                            CodecName = e.CodecName,
+                            IsTextBased = e.IsTextBased,
+                            IsDefault = e.IsDefault,
+                            IsForced = e.IsForced
+                        })
+                        .ToList()
                 });
             }
             finally
@@ -462,6 +476,7 @@ public class TestTranslationController : ControllerBase
             .Include(s => s.Images)
             .Include(s => s.Seasons)
             .ThenInclude(se => se.Episodes)
+            .ThenInclude(e => e.EmbeddedSubtitles)
             .AsQueryable();
 
         // Priority: prefix match > substring match
@@ -555,7 +570,20 @@ public class TestTranslationController : ControllerBase
                                 Path = s.Path,
                                 Language = s.Language,
                                 FileName = s.FileName
-                            }).ToList()
+                            }).ToList(),
+                            EmbeddedSubtitles = episode.EmbeddedSubtitles
+                                .Where(e => e.IsTextBased)
+                                .Select(e => new EmbeddedSubtitleInfo
+                                {
+                                    StreamIndex = e.StreamIndex,
+                                    Language = e.Language,
+                                    Title = e.Title,
+                                    CodecName = e.CodecName,
+                                    IsTextBased = e.IsTextBased,
+                                    IsDefault = e.IsDefault,
+                                    IsForced = e.IsForced
+                                })
+                                .ToList()
                         });
                     }
                 }

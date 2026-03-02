@@ -370,6 +370,7 @@
       "localAiDescriptionFollow": "en moeten de",
       "localAiDescriptionSpecification": "API-specificatie volgen.",
       "localAiNotification": "API-sleutel is optioneel en kan leeg worden gelaten.",
+      "enableTokenLimit": "Tokenlimiet inschakelen",
       "addressUrlError": "Voer een geldige URL in (bijv. http://localhost:3000 of https://api.voorbeeld.com)",
       "versionLabel": "Versie",
       "versionError": "Versie mag niet leeg zijn",

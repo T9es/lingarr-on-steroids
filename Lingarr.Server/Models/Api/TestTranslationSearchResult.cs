@@ -40,5 +40,24 @@ public class TestTranslationSearchResult
     /// Available subtitle files for this media item.
     /// </summary>
     public List<Subtitles> Subtitles { get; set; } = new();
+
+    /// <summary>
+    /// Embedded subtitles from the media file.
+    /// </summary>
+    public List<EmbeddedSubtitleInfo> EmbeddedSubtitles { get; set; } = new();
+}
+
+/// <summary>
+/// Embedded subtitle information for API responses.
+/// </summary>
+public class EmbeddedSubtitleInfo
+{
+    public int StreamIndex { get; set; }
+    public string? Language { get; set; }
+    public string? Title { get; set; }
+    public string CodecName { get; set; } = "";
+    public bool IsTextBased { get; set; }
+    public bool IsDefault { get; set; }
+    public bool IsForced { get; set; }
 }
 

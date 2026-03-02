@@ -3,7 +3,7 @@
         class="grid grid-flow-row auto-rows-max grid-cols-1 gap-4 p-4 xl:grid-cols-2 2xl:grid-cols-3">
         <ServicesSettings />
         <PromptSettings
-            v-if="
+            v-show="
                 [
                     SERVICE_TYPE.ANTHROPIC,
                     SERVICE_TYPE.DEEPSEEK,
@@ -22,7 +22,7 @@
                 )
             " />
         <TranslationSettings
-            v-if="
+            v-show="
                 [
                     SERVICE_TYPE.ANTHROPIC,
                     SERVICE_TYPE.DEEPSEEK,
@@ -41,7 +41,7 @@
                 )
             " />
         <CustomAiParameters
-            v-if="
+            v-show="
                 [
                     SERVICE_TYPE.ANTHROPIC,
                     SERVICE_TYPE.DEEPSEEK,

@@ -194,7 +194,7 @@ onMounted(async () => {
 })
 
 const useBatchTranslation = computed({
-    get: (): string => settingsStore.getSetting(SETTINGS.USE_BATCH_TRANSLATION) as string,
+    get: (): string => (settingsStore.getSetting(SETTINGS.USE_BATCH_TRANSLATION) as string) ?? 'false',
     set: (newValue: string): void => {
         settingsStore.updateSetting(SETTINGS.USE_BATCH_TRANSLATION, newValue, true)
         saveNotification.value?.show()
@@ -202,7 +202,7 @@ const useBatchTranslation = computed({
 })
 
 const maxBatchSize = computed({
-    get: (): string => settingsStore.getSetting(SETTINGS.MAX_BATCH_SIZE) as string,
+    get: (): string => (settingsStore.getSetting(SETTINGS.MAX_BATCH_SIZE) as string) ?? '',
     set: (newValue: string): void => {
         settingsStore.updateSetting(SETTINGS.MAX_BATCH_SIZE, newValue, isValid.maxBatchSize)
         saveNotification.value?.show()
@@ -210,7 +210,7 @@ const maxBatchSize = computed({
 })
 
 const maxRetries = computed({
-    get: (): string => settingsStore.getSetting(SETTINGS.MAX_RETRIES) as string,
+    get: (): string => (settingsStore.getSetting(SETTINGS.MAX_RETRIES) as string) ?? '',
     set: (newValue: string): void => {
         settingsStore.updateSetting(SETTINGS.MAX_RETRIES, newValue, isValid.maxRetries)
         saveNotification.value?.show()
@@ -218,7 +218,7 @@ const maxRetries = computed({
 })
 
 const retryDelay = computed({
-    get: (): string => settingsStore.getSetting(SETTINGS.RETRY_DELAY) as string,
+    get: (): string => (settingsStore.getSetting(SETTINGS.RETRY_DELAY) as string) ?? '',
     set: (newValue: string): void => {
         settingsStore.updateSetting(SETTINGS.RETRY_DELAY, newValue, isValid.retryDelay)
         saveNotification.value?.show()
@@ -226,7 +226,7 @@ const retryDelay = computed({
 })
 
 const retryDelayMultiplier = computed({
-    get: (): string => settingsStore.getSetting(SETTINGS.RETRY_DELAY_MULTIPLIER) as string,
+    get: (): string => (settingsStore.getSetting(SETTINGS.RETRY_DELAY_MULTIPLIER) as string) ?? '',
     set: (newValue: string): void => {
         settingsStore.updateSetting(
             SETTINGS.RETRY_DELAY_MULTIPLIER,
@@ -238,7 +238,7 @@ const retryDelayMultiplier = computed({
 })
 
 const maxParallelTranslations = computed({
-    get: (): string => settingsStore.getSetting(SETTINGS.MAX_PARALLEL_TRANSLATIONS) as string,
+    get: (): string => (settingsStore.getSetting(SETTINGS.MAX_PARALLEL_TRANSLATIONS) as string) ?? '',
     set: (newValue: string): void => {
         settingsStore.updateSetting(
             SETTINGS.MAX_PARALLEL_TRANSLATIONS,

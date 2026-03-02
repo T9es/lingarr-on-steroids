@@ -131,6 +131,11 @@ public class EpisodePreview
     /// Available subtitle files.
     /// </summary>
     public List<SubtitleInfo> Subtitles { get; set; } = [];
+
+    /// <summary>
+    /// Embedded subtitles from the media file.
+    /// </summary>
+    public List<EmbeddedSubtitleInfo> EmbeddedSubtitles { get; set; } = [];
 }
 
 /// <summary>

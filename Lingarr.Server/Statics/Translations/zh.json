@@ -370,6 +370,7 @@
       "localAiDescriptionFollow": "并应遵循",
       "localAiDescriptionSpecification": "API规范。",
       "localAiNotification": "API密钥是可选的，可以留空。",
+      "enableTokenLimit": "启用代币限制",
       "addressUrlError": "请输入有效的URL（例如：http://localhost:3000 或 https://api.example.com）",
       "versionLabel": "版本",
       "versionError": "版本不能为空",

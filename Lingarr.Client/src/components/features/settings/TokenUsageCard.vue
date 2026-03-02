@@ -18,8 +18,8 @@
             </button>
         </div>
 
-        <div v-if="usage" class="mt-4">
-            <div class="flex justify-between text-sm font-semibold">
+        <div class="mt-4">
+            <div v-if="usage" class="flex justify-between text-sm font-semibold">
                 <span>{{ translate('settings.tokenUsage.outputTokensToday') }}</span>
                 <span>
                     {{ formatNumber(usage.tokensUsedToday) }} / 
@@ -27,12 +27,16 @@
                 </span>
             </div>
             
-            <div v-if="usage.tokenLimit" class="bg-secondary-content/20 relative mt-2 h-2 overflow-hidden rounded-full">
+            <div v-if="usage?.tokenLimit" class="bg-secondary-content/20 relative mt-2 h-2 overflow-hidden rounded-full">
                 <div
                     class="bg-accent absolute top-0 left-0 h-full transition-all"
                     :style="{ width: Math.min(usage.percentUsed, 100) + '%' }"
                     :class="{ 'bg-yellow-500': usage.percentUsed > 80, 'bg-red-500': usage.percentUsed >= 100 }">
                 </div>
+            </div>
+
+            <div v-else-if="loading" class="mt-2 text-sm text-secondary-content/70">
+                {{ translate('common.loading') }}
             </div>
 
             <div class="mt-4 grid gap-2 text-sm md:grid-cols-2">

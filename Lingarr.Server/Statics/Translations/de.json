@@ -370,6 +370,7 @@
       "localAiDescriptionFollow": "und sollten der",
       "localAiDescriptionSpecification": "API-Spezifikation folgen.",
       "localAiNotification": "API-Schlüssel ist optional und kann leer gelassen werden.",
+      "enableTokenLimit": "Token-Limit aktivieren",
       "addressUrlError": "Bitte geben Sie eine gültige URL ein (z.B. http://localhost:3000 oder https://api.beispiel.com)",
       "versionLabel": "Version",
       "versionError": "Version darf nicht leer sein",

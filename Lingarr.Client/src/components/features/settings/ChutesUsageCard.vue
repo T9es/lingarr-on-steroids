@@ -137,8 +137,8 @@
         </template>
 
         <template v-else>
-            <div v-if="tokenUsage" class="mt-4">
-                <div class="flex justify-between text-sm font-semibold">
+            <div class="mt-4">
+                <div v-if="tokenUsage" class="flex justify-between text-sm font-semibold">
                     <span>{{ translate('settings.tokenUsage.outputTokensToday') }}</span>
                     <span>
                         {{ formatNumber(tokenUsage.tokensUsedToday) }} / 
@@ -146,12 +146,16 @@
                     </span>
                 </div>
                 
-                <div v-if="tokenUsage.tokenLimit" class="bg-secondary-content/20 relative mt-2 h-2 overflow-hidden rounded-full">
+                <div v-if="tokenUsage?.tokenLimit" class="bg-secondary-content/20 relative mt-2 h-2 overflow-hidden rounded-full">
                     <div
                         class="bg-accent absolute top-0 left-0 h-full transition-all"
                         :style="{ width: Math.min(tokenUsage.percentUsed, 100) + '%' }"
                         :class="{ 'bg-yellow-500': tokenUsage.percentUsed > 80, 'bg-red-500': tokenUsage.percentUsed >= 100 }">
                     </div>
+                </div>
+
+                <div v-else-if="tokenUsageLoading" class="mt-2 text-sm text-secondary-content/70">
+                    {{ translate('common.loading') }}
                 </div>
 
                 <div class="mt-4 grid gap-2 text-sm md:grid-cols-2">
@@ -254,12 +258,16 @@ const loadChutesMode = async () => {
 }
 
 const setMode = async (mode: 'subscription' | 'payg') => {
-    chutesMode.value = mode
-    await services.tokenUsage.setChutesMode(mode)
-    if (mode === 'payg') {
-        await loadTokenUsage()
-        tokenLimit.value = (settingsStore.getSetting(SETTINGS.CHUTES_TOKEN_LIMIT) as string) || ''
-        resetTime.value = (settingsStore.getSetting(SETTINGS.TOKEN_LIMIT_RESET_TIME) as string) || '00:00'
+    try {
+        await services.tokenUsage.setChutesMode(mode)
+        chutesMode.value = mode
+        if (mode === 'payg') {
+            await loadTokenUsage()
+            tokenLimit.value = (settingsStore.getSetting(SETTINGS.CHUTES_TOKEN_LIMIT) as string) || ''
+            resetTime.value = (settingsStore.getSetting(SETTINGS.TOKEN_LIMIT_RESET_TIME) as string) || '00:00'
+        }
+    } catch (error) {
+        console.error('Failed to set Chutes mode', error)
     }
 }
 

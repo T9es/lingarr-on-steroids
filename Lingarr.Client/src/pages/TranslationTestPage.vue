@@ -137,6 +137,7 @@
         :default-target-language="defaultTargetLanguage"
         :available-source-languages="availableLanguages"
         :available-target-languages="availableLanguages"
+        :available-subtitles="availableSubtitles"
         @close="closeConfigModal"
         @start="handleStartTest" />
 </template>
@@ -157,6 +158,17 @@ import ShowResultCard from '@/components/features/translation-test/ShowResultCar
 interface Subtitle {
     path: string
     language?: string
+    fileName?: string
+}
+
+interface EmbeddedSubtitle {
+    streamIndex: number
+    language?: string
+    title?: string
+    codecName: string
+    isTextBased: boolean
+    isDefault: boolean
+    isForced: boolean
 }
 
 interface MovieResult {
@@ -165,6 +177,7 @@ interface MovieResult {
     posterPath?: string
     year?: number
     subtitles: Subtitle[]
+    embeddedSubtitles?: EmbeddedSubtitle[]
 }
 
 interface EpisodePreview {
@@ -174,6 +187,7 @@ interface EpisodePreview {
     displayTitle: string
     seasonNumber: number
     subtitles: Subtitle[]
+    embeddedSubtitles?: EmbeddedSubtitle[]
 }
 
 interface ShowSearchResult {
@@ -230,6 +244,9 @@ const selectedSubtitlePath = ref('')
 const selectedTotalLines = ref(100)
 const selectedShow = ref<ShowSearchResult | null>(null)
 const selectedEpisode = ref<EpisodePreview | null>(null)
+const selectedMediaId = ref<number | null>(null)
+const selectedMediaType = ref<'Movie' | 'Episode' | null>(null)
+const availableSubtitles = ref<(Subtitle | EmbeddedSubtitle)[]>([])
 
 const sourceLanguages = computed(() => 
     (settingStore.getSetting(SETTINGS.SOURCE_LANGUAGES) as ILanguage[]) || []
@@ -273,15 +290,25 @@ watch(searchQuery, (value) => {
 })
 
 async function openConfigModalFromMovie(movie: MovieResult) {
-    if (movie.subtitles.length === 0) return
+    if (movie.subtitles.length === 0 && (!movie.embeddedSubtitles || movie.embeddedSubtitles.length === 0)) return
     
     selectedShow.value = null
     selectedEpisode.value = null
-    selectedSubtitle.value = movie.subtitles[0]
-    selectedSubtitlePath.value = movie.subtitles[0].path
+    selectedMediaId.value = movie.movieId
+    selectedMediaType.value = 'Movie'
+    
+    const allSubs: (Subtitle | EmbeddedSubtitle)[] = [
+        ...movie.subtitles,
+        ...(movie.embeddedSubtitles || [])
+    ]
+    availableSubtitles.value = allSubs
+    
+    const firstExternal = movie.subtitles[0]
+    selectedSubtitle.value = firstExternal
+    selectedSubtitlePath.value = firstExternal.path
     
     try {
-        const response = await fetch(`/api/test-translation/subtitle-preview?path=${encodeURIComponent(movie.subtitles[0].path)}`)
+        const response = await fetch(`/api/test-translation/subtitle-preview?path=${encodeURIComponent(firstExternal.path)}`)
         if (response.ok) {
             const data = await response.json()
             selectedTotalLines.value = data.totalLines || 100
@@ -294,15 +321,25 @@ async function openConfigModalFromMovie(movie: MovieResult) {
 }
 
 async function openConfigModalFromEpisode(episode: EpisodePreview, show: ShowSearchResult) {
-    if (episode.subtitles.length === 0) return
+    if (episode.subtitles.length === 0 && (!episode.embeddedSubtitles || episode.embeddedSubtitles.length === 0)) return
     
     selectedShow.value = show
     selectedEpisode.value = episode
-    selectedSubtitle.value = episode.subtitles[0]
-    selectedSubtitlePath.value = episode.subtitles[0].path
+    selectedMediaId.value = episode.episodeId
+    selectedMediaType.value = 'Episode'
+    
+    const allSubs: (Subtitle | EmbeddedSubtitle)[] = [
+        ...episode.subtitles,
+        ...(episode.embeddedSubtitles || [])
+    ]
+    availableSubtitles.value = allSubs
+    
+    const firstExternal = episode.subtitles[0]
+    selectedSubtitle.value = firstExternal
+    selectedSubtitlePath.value = firstExternal.path
     
     try {
-        const response = await fetch(`/api/test-translation/subtitle-preview?path=${encodeURIComponent(episode.subtitles[0].path)}`)
+        const response = await fetch(`/api/test-translation/subtitle-preview?path=${encodeURIComponent(firstExternal.path)}`)
         if (response.ok) {
             const data = await response.json()
             selectedTotalLines.value = data.totalLines || 100
@@ -328,6 +365,7 @@ async function handleStartTest(config: {
     startLine?: number
     endLine?: number
     maxLines?: number
+    embeddedStreamIndex?: number
 }) {
     closeConfigModal()
     isRunning.value = true
@@ -339,14 +377,15 @@ async function handleStartTest(config: {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                subtitlePath: config.subtitlePath,
+                subtitlePath: config.subtitlePath || null,
                 sourceLanguage: config.sourceLanguage,
                 targetLanguage: config.targetLanguage,
                 startLine: config.startLine,
                 endLine: config.endLine,
                 maxLines: config.maxLines,
-                mediaId: selectedEpisode.value?.episodeId || (selectedShow.value ? null : null),
-                mediaType: selectedEpisode.value ? 'Episode' : (selectedShow.value ? 'Show' : 'Movie')
+                mediaId: selectedMediaId.value,
+                mediaType: selectedMediaType.value,
+                embeddedStreamIndex: config.embeddedStreamIndex
             })
         })
 

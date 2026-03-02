@@ -17,6 +17,27 @@
         <div class="space-y-4">
             <div>
                 <label class="mb-2 block text-sm font-medium text-primary-content">
+                    Subtitle to translate
+                </label>
+                <select
+                    v-model="selectedSubtitle"
+                    class="bg-primary border-accent text-primary-content w-full rounded border px-3 py-2 text-sm">
+                    <option
+                        v-for="sub in availableSubtitles"
+                        :key="isEmbedded(sub) ? `emb-${sub.streamIndex}` : sub.path"
+                        :value="sub"
+                        :disabled="isEmbedded(sub) && !sub.isTextBased">
+                        {{ getSubtitleLabel(sub) }}
+                        {{ isEmbedded(sub) && !sub.isTextBased ? ' (image-based, not selectable)' : '' }}
+                    </option>
+                </select>
+                <p v-if="isEmbedded(selectedSubtitle as SubtitleOption)" class="text-accent text-xs mt-1">
+                    Embedded subtitle will be extracted automatically
+                </p>
+            </div>
+
+            <div>
+                <label class="mb-2 block text-sm font-medium text-primary-content">
                     {{ translate('translationTest.linesToTranslate') }}
                 </label>
                 <div class="flex flex-wrap gap-2">
@@ -155,6 +176,24 @@ interface Language {
     name: string
 }
 
+interface Subtitle {
+    path: string
+    language?: string
+    fileName?: string
+}
+
+interface EmbeddedSubtitle {
+    streamIndex: number
+    language?: string
+    title?: string
+    codecName: string
+    isTextBased: boolean
+    isDefault: boolean
+    isForced: boolean
+}
+
+type SubtitleOption = Subtitle | EmbeddedSubtitle
+
 const props = defineProps<{
     isOpen: boolean
     subtitlePath: string
@@ -166,6 +205,7 @@ const props = defineProps<{
     defaultTargetLanguage?: string
     availableSourceLanguages: Language[]
     availableTargetLanguages: Language[]
+    availableSubtitles: SubtitleOption[]
 }>()
 
 const emit = defineEmits<{
@@ -180,6 +220,7 @@ interface TestConfig {
     startLine?: number
     endLine?: number
     maxLines?: number
+    embeddedStreamIndex?: number
 }
 
 const { translate } = useI18n()
@@ -191,6 +232,68 @@ const endLine = ref(20)
 const sourceLanguage = ref(props.defaultSourceLanguage || '')
 const targetLanguage = ref(props.defaultTargetLanguage || '')
 const showVisualPicker = ref(false)
+const selectedSubtitle = ref<SubtitleOption | null>(null)
+
+function isEmbedded(sub: SubtitleOption): sub is EmbeddedSubtitle {
+    return 'streamIndex' in sub
+}
+
+function getSubtitleLabel(sub: SubtitleOption): string {
+    if (isEmbedded(sub)) {
+        const lang = sub.language?.toUpperCase() || 'UND'
+        return `🎬 ${lang} [EMBEDDED, ${sub.codecName.toUpperCase()}]${sub.title ? ` - ${sub.title}` : ''}`
+    }
+    const lang = sub.language?.toUpperCase() || '??'
+    return `📄 ${lang} (${sub.fileName || sub.path.split('/').pop() || 'unknown'})`
+}
+
+function getSubtitlePath(sub: SubtitleOption): string {
+    if (isEmbedded(sub)) return ''
+    return sub.path
+}
+
+function getEmbeddedIndex(sub: SubtitleOption): number | undefined {
+    if (isEmbedded(sub)) return sub.streamIndex
+    return undefined
+}
+
+watch(() => props.availableSubtitles, (subs) => {
+    if (!subs || subs.length === 0) return
+    
+    if (!selectedSubtitle.value) {
+        autoSelectSubtitle(subs, sourceLanguage.value)
+    }
+}, { immediate: true })
+
+watch(sourceLanguage, (newLang) => {
+    if (props.availableSubtitles?.length > 0) {
+        autoSelectSubtitle(props.availableSubtitles, newLang)
+    }
+})
+
+function autoSelectSubtitle(subs: SubtitleOption[], lang: string) {
+    const langLower = lang.toLowerCase()
+    
+    const externalMatch = subs.find(s => !isEmbedded(s) && s.language?.toLowerCase() === langLower) as Subtitle | undefined
+    if (externalMatch) {
+        selectedSubtitle.value = externalMatch
+        return
+    }
+    
+    const embeddedMatch = subs.find(s => isEmbedded(s) && s.language?.toLowerCase() === langLower) as EmbeddedSubtitle | undefined
+    if (embeddedMatch) {
+        selectedSubtitle.value = embeddedMatch
+        return
+    }
+    
+    const firstExternal = subs.find(s => !isEmbedded(s)) as Subtitle | undefined
+    if (firstExternal) {
+        selectedSubtitle.value = firstExternal
+        return
+    }
+    
+    selectedSubtitle.value = subs[0]
+}
 
 watch(
     () => props.totalLines,
@@ -215,15 +318,43 @@ watch(
     }
 )
 
+watch(selectedSubtitle, async (sub) => {
+    if (!sub) return
+    
+    if (isEmbedded(sub)) {
+        return
+    }
+    
+    const path = getSubtitlePath(sub)
+    try {
+        const response = await fetch(`/api/test-translation/subtitle-preview?path=${encodeURIComponent(path)}`)
+        if (response.ok) {
+            await response.json()
+        }
+    } catch {
+        // Ignore errors - totalLines is passed from parent
+    }
+})
+
 const canStart = computed(() => {
-    return sourceLanguage.value && targetLanguage.value && sourceLanguage.value !== targetLanguage.value
+    return sourceLanguage.value && targetLanguage.value && 
+           sourceLanguage.value !== targetLanguage.value && 
+           selectedSubtitle.value !== null
+})
+
+const currentSubtitlePath = computed(() => {
+    if (!selectedSubtitle.value) return ''
+    return getSubtitlePath(selectedSubtitle.value)
 })
 
 function startTest() {
+    if (!selectedSubtitle.value) return
+    
     const config: TestConfig = {
-        subtitlePath: props.subtitlePath,
+        subtitlePath: currentSubtitlePath.value,
         sourceLanguage: sourceLanguage.value,
-        targetLanguage: targetLanguage.value
+        targetLanguage: targetLanguage.value,
+        embeddedStreamIndex: getEmbeddedIndex(selectedSubtitle.value)
     }
 
     if (lineMode.value === 'first') {

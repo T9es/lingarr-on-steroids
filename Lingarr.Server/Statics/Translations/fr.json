@@ -370,6 +370,7 @@
       "localAiDescriptionFollow": "et doivent suivre la",
       "localAiDescriptionSpecification": "spécification API.",
       "localAiNotification": "La clé API est optionnelle et peut être laissée vide.",
+      "enableTokenLimit": "Activer la limite de tokens",
       "addressUrlError": "Veuillez entrer une URL valide (ex: http://localhost:3000 ou https://api.exemple.com)",
       "versionLabel": "Version",
       "versionError": "La version ne doit pas être vide",

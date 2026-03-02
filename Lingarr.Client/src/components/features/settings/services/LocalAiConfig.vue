@@ -37,6 +37,13 @@
             @update:validation="(val) => (isValid.apiKey = val)" />
         <p class="text-xs">{{ translate('settings.services.localAiNotification') }}</p>
 
+        <div class="mt-4 flex items-center justify-between">
+            <span class="text-sm font-medium">
+                {{ translate('settings.services.enableTokenLimit') }}
+            </span>
+            <ToggleButton v-model="tokenLimitEnabled" @update:modelValue="saveTokenLimitEnabled" />
+        </div>
+
         <p>
             {{ translate('settings.services.batchSupportAvailable') }}
             <a class="cursor-pointer underline" @click="router.push({ name: 'subtitle-settings' })">
@@ -52,7 +59,10 @@ import { useSettingStore } from '@/store/setting'
 import { SETTINGS } from '@/ts'
 import { useRouter } from 'vue-router'
 import InputComponent from '@/components/common/InputComponent.vue'
+import ToggleButton from '@/components/common/ToggleButton.vue'
+import { useI18n } from '@/plugins/i18n'
 
+const { translate } = useI18n()
 const settingsStore = useSettingStore()
 const emit = defineEmits(['save'])
 const isValid = reactive({
@@ -91,4 +101,13 @@ const address = computed({
         }
     }
 })
+
+const tokenLimitEnabled = computed({
+    get: () => settingsStore.getSetting(SETTINGS.LOCALAI_TOKEN_LIMIT_ENABLED) === 'true',
+    set: () => {}
+})
+
+const saveTokenLimitEnabled = async (value: string) => {
+    await settingsStore.updateSetting(SETTINGS.LOCALAI_TOKEN_LIMIT_ENABLED, value, true)
+}
 </script>

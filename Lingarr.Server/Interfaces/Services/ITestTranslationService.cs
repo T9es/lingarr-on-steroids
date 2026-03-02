@@ -58,6 +58,12 @@ public class TestTranslationRequest
     public int? StartLine { get; set; }
     public int? EndLine { get; set; }
     public int? MaxLines { get; set; }
+    
+    /// <summary>
+    /// Stream index for embedded subtitle extraction.
+    /// If set, will extract this specific stream from the media file.
+    /// </summary>
+    public int? EmbeddedStreamIndex { get; set; }
 }
 
 /// <summary>
