@@ -26,10 +26,13 @@
                         </span>
                     </div>
                     <div class="flex items-center gap-3">
-                        <button
+<button
                             @click="checkForUpdates"
                             :disabled="checkingUpdates"
-                            class="bg-accent text-primary-content rounded-md px-3 py-1.5 text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-50">
+                            class="bg-accent text-primary-content flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-50">
+                            <LoaderCircleIcon
+                                v-if="checkingUpdates"
+                                class="h-4 w-4 animate-spin" />
                             {{
                                 checkingUpdates
                                     ? translate('common.loading')
@@ -136,9 +139,15 @@ async function fetchReadme() {
 
 async function checkForUpdates() {
     checkingUpdates.value = true
+    const startTime = Date.now()
     try {
         await instanceStore.applyVersionOnLoad()
     } finally {
+        const elapsed = Date.now() - startTime
+        const remaining = 500 - elapsed
+        if (remaining > 0) {
+            await new Promise((resolve) => setTimeout(resolve, remaining))
+        }
         checkingUpdates.value = false
     }
 }
