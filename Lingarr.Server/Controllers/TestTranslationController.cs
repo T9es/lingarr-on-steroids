@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using Lingarr.Core.Data;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Interfaces.Services;
+using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Models.Api;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -21,17 +22,20 @@ public class TestTranslationController : ControllerBase
     private readonly ITestTranslationService _testTranslationService;
     private readonly LingarrDbContext _dbContext;
     private readonly ISubtitleService _subtitleService;
+    private readonly ISubtitleExtractionService _extractionService;
     private readonly ILogger<TestTranslationController> _logger;
     
     public TestTranslationController(
         ITestTranslationService testTranslationService,
         LingarrDbContext dbContext,
         ISubtitleService subtitleService,
+        ISubtitleExtractionService extractionService,
         ILogger<TestTranslationController> logger)
     {
         _testTranslationService = testTranslationService;
         _dbContext = dbContext;
         _subtitleService = subtitleService;
+        _extractionService = extractionService;
         _logger = logger;
     }
     
@@ -425,6 +429,13 @@ public class TestTranslationController : ControllerBase
                 if (subtitles.Count == 0)
                     return;
 
+                // JIT sync embedded subtitles if not indexed (similar to SubtitleExtractionController)
+                if (movie.EmbeddedSubtitles == null || movie.EmbeddedSubtitles.Count == 0)
+                {
+                    await _extractionService.SyncEmbeddedSubtitles(movie);
+                    await _dbContext.Entry(movie).Collection(m => m.EmbeddedSubtitles).LoadAsync();
+                }
+
                 var posterImage = movie.Images.FirstOrDefault(img => img.Type == "poster");
                 var year = ExtractYearFromPath(movie.Path);
 
@@ -547,6 +558,13 @@ public class TestTranslationController : ControllerBase
                         var subtitles = await _subtitleService.GetAllSubtitles(basePath);
                         if (subtitles.Count == 0)
                             continue;
+
+                        // JIT sync embedded subtitles if not indexed (similar to SubtitleExtractionController)
+                        if (episode.EmbeddedSubtitles == null || episode.EmbeddedSubtitles.Count == 0)
+                        {
+                            await _extractionService.SyncEmbeddedSubtitles(episode);
+                            await _dbContext.Entry(episode).Collection(e => e.EmbeddedSubtitles).LoadAsync();
+                        }
 
                         if (!string.IsNullOrEmpty(episode.FileName))
                         {

@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace Lingarr.Server.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/token-usage")]
 public class TokenUsageController : ControllerBase
 {
     private readonly ITokenUsageService _tokenUsageService;

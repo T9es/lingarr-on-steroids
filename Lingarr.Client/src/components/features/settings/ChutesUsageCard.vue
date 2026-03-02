@@ -1,5 +1,8 @@
 <template>
     <div class="border-secondary bg-primary mt-6 flex flex-col rounded-md border p-4 shadow-sm">
+        <div v-if="modeError" class="mb-2 rounded-md bg-red-500/10 p-2 text-sm text-red-300">
+            {{ modeError }}
+        </div>
         <div class="mb-4 flex items-center justify-between">
             <span class="text-sm font-medium">
                 {{ translate('settings.chutes.mode.label') }}
@@ -222,6 +225,7 @@ const requestBufferIsValid = ref(true)
 const requestBuffer = ref('')
 
 const chutesMode = ref<'subscription' | 'payg'>('subscription')
+const modeError = ref<string | null>(null)
 const tokenUsage = ref<TokenUsageResponse | null>(null)
 const tokenUsageLoading = ref(false)
 const tokenLimit = ref('')
@@ -258,6 +262,7 @@ const loadChutesMode = async () => {
 }
 
 const setMode = async (mode: 'subscription' | 'payg') => {
+    modeError.value = null
     try {
         await services.tokenUsage.setChutesMode(mode)
         chutesMode.value = mode
@@ -268,6 +273,7 @@ const setMode = async (mode: 'subscription' | 'payg') => {
         }
     } catch (error) {
         console.error('Failed to set Chutes mode', error)
+        modeError.value = 'Failed to save. Please check if the backend is running.'
     }
 }
 
