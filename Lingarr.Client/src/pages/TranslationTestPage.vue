@@ -27,7 +27,7 @@
                             translate('translationTest.searchPlaceholder') +
                             ' (e.g. Movie Title, Show Name)'
                         "
-                        class="bg-primary border-accent w-full rounded border px-3 py-2 text-sm"
+                        class="bg-primary border-accent w-full rounded border px-3 py-2 text-sm focus:ring-2 focus:ring-accent focus:border-transparent"
                         :disabled="isRunning" />
                     <p class="text-secondary-content mt-1 text-xs">
                         {{ translate('translationTest.searchDescription') }}
@@ -37,44 +37,98 @@
                     </p>
                 </div>
 
-                <!-- Search Results -->
-                <div
-                    v-if="searchResults.length"
-                    class="border-accent/40 bg-tertiary mb-4 rounded border">
-                    <div
-                        class="border-secondary/40 text-secondary-content flex items-center justify-between border-b px-3 py-2 text-xs">
+                <!-- Search Results - Card Grid -->
+                <div v-if="searchResults.length" class="mb-4">
+                    <div class="text-secondary-content mb-2 flex items-center justify-between text-xs">
                         <span>{{ translate('translationTest.searchResultsTitle') }}</span>
                         <span v-if="isSearching" class="text-[10px] tracking-wide uppercase">
                             {{ translate('common.loading') }}
                         </span>
                     </div>
-                    <div class="divide-secondary/40 max-h-64 divide-y overflow-y-auto">
+                    <div class="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
                         <div
                             v-for="result in searchResults"
                             :key="`${result.mediaType}-${result.mediaId}`"
-                            class="px-3 py-2">
-                            <p class="text-sm font-semibold">
-                                {{ result.displayTitle }}
-                            </p>
-                            <p class="text-secondary-content mb-2 text-xs">
-                                {{
-                                    result.mediaType === 'Movie'
-                                        ? translate('movies.title')
-                                        : translate('tvShows.episode')
-                                }}
-                            </p>
-                            <div class="flex flex-wrap gap-2">
-                                <button
-                                    v-for="subtitle in result.subtitles"
-                                    :key="subtitle.path"
-                                    type="button"
-                                    class="border-accent hover:bg-accent text-primary-content cursor-pointer rounded border px-2 py-1 text-xs transition-colors"
-                                    @click="applySubtitleFromSearch(result, subtitle)">
-                                    {{ subtitle.language.toUpperCase() || '??' }}
-                                    <span v-if="subtitle.caption" class="text-primary-content/70">
-                                        - {{ subtitle.caption.toUpperCase() }}
-                                    </span>
-                                </button>
+                            class="bg-tertiary border-accent/30 hover:border-accent overflow-hidden rounded-lg border transition-colors">
+                            <!-- Card Header with Poster -->
+                            <div class="flex gap-3 p-3">
+                                <!-- Poster -->
+                                <div class="bg-secondary h-24 w-16 shrink-0 overflow-hidden rounded">
+                                    <img
+                                        v-if="result.posterPath"
+                                        :src="`/api/image/${result.posterPath}`"
+                                        class="h-full w-full object-cover"
+                                        alt=""
+                                        @error="($event.target as HTMLImageElement).style.display = 'none'" />
+                                    <div
+                                        v-else
+                                        class="text-secondary-content/50 flex h-full items-center justify-center text-2xl">
+                                        {{ result.mediaType === 'Movie' ? '🎬' : '📺' }}
+                                    </div>
+                                </div>
+                                <!-- Info -->
+                                <div class="min-w-0 flex-1">
+                                    <div class="flex items-start justify-between gap-1">
+                                        <h3 class="text-sm font-semibold leading-tight">
+                                            {{ result.displayTitle }}
+                                        </h3>
+                                        <span
+                                            class="bg-accent/20 text-accent shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium">
+                                            {{ result.mediaType === 'Movie' ? 'Movie' : 'TV' }}
+                                        </span>
+                                    </div>
+                                    <p v-if="result.year" class="text-secondary-content text-xs">
+                                        {{ result.year }}
+                                    </p>
+                                </div>
+                            </div>
+                            <!-- Subtitle Badges -->
+                            <div class="border-secondary/30 border-t px-3 py-2">
+                                <div class="flex flex-wrap gap-1.5">
+                                    <button
+                                        v-for="subtitle in result.subtitles.slice(0, 5)"
+                                        :key="subtitle.path"
+                                        type="button"
+                                        class="bg-primary hover:bg-accent text-primary-content cursor-pointer rounded px-2 py-1 text-xs font-medium transition-colors"
+                                        :class="{
+                                            'ring-2 ring-accent':
+                                                selectedSubtitleInfo ===
+                                                getSubtitleKey(result, subtitle)
+                                        }"
+                                        @click="applySubtitleFromSearch(result, subtitle)">
+                                        {{ subtitle.language.toUpperCase() || '??' }}
+                                        <span
+                                            v-if="subtitle.caption"
+                                            class="text-primary-content/70 ml-0.5">
+                                            {{ subtitle.caption.toUpperCase().slice(0, 8) }}
+                                        </span>
+                                    </button>
+                                    <button
+                                        v-if="result.subtitles.length > 5"
+                                        type="button"
+                                        class="text-secondary-content hover:text-primary-content cursor-pointer px-2 py-1 text-xs transition-colors"
+                                        @click="toggleExpandedSubtitles(result)">
+                                        +{{ result.subtitles.length - 5 }} more
+                                    </button>
+                                </div>
+                                <!-- Expanded subtitles -->
+                                <div
+                                    v-if="expandedResults.has(getResultKey(result))"
+                                    class="mt-2 flex flex-wrap gap-1.5 border-t border-secondary/30 pt-2">
+                                    <button
+                                        v-for="subtitle in result.subtitles.slice(5)"
+                                        :key="subtitle.path"
+                                        type="button"
+                                        class="bg-primary hover:bg-accent text-primary-content cursor-pointer rounded px-2 py-1 text-xs font-medium transition-colors"
+                                        @click="applySubtitleFromSearch(result, subtitle)">
+                                        {{ subtitle.language.toUpperCase() || '??' }}
+                                        <span
+                                            v-if="subtitle.caption"
+                                            class="text-primary-content/70 ml-0.5">
+                                            {{ subtitle.caption.toUpperCase().slice(0, 8) }}
+                                        </span>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -94,11 +148,10 @@
                         v-model="subtitlePath"
                         type="text"
                         :placeholder="translate('translationTest.subtitlePathPlaceholder')"
-                        class="bg-primary border-accent w-full rounded border px-3 py-2 text-sm"
+                        class="bg-primary border-accent w-full rounded border px-3 py-2 text-sm focus:ring-2 focus:ring-accent focus:border-transparent"
                         :disabled="isRunning" />
-                    <p v-if="selectedFromSearch" class="text-secondary-content mt-1 text-xs">
-                        {{ translate('translationTest.selectedFromSearch') }}
-                        {{ selectedFromSearch }}
+                    <p v-if="selectedSubtitleInfo" class="text-accent mt-1 text-xs">
+                        ✓ {{ selectedSubtitleInfo }}
                     </p>
                 </div>
 
@@ -112,7 +165,7 @@
                             v-model="sourceLanguage"
                             type="text"
                             placeholder="en"
-                            class="bg-primary border-accent w-full rounded border px-3 py-2 text-sm"
+                            class="bg-primary border-accent w-full rounded border px-3 py-2 text-sm focus:ring-2 focus:ring-accent focus:border-transparent"
                             :disabled="isRunning" />
                     </div>
                     <div>
@@ -123,7 +176,7 @@
                             v-model="targetLanguage"
                             type="text"
                             placeholder="pl"
-                            class="bg-primary border-accent w-full rounded border px-3 py-2 text-sm"
+                            class="bg-primary border-accent w-full rounded border px-3 py-2 text-sm focus:ring-2 focus:ring-accent focus:border-transparent"
                             :disabled="isRunning" />
                     </div>
                 </div>
@@ -132,7 +185,7 @@
                 <div class="flex gap-2">
                     <button
                         v-if="!isRunning"
-                        class="bg-accent hover:bg-accent/80 cursor-pointer rounded px-4 py-2 text-sm font-medium text-primary-content transition"
+                        class="bg-accent hover:bg-accent/80 cursor-pointer rounded px-4 py-2 text-sm font-medium text-primary-content transition disabled:cursor-not-allowed disabled:opacity-50"
                         :disabled="!canStart"
                         @click="startTest">
                         {{ translate('translationTest.startTest') }}
@@ -291,6 +344,15 @@ interface TestResult {
     preview?: SubtitlePreview[]
 }
 
+interface SearchResult {
+    displayTitle: string
+    mediaType: 'Movie' | 'Episode'
+    mediaId: number
+    posterPath?: string
+    year?: number
+    subtitles: ISubtitle[]
+}
+
 const { translate } = useI18n()
 
 const subtitlePath = ref('')
@@ -301,18 +363,12 @@ const logs = ref<LogEntry[]>([])
 const result = ref<TestResult | null>(null)
 const logContainer = ref<HTMLElement | null>(null)
 
-interface SearchResult {
-    displayTitle: string
-    mediaType: 'Movie' | 'Episode'
-    mediaId: number
-    subtitles: ISubtitle[]
-}
-
 const searchQuery = ref('')
 const searchResults = ref<SearchResult[]>([])
 const isSearching = ref(false)
 const searchError = ref<string | null>(null)
-const selectedFromSearch = ref<string | null>(null)
+const selectedSubtitleInfo = ref<string | null>(null)
+const expandedResults = ref<Set<string>>(new Set())
 let lastSearchToken = ''
 
 const canStart = computed(() => {
@@ -395,7 +451,6 @@ const performSearch = useDebounce(async (value: string) => {
 
         const data = (await response.json()) as SearchResult[]
 
-        // Drop out-of-order responses
         if (token !== lastSearchToken) {
             return
         }
@@ -420,13 +475,30 @@ watch(
             searchResults.value = []
             searchError.value = null
             isSearching.value = false
-            selectedFromSearch.value = null
+            selectedSubtitleInfo.value = null
             return
         }
 
         performSearch(value)
     }
 )
+
+function getResultKey(result: SearchResult): string {
+    return `${result.mediaType}-${result.mediaId}`
+}
+
+function getSubtitleKey(result: SearchResult, subtitle: ISubtitle): string {
+    return `${result.mediaType}-${result.mediaId}-${subtitle.path}`
+}
+
+function toggleExpandedSubtitles(result: SearchResult) {
+    const key = getResultKey(result)
+    if (expandedResults.value.has(key)) {
+        expandedResults.value.delete(key)
+    } else {
+        expandedResults.value.add(key)
+    }
+}
 
 function applySubtitleFromSearch(result: SearchResult, subtitle: ISubtitle) {
     subtitlePath.value = subtitle.path
@@ -435,10 +507,9 @@ function applySubtitleFromSearch(result: SearchResult, subtitle: ISubtitle) {
     }
 
     const language = subtitle.language ? subtitle.language.toUpperCase() : '??'
-    const caption = subtitle.caption ? subtitle.caption.toUpperCase() : ''
-    selectedFromSearch.value = caption
-        ? `${result.displayTitle} • ${language} • ${caption}`
-        : `${result.displayTitle} • ${language}`
+    const caption = subtitle.caption ? ` • ${subtitle.caption.toUpperCase()}` : ''
+    const year = result.year ? ` (${result.year})` : ''
+    selectedSubtitleInfo.value = `${result.displayTitle}${year} • ${language}${caption}`
 }
 
 async function scrollToBottom() {

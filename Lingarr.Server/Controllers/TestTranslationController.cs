@@ -91,11 +91,16 @@ public class TestTranslationController : ControllerBase
                     continue;
                 }
 
+                var posterImage = movie.Images.FirstOrDefault(img => img.Type == "poster");
+                var year = ExtractYearFromPath(movie.Path);
+
                 results.Add(new TestTranslationSearchResult
                 {
                     DisplayTitle = movie.Title,
                     MediaType = MediaType.Movie,
                     MediaId = movie.Id,
+                    PosterPath = posterImage != null ? $"movie{posterImage.Path}" : null,
+                    Year = year,
                     Subtitles = subtitles
                 });
 
@@ -150,11 +155,16 @@ public class TestTranslationController : ControllerBase
                 var displayTitle =
                     $"{episode.Season.Show.Title} - S{episode.Season.SeasonNumber:D2}E{episode.EpisodeNumber:D2} - {episode.Title}";
 
+                var posterImage = episode.Season.Show.Images.FirstOrDefault(img => img.Type == "poster");
+                var year = ExtractYearFromPath(episode.Season.Show.Path);
+
                 results.Add(new TestTranslationSearchResult
                 {
                     DisplayTitle = displayTitle,
                     MediaType = MediaType.Episode,
                     MediaId = episode.Id,
+                    PosterPath = posterImage != null ? $"show{posterImage.Path}" : null,
+                    Year = year,
                     Subtitles = subtitles
                 });
 
@@ -242,5 +252,24 @@ public class TestTranslationController : ControllerBase
     {
         _testTranslationService.CancelTest();
         return Ok(new { Message = "Cancellation requested" });
+    }
+
+    /// <summary>
+    /// Extracts the year from a media path (e.g., "/movies/Movie Name (2024)/" -> 2024).
+    /// </summary>
+    private static int? ExtractYearFromPath(string? path)
+    {
+        if (string.IsNullOrEmpty(path))
+        {
+            return null;
+        }
+
+        var match = System.Text.RegularExpressions.Regex.Match(path, @"\((\d{4})\)");
+        if (match.Success && int.TryParse(match.Groups[1].Value, out var year))
+        {
+            return year;
+        }
+
+        return null;
     }
 }
