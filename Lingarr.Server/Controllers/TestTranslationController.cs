@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Lingarr.Core.Data;
@@ -259,6 +260,50 @@ public class TestTranslationController : ControllerBase
     }
 
     /// <summary>
+    /// Get subtitle preview for visual line picker.
+    /// </summary>
+    [HttpGet("subtitle-preview")]
+    public async Task<ActionResult> GetSubtitlePreview(
+        string path,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(path))
+        {
+            return BadRequest(new { Message = "Path is required" });
+        }
+
+        try
+        {
+            var subtitles = await _subtitleService.ReadSubtitles(path);
+            
+            var lines = subtitles.Select(s => new
+            {
+                Position = s.Position,
+                StartTime = FormatTimestamp(s.StartTime),
+                EndTime = FormatTimestamp(s.EndTime),
+                Text = string.Join(" ", s.Lines)
+            }).ToList();
+
+            return Ok(new
+            {
+                TotalLines = subtitles.Count,
+                Lines = lines
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to read subtitle file: {Path}", path);
+            return StatusCode(500, new { Message = $"Failed to read subtitle file: {ex.Message}" });
+        }
+    }
+
+    private static string FormatTimestamp(int milliseconds)
+    {
+        var ts = TimeSpan.FromMilliseconds(milliseconds);
+        return $"{(int)ts.TotalHours:D2}:{ts.Minutes:D2}:{ts.Seconds:D2}";
+    }
+
+    /// <summary>
     /// Search with hierarchical show→season→episode structure and fuzzy matching.
     /// Supports queries like "juju e4" to find specific episodes.
     /// </summary>
@@ -352,41 +397,57 @@ public class TestTranslationController : ControllerBase
             .Include(m => m.Images)
             .AsQueryable();
 
+        // Priority: prefix match > substring match > filename match
         movieQuery = movieQuery.Where(m =>
+            EF.Functions.ILike(m.Title, $"{query}%") ||
             EF.Functions.ILike(m.Title, $"%{query}%") ||
             (m.FileName != null && EF.Functions.ILike(m.FileName, $"%{query}%")));
 
         var movies = await movieQuery
-            .OrderByDescending(m => m.DateAdded)
+            .OrderByDescending(m => EF.Functions.ILike(m.Title, $"{query}%") ? 1 : 0)
+            .ThenByDescending(m => m.DateAdded)
             .Take(limit)
             .ToListAsync(cancellationToken);
 
-        var results = new List<TestTranslationSearchResult>();
+        var results = new ConcurrentBag<TestTranslationSearchResult>();
+        var semaphore = new SemaphoreSlim(Environment.ProcessorCount);
 
-        foreach (var movie in movies)
+        await Parallel.ForEachAsync(movies, cancellationToken, async (movie, ct) =>
         {
-            if (string.IsNullOrEmpty(movie.Path))
-                continue;
-
-            var subtitles = await _subtitleService.GetAllSubtitles(movie.Path);
-            if (subtitles.Count == 0)
-                continue;
-
-            var posterImage = movie.Images.FirstOrDefault(img => img.Type == "poster");
-            var year = ExtractYearFromPath(movie.Path);
-
-            results.Add(new TestTranslationSearchResult
+            await semaphore.WaitAsync(ct);
+            try
             {
-                DisplayTitle = movie.Title,
-                MediaType = MediaType.Movie,
-                MediaId = movie.Id,
-                PosterPath = posterImage != null ? $"movie{posterImage.Path}" : null,
-                Year = year,
-                Subtitles = subtitles
-            });
-        }
+                if (string.IsNullOrEmpty(movie.Path))
+                    return;
 
-        return results;
+                var subtitles = await _subtitleService.GetAllSubtitles(movie.Path);
+                if (subtitles.Count == 0)
+                    return;
+
+                var posterImage = movie.Images.FirstOrDefault(img => img.Type == "poster");
+                var year = ExtractYearFromPath(movie.Path);
+
+                results.Add(new TestTranslationSearchResult
+                {
+                    DisplayTitle = movie.Title,
+                    MediaType = MediaType.Movie,
+                    MediaId = movie.Id,
+                    PosterPath = posterImage != null ? $"movie{posterImage.Path}" : null,
+                    Year = year,
+                    Subtitles = subtitles
+                });
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        });
+
+        // Re-sort by prefix match priority after parallel execution
+        return results
+            .OrderByDescending(r => r.DisplayTitle.StartsWith(query, StringComparison.OrdinalIgnoreCase) ? 1 : 0)
+            .ThenByDescending(r => r.DisplayTitle)
+            .ToList();
     }
 
     private async Task<List<ShowSearchResult>> SearchShows(
@@ -403,10 +464,14 @@ public class TestTranslationController : ControllerBase
             .ThenInclude(se => se.Episodes)
             .AsQueryable();
 
-        showQuery = showQuery.Where(s => EF.Functions.ILike(s.Title, $"%{showTitle}%"));
+        // Priority: prefix match > substring match
+        showQuery = showQuery.Where(s => 
+            EF.Functions.ILike(s.Title, $"{showTitle}%") ||
+            EF.Functions.ILike(s.Title, $"%{showTitle}%"));
 
         var shows = await showQuery
-            .OrderByDescending(s => s.DateAdded)
+            .OrderByDescending(s => EF.Functions.ILike(s.Title, $"{showTitle}%") ? 1 : 0)
+            .ThenByDescending(s => s.DateAdded)
             .Take(limit)
             .ToListAsync(cancellationToken);
 
@@ -508,12 +573,6 @@ public class TestTranslationController : ControllerBase
         }
 
         return results;
-    }
-
-private static string FormatTimestamp(int milliseconds)
-    {
-        var ts = TimeSpan.FromMilliseconds(milliseconds);
-        return $"{(int)ts.TotalHours:D2}:{ts.Minutes:D2}:{ts.Seconds:D2}";
     }
 
     /// <summary>
