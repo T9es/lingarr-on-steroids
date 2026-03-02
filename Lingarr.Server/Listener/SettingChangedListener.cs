@@ -16,11 +16,6 @@ public class SettingChangedListener
     private readonly IServiceProvider _serviceProvider;
     private readonly IHubContext<SettingUpdatesHub> _hubContext;
     private readonly ILogger<SettingChangedListener> _logger;
-    private static readonly HashSet<string> BatchServiceTypes = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "openai", "anthropic", "localai", "gemini", "deepseek", "chutes"
-    };
-
     public SettingChangedListener(IServiceProvider serviceProvider,
         IHubContext<SettingUpdatesHub> hubContext,
         ILogger<SettingChangedListener> logger)
@@ -222,23 +217,7 @@ public class SettingChangedListener
                         settings[SettingKeys.Automation.ShowSchedule]);
                     break;
 
-                case "ServiceType":
-                    var serviceType = await settingService.GetSetting(SettingKeys.Translation.ServiceType);
-                    
-                    // If the selected service type is in the batch-capable list, we reset the batch setting to false.
-                    // This seems to be legacy logic to ensure a fresh state when switching providers.
-                    if (serviceType != null && BatchServiceTypes.Contains(serviceType))
-                    {
-                        await settingService.SetSetting(SettingKeys.Translation.UseBatchTranslation, "false");
-                        
-                        // Notify frontend of the change
-                        await _hubContext.Clients.Group("SettingUpdates").SendAsync("SettingUpdate", new
-                        {
-                            Key = SettingKeys.Translation.UseBatchTranslation,
-                            Value = "false"
-                        });
-                    }
-                    break;
+
 
                 case "BatchTranslation":
                     var useBatchTranslation = await settingService.GetSetting(SettingKeys.Translation.UseBatchTranslation);
