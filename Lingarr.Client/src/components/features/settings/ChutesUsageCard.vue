@@ -1,5 +1,5 @@
 <template>
-    <div class="border-border mt-6 flex flex-col rounded-md border p-4">
+    <div class="border-secondary bg-primary mt-6 flex flex-col rounded-md border p-4 shadow-sm">
         <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div>
                 <p class="font-semibold">
@@ -50,7 +50,7 @@
                     }}
                 </span>
             </div>
-            <div class="bg-border relative mt-2 h-2 overflow-hidden rounded-full">
+            <div class="bg-secondary-content/20 relative mt-2 h-2 overflow-hidden rounded-full">
                 <div
                     class="bg-primary absolute top-0 left-0 h-full transition-all"
                     :style="{ width: progress + '%' }"></div>

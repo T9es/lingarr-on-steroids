@@ -112,7 +112,7 @@
                 </InputComponent>
 
                 <!-- Integrity Validation Section -->
-                <div class="border-base-300 mt-6 border-t pt-4">
+                <div class="border-secondary/50 mt-6 border-t pt-4">
                     <div class="flex flex-col space-y-4">
                         <div class="flex flex-col space-y-2">
                             <span class="font-semibold">

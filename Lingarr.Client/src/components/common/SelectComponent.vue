@@ -25,11 +25,11 @@
             v-show="isOpen"
             ref="clickOutside"
             class="border-accent bg-primary absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md border shadow-lg">
-            <li v-if="enableSearch" class="border-border border-b p-2">
-                <input
-                    v-model="searchQuery"
-                    type="text"
-                    class="border-border text-primary-content w-full rounded border bg-transparent px-2 py-1 text-sm outline-hidden focus:ring-2 focus:ring-accent focus:border-transparent"
+<li v-if="enableSearch" class="border-secondary border-b p-2">
+				<input
+					v-model="searchQuery"
+					type="text"
+					class="border-secondary text-primary-content w-full rounded border bg-transparent px-2 py-1 text-sm outline-hidden focus:ring-2 focus:ring-accent focus:border-transparent"
                     :placeholder="translate('settings.services.modelSearchPlaceholder')" />
             </li>
             <li v-if="!filteredOptions.length" class="text-primary-content p-3">

@@ -10,7 +10,7 @@
                     <div class="flex items-center justify-center">
                         <button
                             :disabled="isRunning"
-                            class="bg-accent hover:bg-accent/80 disabled:bg-base-300 rounded px-6 py-3 font-semibold text-primary-content transition-colors disabled:cursor-not-allowed disabled:text-primary-content/50"
+                            class="bg-accent hover:bg-accent/80 disabled:bg-secondary rounded px-6 py-3 font-semibold text-primary-content transition-colors disabled:cursor-not-allowed disabled:text-primary-content/50"
                             @click="startBulkCheck">
                             <span v-if="isRunning" class="flex items-center">
                                 <svg
@@ -46,7 +46,7 @@
                                 <span>{{ translate('settings.integrity.progress') }}</span>
                                 <span>{{ Math.round(stats.progressPercent) }}%</span>
                             </div>
-                            <div class="bg-base-300 h-4 w-full overflow-hidden rounded-full">
+                            <div class="bg-secondary-content/20 h-4 w-full overflow-hidden rounded-full">
                                 <div
                                     class="bg-accent h-full transition-all duration-300"
                                     :style="{ width: `${stats.progressPercent}%` }"></div>
@@ -55,29 +55,29 @@
 
                         <!-- Stats Grid -->
                         <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
-                            <div class="bg-base-200 rounded p-4 text-center">
-                                <div class="text-2xl font-bold">{{ stats.processedCount }}</div>
-                                <div class="text-sm opacity-70">
-                                    {{ translate('settings.integrity.stats.processed') }}
-                                </div>
-                            </div>
-                            <div class="bg-base-200 rounded p-4 text-center">
-                                <div class="text-2xl font-bold text-green-500">
-                                    {{ stats.validCount }}
-                                </div>
-                                <div class="text-sm opacity-70">
-                                    {{ translate('settings.integrity.stats.valid') }}
-                                </div>
-                            </div>
-                            <div class="bg-base-200 rounded p-4 text-center">
-                                <div class="text-2xl font-bold text-yellow-500">
-                                    {{ stats.corruptCount }}
-                                </div>
-                                <div class="text-sm opacity-70">
-                                    {{ translate('settings.integrity.stats.corrupt') }}
-                                </div>
-                            </div>
-                            <div class="bg-base-200 rounded p-4 text-center">
+<div class="bg-secondary/30 rounded p-4 text-center">
+								<div class="text-2xl font-bold">{{ stats.processedCount }}</div>
+								<div class="text-sm opacity-70">
+									{{ translate('settings.integrity.stats.processed') }}
+								</div>
+							</div>
+							<div class="bg-secondary/30 rounded p-4 text-center">
+								<div class="text-2xl font-bold text-green-500">
+									{{ stats.validCount }}
+								</div>
+								<div class="text-sm opacity-70">
+									{{ translate('settings.integrity.stats.valid') }}
+								</div>
+							</div>
+							<div class="bg-secondary/30 rounded p-4 text-center">
+								<div class="text-2xl font-bold text-yellow-500">
+									{{ stats.corruptCount }}
+								</div>
+								<div class="text-sm opacity-70">
+									{{ translate('settings.integrity.stats.corrupt') }}
+								</div>
+							</div>
+							<div class="bg-secondary/30 rounded p-4 text-center">
                                 <div class="text-2xl font-bold text-blue-500">
                                     {{ stats.queuedCount }}
                                 </div>
@@ -128,7 +128,7 @@
                     <div class="flex items-center justify-center">
                         <button
                             :disabled="subtitleTypeHasStarted"
-                            class="bg-accent hover:bg-accent/80 disabled:bg-base-300 rounded px-6 py-3 font-semibold text-primary-content transition-colors disabled:cursor-not-allowed disabled:text-primary-content/50"
+                            class="bg-accent hover:bg-accent/80 disabled:bg-secondary rounded px-6 py-3 font-semibold text-primary-content transition-colors disabled:cursor-not-allowed disabled:text-primary-content/50"
                             @click="startSubtitleTypeValidation">
                             <span v-if="subtitleTypeHasStarted" class="flex items-center">
                                 <svg
@@ -160,13 +160,13 @@
                     <div v-if="subtitleTypeResult" class="w-full space-y-4">
                         <!-- Stats Grid -->
                         <div class="grid w-full grid-cols-2 gap-4">
-                            <div class="bg-base-200 rounded p-4 text-center">
-                                <div class="text-2xl font-bold">
-                                    {{ subtitleTypeResult.totalScanned }}
-                                </div>
-                                <div class="text-sm opacity-70">Translations Scanned</div>
-                            </div>
-                            <div class="bg-base-200 rounded p-4 text-center">
+<div class="bg-secondary/30 rounded p-4 text-center">
+								<div class="text-2xl font-bold">
+									{{ subtitleTypeResult.totalScanned }}
+								</div>
+								<div class="text-sm opacity-70">Translations Scanned</div>
+							</div>
+							<div class="bg-secondary/30 rounded p-4 text-center">
                                 <div
                                     class="text-2xl font-bold"
                                     :class="
@@ -195,13 +195,13 @@
                                     Auto-fix All
                                 </button>
                             </div>
-                            <div class="bg-base-200 max-h-96 w-full overflow-y-auto rounded">
-                                <div
-                                    v-for="item in subtitleTypeResult.flaggedItems"
-                                    :key="item.translationId"
-                                    class="border-base-300 border-b last:border-0">
-                                    <div
-                                        class="hover:bg-base-300/50 flex cursor-pointer items-center justify-between p-3"
+<div class="bg-secondary/30 max-h-96 w-full overflow-y-auto rounded">
+								<div
+									v-for="item in subtitleTypeResult.flaggedItems"
+									:key="item.translationId"
+									class="border-secondary/50 border-b last:border-0">
+									<div
+										class="hover:bg-secondary/50 flex cursor-pointer items-center justify-between p-3"
                                         @click="toggleSubtitleTypeExpand(item.translationId)">
                                         <div class="flex-1 overflow-hidden">
                                             <div class="truncate font-medium">
@@ -253,14 +253,14 @@
                                             </button>
                                         </div>
                                     </div>
-                                    <!-- Expandable details -->
-                                    <div
-                                        v-if="
-                                            expandedSubtitleTypeItems.includes(
-                                                item.translationId
-                                            ) && item.warning
-                                        "
-                                        class="bg-base-300/30 border-base-300 border-t p-3 text-xs">
+<!-- Expandable details -->
+									<div
+										v-if="
+											expandedSubtitleTypeItems.includes(
+												item.translationId
+											) && item.warning
+										"
+										class="bg-tertiary/50 border-secondary/50 border-t p-3 text-xs">
                                         <div class="mb-1 font-semibold opacity-70">Warning:</div>
                                         <div class="text-yellow-400">{{ item.warning }}</div>
                                         <div class="mt-2 mb-1 font-semibold opacity-70">
@@ -294,7 +294,7 @@
                     <div class="flex items-center justify-center">
                         <button
                             :disabled="assHasStarted"
-                            class="bg-accent hover:bg-accent/80 disabled:bg-base-300 rounded px-6 py-3 font-semibold text-primary-content transition-colors disabled:cursor-not-allowed disabled:text-primary-content/50"
+                            class="bg-accent hover:bg-accent/80 disabled:bg-secondary rounded px-6 py-3 font-semibold text-primary-content transition-colors disabled:cursor-not-allowed disabled:text-primary-content/50"
                             @click="startAssVerification">
                             <span v-if="assHasStarted" class="flex items-center">
                                 <svg
@@ -322,17 +322,17 @@
                         </button>
                     </div>
 
-                    <!-- Persistent Results -->
-                    <div v-if="assResult" class="w-full space-y-4">
-                        <!-- Stats Grid -->
-                        <div class="grid w-full grid-cols-2 gap-4">
-                            <div class="bg-base-200 rounded p-4 text-center">
-                                <div class="text-2xl font-bold">
-                                    {{ assResult.totalFilesScanned }}
-                                </div>
-                                <div class="text-sm opacity-70">Files Scanned</div>
-                            </div>
-                            <div class="bg-base-200 rounded p-4 text-center">
+<!-- Persistent Results -->
+						<div v-if="assResult" class="w-full space-y-4">
+							<!-- Stats Grid -->
+							<div class="grid w-full grid-cols-2 gap-4">
+								<div class="bg-secondary/30 rounded p-4 text-center">
+									<div class="text-2xl font-bold">
+										{{ assResult.totalFilesScanned }}
+									</div>
+									<div class="text-sm opacity-70">Files Scanned</div>
+								</div>
+								<div class="bg-secondary/30 rounded p-4 text-center">
                                 <div
                                     class="text-2xl font-bold"
                                     :class="
@@ -358,14 +358,14 @@
                                     Requeue All for Translation
                                 </button>
                             </div>
-                            <div class="bg-base-200 max-h-96 w-full overflow-y-auto rounded">
-                                <div
-                                    v-for="item in assResult.flaggedItems"
-                                    :key="item.subtitlePath"
-                                    class="border-base-300 border-b last:border-0">
-                                    <div
-                                        class="hover:bg-base-300/50 flex cursor-pointer items-center justify-between p-3"
-                                        @click="toggleExpand(item.subtitlePath)">
+<div class="bg-secondary/30 max-h-96 w-full overflow-y-auto rounded">
+								<div
+									v-for="item in assResult.flaggedItems"
+									:key="item.subtitlePath"
+									class="border-secondary/50 border-b last:border-0">
+									<div
+										class="hover:bg-secondary/50 flex cursor-pointer items-center justify-between p-3"
+										@click="toggleExpand(item.subtitlePath)">
                                         <div class="flex-1 overflow-hidden">
                                             <div class="truncate font-medium">
                                                 {{ item.mediaTitle }}
@@ -392,13 +392,13 @@
                                             Dismiss
                                         </button>
                                     </div>
-                                    <!-- Expandable suspicious lines -->
-                                    <div
-                                        v-if="
-                                            expandedItems.includes(item.subtitlePath) &&
-                                            item.suspiciousLines
-                                        "
-                                        class="bg-base-300/30 border-base-300 border-t p-3 text-xs">
+<!-- Expandable suspicious lines -->
+									<div
+										v-if="
+											expandedItems.includes(item.subtitlePath) &&
+											item.suspiciousLines
+										"
+										class="bg-tertiary/50 border-secondary/50 border-t p-3 text-xs">
                                         <div class="mb-2 font-semibold opacity-70">
                                             Suspicious lines:
                                         </div>
