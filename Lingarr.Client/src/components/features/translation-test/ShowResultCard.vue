@@ -73,6 +73,17 @@
                                     <span v-if="episode.subtitles.length > 5" class="text-secondary-content text-xs">
                                         +{{ episode.subtitles.length - 5 }}
                                     </span>
+                                    <span
+                                        v-for="embSub in (episode.embeddedSubtitles || []).slice(0, 3)"
+                                        :key="`emb-${embSub.streamIndex}`"
+                                        class="border rounded px-1.5 py-0.5 text-xs"
+                                        :class="getEmbeddedBadgeClasses(embSub)">
+                                        <span class="mr-0.5">📦</span>
+                                        {{ formatEmbeddedLanguage(embSub) }}
+                                    </span>
+                                    <span v-if="(episode.embeddedSubtitles?.length || 0) > 3" class="text-secondary-content text-xs">
+                                        +{{ (episode.embeddedSubtitles?.length || 0) - 3 }} emb
+                                    </span>
                                 </div>
                             </div>
                         </div>
@@ -94,6 +105,16 @@ interface SubtitleInfo {
     fileName?: string
 }
 
+interface EmbeddedSubtitleInfo {
+    streamIndex: number
+    language?: string
+    title?: string
+    codecName: string
+    isTextBased: boolean
+    isDefault: boolean
+    isForced: boolean
+}
+
 interface EpisodePreview {
     episodeId: number
     episodeNumber: number
@@ -101,6 +122,7 @@ interface EpisodePreview {
     displayTitle: string
     seasonNumber: number
     subtitles: SubtitleInfo[]
+    embeddedSubtitles?: EmbeddedSubtitleInfo[]
 }
 
 interface SeasonPreview {
@@ -132,6 +154,20 @@ const expandedSeasons = ref<Set<number>>(new Set())
 const totalEpisodes = computed(() => {
     return props.show.seasons.reduce((sum, season) => sum + season.episodes.length, 0)
 })
+
+const getEmbeddedBadgeClasses = (sub: EmbeddedSubtitleInfo): string => {
+    if (!sub.isTextBased) {
+        return 'text-secondary-content/50 border-secondary-content/30 bg-secondary/30 opacity-60'
+    }
+    return 'text-amber-300 border-amber-500 bg-amber-900/30'
+}
+
+const formatEmbeddedLanguage = (sub: EmbeddedSubtitleInfo): string => {
+    if (sub.language) {
+        return sub.language.toUpperCase()
+    }
+    return `#${sub.streamIndex}`
+}
 
 function toggleShow() {
     isExpanded.value = !isExpanded.value

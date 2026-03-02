@@ -61,6 +61,17 @@
                                             <span v-if="movie.subtitles.length > 4" class="text-secondary-content text-[10px]">
                                                 +{{ movie.subtitles.length - 4 }}
                                             </span>
+                                            <span
+                                                v-for="embSub in (movie.embeddedSubtitles || []).slice(0, 4)"
+                                                :key="`emb-${embSub.streamIndex}`"
+                                                class="border rounded px-1.5 py-0.5 text-[10px]"
+                                                :class="getEmbeddedBadgeClasses(embSub)">
+                                                <span class="mr-0.5">📦</span>
+                                                {{ formatEmbeddedLanguage(embSub) }}
+                                            </span>
+                                            <span v-if="(movie.embeddedSubtitles?.length || 0) > 4" class="text-secondary-content text-[10px]">
+                                                +{{ (movie.embeddedSubtitles?.length || 0) - 4 }} emb
+                                            </span>
                                         </div>
                                     </div>
                                 </div>
@@ -169,6 +180,24 @@ interface EmbeddedSubtitle {
     isTextBased: boolean
     isDefault: boolean
     isForced: boolean
+    isExtracted?: boolean
+}
+
+const getEmbeddedBadgeClasses = (sub: EmbeddedSubtitle): string => {
+    if (!sub.isTextBased) {
+        return 'text-secondary-content/50 border-secondary-content/30 bg-secondary/30 opacity-60'
+    }
+    if (sub.isExtracted) {
+        return 'text-green-300 border-green-500 bg-green-900/30'
+    }
+    return 'text-amber-300 border-amber-500 bg-amber-900/30'
+}
+
+const formatEmbeddedLanguage = (sub: EmbeddedSubtitle): string => {
+    if (sub.language) {
+        return sub.language.toUpperCase()
+    }
+    return `#${sub.streamIndex}`
 }
 
 interface MovieResult {
