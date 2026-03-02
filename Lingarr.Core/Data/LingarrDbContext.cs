@@ -22,6 +22,7 @@ public class LingarrDbContext : DbContext
     public DbSet<SubtitleCleanupLog> SubtitleCleanupLogs { get; set; }
     public DbSet<ApiUsageLog> ApiUsageLogs { get; set; }
     public DbSet<ErrorLog> ErrorLogs { get; set; }
+    public DbSet<TestResult> TestResults { get; set; }
 
     public LingarrDbContext(DbContextOptions options) : base(options)
     {

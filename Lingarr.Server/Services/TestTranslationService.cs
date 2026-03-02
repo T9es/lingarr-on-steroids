@@ -1,17 +1,18 @@
 using System.Diagnostics;
+using System.Text.Json;
 using Lingarr.Core.Configuration;
+using Lingarr.Core.Data;
+using Lingarr.Core.Entities;
 using Lingarr.Server.Exceptions;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models.FileSystem;
+using Microsoft.EntityFrameworkCore;
 using CoreTranslationRequest = Lingarr.Core.Entities.TranslationRequest;
 
 namespace Lingarr.Server.Services;
 
-/// <summary>
-/// Service for running test translations with detailed logging without saving results.
-/// </summary>
 public class TestTranslationService : ITestTranslationService
 {
     private readonly ILogger<TestTranslationService> _logger;
@@ -21,9 +22,11 @@ public class TestTranslationService : ITestTranslationService
     private readonly IBatchFallbackService _batchFallbackService;
     private readonly IDeferredRepairService _deferredRepairService;
     private readonly ISubtitleExtractionService _extractionService;
+    private readonly LingarrDbContext _dbContext;
     
     private CancellationTokenSource? _cancellationTokenSource;
     private bool _isRunning;
+    private readonly ITestDebugCollector _debugCollector = new TestDebugCollector();
     
     public event EventHandler<TestTranslationLogEntry>? OnLogEntry;
     public bool IsRunning => _isRunning;
@@ -35,7 +38,8 @@ public class TestTranslationService : ITestTranslationService
         ITranslationServiceFactory translationServiceFactory,
         IBatchFallbackService batchFallbackService,
         IDeferredRepairService deferredRepairService,
-        ISubtitleExtractionService extractionService)
+        ISubtitleExtractionService extractionService,
+        LingarrDbContext dbContext)
     {
         _logger = logger;
         _settings = settings;
@@ -44,6 +48,7 @@ public class TestTranslationService : ITestTranslationService
         _batchFallbackService = batchFallbackService;
         _deferredRepairService = deferredRepairService;
         _extractionService = extractionService;
+        _dbContext = dbContext;
     }
     
     public void CancelTest()
@@ -70,171 +75,206 @@ public class TestTranslationService : ITestTranslationService
         
         _isRunning = true;
         _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _debugCollector.Reset();
         var stopwatch = Stopwatch.StartNew();
+        string? subtitlePath = null;
+        string? temporaryFilePath = null;
+        string? title = null;
+        string? posterPath = null;
         
         try
         {
-            string? temporaryFilePath = null;
-            try
+            subtitlePath = request.SubtitlePath;
+            
+            if (string.IsNullOrEmpty(subtitlePath) || !File.Exists(subtitlePath))
             {
-                var subtitlePath = request.SubtitlePath;
-                
-                // AUTO-EXTRACTION: If subtitle file doesn't exist, check for embedded subtitles
-                // This mirrors the logic in TranslationJob.ExecuteCore
-                if (string.IsNullOrEmpty(subtitlePath) || !File.Exists(subtitlePath))
+                if (request.MediaId.HasValue && request.MediaType.HasValue)
                 {
-                    if (request.MediaId.HasValue && request.MediaType.HasValue)
-                    {
-                       if (!string.IsNullOrEmpty(subtitlePath))
-                       {
-                           Log("INFORMATION", $"Subtitle file not found on disk: {subtitlePath}");
-                       }
-                       Log("INFORMATION", "Attempting embedded subtitle extraction...");
-                       subtitlePath = await _extractionService.TryExtractEmbeddedSubtitle(
-                           request.MediaId.Value, 
-                           request.MediaType.Value, 
-                           request.SourceLanguage);
-                       
-                       if (subtitlePath != null) 
-                       {
-                           Log("INFORMATION", $"Extracted embedded subtitle to: {subtitlePath}");
-                           temporaryFilePath = subtitlePath;
-                       }
-                       else
-                       {
-                           throw new InvalidOperationException("Failed to extract embedded subtitle - no suitable embedded subtitle found");
-                       }
-                    }
-                    else
-                    {
-                        throw new ArgumentException("Subtitle path is missing or file not found, and no media ID/Type provided for extraction");
-                    }
-                }
-
-
-                Log("INFORMATION", $"Starting test translation for: {subtitlePath}");
-                Log("INFORMATION", $"Source language: {request.SourceLanguage}, Target language: {request.TargetLanguage}");
-                
-                // Get settings
-                var settings = await _settings.GetSettings([
-                    SettingKeys.Translation.ServiceType,
-                    SettingKeys.Translation.StripSubtitleFormatting,
-                    SettingKeys.Translation.UseBatchTranslation,
-                    SettingKeys.Translation.MaxBatchSize,
-                    SettingKeys.Translation.EnableBatchFallback,
-                    SettingKeys.Translation.MaxBatchSplitAttempts
-                ]);
-                
-                var serviceType = settings[SettingKeys.Translation.ServiceType];
-                var stripFormatting = settings[SettingKeys.Translation.StripSubtitleFormatting] == "true";
-                var useBatch = settings[SettingKeys.Translation.UseBatchTranslation] == "true";
-                
-                Log("INFORMATION", $"Using translation service: {serviceType}");
-                Log("INFORMATION", $"Strip formatting: {stripFormatting}, Batch mode: {useBatch}");
-                
-                // Read subtitles
-                Log("INFORMATION", "Reading subtitle file...");
-                var subtitles = await _subtitleService.ReadSubtitles(subtitlePath);
-                Log("INFORMATION", $"Read {subtitles.Count} subtitle entries");
-                
-                // Create translation service
-                var translationService = _translationServiceFactory.CreateTranslationService(serviceType);
-                var progressService = new TestProgressService(this);
-                var translator = new SubtitleTranslationService(
-                    translationService, 
-                    _logger, 
-                    progressService, 
-                    _batchFallbackService,
-                    _deferredRepairService);
-                
-                // Build translation request (using test-only values for required db fields)
-                var translationRequest = new CoreTranslationRequest
-                {
-                    Title = "Test Translation",
-                    SourceLanguage = request.SourceLanguage,
-                    TargetLanguage = request.TargetLanguage,
-                    SubtitleToTranslate = subtitlePath,
-                    MediaType = Lingarr.Core.Enum.MediaType.Movie,
-                    Status = Lingarr.Core.Enum.TranslationStatus.InProgress
-                };
-                
-                _cancellationTokenSource.Token.ThrowIfCancellationRequested();
-                
-                List<SubtitleItem> translated;
-                
-                if (useBatch && translationService is IBatchTranslationService)
-                {
-                    var maxSize = int.TryParse(settings[SettingKeys.Translation.MaxBatchSize], out var bs) ? bs : 0;
-                    var enableFallback = settings[SettingKeys.Translation.EnableBatchFallback] == "true";
-                    var splitAttempts = int.TryParse(settings[SettingKeys.Translation.MaxBatchSplitAttempts], out var sa) ? sa : 3;
-                    
-                    // For test mode, use immediate fallback (legacy behavior) for simpler debugging
-                    var batchRetryMode = enableFallback ? "immediate" : "deferred";
-                    
-                    Log("INFORMATION", $"Starting batch translation: batchSize={maxSize}, retryMode={batchRetryMode}, splitAttempts={splitAttempts}");
-                    
-                    translated = await translator.TranslateSubtitlesBatch(
-                        subtitles,
-                        translationRequest,
-                        stripFormatting,
-                        maxSize,
-                        batchRetryMode,
-                        splitAttempts,
-                        repairContextRadius: 10,
-                        repairMaxRetries: 1,
-                        batchContextEnabled: false,  // Disabled for test mode
-                        batchContextBefore: 0,
-                        batchContextAfter: 0,
-                        fileIdentifier: "Test Translation",
-                        cancellationToken: _cancellationTokenSource.Token);
+                   if (!string.IsNullOrEmpty(subtitlePath))
+                   {
+                       Log("INFORMATION", $"Subtitle file not found on disk: {subtitlePath}");
+                   }
+                   Log("INFORMATION", "Attempting embedded subtitle extraction...");
+                   subtitlePath = await _extractionService.TryExtractEmbeddedSubtitle(
+                       request.MediaId.Value, 
+                       request.MediaType.Value, 
+                       request.SourceLanguage);
+                   
+                   if (subtitlePath != null) 
+                   {
+                       Log("INFORMATION", $"Extracted embedded subtitle to: {subtitlePath}");
+                       temporaryFilePath = subtitlePath;
+                   }
+                   else
+                   {
+                       throw new InvalidOperationException("Failed to extract embedded subtitle - no suitable embedded subtitle found");
+                   }
                 }
                 else
                 {
-                    Log("INFORMATION", "Starting individual line translation...");
-                    
-                    translated = await translator.TranslateSubtitles(
-                        subtitles,
-                        translationRequest,
-                        stripFormatting,
-                        0, // no context for test
-                        0,
-                        _cancellationTokenSource.Token);
+                    throw new ArgumentException("Subtitle path is missing or file not found, and no media ID/Type provided for extraction");
                 }
-                
-                stopwatch.Stop();
-                
-                var translatedCount = translated.Count(s => s.TranslatedLines?.Count > 0);
-                Log("INFORMATION", $"Translation completed! Translated {translatedCount}/{subtitles.Count} subtitles in {stopwatch.Elapsed.TotalSeconds:F1}s");
-                Log("INFORMATION", "NOTE: Translated subtitle was NOT saved (test mode)");
-                
-                var preview = translated.Select(s => new TranslatedSubtitlePreview
-                {
-                    Position = s.Position,
-                    Original = string.Join(" ", s.Lines),
-                    Translated = string.Join(" ", s.TranslatedLines ?? s.Lines)
-                }).ToList();
-                
-                return new TestTranslationResult
-                {
-                    Success = true,
-                    TotalSubtitles = subtitles.Count,
-                    TranslatedCount = translatedCount,
-                    Duration = stopwatch.Elapsed,
-                    Preview = preview
-                };
             }
-            finally
+
+            Log("INFORMATION", $"Starting test translation for: {subtitlePath}");
+            Log("INFORMATION", $"Source language: {request.SourceLanguage}, Target language: {request.TargetLanguage}");
+            
+            var settings = await _settings.GetSettings([
+                SettingKeys.Translation.ServiceType,
+                SettingKeys.Translation.StripSubtitleFormatting,
+                SettingKeys.Translation.UseBatchTranslation,
+                SettingKeys.Translation.MaxBatchSize,
+                SettingKeys.Translation.EnableBatchFallback,
+                SettingKeys.Translation.MaxBatchSplitAttempts
+            ]);
+            
+            var serviceType = settings[SettingKeys.Translation.ServiceType];
+            var stripFormatting = settings[SettingKeys.Translation.StripSubtitleFormatting] == "true";
+            var useBatch = settings[SettingKeys.Translation.UseBatchTranslation] == "true";
+            
+            Log("INFORMATION", $"Using translation service: {serviceType}");
+            Log("INFORMATION", $"Strip formatting: {stripFormatting}, Batch mode: {useBatch}");
+            
+            _debugCollector.RecordTiming("Initialization", stopwatch.ElapsedMilliseconds);
+            
+            Log("INFORMATION", "Reading subtitle file...");
+            var readStopwatch = Stopwatch.StartNew();
+            var allSubtitles = await _subtitleService.ReadSubtitles(subtitlePath);
+            readStopwatch.Stop();
+            _debugCollector.RecordTiming("SubtitleReading", readStopwatch.ElapsedMilliseconds);
+            Log("INFORMATION", $"Read {allSubtitles.Count} subtitle entries");
+            
+            var subtitles = FilterSubtitles(allSubtitles, request);
+            if (subtitles.Count != allSubtitles.Count)
             {
-               if (temporaryFilePath != null && File.Exists(temporaryFilePath))
-               {
-                   try
-                   {
-                       File.Delete(temporaryFilePath);
-                       // Don't log this unless debug
-                   }
-                   catch { /* ignore cleanup error */ }
-               }
+                Log("INFORMATION", $"Filtered to {subtitles.Count} subtitles (from {allSubtitles.Count}) based on line selection");
             }
+            
+            var translationService = _translationServiceFactory.CreateTranslationService(serviceType);
+            var progressService = new TestProgressService(this);
+            var translator = new SubtitleTranslationService(
+                translationService, 
+                _logger, 
+                progressService, 
+                _batchFallbackService,
+                _deferredRepairService);
+            
+            var translationRequest = new CoreTranslationRequest
+            {
+                Title = "Test Translation",
+                SourceLanguage = request.SourceLanguage,
+                TargetLanguage = request.TargetLanguage,
+                SubtitleToTranslate = subtitlePath,
+                MediaType = Lingarr.Core.Enum.MediaType.Movie,
+                Status = Lingarr.Core.Enum.TranslationStatus.InProgress
+            };
+            
+            _cancellationTokenSource.Token.ThrowIfCancellationRequested();
+            
+            var translationStopwatch = Stopwatch.StartNew();
+            List<SubtitleItem> translated;
+            
+            if (useBatch && translationService is IBatchTranslationService)
+            {
+                var maxSize = int.TryParse(settings[SettingKeys.Translation.MaxBatchSize], out var bs) ? bs : 0;
+                var enableFallback = settings[SettingKeys.Translation.EnableBatchFallback] == "true";
+                var splitAttempts = int.TryParse(settings[SettingKeys.Translation.MaxBatchSplitAttempts], out var sa) ? sa : 3;
+                
+                var batchRetryMode = enableFallback ? "immediate" : "deferred";
+                
+                Log("INFORMATION", $"Starting batch translation: batchSize={maxSize}, retryMode={batchRetryMode}, splitAttempts={splitAttempts}");
+                
+                translated = await translator.TranslateSubtitlesBatch(
+                    subtitles,
+                    translationRequest,
+                    stripFormatting,
+                    maxSize,
+                    batchRetryMode,
+                    splitAttempts,
+                    repairContextRadius: 10,
+                    repairMaxRetries: 1,
+                    batchContextEnabled: false,
+                    batchContextBefore: 0,
+                    batchContextAfter: 0,
+                    fileIdentifier: "Test Translation",
+                    cancellationToken: _cancellationTokenSource.Token);
+            }
+            else
+            {
+                Log("INFORMATION", "Starting individual line translation...");
+                
+                translated = await translator.TranslateSubtitles(
+                    subtitles,
+                    translationRequest,
+                    stripFormatting,
+                    0,
+                    0,
+                    _cancellationTokenSource.Token);
+            }
+            
+            translationStopwatch.Stop();
+            _debugCollector.RecordTiming("Translation", translationStopwatch.ElapsedMilliseconds);
+            
+            stopwatch.Stop();
+            
+            var translatedCount = translated.Count(s => s.TranslatedLines?.Count > 0);
+            var failedCount = subtitles.Count - translatedCount;
+            Log("INFORMATION", $"Translation completed! Translated {translatedCount}/{subtitles.Count} subtitles in {stopwatch.Elapsed.TotalSeconds:F1}s");
+            Log("INFORMATION", "NOTE: Translated subtitle was NOT saved (test mode)");
+            
+            var preview = translated.Select(s => new TranslatedSubtitlePreview
+            {
+                Position = s.Position,
+                Original = string.Join(" ", s.Lines),
+                Translated = string.Join(" ", s.TranslatedLines ?? s.Lines)
+            }).ToList();
+            
+            var lineResults = translated.Select(s => new TestLineResult
+            {
+                Position = s.Position,
+                Original = string.Join(" ", s.Lines),
+                Translated = string.Join(" ", s.TranslatedLines ?? []),
+                Success = s.TranslatedLines?.Count > 0
+            }).ToList();
+            
+            foreach (var line in lineResults)
+            {
+                _debugCollector.RecordLineResult(line);
+            }
+            
+            var debugData = _debugCollector.GetCollectedData();
+            
+            var testResult = new TestResult
+            {
+                SubtitlePath = subtitlePath,
+                Title = title,
+                PosterPath = posterPath,
+                SourceLanguage = request.SourceLanguage,
+                TargetLanguage = request.TargetLanguage,
+                Success = true,
+                TotalLines = subtitles.Count,
+                TranslatedLines = translatedCount,
+                FailedLines = failedCount,
+                DurationSeconds = stopwatch.Elapsed.TotalSeconds,
+                TranslationService = serviceType,
+                ApiCallsJson = JsonSerializer.Serialize(debugData.ApiCalls),
+                LineResultsJson = JsonSerializer.Serialize(debugData.LineResults),
+                TimingJson = JsonSerializer.Serialize(debugData.Timings),
+                PreviewJson = JsonSerializer.Serialize(preview)
+            };
+            
+            _dbContext.TestResults.Add(testResult);
+            await _dbContext.SaveChangesAsync(_cancellationTokenSource.Token);
+            
+            return new TestTranslationResult
+            {
+                Success = true,
+                TestResultId = testResult.Id,
+                TotalSubtitles = subtitles.Count,
+                TranslatedCount = translatedCount,
+                Duration = stopwatch.Elapsed,
+                Preview = preview
+            };
         }
         catch (OperationCanceledException)
         {
@@ -252,6 +292,20 @@ public class TestTranslationService : ITestTranslationService
         {
             stopwatch.Stop();
             Log("ERROR", $"Translation failed: {ex.Message}");
+            
+            var testResult = new TestResult
+            {
+                SubtitlePath = subtitlePath ?? "Unknown",
+                SourceLanguage = request.SourceLanguage,
+                TargetLanguage = request.TargetLanguage,
+                Success = false,
+                ErrorMessage = ex.Message,
+                DurationSeconds = stopwatch.Elapsed.TotalSeconds,
+                TranslationService = "Unknown"
+            };
+            
+            _dbContext.TestResults.Add(testResult);
+            await _dbContext.SaveChangesAsync(cancellationToken);
             
             return new TestTranslationResult
             {
@@ -274,10 +328,42 @@ public class TestTranslationService : ITestTranslationService
         }
         finally
         {
+           if (temporaryFilePath != null && File.Exists(temporaryFilePath))
+           {
+               try
+               {
+                   File.Delete(temporaryFilePath);
+               }
+               catch { /* ignore cleanup error */ }
+           }
+            
             _isRunning = false;
             _cancellationTokenSource?.Dispose();
             _cancellationTokenSource = null;
         }
+    }
+    
+    private List<SubtitleItem> FilterSubtitles(List<SubtitleItem> subtitles, TestTranslationRequest request)
+    {
+        if (request.MaxLines.HasValue && request.MaxLines.Value > 0)
+        {
+            return subtitles.Take(request.MaxLines.Value).ToList();
+        }
+        
+        if (request.StartLine.HasValue && request.EndLine.HasValue)
+        {
+            var start = Math.Max(1, request.StartLine.Value) - 1;
+            var end = Math.Min(subtitles.Count, request.EndLine.Value);
+            return subtitles.Skip(start).Take(end - start).ToList();
+        }
+        
+        if (request.StartLine.HasValue)
+        {
+            var start = Math.Max(1, request.StartLine.Value) - 1;
+            return subtitles.Skip(start).ToList();
+        }
+        
+        return subtitles;
     }
     
     internal void Log(string level, string message, string? details = null)
@@ -292,7 +378,6 @@ public class TestTranslationService : ITestTranslationService
         
         OnLogEntry?.Invoke(this, entry);
         
-        // Also log to standard logger
         switch (level.ToUpperInvariant())
         {
             case "ERROR":
@@ -307,9 +392,6 @@ public class TestTranslationService : ITestTranslationService
         }
     }
     
-    /// <summary>
-    /// Internal progress service that logs progress updates to the test log
-    /// </summary>
     private class TestProgressService : IProgressService
     {
         private readonly TestTranslationService _parent;
@@ -322,7 +404,6 @@ public class TestTranslationService : ITestTranslationService
         
         public Task Emit(CoreTranslationRequest request, int progress)
         {
-            // Only log at 10% intervals to avoid spam
             var rounded = (progress / 10) * 10;
             if (rounded != _lastProgress)
             {

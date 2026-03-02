@@ -33,7 +33,7 @@
     "forced": "Forced",
     "default": "Default"
   },
-  "translationTest": {
+"translationTest": {
     "title": "Translation Test",
     "description": "Test translation of a subtitle file without saving results. Useful for debugging.",
     "configuration": "Configuration",
@@ -60,7 +60,42 @@
     "preview": "Preview",
     "original": "Original",
     "downloadOriginal": "Original",
-    "downloadTranslated": "Translated"
+    "downloadTranslated": "Translated",
+    "linesToTranslate": "Lines to translate",
+    "firstNLines": "First N lines",
+    "linesRange": "Specific range",
+    "allLines": "All lines",
+    "ofLines": "of {count} lines",
+    "to": "to",
+    "visualSelect": "Visual Select",
+    "testHistory": "Test History",
+    "noHistory": "No previous tests",
+    "clearAll": "Clear All",
+    "loadingHistory": "Loading history...",
+    "lines": "lines",
+    "linesSelected": "lines selected",
+    "selectAll": "Select all",
+    "loadingSubtitle": "Loading subtitle...",
+    "selectLines": "Select Lines",
+    "confirm": "Confirm",
+    "testResult": "Test Result",
+    "configureTest": "Configure Test",
+    "debugPanel": {
+      "apiCalls": "API Calls",
+      "lineResults": "Line-by-Line Results",
+      "timing": "Timing Breakdown",
+      "tokens": "Tokens",
+      "viewRequest": "View Request",
+      "viewResponse": "View Response",
+      "call": "Call"
+    },
+    "duplicateTest": {
+      "title": "Duplicate Test",
+      "message": "A test for this file with these languages already exists from {date}",
+      "viewExisting": "View Existing",
+      "createNew": "Create New Test"
+    },
+    "confirmClearAll": "Are you sure you want to clear all test history?"
   },
   "statistics": {
     "notAvailable": "Not available",

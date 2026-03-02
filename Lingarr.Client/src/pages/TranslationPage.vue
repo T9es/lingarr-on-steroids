@@ -1,7 +1,7 @@
 ﻿<template>
     <PageLayout>
         <div class="w-full">
-            <!-- Tabs -->
+<!-- Tabs -->
             <div class="bg-tertiary border-accent flex border-b">
                 <button
                     class="px-6 py-3 font-medium transition-colors"
@@ -12,19 +12,6 @@
                     "
                     @click="activeTab = 'list'">
                     {{ translate('translations.tabList') }}
-                </button>
-                <button
-                    class="relative px-6 py-3 font-medium transition-colors"
-                    :class="
-                        activeTab === 'test'
-                            ? 'border-accent text-accent border-b-2'
-                            : 'text-secondary-content hover:text-primary-content'
-                    "
-                    @click="activeTab = 'test'">
-                    {{ translate('translations.tabRunTest') }}
-                    <span
-                        v-if="testStore.isRunning"
-                        class="bg-accent absolute -top-1 -right-1 h-2 w-2 animate-pulse rounded-full"></span>
                 </button>
             </div>
 
@@ -399,12 +386,7 @@
                     v-if="translationRequests.totalCount"
                     v-model="filter"
                     :total-count="translationRequests.totalCount"
-                    :page-size="translationRequests.pageSize" />
-            </div>
-
-            <!-- Test Tab Content -->
-            <div v-show="activeTab === 'test'" class="p-4">
-                <TestPanel />
+:page-size="translationRequests.pageSize" />
             </div>
 
             <!-- Logs Modal -->
@@ -483,7 +465,6 @@ import {
     TRANSLATION_STATUS
 } from '@/ts'
 import { useTranslationRequestStore } from '@/store/translationRequest'
-import { useTestTranslationStore } from '@/store/testTranslation'
 import { useSignalR } from '@/composables/useSignalR'
 import useDebounce from '@/composables/useDebounce'
 import { useI18n } from '@/plugins/i18n'
@@ -498,14 +479,14 @@ import TranslationCompletedAt from '@/components/common/TranslationCompletedAt.v
 import BadgeComponent from '@/components/common/BadgeComponent.vue'
 import PageLayout from '@/components/layout/PageLayout.vue'
 import CheckboxComponent from '@/components/common/CheckboxComponent.vue'
-import TestPanel from '@/components/features/translations/TestPanel.vue'
 import TestIcon from '@/components/icons/TestIcon.vue'
+import { useRouter } from 'vue-router'
 
 const { translate } = useI18n()
+const router = useRouter()
 const signalR = useSignalR()
 const hubConnection = ref<Hub>()
 const translationRequestStore = useTranslationRequestStore()
-const testStore = useTestTranslationStore()
 
 const logsModalOpen = ref(false)
 const logsLoading = ref(false)
@@ -638,26 +619,17 @@ const cancelAllQueued = async () => {
 function runTestForItem(item: ITranslationRequest) {
     if (!item.subtitleToTranslate && !(item.mediaId && item.mediaType)) return
 
-    // Pass null for subtitlePath if it doesn't exist (embedded)
-    const subtitlePath = item.subtitleToTranslate || null
-
-    testStore.setActiveTest({
-        title: item.title,
-        subtitlePath: subtitlePath,
-        mediaId: item.mediaId,
-        mediaType: item.mediaType,
-        sourceLanguage: item.sourceLanguage,
-        targetLanguage: item.targetLanguage
+    router.push({
+        path: '/translation-test',
+        query: {
+            subtitlePath: item.subtitleToTranslate,
+            mediaId: item.mediaId?.toString(),
+            mediaType: item.mediaType,
+            sourceLanguage: item.sourceLanguage,
+            targetLanguage: item.targetLanguage,
+            title: item.title
+        }
     })
-
-    activeTab.value = 'test'
-    testStore.startTest(
-        subtitlePath,
-        item.sourceLanguage,
-        item.targetLanguage,
-        item.mediaId,
-        item.mediaType
-    )
 }
 
 onMounted(async () => {

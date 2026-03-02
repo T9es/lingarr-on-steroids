@@ -247,7 +247,7 @@ public class TestTranslationController : ControllerBase
         }
     }
     
-    /// <summary>
+/// <summary>
     /// Cancel any in-progress test translation.
     /// </summary>
     [HttpPost("cancel")]
@@ -255,6 +255,50 @@ public class TestTranslationController : ControllerBase
     {
         _testTranslationService.CancelTest();
         return Ok(new { Message = "Cancellation requested" });
+    }
+
+    /// <summary>
+    /// Get subtitle preview for visual line picker.
+    /// </summary>
+    [HttpGet("subtitle-preview")]
+    public async Task<ActionResult> GetSubtitlePreview(
+        string path,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(path))
+        {
+            return BadRequest(new { Message = "Path is required" });
+        }
+
+        try
+        {
+            var subtitles = await _subtitleService.ReadSubtitles(path);
+            
+            var lines = subtitles.Select(s => new
+            {
+                Position = s.Position,
+                StartTime = FormatTimestamp(s.StartTime),
+                EndTime = FormatTimestamp(s.EndTime),
+                Text = string.Join(" ", s.Lines)
+            }).ToList();
+
+            return Ok(new
+            {
+                TotalLines = subtitles.Count,
+                Lines = lines
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to read subtitle file: {Path}", path);
+            return StatusCode(500, new { Message = $"Failed to read subtitle file: {ex.Message}" });
+        }
+    }
+
+private static string FormatTimestamp(int milliseconds)
+    {
+        var ts = TimeSpan.FromMilliseconds(milliseconds);
+        return $"{(int)ts.TotalHours:D2}:{ts.Minutes:D2}:{ts.Seconds:D2}";
     }
 
     /// <summary>

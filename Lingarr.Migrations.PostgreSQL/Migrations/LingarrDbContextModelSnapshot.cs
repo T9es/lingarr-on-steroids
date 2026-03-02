@@ -697,6 +697,105 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                     b.ToTable("subtitle_cleanup_logs", (string)null);
                 });
 
+            modelBuilder.Entity("Lingarr.Core.Entities.TestResult", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ApiCallsJson")
+                        .HasColumnType("text")
+                        .HasColumnName("api_calls_json");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<double>("DurationSeconds")
+                        .HasColumnType("double precision")
+                        .HasColumnName("duration_seconds");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasColumnType("text")
+                        .HasColumnName("error_message");
+
+                    b.Property<int>("FailedLines")
+                        .HasColumnType("integer")
+                        .HasColumnName("failed_lines");
+
+                    b.Property<string>("LineResultsJson")
+                        .HasColumnType("text")
+                        .HasColumnName("line_results_json");
+
+                    b.Property<string>("PosterPath")
+                        .HasColumnType("text")
+                        .HasColumnName("poster_path");
+
+                    b.Property<string>("PreviewJson")
+                        .HasColumnType("text")
+                        .HasColumnName("preview_json");
+
+                    b.Property<string>("SourceLanguage")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("source_language");
+
+                    b.Property<string>("SubtitlePath")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("subtitle_path");
+
+                    b.Property<bool>("Success")
+                        .HasColumnType("boolean")
+                        .HasColumnName("success");
+
+                    b.Property<string>("TargetLanguage")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("target_language");
+
+                    b.Property<string>("TimingJson")
+                        .HasColumnType("text")
+                        .HasColumnName("timing_json");
+
+                    b.Property<string>("Title")
+                        .HasColumnType("text")
+                        .HasColumnName("title");
+
+                    b.Property<int?>("TokenUsageCompletion")
+                        .HasColumnType("integer")
+                        .HasColumnName("token_usage_completion");
+
+                    b.Property<int?>("TokenUsagePrompt")
+                        .HasColumnType("integer")
+                        .HasColumnName("token_usage_prompt");
+
+                    b.Property<int>("TotalLines")
+                        .HasColumnType("integer")
+                        .HasColumnName("total_lines");
+
+                    b.Property<int>("TranslatedLines")
+                        .HasColumnType("integer")
+                        .HasColumnName("translated_lines");
+
+                    b.Property<string>("TranslationService")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("translation_service");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_test_results");
+
+                    b.ToTable("test_results", (string)null);
+                });
+
             modelBuilder.Entity("Lingarr.Core.Entities.TranslationRequest", b =>
                 {
                     b.Property<int>("Id")
