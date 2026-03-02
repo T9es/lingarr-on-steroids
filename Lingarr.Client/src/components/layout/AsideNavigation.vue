@@ -30,26 +30,30 @@
             <nav class="grow overflow-x-hidden overflow-y-auto py-6">
                 <ul class="space-y-2 px-2">
                     <li v-for="(item, index) in menuItems" :key="index">
-                        <router-link
-                            :to="{ name: item.route }"
-                            class="hover:bg-primary/30 flex w-full items-center px-3 py-2 transition-colors"
-                            :class="[
-                                isActive(item)
-                                    ? 'bg-primary/50 text-accent border-accent border-l-4 pl-2'
-                                    : 'text-primary-content border-l-4 border-transparent pl-2'
-                            ]"
-                            @click="closeOnMobile">
-                            <component :is="item.icon" class="mr-3 h-5 w-5 shrink-0" />
-                            <div v-show="isOpen" class="relative truncate">
-                                {{ item.label }}
-
-                                <span
-                                    v-if="item.route == 'translations' && activeRequests > 0"
-                                    class="bg-accent text-secondary-content absolute -top-1 -right-4 inline-flex items-center justify-center rounded-full px-1 py-0.5 text-xs leading-none font-bold">
-                                    {{ activeRequests }}
-                                </span>
-                            </div>
-                        </router-link>
+<router-link
+                             :to="{ name: item.route }"
+                             class="hover:bg-primary/30 relative flex w-full items-center px-3 py-2 transition-colors"
+                             :class="[
+                                 isActive(item)
+                                     ? 'bg-primary/50 text-accent border-accent border-l-4 pl-2'
+                                     : 'text-primary-content border-l-4 border-transparent pl-2'
+                             ]"
+                             @click="closeOnMobile">
+                             <component :is="item.icon" class="mr-3 h-5 w-5 shrink-0" />
+                             <span v-show="isOpen" class="truncate">{{ item.label }}</span>
+                             <!-- Badge when sidebar OPEN - positioned relative to text area -->
+                             <span
+                                 v-if="item.route == 'translations' && activeRequests > 0 && isOpen"
+                                 class="bg-accent text-secondary-content absolute left-0 top-0 inline-flex -translate-y-1/2 translate-x-full items-center justify-center rounded-full px-1.5 py-0.5 text-xs leading-none font-bold">
+                                 {{ activeRequests }}
+                             </span>
+                             <!-- Badge when sidebar COLLAPSED - next to icon -->
+                             <span
+                                 v-if="item.route == 'translations' && activeRequests > 0 && !isOpen"
+                                 class="bg-accent text-secondary-content absolute right-1 top-1/2 inline-flex -translate-y-1/2 items-center justify-center rounded-full px-1.5 py-0.5 text-xs leading-none font-bold">
+                                 {{ activeRequests }}
+                             </span>
+                         </router-link>
                     </li>
                 </ul>
             </nav>
