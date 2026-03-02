@@ -10,7 +10,7 @@
                     class="bg-secondary max-h-[90vh] w-full overflow-hidden rounded-lg shadow-xl">
                     <div
                         class="border-accent flex items-center justify-between border-b px-4 py-3">
-                        <h2 class="text-lg font-semibold">
+                        <h2 class="text-lg font-semibold text-primary-content">
                             <slot name="header" />
                         </h2>
                         <button

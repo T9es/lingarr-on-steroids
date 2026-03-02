@@ -24,10 +24,18 @@ namespace Lingarr.Migrations.SQLite.Migrations
                         .HasColumnType("INTEGER")
                         .HasColumnName("id");
 
+                    b.Property<int?>("CompletionTokens")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("completion_tokens");
+
                     b.Property<string>("ErrorMessage")
                         .HasMaxLength(2000)
                         .HasColumnType("TEXT")
                         .HasColumnName("error_message");
+
+                    b.Property<int?>("PromptTokens")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("prompt_tokens");
 
                     b.Property<long>("ResponseTimeMs")
                         .HasColumnType("INTEGER")

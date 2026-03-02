@@ -8,7 +8,7 @@
                     class="h-16 w-12 rounded object-cover"
                     @error="($event.target as HTMLImageElement).style.display = 'none'" />
                 <div>
-                    <h2 class="text-lg font-semibold">{{ title || 'Configure Test' }}</h2>
+                    <h2 class="text-lg font-semibold text-primary-content">{{ title || 'Configure Test' }}</h2>
                     <p v-if="year" class="text-secondary-content text-sm">{{ year }}</p>
                 </div>
             </div>
@@ -16,7 +16,7 @@
 
         <div class="space-y-4">
             <div>
-                <label class="mb-2 block text-sm font-medium">
+                <label class="mb-2 block text-sm font-medium text-primary-content">
                     {{ translate('translationTest.linesToTranslate') }}
                 </label>
                 <div class="flex flex-wrap gap-2">
