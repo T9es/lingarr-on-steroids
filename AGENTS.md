@@ -359,6 +359,27 @@ If verification fails:
 5. **AGENTS.md can be pushed** - but verify it contains no sensitive information first
 6. For all other files: commit locally only, do NOT push unless explicitly requested
 
+### Progress Tracking
+
+**For complex or multi-step tasks, maintain a progress tracker:**
+
+1. **Create a todo list** at the start of complex tasks (3+ steps or multiple files)
+2. **Update progress continuously** - mark items as in_progress when starting, completed when done
+3. **Review before committing** - verify no critical items were missed
+4. **Only commit after 100% completion** - all items done, all tests passing
+
+**Example workflow:**
+```
+□ Analyze codebase for hardcoded colors
+□ Fix ComponentA.vue
+□ Fix ComponentB.vue
+□ Run npm run build
+□ Verify no type errors
+☑ Commit changes
+```
+
+**Why this matters:** Models often lose track of progress without explicit tracking. A visible checklist prevents missed steps and incomplete work.
+
 ### General Guidelines
 
 1. **Do not guess or assume** - use tools to verify information
