@@ -72,83 +72,33 @@ export function useDashboardSignalR() {
      */
     const loadInitialTranslations = async () => {
         try {
-            const response = await axios.get('/api/dashboard/jobs')
-            const data = response.data
+            const response = await axios.get('/api/translation-request/inprogress')
+            const requests = response.data
 
-            // Handle various response formats (defensive)
-            const rawJobs = Array.isArray(data) ? data : data?.jobs || data?.Jobs || []
-
-            if (!Array.isArray(rawJobs) || rawJobs.length === 0) {
+            if (!Array.isArray(requests) || requests.length === 0) {
                 return
             }
 
-            // Filter for running translations only (exclude system jobs like SyncMovieJob)
-            const runningJobs = rawJobs.filter(
-                (job: { state?: string; State?: string; jobName?: string; JobName?: string }) => {
-                    const state = job?.state || job?.State
-                    if (state !== 'Running') return false
-                    const jobName = job?.jobName || job?.JobName
-                    return jobName === 'TranslationJob'
-                }
-            )
-
             let addedCount = 0
-            for (const job of runningJobs) {
-                // Extract ID - handle both "translation-123" format and raw IDs
-                const rawId = job?.id ?? job?.Id ?? job?.jobId ?? job?.JobId
-                if (rawId === undefined || rawId === null) continue
-
-                // Parse numeric ID from "translation-123" format, or use raw value
-                let numericId: number
-                if (typeof rawId === 'string' && rawId.startsWith('translation-')) {
-                    const parsed = parseInt(rawId.replace('translation-', ''), 10)
-                    if (isNaN(parsed)) continue
-                    numericId = parsed
-                } else if (typeof rawId === 'number') {
-                    numericId = rawId
-                } else if (typeof rawId === 'string') {
-                    const parsed = parseInt(rawId, 10)
-                    if (isNaN(parsed)) continue
-                    numericId = parsed
-                } else {
-                    continue
-                }
+            for (const request of requests) {
+                const numericId = request.id
+                if (!numericId) continue
 
                 // Don't overwrite if already in Map (SignalR may have added it)
                 if (state.value.activeTranslations.has(numericId)) {
                     continue
                 }
 
-                // Parse startedAt date
-                const startedAtRaw = job?.startedAt ?? job?.StartedAt
-                let startedAt: Date
-                if (startedAtRaw) {
-                    const parsed = new Date(startedAtRaw)
-                    startedAt = isNaN(parsed.getTime()) ? new Date() : parsed
-                } else {
-                    startedAt = new Date()
-                }
-
                 const translation: ActiveTranslation = {
                     id: numericId,
-                    jobId: String(rawId),
-                    title:
-                        job?.title ??
-                        job?.Title ??
-                        job?.name ??
-                        job?.Name ??
-                        `Translation #${numericId}`,
-                    mediaType: job?.mediaType ?? job?.MediaType ?? 'Movie',
-                    sourceLanguage: job?.sourceLanguage ?? job?.SourceLanguage ?? '',
-                    targetLanguage: job?.targetLanguage ?? job?.TargetLanguage ?? '',
-                    progress:
-                        typeof job?.progress === 'number'
-                            ? job.progress
-                            : typeof job?.Progress === 'number'
-                              ? job.Progress
-                              : 0,
+                    jobId: String(numericId),
+                    title: request.title ?? `Translation #${numericId}`,
+                    mediaType: request.mediaType ?? 'Movie',
+                    sourceLanguage: request.sourceLanguage ?? '',
+                    targetLanguage: request.targetLanguage ?? '',
+                    progress: request.progress ?? 0,
                     status: 'InProgress',
-                    startedAt
+                    startedAt: request.startedAt ? new Date(request.startedAt) : new Date()
                 }
 
                 state.value.activeTranslations.set(numericId, translation)
@@ -160,7 +110,6 @@ export function useDashboardSignalR() {
                 state.value.lastUpdate = new Date()
             }
         } catch (error) {
-            // Log but don't throw - initial load failure shouldn't break the UI
             console.warn('Failed to load initial translations:', error)
         }
     }
