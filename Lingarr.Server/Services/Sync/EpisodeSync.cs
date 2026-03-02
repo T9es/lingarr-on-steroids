@@ -121,7 +121,7 @@ public class EpisodeSync : IEpisodeSync
             }
         }
 
-        RemoveNonExistentEpisodes(season, episodes);
+        RemoveNonExistentEpisodes(season, episodes, instanceId);
     }
 
     /// <summary>
@@ -135,7 +135,7 @@ public class EpisodeSync : IEpisodeSync
         DateTime? dateAdded,
         string instanceId)
     {
-        var episodeEntity = season.Episodes.FirstOrDefault(se => se.SonarrId == episode.Id);
+        var episodeEntity = season.Episodes.FirstOrDefault(se => se.SonarrId == episode.Id && se.SourceInstanceId == instanceId);
         
         var isNew = episodeEntity == null;
         var oldPath = episodeEntity?.Path;
@@ -163,6 +163,7 @@ public class EpisodeSync : IEpisodeSync
             episodeEntity.FileName = Path.GetFileNameWithoutExtension(episodePath);
             episodeEntity.Path = Path.GetDirectoryName(episodePath);
             episodeEntity.DateAdded = dateAdded?.ToUniversalTime();
+            episodeEntity.SourceInstanceId = instanceId;
         }
 
         var fileChanged = !isNew && (
@@ -201,11 +202,13 @@ public class EpisodeSync : IEpisodeSync
 
     /// <summary>
     /// Removes episodes from the season that no longer exist in Sonarr
+    /// Filters by SourceInstanceId to avoid removing episodes from other instances
     /// </summary>
-    private static void RemoveNonExistentEpisodes(Season season, List<SonarrEpisode> currentEpisodes)
+    private static void RemoveNonExistentEpisodes(Season season, List<SonarrEpisode> currentEpisodes, string instanceId)
     {
         var episodesToRemove = season.Episodes
-            .Where(seasonEpisode => currentEpisodes.All(episode => episode.Id != seasonEpisode.SonarrId))
+            .Where(seasonEpisode => seasonEpisode.SourceInstanceId == instanceId &&
+                                    currentEpisodes.All(episode => episode.Id != seasonEpisode.SonarrId))
             .ToList();
 
         foreach (var episodeToRemove in episodesToRemove)

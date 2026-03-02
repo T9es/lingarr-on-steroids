@@ -300,8 +300,8 @@ public class MediaService : IMediaService
                 var shows = await _sonarrService.GetShows();
                 if (shows != null && shows.Any())
                 {
-                    // Use "default" instanceId for fallback sync - proper multi-instance sync happens in SyncShowJob
-                    var showsWithInstanceId = shows.Select(s => (s, "default")).ToList();
+                    // Use the original instanceId for fallback sync to maintain instance context
+                    var showsWithInstanceId = shows.Select(s => (s, instanceId)).ToList();
                     await _showSyncService.SyncShows(showsWithInstanceId);
                     // Try to find the episode again after resync
                     var matchedEpisode = await _dbContext.Episodes

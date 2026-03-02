@@ -23,12 +23,10 @@ public class ShowSync : IShowSync
     public async Task<Show> SyncShow(SonarrShow sonarrShow, string instanceId)
     {
         // Match by SonarrId AND SourceInstanceId for multi-instance support
-        // Also match NULL SourceInstanceId for migration from pre-multi-instance versions
         var showEntity = await _dbContext.Shows
             .Include(s => s.Images)
             .Include(s => s.Seasons)
-            .FirstOrDefaultAsync(s => s.SonarrId == sonarrShow.Id && 
-                (s.SourceInstanceId == instanceId || s.SourceInstanceId == null));
+            .FirstOrDefaultAsync(s => s.SonarrId == sonarrShow.Id && s.SourceInstanceId == instanceId);
 
         if (showEntity == null)
         {

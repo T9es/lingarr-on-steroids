@@ -158,4 +158,149 @@ public class MediaServiceTests
         Assert.Single(result.Seasons);
         Assert.Single(result.Seasons.First().Episodes);
     }
+
+    [Fact]
+    public async Task GetEpisodeIdOrSyncFromSonarrEpisodeId_UsesCorrectInstanceId_ForFallbackSync()
+    {
+        // Arrange
+        var options = new DbContextOptionsBuilder<LingarrDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        await using var context = new LingarrDbContext(options);
+        await context.SaveChangesAsync();
+
+        var sonarrMock = new Mock<ISonarrService>();
+        var radarrMock = new Mock<IRadarrService>();
+        var movieSyncMock = new Mock<IMovieSyncService>();
+        var subtitleMock = new Mock<ISubtitleService>();
+        var showSyncServiceMock = new Mock<IShowSyncService>();
+        var mediaSubtitleProcessorMock = new Mock<IMediaSubtitleProcessor>();
+        var settingServiceMock = new Mock<ISettingService>();
+        var logger = NullLogger<MediaService>.Instance;
+
+        const string testInstanceId = "my-sonarr-instance";
+
+        // Configure setting service to return fallback credentials
+        settingServiceMock
+            .SetupSequence(s => s.GetSetting(It.IsAny<string>()))
+            .ReturnsAsync(string.Empty)
+            .ReturnsAsync("http://test.sonarr.com")
+            .ReturnsAsync("test-api-key");
+
+        sonarrMock
+            .Setup(s => s.GetEpisode(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>()))
+            .ThrowsAsync(new HttpRequestException("Not found", null, HttpStatusCode.NotFound));
+
+        sonarrMock
+            .Setup(s => s.GetShows())
+            .ReturnsAsync(new List<Lingarr.Server.Models.Integrations.SonarrShow>
+            {
+                new Lingarr.Server.Models.Integrations.SonarrShow
+                {
+                    Id = 1,
+                    Title = "Sample Show",
+                    Path = "/tmp",
+                    Added = DateTime.UtcNow.ToString("o"),
+                    SeasonFolder = false,
+                    Seasons = new List<Lingarr.Server.Models.Integrations.SonarrSeason>()
+                }
+            });
+
+        var mediaService = new MediaService(context,
+            subtitleMock.Object,
+            sonarrMock.Object,
+            showSyncServiceMock.Object,
+            radarrMock.Object,
+            movieSyncMock.Object,
+            mediaSubtitleProcessorMock.Object,
+            settingServiceMock.Object,
+            logger);
+
+        // Act
+        var result = await mediaService.GetEpisodeIdOrSyncFromSonarrEpisodeId(150, testInstanceId);
+
+        // Assert - verify the fallback sync uses the correct instanceId, not hardcoded "default"
+        showSyncServiceMock.Verify(s => s.SyncShows(
+            It.Is<List<(Lingarr.Server.Models.Integrations.SonarrShow Show, string InstanceId)>>(
+                list => list.All(item => item.InstanceId == testInstanceId))),
+            Times.Once);
+        Assert.Equal(0, result);
+    }
+
+    [Fact]
+    public async Task GetMovieIdOrSyncFromRadarrMovieId_UsesCorrectInstanceId()
+    {
+        // Arrange
+        var options = new DbContextOptionsBuilder<LingarrDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        await using var context = new LingarrDbContext(options);
+        await context.SaveChangesAsync();
+
+        const string testInstanceId = "my-radarr-instance";
+        const int radarrMovieId = 42;
+
+        var sonarrMock = new Mock<ISonarrService>();
+        var radarrMock = new Mock<IRadarrService>();
+        var movieSyncMock = new Mock<IMovieSyncService>();
+        var subtitleMock = new Mock<ISubtitleService>();
+        var showSyncServiceMock = new Mock<IShowSyncService>();
+        var mediaSubtitleProcessorMock = new Mock<IMediaSubtitleProcessor>();
+        var settingServiceMock = new Mock<ISettingService>();
+        var logger = NullLogger<MediaService>.Instance;
+
+        settingServiceMock
+            .SetupSequence(s => s.GetSetting(It.IsAny<string>()))
+            .ReturnsAsync(string.Empty)
+            .ReturnsAsync("http://test.radarr.com")
+            .ReturnsAsync("test-api-key");
+
+        radarrMock
+            .Setup(s => s.GetMovie(radarrMovieId, "http://test.radarr.com", "test-api-key"))
+            .ReturnsAsync(new Lingarr.Server.Models.Integrations.RadarrMovie
+            {
+                Id = radarrMovieId,
+                Title = "Test Movie",
+                Path = "/movies/test/movie.mkv",
+                RootFolderPath = "/movies",
+                Added = DateTime.UtcNow.ToString("o"),
+                HasFile = true,
+                MovieFile = new Lingarr.Server.Models.Integrations.RadarrMovieFile()
+            });
+
+        movieSyncMock
+            .Setup(s => s.SyncMovie(It.IsAny<Lingarr.Server.Models.Integrations.RadarrMovie>(), testInstanceId))
+            .ReturnsAsync(new Lingarr.Core.Entities.Movie
+            {
+                Id = 100,
+                RadarrId = radarrMovieId,
+                Title = "Test Movie",
+                Path = "/movies/test",
+                FileName = "test.mkv",
+                DateAdded = DateTime.UtcNow,
+                SourceInstanceId = testInstanceId
+            });
+
+        var mediaService = new MediaService(context,
+            subtitleMock.Object,
+            sonarrMock.Object,
+            showSyncServiceMock.Object,
+            radarrMock.Object,
+            movieSyncMock.Object,
+            mediaSubtitleProcessorMock.Object,
+            settingServiceMock.Object,
+            logger);
+
+        // Act
+        var result = await mediaService.GetMovieIdOrSyncFromRadarrMovieId(radarrMovieId, testInstanceId);
+
+        // Assert
+        Assert.Equal(100, result);
+        movieSyncMock.Verify(s => s.SyncMovie(
+            It.IsAny<Lingarr.Server.Models.Integrations.RadarrMovie>(),
+            testInstanceId),
+            Times.Once);
+    }
 }

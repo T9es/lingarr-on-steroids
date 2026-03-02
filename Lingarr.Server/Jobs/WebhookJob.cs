@@ -1,9 +1,12 @@
 using Hangfire;
+using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Interfaces.Services;
+using Lingarr.Server.Models;
 using Lingarr.Server.Models.Webhooks;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace Lingarr.Server.Jobs;
 
@@ -12,18 +15,85 @@ public class WebhookJob
     private readonly LingarrDbContext _dbContext;
     private readonly IMediaService _mediaService;
     private readonly IMediaSubtitleProcessor _mediaSubtitleProcessor;
+    private readonly ISettingService _settingService;
     private readonly ILogger<WebhookJob> _logger;
 
     public WebhookJob(
         LingarrDbContext dbContext,
         IMediaService mediaService,
         IMediaSubtitleProcessor mediaSubtitleProcessor,
+        ISettingService settingService,
         ILogger<WebhookJob> logger)
     {
         _dbContext = dbContext;
         _mediaService = mediaService;
         _mediaSubtitleProcessor = mediaSubtitleProcessor;
+        _settingService = settingService;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Gets the Radarr instance URL and API key from the instance ID
+    /// </summary>
+    private async Task<(string Url, string ApiKey)> GetRadarrInstanceConfig(string instanceId)
+    {
+        var instancesJson = await _settingService.GetSetting(SettingKeys.Integration.RadarrInstances);
+        
+        if (!string.IsNullOrEmpty(instancesJson))
+        {
+            try
+            {
+                var instances = JsonSerializer.Deserialize<List<RadarrInstance>>(
+                    instancesJson, 
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                var instance = instances?.FirstOrDefault(i => i.Id == instanceId);
+                if (instance != null)
+                {
+                    return (instance.Url, instance.ApiKey);
+                }
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(ex, "Failed to deserialize Radarr instances from settings");
+            }
+        }
+
+        // Fall back to single instance settings
+        var url = await _settingService.GetSetting(SettingKeys.Integration.RadarrUrl);
+        var apiKey = await _settingService.GetSetting(SettingKeys.Integration.RadarrApiKey);
+        return (url ?? string.Empty, apiKey ?? string.Empty);
+    }
+
+    /// <summary>
+    /// Gets the Sonarr instance URL and API key from the instance ID
+    /// </summary>
+    private async Task<(string Url, string ApiKey)> GetSonarrInstanceConfig(string instanceId)
+    {
+        var instancesJson = await _settingService.GetSetting(SettingKeys.Integration.SonarrInstances);
+        
+        if (!string.IsNullOrEmpty(instancesJson))
+        {
+            try
+            {
+                var instances = JsonSerializer.Deserialize<List<SonarrInstance>>(
+                    instancesJson, 
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                var instance = instances?.FirstOrDefault(i => i.Id == instanceId);
+                if (instance != null)
+                {
+                    return (instance.Url, instance.ApiKey);
+                }
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(ex, "Failed to deserialize Sonarr instances from settings");
+            }
+        }
+
+        // Fall back to single instance settings
+        var url = await _settingService.GetSetting(SettingKeys.Integration.SonarrUrl);
+        var apiKey = await _settingService.GetSetting(SettingKeys.Integration.SonarrApiKey);
+        return (url ?? string.Empty, apiKey ?? string.Empty);
     }
 
     [DisableConcurrentExecution(timeoutInSeconds: 120)]
@@ -47,6 +117,14 @@ public class WebhookJob
 
         try
         {
+            // Validate instance exists before processing
+            var (url, apiKey) = await GetRadarrInstanceConfig(instanceId);
+            if (string.IsNullOrEmpty(url) || string.IsNullOrEmpty(apiKey))
+            {
+                _logger.LogWarning("Webhook received for unknown Radarr instance '{InstanceId}'", instanceId);
+                return;
+            }
+
             // Sync or find the movie using the correct instance
             var internalMovieId = await _mediaService.GetMovieIdOrSyncFromRadarrMovieId(movieId, instanceId);
             
@@ -108,6 +186,14 @@ public class WebhookJob
 
         try
         {
+            // Validate instance exists before processing
+            var (url, apiKey) = await GetSonarrInstanceConfig(instanceId);
+            if (string.IsNullOrEmpty(url) || string.IsNullOrEmpty(apiKey))
+            {
+                _logger.LogWarning("Webhook received for unknown Sonarr instance '{InstanceId}'", instanceId);
+                return;
+            }
+
             foreach (var episode in payload.Episodes)
             {
                 var episodeId = await _mediaService.GetEpisodeIdOrSyncFromSonarrEpisodeId(
