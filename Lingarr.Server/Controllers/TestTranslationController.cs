@@ -67,7 +67,9 @@ public class TestTranslationController : ControllerBase
         try
         {
             // Movies
-            var movieQuery = _dbContext.Movies.AsQueryable();
+            var movieQuery = _dbContext.Movies
+                .Include(m => m.Images)
+                .AsQueryable();
 
             movieQuery = movieQuery.Where(m =>
                 m.Title.ToLower().Contains(normalized) ||
@@ -114,6 +116,7 @@ public class TestTranslationController : ControllerBase
             var episodeQuery = _dbContext.Episodes
                 .Include(e => e.Season)
                 .ThenInclude(s => s.Show)
+                .ThenInclude(s => s.Images)
                 .AsQueryable();
 
             episodeQuery = episodeQuery.Where(e =>
