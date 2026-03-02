@@ -30,6 +30,7 @@ public class CleanupService : ICleanupService
     {
         var result = new CleanupResult { Success = true };
 
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync();
         try
         {
             // Step 1: Find all non-default instance IDs
@@ -151,10 +152,13 @@ public class CleanupService : ICleanupService
                            $"Consolidated {result.InstancesConsolidated} instances to 'default'.";
 
             _logger.LogInformation(result.Message);
+            
+            await transaction.CommitAsync();
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during duplicate instance cleanup");
+            _logger.LogError(ex, "Error during duplicate instance cleanup, rolling back");
+            await transaction.RollbackAsync();
             result.Success = false;
             result.Message = $"Error during cleanup: {ex.Message}";
         }

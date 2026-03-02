@@ -1,5 +1,3 @@
-using System.Text.Json;
-using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Server.Interfaces.Services;
@@ -18,7 +16,7 @@ public class ShowSyncService : IShowSyncService
     private readonly IShowSync _showSync;
     private readonly ISeasonSync _seasonSync;
     private readonly IEpisodeSync _episodeSync;
-    private readonly ISettingService _settingService;
+    private readonly IInstanceConfigService _instanceConfigService;
     private readonly ILogger<ShowSyncService> _logger;
 
     public ShowSyncService(
@@ -26,40 +24,48 @@ public class ShowSyncService : IShowSyncService
         IShowSync showSync,
         ISeasonSync seasonSync,
         IEpisodeSync episodeSync,
-        ISettingService settingService,
+        IInstanceConfigService instanceConfigService,
         ILogger<ShowSyncService> logger)
     {
         _dbContext = dbContext;
         _showSync = showSync;
         _seasonSync = seasonSync;
         _episodeSync = episodeSync;
-        _settingService = settingService;
+        _instanceConfigService = instanceConfigService;
         _logger = logger;
     }
 
     /// <inheritdoc />
     public async Task SyncShows(List<(SonarrShow Show, string InstanceId)> shows)
     {
-        // Pre-fetch all unique instance configs ONCE to avoid N+1 queries
         var uniqueInstanceIds = shows.Select(s => s.InstanceId).Distinct().ToList();
-        var instanceConfigs = new Dictionary<string, (string Url, string ApiKey)>();
+        var instanceConfigs = new Dictionary<string, InstanceConfig>();
         
         foreach (var instanceId in uniqueInstanceIds)
         {
-            instanceConfigs[instanceId] = await GetSonarrInstanceConfig(instanceId);
+            var config = await _instanceConfigService.GetSonarrConfig(instanceId);
+            if (config != null)
+            {
+                instanceConfigs[instanceId] = config;
+            }
         }
         
         var processedCount = 0;
         
         foreach (var (show, instanceId) in shows)
         {
-            var (instanceUrl, instanceApiKey) = instanceConfigs[instanceId];  // O(1) lookup
+            if (!instanceConfigs.TryGetValue(instanceId, out var config))
+            {
+                _logger.LogWarning("Could not find Sonarr instance config for {InstanceId}, skipping", instanceId);
+                continue;
+            }
+            
             var showEntity = await _showSync.SyncShow(show, instanceId);
 
             foreach (var season in show.Seasons)
             {
-                var seasonEntity = await _seasonSync.SyncSeason(showEntity, show, season, instanceUrl, instanceApiKey);
-                await _episodeSync.SyncEpisodes(show, seasonEntity, instanceId, instanceUrl, instanceApiKey);
+                var seasonEntity = await _seasonSync.SyncSeason(showEntity, show, season, config.Url, config.ApiKey);
+                await _episodeSync.SyncEpisodes(show, seasonEntity, instanceId, config.Url, config.ApiKey);
             }
             
             processedCount++;
@@ -79,13 +85,19 @@ public class ShowSyncService : IShowSyncService
     /// <inheritdoc />
     public async Task<Show?> SyncShow(SonarrShow show, string instanceId)
     {
-        var (instanceUrl, instanceApiKey) = await GetSonarrInstanceConfig(instanceId);
+        var config = await _instanceConfigService.GetSonarrConfig(instanceId);
+        if (config == null)
+        {
+            _logger.LogWarning("Could not find Sonarr instance config for {InstanceId}", instanceId);
+            return null;
+        }
+        
         var showEntity = await _showSync.SyncShow(show, instanceId);
 
         foreach (var season in show.Seasons)
         {
-            var seasonEntity = await _seasonSync.SyncSeason(showEntity, show, season, instanceUrl, instanceApiKey);
-            await _episodeSync.SyncEpisodes(show, seasonEntity, instanceId, instanceUrl, instanceApiKey);
+            var seasonEntity = await _seasonSync.SyncSeason(showEntity, show, season, config.Url, config.ApiKey);
+            await _episodeSync.SyncEpisodes(show, seasonEntity, instanceId, config.Url, config.ApiKey);
         }
 
         await _dbContext.SaveChangesAsync();
@@ -139,36 +151,4 @@ public class ShowSyncService : IShowSyncService
             processedCount, totalCount);
     }
 
-    /// <summary>
-    /// Gets the Sonarr instance URL and API key from the instance ID
-    /// </summary>
-    /// <param name="instanceId">The instance ID to look up</param>
-    /// <returns>A tuple containing the instance URL and API key</returns>
-    private async Task<(string Url, string ApiKey)> GetSonarrInstanceConfig(string instanceId)
-    {
-        var instancesJson = await _settingService.GetSetting(SettingKeys.Integration.SonarrInstances);
-        
-        if (!string.IsNullOrEmpty(instancesJson))
-        {
-            try
-            {
-                var instances = JsonSerializer.Deserialize<List<SonarrInstance>>(instancesJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                var instance = instances?.FirstOrDefault(i => i.Id == instanceId);
-                if (instance != null)
-                {
-                    return (instance.Url, instance.ApiKey);
-                }
-            }
-            catch (JsonException ex)
-            {
-                _logger.LogWarning(ex, "Failed to deserialize Sonarr instances from settings");
-            }
-        }
-
-        // Fall back to single instance settings
-        var url = await _settingService.GetSetting(SettingKeys.Integration.SonarrUrl);
-        var apiKey = await _settingService.GetSetting(SettingKeys.Integration.SonarrApiKey);
-        
-        return (url ?? string.Empty, apiKey ?? string.Empty);
-    }
 }

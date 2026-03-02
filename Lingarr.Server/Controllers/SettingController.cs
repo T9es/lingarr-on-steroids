@@ -181,6 +181,30 @@ public class SettingController : ControllerBase
     }
     
     /// <summary>
+    /// Tests the connection to a Radarr instance without mutating shared settings.
+    /// </summary>
+    /// <param name="request">The URL and API key to test.</param>
+    /// <returns>Returns the connection status and version information.</returns>
+    [HttpPost("test/radarr-instance")]
+    public async Task<ActionResult<IntegrationTestResult>> TestRadarrInstance([FromBody] TestInstanceRequest request)
+    {
+        var result = await _integrationService.TestConnection(request.Url, request.ApiKey);
+        return Ok(result);
+    }
+    
+    /// <summary>
+    /// Tests the connection to a Sonarr instance without mutating shared settings.
+    /// </summary>
+    /// <param name="request">The URL and API key to test.</param>
+    /// <returns>Returns the connection status and version information.</returns>
+    [HttpPost("test/sonarr-instance")]
+    public async Task<ActionResult<IntegrationTestResult>> TestSonarrInstance([FromBody] TestInstanceRequest request)
+    {
+        var result = await _integrationService.TestConnection(request.Url, request.ApiKey);
+        return Ok(result);
+    }
+    
+    /// <summary>
     /// Cleans up duplicate movies/shows and consolidates all media to a single 'default' instance.
     /// This fixes issues caused by the multi-instance migration where users ended up with duplicate
     /// instance configurations pointing to the same Radarr/Sonarr server.
@@ -198,3 +222,8 @@ public class SettingController : ControllerBase
         return StatusCode(500, result);
     }
 }
+
+/// <summary>
+/// Request model for testing instance connection.
+/// </summary>
+public record TestInstanceRequest(string Url, string ApiKey);

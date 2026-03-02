@@ -54,6 +54,8 @@ export interface ISettingService {
     getSystemLimits<T>(): Promise<T>
     testRadarrConnection<T>(): Promise<T>
     testSonarrConnection<T>(): Promise<T>
+    testRadarrInstance<T>(request: { url: string; apiKey: string }): Promise<T>
+    testSonarrInstance<T>(request: { url: string; apiKey: string }): Promise<T>
 }
 
 export interface ISubtitleService {

@@ -9,6 +9,7 @@ public class StartupService : IHostedService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<StartupService> _logger;
+    private static readonly SemaphoreSlim _cleanupLock = new(1, 1);
 
     public StartupService(IServiceProvider serviceProvider, ILogger<StartupService> logger)
     {
@@ -275,6 +276,12 @@ public class StartupService : IHostedService
     /// </summary>
     private async Task CleanupDuplicateRecords(LingarrDbContext dbContext)
     {
+        if (!await _cleanupLock.WaitAsync(0))
+        {
+            _logger.LogInformation("Cleanup already in progress, skipping");
+            return;
+        }
+
         try
         {
             // Delete duplicate movies - keep the one with lowest ID (oldest)
@@ -347,6 +354,10 @@ public class StartupService : IHostedService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error during duplicate record cleanup. Continuing startup...");
+        }
+        finally
+        {
+            _cleanupLock.Release();
         }
     }
 }

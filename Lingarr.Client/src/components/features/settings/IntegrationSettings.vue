@@ -416,10 +416,10 @@ const testRadarrConnection = async (instance: IInstance): Promise<void> => {
     status.tested = false
 
     try {
-        await services.setting.setSetting(SETTINGS.RADARR_URL, instance.url)
-        await services.setting.setSetting(SETTINGS.RADARR_API_KEY, instance.apiKey)
-
-        const result = await services.setting.testRadarrConnection<ConnectionTestResult>()
+        const result = await services.setting.testRadarrInstance<ConnectionTestResult>({
+            url: instance.url,
+            apiKey: instance.apiKey
+        })
         status.connected = result.isConnected
         status.message = result.message || ''
         status.version = result.version || null
@@ -441,10 +441,10 @@ const testSonarrConnection = async (instance: IInstance): Promise<void> => {
     status.tested = false
 
     try {
-        await services.setting.setSetting(SETTINGS.SONARR_URL, instance.url)
-        await services.setting.setSetting(SETTINGS.SONARR_API_KEY, instance.apiKey)
-
-        const result = await services.setting.testSonarrConnection<ConnectionTestResult>()
+        const result = await services.setting.testSonarrInstance<ConnectionTestResult>({
+            url: instance.url,
+            apiKey: instance.apiKey
+        })
         status.connected = result.isConnected
         status.message = result.message || ''
         status.version = result.version || null
