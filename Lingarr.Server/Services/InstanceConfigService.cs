@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Lingarr.Core.Configuration;
 using Lingarr.Server.Interfaces.Services;
+using Lingarr.Server.Models;
 
 namespace Lingarr.Server.Services;
 
@@ -82,13 +83,5 @@ public class InstanceConfigService : IInstanceConfigService
         }
 
         return new InstanceConfig(url, apiKey, "default");
-    }
-
-    private class InstanceSetting
-    {
-        public string Id { get; set; } = string.Empty;
-        public string Name { get; set; } = string.Empty;
-        public string Url { get; set; } = string.Empty;
-        public string ApiKey { get; set; } = string.Empty;
     }
 }

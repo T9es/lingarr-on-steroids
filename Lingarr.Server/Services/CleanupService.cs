@@ -2,6 +2,7 @@ using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Server.Interfaces.Services;
+using Lingarr.Server.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace Lingarr.Server.Services;
@@ -231,7 +232,7 @@ public class CleanupService : ICleanupService
             // Parse and consolidate Radarr instances
             if (!string.IsNullOrEmpty(radarrInstancesStr))
             {
-                var radarrInstances = System.Text.Json.JsonSerializer.Deserialize<List<InstanceConfig>>(radarrInstancesStr);
+                var radarrInstances = System.Text.Json.JsonSerializer.Deserialize<List<InstanceSetting>>(radarrInstancesStr);
                 if (radarrInstances != null && radarrInstances.Count > 0)
                 {
                     // Check if any instance has a non-default ID (single or multiple)
@@ -254,7 +255,7 @@ public class CleanupService : ICleanupService
             // Parse and consolidate Sonarr instances
             if (!string.IsNullOrEmpty(sonarrInstancesStr))
             {
-                var sonarrInstances = System.Text.Json.JsonSerializer.Deserialize<List<InstanceConfig>>(sonarrInstancesStr);
+                var sonarrInstances = System.Text.Json.JsonSerializer.Deserialize<List<InstanceSetting>>(sonarrInstancesStr);
                 if (sonarrInstances != null && sonarrInstances.Count > 0)
                 {
                     // Check if any instance has a non-default ID (single or multiple)
@@ -278,16 +279,5 @@ public class CleanupService : ICleanupService
         {
             _logger.LogWarning(ex, "Could not update instance settings, but database cleanup was successful");
         }
-    }
-
-    /// <summary>
-    /// Helper class for deserializing instance config
-    /// </summary>
-    private class InstanceConfig
-    {
-        public string Id { get; set; } = string.Empty;
-        public string Name { get; set; } = string.Empty;
-        public string Url { get; set; } = string.Empty;
-        public string ApiKey { get; set; } = string.Empty;
     }
 }
