@@ -172,7 +172,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch, defineComponent, h } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, defineComponent, h, nextTick } from 'vue'
 import { GridLayout, GridItem } from 'grid-layout-plus'
 import { DailyStatistic, MEDIA_TYPE, Statistics } from '@/ts'
 import { useI18n } from '@/plugins/i18n'
@@ -213,6 +213,16 @@ const {
 const gridContainerRef = ref<HTMLElement | null>(null)
 
 const showResetConfirmation = ref(false)
+
+const lastWidth = ref(window.innerWidth)
+
+const handleViewportResize = async () => {
+    if (window.innerWidth !== lastWidth.value) {
+        lastWidth.value = window.innerWidth
+        await nextTick()
+        window.dispatchEvent(new Event('resize'))
+    }
+}
 
 const confirmReset = async () => {
     showResetConfirmation.value = false
@@ -286,10 +296,18 @@ onMounted(async () => {
     await loadInitialTranslations()
     await fetchDailyStats()
     await fetchStatistics()
+
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', handleViewportResize)
+    }
 })
 
 onUnmounted(() => {
     disconnectSignalR()
+
+    if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', handleViewportResize)
+    }
 })
 
 const ActiveTranslationsContent = defineComponent({
