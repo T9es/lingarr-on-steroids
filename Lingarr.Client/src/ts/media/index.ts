@@ -65,6 +65,7 @@ export interface ITranslationRequest {
     completedAt?: string | null
     isPriority?: boolean
     isActive?: boolean
+    startedAt?: string | null
 }
 
 export interface ITranslationRequestLog {

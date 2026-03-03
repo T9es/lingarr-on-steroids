@@ -1,7 +1,7 @@
 import { ref } from 'vue'
-import axios from 'axios'
 import { useSignalR } from './useSignalR'
-import type { IRequestProgress } from '@/ts'
+import services from '@/services'
+import type { IRequestProgress, ITranslationRequest } from '@/ts'
 
 export interface ActiveTranslation {
     id: number
@@ -72,8 +72,7 @@ export function useDashboardSignalR() {
      */
     const loadInitialTranslations = async () => {
         try {
-            const response = await axios.get('/api/translation-request/inprogress')
-            const requests = response.data
+            const requests = await services.translationRequest.getInProgressRequests<ITranslationRequest[]>()
 
             if (!Array.isArray(requests) || requests.length === 0) {
                 return
@@ -84,7 +83,6 @@ export function useDashboardSignalR() {
                 const numericId = request.id
                 if (!numericId) continue
 
-                // Don't overwrite if already in Map (SignalR may have added it)
                 if (state.value.activeTranslations.has(numericId)) {
                     continue
                 }

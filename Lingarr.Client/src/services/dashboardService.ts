@@ -8,7 +8,7 @@ export const dashboardService = (axios: AxiosStatic) => ({
 
     saveLayout: async (layoutJson: string): Promise<void> => {
         await axios.put('/api/dashboard/layout', layoutJson, {
-            headers: { 'Content-Type': 'application/json' }
+            headers: { 'Content-Type': 'text/plain' }
         })
     },
 
