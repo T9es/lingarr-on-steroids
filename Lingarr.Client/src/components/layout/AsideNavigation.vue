@@ -10,7 +10,7 @@
             :class="
                 isOpen ? 'w-64 translate-x-0' : 'w-64 -translate-x-full md:w-20 md:translate-x-0'
             "
-            class="border-accent bg-secondary fixed top-0 left-0 z-50 flex h-full shrink-0 flex-col overflow-hidden border-r transition-all duration-300 ease-in-out md:sticky">
+            class="border-accent bg-secondary fixed top-0 left-0 z-50 flex h-full shrink-0 flex-col overflow-hidden border-r transition-all duration-300 ease-in-out">
             <TimesIcon
                 class="absolute top-1 right-1 block h-6 w-6 cursor-pointer md:hidden"
                 @click="isOpen = false" />

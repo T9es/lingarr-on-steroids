@@ -31,6 +31,12 @@
                 </span>
             </div>
 
+            <div v-else-if="error" class="flex h-64 items-center justify-center">
+                <span class="text-error text-sm">
+                    {{ error }}
+                </span>
+            </div>
+
             <div
                 v-else
                 ref="scrollContainer"
@@ -87,6 +93,10 @@ const props = defineProps<{
     subtitlePath: string
     selectedStart?: number
     selectedEnd?: number
+    mediaId?: number
+    mediaType?: 'Movie' | 'Episode'
+    streamIndex?: number
+    language?: string
 }>()
 
 const emit = defineEmits<{
@@ -98,6 +108,7 @@ const { translate } = useI18n()
 
 const lines = ref<SubtitleLine[]>([])
 const loading = ref(true)
+const error = ref<string | null>(null)
 const startLine = ref(props.selectedStart ?? 1)
 const endLine = ref(props.selectedEnd ?? 1)
 const lastClicked = ref<number | null>(null)
@@ -155,17 +166,42 @@ function confirmSelection() {
 
 async function loadSubtitle() {
     try {
-        const response = await fetch(
-            `/api/test-translation/subtitle-preview?path=${encodeURIComponent(props.subtitlePath)}`
-        )
-        if (!response.ok) throw new Error('Failed to load subtitle')
-        const data = await response.json()
+        loading.value = true
+        error.value = null
+        let data
+        
+        if (props.mediaId && props.mediaType && props.streamIndex !== undefined) {
+            const params = new URLSearchParams({
+                mediaId: props.mediaId.toString(),
+                mediaType: props.mediaType,
+                streamIndex: props.streamIndex.toString()
+            })
+            if (props.language) params.append('language', props.language)
+            
+            const response = await fetch(`/api/test-translation/embedded-preview?${params}`)
+            if (!response.ok) {
+                if (response.status === 400) {
+                    const err = await response.json()
+                    throw new Error(err.message || 'Cannot extract this subtitle (may be image-based)')
+                }
+                throw new Error('Failed to extract embedded subtitle')
+            }
+            data = await response.json()
+        } else {
+            const response = await fetch(
+                `/api/test-translation/subtitle-preview?path=${encodeURIComponent(props.subtitlePath)}`
+            )
+            if (!response.ok) throw new Error('Failed to load subtitle')
+            data = await response.json()
+        }
+        
         lines.value = data.lines
         if (lines.value.length > 0) {
             endLine.value = Math.min(props.selectedEnd ?? 20, lines.value.length)
         }
-    } catch (error) {
-        console.error('Failed to load subtitle:', error)
+    } catch (err) {
+        console.error('Failed to load subtitle:', err)
+        error.value = err instanceof Error ? err.message : 'Unknown error loading subtitle'
     } finally {
         loading.value = false
     }

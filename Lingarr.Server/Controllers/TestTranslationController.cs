@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Lingarr.Core.Data;
+using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
@@ -305,6 +306,173 @@ public class TestTranslationController : ControllerBase
     {
         var ts = TimeSpan.FromMilliseconds(milliseconds);
         return $"{(int)ts.TotalHours:D2}:{ts.Minutes:D2}:{ts.Seconds:D2}";
+    }
+
+    /// <summary>
+    /// Get embedded subtitle preview for visual line picker.
+    /// Extracts embedded subtitle to temp file, reads content, and cleans up immediately.
+    /// </summary>
+    [HttpGet("embedded-preview")]
+    public async Task<ActionResult> GetEmbeddedPreview(
+        int mediaId,
+        string mediaType,
+        int streamIndex,
+        string? language = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(mediaType))
+        {
+            return BadRequest(new { Message = "Media type is required" });
+        }
+
+        var coreMediaType = mediaType.Equals("Movie", StringComparison.OrdinalIgnoreCase)
+            ? Core.Enum.MediaType.Movie
+            : mediaType.Equals("Episode", StringComparison.OrdinalIgnoreCase)
+                ? Core.Enum.MediaType.Episode
+                : (Core.Enum.MediaType?)null;
+
+        if (coreMediaType == null)
+        {
+            return BadRequest(new { Message = "Invalid media type. Must be 'Movie' or 'Episode'" });
+        }
+
+        try
+        {
+            // Get media and verify stream exists and is text-based
+            EmbeddedSubtitle? embeddedSubtitle = null;
+
+            if (coreMediaType == Core.Enum.MediaType.Movie)
+            {
+                var movie = await _dbContext.Movies
+                    .Include(m => m.EmbeddedSubtitles)
+                    .FirstOrDefaultAsync(m => m.Id == mediaId, cancellationToken);
+
+                if (movie == null)
+                {
+                    return NotFound(new { Message = "Movie not found" });
+                }
+
+                // Sync embedded subtitles if not indexed
+                if (movie.EmbeddedSubtitles == null || movie.EmbeddedSubtitles.Count == 0)
+                {
+                    await _extractionService.SyncEmbeddedSubtitles(movie);
+                    await _dbContext.Entry(movie).Collection(m => m.EmbeddedSubtitles).LoadAsync(cancellationToken);
+                }
+
+                embeddedSubtitle = movie.EmbeddedSubtitles.FirstOrDefault(s => s.StreamIndex == streamIndex);
+            }
+            else
+            {
+                var episode = await _dbContext.Episodes
+                    .Include(e => e.EmbeddedSubtitles)
+                    .FirstOrDefaultAsync(e => e.Id == mediaId, cancellationToken);
+
+                if (episode == null)
+                {
+                    return NotFound(new { Message = "Episode not found" });
+                }
+
+                // Sync embedded subtitles if not indexed
+                if (episode.EmbeddedSubtitles == null || episode.EmbeddedSubtitles.Count == 0)
+                {
+                    await _extractionService.SyncEmbeddedSubtitles(episode);
+                    await _dbContext.Entry(episode).Collection(e => e.EmbeddedSubtitles).LoadAsync(cancellationToken);
+                }
+
+                embeddedSubtitle = episode.EmbeddedSubtitles.FirstOrDefault(s => s.StreamIndex == streamIndex);
+            }
+
+            if (embeddedSubtitle == null)
+            {
+                return NotFound(new { Message = $"Subtitle stream {streamIndex} not found" });
+            }
+
+            if (!embeddedSubtitle.IsTextBased)
+            {
+                return BadRequest(new { 
+                    Message = "Cannot extract image-based subtitle (PGS/VobSub). OCR is not supported.",
+                    Codec = embeddedSubtitle.CodecName
+                });
+            }
+
+            // Get media file path
+            string? mediaPath;
+            if (coreMediaType == Core.Enum.MediaType.Movie)
+            {
+                var movie = await _dbContext.Movies.FindAsync([mediaId], cancellationToken);
+                if (movie == null || string.IsNullOrEmpty(movie.Path) || string.IsNullOrEmpty(movie.FileName))
+                {
+                    return NotFound(new { Message = "Movie path not found" });
+                }
+                mediaPath = Path.Combine(movie.Path, movie.FileName);
+            }
+            else
+            {
+                var episode = await _dbContext.Episodes.FindAsync([mediaId], cancellationToken);
+                if (episode == null || string.IsNullOrEmpty(episode.Path) || string.IsNullOrEmpty(episode.FileName))
+                {
+                    return NotFound(new { Message = "Episode path not found" });
+                }
+                mediaPath = Path.Combine(episode.Path, episode.FileName);
+            }
+
+            // Extract subtitle to temp file
+            var outputDir = Path.GetTempPath();
+            string? extractedPath = null;
+
+            try
+            {
+                extractedPath = await _extractionService.ExtractSubtitle(
+                    mediaPath,
+                    streamIndex,
+                    outputDir,
+                    embeddedSubtitle.CodecName,
+                    embeddedSubtitle.Language);
+
+                if (extractedPath == null || !System.IO.File.Exists(extractedPath))
+                {
+                    return StatusCode(500, new { Message = "Failed to extract embedded subtitle" });
+                }
+
+                // Read subtitle content
+                var subtitles = await _subtitleService.ReadSubtitles(extractedPath);
+
+                var lines = subtitles.Select(s => new
+                {
+                    Position = s.Position,
+                    StartTime = FormatTimestamp(s.StartTime),
+                    EndTime = FormatTimestamp(s.EndTime),
+                    Text = string.Join(" ", s.Lines)
+                }).ToList();
+
+                return Ok(new
+                {
+                    TotalLines = subtitles.Count,
+                    Lines = lines
+                });
+            }
+            finally
+            {
+                // Always cleanup the actual extracted file
+                if (!string.IsNullOrEmpty(extractedPath) && System.IO.File.Exists(extractedPath))
+                {
+                    try
+                    {
+                        System.IO.File.Delete(extractedPath);
+                        _logger.LogDebug("Deleted temp preview file: {Path}", extractedPath);
+                    }
+                    catch (Exception cleanupEx)
+                    {
+                        _logger.LogWarning(cleanupEx, "Failed to delete temp preview file: {Path}", extractedPath);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to extract embedded subtitle preview for media {MediaId}", mediaId);
+            return StatusCode(500, new { Message = $"Failed to extract embedded subtitle: {ex.Message}" });
+        }
     }
 
     /// <summary>

@@ -158,9 +158,13 @@
 
     <VisualLinePickerModal
         v-if="showVisualPicker"
-        :subtitle-path="subtitlePath"
+        :subtitle-path="currentSubtitlePath"
         :selected-start="startLine"
         :selected-end="endLine"
+        :media-id="mediaId"
+        :media-type="mediaType"
+        :stream-index="embeddedStreamIndex"
+        :language="selectedSubtitleLanguage"
         @select="onVisualSelect"
         @close="showVisualPicker = false" />
 </template>
@@ -206,6 +210,8 @@ const props = defineProps<{
     availableSourceLanguages: Language[]
     availableTargetLanguages: Language[]
     availableSubtitles: SubtitleOption[]
+    mediaId?: number
+    mediaType?: 'Movie' | 'Episode'
 }>()
 
 const emit = defineEmits<{
@@ -345,6 +351,19 @@ const canStart = computed(() => {
 const currentSubtitlePath = computed(() => {
     if (!selectedSubtitle.value) return ''
     return getSubtitlePath(selectedSubtitle.value)
+})
+
+const embeddedStreamIndex = computed(() => {
+    if (!selectedSubtitle.value || !isEmbedded(selectedSubtitle.value)) return undefined
+    return (selectedSubtitle.value as EmbeddedSubtitle).streamIndex
+})
+
+const selectedSubtitleLanguage = computed(() => {
+    if (!selectedSubtitle.value) return undefined
+    if (isEmbedded(selectedSubtitle.value)) {
+        return (selectedSubtitle.value as EmbeddedSubtitle).language
+    }
+    return (selectedSubtitle.value as Subtitle).language
 })
 
 function startTest() {

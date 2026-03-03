@@ -19,6 +19,7 @@ using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Listener;
 using Lingarr.Server.Providers;
 using Lingarr.Server.Services;
+using Lingarr.Server.Services.Cleanup;
 using Lingarr.Server.Services.Integration;
 using Lingarr.Server.Services.Subtitle;
 using Lingarr.Server.Services.Sync;
@@ -140,6 +141,9 @@ public static class ServiceCollectionExtensions
         
         // Added startup service to clean up orphaned Hangfire locks
         builder.Services.AddHostedService<HangfireLockCleanupService>();
+        
+        // Add temp file cleanup service to remove orphaned subtitle files on startup
+        builder.Services.AddHostedService<TempFileCleanupService>();
 
         // Add translation services
         builder.Services.AddTransient<GoogleTranslator>();

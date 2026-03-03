@@ -149,6 +149,8 @@
         :available-source-languages="availableLanguages"
         :available-target-languages="availableLanguages"
         :available-subtitles="availableSubtitles"
+        :media-id="selectedMediaId ?? undefined"
+        :media-type="selectedMediaType ?? undefined"
         @close="closeConfigModal"
         @start="handleStartTest" />
 </template>

@@ -13,7 +13,7 @@ export const useInstanceStore = defineStore('instance', {
             currentVersion: '',
             latestVersion: ''
         },
-        isOpen: false,
+        isOpen: localStorage.getItem('isOpen') === 'true',
         theme: THEMES.LINGARR,
         poster: ''
     }),
@@ -25,6 +25,7 @@ export const useInstanceStore = defineStore('instance', {
     },
     actions: {
         setIsOpen(isOpen: boolean): void {
+            localStorage.setItem('isOpen', String(isOpen))
             this.isOpen = isOpen
         },
         setPoster({ content, type }: { content: IMovie | IShow; type: string }): void {
