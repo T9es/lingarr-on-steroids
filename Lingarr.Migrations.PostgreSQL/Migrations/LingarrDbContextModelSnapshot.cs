@@ -271,6 +271,10 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                     b.HasIndex("TranslationState")
                         .HasDatabaseName("IX_Episodes_TranslationState");
 
+                    b.HasIndex("SourceInstanceId", "SonarrId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Episodes_SourceInstanceId_SonarrId");
+
                     b.ToTable("episodes", (string)null);
                 });
 

@@ -27,11 +27,12 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                   AND e.source_instance_id IS NULL
             ");
 
-            // Create index for efficient querying by instance
+            // Create unique index for efficient querying by instance
             migrationBuilder.CreateIndex(
                 name: "IX_Episodes_SourceInstanceId_SonarrId",
                 table: "episodes",
-                columns: new[] { "source_instance_id", "sonarr_id" });
+                columns: new[] { "source_instance_id", "sonarr_id" },
+                unique: true);
         }
 
         /// <inheritdoc />
