@@ -211,8 +211,6 @@ const {
 } = useDashboardLayout()
 
 const gridContainerRef = ref<HTMLElement | null>(null)
-const containerWidth = ref(1200)
-let resizeObserver: ResizeObserver | null = null
 
 const showResetConfirmation = ref(false)
 
@@ -288,23 +286,10 @@ onMounted(async () => {
     await loadInitialTranslations()
     await fetchDailyStats()
     await fetchStatistics()
-    
-    if (gridContainerRef.value) {
-        resizeObserver = new ResizeObserver((entries) => {
-            for (const entry of entries) {
-                containerWidth.value = entry.contentRect.width
-            }
-        })
-        resizeObserver.observe(gridContainerRef.value)
-    }
 })
 
 onUnmounted(() => {
     disconnectSignalR()
-    if (resizeObserver) {
-        resizeObserver.disconnect()
-        resizeObserver = null
-    }
 })
 
 const ActiveTranslationsContent = defineComponent({
