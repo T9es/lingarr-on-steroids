@@ -344,7 +344,8 @@ public class TestTranslationController : ControllerBase
                         Path = s.Path,
                         Language = s.Language,
                         FileName = s.FileName
-                    }).ToList()
+                    }).ToList(),
+                    EmbeddedSubtitles = m.EmbeddedSubtitles
                 })
                 .ToList();
 
