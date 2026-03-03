@@ -3,8 +3,8 @@
         :class="[`${instanceStore.getTheme}`, 'bg-primary text-primary-content flex min-h-screen']">
         <AsideNavigation />
 
-        <div class="flex flex-col drop-shadow-xl transition-all duration-300 ease-in-out w-full"
-            :class="isOpen ? 'md:ml-64' : 'md:ml-20'">
+        <div class="flex flex-col drop-shadow-xl transition-all duration-300 ease-in-out"
+            :class="isOpen ? 'md:ml-64 md:w-[calc(100%-16rem)]' : 'md:ml-20 md:w-[calc(100%-5rem)]'">
             <!-- Header -->
             <header class="bg-secondary px-4 py-2 shadow-lg sm:px-6 lg:px-8">
                 <div class="flex w-full items-center justify-between space-x-2 md:justify-end">
