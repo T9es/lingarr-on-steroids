@@ -46,20 +46,20 @@
         </div>
 
         <!-- Widget Grid -->
-        <GridLayout
-            v-else
-            v-model:layout="currentLayout"
-            :col-num="gridCols"
-            :row-height="rowHeight"
-            :margin="margin"
-            :is-draggable="isConfigMode"
-            :is-resizable="isConfigMode"
-            :vertical-compact="true"
-            :use-css-transforms="true"
-            :responsive="true"
-            :breakpoints="{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }"
-            :cols="{ lg: 12, md: 8, sm: 4, xs: 2, xxs: 1 }"
-            class="min-h-[200px]">
+        <div v-else ref="gridContainerRef" class="w-full">
+            <GridLayout
+                v-model:layout="currentLayout"
+                :col-num="gridCols"
+                :row-height="rowHeight"
+                :margin="margin"
+                :is-draggable="isConfigMode"
+                :is-resizable="isConfigMode"
+                :vertical-compact="true"
+                :use-css-transforms="true"
+                :responsive="true"
+                :breakpoints="{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }"
+                :cols="{ lg: 12, md: 8, sm: 4, xs: 2, xxs: 1 }"
+                class="min-h-[200px]">
             <GridItem
                 v-for="item in visibleLayout"
                 :key="item.i"
@@ -111,8 +111,9 @@
                 </DashboardWidget>
             </GridItem>
         </GridLayout>
+    </div>
 
-        <!-- Reset Confirmation Modal -->
+    <!-- Reset Confirmation Modal -->
         <div
             v-if="showResetConfirmation"
             class="bg-secondary/80 fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm">
@@ -209,6 +210,10 @@ const {
     margin
 } = useDashboardLayout()
 
+const gridContainerRef = ref<HTMLElement | null>(null)
+const containerWidth = ref(1200)
+let resizeObserver: ResizeObserver | null = null
+
 const showResetConfirmation = ref(false)
 
 const confirmReset = async () => {
@@ -283,10 +288,23 @@ onMounted(async () => {
     await loadInitialTranslations()
     await fetchDailyStats()
     await fetchStatistics()
+    
+    if (gridContainerRef.value) {
+        resizeObserver = new ResizeObserver((entries) => {
+            for (const entry of entries) {
+                containerWidth.value = entry.contentRect.width
+            }
+        })
+        resizeObserver.observe(gridContainerRef.value)
+    }
 })
 
 onUnmounted(() => {
     disconnectSignalR()
+    if (resizeObserver) {
+        resizeObserver.disconnect()
+        resizeObserver = null
+    }
 })
 
 const ActiveTranslationsContent = defineComponent({
