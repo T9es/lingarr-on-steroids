@@ -48,6 +48,7 @@
         <!-- Widget Grid -->
         <div v-else ref="gridContainerRef" class="w-full">
             <GridLayout
+                :key="gridKey"
                 v-model:layout="currentLayout"
                 :col-num="gridCols"
                 :row-height="rowHeight"
@@ -172,7 +173,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch, defineComponent, h, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, defineComponent, h } from 'vue'
 import { GridLayout, GridItem } from 'grid-layout-plus'
 import { DailyStatistic, MEDIA_TYPE, Statistics } from '@/ts'
 import { useI18n } from '@/plugins/i18n'
@@ -211,16 +212,33 @@ const {
 } = useDashboardLayout()
 
 const gridContainerRef = ref<HTMLElement | null>(null)
+const gridKey = ref(0)
+let containerResizeObserver: ResizeObserver | null = null
 
 const showResetConfirmation = ref(false)
 
-const lastWidth = ref(window.innerWidth)
+const lastWidth = ref(-1)
+let resizeTimeout: ReturnType<typeof setTimeout> | null = null
 
-const handleViewportResize = async () => {
-    if (window.innerWidth !== lastWidth.value) {
-        lastWidth.value = window.innerWidth
-        await nextTick()
-        window.dispatchEvent(new Event('resize'))
+const handleContainerResize = (entries: ResizeObserverEntry[]) => {
+    if (!entries.length || !entries[0].contentRect) return
+
+    const newWidth = Math.round(entries[0].contentRect.width)
+    
+    // Ignore initialization or very tiny sub-pixel changes
+    if (lastWidth.value === -1) {
+        lastWidth.value = newWidth
+        return
+    }
+
+    if (Math.abs(newWidth - lastWidth.value) > 1) {
+        lastWidth.value = newWidth
+        
+        // Debounce the key change so we don't destroy/recreate repeatedly during an animation
+        if (resizeTimeout) clearTimeout(resizeTimeout)
+        resizeTimeout = setTimeout(() => {
+            gridKey.value += 1
+        }, 150) // Wait for transitions to settle
     }
 }
 
@@ -297,16 +315,21 @@ onMounted(async () => {
     await fetchDailyStats()
     await fetchStatistics()
 
-    if (window.visualViewport) {
-        window.visualViewport.addEventListener('resize', handleViewportResize)
+    if (gridContainerRef.value) {
+        containerResizeObserver = new ResizeObserver(handleContainerResize)
+        containerResizeObserver.observe(gridContainerRef.value)
     }
 })
 
 onUnmounted(() => {
     disconnectSignalR()
 
-    if (window.visualViewport) {
-        window.visualViewport.removeEventListener('resize', handleViewportResize)
+    if (containerResizeObserver) {
+        containerResizeObserver.disconnect()
+        containerResizeObserver = null
+    }
+    if (resizeTimeout) {
+        clearTimeout(resizeTimeout)
     }
 })
 
@@ -540,16 +563,16 @@ const MediaOverviewContent = defineComponent({
 
 <style>
 /* Grid layout styles */
-.vue-grid-layout {
+.vgl-layout {
     min-height: 200px;
 }
 
-.vue-grid-item {
+.vgl-item {
     touch-action: none;
     transition: box-shadow 0.2s ease;
 }
 
-.vue-grid-item.vue-grid-placeholder {
+.vgl-item.vgl-item--placeholder {
     background: rgba(100, 100, 100, 0.2);
     border: 2px dashed rgba(100, 100, 100, 0.5);
     border-radius: 0.375rem;
@@ -557,18 +580,18 @@ const MediaOverviewContent = defineComponent({
     transition: all 0.2s ease;
 }
 
-.vue-grid-item.vue-draggable-dragging {
+.vgl-item.vgl-item--dragging {
     opacity: 0.8;
     z-index: 3;
     box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
 }
 
-.vue-grid-item.resizing {
+.vgl-item.vgl-item--resizing {
     opacity: 0.9;
     z-index: 3;
 }
 
-.vue-grid-item .vue-resizable-handle {
+.vgl-item .vgl-item__resizer {
     width: 24px;
     height: 24px;
     bottom: 0;
@@ -579,11 +602,11 @@ const MediaOverviewContent = defineComponent({
     transition: background 0.2s ease;
 }
 
-.vue-grid-item .vue-resizable-handle:hover {
+.vgl-item .vgl-item__resizer:hover {
     background: rgba(var(--accent-rgb, 147, 51, 234), 0.25);
 }
 
-.vue-grid-item .vue-resizable-handle::after {
+.vgl-item .vgl-item__resizer::after {
     content: '';
     position: absolute;
     right: 6px;
@@ -597,7 +620,7 @@ const MediaOverviewContent = defineComponent({
 
 /* Responsive adjustments */
 @media (max-width: 768px) {
-    .vue-grid-item {
+    .vgl-item {
         touch-action: auto;
     }
 }
