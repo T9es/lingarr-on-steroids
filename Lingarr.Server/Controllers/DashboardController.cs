@@ -95,15 +95,20 @@ public class DashboardController : ControllerBase
         }
     }
 
+    public class DashboardLayoutRequest
+    {
+        public string LayoutJson { get; set; } = string.Empty;
+    }
+
     /// <summary>
     /// Save dashboard layout
     /// </summary>
     [HttpPut("layout")]
-    public async Task<IActionResult> SaveLayout([FromBody] string layoutJson)
+    public async Task<IActionResult> SaveLayout([FromBody] DashboardLayoutRequest request)
     {
         try
         {
-            await _dashboardService.SaveDashboardLayout(layoutJson);
+            await _dashboardService.SaveDashboardLayout(request.LayoutJson);
             return Ok();
         }
         catch (Exception ex)
