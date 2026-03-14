@@ -189,7 +189,7 @@ public class AnthropicService : BaseLanguageService, ITranslationService, IBatch
                 var responseBody = await response.Content.ReadAsStringAsync(linked.Token);
                 var jsonResponse = JsonSerializer.Deserialize<JsonElement>(responseBody);
                 
-                if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var usageProp))
+if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var usageProp))
                 {
                     int inputTokens = 0;
                     int outputTokens = 0;
@@ -197,12 +197,14 @@ public class AnthropicService : BaseLanguageService, ITranslationService, IBatch
                     if (usageProp.TryGetProperty("output_tokens", out var outputTokensProp)) outputTokens = outputTokensProp.GetInt32();
                     int totalTokens = inputTokens + outputTokens;
                     
-                    await _dashboardService.LogApiUsage(ServiceName, totalTokens > 0 ? totalTokens : null, stopwatch.ElapsedMilliseconds, true);
-                    
-                    if (_tokenUsageService != null)
-                    {
-                        await _tokenUsageService.RecordUsageAsync(ServiceName, inputTokens, outputTokens);
-                    }
+                    await _dashboardService.LogApiUsage(
+                        ServiceName, 
+                        totalTokens > 0 ? totalTokens : null, 
+                        stopwatch.ElapsedMilliseconds, 
+                        true, 
+                        null, 
+                        inputTokens > 0 ? inputTokens : null, 
+                        outputTokens > 0 ? outputTokens : null);
                 }
                 else if (_dashboardService != null)
                 {
@@ -401,7 +403,7 @@ public class AnthropicService : BaseLanguageService, ITranslationService, IBatch
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
         var jsonResponse = JsonSerializer.Deserialize<JsonElement>(responseBody);
 
-        if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var usageProp))
+if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var usageProp))
         {
             int inputTokens = 0;
             int outputTokens = 0;
@@ -409,12 +411,14 @@ public class AnthropicService : BaseLanguageService, ITranslationService, IBatch
             if (usageProp.TryGetProperty("output_tokens", out var outputTokensProp)) outputTokens = outputTokensProp.GetInt32();
             int totalTokens = inputTokens + outputTokens;
             
-            await _dashboardService.LogApiUsage(ServiceName, totalTokens > 0 ? totalTokens : null, stopwatch.ElapsedMilliseconds, true);
-            
-            if (_tokenUsageService != null)
-            {
-                await _tokenUsageService.RecordUsageAsync(ServiceName, inputTokens, outputTokens);
-            }
+            await _dashboardService.LogApiUsage(
+                ServiceName, 
+                totalTokens > 0 ? totalTokens : null, 
+                stopwatch.ElapsedMilliseconds, 
+                true, 
+                null, 
+                inputTokens > 0 ? inputTokens : null, 
+                outputTokens > 0 ? outputTokens : null);
         }
         else if (_dashboardService != null)
         {

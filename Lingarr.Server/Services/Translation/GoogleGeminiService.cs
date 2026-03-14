@@ -260,11 +260,15 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
         if (_dashboardService != null)
         {
             int? tokensUsed = null;
+            int? promptTokens = null;
+            int? completionTokens = null;
             if (geminiResponse?.UsageMetadata != null)
             {
-                tokensUsed = geminiResponse.UsageMetadata.PromptTokenCount + geminiResponse.UsageMetadata.CandidatesTokenCount;
+                promptTokens = geminiResponse.UsageMetadata.PromptTokenCount;
+                completionTokens = geminiResponse.UsageMetadata.CandidatesTokenCount;
+                tokensUsed = promptTokens + completionTokens;
             }
-            await _dashboardService.LogApiUsage(ServiceName, tokensUsed, stopwatch.ElapsedMilliseconds, true);
+            await _dashboardService.LogApiUsage(ServiceName, tokensUsed, stopwatch.ElapsedMilliseconds, true, null, promptTokens, completionTokens);
         }
 
         if (geminiResponse?.Candidates == null || geminiResponse.Candidates.Count == 0 ||
@@ -519,19 +523,15 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
         if (_dashboardService != null)
         {
             int? tokensUsed = null;
+            int? promptTokens = null;
+            int? completionTokens = null;
             if (geminiResponse?.UsageMetadata != null)
             {
-                tokensUsed = geminiResponse.UsageMetadata.PromptTokenCount + geminiResponse.UsageMetadata.CandidatesTokenCount;
+                promptTokens = geminiResponse.UsageMetadata.PromptTokenCount;
+                completionTokens = geminiResponse.UsageMetadata.CandidatesTokenCount;
+                tokensUsed = promptTokens + completionTokens;
             }
-            await _dashboardService.LogApiUsage(ServiceName, tokensUsed, stopwatch.ElapsedMilliseconds, true);
-        }
-
-        if (_tokenUsageService != null && geminiResponse?.UsageMetadata != null)
-        {
-            await _tokenUsageService.RecordUsageAsync(
-                ServiceName,
-                geminiResponse.UsageMetadata.PromptTokenCount,
-                geminiResponse.UsageMetadata.CandidatesTokenCount);
+            await _dashboardService.LogApiUsage(ServiceName, tokensUsed, stopwatch.ElapsedMilliseconds, true, null, promptTokens, completionTokens);
         }
 
         if (geminiResponse?.Candidates == null || geminiResponse.Candidates.Count == 0 ||

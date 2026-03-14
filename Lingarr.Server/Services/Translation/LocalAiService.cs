@@ -377,7 +377,14 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
         
         if (_dashboardService != null)
         {
-            await _dashboardService.LogApiUsage(ServiceName, chatResponse?.Usage?.TotalTokens, stopwatch.ElapsedMilliseconds, true);
+            await _dashboardService.LogApiUsage(
+                ServiceName, 
+                chatResponse?.Usage?.TotalTokens, 
+                stopwatch.ElapsedMilliseconds, 
+                true,
+                null,
+                chatResponse?.Usage?.PromptTokens,
+                chatResponse?.Usage?.CompletionTokens);
         }
 
         if (chatResponse?.Choices == null || chatResponse.Choices.Count == 0)
@@ -479,7 +486,14 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
 
         if (_dashboardService != null)
         {
-            await _dashboardService.LogApiUsage(ServiceName, chatResponse?.Usage?.TotalTokens, stopwatch.ElapsedMilliseconds, true);
+            await _dashboardService.LogApiUsage(
+                ServiceName, 
+                chatResponse?.Usage?.TotalTokens, 
+                stopwatch.ElapsedMilliseconds, 
+                true,
+                null,
+                chatResponse?.Usage?.PromptTokens,
+                chatResponse?.Usage?.CompletionTokens);
         }
 
         if (chatResponse?.Choices == null || chatResponse.Choices.Count == 0)
@@ -677,7 +691,14 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
 
         if (_dashboardService != null)
         {
-            await _dashboardService.LogApiUsage(ServiceName, chatResponse?.Usage?.TotalTokens, stopwatch.ElapsedMilliseconds, true);
+            await _dashboardService.LogApiUsage(
+                ServiceName, 
+                chatResponse?.Usage?.TotalTokens, 
+                stopwatch.ElapsedMilliseconds, 
+                true,
+                null,
+                chatResponse?.Usage?.PromptTokens,
+                chatResponse?.Usage?.CompletionTokens);
         }
 
         if (chatResponse?.Choices == null || chatResponse.Choices.Count == 0)

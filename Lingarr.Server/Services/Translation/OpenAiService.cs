@@ -215,22 +215,16 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
                     throw new TranslationException("No completion choices returned from OpenAI");
                 }
 
-                // Log API usage
+// Log API usage
                 if (_dashboardService != null)
                 {
                     await _dashboardService.LogApiUsage(
                         ServiceName,
                         completionResponse.Usage?.TotalTokens,
                         stopwatch.ElapsedMilliseconds,
-                        success: true);
-                }
-
-                if (_tokenUsageService != null && completionResponse.Usage != null)
-                {
-                    await _tokenUsageService.RecordUsageAsync(
-                        ServiceName,
-                        completionResponse.Usage.PromptTokens,
-                        completionResponse.Usage.CompletionTokens);
+                        success: true,
+                        promptTokens: completionResponse.Usage?.PromptTokens,
+                        completionTokens: completionResponse.Usage?.CompletionTokens);
                 }
 
                 return completionResponse.Choices[0].Message.Content;
@@ -522,7 +516,9 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
                 ServiceName,
                 completionResponse.Usage?.TotalTokens,
                 stopwatch.ElapsedMilliseconds,
-                success: true);
+                success: true,
+                promptTokens: completionResponse.Usage?.PromptTokens,
+                completionTokens: completionResponse.Usage?.CompletionTokens);
         }
         
         var translatedJson = completionResponse.Choices[0].Message.Content;

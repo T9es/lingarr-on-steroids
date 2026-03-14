@@ -219,13 +219,15 @@ public class DashboardService : IDashboardService
     }
 
     /// <inheritdoc />
-    public async Task LogApiUsage(string service, int? tokensUsed, long responseTimeMs, bool success, string? errorMessage = null)
+    public async Task LogApiUsage(string service, int? tokensUsed, long responseTimeMs, bool success, string? errorMessage = null, int? promptTokens = null, int? completionTokens = null)
     {
         _dbContext.ApiUsageLogs.Add(new ApiUsageLog
         {
             Timestamp = DateTime.UtcNow,
             Service = service,
             TokensUsed = tokensUsed,
+            PromptTokens = promptTokens,
+            CompletionTokens = completionTokens,
             ResponseTimeMs = responseTimeMs,
             Success = success,
             ErrorMessage = errorMessage
@@ -348,7 +350,7 @@ public interface IDashboardService
     Task<JobQueueStatus> GetJobQueueStatus();
     Task<ApiUsageStatus> GetApiUsage();
     Task<List<ErrorLogEntry>> GetErrorLog(int limit = 50);
-    Task LogApiUsage(string service, int? tokensUsed, long responseTimeMs, bool success, string? errorMessage = null);
+    Task LogApiUsage(string service, int? tokensUsed, long responseTimeMs, bool success, string? errorMessage = null, int? promptTokens = null, int? completionTokens = null);
     Task LogError(string source, string message, string? details = null, string? stackTrace = null);
     Task<string?> GetDashboardLayout();
     Task SaveDashboardLayout(string layoutJson);

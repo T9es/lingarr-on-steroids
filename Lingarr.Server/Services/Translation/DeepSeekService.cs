@@ -297,7 +297,10 @@ public class DeepSeekService : OpenAiService
                 ServiceName,
                 tokensUsed,
                 stopwatch.ElapsedMilliseconds,
-                true);
+                true,
+                null,
+                completionResponse.Usage?.PromptTokens,
+                completionResponse.Usage?.CompletionTokens);
         }
 
         var translatedJson = completionResponse.Choices[0].Message.Content;
