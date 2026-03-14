@@ -46,9 +46,8 @@
         </div>
 
         <!-- Widget Grid -->
-        <div v-else ref="gridContainerRef" class="w-full">
+        <div v-else class="w-full">
             <GridLayout
-                :key="gridKey"
                 v-model:layout="currentLayout"
                 :col-num="gridCols"
                 :row-height="rowHeight"
@@ -211,36 +210,7 @@ const {
     margin
 } = useDashboardLayout()
 
-const gridContainerRef = ref<HTMLElement | null>(null)
-const gridKey = ref(0)
-let containerResizeObserver: ResizeObserver | null = null
-
 const showResetConfirmation = ref(false)
-
-const lastWidth = ref(-1)
-let resizeTimeout: ReturnType<typeof setTimeout> | null = null
-
-const handleContainerResize = (entries: ResizeObserverEntry[]) => {
-    if (!entries.length || !entries[0].contentRect) return
-
-    const newWidth = Math.round(entries[0].contentRect.width)
-    
-    // Ignore initialization or very tiny sub-pixel changes
-    if (lastWidth.value === -1) {
-        lastWidth.value = newWidth
-        return
-    }
-
-    if (Math.abs(newWidth - lastWidth.value) > 1) {
-        lastWidth.value = newWidth
-        
-        // Debounce the key change so we don't destroy/recreate repeatedly during an animation
-        if (resizeTimeout) clearTimeout(resizeTimeout)
-        resizeTimeout = setTimeout(() => {
-            gridKey.value += 1
-        }, 150) // Wait for transitions to settle
-    }
-}
 
 const confirmReset = async () => {
     showResetConfirmation.value = false
@@ -267,6 +237,10 @@ watch(
 watch(
     currentLayout,
     (newLayout) => {
+        // Only save changes to the store if the user is explicitly configuring the layout.
+        // This prevents responsive scaling from permanently squashing the base layout.
+        if (!isConfigMode.value) return
+
         const visibleStr = JSON.stringify(visibleLayout.value)
         const newStr = JSON.stringify(newLayout)
         if (visibleStr !== newStr) {
@@ -314,23 +288,10 @@ onMounted(async () => {
     await loadInitialTranslations()
     await fetchDailyStats()
     await fetchStatistics()
-
-    if (gridContainerRef.value) {
-        containerResizeObserver = new ResizeObserver(handleContainerResize)
-        containerResizeObserver.observe(gridContainerRef.value)
-    }
 })
 
 onUnmounted(() => {
     disconnectSignalR()
-
-    if (containerResizeObserver) {
-        containerResizeObserver.disconnect()
-        containerResizeObserver = null
-    }
-    if (resizeTimeout) {
-        clearTimeout(resizeTimeout)
-    }
 })
 
 const ActiveTranslationsContent = defineComponent({
