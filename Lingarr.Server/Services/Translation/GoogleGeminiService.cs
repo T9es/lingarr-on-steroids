@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using System.Globalization;
 using Lingarr.Core.Configuration;
 using Lingarr.Server.Exceptions;
 using Lingarr.Server.Interfaces.Services;
@@ -32,6 +33,7 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
     private int _maxRetries;
     private TimeSpan _retryDelay;
     private int _retryDelayMultiplier;
+    private TimeSpan? _apiSuggestedRetryDelay;
 
     public GoogleGeminiService(
         ISettingService settings,
@@ -155,12 +157,17 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
                     throw new TranslationException("Too many requests. Retry limit reached.", ex);
                 }
                 
-                await Task.Delay(delay, linked.Token).ConfigureAwait(false);
-                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+                var effectiveDelay = _apiSuggestedRetryDelay ?? delay;
+                var suggestedSeconds = _apiSuggestedRetryDelay?.TotalSeconds ?? 0;
+                _apiSuggestedRetryDelay = null;
 
                 _logger.LogWarning(
-                    "429 Too Many Requests. Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})",
-                    delay, attempt, _maxRetries);
+                    "429 Too Many Requests. API suggests retry in {SuggestedDelay}s. Retrying in {Delay}s... (Attempt {Attempt}/{MaxRetries})",
+                    suggestedSeconds, effectiveDelay.TotalSeconds, attempt, _maxRetries);
+
+                await Task.Delay(effectiveDelay, linked.Token).ConfigureAwait(false);
+                
+                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -228,14 +235,22 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
 
         if (!response.IsSuccessStatusCode)
         {
+            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            
             if (_dashboardService != null)
             {
                 await _dashboardService.LogApiUsage(ServiceName, null, stopwatch.ElapsedMilliseconds, false, $"Status: {response.StatusCode}");
             }
 
             _logger.LogError("Response Status Code: {StatusCode}", response.StatusCode);
-            _logger.LogError("Response Content: {ResponseContent}",
-                await response.Content.ReadAsStringAsync(cancellationToken));
+            _logger.LogError("Response Content: {ResponseContent}", errorBody);
+            
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                _apiSuggestedRetryDelay = ExtractRetryDelay(errorBody);
+                throw new HttpRequestException("Rate limit exceeded", null, HttpStatusCode.TooManyRequests);
+            }
+            
             throw new TranslationException("Translation using Gemini API failed.");
         }
 
@@ -373,11 +388,16 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
                     throw new TranslationException("Too many requests. Retry limit reached.", ex);
                 }
 
-                _logger.LogWarning(
-                    "429 Too Many Requests. Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})",
-                    delay, attempt, _maxRetries);
+                var effectiveDelay = _apiSuggestedRetryDelay ?? delay;
+                var suggestedSeconds = _apiSuggestedRetryDelay?.TotalSeconds ?? 0;
+                _apiSuggestedRetryDelay = null;
 
-                await Task.Delay(delay, linked.Token).ConfigureAwait(false);
+                _logger.LogWarning(
+                    "429 Too Many Requests. API suggests retry in {SuggestedDelay}s. Retrying in {Delay}s... (Attempt {Attempt}/{MaxRetries})",
+                    suggestedSeconds, effectiveDelay.TotalSeconds, attempt, _maxRetries);
+
+                await Task.Delay(effectiveDelay, linked.Token).ConfigureAwait(false);
+                
                 delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
             }
             catch (Exception ex)
@@ -474,15 +494,22 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
         
         if (!response.IsSuccessStatusCode)
         {
+            var batchErrorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            
             if (_dashboardService != null)
             {
                 await _dashboardService.LogApiUsage(ServiceName, null, stopwatch.ElapsedMilliseconds, false, $"Status: {response.StatusCode}");
             }
 
             _logger.LogError("Response Status Code: {StatusCode}", response.StatusCode);
-            _logger.LogError("Response Content: {ResponseContent}",
-                await response.Content.ReadAsStringAsync(cancellationToken)
-            );
+            _logger.LogError("Response Content: {ResponseContent}", batchErrorBody);
+            
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                _apiSuggestedRetryDelay = ExtractRetryDelay(batchErrorBody);
+                throw new HttpRequestException("Rate limit exceeded", null, HttpStatusCode.TooManyRequests);
+            }
+            
             throw new TranslationException("Batch translation using Gemini API failed.");
         }
 
@@ -567,5 +594,35 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
             }
         }
         return json;
+    }
+
+    private static TimeSpan? ExtractRetryDelay(string? errorBody)
+    {
+        if (string.IsNullOrWhiteSpace(errorBody)) return null;
+        
+        try
+        {
+            var errorResponse = JsonSerializer.Deserialize<GeminiErrorResponse>(errorBody);
+            var retryInfo = errorResponse?.Error?.Details?
+                .FirstOrDefault(d => d.Type == "type.googleapis.com/google.rpc.RetryInfo");
+            
+            if (retryInfo?.RetryDelay is { } delayStr)
+            {
+                if (delayStr.EndsWith('s') && double.TryParse(
+                    delayStr[..^1], 
+                    NumberStyles.Float, 
+                    CultureInfo.InvariantCulture, 
+                    out var seconds))
+                {
+                    return TimeSpan.FromSeconds(Math.Ceiling(seconds));
+                }
+            }
+        }
+        catch
+        {
+            // Fall back to default backoff
+        }
+        
+        return null;
     }
 }
