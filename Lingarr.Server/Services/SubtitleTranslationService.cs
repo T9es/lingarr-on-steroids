@@ -436,6 +436,10 @@ public class SubtitleTranslationService
         {
             if (batchResults.TryGetValue(subtitle.Position, out var translated))
             {
+                // Always normalize line breaks to fix LLM issues (e.g., Gemini random newlines)
+                // This removes actual newline characters while preserving ASS escape sequences
+                translated = SubtitleFormatterService.NormalizeLineBreaks(translated);
+
                 if (stripSubtitleFormatting)
                 {
                     translated = SubtitleFormatterService.RemoveMarkup(translated);

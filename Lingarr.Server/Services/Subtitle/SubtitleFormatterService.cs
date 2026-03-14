@@ -5,6 +5,26 @@ namespace Lingarr.Server.Services.Subtitle;
 
 public class SubtitleFormatterService : ISubtitleFormatterService
 {
+    /// <summary>
+    /// Normalizes line breaks in translated text by removing actual newline characters
+    /// while preserving ASS escape sequences like \N and \n.
+    /// This fixes issues where LLMs (especially Gemini) insert random line breaks.
+    /// </summary>
+    /// <param name="input">The translated text to normalize.</param>
+    /// <returns>Text with actual newlines replaced by spaces.</returns>
+    public static string NormalizeLineBreaks(string input)
+    {
+        if (string.IsNullOrEmpty(input)) return input;
+
+        // Replace actual newline characters (ASCII 10, 13) with spaces
+        // Note: "\r\n", "\r", "\n" here are actual control characters, NOT ASS escape sequences
+        // ASS escape sequences are the STRING literals backslash+N (2 chars) which remain untouched
+        return input
+            .Replace("\r\n", " ")
+            .Replace("\r", " ")
+            .Replace("\n", " ");
+    }
+
     /// <inheritdoc />
     public static string RemoveMarkup(string input)
     {
