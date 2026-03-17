@@ -220,6 +220,7 @@ public class MediaStateService : IMediaStateService
     {
         var result = new List<(IMedia Media, MediaType Type)>();
         var halfLimit = Math.Max(limit / 2, 1);
+        var currentVersion = await GetSettingsVersionAsync();
 
         // Query movies needing work
         var moviesQuery = _dbContext.Movies
@@ -228,6 +229,7 @@ public class MediaStateService : IMediaStateService
             .Where(m => m.TranslationState == TranslationState.Pending 
                      || m.TranslationState == TranslationState.Stale
                      || m.TranslationState == TranslationState.Unknown
+                     || m.StateSettingsVersion < currentVersion
                      || (m.TranslationState == TranslationState.AwaitingSource && m.IndexedAt == null));
 
         if (priorityFirst)
@@ -259,6 +261,7 @@ public class MediaStateService : IMediaStateService
             .Where(e => e.TranslationState == TranslationState.Pending 
                      || e.TranslationState == TranslationState.Stale
                      || e.TranslationState == TranslationState.Unknown
+                     || e.StateSettingsVersion < currentVersion
                      || (e.TranslationState == TranslationState.AwaitingSource && e.IndexedAt == null));
 
         if (priorityFirst)

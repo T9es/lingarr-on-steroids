@@ -44,22 +44,14 @@ public class StatisticsService : IStatisticsService
         stats.TotalMovies = await dbContext.Movies.CountAsync();
         stats.TotalEpisodes = await dbContext.Episodes.CountAsync();
         
-        // Calculate unique translated media counts dynamically from completed translation requests
-        // This prevents double-counting when media is re-translated
-        var translatedMovies = await dbContext.TranslationRequests
-            .Where(r => r.Status == TranslationStatus.Completed && 
-                        r.MediaType == MediaType.Movie && 
-                        r.MediaId != null)
-            .Select(r => r.MediaId)
-            .Distinct()
+        // Calculate unique translated media counts from the TranslationState field
+        // This includes all media that has been analyzed and found to have all target languages
+        var translatedMovies = await dbContext.Movies
+            .Where(m => m.TranslationState == TranslationState.Complete)
             .CountAsync();
 
-        var translatedEpisodes = await dbContext.TranslationRequests
-            .Where(r => r.Status == TranslationStatus.Completed && 
-                        r.MediaType == MediaType.Episode && 
-                        r.MediaId != null)
-            .Select(r => r.MediaId)
-            .Distinct()
+        var translatedEpisodes = await dbContext.Episodes
+            .Where(e => e.TranslationState == TranslationState.Complete)
             .CountAsync();
 
         // Update the TranslationsByMediaType with accurate unique counts

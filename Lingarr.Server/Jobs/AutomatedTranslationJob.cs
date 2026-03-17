@@ -76,6 +76,7 @@ public class AutomatedTranslationJob
                 int.TryParse(settings.GetValueOrDefault(SettingKeys.Automation.ShowAgeThreshold), out var sh) ? sh : 0);
 
             // Get media that needs work (efficient query using TranslationState)
+            var currentVersion = await _mediaStateService.GetSettingsVersionAsync();
             var mediaToProcess = await _mediaStateService.GetMediaNeedingTranslationAsync(maxPerRun * 2);
             
             _logger.LogInformation(
@@ -95,18 +96,23 @@ public class AutomatedTranslationJob
 
                 processedCount++;
 
-                // For stale/unknown items, refresh state first
+                // For stale/unknown items or version mismatch, refresh state first
                 TranslationState currentState;
+                int itemVersion;
                 if (mediaType == MediaType.Movie)
                 {
                     currentState = ((Movie)media).TranslationState;
+                    itemVersion = ((Movie)media).StateSettingsVersion;
                 }
                 else
                 {
                     currentState = ((Episode)media).TranslationState;
+                    itemVersion = ((Episode)media).StateSettingsVersion;
                 }
 
-                if (currentState == TranslationState.Stale || currentState == TranslationState.Unknown)
+                if (currentState == TranslationState.Stale || 
+                    currentState == TranslationState.Unknown || 
+                    itemVersion < currentVersion)
                 {
                     var newState = await _mediaStateService.UpdateStateAsync(media, mediaType);
                     // Allow proceeding if Pending, OR if AwaitingSource but unindexed (needs scan)
