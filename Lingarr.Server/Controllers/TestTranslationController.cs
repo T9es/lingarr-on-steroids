@@ -95,7 +95,15 @@ public class TestTranslationController : ControllerBase
                 }
 
                 var subtitles = await _subtitleService.GetAllSubtitles(movie.Path);
-                if (subtitles.Count == 0)
+
+                // JIT sync embedded subtitles if not indexed
+                if (movie.EmbeddedSubtitles == null || movie.EmbeddedSubtitles.Count == 0)
+                {
+                    await _extractionService.SyncEmbeddedSubtitles(movie);
+                    await _dbContext.Entry(movie).Collection(m => m.EmbeddedSubtitles).LoadAsync();
+                }
+
+                if (subtitles.Count == 0 && (movie.EmbeddedSubtitles == null || !movie.EmbeddedSubtitles.Any(e => e.IsTextBased)))
                 {
                     continue;
                 }
@@ -144,10 +152,6 @@ public class TestTranslationController : ControllerBase
                 }
 
                 var subtitles = await _subtitleService.GetAllSubtitles(basePath);
-                if (subtitles.Count == 0)
-                {
-                    continue;
-                }
 
                 if (!string.IsNullOrEmpty(episode.FileName))
                 {
@@ -155,11 +159,18 @@ public class TestTranslationController : ControllerBase
                     subtitles = subtitles
                         .Where(s => s.FileName.ToLowerInvariant().Contains(fileName))
                         .ToList();
+                }
 
-                    if (subtitles.Count == 0)
-                    {
-                        continue;
-                    }
+                // JIT sync embedded subtitles if not indexed
+                if (episode.EmbeddedSubtitles == null || episode.EmbeddedSubtitles.Count == 0)
+                {
+                    await _extractionService.SyncEmbeddedSubtitles(episode);
+                    await _dbContext.Entry(episode).Collection(e => e.EmbeddedSubtitles).LoadAsync();
+                }
+
+                if (subtitles.Count == 0 && (episode.EmbeddedSubtitles == null || !episode.EmbeddedSubtitles.Any(e => e.IsTextBased)))
+                {
+                    continue;
                 }
 
                 var displayTitle =
@@ -725,8 +736,6 @@ public class TestTranslationController : ControllerBase
                             continue;
 
                         var subtitles = await _subtitleService.GetAllSubtitles(basePath);
-                        if (subtitles.Count == 0)
-                            continue;
 
                         // JIT sync embedded subtitles if not indexed (similar to SubtitleExtractionController)
                         if (episode.EmbeddedSubtitles == null || episode.EmbeddedSubtitles.Count == 0)
@@ -741,10 +750,10 @@ public class TestTranslationController : ControllerBase
                             subtitles = subtitles
                                 .Where(s => s.FileName.ToLowerInvariant().Contains(fileName))
                                 .ToList();
-
-                            if (subtitles.Count == 0)
-                                continue;
                         }
+
+                        if (subtitles.Count == 0 && (episode.EmbeddedSubtitles == null || !episode.EmbeddedSubtitles.Any(e => e.IsTextBased)))
+                            continue;
 
                         seasonPreview.Episodes.Add(new EpisodePreview
                         {

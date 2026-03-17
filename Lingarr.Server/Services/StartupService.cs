@@ -1,6 +1,7 @@
 ﻿using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
+using Lingarr.Core.Enum;
 using Microsoft.EntityFrameworkCore;
 
 namespace Lingarr.Server.Services;
@@ -123,6 +124,9 @@ public class StartupService : IHostedService
 
         // Clean up duplicate records from multi-instance migration
         await CleanupDuplicateRecords(dbContext);
+        
+        // Auto-recover media stuck in AwaitingSource due to previous indexing bug
+        await FixStuckAwaitingSourceMedia(dbContext);
 
         // Ensure service_type is not empty
         var serviceType = await dbContext.Settings.FirstOrDefaultAsync(s => s.Key == SettingKeys.Translation.ServiceType);
@@ -358,6 +362,54 @@ public class StartupService : IHostedService
         finally
         {
             _cleanupLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Recovers media stuck in AwaitingSource due to a previous indexing bug.
+    /// Clears their IndexedAt and State so the sync job will re-evaluate them.
+    /// </summary>
+    private async Task FixStuckAwaitingSourceMedia(LingarrDbContext dbContext)
+    {
+        try
+        {
+            var affectedMovies = await dbContext.Movies
+                .Include(m => m.EmbeddedSubtitles)
+                .Where(m => m.TranslationState == TranslationState.AwaitingSource && m.IndexedAt != null)
+                .Where(m => m.EmbeddedSubtitles.Any(e => e.IsTextBased))
+                .ToListAsync();
+
+            if (affectedMovies.Count > 0)
+            {
+                foreach (var movie in affectedMovies)
+                {
+                    movie.IndexedAt = null;
+                    movie.TranslationState = TranslationState.Unknown;
+                }
+                await dbContext.SaveChangesAsync();
+                _logger.LogInformation("Reset state for {Count} movies previously stuck in AwaitingSource with embedded subtitles.", affectedMovies.Count);
+            }
+            
+            var affectedEpisodes = await dbContext.Episodes
+                .Include(e => e.EmbeddedSubtitles)
+                .Where(e => e.TranslationState == TranslationState.AwaitingSource && e.IndexedAt != null)
+                .Where(e => e.EmbeddedSubtitles.Any(e => e.IsTextBased))
+                .ToListAsync();
+
+            if (affectedEpisodes.Count > 0)
+            {
+                foreach (var episode in affectedEpisodes)
+                {
+                    episode.IndexedAt = null;
+                    episode.TranslationState = TranslationState.Unknown;
+                }
+                await dbContext.SaveChangesAsync();
+                _logger.LogInformation("Reset state for {Count} episodes previously stuck in AwaitingSource with embedded subtitles.", affectedEpisodes.Count);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during AwaitingSource stuck media recovery. Continuing startup...");
         }
     }
 }
