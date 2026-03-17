@@ -140,7 +140,8 @@ public class MovieSync : IMovieSync
         {
             var shouldUpdateState = true;
             
-            if (movieEntity.TranslationState == TranslationState.AwaitingSource && 
+            if (!needsIndexing &&
+                movieEntity.TranslationState == TranslationState.AwaitingSource && 
                 !string.IsNullOrEmpty(movieEntity.Path))
             {
                 var dirInfo = new DirectoryInfo(movieEntity.Path);

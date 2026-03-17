@@ -93,7 +93,8 @@ public class EpisodeSync : IEpisodeSync
             {
                 var shouldUpdateState = true;
                 
-                if (entity.TranslationState == TranslationState.AwaitingSource && 
+                if (!needsIndexing &&
+                    entity.TranslationState == TranslationState.AwaitingSource && 
                     !string.IsNullOrEmpty(entity.Path))
                 {
                     var dirInfo = new DirectoryInfo(entity.Path);
