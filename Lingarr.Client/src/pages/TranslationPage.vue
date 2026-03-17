@@ -1,7 +1,7 @@
 ﻿<template>
     <PageLayout>
         <div class="w-full">
-<!-- Tabs -->
+            <!-- Tabs -->
             <div class="bg-tertiary border-accent flex border-b">
                 <button
                     class="px-6 py-3 font-medium transition-colors"
@@ -206,7 +206,7 @@
                                 </button>
                                 <button
                                     @click="removeAllFailed"
-                                    class="rounded-md bg-red-500/80 px-4 py-2 text-sm font-medium text-primary-content transition-colors hover:bg-red-500">
+                                    class="text-primary-content rounded-md bg-red-500/80 px-4 py-2 text-sm font-medium transition-colors hover:bg-red-500">
                                     {{ translate('common.confirm') }}
                                 </button>
                             </div>
@@ -386,7 +386,7 @@
                     v-if="translationRequests.totalCount"
                     v-model="filter"
                     :total-count="translationRequests.totalCount"
-:page-size="translationRequests.pageSize" />
+                    :page-size="translationRequests.pageSize" />
             </div>
 
             <!-- Logs Modal -->
@@ -413,7 +413,7 @@
                     <div class="bg-secondary h-[60vh] overflow-y-auto p-3 font-mono text-xs">
                         <div
                             v-if="logsLoading"
-                            class="flex h-full items-center justify-center text-secondary-content/60">
+                            class="text-secondary-content/60 flex h-full items-center justify-center">
                             {{ translate('translations.waitingForLogs') }}
                         </div>
                         <div v-else-if="logsError" class="text-error">
@@ -421,7 +421,7 @@
                         </div>
                         <div
                             v-else-if="requestLogs.length === 0"
-                            class="flex h-full items-center justify-center text-secondary-content/60">
+                            class="text-secondary-content/60 flex h-full items-center justify-center">
                             {{ translate('translations.noLogs') }}
                         </div>
                         <div v-else class="space-y-1">
@@ -429,7 +429,7 @@
                                 v-for="log in requestLogs"
                                 :key="log.id"
                                 class="border-secondary/30 border-b pb-1">
-                                <span class="mr-2 text-secondary-content/70">
+                                <span class="text-secondary-content/70 mr-2">
                                     {{ new Date(log.createdAt).toLocaleTimeString() }}
                                 </span>
                                 <span
@@ -440,7 +440,7 @@
                                 <span>{{ log.message }}</span>
                                 <div
                                     v-if="log.details"
-                                    class="ml-4 text-[0.7rem] whitespace-pre-wrap text-secondary-content/60">
+                                    class="text-secondary-content/60 ml-4 text-[0.7rem] whitespace-pre-wrap">
                                     {{ log.details }}
                                 </div>
                             </div>

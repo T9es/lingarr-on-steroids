@@ -60,60 +60,60 @@
                 :breakpoints="{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }"
                 :cols="{ lg: 12, md: 8, sm: 4, xs: 2, xxs: 1 }"
                 class="min-h-[200px]">
-            <GridItem
-                v-for="item in visibleLayout"
-                :key="item.i"
-                :i="item.i"
-                :x="item.x"
-                :y="item.y"
-                :w="item.w"
-                :h="item.h"
-                :min-w="item.minW"
-                :min-h="item.minH"
-                :max-w="item.maxW"
-                :max-h="item.maxH"
-                :is-draggable="isConfigMode"
-                :is-resizable="isConfigMode"
-                class="transition-shadow duration-200">
-                <DashboardWidget
-                    :widget-id="item.i"
-                    :is-config-mode="isConfigMode"
-                    :is-visible="isWidgetVisible(item.i)"
-                    @toggle-visibility="toggleWidgetVisibility(item.i)">
-                    <!-- Active Translations Widget -->
-                    <ActiveTranslationsContent
-                        v-if="item.i === 'active-translations'"
-                        :is-connected="realtimeState.isConnected"
-                        :translations="activeTranslations" />
+                <GridItem
+                    v-for="item in visibleLayout"
+                    :key="item.i"
+                    :i="item.i"
+                    :x="item.x"
+                    :y="item.y"
+                    :w="item.w"
+                    :h="item.h"
+                    :min-w="item.minW"
+                    :min-h="item.minH"
+                    :max-w="item.maxW"
+                    :max-h="item.maxH"
+                    :is-draggable="isConfigMode"
+                    :is-resizable="isConfigMode"
+                    class="transition-shadow duration-200">
+                    <DashboardWidget
+                        :widget-id="item.i"
+                        :is-config-mode="isConfigMode"
+                        :is-visible="isWidgetVisible(item.i)"
+                        @toggle-visibility="toggleWidgetVisibility(item.i)">
+                        <!-- Active Translations Widget -->
+                        <ActiveTranslationsContent
+                            v-if="item.i === 'active-translations'"
+                            :is-connected="realtimeState.isConnected"
+                            :translations="activeTranslations" />
 
-                    <!-- Media Overview Widget -->
-                    <MediaOverviewContent
-                        v-if="item.i === 'media-overview'"
-                        :loading="loading"
-                        :error="error ?? undefined"
-                        :statistics="statistics" />
+                        <!-- Media Overview Widget -->
+                        <MediaOverviewContent
+                            v-if="item.i === 'media-overview'"
+                            :loading="loading"
+                            :error="error ?? undefined"
+                            :statistics="statistics" />
 
-                    <!-- Translation History Widget -->
-                    <TranslationHistoryWidget
-                        v-if="item.i === 'translation-history'"
-                        :daily-statistics="dailyStats || []"
-                        :statistics="statistics"
-                        :is-loading="loading" />
+                        <!-- Translation History Widget -->
+                        <TranslationHistoryWidget
+                            v-if="item.i === 'translation-history'"
+                            :daily-statistics="dailyStats || []"
+                            :statistics="statistics"
+                            :is-loading="loading" />
 
-                    <!-- Job Queue Widget -->
-                    <JobQueueWidget v-if="item.i === 'job-queue'" />
+                        <!-- Job Queue Widget -->
+                        <JobQueueWidget v-if="item.i === 'job-queue'" />
 
-                    <!-- API Usage Widget -->
-                    <ApiUsageWidget v-if="item.i === 'api-usage'" />
+                        <!-- API Usage Widget -->
+                        <ApiUsageWidget v-if="item.i === 'api-usage'" />
 
-                    <!-- Error Log Widget -->
-                    <ErrorLogWidget v-if="item.i === 'error-log'" />
-                </DashboardWidget>
-            </GridItem>
-        </GridLayout>
-    </div>
+                        <!-- Error Log Widget -->
+                        <ErrorLogWidget v-if="item.i === 'error-log'" />
+                    </DashboardWidget>
+                </GridItem>
+            </GridLayout>
+        </div>
 
-    <!-- Reset Confirmation Modal -->
+        <!-- Reset Confirmation Modal -->
         <div
             v-if="showResetConfirmation"
             class="bg-secondary/80 fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm">
@@ -137,7 +137,7 @@
                     </button>
                     <button
                         @click="confirmReset"
-                        class="rounded-md bg-red-500/80 px-4 py-2 text-sm font-medium text-primary-content transition-colors hover:bg-red-500">
+                        class="text-primary-content rounded-md bg-red-500/80 px-4 py-2 text-sm font-medium transition-colors hover:bg-red-500">
                         {{ translate('statistics.resetLayout') || 'Reset' }}
                     </button>
                 </div>

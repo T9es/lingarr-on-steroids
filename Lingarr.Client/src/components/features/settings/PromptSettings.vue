@@ -116,7 +116,8 @@ const useBatchTranslation = computed(
 )
 
 const aiContextPromptEnabled = computed({
-    get: (): string => (settingsStore.getSetting(SETTINGS.AI_CONTEXT_PROMPT_ENABLED) as string) ?? 'false',
+    get: (): string =>
+        (settingsStore.getSetting(SETTINGS.AI_CONTEXT_PROMPT_ENABLED) as string) ?? 'false',
     set: (newValue: string): void => {
         settingsStore.updateSetting(SETTINGS.AI_CONTEXT_PROMPT_ENABLED, newValue, true)
         saveNotification.value?.show()
@@ -144,7 +145,8 @@ const contextAfter = computed({
 })
 
 const batchContextEnabled = computed({
-    get: (): string => (settingsStore.getSetting(SETTINGS.BATCH_CONTEXT_ENABLED) as string) ?? 'false',
+    get: (): string =>
+        (settingsStore.getSetting(SETTINGS.BATCH_CONTEXT_ENABLED) as string) ?? 'false',
     set: (newValue: string): void => {
         settingsStore.updateSetting(SETTINGS.BATCH_CONTEXT_ENABLED, newValue, true)
         saveNotification.value?.show()

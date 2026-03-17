@@ -14,13 +14,17 @@
                     leave-active-class="transition-transform duration-300 ease-in-out"
                     enter-from-class="scale-90"
                     leave-to-class="scale-90">
-                    <div class="flex w-full max-w-lg flex-col rounded-lg bg-primary border border-secondary p-4 shadow-xl" @click.stop>
+                    <div
+                        class="bg-primary border-secondary flex w-full max-w-lg flex-col rounded-lg border p-4 shadow-xl"
+                        @click.stop>
                         <!-- Header -->
                         <div class="mb-4 flex items-center justify-between">
                             <h3 class="text-lg font-semibold">
                                 {{ translate('subtitleSelector.title') }}
                             </h3>
-                            <button class="text-primary-content/60 hover:text-primary-content" @click="$emit('close')">
+                            <button
+                                class="text-primary-content/60 hover:text-primary-content"
+                                @click="$emit('close')">
                                 <svg
                                     class="h-6 w-6"
                                     fill="none"
@@ -36,9 +40,11 @@
                         </div>
 
                         <!-- Media Info -->
-                        <div class="mb-4 rounded bg-secondary/50 p-3">
+                        <div class="bg-secondary/50 mb-4 rounded p-3">
                             <div class="font-medium">{{ mediaTitle }}</div>
-                            <div class="text-sm text-primary-content/70">{{ mediaType }} #{{ mediaId }}</div>
+                            <div class="text-primary-content/70 text-sm">
+                                {{ mediaType }} #{{ mediaId }}
+                            </div>
                         </div>
 
                         <!-- Loading State -->
@@ -75,13 +81,13 @@
                         <!-- Empty State -->
                         <div
                             v-else-if="subtitles.length === 0"
-                            class="py-8 text-center text-primary-content/70">
+                            class="text-primary-content/70 py-8 text-center">
                             No embedded subtitles found for this media.
                         </div>
 
                         <!-- Subtitle List -->
                         <div v-else class="max-h-96 overflow-y-auto">
-                            <div class="mb-2 text-sm text-primary-content/70">
+                            <div class="text-primary-content/70 mb-2 text-sm">
                                 {{ translate('subtitleSelector.selectSubtitle') }}
                             </div>
                             <div class="space-y-2">
@@ -110,7 +116,7 @@
                                                 <!-- Title Badge -->
                                                 <span
                                                     v-if="subtitle.title"
-                                                    class="rounded bg-secondary px-2 py-0.5 text-xs">
+                                                    class="bg-secondary rounded px-2 py-0.5 text-xs">
                                                     {{ subtitle.title }}
                                                 </span>
                                                 <!-- Default Badge -->
@@ -121,7 +127,7 @@
                                                 </span>
                                             </div>
                                             <div
-                                                class="mt-1 flex items-center gap-2 text-sm text-primary-content/70">
+                                                class="text-primary-content/70 mt-1 flex items-center gap-2 text-sm">
                                                 <span>
                                                     {{ translate('subtitleSelector.stream') }}
                                                     {{ subtitle.streamIndex }}
@@ -194,8 +200,8 @@
 
                         <!-- Footer -->
                         <div
-                            class="mt-4 flex items-center justify-between border-t border-secondary/30 pt-4">
-                            <div class="text-sm text-primary-content/70">
+                            class="border-secondary/30 mt-4 flex items-center justify-between border-t pt-4">
+                            <div class="text-primary-content/70 text-sm">
                                 <span v-if="selectedStreamIndex !== null">
                                     Selected: Stream {{ selectedStreamIndex }}
                                 </span>
@@ -203,7 +209,7 @@
                             </div>
                             <div class="flex gap-2">
                                 <button
-                                    class="rounded bg-secondary px-4 py-2 text-sm font-medium hover:bg-secondary/80"
+                                    class="bg-secondary hover:bg-secondary/80 rounded px-4 py-2 text-sm font-medium"
                                     @click="$emit('close')">
                                     Cancel
                                 </button>
@@ -213,7 +219,7 @@
                                         isQueuing ||
                                         !selectedSubtitle?.isTextBased
                                     "
-                                    class="bg-accent hover:bg-accent/80 rounded px-4 py-2 text-sm font-medium text-primary-content disabled:cursor-not-allowed disabled:bg-secondary/50 disabled:opacity-50"
+                                    class="bg-accent hover:bg-accent/80 text-primary-content disabled:bg-secondary/50 rounded px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
                                     @click="extractAndTranslate">
                                     <span v-if="isQueuing" class="flex items-center">
                                         <svg

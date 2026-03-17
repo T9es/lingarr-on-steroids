@@ -8,9 +8,8 @@
                 <div
                     :class="sizeClasses"
                     class="bg-secondary max-h-[90vh] w-full overflow-hidden rounded-lg shadow-xl">
-                    <div
-                        class="border-accent flex items-center justify-between border-b px-4 py-3">
-                        <h2 class="text-lg font-semibold text-primary-content">
+                    <div class="border-accent flex items-center justify-between border-b px-4 py-3">
+                        <h2 class="text-primary-content text-lg font-semibold">
                             <slot name="header" />
                         </h2>
                         <button
@@ -32,8 +31,7 @@
                     <div class="max-h-[calc(90vh-8rem)] overflow-y-auto p-4">
                         <slot />
                     </div>
-                    <div
-                        class="border-accent flex justify-end gap-2 border-t px-4 py-3">
+                    <div class="border-accent flex justify-end gap-2 border-t px-4 py-3">
                         <slot name="footer" />
                     </div>
                 </div>
@@ -45,12 +43,15 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-const props = withDefaults(defineProps<{
-    isOpen: boolean
-    size?: 'sm' | 'md' | 'lg' | 'xl'
-}>(), {
-    size: 'md'
-})
+const props = withDefaults(
+    defineProps<{
+        isOpen: boolean
+        size?: 'sm' | 'md' | 'lg' | 'xl'
+    }>(),
+    {
+        size: 'md'
+    }
+)
 
 defineEmits<{
     close: []
@@ -58,11 +59,16 @@ defineEmits<{
 
 const sizeClasses = computed(() => {
     switch (props.size) {
-        case 'sm': return 'max-w-md'
-        case 'md': return 'max-w-2xl'
-        case 'lg': return 'max-w-4xl'
-        case 'xl': return 'max-w-6xl'
-        default: return 'max-w-2xl'
+        case 'sm':
+            return 'max-w-md'
+        case 'md':
+            return 'max-w-2xl'
+        case 'lg':
+            return 'max-w-4xl'
+        case 'xl':
+            return 'max-w-6xl'
+        default:
+            return 'max-w-2xl'
     }
 })
 </script>

@@ -8,7 +8,7 @@
         leave-to-class="opacity-0">
         <div
             v-if="isVisible"
-            class="ring-opacity-5 pointer-events-auto w-full max-w-sm overflow-hidden rounded-lg shadow-lg ring-1 ring-accent/30">
+            class="ring-opacity-5 ring-accent/30 pointer-events-auto w-full max-w-sm overflow-hidden rounded-lg shadow-lg ring-1">
             <div class="p-4">
                 <div class="flex items-start">
                     <div class="shrink-0">
@@ -21,15 +21,15 @@
                         <ExclamationIcon v-else class="h-6 w-6 text-blue-400" />
                     </div>
                     <div class="ml-3 w-0 flex-1 pt-0.5">
-                        <p class="text-sm font-medium text-primary-content">
+                        <p class="text-primary-content text-sm font-medium">
                             {{ title }}
                         </p>
-                        <p class="mt-1 text-sm text-primary-content/70">
+                        <p class="text-primary-content/70 mt-1 text-sm">
                             {{ message }}
                         </p>
                     </div>
                     <div class="ml-4 flex shrink-0">
-                        <button class="inline-flex rounded-md bg-secondary" @click="close">
+                        <button class="bg-secondary inline-flex rounded-md" @click="close">
                             <span class="sr-only">{{ translate('common.close') }}</span>
                             <TimesIcon class="h-5 w-5" />
                         </button>

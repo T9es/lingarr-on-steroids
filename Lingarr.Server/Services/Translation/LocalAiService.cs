@@ -361,7 +361,7 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
         
         if (!response.IsSuccessStatusCode)
         {
-            if (_dashboardService != null)
+            if (_dashboardService != null && response.StatusCode != HttpStatusCode.TooManyRequests)
             {
                 await _dashboardService.LogApiUsage(ServiceName, null, stopwatch.ElapsedMilliseconds, false, $"Status: {response.StatusCode}");
             }
@@ -470,7 +470,7 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
         
         if (!response.IsSuccessStatusCode)
         {
-            if (_dashboardService != null)
+            if (_dashboardService != null && response.StatusCode != HttpStatusCode.TooManyRequests)
             {
                 await _dashboardService.LogApiUsage(ServiceName, null, stopwatch.ElapsedMilliseconds, false, $"Status: {response.StatusCode}");
             }
@@ -562,7 +562,7 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
         
         if (!response.IsSuccessStatusCode)
         {
-            if (_dashboardService != null)
+            if (_dashboardService != null && response.StatusCode != HttpStatusCode.TooManyRequests)
             {
                 await _dashboardService.LogApiUsage(ServiceName, null, stopwatch.ElapsedMilliseconds, false, $"Status: {response.StatusCode}");
             }
@@ -675,7 +675,7 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
 
         if (!response.IsSuccessStatusCode)
         {
-            if (_dashboardService != null)
+            if (_dashboardService != null && response.StatusCode != HttpStatusCode.TooManyRequests)
             {
                 await _dashboardService.LogApiUsage(ServiceName, null, stopwatch.ElapsedMilliseconds, false, $"Status: {response.StatusCode}");
             }

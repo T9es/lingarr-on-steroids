@@ -8,7 +8,9 @@
                     class="h-16 w-12 rounded object-cover"
                     @error="($event.target as HTMLImageElement).style.display = 'none'" />
                 <div>
-                    <h2 class="text-lg font-semibold text-primary-content">{{ title || 'Configure Test' }}</h2>
+                    <h2 class="text-primary-content text-lg font-semibold">
+                        {{ title || 'Configure Test' }}
+                    </h2>
                     <p v-if="year" class="text-secondary-content text-sm">{{ year }}</p>
                 </div>
             </div>
@@ -16,7 +18,7 @@
 
         <div class="space-y-4">
             <div>
-                <label class="mb-2 block text-sm font-medium text-primary-content">
+                <label class="text-primary-content mb-2 block text-sm font-medium">
                     Subtitle to translate
                 </label>
                 <select
@@ -28,16 +30,22 @@
                         :value="sub"
                         :disabled="isEmbedded(sub) && !sub.isTextBased">
                         {{ getSubtitleLabel(sub) }}
-                        {{ isEmbedded(sub) && !sub.isTextBased ? ' (image-based, not selectable)' : '' }}
+                        {{
+                            isEmbedded(sub) && !sub.isTextBased
+                                ? ' (image-based, not selectable)'
+                                : ''
+                        }}
                     </option>
                 </select>
-                <p v-if="isEmbedded(selectedSubtitle as SubtitleOption)" class="text-accent text-xs mt-1">
+                <p
+                    v-if="isEmbedded(selectedSubtitle as SubtitleOption)"
+                    class="text-accent mt-1 text-xs">
                     Embedded subtitle will be extracted automatically
                 </p>
             </div>
 
             <div>
-                <label class="mb-2 block text-sm font-medium text-primary-content">
+                <label class="text-primary-content mb-2 block text-sm font-medium">
                     {{ translate('translationTest.linesToTranslate') }}
                 </label>
                 <div class="flex flex-wrap gap-2">
@@ -92,7 +100,9 @@
                         min="1"
                         :max="totalLines"
                         class="bg-primary border-accent text-primary-content w-20 rounded border px-3 py-2 text-sm" />
-                    <span class="text-secondary-content">{{ translate('translationTest.to') }}</span>
+                    <span class="text-secondary-content">
+                        {{ translate('translationTest.to') }}
+                    </span>
                     <input
                         v-model.number="endLine"
                         type="number"
@@ -109,7 +119,7 @@
 
             <div class="grid grid-cols-2 gap-4">
                 <div>
-                    <label class="mb-2 block text-sm font-medium text-primary-content">
+                    <label class="text-primary-content mb-2 block text-sm font-medium">
                         {{ translate('translationTest.sourceLanguage') }}
                     </label>
                     <select
@@ -124,7 +134,7 @@
                     </select>
                 </div>
                 <div>
-                    <label class="mb-2 block text-sm font-medium text-primary-content">
+                    <label class="text-primary-content mb-2 block text-sm font-medium">
                         {{ translate('translationTest.targetLanguage') }}
                     </label>
                     <select
@@ -263,13 +273,17 @@ function getEmbeddedIndex(sub: SubtitleOption): number | undefined {
     return undefined
 }
 
-watch(() => props.availableSubtitles, (subs) => {
-    if (!subs || subs.length === 0) return
-    
-    if (!selectedSubtitle.value) {
-        autoSelectSubtitle(subs, sourceLanguage.value)
-    }
-}, { immediate: true })
+watch(
+    () => props.availableSubtitles,
+    (subs) => {
+        if (!subs || subs.length === 0) return
+
+        if (!selectedSubtitle.value) {
+            autoSelectSubtitle(subs, sourceLanguage.value)
+        }
+    },
+    { immediate: true }
+)
 
 watch(sourceLanguage, (newLang) => {
     if (props.availableSubtitles?.length > 0) {
@@ -279,25 +293,29 @@ watch(sourceLanguage, (newLang) => {
 
 function autoSelectSubtitle(subs: SubtitleOption[], lang: string) {
     const langLower = lang.toLowerCase()
-    
-    const externalMatch = subs.find(s => !isEmbedded(s) && s.language?.toLowerCase() === langLower) as Subtitle | undefined
+
+    const externalMatch = subs.find(
+        (s) => !isEmbedded(s) && s.language?.toLowerCase() === langLower
+    ) as Subtitle | undefined
     if (externalMatch) {
         selectedSubtitle.value = externalMatch
         return
     }
-    
-    const embeddedMatch = subs.find(s => isEmbedded(s) && s.language?.toLowerCase() === langLower) as EmbeddedSubtitle | undefined
+
+    const embeddedMatch = subs.find(
+        (s) => isEmbedded(s) && s.language?.toLowerCase() === langLower
+    ) as EmbeddedSubtitle | undefined
     if (embeddedMatch) {
         selectedSubtitle.value = embeddedMatch
         return
     }
-    
-    const firstExternal = subs.find(s => !isEmbedded(s)) as Subtitle | undefined
+
+    const firstExternal = subs.find((s) => !isEmbedded(s)) as Subtitle | undefined
     if (firstExternal) {
         selectedSubtitle.value = firstExternal
         return
     }
-    
+
     selectedSubtitle.value = subs[0]
 }
 
@@ -326,14 +344,16 @@ watch(
 
 watch(selectedSubtitle, async (sub) => {
     if (!sub) return
-    
+
     if (isEmbedded(sub)) {
         return
     }
-    
+
     const path = getSubtitlePath(sub)
     try {
-        const response = await fetch(`/api/test-translation/subtitle-preview?path=${encodeURIComponent(path)}`)
+        const response = await fetch(
+            `/api/test-translation/subtitle-preview?path=${encodeURIComponent(path)}`
+        )
         if (response.ok) {
             await response.json()
         }
@@ -343,9 +363,12 @@ watch(selectedSubtitle, async (sub) => {
 })
 
 const canStart = computed(() => {
-    return sourceLanguage.value && targetLanguage.value && 
-           sourceLanguage.value !== targetLanguage.value && 
-           selectedSubtitle.value !== null
+    return (
+        sourceLanguage.value &&
+        targetLanguage.value &&
+        sourceLanguage.value !== targetLanguage.value &&
+        selectedSubtitle.value !== null
+    )
 })
 
 const currentSubtitlePath = computed(() => {
@@ -368,7 +391,7 @@ const selectedSubtitleLanguage = computed(() => {
 
 function startTest() {
     if (!selectedSubtitle.value) return
-    
+
     const config: TestConfig = {
         subtitlePath: currentSubtitlePath.value,
         sourceLanguage: sourceLanguage.value,

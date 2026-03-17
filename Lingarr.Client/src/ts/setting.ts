@@ -91,7 +91,7 @@ export const SETTINGS = {
     ONBOARDING_SKIPPED: 'onboarding_skipped',
     ONBOARDING_CURRENT_STEP: 'onboarding_current_step',
     ONBOARDING_STEP_PROGRESS: 'onboarding_step_progress',
-    
+
     // Token limits
     OPENAI_TOKEN_LIMIT: 'openai_token_limit',
     ANTHROPIC_TOKEN_LIMIT: 'anthropic_token_limit',

@@ -13,7 +13,7 @@
                         {{ translate('help.onboarding.skipped') }}
                     </div>
                     <button
-                        class="bg-accent rounded-md px-4 py-2 text-primary-content transition-colors hover:bg-accent/80"
+                        class="bg-accent text-primary-content hover:bg-accent/80 rounded-md px-4 py-2 transition-colors"
                         @click="startOnboarding">
                         {{ translate('help.onboarding.startButton') }}
                     </button>

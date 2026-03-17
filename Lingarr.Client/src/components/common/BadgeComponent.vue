@@ -7,12 +7,15 @@
 </template>
 
 <script setup lang="ts">
-const props = withDefaults(defineProps<{
-    variant?: 'default' | 'success' | 'warning' | 'error' | 'info'
-    classes?: string
-}>(), {
-    variant: 'default'
-})
+const props = withDefaults(
+    defineProps<{
+        variant?: 'default' | 'success' | 'warning' | 'error' | 'info'
+        classes?: string
+    }>(),
+    {
+        variant: 'default'
+    }
+)
 
 const variantClasses = computed(() => {
     if (props.classes) return props.classes

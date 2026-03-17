@@ -22,15 +22,23 @@
                             class="bg-primary border-accent mb-3 w-full rounded border px-3 py-2 text-sm"
                             :disabled="isRunning" />
 
-                        <div v-if="isSearching" class="text-secondary-content py-4 text-center text-sm">
+                        <div
+                            v-if="isSearching"
+                            class="text-secondary-content py-4 text-center text-sm">
                             {{ translate('common.loading') }}
                         </div>
 
-                        <div v-else-if="hierarchicalSearchResults.movies.length === 0 && hierarchicalSearchResults.shows.length === 0 && searchQuery.trim().length >= 2" class="text-secondary-content py-4 text-center text-sm">
+                        <div
+                            v-else-if="
+                                hierarchicalSearchResults.movies.length === 0 &&
+                                hierarchicalSearchResults.shows.length === 0 &&
+                                searchQuery.trim().length >= 2
+                            "
+                            class="text-secondary-content py-4 text-center text-sm">
                             {{ translate('translationTest.noSearchResults') }}
                         </div>
 
-                        <div v-else class="space-y-3 max-h-[60vh] overflow-y-auto">
+                        <div v-else class="max-h-[60vh] space-y-3 overflow-y-auto">
                             <!-- Movies -->
                             <div
                                 v-for="movie in hierarchicalSearchResults.movies"
@@ -42,15 +50,23 @@
                                         v-if="movie.posterPath"
                                         :src="`/api/image/${movie.posterPath}`"
                                         class="h-16 w-12 rounded object-cover"
-                                        @error="($event.target as HTMLImageElement).style.display = 'none'" />
+                                        @error="
+                                            ($event.target as HTMLImageElement).style.display =
+                                                'none'
+                                        " />
                                     <div class="flex-1">
                                         <div class="flex items-start justify-between gap-2">
-                                            <h3 class="text-sm font-semibold text-primary-content">{{ movie.title }}</h3>
-                                            <span class="bg-accent/20 text-accent rounded px-1.5 py-0.5 text-[10px]">
+                                            <h3 class="text-primary-content text-sm font-semibold">
+                                                {{ movie.title }}
+                                            </h3>
+                                            <span
+                                                class="bg-accent/20 text-accent rounded px-1.5 py-0.5 text-[10px]">
                                                 Movie
                                             </span>
                                         </div>
-                                        <p v-if="movie.year" class="text-secondary-content text-xs">{{ movie.year }}</p>
+                                        <p v-if="movie.year" class="text-secondary-content text-xs">
+                                            {{ movie.year }}
+                                        </p>
                                         <div class="mt-1 flex flex-wrap gap-1">
                                             <span
                                                 v-for="subtitle in movie.subtitles.slice(0, 4)"
@@ -58,19 +74,28 @@
                                                 class="bg-primary text-primary-content rounded px-1.5 py-0.5 text-[10px]">
                                                 {{ subtitle.language?.toUpperCase() || '??' }}
                                             </span>
-                                            <span v-if="movie.subtitles.length > 4" class="text-secondary-content text-[10px]">
+                                            <span
+                                                v-if="movie.subtitles.length > 4"
+                                                class="text-secondary-content text-[10px]">
                                                 +{{ movie.subtitles.length - 4 }}
                                             </span>
                                             <span
-                                                v-for="embSub in (movie.embeddedSubtitles || []).slice(0, 4)"
+                                                v-for="embSub in (
+                                                    movie.embeddedSubtitles || []
+                                                ).slice(0, 4)"
                                                 :key="`emb-${embSub.streamIndex}`"
-                                                class="border rounded px-1.5 py-0.5 text-[10px]"
+                                                class="rounded border px-1.5 py-0.5 text-[10px]"
                                                 :class="getEmbeddedBadgeClasses(embSub)">
                                                 <span class="mr-0.5">📦</span>
                                                 {{ formatEmbeddedLanguage(embSub) }}
                                             </span>
-                                            <span v-if="(movie.embeddedSubtitles?.length || 0) > 4" class="text-secondary-content text-[10px]">
-                                                +{{ (movie.embeddedSubtitles?.length || 0) - 4 }} emb
+                                            <span
+                                                v-if="(movie.embeddedSubtitles?.length || 0) > 4"
+                                                class="text-secondary-content text-[10px]">
+                                                +{{
+                                                    (movie.embeddedSubtitles?.length || 0) - 4
+                                                }}
+                                                emb
                                             </span>
                                         </div>
                                     </div>
@@ -91,9 +116,13 @@
 
                 <div class="space-y-4">
                     <div v-if="activeTestResult" class="bg-secondary rounded-lg p-4">
-                        <div class="flex items-center justify-between mb-3">
-                            <h2 class="text-lg font-semibold">{{ translate('translationTest.testResult') }}</h2>
-                            <button @click="activeTestResult = null" class="text-secondary-content hover:text-primary-content text-sm">
+                        <div class="mb-3 flex items-center justify-between">
+                            <h2 class="text-lg font-semibold">
+                                {{ translate('translationTest.testResult') }}
+                            </h2>
+                            <button
+                                @click="activeTestResult = null"
+                                class="text-secondary-content hover:text-primary-content text-sm">
                                 {{ translate('common.close') }}
                             </button>
                         </div>
@@ -101,17 +130,30 @@
                     </div>
 
                     <div v-else class="bg-secondary rounded-lg p-4">
-                        <h2 class="mb-3 text-lg font-semibold">{{ translate('translationTest.logs') }}</h2>
+                        <h2 class="mb-3 text-lg font-semibold">
+                            {{ translate('translationTest.logs') }}
+                        </h2>
                         <div
                             ref="logContainer"
                             class="bg-primary h-80 overflow-y-auto rounded p-2 font-mono text-xs">
-                            <div v-if="logs.length === 0" class="text-secondary-content flex h-full items-center justify-center">
+                            <div
+                                v-if="logs.length === 0"
+                                class="text-secondary-content flex h-full items-center justify-center">
                                 {{ translate('translationTest.waitingForLogs') }}
                             </div>
                             <div v-else>
-                                <div v-for="(log, i) in logs" :key="i" class="border-secondary/30 border-b py-1">
-                                    <span class="text-secondary-content/70 mr-2">{{ formatTime(log.timestamp) }}</span>
-                                    <span :class="getLogLevelClass(log.level)" class="mr-2 font-semibold">[{{ log.level }}]</span>
+                                <div
+                                    v-for="(log, i) in logs"
+                                    :key="i"
+                                    class="border-secondary/30 border-b py-1">
+                                    <span class="text-secondary-content/70 mr-2">
+                                        {{ formatTime(log.timestamp) }}
+                                    </span>
+                                    <span
+                                        :class="getLogLevelClass(log.level)"
+                                        class="mr-2 font-semibold">
+                                        [{{ log.level }}]
+                                    </span>
                                     <span>{{ log.message }}</span>
                                 </div>
                             </div>
@@ -120,7 +162,7 @@
                             <button
                                 v-if="isRunning"
                                 @click="cancelTest"
-                                class="bg-error hover:bg-error/80 rounded px-3 py-1.5 text-sm text-primary-content">
+                                class="bg-error hover:bg-error/80 text-primary-content rounded px-3 py-1.5 text-sm">
                                 {{ translate('translationTest.cancel') }}
                             </button>
                             <button
@@ -140,9 +182,25 @@
         v-if="configModalOpen"
         :is-open="configModalOpen"
         :subtitle-path="selectedSubtitlePath"
-        :title="selectedEpisode ? `${selectedShow?.title} - ${selectedEpisode.displayTitle} - ${selectedEpisode.title}` : (hierarchicalSearchResults.movies.find((m: MovieResult) => m.subtitles.some((s: Subtitle) => s.path === selectedSubtitlePath))?.title)"
-        :poster-path="selectedShow?.posterPath || hierarchicalSearchResults.movies.find((m: MovieResult) => m.subtitles.some((s: Subtitle) => s.path === selectedSubtitlePath))?.posterPath"
-        :year="selectedShow?.year || hierarchicalSearchResults.movies.find((m: MovieResult) => m.subtitles.some((s: Subtitle) => s.path === selectedSubtitlePath))?.year"
+        :title="
+            selectedEpisode
+                ? `${selectedShow?.title} - ${selectedEpisode.displayTitle} - ${selectedEpisode.title}`
+                : hierarchicalSearchResults.movies.find((m: MovieResult) =>
+                      m.subtitles.some((s: Subtitle) => s.path === selectedSubtitlePath)
+                  )?.title
+        "
+        :poster-path="
+            selectedShow?.posterPath ||
+            hierarchicalSearchResults.movies.find((m: MovieResult) =>
+                m.subtitles.some((s: Subtitle) => s.path === selectedSubtitlePath)
+            )?.posterPath
+        "
+        :year="
+            selectedShow?.year ||
+            hierarchicalSearchResults.movies.find((m: MovieResult) =>
+                m.subtitles.some((s: Subtitle) => s.path === selectedSubtitlePath)
+            )?.year
+        "
         :total-lines="selectedTotalLines"
         :default-source-language="defaultSourceLanguage"
         :default-target-language="defaultTargetLanguage"
@@ -279,11 +337,11 @@ const selectedMediaId = ref<number | null>(null)
 const selectedMediaType = ref<'Movie' | 'Episode' | null>(null)
 const availableSubtitles = ref<(Subtitle | EmbeddedSubtitle)[]>([])
 
-const sourceLanguages = computed(() => 
-    (settingStore.getSetting(SETTINGS.SOURCE_LANGUAGES) as ILanguage[]) || []
+const sourceLanguages = computed(
+    () => (settingStore.getSetting(SETTINGS.SOURCE_LANGUAGES) as ILanguage[]) || []
 )
-const targetLanguages = computed(() => 
-    (settingStore.getSetting(SETTINGS.TARGET_LANGUAGES) as ILanguage[]) || []
+const targetLanguages = computed(
+    () => (settingStore.getSetting(SETTINGS.TARGET_LANGUAGES) as ILanguage[]) || []
 )
 
 const defaultSourceLanguage = computed(() => sourceLanguages.value[0]?.code || 'en')
@@ -291,8 +349,8 @@ const defaultTargetLanguage = computed(() => targetLanguages.value[0]?.code || '
 
 const availableLanguages = computed(() => {
     const allLangs = [...sourceLanguages.value, ...targetLanguages.value]
-    const unique = new Map(allLangs.map(l => [l.code, l]))
-    return Array.from(unique.values()).map(l => ({ code: l.code, name: l.name }))
+    const unique = new Map(allLangs.map((l) => [l.code, l]))
+    return Array.from(unique.values()).map((l) => ({ code: l.code, name: l.name }))
 })
 
 const performSearch = useDebounce(async (value: string) => {
@@ -304,7 +362,9 @@ const performSearch = useDebounce(async (value: string) => {
 
     isSearching.value = true
     try {
-        const response = await fetch(`/api/test-translation/search-hierarchical?query=${encodeURIComponent(trimmed)}`)
+        const response = await fetch(
+            `/api/test-translation/search-hierarchical?query=${encodeURIComponent(trimmed)}`
+        )
         if (response.ok) {
             hierarchicalSearchResults.value = await response.json()
         }
@@ -321,25 +381,31 @@ watch(searchQuery, (value) => {
 })
 
 async function openConfigModalFromMovie(movie: MovieResult) {
-    if (movie.subtitles.length === 0 && (!movie.embeddedSubtitles || movie.embeddedSubtitles.length === 0)) return
-    
+    if (
+        movie.subtitles.length === 0 &&
+        (!movie.embeddedSubtitles || movie.embeddedSubtitles.length === 0)
+    )
+        return
+
     selectedShow.value = null
     selectedEpisode.value = null
     selectedMediaId.value = movie.movieId
     selectedMediaType.value = 'Movie'
-    
+
     const allSubs: (Subtitle | EmbeddedSubtitle)[] = [
         ...movie.subtitles,
         ...(movie.embeddedSubtitles || [])
     ]
     availableSubtitles.value = allSubs
-    
+
     const firstExternal = movie.subtitles[0]
     selectedSubtitle.value = firstExternal
     selectedSubtitlePath.value = firstExternal.path
-    
+
     try {
-        const response = await fetch(`/api/test-translation/subtitle-preview?path=${encodeURIComponent(firstExternal.path)}`)
+        const response = await fetch(
+            `/api/test-translation/subtitle-preview?path=${encodeURIComponent(firstExternal.path)}`
+        )
         if (response.ok) {
             const data = await response.json()
             selectedTotalLines.value = data.totalLines || 100
@@ -347,30 +413,36 @@ async function openConfigModalFromMovie(movie: MovieResult) {
     } catch {
         selectedTotalLines.value = 100
     }
-    
+
     configModalOpen.value = true
 }
 
 async function openConfigModalFromEpisode(episode: EpisodePreview, show: ShowSearchResult) {
-    if (episode.subtitles.length === 0 && (!episode.embeddedSubtitles || episode.embeddedSubtitles.length === 0)) return
-    
+    if (
+        episode.subtitles.length === 0 &&
+        (!episode.embeddedSubtitles || episode.embeddedSubtitles.length === 0)
+    )
+        return
+
     selectedShow.value = show
     selectedEpisode.value = episode
     selectedMediaId.value = episode.episodeId
     selectedMediaType.value = 'Episode'
-    
+
     const allSubs: (Subtitle | EmbeddedSubtitle)[] = [
         ...episode.subtitles,
         ...(episode.embeddedSubtitles || [])
     ]
     availableSubtitles.value = allSubs
-    
+
     const firstExternal = episode.subtitles[0]
     selectedSubtitle.value = firstExternal
     selectedSubtitlePath.value = firstExternal.path
-    
+
     try {
-        const response = await fetch(`/api/test-translation/subtitle-preview?path=${encodeURIComponent(firstExternal.path)}`)
+        const response = await fetch(
+            `/api/test-translation/subtitle-preview?path=${encodeURIComponent(firstExternal.path)}`
+        )
         if (response.ok) {
             const data = await response.json()
             selectedTotalLines.value = data.totalLines || 100
@@ -378,7 +450,7 @@ async function openConfigModalFromEpisode(episode: EpisodePreview, show: ShowSea
     } catch {
         selectedTotalLines.value = 100
     }
-    
+
     configModalOpen.value = true
 }
 
@@ -498,10 +570,14 @@ function formatTime(timestamp: string): string {
 
 function getLogLevelClass(level: string): string {
     switch (level.toUpperCase()) {
-        case 'ERROR': return 'text-error'
-        case 'WARNING': return 'text-warning'
-        case 'INFORMATION': return 'text-success'
-        default: return 'text-accent'
+        case 'ERROR':
+            return 'text-error'
+        case 'WARNING':
+            return 'text-warning'
+        case 'INFORMATION':
+            return 'text-success'
+        default:
+            return 'text-accent'
     }
 }
 
@@ -516,7 +592,9 @@ onMounted(async () => {
     if (route.query.subtitlePath) {
         selectedSubtitlePath.value = route.query.subtitlePath as string
         try {
-            const response = await fetch(`/api/test-translation/subtitle-preview?path=${encodeURIComponent(selectedSubtitlePath.value)}`)
+            const response = await fetch(
+                `/api/test-translation/subtitle-preview?path=${encodeURIComponent(selectedSubtitlePath.value)}`
+            )
             if (response.ok) {
                 const data = await response.json()
                 selectedTotalLines.value = data.totalLines || 100
@@ -524,7 +602,7 @@ onMounted(async () => {
         } catch {
             selectedTotalLines.value = 100
         }
-        
+
         configModalOpen.value = true
     }
 })

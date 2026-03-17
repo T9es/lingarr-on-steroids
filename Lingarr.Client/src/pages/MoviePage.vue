@@ -60,7 +60,8 @@
                 <template v-for="group in groupedMovies" :key="group.key">
                     <!-- Single movie - normal display -->
                     <template v-if="group.movies.length === 1">
-                        <div class="border-accent hover:bg-secondary/50 grid grid-cols-14 border-b transition-colors">
+                        <div
+                            class="border-accent hover:bg-secondary/50 grid grid-cols-14 border-b transition-colors">
                             <div class="col-span-3 px-4 py-2">
                                 {{ group.movies[0].title }}
                             </div>

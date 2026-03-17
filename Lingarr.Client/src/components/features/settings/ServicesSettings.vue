@@ -16,10 +16,12 @@
                     @save="saveNotification?.show()" />
 
                 <ChutesUsageCard v-if="serviceType === SERVICE_TYPE.CHUTES" />
-                
+
                 <TokenUsageCard
                     v-if="showTokenUsageCard"
-                    :service="serviceType as 'openai' | 'anthropic' | 'gemini' | 'deepseek' | 'localai'" />
+                    :service="
+                        serviceType as 'openai' | 'anthropic' | 'gemini' | 'deepseek' | 'localai'
+                    " />
             </div>
 
             <SourceAndTarget @save="saveNotification?.show()" />

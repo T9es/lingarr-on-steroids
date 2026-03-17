@@ -5,7 +5,7 @@
                 <p class="font-semibold">
                     {{ translate('settings.tokenUsage.title') }}
                 </p>
-                <p class="text-sm text-secondary-content/80">
+                <p class="text-secondary-content/80 text-sm">
                     {{ translate('settings.tokenUsage.description') }}
                 </p>
             </div>
@@ -22,20 +22,28 @@
             <div v-if="usage" class="flex justify-between text-sm font-semibold">
                 <span>{{ translate('settings.tokenUsage.outputTokensToday') }}</span>
                 <span>
-                    {{ formatNumber(usage.tokensUsedToday) }} / 
-                    {{ usage.tokenLimit ? formatNumber(usage.tokenLimit) : translate('settings.services.unlimited') }}
+                    {{ formatNumber(usage.tokensUsedToday) }} /
+                    {{
+                        usage.tokenLimit
+                            ? formatNumber(usage.tokenLimit)
+                            : translate('settings.services.unlimited')
+                    }}
                 </span>
             </div>
-            
-            <div v-if="usage?.tokenLimit" class="bg-secondary-content/20 relative mt-2 h-2 overflow-hidden rounded-full">
+
+            <div
+                v-if="usage?.tokenLimit"
+                class="bg-secondary-content/20 relative mt-2 h-2 overflow-hidden rounded-full">
                 <div
                     class="bg-accent absolute top-0 left-0 h-full transition-all"
                     :style="{ width: Math.min(usage.percentUsed, 100) + '%' }"
-                    :class="{ 'bg-yellow-500': usage.percentUsed > 80, 'bg-red-500': usage.percentUsed >= 100 }">
-                </div>
+                    :class="{
+                        'bg-yellow-500': usage.percentUsed > 80,
+                        'bg-red-500': usage.percentUsed >= 100
+                    }"></div>
             </div>
 
-            <div v-else-if="loading" class="mt-2 text-sm text-secondary-content/70">
+            <div v-else-if="loading" class="text-secondary-content/70 mt-2 text-sm">
                 {{ translate('common.loading') }}
             </div>
 
@@ -67,13 +75,13 @@
                 <button
                     v-for="preset in presets"
                     :key="preset.value"
-                    class="bg-secondary text-secondary-content rounded px-2 py-1 text-xs transition-colors hover:bg-accent hover:text-primary-content"
+                    class="bg-secondary text-secondary-content hover:bg-accent hover:text-primary-content rounded px-2 py-1 text-xs transition-colors"
                     @click="applyPreset(preset.value)">
                     {{ preset.label }}
                 </button>
             </div>
 
-            <p class="mt-3 text-xs text-secondary-content/70">
+            <p class="text-secondary-content/70 mt-3 text-xs">
                 {{ translate('settings.tokenUsage.pricingWarning') }}
             </p>
         </div>
@@ -120,7 +128,8 @@ const tokenLimitSettingKey = computed(() => {
 onMounted(async () => {
     await loadUsage()
     tokenLimit.value = (settingsStore.getSetting(tokenLimitSettingKey.value as any) as string) || ''
-    resetTime.value = (settingsStore.getSetting('token_limit_reset_time' as any) as string) || '00:00'
+    resetTime.value =
+        (settingsStore.getSetting('token_limit_reset_time' as any) as string) || '00:00'
 })
 
 const loadUsage = async () => {

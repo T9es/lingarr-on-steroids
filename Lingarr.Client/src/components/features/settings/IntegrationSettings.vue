@@ -40,7 +40,7 @@
                 </span>
                 <button
                     @click="discardChanges"
-                    class="text-secondary-content hover:bg-secondary-content/10 rounded-md border border-secondary-content/30 px-4 py-2 text-sm transition-colors">
+                    class="text-secondary-content hover:bg-secondary-content/10 border-secondary-content/30 rounded-md border px-4 py-2 text-sm transition-colors">
                     {{ translate('common.discard') || 'Discard' }}
                 </button>
                 <button

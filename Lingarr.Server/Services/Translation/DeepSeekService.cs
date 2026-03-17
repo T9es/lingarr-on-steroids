@@ -254,7 +254,7 @@ public class DeepSeekService : OpenAiService
             var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
 
             // Log failed API usage
-            if (_dashboardService != null)
+            if (_dashboardService != null && response.StatusCode != HttpStatusCode.TooManyRequests)
             {
                 await _dashboardService.LogApiUsage(
                     ServiceName,

@@ -5,18 +5,21 @@
         </template>
 
         <div class="space-y-2">
-            <div class="flex items-center justify-between border-b border-secondary/30 pb-2">
+            <div class="border-secondary/30 flex items-center justify-between border-b pb-2">
                 <div class="flex items-center gap-4">
                     <span class="text-secondary-content text-sm">
-                        {{ selectedCount }} {{ translate('translationTest.linesSelected') }}
-                        ({{ startLine }}-{{ endLine }})
+                        {{ selectedCount }} {{ translate('translationTest.linesSelected') }} ({{
+                            startLine
+                        }}-{{ endLine }})
                     </span>
                     <span class="text-secondary-content text-xs">
                         {{ translate('translationTest.shiftClickHint') }}
                     </span>
                 </div>
                 <div class="flex gap-2">
-                    <button @click="clearSelection" class="text-secondary-content text-sm hover:underline">
+                    <button
+                        @click="clearSelection"
+                        class="text-secondary-content text-sm hover:underline">
                         {{ translate('translationTest.clearSelection') }}
                     </button>
                     <button @click="selectAll" class="text-accent text-sm hover:underline">
@@ -51,13 +54,15 @@
                         'bg-primary hover:bg-accent/10': !isInRange(line.position)
                     }"
                     class="flex cursor-pointer gap-3 px-2 py-1 transition">
-                    <span class="w-8 text-right text-secondary-content/60">
+                    <span class="text-secondary-content/60 w-8 text-right">
                         {{ line.position }}
                     </span>
-                    <span class="w-20 text-secondary-content/60">
+                    <span class="text-secondary-content/60 w-20">
                         {{ line.startTime }}
                     </span>
-                    <span class="flex-1 whitespace-pre-wrap text-primary-content">{{ line.text }}</span>
+                    <span class="text-primary-content flex-1 whitespace-pre-wrap">
+                        {{ line.text }}
+                    </span>
                 </div>
             </div>
         </div>
@@ -169,7 +174,7 @@ async function loadSubtitle() {
         loading.value = true
         error.value = null
         let data
-        
+
         if (props.mediaId && props.mediaType && props.streamIndex !== undefined) {
             const params = new URLSearchParams({
                 mediaId: props.mediaId.toString(),
@@ -177,12 +182,14 @@ async function loadSubtitle() {
                 streamIndex: props.streamIndex.toString()
             })
             if (props.language) params.append('language', props.language)
-            
+
             const response = await fetch(`/api/test-translation/embedded-preview?${params}`)
             if (!response.ok) {
                 if (response.status === 400) {
                     const err = await response.json()
-                    throw new Error(err.message || 'Cannot extract this subtitle (may be image-based)')
+                    throw new Error(
+                        err.message || 'Cannot extract this subtitle (may be image-based)'
+                    )
                 }
                 throw new Error('Failed to extract embedded subtitle')
             }
@@ -194,7 +201,7 @@ async function loadSubtitle() {
             if (!response.ok) throw new Error('Failed to load subtitle')
             data = await response.json()
         }
-        
+
         lines.value = data.lines
         if (lines.value.length > 0) {
             endLine.value = Math.min(props.selectedEnd ?? 20, lines.value.length)

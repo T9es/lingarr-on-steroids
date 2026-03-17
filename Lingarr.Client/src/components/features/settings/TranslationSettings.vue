@@ -194,7 +194,8 @@ onMounted(async () => {
 })
 
 const useBatchTranslation = computed({
-    get: (): string => (settingsStore.getSetting(SETTINGS.USE_BATCH_TRANSLATION) as string) ?? 'false',
+    get: (): string =>
+        (settingsStore.getSetting(SETTINGS.USE_BATCH_TRANSLATION) as string) ?? 'false',
     set: (newValue: string): void => {
         settingsStore.updateSetting(SETTINGS.USE_BATCH_TRANSLATION, newValue, true)
         saveNotification.value?.show()
@@ -238,7 +239,8 @@ const retryDelayMultiplier = computed({
 })
 
 const maxParallelTranslations = computed({
-    get: (): string => (settingsStore.getSetting(SETTINGS.MAX_PARALLEL_TRANSLATIONS) as string) ?? '',
+    get: (): string =>
+        (settingsStore.getSetting(SETTINGS.MAX_PARALLEL_TRANSLATIONS) as string) ?? '',
     set: (newValue: string): void => {
         settingsStore.updateSetting(
             SETTINGS.MAX_PARALLEL_TRANSLATIONS,

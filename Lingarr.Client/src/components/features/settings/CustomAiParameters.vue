@@ -34,7 +34,7 @@
 
                 <div class="flex justify-end">
                     <button
-                        class="border-accent hover:bg-accent cursor-pointer justify-end rounded border px-3 py-2 transition-colors hover:text-primary-content"
+                        class="border-accent hover:bg-accent hover:text-primary-content cursor-pointer justify-end rounded border px-3 py-2 transition-colors"
                         @click="addParameter">
                         {{ translate('settings.custom.addParameter') }}
                     </button>

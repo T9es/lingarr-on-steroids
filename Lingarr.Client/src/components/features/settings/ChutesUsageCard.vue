@@ -7,16 +7,24 @@
             <span class="text-sm font-medium">
                 {{ translate('settings.chutes.mode.label') }}
             </span>
-            <div class="flex rounded-lg bg-secondary p-1">
+            <div class="bg-secondary flex rounded-lg p-1">
                 <button
                     class="rounded-md px-3 py-1 text-sm transition-colors"
-                    :class="chutesMode === 'subscription' ? 'bg-accent text-primary-content' : 'text-secondary-content'"
+                    :class="
+                        chutesMode === 'subscription'
+                            ? 'bg-accent text-primary-content'
+                            : 'text-secondary-content'
+                    "
                     @click="setMode('subscription')">
                     {{ translate('settings.chutes.mode.subscription') }}
                 </button>
                 <button
                     class="rounded-md px-3 py-1 text-sm transition-colors"
-                    :class="chutesMode === 'payg' ? 'bg-accent text-primary-content' : 'text-secondary-content'"
+                    :class="
+                        chutesMode === 'payg'
+                            ? 'bg-accent text-primary-content'
+                            : 'text-secondary-content'
+                    "
                     @click="setMode('payg')">
                     {{ translate('settings.chutes.mode.payg') }}
                 </button>
@@ -29,7 +37,7 @@
                     <p class="font-semibold">
                         {{ translate('settings.services.chutesUsageTitle') }}
                     </p>
-                    <p class="text-sm text-secondary-content/80">
+                    <p class="text-secondary-content/80 text-sm">
                         <span v-if="usage?.plan">
                             {{ translate('settings.services.chutesPlan', { plan: usage.plan }) }}
                         </span>
@@ -56,17 +64,17 @@
                     <p class="font-semibold">
                         {{ translate('settings.tokenUsage.title') }}
                     </p>
-                    <p class="text-sm text-secondary-content/80">
+                    <p class="text-secondary-content/80 text-sm">
                         {{ translate('settings.tokenUsage.description') }}
                     </p>
                 </div>
-            <button
-                class="bg-primary text-primary-content rounded px-3 py-1 text-sm"
-                :class="{ 'opacity-50': tokenUsageLoading }"
-                :disabled="tokenUsageLoading"
-                @click="loadTokenUsage">
-                {{ translate('settings.services.refreshUsage') }}
-            </button>
+                <button
+                    class="bg-primary text-primary-content rounded px-3 py-1 text-sm"
+                    :class="{ 'opacity-50': tokenUsageLoading }"
+                    :disabled="tokenUsageLoading"
+                    @click="loadTokenUsage">
+                    {{ translate('settings.services.refreshUsage') }}
+                </button>
             </div>
         </template>
 
@@ -144,20 +152,28 @@
                 <div v-if="tokenUsage" class="flex justify-between text-sm font-semibold">
                     <span>{{ translate('settings.tokenUsage.outputTokensToday') }}</span>
                     <span>
-                        {{ formatNumber(tokenUsage.tokensUsedToday) }} / 
-                        {{ tokenUsage.tokenLimit ? formatNumber(tokenUsage.tokenLimit) : translate('settings.services.unlimited') }}
+                        {{ formatNumber(tokenUsage.tokensUsedToday) }} /
+                        {{
+                            tokenUsage.tokenLimit
+                                ? formatNumber(tokenUsage.tokenLimit)
+                                : translate('settings.services.unlimited')
+                        }}
                     </span>
                 </div>
-                
-                <div v-if="tokenUsage?.tokenLimit" class="bg-secondary-content/20 relative mt-2 h-2 overflow-hidden rounded-full">
+
+                <div
+                    v-if="tokenUsage?.tokenLimit"
+                    class="bg-secondary-content/20 relative mt-2 h-2 overflow-hidden rounded-full">
                     <div
                         class="bg-accent absolute top-0 left-0 h-full transition-all"
                         :style="{ width: Math.min(tokenUsage.percentUsed, 100) + '%' }"
-                        :class="{ 'bg-yellow-500': tokenUsage.percentUsed > 80, 'bg-red-500': tokenUsage.percentUsed >= 100 }">
-                    </div>
+                        :class="{
+                            'bg-yellow-500': tokenUsage.percentUsed > 80,
+                            'bg-red-500': tokenUsage.percentUsed >= 100
+                        }"></div>
                 </div>
 
-                <div v-else-if="tokenUsageLoading" class="mt-2 text-sm text-secondary-content/70">
+                <div v-else-if="tokenUsageLoading" class="text-secondary-content/70 mt-2 text-sm">
                     {{ translate('common.loading') }}
                 </div>
 
@@ -189,13 +205,13 @@
                     <button
                         v-for="preset in presets"
                         :key="preset.value"
-                        class="bg-secondary text-secondary-content rounded px-2 py-1 text-xs transition-colors hover:bg-accent hover:text-primary-content"
+                        class="bg-secondary text-secondary-content hover:bg-accent hover:text-primary-content rounded px-2 py-1 text-xs transition-colors"
                         @click="applyPreset(preset.value)">
                         {{ preset.label }}
                     </button>
                 </div>
 
-                <p class="mt-3 text-xs text-secondary-content/70">
+                <p class="text-secondary-content/70 mt-3 text-xs">
                     {{ translate('settings.tokenUsage.pricingWarning') }}
                 </p>
             </div>
@@ -244,17 +260,20 @@ onMounted(async () => {
         (settingsStore.getSetting(SETTINGS.CHUTES_USAGE_LIMIT_OVERRIDE) as string) || ''
     requestBuffer.value =
         (settingsStore.getSetting(SETTINGS.CHUTES_REQUEST_BUFFER) as string) || '50'
-    
+
     if (chutesMode.value === 'payg') {
         await loadTokenUsage()
         tokenLimit.value = (settingsStore.getSetting(SETTINGS.CHUTES_TOKEN_LIMIT) as string) || ''
-        resetTime.value = (settingsStore.getSetting(SETTINGS.TOKEN_LIMIT_RESET_TIME) as string) || '00:00'
+        resetTime.value =
+            (settingsStore.getSetting(SETTINGS.TOKEN_LIMIT_RESET_TIME) as string) || '00:00'
     }
 })
 
 const loadChutesMode = async () => {
     try {
-        const response = await services.tokenUsage.getChutesMode<{ mode: 'subscription' | 'payg' }>()
+        const response = await services.tokenUsage.getChutesMode<{
+            mode: 'subscription' | 'payg'
+        }>()
         chutesMode.value = response.mode
     } catch (error) {
         console.error('Failed to load Chutes mode', error)
@@ -268,8 +287,10 @@ const setMode = async (mode: 'subscription' | 'payg') => {
         chutesMode.value = mode
         if (mode === 'payg') {
             await loadTokenUsage()
-            tokenLimit.value = (settingsStore.getSetting(SETTINGS.CHUTES_TOKEN_LIMIT) as string) || ''
-            resetTime.value = (settingsStore.getSetting(SETTINGS.TOKEN_LIMIT_RESET_TIME) as string) || '00:00'
+            tokenLimit.value =
+                (settingsStore.getSetting(SETTINGS.CHUTES_TOKEN_LIMIT) as string) || ''
+            resetTime.value =
+                (settingsStore.getSetting(SETTINGS.TOKEN_LIMIT_RESET_TIME) as string) || '00:00'
         }
     } catch (error) {
         console.error('Failed to set Chutes mode', error)

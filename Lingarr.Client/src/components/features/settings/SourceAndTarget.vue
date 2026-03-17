@@ -21,7 +21,7 @@
                     {{ translate('settings.translate.languageLoadErrorDescription') }}
                 </p>
                 <button
-                    class="border-accent hover:bg-accent mt-3 cursor-pointer justify-end rounded border px-3 py-2 transition-colors hover:text-primary-content"
+                    class="border-accent hover:bg-accent hover:text-primary-content mt-3 cursor-pointer justify-end rounded border px-3 py-2 transition-colors"
                     :disabled="translateStore.isLanguagesLoading"
                     @click="retryLoadLanguages">
                     <span v-if="translateStore.isLanguagesLoading">

@@ -38,7 +38,7 @@
                 validation-type="cron"
                 @update:validation="(val) => (customCronIsValid = val)"
                 @update:model-value="handleCustomCronChange" />
-            <p class="text-xs text-primary-content/60">
+            <p class="text-primary-content/60 text-xs">
                 Format:
                 <code class="bg-accent/30 rounded px-1">minute</code>
                 <code class="bg-accent/30 rounded px-1">hour</code>

@@ -16,9 +16,7 @@
             </span>
         </div>
 
-        <div
-            v-else-if="testResults.length === 0"
-            class="text-secondary-content py-8 text-center">
+        <div v-else-if="testResults.length === 0" class="text-secondary-content py-8 text-center">
             {{ translate('translationTest.noHistory') }}
         </div>
 
@@ -39,7 +37,8 @@
                             <h3 class="font-medium">
                                 {{ result.title || result.subtitlePath?.split('/').pop() }}
                             </h3>
-                            <div class="text-secondary-content mt-1 flex items-center gap-2 text-xs">
+                            <div
+                                class="text-secondary-content mt-1 flex items-center gap-2 text-xs">
                                 <span
                                     :class="
                                         result.success

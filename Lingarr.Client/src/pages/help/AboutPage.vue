@@ -26,13 +26,11 @@
                         </span>
                     </div>
                     <div class="flex items-center gap-3">
-<button
+                        <button
                             @click="checkForUpdates"
                             :disabled="checkingUpdates"
                             class="bg-accent text-primary-content flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-50">
-                            <LoaderCircleIcon
-                                v-if="checkingUpdates"
-                                class="h-4 w-4 animate-spin" />
+                            <LoaderCircleIcon v-if="checkingUpdates" class="h-4 w-4 animate-spin" />
                             {{
                                 checkingUpdates
                                     ? translate('common.loading')

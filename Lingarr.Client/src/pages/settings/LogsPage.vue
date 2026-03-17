@@ -31,12 +31,12 @@
 
                     <div class="flex space-x-2">
                         <button
-                            class="bg-accent hover:bg-accent/80 cursor-pointer rounded px-3 py-1 text-sm font-medium text-primary-content transition"
+                            class="bg-accent hover:bg-accent/80 text-primary-content cursor-pointer rounded px-3 py-1 text-sm font-medium transition"
                             @click="exportLogs">
                             {{ translate('settings.logs.export') }}
                         </button>
                         <button
-                            class="cursor-pointer rounded px-3 py-1 text-sm font-medium text-primary-content transition"
+                            class="text-primary-content cursor-pointer rounded px-3 py-1 text-sm font-medium transition"
                             :class="
                                 isPaused
                                     ? 'bg-success hover:bg-success/80'
@@ -50,7 +50,7 @@
                             }}
                         </button>
                         <button
-                            class="bg-error hover:bg-error/80 cursor-pointer rounded px-3 py-1 text-sm font-medium text-primary-content transition"
+                            class="bg-error hover:bg-error/80 text-primary-content cursor-pointer rounded px-3 py-1 text-sm font-medium transition"
                             @click="clearLogs">
                             {{ translate('settings.logs.clear') }}
                         </button>
@@ -79,7 +79,7 @@
             ref="logContainer"
             class="bg-primary text-accent-content h-[70vh] overflow-x-hidden overflow-y-auto font-mono text-sm">
             <div v-if="filteredLogs.length === 0" class="flex h-full items-center justify-center">
-                <div class="text-center text-secondary-content/60">
+                <div class="text-secondary-content/60 text-center">
                     <div class="mb-2 text-lg">📋</div>
                     <div>{{ translate('settings.logs.waitingForLogs') }}</div>
                 </div>
@@ -93,7 +93,7 @@
                     class="log-entry">
                     <div
                         class="hover:bg-secondary/20 border-secondary/30 grid grid-cols-12 border-b py-2 transition-colors">
-                        <div class="col-span-1 px-4 text-secondary-content/70">
+                        <div class="text-secondary-content/70 col-span-1 px-4">
                             {{ log.formattedTime }}
                         </div>
                         <div class="col-span-1 px-4">

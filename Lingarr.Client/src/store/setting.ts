@@ -47,9 +47,12 @@ export const useSettingStore = defineStore('setting', {
                 }
                 // When Anthropic is selected the max_tokens parameter is required (only if no custom params exist)
                 if (key === SETTINGS.SERVICE_TYPE && value === SERVICE_TYPE.ANTHROPIC) {
-                    const currentParams = (this.settings.custom_ai_parameters as ICustomAiParams[]) || []
+                    const currentParams =
+                        (this.settings.custom_ai_parameters as ICustomAiParams[]) || []
                     const hasExistingParams = currentParams.length > 0
-                    const maxTokensExists = currentParams.some((param) => param.key === 'max_tokens')
+                    const maxTokensExists = currentParams.some(
+                        (param) => param.key === 'max_tokens'
+                    )
 
                     if (!hasExistingParams && !maxTokensExists) {
                         const updatedParams = [

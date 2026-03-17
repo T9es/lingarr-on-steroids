@@ -72,7 +72,8 @@ export function useDashboardSignalR() {
      */
     const loadInitialTranslations = async () => {
         try {
-            const requests = await services.translationRequest.getInProgressRequests<ITranslationRequest[]>()
+            const requests =
+                await services.translationRequest.getInProgressRequests<ITranslationRequest[]>()
 
             if (!Array.isArray(requests) || requests.length === 0) {
                 return

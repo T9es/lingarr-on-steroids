@@ -1,9 +1,7 @@
 <template>
-    <div class="bg-tertiary rounded-lg overflow-hidden">
+    <div class="bg-tertiary overflow-hidden rounded-lg">
         <!-- Show header -->
-        <div
-            class="hover:bg-tertiary/80 cursor-pointer p-4 transition"
-            @click="toggleShow">
+        <div class="hover:bg-tertiary/80 cursor-pointer p-4 transition" @click="toggleShow">
             <div class="flex gap-4">
                 <img
                     v-if="show.posterPath"
@@ -12,13 +10,15 @@
                     @error="($event.target as HTMLImageElement).style.display = 'none'" />
                 <div class="flex-1">
                     <div class="flex items-start justify-between gap-2">
-                        <h3 class="text-lg font-semibold text-primary-content">{{ show.title }}</h3>
+                        <h3 class="text-primary-content text-lg font-semibold">{{ show.title }}</h3>
                         <span class="bg-accent/20 text-accent rounded px-1.5 py-0.5 text-xs">
                             TV
                         </span>
                     </div>
-                    <p v-if="show.year" class="text-secondary-content text-sm mt-1">{{ show.year }}</p>
-                    <p class="text-secondary-content text-sm mt-2">
+                    <p v-if="show.year" class="text-secondary-content mt-1 text-sm">
+                        {{ show.year }}
+                    </p>
+                    <p class="text-secondary-content mt-2 text-sm">
                         {{ totalEpisodes }} {{ translate('translationTest.episodesWithSubtitles') }}
                     </p>
                 </div>
@@ -41,10 +41,17 @@
                                 :is-expanded="!expandedSeasons.has(season.seasonNumber)"
                                 class="h-4 w-4" />
                             <span class="text-primary-content font-medium">
-                                {{ season.seasonNumber === 0 ? translate('tvShows.specials') : translate('translationTest.season') + ' ' + season.seasonNumber }}
+                                {{
+                                    season.seasonNumber === 0
+                                        ? translate('tvShows.specials')
+                                        : translate('translationTest.season') +
+                                          ' ' +
+                                          season.seasonNumber
+                                }}
                             </span>
                             <span class="text-secondary-content text-sm">
-                                ({{ season.episodes.length }} {{ translate('translationTest.episodes') }})
+                                ({{ season.episodes.length }}
+                                {{ translate('translationTest.episodes') }})
                             </span>
                         </div>
                     </div>
@@ -55,13 +62,17 @@
                     <div
                         v-for="episode in season.episodes"
                         :key="episode.episodeId"
-                        class="hover:bg-secondary cursor-pointer border-secondary/20 border-b px-4 py-3 transition"
+                        class="hover:bg-secondary border-secondary/20 cursor-pointer border-b px-4 py-3 transition"
                         @click="selectEpisode(episode)">
                         <div class="flex items-center justify-between gap-2">
                             <div class="flex-1">
                                 <div class="flex items-center gap-2">
-                                    <span class="text-accent font-mono text-sm">{{ episode.displayTitle }}</span>
-                                    <span class="text-primary-content font-medium">{{ episode.title }}</span>
+                                    <span class="text-accent font-mono text-sm">
+                                        {{ episode.displayTitle }}
+                                    </span>
+                                    <span class="text-primary-content font-medium">
+                                        {{ episode.title }}
+                                    </span>
                                 </div>
                                 <div class="mt-1 flex flex-wrap gap-1">
                                     <span
@@ -70,18 +81,25 @@
                                         class="bg-primary text-primary-content rounded px-1.5 py-0.5 text-xs">
                                         {{ subtitle.language?.toUpperCase() || '??' }}
                                     </span>
-                                    <span v-if="episode.subtitles.length > 5" class="text-secondary-content text-xs">
+                                    <span
+                                        v-if="episode.subtitles.length > 5"
+                                        class="text-secondary-content text-xs">
                                         +{{ episode.subtitles.length - 5 }}
                                     </span>
                                     <span
-                                        v-for="embSub in (episode.embeddedSubtitles || []).slice(0, 3)"
+                                        v-for="embSub in (episode.embeddedSubtitles || []).slice(
+                                            0,
+                                            3
+                                        )"
                                         :key="`emb-${embSub.streamIndex}`"
-                                        class="border rounded px-1.5 py-0.5 text-xs"
+                                        class="rounded border px-1.5 py-0.5 text-xs"
                                         :class="getEmbeddedBadgeClasses(embSub)">
                                         <span class="mr-0.5">📦</span>
                                         {{ formatEmbeddedLanguage(embSub) }}
                                     </span>
-                                    <span v-if="(episode.embeddedSubtitles?.length || 0) > 3" class="text-secondary-content text-xs">
+                                    <span
+                                        v-if="(episode.embeddedSubtitles?.length || 0) > 3"
+                                        class="text-secondary-content text-xs">
                                         +{{ (episode.embeddedSubtitles?.length || 0) - 3 }} emb
                                     </span>
                                 </div>

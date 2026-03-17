@@ -237,7 +237,7 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
         {
             var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
             
-            if (_dashboardService != null)
+            if (_dashboardService != null && response.StatusCode != HttpStatusCode.TooManyRequests)
             {
                 await _dashboardService.LogApiUsage(ServiceName, null, stopwatch.ElapsedMilliseconds, false, $"Status: {response.StatusCode}");
             }
@@ -500,7 +500,7 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
         {
             var batchErrorBody = await response.Content.ReadAsStringAsync(cancellationToken);
             
-            if (_dashboardService != null)
+            if (_dashboardService != null && response.StatusCode != HttpStatusCode.TooManyRequests)
             {
                 await _dashboardService.LogApiUsage(ServiceName, null, stopwatch.ElapsedMilliseconds, false, $"Status: {response.StatusCode}");
             }
