@@ -536,7 +536,12 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 items = parser.ParseStream(stream, System.Text.Encoding.UTF8);
             }
 
-            if (items.Count == 0) return;
+            if (items.Count == 0)
+            {
+                // Write the marker so Lingarr knows it extracted this file, even if it's empty
+                await File.WriteAllTextAsync(filePath, $"{ExtractionMarkerPrefix} StreamIndex={0}, Entries=0\r\n\r\n");
+                return;
+            }
 
             // PRE-FILTER: Remove ASS drawing commands and empty lines
             var filteredItems = new List<SubtitleItem>();
@@ -557,7 +562,12 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 filteredItems.Add(item);
             }
 
-            if (filteredItems.Count == 0) return;
+            if (filteredItems.Count == 0)
+            {
+                // Write the marker so Lingarr knows it extracted this file, even if it's empty after filtering
+                await File.WriteAllTextAsync(filePath, $"{ExtractionMarkerPrefix} StreamIndex={0}, Entries=0\r\n\r\n");
+                return;
+            }
 
             // PASS 1: Merge Concurrent Layers (e.g. "Text Part 1" and "Text Part 2" appearing at same time)
             // Heuristic: If two subtitles start at roughly the same time (< 50ms diff) 

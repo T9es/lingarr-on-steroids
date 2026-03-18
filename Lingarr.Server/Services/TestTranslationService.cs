@@ -96,12 +96,13 @@ public class TestTranslationService : ITestTranslationService
                    }
                    Log("INFORMATION", "Attempting embedded subtitle extraction...");
                    subtitlePath = await _extractionService.TryExtractEmbeddedSubtitle(
-                       request.MediaId.Value, 
-                       request.MediaType.Value, 
-                       request.SourceLanguage);
-                   
-                   if (subtitlePath != null) 
-                   {
+                       request.MediaId.Value,
+                       request.MediaType.Value,
+                       request.SourceLanguage,
+                       null,
+                       null);
+
+                   if (subtitlePath != null)                   {
                        Log("INFORMATION", $"Extracted embedded subtitle to: {subtitlePath}");
                        temporaryFilePath = subtitlePath;
                    }
