@@ -258,7 +258,7 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
     public async Task<SubtitleTypeCheckResult?> ValidateSubtitleTypeAsync(int translationId, CancellationToken ct = default)
     {
         // Minimum entry count to consider a subtitle "complete" (not Forced/Signs-only)
-        const int MinEntryThreshold = 50;
+        var minEntryThreshold = SubtitleExtractionService.MinimumDialogueEntries;
 
         // Get the translation request
         var translationRequest = await _dbContext.Set<Core.Entities.TranslationRequest>()
@@ -286,7 +286,7 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
             var entryCount = subtitles.Count;
 
             // Determine if subtitle is complete
-            var isComplete = entryCount >= MinEntryThreshold;
+            var isComplete = entryCount >= minEntryThreshold;
 
             // Get media info for the result
             string mediaTitle;
