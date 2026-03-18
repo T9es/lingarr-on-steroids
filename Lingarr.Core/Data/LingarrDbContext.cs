@@ -80,6 +80,12 @@ public class LingarrDbContext : DbContext
                 .IsUnique()
                 .HasDatabaseName("ux_translation_requests_active_dedupe");
 
+            b.HasIndex(tr => tr.Status)
+                .HasDatabaseName("ix_translation_requests_status");
+
+            b.HasIndex(tr => tr.CompletedAt)
+                .HasDatabaseName("ix_translation_requests_completed_at");
+
             b.Property(tr => tr.IsActive).HasColumnName("is_active");
         });
 

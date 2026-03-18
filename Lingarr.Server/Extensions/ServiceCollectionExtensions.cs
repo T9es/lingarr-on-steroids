@@ -211,7 +211,7 @@ public static class ServiceCollectionExtensions
         builder.Services.AddHangfireServer(options =>
         {
             options.ServerName = $"{Environment.MachineName}:{Environment.ProcessId}:sync";
-            options.Queues = ["movies", "shows", "system", "default"];
+            options.Queues = ["movies", "shows", "system", "webhook", "default"];
             options.WorkerCount = syncWorkers;
         });
 

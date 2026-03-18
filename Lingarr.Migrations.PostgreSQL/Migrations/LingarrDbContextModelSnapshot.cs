@@ -920,6 +920,12 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                     b.HasKey("Id")
                         .HasName("pk_translation_requests");
 
+                    b.HasIndex("CompletedAt")
+                        .HasDatabaseName("ix_translation_requests_completed_at");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_translation_requests_status");
+
                     b.HasIndex("MediaId", "MediaType", "SourceLanguage", "TargetLanguage", "IsActive")
                         .IsUnique()
                         .HasDatabaseName("ux_translation_requests_active_dedupe");
