@@ -10,6 +10,7 @@ public interface IStatisticsService
     Task<Statistics> GetStatistics();
     Task<IEnumerable<DailyStatistics>> GetDailyStatistics(int? days = null);
     Task<IEnumerable<HourlyStatistics>> GetHourlyStatistics(DateTime? date = null);
+    Task<FilteredStatistics> GetFilteredStatistics(DateTime? startDate, DateTime? endDate);
     Task<int> UpdateTranslationStatisticsFromSubtitles(
         TranslationRequest request,
         string serviceType,

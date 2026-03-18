@@ -137,6 +137,7 @@ export interface IDirectoryService {
 export interface IStatisticsService {
     getStatistics<T>(): Promise<T>
     getDailyStatistics<T>(days?: number): Promise<T>
+    getFilteredStatistics<T>(startDate?: Date, endDate?: Date): Promise<T>
 }
 
 export interface ILogsService {

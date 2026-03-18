@@ -36,4 +36,13 @@ public class StatisticsController : ControllerBase
         var stats = await _statisticsService.GetHourlyStatistics(date);
         return Ok(stats);
     }
+
+    [HttpGet("filtered")]
+    public async Task<ActionResult<FilteredStatistics>> GetFilteredStats(
+        [FromQuery] DateTime? startDate,
+        [FromQuery] DateTime? endDate)
+    {
+        var stats = await _statisticsService.GetFilteredStatistics(startDate, endDate);
+        return Ok(stats);
+    }
 }

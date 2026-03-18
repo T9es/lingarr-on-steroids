@@ -25,6 +25,22 @@ const service = (http: AxiosStatic, resource = '/api/statistics'): IStatisticsSe
                     reject(error.response)
                 })
         })
+    },
+
+    getFilteredStatistics<T>(startDate?: Date, endDate?: Date): Promise<T> {
+        return new Promise((resolve, reject) => {
+            const params = new URLSearchParams()
+            if (startDate) params.append('startDate', startDate.toISOString())
+            if (endDate) params.append('endDate', endDate.toISOString())
+            const url = `${resource}/filtered?${params.toString()}`
+            http.get(url)
+                .then((response: AxiosResponse<T>) => {
+                    resolve(response.data)
+                })
+                .catch((error: AxiosError) => {
+                    reject(error.response)
+                })
+        })
     }
 })
 

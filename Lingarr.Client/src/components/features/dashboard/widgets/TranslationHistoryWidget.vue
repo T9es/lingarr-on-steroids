@@ -6,7 +6,7 @@ import services from '@/services'
 import TrendUpIcon from '@/components/icons/TrendUpIcon.vue'
 import TrendDownIcon from '@/components/icons/TrendDownIcon.vue'
 import TrendFlatIcon from '@/components/icons/TrendFlatIcon.vue'
-import type { DailyStatistic } from '@/ts/statistics'
+import type { DailyStatistic, FilteredStatistics } from '@/ts/statistics'
 import {
     Chart as ChartJS,
     CategoryScale,
@@ -57,6 +57,8 @@ const selectedFilter = ref<TimeFilter>('30d')
 const customDateRange = ref<Date[]>([])
 const hourlyStatistics = ref<HourlyStatistic[]>([])
 const hourlyLoading = ref(false)
+const filteredStats = ref<FilteredStatistics | null>(null)
+const filteredLoading = ref(false)
 
 watch(
     () => instanceStore.getTheme,
@@ -69,17 +71,20 @@ watch(selectedFilter, async (newFilter) => {
     if (newFilter === '24h') {
         await fetchHourlyStatistics()
     }
+    await fetchFilteredStatistics()
     chartKey.value++
 })
 
-watch(customDateRange, () => {
+watch(customDateRange, async () => {
     if (selectedFilter.value === 'custom' && customDateRange.value?.length === 2) {
+        await fetchFilteredStatistics()
         chartKey.value++
     }
 })
 
 onMounted(async () => {
     await fetchRecentTranslations()
+    await fetchFilteredStatistics()
 })
 
 const fetchRecentTranslations = async () => {
@@ -112,6 +117,63 @@ const fetchHourlyStatistics = async () => {
         console.warn('Failed to fetch hourly statistics:', error)
     } finally {
         hourlyLoading.value = false
+    }
+}
+
+const getDateRange = (): { startDate?: Date; endDate?: Date } => {
+    const now = new Date()
+
+    switch (selectedFilter.value) {
+        case '24h': {
+            const start = new Date(now)
+            start.setHours(0, 0, 0, 0)
+            return { startDate: start, endDate: now }
+        }
+        case '7d': {
+            const start = new Date(now)
+            start.setDate(start.getDate() - 7)
+            return { startDate: start, endDate: now }
+        }
+        case '30d': {
+            const start = new Date(now)
+            start.setDate(start.getDate() - 30)
+            return { startDate: start, endDate: now }
+        }
+        case '1y': {
+            const start = new Date(now)
+            start.setFullYear(start.getFullYear() - 1)
+            return { startDate: start, endDate: now }
+        }
+        case 'custom':
+            if (customDateRange.value?.length === 2) {
+                return { startDate: customDateRange.value[0], endDate: customDateRange.value[1] }
+            }
+            return {}
+        case 'all':
+        default:
+            return {}
+    }
+}
+
+const fetchFilteredStatistics = async () => {
+    const { startDate, endDate } = getDateRange()
+
+    if (selectedFilter.value === 'all') {
+        filteredStats.value = null
+        return
+    }
+
+    filteredLoading.value = true
+    try {
+        const stats = await services.statistics.getFilteredStatistics<FilteredStatistics>(
+            startDate,
+            endDate
+        )
+        filteredStats.value = stats
+    } catch (error) {
+        console.warn('Failed to fetch filtered statistics:', error)
+    } finally {
+        filteredLoading.value = false
     }
 }
 
@@ -411,7 +473,7 @@ const timeFilterOptions = [
                 class="!bg-secondary" />
         </div>
 
-        <div v-if="isLoading || hourlyLoading" class="flex flex-1 items-center justify-center">
+        <div v-if="isLoading || hourlyLoading || filteredLoading" class="flex flex-1 items-center justify-center">
             <div
                 class="border-accent h-6 w-6 animate-spin rounded-full border-2 border-t-transparent"></div>
         </div>
@@ -427,13 +489,21 @@ const timeFilterOptions = [
                 <div class="bg-primary/50 rounded-md p-2 text-center">
                     <div class="text-primary-content/50 text-xs">Lines</div>
                     <div class="text-primary-content text-lg font-bold">
-                        {{ formatNumber(props.statistics?.totalLinesTranslated || 0) }}
+                        {{
+                            formatNumber(
+                                filteredStats?.linesCount ?? props.statistics?.totalLinesTranslated ?? 0
+                            )
+                        }}
                     </div>
                 </div>
                 <div class="bg-primary/50 rounded-md p-2 text-center">
                     <div class="text-primary-content/50 text-xs">Files</div>
                     <div class="text-primary-content text-lg font-bold">
-                        {{ formatNumber(props.statistics?.totalFilesTranslated || 0) }}
+                        {{
+                            formatNumber(
+                                filteredStats?.filesCount ?? props.statistics?.totalFilesTranslated ?? 0
+                            )
+                        }}
                     </div>
                 </div>
                 <div class="bg-primary/50 rounded-md p-2 text-center">

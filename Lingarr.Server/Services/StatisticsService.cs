@@ -147,6 +147,34 @@ _cache.Set(cacheKey, stats, cacheOptions);
         return result;
     }
 
+    public async Task<FilteredStatistics> GetFilteredStatistics(DateTime? startDate, DateTime? endDate)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<LingarrDbContext>();
+
+        var query = dbContext.TranslationRequests
+            .Where(r => r.Status == TranslationStatus.Completed && r.CompletedAt != null);
+
+        if (startDate.HasValue)
+        {
+            query = query.Where(r => r.CompletedAt >= startDate.Value);
+        }
+
+        if (endDate.HasValue)
+        {
+            query = query.Where(r => r.CompletedAt < endDate.Value);
+        }
+
+        var requests = await query.ToListAsync();
+
+        return new FilteredStatistics
+        {
+            TranslationCount = requests.Count,
+            LinesCount = requests.Sum(r => r.SourceSubtitleEntryCount),
+            FilesCount = requests.Count
+        };
+    }
+
     private static async Task<Statistics> GetOrCreateStatistics(LingarrDbContext dbContext)
     {
         var stats = await dbContext.Statistics.SingleOrDefaultAsync();
