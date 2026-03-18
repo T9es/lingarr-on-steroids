@@ -6,8 +6,6 @@ using Hangfire;
 using Hangfire.PostgreSql;
 using Hangfire.Storage.SQLite;
 using Lingarr.Core;
-using Polly;
-using Polly.Retry;
 using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Logging;
@@ -28,6 +26,7 @@ using Lingarr.Server.Services.Sync;
 using Lingarr.Server.Services.Translation;
 using Microsoft.Extensions.Options;
 using Microsoft.OpenApi.Models;
+using Polly;
 
 namespace Lingarr.Server.Extensions;
 
@@ -48,22 +47,10 @@ public static class ServiceCollectionExtensions
         builder.Services.AddMemoryCache();
         
         // Configure HttpClient with retry policy and timeout for integration services
-        // Capture logger factory for use in retry callback
-        var loggerFactory = builder.Services.BuildServiceProvider().GetService<ILoggerFactory>();
         builder.Services.AddHttpClient<IIntegrationService, IntegrationService>()
             .AddTransientHttpErrorPolicy(policy => policy.WaitAndRetryAsync(
                 3, // 3 retries
-                attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt)), // Exponential backoff: 2s, 4s, 8s
-                onRetry: (outcome, timespan, retryNumber, context) =>
-                {
-                    var status = outcome.Result?.StatusCode.ToString() ?? "N/A";
-                    var logger = loggerFactory?.CreateLogger<IntegrationService>();
-                    logger?.LogWarning(
-                        "Integration request failed. Retry {RetryNumber} after {Timespan}s. Status: {StatusCode}",
-                        retryNumber,
-                        timespan.TotalSeconds,
-                        status);
-                }))
+                attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt)))) // Exponential backoff: 2s, 4s, 8s
             .ConfigureHttpClient(client =>
             {
                 client.Timeout = TimeSpan.FromSeconds(30);

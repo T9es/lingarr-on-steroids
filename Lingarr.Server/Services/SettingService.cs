@@ -18,7 +18,6 @@ public class SettingService : ISettingService
     
     private readonly IMemoryCache _cache;
     private readonly MemoryCacheEntryOptions _cacheOptions;
-    private static readonly SemaphoreSlim _semaphore = new SemaphoreSlim(1, 1);
 
     public SettingService(
         LingarrDbContext dbContext,
@@ -135,75 +134,59 @@ public class SettingService : ISettingService
         }
     }
     
-    /// <inheritdoc />
+/// <inheritdoc />
     public async Task<bool> SetSetting(string key, string value)
     {
-        await _semaphore.WaitAsync();
-        try
+        var setting = await _dbContext.Settings.FirstOrDefaultAsync(s => s.Key == key);
+        if (setting == null)
         {
-            var setting = await _dbContext.Settings.FirstOrDefaultAsync(s => s.Key == key);
-            if (setting == null)
+            setting = new Setting
             {
-                setting = new Setting
-                {
-                    Key = key,
-                    Value = value
-                };
-                await _dbContext.Settings.AddAsync(setting);
-            }
-            else
-            {
-                setting.Value = value;
-            }
+                Key = key,
+                Value = value
+            };
+            await _dbContext.Settings.AddAsync(setting);
+        }
+        else
+        {
+            setting.Value = value;
+        }
 
-            await _dbContext.SaveChangesAsync();
-            OnSettingChange(key);
-            return true;
-        }
-        finally
-        {
-            _semaphore.Release();
-        }
+        await _dbContext.SaveChangesAsync();
+        OnSettingChange(key);
+        return true;
     }
     
     /// <inheritdoc />
     public async Task<bool> SetSettings(Dictionary<string, string> settings)
     {
-        await _semaphore.WaitAsync();
-        try
-        {
-            var keys = settings.Keys.ToList();
-            var existingSettings = await _dbContext.Settings
-                .Where(s => keys.Contains(s.Key))
-                .ToDictionaryAsync(s => s.Key, s => s);
+        var keys = settings.Keys.ToList();
+        var existingSettings = await _dbContext.Settings
+            .Where(s => keys.Contains(s.Key))
+            .ToDictionaryAsync(s => s.Key, s => s);
 
-            foreach (var setting in settings)
-            {
-                if (existingSettings.TryGetValue(setting.Key, out var existingSetting))
-                {
-                    existingSetting.Value = setting.Value;
-                }
-                else
-                {
-                    var newSetting = new Setting
-                    {
-                        Key = setting.Key,
-                        Value = setting.Value
-                    };
-                    await _dbContext.Settings.AddAsync(newSetting);
-                }
-            }
-
-            await _dbContext.SaveChangesAsync();
-            foreach (var setting in settings)
-            {
-                OnSettingChange(setting.Key);
-            }
-            return true;
-        }
-        finally
+        foreach (var setting in settings)
         {
-            _semaphore.Release();
+            if (existingSettings.TryGetValue(setting.Key, out var existingSetting))
+            {
+                existingSetting.Value = setting.Value;
+            }
+            else
+            {
+                var newSetting = new Setting
+                {
+                    Key = setting.Key,
+                    Value = setting.Value
+                };
+                await _dbContext.Settings.AddAsync(newSetting);
+            }
         }
+
+        await _dbContext.SaveChangesAsync();
+        foreach (var setting in settings)
+        {
+            OnSettingChange(setting.Key);
+        }
+        return true;
     }
 }
