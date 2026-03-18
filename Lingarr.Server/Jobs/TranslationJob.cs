@@ -220,14 +220,18 @@ public class TranslationJob
                         
                         // Mark for cleanup only if the file didn't exist before extraction (auto-extracted)
                         // Don't check database state - the extraction service already set IsExtracted=true
-                        if (!string.IsNullOrEmpty(subtitlePath) && !wasFileAlreadyExisting)
+                        if (!string.IsNullOrEmpty(subtitlePath))
                         {
-                            temporaryFilePath = subtitlePath;
-                            _logger.LogDebug("Marked extracted subtitle as temporary (auto-extracted, will be cleaned up): {Path}", subtitlePath);
-                        }
-                        else if (!string.IsNullOrEmpty(subtitlePath))
-                        {
-                            _logger.LogDebug("Subtitle file existed before extraction (user-provided), preserving file: {Path}", subtitlePath);
+                            bool isNewFile = !wasFileAlreadyExisting || !string.Equals(predictedPath, subtitlePath, StringComparison.OrdinalIgnoreCase);
+                            if (isNewFile)
+                            {
+                                temporaryFilePath = subtitlePath;
+                                _logger.LogDebug("Marked extracted subtitle as temporary (auto-extracted, will be cleaned up): {Path}", subtitlePath);
+                            }
+                            else
+                            {
+                                _logger.LogDebug("Subtitle file existed before extraction (user-provided), preserving file: {Path}", subtitlePath);
+                            }
                         }
                     }
                     else
@@ -322,7 +326,7 @@ public class TranslationJob
             List<SubtitleItem> subtitles;
             var attempt = 0;
             const int maxAttempts = 3;
-            var excludedPaths = new List<string>();
+            var excludedStreamIndices = new List<int>();
 
             // Generate file identifier early for logging
             var fileIdentifier = GenerateFileIdentifier(request.SubtitleToTranslate!);
@@ -374,24 +378,18 @@ public class TranslationJob
                     request.SubtitleToTranslate, attempt, maxAttempts);
                 AddRequestLog("Warning", $"Loaded 0 entries. Attempting embedded subtitle fallback (Attempt {attempt}/{maxAttempts})...");
 
-                if (!string.IsNullOrEmpty(request.SubtitleToTranslate))
+                // If we have metadata about which stream was used, exclude it for fallback
+                if (selectedSubtitle != null && !excludedStreamIndices.Contains(selectedSubtitle.StreamIndex))
                 {
-                    excludedPaths.Add(request.SubtitleToTranslate);
+                    excludedStreamIndices.Add(selectedSubtitle.StreamIndex);
+                    _logger.LogInformation("Excluding stream {StreamIndex} from fallback selection", selectedSubtitle.StreamIndex);
                 }
-
-                // Before fallback extraction, we can't easily predict which stream will be selected,
-                // so we check all potential output paths for the candidate streams
-                var wasFallbackFileAlreadyExisting = await WasAnyCandidatePathExisting(
-                    request.MediaId.Value,
-                    request.MediaType,
-                    request.SourceLanguage,
-                    excludedPaths);
                 
                 var newSubtitlePath = await _extractionService.TryExtractEmbeddedSubtitle(
                     request.MediaId.Value,
                     request.MediaType,
                     request.SourceLanguage,
-                    excludedPaths,
+                    excludedStreamIndices,
                     null); // Don't use preferred stream for fallback - we want a different stream
 
                 if (string.IsNullOrEmpty(newSubtitlePath))
@@ -403,17 +401,9 @@ public class TranslationJob
                 // Update request to point to new file
                 request.SubtitleToTranslate = newSubtitlePath;
                 
-                // Mark for cleanup only if no candidate files existed before extraction
-                // Don't check database state - the extraction service already set IsExtracted=true
-                if (!wasFallbackFileAlreadyExisting)
-                {
-                    temporaryFilePath = newSubtitlePath; // Mark for deletion
-                    _logger.LogDebug("Marked fallback extracted subtitle as temporary (auto-extracted): {Path}", newSubtitlePath);
-                }
-                else
-                {
-                    _logger.LogDebug("Fallback subtitle file existed before extraction (user-provided), preserving: {Path}", newSubtitlePath);
-                }
+                // Mark for cleanup since this was auto-extracted
+                temporaryFilePath = newSubtitlePath;
+                _logger.LogDebug("Marked fallback extracted subtitle as temporary: {Path}", newSubtitlePath);
                 
                 _logger.LogInformation("Fallback successful, switching to: {Path}", newSubtitlePath);
                 AddRequestLog("Information", $"Fallback successful, switching to: {newSubtitlePath}");
@@ -718,21 +708,27 @@ public class TranslationJob
         {
             // Always unregister the job from cooperative cancellation
             _cancellationService.UnregisterJob(translationRequest.Id);
-            
+
             if (!string.IsNullOrEmpty(temporaryFilePath) && File.Exists(temporaryFilePath))
             {
-                try
+                if (SubtitleExtractionService.IsLingarrExtracted(temporaryFilePath))
                 {
-                    File.Delete(temporaryFilePath);
-                    _logger.LogDebug("Deleted temporary extracted subtitle: {Path}", temporaryFilePath);
+                    try
+                    {
+                        File.Delete(temporaryFilePath);
+                        _logger.LogDebug("Deleted temporary extracted subtitle: {Path}", temporaryFilePath);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to delete temporary extracted subtitle: {Path}", temporaryFilePath);
+                    }
                 }
-                catch (Exception ex)
+                else
                 {
-                    _logger.LogWarning(ex, "Failed to delete temporary extracted subtitle: {Path}", temporaryFilePath);
+                    _logger.LogWarning("Not deleting {Path} - no Lingarr marker (user file)", temporaryFilePath);
                 }
             }
-        }
-    }
+        }    }
 
     private async Task WriteSubtitles(TranslationRequest translationRequest,
         List<SubtitleItem> translatedSubtitles,
@@ -980,71 +976,6 @@ public class TranslationJob
         return Path.Combine(outputDir, $"{baseFileName}.{languageTag}.srt");
     }
     
-    /// <summary>
-    /// Checks if any potential candidate subtitle path already exists on disk.
-    /// Used for fallback extraction to determine if files should be preserved.
-    /// </summary>
-    private async Task<bool> WasAnyCandidatePathExisting(int mediaId, MediaType mediaType, string sourceLanguage, List<string> excludedPaths)
-    {
-        try
-        {
-            // Get embedded subtitle candidates from the database
-            List<EmbeddedSubtitle>? embeddedSubtitles = null;
-            string? mediaPath = null;
-            string? outputDir = null;
-
-            if (mediaType == MediaType.Episode)
-            {
-                var episode = await _dbContext.Episodes
-                    .AsNoTracking()
-                    .Include(e => e.EmbeddedSubtitles)
-                    .FirstOrDefaultAsync(e => e.Id == mediaId);
-
-                if (episode == null || string.IsNullOrEmpty(episode.Path) || string.IsNullOrEmpty(episode.FileName))
-                    return false;
-
-                embeddedSubtitles = episode.EmbeddedSubtitles;
-                mediaPath = Path.Combine(episode.Path, episode.FileName);
-                outputDir = episode.Path;
-            }
-            else if (mediaType == MediaType.Movie)
-            {
-                var movie = await _dbContext.Movies
-                    .AsNoTracking()
-                    .Include(m => m.EmbeddedSubtitles)
-                    .FirstOrDefaultAsync(m => m.Id == mediaId);
-
-                if (movie == null || string.IsNullOrEmpty(movie.Path) || string.IsNullOrEmpty(movie.FileName))
-                    return false;
-
-                embeddedSubtitles = movie.EmbeddedSubtitles;
-                mediaPath = Path.Combine(movie.Path, movie.FileName);
-                outputDir = movie.Path;
-            }
-
-            if (embeddedSubtitles == null || embeddedSubtitles.Count == 0 || string.IsNullOrEmpty(mediaPath) || string.IsNullOrEmpty(outputDir))
-                return false;
-
-            // Check each text-based subtitle candidate
-            foreach (var subtitle in embeddedSubtitles.Where(s => s.IsTextBased))
-            {
-                var predictedPath = PredictSubtitlePathInternal(outputDir, mediaPath, subtitle.Language);
-                if (!string.IsNullOrEmpty(predictedPath) &&
-                    !excludedPaths.Contains(predictedPath) &&
-                    File.Exists(predictedPath))
-                {
-                    return true;
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Error checking candidate paths for media {MediaId}", mediaId);
-        }
-
-        return false;
-    }
-
     /// <summary>
     /// Checks if a subtitle file was already extracted before this translation job started.
     /// This is used to determine if we should preserve the file (user manually extracted it)

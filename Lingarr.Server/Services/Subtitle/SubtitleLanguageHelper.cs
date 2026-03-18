@@ -175,20 +175,22 @@ public static class SubtitleLanguageHelper
             score += 25;
         }
 
-        if (title.Contains("dialog") || title.Contains("dialogue"))
+        // Check for dialogue FIRST - if present, it's likely a complete track
+        bool hasDialogue = title.Contains("dialog") || title.Contains("dialogue");
+        bool hasSignsOrSongs = title.Contains("sign") || title.Contains("song") || title.Contains("karaoke");
+
+        if (hasDialogue)
         {
-            score += 20;
+            score += 30; // Increased from 20, represents a complete track
+        }
+        else if (hasSignsOrSongs)
+        {
+            score -= 40; // Only penalize if no dialogue indicator is present
         }
 
         if (title.Contains("sub") || title.Contains("subtitle"))
         {
             score += 10;
-        }
-
-        // Titles that typically indicate signs/songs/karaoke-only tracks
-        if (title.Contains("sign") || title.Contains("song") || title.Contains("karaoke"))
-        {
-            score -= 40;
         }
 
         // Penalize SDH/Hearing Impaired/CC tracks as they often contain "poison" content (sound effects, lyrics)
