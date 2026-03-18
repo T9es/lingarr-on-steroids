@@ -1,4 +1,4 @@
-﻿using Lingarr.Core.Configuration;
+using Lingarr.Core.Configuration;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Lingarr.Core.Entities;
@@ -66,6 +66,9 @@ public class LingarrDbContext : DbContext
         modelBuilder.ApplyConfiguration(new SeasonConfiguration());
         modelBuilder.ApplyConfiguration(new EpisodeConfiguration());
         modelBuilder.ApplyConfiguration(new ImageConfiguration());
+        modelBuilder.ApplyConfiguration(new TranslationRequestConfiguration());
+        modelBuilder.ApplyConfiguration(new TranslationRequestLogConfiguration());
+        modelBuilder.ApplyConfiguration(new EmbeddedSubtitleConfiguration());
 
         modelBuilder.Entity<TranslationRequest>(b =>
         {
@@ -80,9 +83,7 @@ public class LingarrDbContext : DbContext
                 .IsUnique()
                 .HasDatabaseName("ux_translation_requests_active_dedupe");
 
-            b.HasIndex(tr => tr.Status)
-                .HasDatabaseName("ix_translation_requests_status");
-
+            // CompletedAt index retained for historical queries
             b.HasIndex(tr => tr.CompletedAt)
                 .HasDatabaseName("ix_translation_requests_completed_at");
 

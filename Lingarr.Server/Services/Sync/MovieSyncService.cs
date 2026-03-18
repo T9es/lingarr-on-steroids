@@ -3,6 +3,7 @@ using Lingarr.Core.Entities;
 using Lingarr.Server.Interfaces.Services.Sync;
 using Lingarr.Server.Models.Integrations;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Lingarr.Server.Services.Sync;
 
@@ -27,21 +28,53 @@ public class MovieSyncService : IMovieSyncService
     public async Task SyncMovies(List<(RadarrMovie Movie, string InstanceId)> movies)
     {
         var processedCount = 0;
-        
-        foreach (var (movie, instanceId) in movies)
-        {
-            await _movieSync.SyncMovie(movie, instanceId);
-            processedCount++;
+        IDbContextTransaction? currentTransaction = null;
 
-            if (processedCount % BatchSize == 0)
+        try
+        {
+            // Begin transaction for the entire sync operation
+            currentTransaction = await _dbContext.Database.BeginTransactionAsync();
+
+            foreach (var (movie, instanceId) in movies)
+            {
+                await _movieSync.SyncMovie(movie, instanceId);
+                processedCount++;
+
+                // Commit transaction and start a new one after each batch
+                if (processedCount % BatchSize == 0)
+                {
+                    await SaveChanges(processedCount, movies.Count);
+                    await currentTransaction.CommitAsync();
+                    await currentTransaction.DisposeAsync();
+                    currentTransaction = await _dbContext.Database.BeginTransactionAsync();
+                }
+            }
+
+            // Commit final batch
+            if (processedCount % BatchSize != 0)
             {
                 await SaveChanges(processedCount, movies.Count);
             }
-        }
 
-        if (processedCount % BatchSize != 0)
+            await currentTransaction.CommitAsync();
+        }
+        catch (Exception ex)
         {
-            await SaveChanges(processedCount, movies.Count);
+            _logger.LogError(ex, "Error during movie sync. Rolling back transaction.");
+            
+            if (currentTransaction != null)
+            {
+                await currentTransaction.RollbackAsync();
+            }
+            
+            throw;
+        }
+        finally
+        {
+            if (currentTransaction != null)
+            {
+                await currentTransaction.DisposeAsync();
+            }
         }
     }
 

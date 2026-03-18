@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using GTranslate.Translators;
@@ -6,6 +6,8 @@ using Hangfire;
 using Hangfire.PostgreSql;
 using Hangfire.Storage.SQLite;
 using Lingarr.Core;
+using Polly;
+using Polly.Retry;
 using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Logging;
@@ -43,8 +45,31 @@ public static class ServiceCollectionExtensions
         });
 
         builder.Services.AddEndpointsApiExplorer();
-        ;
         builder.Services.AddMemoryCache();
+        
+        // Configure HttpClient with retry policy and timeout for integration services
+        // Capture logger factory for use in retry callback
+        var loggerFactory = builder.Services.BuildServiceProvider().GetService<ILoggerFactory>();
+        builder.Services.AddHttpClient<IIntegrationService, IntegrationService>()
+            .AddTransientHttpErrorPolicy(policy => policy.WaitAndRetryAsync(
+                3, // 3 retries
+                attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt)), // Exponential backoff: 2s, 4s, 8s
+                onRetry: (outcome, timespan, retryNumber, context) =>
+                {
+                    var status = outcome.Result?.StatusCode.ToString() ?? "N/A";
+                    var logger = loggerFactory?.CreateLogger<IntegrationService>();
+                    logger?.LogWarning(
+                        "Integration request failed. Retry {RetryNumber} after {Timespan}s. Status: {StatusCode}",
+                        retryNumber,
+                        timespan.TotalSeconds,
+                        status);
+                }))
+            .ConfigureHttpClient(client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(30);
+            });
+        
+        // Generic HttpClient for other services (no special retry policy)
         builder.Services.AddHttpClient();
 
         builder.ConfigureSwagger();

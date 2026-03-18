@@ -179,10 +179,22 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                         .HasName("pk_embedded_subtitles");
 
                     b.HasIndex("EpisodeId")
-                        .HasDatabaseName("ix_embedded_subtitles_episode_id");
+                        .HasDatabaseName("IX_EmbeddedSubtitles_EpisodeId");
+
+                    b.HasIndex("IsExtracted")
+                        .HasDatabaseName("IX_EmbeddedSubtitles_IsExtracted");
+
+                    b.HasIndex("Language")
+                        .HasDatabaseName("IX_EmbeddedSubtitles_Language");
 
                     b.HasIndex("MovieId")
-                        .HasDatabaseName("ix_embedded_subtitles_movie_id");
+                        .HasDatabaseName("IX_EmbeddedSubtitles_MovieId");
+
+                    b.HasIndex("EpisodeId", "IsExtracted")
+                        .HasDatabaseName("IX_EmbeddedSubtitles_EpisodeId_IsExtracted");
+
+                    b.HasIndex("MovieId", "IsExtracted")
+                        .HasDatabaseName("IX_EmbeddedSubtitles_MovieId_IsExtracted");
 
                     b.ToTable("embedded_subtitles", (string)null);
                 });
@@ -524,8 +536,11 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                     b.HasKey("Id")
                         .HasName("pk_seasons");
 
+                    b.HasIndex("SeasonNumber")
+                        .HasDatabaseName("IX_Seasons_SeasonNumber");
+
                     b.HasIndex("ShowId")
-                        .HasDatabaseName("ix_seasons_show_id");
+                        .HasDatabaseName("IX_Seasons_ShowId");
 
                     b.ToTable("seasons", (string)null);
                 });
@@ -923,8 +938,20 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                     b.HasIndex("CompletedAt")
                         .HasDatabaseName("ix_translation_requests_completed_at");
 
+                    b.HasIndex("FailedAt")
+                        .HasDatabaseName("IX_TranslationRequests_FailedAt");
+
+                    b.HasIndex("IsPriority")
+                        .HasDatabaseName("IX_TranslationRequests_IsPriority");
+
+                    b.HasIndex("NextRetryAt")
+                        .HasDatabaseName("IX_TranslationRequests_NextRetryAt");
+
                     b.HasIndex("Status")
-                        .HasDatabaseName("ix_translation_requests_status");
+                        .HasDatabaseName("IX_TranslationRequests_Status");
+
+                    b.HasIndex("Status", "IsPriority", "CreatedAt")
+                        .HasDatabaseName("IX_TranslationRequests_Status_Priority_Created");
 
                     b.HasIndex("MediaId", "MediaType", "SourceLanguage", "TargetLanguage", "IsActive")
                         .IsUnique()
@@ -971,8 +998,11 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                     b.HasKey("Id")
                         .HasName("pk_translation_request_logs");
 
+                    b.HasIndex("Level")
+                        .HasDatabaseName("IX_TranslationRequestLog_Level");
+
                     b.HasIndex("TranslationRequestId")
-                        .HasDatabaseName("ix_translation_request_logs_translation_request_id");
+                        .HasDatabaseName("IX_TranslationRequestLog_TranslationRequestId");
 
                     b.ToTable("translation_request_logs", (string)null);
                 });

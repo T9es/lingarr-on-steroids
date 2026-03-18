@@ -5,6 +5,7 @@ using Lingarr.Server.Interfaces.Services.Sync;
 using Lingarr.Server.Models;
 using Lingarr.Server.Models.Integrations;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Lingarr.Server.Services.Sync;
 
@@ -51,34 +52,66 @@ public class ShowSyncService : IShowSyncService
         }
         
         var processedCount = 0;
-        
-        foreach (var (show, instanceId) in shows)
+        IDbContextTransaction? currentTransaction = null;
+
+        try
         {
-            if (!instanceConfigs.TryGetValue(instanceId, out var config))
-            {
-                _logger.LogWarning("Could not find Sonarr instance config for {InstanceId}, skipping", instanceId);
-                continue;
-            }
-            
-            var showEntity = await _showSync.SyncShow(show, instanceId);
+            // Begin transaction for the entire sync operation
+            currentTransaction = await _dbContext.Database.BeginTransactionAsync();
 
-            foreach (var season in show.Seasons)
+            foreach (var (show, instanceId) in shows)
             {
-                var seasonEntity = await _seasonSync.SyncSeason(showEntity, show, season, config.Url, config.ApiKey);
-                await _episodeSync.SyncEpisodes(show, seasonEntity, instanceId, config.Url, config.ApiKey);
-            }
-            
-            processedCount++;
+                if (!instanceConfigs.TryGetValue(instanceId, out var config))
+                {
+                    _logger.LogWarning("Could not find Sonarr instance config for {InstanceId}, skipping", instanceId);
+                    continue;
+                }
+                
+                var showEntity = await _showSync.SyncShow(show, instanceId);
 
-            if (processedCount % BatchSize == 0)
+                foreach (var season in show.Seasons)
+                {
+                    var seasonEntity = await _seasonSync.SyncSeason(showEntity, show, season, config.Url, config.ApiKey);
+                    await _episodeSync.SyncEpisodes(show, seasonEntity, instanceId, config.Url, config.ApiKey);
+                }
+                
+                processedCount++;
+
+                // Commit transaction and start a new one after each batch
+                if (processedCount % BatchSize == 0)
+                {
+                    await SaveChanges(processedCount, shows.Count);
+                    await currentTransaction.CommitAsync();
+                    await currentTransaction.DisposeAsync();
+                    currentTransaction = await _dbContext.Database.BeginTransactionAsync();
+                }
+            }
+
+            // Commit final batch
+            if (processedCount % BatchSize != 0)
             {
                 await SaveChanges(processedCount, shows.Count);
             }
-        }
 
-        if (processedCount % BatchSize != 0)
+            await currentTransaction.CommitAsync();
+        }
+        catch (Exception ex)
         {
-            await SaveChanges(processedCount, shows.Count);
+            _logger.LogError(ex, "Error during show sync. Rolling back transaction.");
+            
+            if (currentTransaction != null)
+            {
+                await currentTransaction.RollbackAsync();
+            }
+            
+            throw;
+        }
+        finally
+        {
+            if (currentTransaction != null)
+            {
+                await currentTransaction.DisposeAsync();
+            }
         }
     }
 

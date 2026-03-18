@@ -982,6 +982,18 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                     if (!string.IsNullOrEmpty(extractedPath))
                     {
                         // Validate entry count - sparse tracks (Signs/Songs/Forced) have very few entries
+                        // Check Lingarr marker FIRST to avoid wasting I/O on non-Lingarr files
+                        if (!IsLingarrExtracted(extractedPath))
+                        {
+                            _logger.LogWarning(
+                                "Stream {StreamIndex} extracted file has no Lingarr marker, preserving (may be user file)",
+                                candidate.StreamIndex);
+                            // Don't delete user files, but don't use them either
+                            excludedStreamIndices ??= new List<int>();
+                            excludedStreamIndices.Add(candidate.StreamIndex);
+                            continue;
+                        }
+                        
                         var entryCount = CountSubtitleEntries(extractedPath);
                         
                         if (entryCount < MinimumDialogueEntries)
@@ -993,14 +1005,7 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                             // Delete the sparse file immediately - we don't want residue
                             try
                             {
-                                if (IsLingarrExtracted(extractedPath))
-                                {
-                                    File.Delete(extractedPath);
-                                }
-                                else
-                                {
-                                    _logger.LogWarning("Sparse file at {Path} has no Lingarr marker, preserving (may be user file)", extractedPath);
-                                }
+                                File.Delete(extractedPath);
                             }
                             catch (Exception deleteEx)
                             {

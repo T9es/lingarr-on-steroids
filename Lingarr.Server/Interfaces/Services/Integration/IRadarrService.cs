@@ -1,4 +1,4 @@
-﻿using Lingarr.Server.Models.Integrations;
+using Lingarr.Server.Models.Integrations;
 
 namespace Lingarr.Server.Interfaces.Services.Integration;
 
@@ -20,12 +20,13 @@ public interface IRadarrService
     /// <summary>
     /// Asynchronously retrieves a movie from the Radarr API.
     /// </summary>
+    /// <param name="movieId">The movie ID to retrieve</param>
     /// <returns>
     /// This method calls the Radarr API to fetch a movie
     /// The task result contains a <see cref="RadarrMovie"/>
     /// objects representing the movie, or <c>null</c> if the API call fails.
     /// </returns>
-    Task<RadarrMovie?> GetMovie(int MovieId);
+    Task<RadarrMovie?> GetMovie(int movieId);
 
     /// <summary>
     /// Asynchronously retrieves a list of movies from a specific Radarr instance.

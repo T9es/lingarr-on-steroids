@@ -1,4 +1,4 @@
-﻿using Lingarr.Server.Interfaces.Services;
+using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Integration;
 using Lingarr.Server.Models;
 using Lingarr.Server.Models.Integrations;
@@ -27,10 +27,10 @@ public class RadarrService : IRadarrService
     }
 
     /// <inheritdoc />
-    public async Task<RadarrMovie?> GetMovie(int moveId)
+    public async Task<RadarrMovie?> GetMovie(int movieId)
     {
         return await _integrationService.GetApiResponse<RadarrMovie>(
-            $"/api/v3/movie/{moveId}",
+            $"/api/v3/movie/{movieId}",
             new IntegrationSettingKeys
             {
                 Url = "radarr_url",
