@@ -1,5 +1,7 @@
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
+using Lingarr.Core.Enum;
+using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Models.Api;
 using Microsoft.AspNetCore.Mvc;
@@ -13,15 +15,18 @@ public class SubtitleExtractionController : ControllerBase
 {
     private readonly LingarrDbContext _dbContext;
     private readonly ISubtitleExtractionService _extractionService;
+    private readonly IMediaStateService _mediaStateService;
     private readonly ILogger<SubtitleExtractionController> _logger;
 
     public SubtitleExtractionController(
         LingarrDbContext dbContext,
         ISubtitleExtractionService extractionService,
+        IMediaStateService mediaStateService,
         ILogger<SubtitleExtractionController> logger)
     {
         _dbContext = dbContext;
         _extractionService = extractionService;
+        _mediaStateService = mediaStateService;
         _logger = logger;
     }
 
@@ -212,6 +217,9 @@ public class SubtitleExtractionController : ControllerBase
         }
 
         await _extractionService.SyncEmbeddedSubtitles(movie);
+        movie.IndexedAt = DateTime.UtcNow;
+        
+        await _mediaStateService.UpdateStateAsync(movie, MediaType.Movie);
         
         var embeddedSubs = await _dbContext.EmbeddedSubtitles
             .Where(e => e.MovieId == id)
@@ -233,6 +241,9 @@ public class SubtitleExtractionController : ControllerBase
         }
 
         await _extractionService.SyncEmbeddedSubtitles(episode);
+        episode.IndexedAt = DateTime.UtcNow;
+        
+        await _mediaStateService.UpdateStateAsync(episode, MediaType.Episode);
         
         var embeddedSubs = await _dbContext.EmbeddedSubtitles
             .Where(e => e.EpisodeId == id)

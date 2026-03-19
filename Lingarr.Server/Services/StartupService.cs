@@ -366,45 +366,71 @@ public class StartupService : IHostedService
     }
 
     /// <summary>
-    /// Recovers media stuck in AwaitingSource due to a previous indexing bug.
+    /// Recovers media stuck in AwaitingSource due to indexing issues.
+    /// Two scenarios are handled:
+    /// 1. Movies with embedded subtitles recorded but state wasn't updated (previous bug)
+    /// 2. Movies marked as indexed but with NO embedded subtitles (indexing failed silently)
     /// Clears their IndexedAt and State so the sync job will re-evaluate them.
     /// </summary>
     private async Task FixStuckAwaitingSourceMedia(LingarrDbContext dbContext)
     {
         try
         {
-            var affectedMovies = await dbContext.Movies
+            // Case 1: Has embedded subtitles but state wasn't updated
+            var moviesWithSubs = await dbContext.Movies
                 .Include(m => m.EmbeddedSubtitles)
                 .Where(m => m.TranslationState == TranslationState.AwaitingSource && m.IndexedAt != null)
                 .Where(m => m.EmbeddedSubtitles.Any(e => e.IsTextBased))
                 .ToListAsync();
 
-            if (affectedMovies.Count > 0)
+            // Case 2: Indexed but NO embedded subtitles (indexing failed or records lost)
+            var moviesWithoutSubs = await dbContext.Movies
+                .Include(m => m.EmbeddedSubtitles)
+                .Where(m => m.TranslationState == TranslationState.AwaitingSource && m.IndexedAt != null)
+                .Where(m => !m.EmbeddedSubtitles.Any())
+                .ToListAsync();
+
+            var allAffectedMovies = moviesWithSubs.Concat(moviesWithoutSubs).ToList();
+
+            if (allAffectedMovies.Count > 0)
             {
-                foreach (var movie in affectedMovies)
+                foreach (var movie in allAffectedMovies)
                 {
                     movie.IndexedAt = null;
                     movie.TranslationState = TranslationState.Unknown;
                 }
                 await dbContext.SaveChangesAsync();
-                _logger.LogInformation("Reset state for {Count} movies previously stuck in AwaitingSource with embedded subtitles.", affectedMovies.Count);
+                _logger.LogInformation(
+                    "Reset state for {Count} movies stuck in AwaitingSource ({WithSubs} with subs, {WithoutSubs} without subs).",
+                    allAffectedMovies.Count, moviesWithSubs.Count, moviesWithoutSubs.Count);
             }
             
-            var affectedEpisodes = await dbContext.Episodes
+            // Same for episodes
+            var episodesWithSubs = await dbContext.Episodes
                 .Include(e => e.EmbeddedSubtitles)
                 .Where(e => e.TranslationState == TranslationState.AwaitingSource && e.IndexedAt != null)
                 .Where(e => e.EmbeddedSubtitles.Any(e => e.IsTextBased))
                 .ToListAsync();
 
-            if (affectedEpisodes.Count > 0)
+            var episodesWithoutSubs = await dbContext.Episodes
+                .Include(e => e.EmbeddedSubtitles)
+                .Where(e => e.TranslationState == TranslationState.AwaitingSource && e.IndexedAt != null)
+                .Where(e => !e.EmbeddedSubtitles.Any())
+                .ToListAsync();
+
+            var allAffectedEpisodes = episodesWithSubs.Concat(episodesWithoutSubs).ToList();
+
+            if (allAffectedEpisodes.Count > 0)
             {
-                foreach (var episode in affectedEpisodes)
+                foreach (var episode in allAffectedEpisodes)
                 {
                     episode.IndexedAt = null;
                     episode.TranslationState = TranslationState.Unknown;
                 }
                 await dbContext.SaveChangesAsync();
-                _logger.LogInformation("Reset state for {Count} episodes previously stuck in AwaitingSource with embedded subtitles.", affectedEpisodes.Count);
+                _logger.LogInformation(
+                    "Reset state for {Count} episodes stuck in AwaitingSource ({WithSubs} with subs, {WithoutSubs} without subs).",
+                    allAffectedEpisodes.Count, episodesWithSubs.Count, episodesWithoutSubs.Count);
             }
         }
         catch (Exception ex)
