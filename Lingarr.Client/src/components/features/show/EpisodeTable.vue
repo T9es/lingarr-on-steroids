@@ -37,7 +37,7 @@
                 <span class="block md:hidden">⊘</span>
             </div>
         </div>
-        <div v-for="episode in episodes" :key="episode.id" class="grid grid-cols-14">
+        <div v-for="episode in sortedEpisodes" :key="episode.id" class="grid grid-cols-14">
             <div class="col-span-1 px-4 py-2">
                 {{ episode.episodeNumber }}
             </div>
@@ -147,7 +147,7 @@
     </div>
 </template>
 <script setup lang="ts">
-import { reactive, onMounted, ref } from 'vue'
+import { computed, reactive, onMounted, ref } from 'vue'
 import { IEpisode, ISubtitle, IEmbeddedSubtitle, MEDIA_TYPE, TRANSLATION_STATE } from '@/ts'
 import { useI18n } from '@/plugins/i18n'
 import BadgeComponent from '@/components/common/BadgeComponent.vue'
@@ -167,6 +167,16 @@ const props = defineProps<{
     subtitles: ISubtitle[]
 }>()
 const showStore = useShowStore()
+
+const sortedEpisodes = computed(() => {
+    return [...props.episodes].sort((a, b) => {
+        if (a.episodeNumber !== b.episodeNumber) {
+            return a.episodeNumber - b.episodeNumber
+        }
+
+        return a.id - b.id
+    })
+})
 
 // Track which episodes are currently being translated
 const translatingEpisode = reactive<Record<number, boolean>>({})
@@ -214,7 +224,7 @@ const checkIntegrityEpisode = async (episode: IEpisode) => {
 
 // Fetch embedded subtitles for episodes on mount
 onMounted(async () => {
-    for (const episode of props.episodes) {
+    for (const episode of sortedEpisodes.value) {
         if (!episode.embeddedSubtitles || episode.embeddedSubtitles.length === 0) {
             try {
                 episode.embeddedSubtitles = await services.subtitle.getEmbeddedSubtitles<

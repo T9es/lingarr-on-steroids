@@ -314,12 +314,32 @@ public class MediaService : IMediaService
     /// <inheritdoc />
     public async Task<Show?> GetShow(int id)
     {
-        return await _dbContext.Shows
+        var show = await _dbContext.Shows
             .Include(s => s.Images)
             .Include(s => s.Seasons)
             .ThenInclude(season => season.Episodes)
             .AsSplitQuery()
             .FirstOrDefaultAsync(s => s.Id == id);
+
+        if (show == null)
+        {
+            return null;
+        }
+
+        show.Seasons = show.Seasons
+            .OrderBy(season => season.SeasonNumber)
+            .ThenBy(season => season.Id)
+            .ToList();
+
+        foreach (var season in show.Seasons)
+        {
+            season.Episodes = season.Episodes
+                .OrderBy(episode => episode.EpisodeNumber)
+                .ThenBy(episode => episode.Id)
+                .ToList();
+        }
+
+        return show;
     }
     
     /// <inheritdoc />
