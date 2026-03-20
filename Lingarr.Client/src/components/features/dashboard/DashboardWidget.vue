@@ -1,7 +1,7 @@
 <template>
     <div
         :class="[
-            'from-secondary to-tertiary relative h-full rounded-md bg-linear-to-br p-4 shadow-md transition-all duration-200',
+            'from-secondary to-tertiary relative flex h-full min-h-0 flex-col overflow-hidden rounded-md bg-linear-to-br p-4 shadow-md transition-all duration-200',
             isConfigMode && 'ring-dashed ring-accent/50 ring-2'
         ]">
         <!-- Configuration Mode Controls -->
@@ -23,7 +23,7 @@
         </div>
 
         <!-- Widget Content -->
-        <div :class="['h-full overflow-x-hidden', isConfigMode && 'mt-4']">
+        <div :class="['min-h-0 flex-1 overflow-hidden', isConfigMode && 'mt-4']">
             <slot />
         </div>
     </div>

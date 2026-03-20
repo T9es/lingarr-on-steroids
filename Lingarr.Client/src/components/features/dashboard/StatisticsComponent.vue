@@ -74,7 +74,7 @@
                     :max-h="item.maxH"
                     :is-draggable="isConfigMode"
                     :is-resizable="isConfigMode"
-                    class="transition-shadow duration-200">
+                    class="min-h-0 transition-shadow duration-200">
                     <DashboardWidget
                         :widget-id="item.i"
                         :is-config-mode="isConfigMode"
@@ -454,9 +454,9 @@ const MediaOverviewContent = defineComponent({
                 props.statistics!.totalEpisodes
             )
 
-            return h('div', { class: 'bg-primary rounded-lg p-4 shadow-sm' }, [
-                h('div', { class: 'flex gap-6' }, [
-                    h('div', { class: 'flex-1 bg-secondary/30 rounded-md p-3' }, [
+            return h('div', { class: 'bg-primary h-full rounded-lg p-4 shadow-sm' }, [
+                h('div', { class: 'grid gap-4 md:grid-cols-2' }, [
+                    h('div', { class: 'min-w-0 rounded-md bg-secondary/30 p-3' }, [
                         h('div', { class: 'text-primary-content/60 text-xs font-medium' }, [
                             translate('statistics.movies')
                         ]),
@@ -485,8 +485,7 @@ const MediaOverviewContent = defineComponent({
                             ]
                         )
                     ]),
-                    h('div', { class: 'w-px bg-secondary/50' }),
-                    h('div', { class: 'flex-1 bg-secondary/30 rounded-md p-3' }, [
+                    h('div', { class: 'min-w-0 rounded-md bg-secondary/30 p-3' }, [
                         h('div', { class: 'text-primary-content/60 text-xs font-medium' }, [
                             translate('statistics.tvShows')
                         ]),
@@ -529,6 +528,7 @@ const MediaOverviewContent = defineComponent({
 }
 
 .vgl-item {
+    min-height: 0;
     touch-action: none;
     transition: box-shadow 0.2s ease;
 }
