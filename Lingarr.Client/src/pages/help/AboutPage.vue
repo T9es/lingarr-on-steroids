@@ -1,56 +1,15 @@
 <template>
     <div class="space-y-6 p-6">
-        <section
-            class="from-primary/60 via-secondary/95 to-tertiary border-accent/20 overflow-hidden rounded-2xl border bg-linear-to-br p-6 shadow-lg">
-            <div
-                class="flex flex-col gap-6 border-b border-white/6 pb-6 xl:flex-row xl:items-start xl:justify-between">
-                <div class="max-w-3xl space-y-4">
-                    <div class="flex flex-wrap items-center gap-2">
-                        <span
-                            class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold tracking-[0.24em] uppercase text-primary-content/65">
-                            {{ translate('help.about.title') }}
-                        </span>
-                        <span
-                            class="rounded-full border px-3 py-1 text-xs font-medium"
-                            :class="statusBadgeClasses">
-                            {{ updateStatusLabel }}
-                        </span>
-                        <span
-                            v-if="version.isDevBuild"
-                            class="rounded-full border border-orange-500/30 bg-orange-500/15 px-3 py-1 text-xs font-medium text-orange-300">
-                            {{ translate('help.about.devBuild') }}
-                        </span>
-                    </div>
-
-                    <div class="space-y-3">
-                        <h1 class="text-3xl leading-tight font-semibold text-primary-content md:text-4xl">
-                            Lingarr on Steroids
-                        </h1>
-                        <p class="max-w-2xl text-base leading-7 text-primary-content/72 md:text-lg">
-                            {{ translate('help.about.description') }}
-                        </p>
-                    </div>
-
-                    <div
-                        v-if="commitsPastRelease || version.branchName || version.commitSha"
-                        class="border-accent/20 bg-primary/35 flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3 text-sm text-primary-content/75">
-                        <span v-if="version.branchName" class="font-medium text-primary-content">
-                            {{ version.branchName }}
-                        </span>
-                        <span v-if="version.commitSha" class="font-mono text-primary-content/80">
-                            {{ version.commitSha }}
-                        </span>
-                        <span v-if="commitsPastRelease">
-                            {{ commitsPastRelease }}
-                        </span>
-                    </div>
-                </div>
-
-                <div class="flex flex-wrap items-center gap-3 xl:justify-end">
+        <CardComponent :title="translate('help.about.title')">
+            <template #description>
+                {{ translate('help.about.description') }}
+            </template>
+            <template #actions>
+                <div class="flex flex-wrap items-center gap-2">
                     <button
                         @click="checkForUpdates"
                         :disabled="checkingUpdates"
-                        class="bg-accent text-primary-content flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50">
+                        class="bg-accent text-primary-content hover:bg-accent/80 disabled:bg-secondary disabled:text-primary-content/50 flex items-center gap-2 rounded px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed">
                         <LoaderCircleIcon v-if="checkingUpdates" class="h-4 w-4 animate-spin" />
                         {{
                             checkingUpdates
@@ -62,148 +21,154 @@
                         href="https://github.com/T9es/lingarr-on-steroids"
                         target="_blank"
                         rel="noopener noreferrer"
-                        class="border-accent/30 bg-primary/45 text-primary-content hover:bg-primary/65 flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors">
+                        class="border-secondary bg-secondary hover:bg-secondary/80 text-primary-content flex items-center gap-2 rounded border px-4 py-2 text-sm font-semibold transition-colors">
                         <GithubIcon class="h-4 w-4" />
                         <span>{{ translate('help.about.viewOnGithub') }}</span>
                     </a>
                 </div>
-            </div>
+            </template>
+            <template #content>
+                <div class="space-y-4">
+                    <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                        <div class="bg-secondary/30 rounded-md p-4">
+                            <div class="text-secondary-content text-sm">Current Build</div>
+                            <div class="text-primary-content mt-2 break-all text-lg font-semibold">
+                                {{ displayVersion }}
+                            </div>
+                        </div>
+                        <div class="bg-secondary/30 rounded-md p-4">
+                            <div class="text-secondary-content text-sm">
+                                {{ translate('help.about.version') }}
+                            </div>
+                            <div class="text-primary-content mt-2 text-lg font-semibold">
+                                {{ currentVersion }}
+                            </div>
+                        </div>
+                        <div class="bg-secondary/30 rounded-md p-4">
+                            <div class="text-secondary-content text-sm">Latest Release</div>
+                            <div class="text-primary-content mt-2 text-lg font-semibold">
+                                {{ latestRelease }}
+                            </div>
+                        </div>
+                        <div class="bg-secondary/30 rounded-md p-4">
+                            <div class="text-secondary-content text-sm">Update Status</div>
+                            <div class="mt-2">
+                                <span class="rounded px-2 py-1 text-sm font-medium" :class="statusBadgeClasses">
+                                    {{ updateStatusLabel }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
 
-            <div class="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <div
-                    class="border-accent/15 bg-primary/35 rounded-xl border p-4 shadow-sm">
-                    <div class="text-primary-content/55 text-xs font-semibold tracking-[0.18em] uppercase">
-                        Current Build
-                    </div>
-                    <div class="mt-2 break-all text-lg font-semibold text-primary-content">
-                        {{ displayVersion }}
-                    </div>
-                </div>
-                <div
-                    class="border-accent/15 bg-primary/35 rounded-xl border p-4 shadow-sm">
-                    <div class="text-primary-content/55 text-xs font-semibold tracking-[0.18em] uppercase">
-                        {{ translate('help.about.version') }}
-                    </div>
-                    <div class="mt-2 text-lg font-semibold text-primary-content">
-                        {{ currentVersion }}
-                    </div>
-                </div>
-                <div
-                    class="border-accent/15 bg-primary/35 rounded-xl border p-4 shadow-sm">
-                    <div class="text-primary-content/55 text-xs font-semibold tracking-[0.18em] uppercase">
-                        Latest Release
-                    </div>
-                    <div class="mt-2 text-lg font-semibold text-primary-content">
-                        {{ latestRelease }}
-                    </div>
-                </div>
-                <div
-                    class="border-accent/15 bg-primary/35 rounded-xl border p-4 shadow-sm">
-                    <div class="text-primary-content/55 text-xs font-semibold tracking-[0.18em] uppercase">
-                        Update Status
-                    </div>
-                    <div class="mt-2 text-lg font-semibold text-primary-content">
-                        {{ updateStatusLabel }}
-                    </div>
-                </div>
-            </div>
+                    <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
+                        <div class="bg-secondary/20 space-y-3 rounded-md p-4">
+                            <h3 class="text-primary-content text-base font-semibold">
+                                Build Details
+                            </h3>
+                            <div class="grid gap-3 sm:grid-cols-2">
+                                <div>
+                                    <div class="text-secondary-content text-xs uppercase">
+                                        Branch
+                                    </div>
+                                    <div class="text-primary-content mt-1 font-medium">
+                                        {{ version.branchName || 'release' }}
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="text-secondary-content text-xs uppercase">
+                                        Commit
+                                    </div>
+                                    <div class="text-primary-content mt-1 break-all font-mono text-sm">
+                                        {{ version.commitSha || 'tagged release' }}
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="text-secondary-content text-xs uppercase">
+                                        Base Tag
+                                    </div>
+                                    <div class="text-primary-content mt-1 font-medium">
+                                        {{ version.baseTag || currentVersion }}
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="text-secondary-content text-xs uppercase">
+                                        Build Type
+                                    </div>
+                                    <div class="text-primary-content mt-1 font-medium">
+                                        {{
+                                            version.isDevBuild
+                                                ? translate('help.about.devBuild')
+                                                : 'Release'
+                                        }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
 
-            <div class="mt-4 flex flex-wrap gap-5 text-sm text-primary-content/62">
-                <div v-if="version.branchName" class="flex items-center gap-2">
-                    <span class="font-medium text-primary-content/80">
-                        Branch
+                        <div class="bg-secondary/20 space-y-3 rounded-md p-4">
+                            <h3 class="text-primary-content text-base font-semibold">
+                                Update Check
+                            </h3>
+                            <p class="text-secondary-content text-sm leading-6">
+                                Update checks compare this build against the latest GitHub release.
+                            </p>
+                            <div
+                                v-if="commitsPastRelease"
+                                class="border-secondary bg-primary rounded-md border px-3 py-2 text-sm">
+                                {{ commitsPastRelease }}
+                            </div>
+                            <div v-if="version.newVersion" class="text-sm text-green-400">
+                                {{ translate('help.about.updateAvailable') }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </template>
+        </CardComponent>
+
+        <CardComponent title="Documentation">
+            <template v-if="loading" #content>
+                <div class="flex items-center gap-3 py-2">
+                    <LoaderCircleIcon class="h-5 w-5 animate-spin" />
+                    <span class="text-secondary-content">
+                        {{ translate('help.about.loadingDocs') }}
                     </span>
-                    <span>{{ version.branchName }}</span>
                 </div>
-                <div v-if="version.commitSha" class="flex items-center gap-2">
-                    <span class="font-medium text-primary-content/80">
-                        Commit
-                    </span>
-                    <span class="font-mono">{{ version.commitSha }}</span>
+            </template>
+
+            <template v-else-if="error" #content>
+                <div class="rounded border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
+                    {{ translate('help.about.failedToLoad') }}{{ error }}
                 </div>
-            </div>
+            </template>
 
-            <p class="mt-4 max-w-3xl text-sm leading-6 text-primary-content/58">
-                Update checks compare this build against the latest GitHub release.
-            </p>
-        </section>
+            <template v-else #content>
+                <div class="space-y-6">
+                    <section v-if="overviewHtml" class="space-y-3">
+                        <h3 class="text-primary-content text-base font-semibold">Overview</h3>
+                        <div class="about-markdown" v-html="overviewHtml"></div>
+                    </section>
 
-        <div v-if="loading" class="bg-primary/35 rounded-2xl border border-white/6 p-8 shadow-md">
-            <div class="flex items-center gap-3">
-                <LoaderCircleIcon class="h-5 w-5 animate-spin" />
-                <span class="text-secondary-content">
-                    {{ translate('help.about.loadingDocs') }}
-                </span>
-            </div>
-        </div>
-
-        <div
-            v-else-if="error"
-            class="rounded-2xl border border-red-500/30 bg-red-500/10 p-5 text-red-300 shadow-md">
-            {{ translate('help.about.failedToLoad') }}{{ error }}
-        </div>
-
-        <div v-else class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_18rem]">
-            <div class="space-y-6">
-                <section
-                    v-if="overviewHtml"
-                    id="about-overview"
-                    class="bg-primary/35 border-accent/15 rounded-2xl border p-6 shadow-md">
-                    <div class="mb-4 flex items-center justify-between gap-3">
-                        <h2 class="text-xl font-semibold text-primary-content">
-                            Overview
-                        </h2>
-                        <span
-                            class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold tracking-[0.16em] uppercase text-primary-content/55">
-                            Documentation
-                        </span>
-                    </div>
-                    <div class="about-markdown" v-html="overviewHtml"></div>
-                </section>
-
-                <section
-                    v-for="section in readmeSections"
-                    :key="section.id"
-                    :id="section.id"
-                    class="bg-primary/35 border-accent/15 rounded-2xl border p-6 shadow-md">
-                    <div class="mb-4 flex items-center justify-between gap-3">
-                        <h2 class="text-xl font-semibold text-primary-content">
+                    <section
+                        v-for="section in readmeSections"
+                        :key="section.id"
+                        :id="section.id"
+                        class="border-secondary/60 space-y-3 border-t pt-6 first:border-t-0 first:pt-0">
+                        <h3 class="text-primary-content text-base font-semibold">
                             {{ section.title }}
-                        </h2>
-                        <a
-                            :href="`#${section.id}`"
-                            class="text-primary-content/45 hover:text-accent text-sm transition-colors">
-                            #
-                        </a>
-                    </div>
-                    <div class="about-markdown" v-html="section.html"></div>
-                </section>
-            </div>
-
-            <aside v-if="tocItems.length > 0" class="hidden xl:block">
-                <div
-                    class="bg-primary/35 border-accent/15 sticky top-4 rounded-2xl border p-5 shadow-md">
-                    <h2 class="text-sm font-semibold tracking-[0.18em] uppercase text-primary-content/60">
-                        On This Page
-                    </h2>
-                    <div class="mt-4 space-y-2">
-                        <a
-                            v-for="item in tocItems"
-                            :key="item.id"
-                            :href="`#${item.id}`"
-                            class="text-primary-content/65 hover:text-primary-content hover:bg-primary/45 block rounded-lg px-3 py-2 text-sm transition-colors">
-                            {{ item.title }}
-                        </a>
-                    </div>
+                        </h3>
+                        <div class="about-markdown" v-html="section.html"></div>
+                    </section>
                 </div>
-            </aside>
-        </div>
+            </template>
+        </CardComponent>
     </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { marked } from 'marked'
+import CardComponent from '@/components/common/CardComponent.vue'
 import GithubIcon from '@/components/icons/GithubIcon.vue'
 import LoaderCircleIcon from '@/components/icons/LoaderCircleIcon.vue'
 import { useInstanceStore } from '@/store/instance'
@@ -263,34 +228,14 @@ const updateStatusLabel = computed(() => {
 
 const statusBadgeClasses = computed(() => {
     if (version.value.newVersion) {
-        return 'border-green-500/30 bg-green-500/15 text-green-300'
+        return 'bg-green-500/20 text-green-400'
     }
 
     if (version.value.isDevBuild) {
-        return 'border-sky-500/30 bg-sky-500/15 text-sky-300'
+        return 'bg-blue-500/20 text-blue-300'
     }
 
-    return 'border-white/12 bg-white/6 text-primary-content/72'
-})
-
-const tocItems = computed(() => {
-    const items: Array<{ id: string; title: string }> = []
-
-    if (overviewHtml.value) {
-        items.push({
-            id: 'about-overview',
-            title: 'Overview'
-        })
-    }
-
-    readmeSections.value.forEach((section) => {
-        items.push({
-            id: section.id,
-            title: section.title
-        })
-    })
-
-    return items
+    return 'bg-secondary text-primary-content'
 })
 
 function transformLinks(content: string): string {
@@ -457,14 +402,6 @@ watch(
     color: var(--secondary-content);
 }
 
-.about-markdown :deep(h3) {
-    margin-top: 1.75rem;
-    margin-bottom: 0.75rem;
-    color: var(--primary-content);
-    font-size: 1.05rem;
-    font-weight: 700;
-}
-
 .about-markdown :deep(p),
 .about-markdown :deep(ul),
 .about-markdown :deep(ol),
@@ -494,16 +431,16 @@ watch(
 }
 
 .about-markdown :deep(blockquote) {
-    border-left: 3px solid color-mix(in srgb, var(--accent) 55%, transparent);
-    background: color-mix(in srgb, var(--primary) 38%, transparent);
-    border-radius: 0.9rem;
-    padding: 1rem 1.1rem;
+    border-left: 3px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    background: color-mix(in srgb, var(--secondary) 45%, transparent);
+    border-radius: 0.375rem;
+    padding: 0.85rem 1rem;
     color: var(--primary-content);
 }
 
 .about-markdown :deep(code) {
-    border-radius: 0.45rem;
-    background: color-mix(in srgb, var(--primary) 55%, transparent);
+    border-radius: 0.25rem;
+    background: color-mix(in srgb, var(--secondary) 75%, transparent);
     padding: 0.15rem 0.35rem;
     color: var(--primary-content);
     font-size: 0.92em;
@@ -511,9 +448,9 @@ watch(
 
 .about-markdown :deep(pre) {
     overflow-x: auto;
-    border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
-    border-radius: 1rem;
-    background: color-mix(in srgb, var(--primary) 70%, transparent);
+    border: 1px solid color-mix(in srgb, var(--secondary-content) 12%, transparent);
+    border-radius: 0.375rem;
+    background: color-mix(in srgb, var(--secondary) 80%, transparent);
     padding: 1rem;
 }
 
@@ -528,21 +465,21 @@ watch(
     overflow-x: auto;
     border-collapse: separate;
     border-spacing: 0;
-    border: 1px solid color-mix(in srgb, var(--accent) 14%, transparent);
-    border-radius: 1rem;
+    border: 1px solid color-mix(in srgb, var(--secondary-content) 12%, transparent);
+    border-radius: 0.375rem;
 }
 
 .about-markdown :deep(th),
 .about-markdown :deep(td) {
     min-width: 12rem;
-    border-bottom: 1px solid color-mix(in srgb, var(--accent) 12%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--secondary-content) 10%, transparent);
     padding: 0.85rem 1rem;
     text-align: left;
     vertical-align: top;
 }
 
 .about-markdown :deep(th) {
-    background: color-mix(in srgb, var(--primary) 55%, transparent);
+    background: color-mix(in srgb, var(--secondary) 70%, transparent);
     color: var(--primary-content);
     font-weight: 700;
 }
