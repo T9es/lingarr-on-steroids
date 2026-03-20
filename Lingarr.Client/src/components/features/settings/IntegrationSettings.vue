@@ -59,6 +59,57 @@
                 v-translate="'settings.integrations.reindexTask'"
                 class="text-secondary-content pt-4 text-sm" />
 
+            <div class="border-secondary-content/20 mt-6 border-t pt-4">
+                <h4 class="text-primary-content text-sm font-medium">
+                    {{ translate('settings.integrations.webhookTitle') || 'Webhook Setup' }}
+                </h4>
+                <p class="text-secondary-content mt-1 text-xs">
+                    {{
+                        translate('settings.integrations.webhookDescription') ||
+                        'Add a webhook in the Connect/Webhook settings in Radarr or Sonarr and use the matching URL below. Each instance must use its own URL.'
+                    }}
+                </p>
+                <p v-if="hasChanges" class="text-accent mt-2 text-xs">
+                    {{
+                        translate('settings.integrations.webhookSaveFirst') ||
+                        'Save your changes before using these webhook URLs.'
+                    }}
+                </p>
+
+                <div v-if="webhookInstances.length > 0" class="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-2">
+                    <div
+                        v-for="item in webhookInstances"
+                        :key="item.key"
+                        class="border-secondary-content/20 bg-tertiary/40 rounded-md border p-3">
+                        <div class="flex items-center justify-between gap-3">
+                            <div>
+                                <p class="text-primary-content text-sm font-medium">
+                                    {{ item.name }}
+                                </p>
+                                <p class="text-secondary-content text-xs">
+                                    {{ item.typeLabel }}
+                                </p>
+                            </div>
+                            <span
+                                class="border-secondary-content/30 text-secondary-content rounded-full border px-2 py-0.5 text-[11px]">
+                                {{ item.instanceId }}
+                            </span>
+                        </div>
+                        <code
+                            class="bg-primary/60 text-primary-content mt-3 block overflow-x-auto rounded-md px-3 py-2 text-xs leading-5 break-all">
+                            {{ item.url }}
+                        </code>
+                    </div>
+                </div>
+
+                <p v-else class="text-secondary-content mt-3 text-xs">
+                    {{
+                        translate('settings.integrations.webhookEmpty') ||
+                        'Add and save an instance with a valid URL and API key to generate its webhook URL.'
+                    }}
+                </p>
+            </div>
+
             <!-- Cleanup Duplicates Section -->
             <div class="border-secondary-content/20 mt-6 border-t pt-4">
                 <div class="flex items-center justify-between">
@@ -169,6 +220,14 @@ interface InstanceWrapper {
     instance: IInstance
 }
 
+interface WebhookInstance {
+    key: string
+    instanceId: string
+    name: string
+    typeLabel: string
+    url: string
+}
+
 interface CleanupResult {
     success: boolean
     message: string
@@ -213,6 +272,14 @@ const instancesEqual = (a: InstanceWrapper[], b: InstanceWrapper[]): boolean => 
 // Computed to check if there are unsaved changes
 const hasChanges = computed(() => {
     return !instancesEqual(localInstances.value, originalInstances.value)
+})
+
+const webhookBaseUrl = computed(() => {
+    if (typeof window === 'undefined') {
+        return ''
+    }
+
+    return window.location.origin.replace(/\/$/, '')
 })
 
 // Get connection status for an instance
@@ -261,6 +328,22 @@ const parseInstances = (value: string | IInstance[]): IInstance[] => {
 const isValidInstance = (instance: IInstance): boolean => {
     return !!(instance.url && instance.apiKey)
 }
+
+const buildWebhookUrl = (type: 'radarr' | 'sonarr', instanceId: string): string => {
+    return `${webhookBaseUrl.value}/api/webhook/${type}/${encodeURIComponent(instanceId)}`
+}
+
+const webhookInstances = computed<WebhookInstance[]>(() => {
+    return localInstances.value
+        .filter((wrapper) => isValidInstance(wrapper.instance))
+        .map((wrapper) => ({
+            key: `${wrapper.type}-${wrapper.instance.id}`,
+            instanceId: wrapper.instance.id,
+            name: wrapper.instance.name || (wrapper.type === 'radarr' ? 'Radarr' : 'Sonarr'),
+            typeLabel: wrapper.type === 'radarr' ? 'Radarr' : 'Sonarr',
+            url: buildWebhookUrl(wrapper.type, wrapper.instance.id)
+        }))
+})
 
 // Load instances from store into local state
 const loadInstancesFromStore = (): void => {

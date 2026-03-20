@@ -348,6 +348,10 @@
       "cleanupDescription": "Als je dubbele films of series hebt na migratie naar multi-instance, zal dit ze samenvoegen tot één standaard instantie.",
       "cleanupButton": "Duplicaten oplossen",
       "cleanupStats": "Toegewezen aan standaard instantie"
+      ,"webhookDescription": "Voeg een webhook toe in de Connect/Webhook-instellingen van Radarr of Sonarr en gebruik de bijbehorende URL hieronder. Elke instantie moet zijn eigen URL gebruiken."
+      ,"webhookEmpty": "Voeg een instantie met een geldige URL en API-sleutel toe en sla die op om de webhook-URL te genereren."
+      ,"webhookSaveFirst": "Sla je wijzigingen op voordat je deze webhook-URL's gebruikt."
+      ,"webhookTitle": "Webhook-instelling"
     },
     "services": {
       "title": "Services",

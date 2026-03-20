@@ -348,6 +348,10 @@
       "cleanupDescription": "Jeśli masz zduplikowane filmy lub seriale po migracji do wielu instancji, to skonsoliduje je do jednej domyślnej instancji.",
       "cleanupButton": "Napraw duplikaty",
       "cleanupStats": "Przypisano ponownie do domyślnej instancji"
+      ,"webhookDescription": "Dodaj webhook w ustawieniach Connect/Webhook w Radarr lub Sonarr i użyj pasującego adresu URL poniżej. Każda instancja musi używać własnego adresu URL."
+      ,"webhookEmpty": "Dodaj i zapisz instancję z prawidłowym adresem URL i kluczem API, aby wygenerować jej adres webhooka."
+      ,"webhookSaveFirst": "Zapisz zmiany przed użyciem tych adresów webhooka."
+      ,"webhookTitle": "Konfiguracja webhooka"
     },
     "services": {
       "title": "Usługi",

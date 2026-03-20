@@ -348,6 +348,10 @@
       "cleanupDescription": "Si vous avez des films ou séries en double après la migration multi-instance, cela les consolidera en une seule instance par défaut.",
       "cleanupButton": "Corriger les doublons",
       "cleanupStats": "Réassigné à l'instance par défaut"
+      ,"webhookDescription": "Ajoutez un webhook dans les paramètres Connect/Webhook de Radarr ou Sonarr et utilisez l'URL correspondante ci-dessous. Chaque instance doit utiliser sa propre URL."
+      ,"webhookEmpty": "Ajoutez et enregistrez une instance avec une URL et une clé API valides pour générer son URL de webhook."
+      ,"webhookSaveFirst": "Enregistrez vos modifications avant d'utiliser ces URL de webhook."
+      ,"webhookTitle": "Configuration du webhook"
     },
     "services": {
       "title": "Services",

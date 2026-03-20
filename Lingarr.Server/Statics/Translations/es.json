@@ -348,6 +348,10 @@
       "cleanupDescription": "Si tienes películas o series duplicadas por migrar a multi-instancia, esto las consolidará en una sola instancia por defecto.",
       "cleanupButton": "Corregir duplicados",
       "cleanupStats": "Reasignado a instancia por defecto"
+      ,"webhookDescription": "Añade un webhook en la configuración Connect/Webhook de Radarr o Sonarr y usa la URL correspondiente de abajo. Cada instancia debe usar su propia URL."
+      ,"webhookEmpty": "Añade y guarda una instancia con una URL y una clave API válidas para generar su URL de webhook."
+      ,"webhookSaveFirst": "Guarda los cambios antes de usar estas URL de webhook."
+      ,"webhookTitle": "Configuración del webhook"
     },
     "services": {
       "title": "Servicios",

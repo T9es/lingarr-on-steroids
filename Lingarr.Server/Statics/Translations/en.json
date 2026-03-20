@@ -348,6 +348,10 @@
       "cleanupDescription": "If you have duplicate movies or shows from migrating to multi-instance, this will consolidate them to a single default instance.",
       "cleanupButton": "Fix Duplicates",
       "cleanupStats": "Reassigned to default instance"
+      ,"webhookDescription": "Add a webhook in the Connect/Webhook settings in Radarr or Sonarr and use the matching URL below. Each instance must use its own URL."
+      ,"webhookEmpty": "Add and save an instance with a valid URL and API key to generate its webhook URL."
+      ,"webhookSaveFirst": "Save your changes before using these webhook URLs."
+      ,"webhookTitle": "Webhook Setup"
     },
     "services": {
       "title": "Services",

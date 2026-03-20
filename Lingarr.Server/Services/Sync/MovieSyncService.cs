@@ -27,55 +27,56 @@ public class MovieSyncService : IMovieSyncService
     /// <inheritdoc />
     public async Task SyncMovies(List<(RadarrMovie Movie, string InstanceId)> movies)
     {
-        var processedCount = 0;
-        IDbContextTransaction? currentTransaction = null;
-
-        try
+        var strategy = _dbContext.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async () =>
         {
-            // Begin transaction for the entire sync operation
-            currentTransaction = await _dbContext.Database.BeginTransactionAsync();
+            var processedCount = 0;
+            IDbContextTransaction? currentTransaction = null;
 
-            foreach (var (movie, instanceId) in movies)
+            try
             {
-                await _movieSync.SyncMovie(movie, instanceId);
-                processedCount++;
+                currentTransaction = await _dbContext.Database.BeginTransactionAsync();
 
-                // Commit transaction and start a new one after each batch
-                if (processedCount % BatchSize == 0)
+                foreach (var (movie, instanceId) in movies)
+                {
+                    await _movieSync.SyncMovie(movie, instanceId);
+                    processedCount++;
+
+                    if (processedCount % BatchSize == 0)
+                    {
+                        await SaveChanges(processedCount, movies.Count);
+                        await currentTransaction.CommitAsync();
+                        await currentTransaction.DisposeAsync();
+                        currentTransaction = await _dbContext.Database.BeginTransactionAsync();
+                    }
+                }
+
+                if (processedCount % BatchSize != 0)
                 {
                     await SaveChanges(processedCount, movies.Count);
-                    await currentTransaction.CommitAsync();
+                }
+
+                await currentTransaction.CommitAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during movie sync. Rolling back transaction.");
+
+                if (currentTransaction != null)
+                {
+                    await currentTransaction.RollbackAsync();
+                }
+
+                throw;
+            }
+            finally
+            {
+                if (currentTransaction != null)
+                {
                     await currentTransaction.DisposeAsync();
-                    currentTransaction = await _dbContext.Database.BeginTransactionAsync();
                 }
             }
-
-            // Commit final batch
-            if (processedCount % BatchSize != 0)
-            {
-                await SaveChanges(processedCount, movies.Count);
-            }
-
-            await currentTransaction.CommitAsync();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error during movie sync. Rolling back transaction.");
-            
-            if (currentTransaction != null)
-            {
-                await currentTransaction.RollbackAsync();
-            }
-            
-            throw;
-        }
-        finally
-        {
-            if (currentTransaction != null)
-            {
-                await currentTransaction.DisposeAsync();
-            }
-        }
+        });
     }
 
     /// <inheritdoc />

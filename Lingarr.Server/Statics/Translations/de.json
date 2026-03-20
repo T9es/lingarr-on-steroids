@@ -348,6 +348,10 @@
       "cleanupDescription": "Wenn Sie doppelte Filme oder Serien durch die Migration zu Multi-Instance haben, werden diese zu einer einzelnen Standard-Instanz zusammengeführt.",
       "cleanupButton": "Duplikate beheben",
       "cleanupStats": "Zur Standard-Instanz zugewiesen"
+      ,"webhookDescription": "Fügen Sie in den Connect-/Webhook-Einstellungen von Radarr oder Sonarr einen Webhook hinzu und verwenden Sie die passende URL unten. Jede Instanz muss ihre eigene URL verwenden."
+      ,"webhookEmpty": "Fügen Sie eine Instanz mit gültiger URL und API-Schlüssel hinzu und speichern Sie sie, um ihre Webhook-URL zu erzeugen."
+      ,"webhookSaveFirst": "Speichern Sie Ihre Änderungen, bevor Sie diese Webhook-URLs verwenden."
+      ,"webhookTitle": "Webhook-Einrichtung"
     },
     "services": {
       "title": "Dienste",
