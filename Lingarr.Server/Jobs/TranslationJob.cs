@@ -709,26 +709,9 @@ public class TranslationJob
             // Always unregister the job from cooperative cancellation
             _cancellationService.UnregisterJob(translationRequest.Id);
 
-            if (!string.IsNullOrEmpty(temporaryFilePath) && File.Exists(temporaryFilePath))
-            {
-                if (SubtitleExtractionService.IsLingarrExtracted(temporaryFilePath))
-                {
-                    try
-                    {
-                        File.Delete(temporaryFilePath);
-                        _logger.LogDebug("Deleted temporary extracted subtitle: {Path}", temporaryFilePath);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Failed to delete temporary extracted subtitle: {Path}", temporaryFilePath);
-                    }
-                }
-                else
-                {
-                    _logger.LogWarning("Not deleting {Path} - no Lingarr marker (user file)", temporaryFilePath);
-                }
-            }
-        }    }
+            await CleanupTemporaryExtractedSubtitleAsync(translationRequest, temporaryFilePath);
+        }
+    }
 
     private async Task WriteSubtitles(TranslationRequest translationRequest,
         List<SubtitleItem> translatedSubtitles,
@@ -886,10 +869,12 @@ public class TranslationJob
     /// </summary>
     /// <param name="subtitlePath">Path to the source subtitle file</param>
     /// <param name="stripSubtitleFormatting">Whether to use plaintext lines for detection</param>
-    private async Task CleanSourceSubtitleFile(string subtitlePath, bool stripSubtitleFormatting)
+    internal async Task CleanSourceSubtitleFile(string subtitlePath, bool stripSubtitleFormatting)
     {
         try
         {
+            var wasLingarrExtracted = SubtitleExtractionService.IsLingarrExtracted(subtitlePath);
+
             // Read the original subtitles
             var subtitles = await _subtitleService.ReadSubtitles(subtitlePath);
             
@@ -911,6 +896,11 @@ public class TranslationJob
                 
                 // Write the cleaned subtitles back to the original file
                 await _subtitleService.WriteSubtitles(subtitlePath, cleanedSubtitles, stripSubtitleFormatting);
+
+                if (wasLingarrExtracted)
+                {
+                    await RestoreExtractionMarkerAsync(subtitlePath);
+                }
             }
         }
         catch (Exception ex)
@@ -918,6 +908,70 @@ public class TranslationJob
             _logger.LogWarning(ex, "Failed to clean source subtitle file: {Path}", subtitlePath);
             // Don't throw - this is a non-critical operation
         }
+    }
+
+    internal async Task CleanupTemporaryExtractedSubtitleAsync(
+        TranslationRequest translationRequest,
+        string? temporaryFilePath)
+    {
+        if (string.IsNullOrWhiteSpace(temporaryFilePath) || !translationRequest.MediaId.HasValue)
+        {
+            return;
+        }
+
+        if (File.Exists(temporaryFilePath))
+        {
+            if (SubtitleExtractionService.IsLingarrExtracted(temporaryFilePath))
+            {
+                try
+                {
+                    File.Delete(temporaryFilePath);
+                    _logger.LogDebug("Deleted temporary extracted subtitle: {Path}", temporaryFilePath);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to delete temporary extracted subtitle: {Path}", temporaryFilePath);
+                }
+            }
+            else
+            {
+                _logger.LogWarning("Not deleting {Path} - no Lingarr marker (user file)", temporaryFilePath);
+                return;
+            }
+        }
+
+        if (File.Exists(temporaryFilePath))
+        {
+            return;
+        }
+
+        try
+        {
+            await _extractionService.ClearExtractionMetadataAsync(
+                translationRequest.MediaId.Value,
+                translationRequest.MediaType,
+                temporaryFilePath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to clear extraction metadata for temporary subtitle: {Path}", temporaryFilePath);
+        }
+    }
+
+    private static async Task RestoreExtractionMarkerAsync(string subtitlePath)
+    {
+        if (!File.Exists(subtitlePath) || SubtitleExtractionService.IsLingarrExtracted(subtitlePath))
+        {
+            return;
+        }
+
+        var content = await File.ReadAllTextAsync(subtitlePath);
+        var builder = new System.Text.StringBuilder();
+        builder.AppendLine($"{SubtitleExtractionService.ExtractionMarkerPrefix} Preserved=true");
+        builder.AppendLine();
+        builder.Append(content);
+
+        await File.WriteAllTextAsync(subtitlePath, builder.ToString());
     }
 
     /// <summary>

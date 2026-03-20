@@ -54,6 +54,8 @@ public class SubtitleExtractionController : ControllerBase
             await _dbContext.Entry(movie).Collection(m => m.EmbeddedSubtitles!).LoadAsync();
         }
 
+        await NormalizeStaleExtractedSubtitlesAsync(movie.EmbeddedSubtitles);
+
         var response = (movie.EmbeddedSubtitles ?? new List<EmbeddedSubtitle>())
             .Select(MapToResponse)
             .ToList();
@@ -84,6 +86,8 @@ public class SubtitleExtractionController : ControllerBase
             await _extractionService.SyncEmbeddedSubtitles(episode);
             await _dbContext.Entry(episode).Collection(e => e.EmbeddedSubtitles!).LoadAsync();
         }
+
+        await NormalizeStaleExtractedSubtitlesAsync(episode.EmbeddedSubtitles);
 
         var response = (episode.EmbeddedSubtitles ?? new List<EmbeddedSubtitle>())
             .Select(MapToResponse)
@@ -303,6 +307,33 @@ public class SubtitleExtractionController : ControllerBase
                 Error = $"Extraction failed: {ex.Message}"
             });
         }
+    }
+
+    private async Task NormalizeStaleExtractedSubtitlesAsync(List<EmbeddedSubtitle>? subtitles)
+    {
+        if (subtitles == null || subtitles.Count == 0)
+        {
+            return;
+        }
+
+        var staleSubtitles = subtitles
+            .Where(sub => sub.IsExtracted &&
+                          !string.IsNullOrEmpty(sub.ExtractedPath) &&
+                          !System.IO.File.Exists(sub.ExtractedPath))
+            .ToList();
+
+        if (staleSubtitles.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var staleSubtitle in staleSubtitles)
+        {
+            staleSubtitle.IsExtracted = false;
+            staleSubtitle.ExtractedPath = null;
+        }
+
+        await _dbContext.SaveChangesAsync();
     }
 
     private static EmbeddedSubtitleResponse MapToResponse(EmbeddedSubtitle entity) => new()

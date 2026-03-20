@@ -59,6 +59,14 @@ public interface ISubtitleExtractionService
         int? preferredStreamIndex = null);
 
     /// <summary>
+    /// Clears stale extraction metadata for the subtitle row that belongs to the specified media and extracted path.
+    /// </summary>
+    /// <param name="mediaId">The media ID</param>
+    /// <param name="mediaType">The media type (Movie or Episode)</param>
+    /// <param name="extractedPath">The exact extracted subtitle path to clear</param>
+    Task ClearExtractionMetadataAsync(int mediaId, MediaType mediaType, string extractedPath);
+
+    /// <summary>
     /// Syncs embedded subtitle information for a movie.
     /// Probes the media file and updates the database with detected embedded subtitles.
     /// </summary>

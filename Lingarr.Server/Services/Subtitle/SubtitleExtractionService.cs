@@ -1052,6 +1052,34 @@ public class SubtitleExtractionService : ISubtitleExtractionService
         }
     }
 
+    /// <inheritdoc />
+    public async Task ClearExtractionMetadataAsync(int mediaId, MediaType mediaType, string extractedPath)
+    {
+        if (string.IsNullOrWhiteSpace(extractedPath))
+        {
+            return;
+        }
+
+        var subtitle = await _dbContext.EmbeddedSubtitles.FirstOrDefaultAsync(es =>
+            es.ExtractedPath == extractedPath &&
+            ((mediaType == MediaType.Movie && es.MovieId == mediaId) ||
+             (mediaType == MediaType.Episode && es.EpisodeId == mediaId)));
+
+        if (subtitle == null)
+        {
+            return;
+        }
+
+        if (!subtitle.IsExtracted && string.IsNullOrEmpty(subtitle.ExtractedPath))
+        {
+            return;
+        }
+
+        subtitle.IsExtracted = false;
+        subtitle.ExtractedPath = null;
+        await _dbContext.SaveChangesAsync();
+    }
+
     /// <summary>
     /// Returns a list of embedded subtitle candidates sorted by suitability for translation.
     /// Prioritizes: text-based > matching source language > full/dialogue tracks > defaults.
@@ -1092,7 +1120,6 @@ public class SubtitleExtractionService : ISubtitleExtractionService
     {
         var result = new List<AvailableSubtitleResponse>();
         List<EmbeddedSubtitle>? embeddedSubtitles = null;
-        string? mediaPath = null;
 
         // Get media and its embedded subtitles
         if (mediaType == MediaType.Episode)
@@ -1121,7 +1148,6 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             }
 
             embeddedSubtitles = episode.EmbeddedSubtitles;
-            mediaPath = Path.Combine(episode.Path, episode.FileName);
         }
         else if (mediaType == MediaType.Movie)
         {
@@ -1149,7 +1175,6 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             }
 
             embeddedSubtitles = movie.EmbeddedSubtitles;
-            mediaPath = Path.Combine(movie.Path, movie.FileName);
         }
         else
         {
@@ -1160,6 +1185,23 @@ public class SubtitleExtractionService : ISubtitleExtractionService
         if (embeddedSubtitles == null || embeddedSubtitles.Count == 0)
         {
             return result;
+        }
+
+        var staleSubtitles = embeddedSubtitles
+            .Where(sub => sub.IsExtracted &&
+                          !string.IsNullOrEmpty(sub.ExtractedPath) &&
+                          !File.Exists(sub.ExtractedPath))
+            .ToList();
+
+        if (staleSubtitles.Count > 0)
+        {
+            foreach (var staleSubtitle in staleSubtitles)
+            {
+                staleSubtitle.IsExtracted = false;
+                staleSubtitle.ExtractedPath = null;
+            }
+
+            await _dbContext.SaveChangesAsync();
         }
 
         // Build response with entry counts for extracted subtitles
