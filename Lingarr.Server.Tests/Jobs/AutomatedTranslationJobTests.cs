@@ -136,7 +136,51 @@ public class AutomatedTranslationJobTests : IDisposable
 
         // Assert
         _processorMock.Verify(
-            p => p.ProcessMediaForceAsync(movie, MediaType.Movie, false, false, false),
+            p => p.ProcessMediaForceAsync(movie, MediaType.Movie, true, false, false),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task Execute_WithPendingMediaAndZeroQueued_ReconcilesState()
+    {
+        // Arrange
+        var movie = new Movie
+        {
+            Id = 1,
+            RadarrId = 1,
+            Title = "Pending Movie",
+            Path = "/test/path",
+            FileName = "test",
+            DateAdded = DateTime.UtcNow.AddDays(-7),
+            TranslationState = TranslationState.Pending
+        };
+
+        _dbContext.Movies.Add(movie);
+        await _dbContext.SaveChangesAsync();
+
+        _mediaStateServiceMock
+            .Setup(m => m.GetMediaNeedingTranslationAsync(It.IsAny<int>(), It.IsAny<bool>()))
+            .ReturnsAsync(new List<(IMedia, MediaType)> { (movie, MediaType.Movie) });
+
+        _processorMock
+            .Setup(p => p.ProcessMediaForceAsync(
+                It.IsAny<IMedia>(),
+                It.IsAny<MediaType>(),
+                It.IsAny<bool>(),
+                It.IsAny<bool>(),
+                It.IsAny<bool>()))
+            .ReturnsAsync(0);
+
+        _mediaStateServiceMock
+            .Setup(m => m.UpdateStateAsync(It.IsAny<IMedia>(), It.IsAny<MediaType>(), It.IsAny<bool>()))
+            .ReturnsAsync(TranslationState.Complete);
+
+        // Act
+        await _job.Execute();
+
+        // Assert
+        _mediaStateServiceMock.Verify(
+            m => m.UpdateStateAsync(movie, MediaType.Movie, It.IsAny<bool>()),
             Times.Once);
     }
 
@@ -182,6 +226,51 @@ public class AutomatedTranslationJobTests : IDisposable
         _mediaStateServiceMock.Verify(
             m => m.UpdateStateAsync(movie, MediaType.Movie, It.IsAny<bool>()),
             Times.AtLeastOnce);
+    }
+
+    [Fact]
+    public async Task Execute_WithStaleMediaThatBecomesPending_ProcessesWithForceProcess()
+    {
+        // Arrange
+        var movie = new Movie
+        {
+            Id = 1,
+            RadarrId = 1,
+            Title = "Stale To Pending",
+            Path = "/test/path",
+            FileName = "test",
+            DateAdded = DateTime.UtcNow.AddDays(-7),
+            TranslationState = TranslationState.Stale
+        };
+
+        _dbContext.Movies.Add(movie);
+        await _dbContext.SaveChangesAsync();
+
+        _mediaStateServiceMock
+            .Setup(m => m.GetMediaNeedingTranslationAsync(It.IsAny<int>(), It.IsAny<bool>()))
+            .ReturnsAsync(new List<(IMedia, MediaType)> { (movie, MediaType.Movie) });
+
+        _mediaStateServiceMock
+            .SetupSequence(m => m.UpdateStateAsync(It.IsAny<IMedia>(), It.IsAny<MediaType>(), It.IsAny<bool>()))
+            .ReturnsAsync(TranslationState.Pending)
+            .ReturnsAsync(TranslationState.InProgress);
+
+        _processorMock
+            .Setup(p => p.ProcessMediaForceAsync(
+                It.IsAny<IMedia>(),
+                It.IsAny<MediaType>(),
+                It.IsAny<bool>(),
+                It.IsAny<bool>(),
+                It.IsAny<bool>()))
+            .ReturnsAsync(1);
+
+        // Act
+        await _job.Execute();
+
+        // Assert
+        _processorMock.Verify(
+            p => p.ProcessMediaForceAsync(movie, MediaType.Movie, true, false, false),
+            Times.Once);
     }
 
     [Fact]

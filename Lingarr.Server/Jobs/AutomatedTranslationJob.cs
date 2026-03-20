@@ -115,6 +115,7 @@ public class AutomatedTranslationJob
                     itemVersion < currentVersion)
                 {
                     var newState = await _mediaStateService.UpdateStateAsync(media, mediaType);
+                    currentState = newState;
                     // Allow proceeding if Pending, OR if AwaitingSource but unindexed (needs scan)
                     DateTime? indexedAt = null;
                     if (mediaType == MediaType.Movie && media is Movie m) indexedAt = m.IndexedAt;
@@ -164,9 +165,10 @@ public class AutomatedTranslationJob
                     // even if processing crashes.
                     await _mediaStateService.UpdateLastSubtitleCheckAt(media.Id, mediaType);
                     
+                    var forceProcess = currentState == TranslationState.Pending;
                     var count = await _mediaSubtitleProcessor.ProcessMediaForceAsync(
                         media, mediaType,
-                        forceProcess: false,
+                        forceProcess: forceProcess,
                         forceTranslation: false);
 
                     if (count > 0)
@@ -182,7 +184,12 @@ public class AutomatedTranslationJob
                     }
                     else
                     {
-                         _logger.LogInformation("Processed {Title} but no translations were queued (Count=0). MediaId: {Id}", media.Title, media.Id);
+                        var reconciledState = await _mediaStateService.UpdateStateAsync(media, mediaType);
+                        _logger.LogInformation(
+                            "Processed {Title} but no translations were queued (Count=0). MediaId: {Id}. Reconciled state: {State}",
+                            media.Title,
+                            media.Id,
+                            reconciledState);
                     }
                 }
                 catch (DirectoryNotFoundException)
