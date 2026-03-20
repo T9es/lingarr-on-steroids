@@ -17,6 +17,9 @@ nupkg/
 # Fleet
 .fleet/
 
+# Local .NET CLI state
+.dotnet/
+
 # Code Rush
 .cr/
 

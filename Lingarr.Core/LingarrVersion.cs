@@ -1,5 +1,7 @@
-﻿using System.Net.Http.Json;
+using System.Diagnostics;
+using System.Net.Http.Json;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Caching.Memory;
 using Lingarr.Core.Models;
 using Semver;
@@ -8,95 +10,300 @@ namespace Lingarr.Core;
 
 public static class LingarrVersion
 {
+    private sealed class LocalBuildInfo
+    {
+        public string ReleaseVersion { get; init; } = string.Empty;
+        public string DisplayVersion { get; init; } = string.Empty;
+        public bool IsDevBuild { get; init; }
+        public string? BranchName { get; init; }
+        public string? CommitSha { get; init; }
+        public string? BaseTag { get; init; }
+        public int? CommitsSinceTag { get; init; }
+    }
+
     /// <summary>
-    /// Gets the current version from the assembly or falls back to a default value.
+    /// Gets the current release version from the assembly or falls back to a default value.
     /// </summary>
-    public static string Number => GetAssemblyVersion();
+    public static string Number => GetLocalBuildInfo().ReleaseVersion;
 
     /// <summary>
     /// Gets whether this is a development build (not a tagged release).
-    /// Detected by version suffix like -dev, -alpha, -beta, or commit hash presence.
     /// </summary>
-    public static bool IsDevBuild => IsDevelopmentBuild();
+    public static bool IsDevBuild => GetLocalBuildInfo().IsDevBuild;
 
     private static readonly HttpClient HttpClient = new()
     {
         DefaultRequestHeaders = { { "User-Agent", "LingarrApp" } }
     };
+
     private const string GitHubApiUrl = "https://api.github.com/repos/T9es/lingarr-on-steroids/releases/latest";
     private static readonly MemoryCache Cache = new(new MemoryCacheOptions());
+    private static readonly Regex GitDescribeRegex =
+        new(@"^(?<tag>.+)-(?<count>\d+)-g(?<sha>[0-9a-fA-F]+)$", RegexOptions.Compiled);
 
     /// <summary>
     /// Checks for available updates and returns version information.
-    /// For dev builds, always returns NewVersion=false since dev builds are ahead of releases.
+    /// For dev builds, this compares only against the latest tagged GitHub release.
     /// </summary>
     public static async Task<VersionInfo> CheckForUpdates()
     {
+        var localBuild = GetLocalBuildInfo();
         var latestVersion = await GetLatestVersion();
-        var currentVersion = Number;
 
-        // Dev builds should not show "update available" - they're ahead of releases
-        var isNewVersion = IsDevBuild 
-            ? false 
-            : IsNewVersionAvailable(latestVersion, currentVersion);
+        var isNewVersion = localBuild.IsDevBuild
+            ? false
+            : IsNewVersionAvailable(latestVersion, localBuild.ReleaseVersion);
 
         return new VersionInfo
         {
             NewVersion = isNewVersion,
-            IsDevBuild = IsDevBuild,
-            CurrentVersion = currentVersion,
-            LatestVersion = latestVersion
+            IsDevBuild = localBuild.IsDevBuild,
+            CurrentVersion = localBuild.ReleaseVersion,
+            DisplayVersion = localBuild.DisplayVersion,
+            LatestVersion = latestVersion,
+            BranchName = localBuild.BranchName,
+            CommitSha = localBuild.CommitSha,
+            BaseTag = localBuild.BaseTag,
+            CommitsSinceTag = localBuild.CommitsSinceTag
         };
     }
 
     /// <summary>
-    /// Gets the version from the assembly information.
+    /// Gets the release version from the assembly information.
     /// Falls back to "2.0.0-dev" if not available.
     /// </summary>
     private static string GetAssemblyVersion()
     {
         var assembly = Assembly.GetExecutingAssembly();
         var version = assembly.GetName().Version;
-        
+
         if (version != null && (version.Major > 0 || version.Minor > 0 || version.Build > 0))
         {
-            // Format as Major.Minor.Build (e.g., 2.2.0)
             return $"{version.Major}.{version.Minor}.{version.Build}";
         }
 
-        // Fallback: try to get from AssemblyInformationalVersionAttribute
         var informationalVersion = assembly
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
-        
+
         if (!string.IsNullOrWhiteSpace(informationalVersion))
         {
             return informationalVersion;
         }
 
-        // Final fallback
         return "2.0.0-dev";
     }
 
     /// <summary>
-    /// Determines if the current build is a development build based on version suffix.
+    /// Gets the assembly informational version which may include source revision metadata.
     /// </summary>
-    private static bool IsDevelopmentBuild()
+    private static string GetInformationalVersion()
     {
-        var version = Number.ToLowerInvariant();
-        
-        // Check for common dev/pre-release indicators in version string
-        return version.Contains("-dev") ||
-               version.Contains("-alpha") ||
-               version.Contains("-beta") ||
-               version.Contains("-rc") ||
-               version.Contains("+") || // Build metadata (e.g., git commit hash)
-               version.Contains("commit") ||
-               version.Contains("sha");
+        var assembly = Assembly.GetExecutingAssembly();
+        return assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? string.Empty;
+    }
+
+    private static LocalBuildInfo GetLocalBuildInfo()
+    {
+        const string cacheKey = "LingarrLocalBuildInfo";
+        if (Cache.TryGetValue(cacheKey, out LocalBuildInfo? cachedBuildInfo) && cachedBuildInfo != null)
+        {
+            return cachedBuildInfo;
+        }
+
+        var buildInfo = CreateLocalBuildInfo();
+        Cache.Set(
+            cacheKey,
+            buildInfo,
+            new MemoryCacheEntryOptions().SetAbsoluteExpiration(TimeSpan.FromMinutes(10))
+        );
+
+        return buildInfo;
+    }
+
+    private static LocalBuildInfo CreateLocalBuildInfo()
+    {
+        var releaseVersion = GetAssemblyVersion();
+        var informationalVersion = GetInformationalVersion();
+        var gitDescribe = TryGetGitOutput("describe --tags --long --always");
+        var branchName = TryGetGitOutput("branch --show-current");
+        var commitSha = TryGetGitOutput("rev-parse --short HEAD");
+        var baseTag = string.Empty;
+        int? commitsSinceTag = null;
+        var isDevBuild = false;
+        var displayVersion = releaseVersion;
+
+        if (!string.IsNullOrWhiteSpace(gitDescribe))
+        {
+            displayVersion = gitDescribe;
+
+            var describeMatch = GitDescribeRegex.Match(gitDescribe);
+            if (describeMatch.Success)
+            {
+                baseTag = describeMatch.Groups["tag"].Value.TrimStart('v');
+                commitSha ??= describeMatch.Groups["sha"].Value;
+
+                if (int.TryParse(describeMatch.Groups["count"].Value, out var parsedCount))
+                {
+                    commitsSinceTag = parsedCount;
+                    isDevBuild = parsedCount > 0;
+                }
+            }
+            else
+            {
+                isDevBuild = HasDevelopmentMarker(gitDescribe, releaseVersion);
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(commitSha))
+        {
+            commitSha = ExtractCommitSha(informationalVersion);
+        }
+
+        if (!isDevBuild)
+        {
+            isDevBuild = HasDevelopmentMarker(informationalVersion, releaseVersion) ||
+                         commitsSinceTag.GetValueOrDefault() > 0;
+        }
+
+        if (string.IsNullOrWhiteSpace(gitDescribe) &&
+            !string.IsNullOrWhiteSpace(informationalVersion) &&
+            HasDevelopmentMarker(informationalVersion, releaseVersion))
+        {
+            displayVersion = informationalVersion;
+        }
+
+        if (string.IsNullOrWhiteSpace(displayVersion) && !string.IsNullOrWhiteSpace(informationalVersion))
+        {
+            displayVersion = informationalVersion;
+        }
+
+        if (string.IsNullOrWhiteSpace(displayVersion))
+        {
+            displayVersion = releaseVersion;
+        }
+
+        if (string.IsNullOrWhiteSpace(baseTag))
+        {
+            baseTag = releaseVersion;
+        }
+
+        return new LocalBuildInfo
+        {
+            ReleaseVersion = releaseVersion,
+            DisplayVersion = displayVersion,
+            IsDevBuild = isDevBuild,
+            BranchName = branchName,
+            CommitSha = commitSha,
+            BaseTag = baseTag,
+            CommitsSinceTag = commitsSinceTag
+        };
+    }
+
+    private static bool HasDevelopmentMarker(string? version, string releaseVersion)
+    {
+        if (string.IsNullOrWhiteSpace(version))
+        {
+            return false;
+        }
+
+        var normalizedVersion = version.Trim();
+        var normalizedReleaseVersion = releaseVersion.Trim();
+        var lowerVersion = normalizedVersion.ToLowerInvariant();
+
+        return lowerVersion.Contains("-dev") ||
+               lowerVersion.Contains("-alpha") ||
+               lowerVersion.Contains("-beta") ||
+               lowerVersion.Contains("-rc") ||
+               lowerVersion.Contains("+") ||
+               lowerVersion.Contains("commit") ||
+               lowerVersion.Contains("sha") ||
+               !string.Equals(
+                   normalizedVersion.TrimStart('v'),
+                   normalizedReleaseVersion.TrimStart('v'),
+                   StringComparison.OrdinalIgnoreCase
+               );
+    }
+
+    private static string? ExtractCommitSha(string? informationalVersion)
+    {
+        if (string.IsNullOrWhiteSpace(informationalVersion))
+        {
+            return null;
+        }
+
+        var metadataSeparatorIndex = informationalVersion.IndexOf('+');
+        if (metadataSeparatorIndex < 0 || metadataSeparatorIndex == informationalVersion.Length - 1)
+        {
+            return null;
+        }
+
+        var metadata = informationalVersion[(metadataSeparatorIndex + 1)..].Trim();
+        if (string.IsNullOrWhiteSpace(metadata))
+        {
+            return null;
+        }
+
+        return metadata.Length <= 7 ? metadata : metadata[..7];
+    }
+
+    private static string? TryGetGitOutput(string arguments)
+    {
+        var repositoryRoot = FindRepositoryRoot();
+        if (string.IsNullOrWhiteSpace(repositoryRoot))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var process = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = "git",
+                    Arguments = $"-C \"{repositoryRoot}\" {arguments}",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                }
+            };
+
+            process.Start();
+            var output = process.StandardOutput.ReadToEnd().Trim();
+            process.WaitForExit(3000);
+
+            return process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output)
+                ? output
+                : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? FindRepositoryRoot()
+    {
+        var currentDirectory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (currentDirectory != null)
+        {
+            var gitPath = Path.Combine(currentDirectory.FullName, ".git");
+            if (Directory.Exists(gitPath) || File.Exists(gitPath))
+            {
+                return currentDirectory.FullName;
+            }
+
+            currentDirectory = currentDirectory.Parent;
+        }
+
+        return null;
     }
 
     private static async Task<string> GetLatestVersion()
     {
-        var cacheKey = "GithubLatestRelease";
+        const string cacheKey = "GithubLatestRelease";
         if (Cache.TryGetValue(cacheKey, out string? cachedVersion) && cachedVersion != null)
         {
             return cachedVersion;
@@ -109,39 +316,36 @@ public static class LingarrVersion
                 ? release.TagName
                 : release?.Name ?? Number;
 
-            var cacheEntryOptions = new MemoryCacheEntryOptions()
-                .SetAbsoluteExpiration(TimeSpan.FromHours(24));
-
-            Cache.Set(cacheKey, latestVersion, cacheEntryOptions);
+            Cache.Set(
+                cacheKey,
+                latestVersion,
+                new MemoryCacheEntryOptions().SetAbsoluteExpiration(TimeSpan.FromHours(24))
+            );
 
             return latestVersion;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Failed to get latest version, returning default application version. Error: {ex.Message}");
+            Console.WriteLine(
+                $"Failed to get latest version, returning default application version. Error: {ex.Message}"
+            );
             return Number;
         }
     }
 
     private static bool IsNewVersionAvailable(string latestVersion, string currentVersion)
     {
-        // Trim 'v' prefix that GitHub releases often use
         latestVersion = latestVersion?.TrimStart('v') ?? string.Empty;
         currentVersion = currentVersion?.TrimStart('v') ?? string.Empty;
 
-        // Handle empty or null versions
         if (string.IsNullOrWhiteSpace(latestVersion) || string.IsNullOrWhiteSpace(currentVersion))
         {
             return false;
         }
 
-        // Use Semver library for proper semantic version comparison
         if (SemVersion.TryParse(latestVersion, SemVersionStyles.Any, out var latest) &&
             SemVersion.TryParse(currentVersion, SemVersionStyles.Any, out var current))
         {
-            // Compare versions: latest > current means an update is available
-            // Pre-release versions are considered less than their release counterparts
-            // e.g., 2.2.0-beta < 2.2.0
             return latest.ComparePrecedenceTo(current) > 0;
         }
 

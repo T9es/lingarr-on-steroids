@@ -24,7 +24,33 @@ public class VersionInfo
     public string? CurrentVersion { get; set; } = string.Empty;
 
     /// <summary>
+    /// The best available display version for the current build.
+    /// This may include git describe output for branch builds.
+    /// </summary>
+    public string? DisplayVersion { get; set; } = string.Empty;
+
+    /// <summary>
     /// The latest released version available on GitHub.
     /// </summary>
     public string? LatestVersion { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The current git branch when available.
+    /// </summary>
+    public string? BranchName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The current short git commit SHA when available.
+    /// </summary>
+    public string? CommitSha { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The closest reachable git tag for the current build when available.
+    /// </summary>
+    public string? BaseTag { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The number of commits ahead of the nearest tag when available.
+    /// </summary>
+    public int? CommitsSinceTag { get; set; }
 }
