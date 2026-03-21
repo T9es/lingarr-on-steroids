@@ -61,7 +61,7 @@
                 :cols="{ lg: 12, md: 8, sm: 4, xs: 2, xxs: 1 }"
                 class="min-h-[200px]">
                 <GridItem
-                    v-for="item in visibleLayout"
+                    v-for="item in renderLayout"
                     :key="item.i"
                     :i="item.i"
                     :x="item.x"
@@ -219,6 +219,9 @@ const confirmReset = async () => {
 
 // Local reactive layout for grid-layout-plus
 const currentLayout = ref<LayoutItem[]>([])
+const renderLayout = computed(() =>
+    currentLayout.value.filter((item) => isWidgetVisible(item.i))
+)
 
 // Sync visibleLayout to currentLayout
 watch(
