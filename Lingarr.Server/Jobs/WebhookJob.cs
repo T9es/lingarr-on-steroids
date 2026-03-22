@@ -2,30 +2,25 @@ using Hangfire;
 using Lingarr.Core.Data;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Interfaces.Services;
-using Lingarr.Server.Models;
 using Lingarr.Server.Models.Webhooks;
-using Microsoft.EntityFrameworkCore;
 
 namespace Lingarr.Server.Jobs;
 
 public class WebhookJob
 {
-    private readonly LingarrDbContext _dbContext;
+    private readonly IAutomationService _automationService;
     private readonly IMediaService _mediaService;
-    private readonly IMediaSubtitleProcessor _mediaSubtitleProcessor;
     private readonly IInstanceConfigService _instanceConfigService;
     private readonly ILogger<WebhookJob> _logger;
 
     public WebhookJob(
-        LingarrDbContext dbContext,
+        IAutomationService automationService,
         IMediaService mediaService,
-        IMediaSubtitleProcessor mediaSubtitleProcessor,
         IInstanceConfigService instanceConfigService,
         ILogger<WebhookJob> logger)
     {
-        _dbContext = dbContext;
+        _automationService = automationService;
         _mediaService = mediaService;
-        _mediaSubtitleProcessor = mediaSubtitleProcessor;
         _instanceConfigService = instanceConfigService;
         _logger = logger;
     }
@@ -72,18 +67,13 @@ public class WebhookJob
                 return;
             }
 
-            var movie = await _dbContext.Movies.FirstOrDefaultAsync(m => m.Id == internalMovieId);
-            if (movie == null)
-            {
-                _logger.LogError("Movie with internal ID {InternalId} not found after sync", internalMovieId);
-                return;
-            }
-
-            // Process subtitles for this movie
-            var processed = await _mediaSubtitleProcessor.ProcessMedia(movie, MediaType.Movie);
+            var processed = await _automationService.ProcessSingleMediaForAutomationAsync(
+                internalMovieId,
+                MediaType.Movie,
+                "radarr_webhook");
             
             _logger.LogInformation(
-                "Webhook processing complete for '{Title}': subtitles processed = {Processed}",
+                "Webhook processing complete for '{Title}': automation queued = {Processed}",
                 title, processed);
         }
         catch (Exception ex)
@@ -143,12 +133,10 @@ public class WebhookJob
                     continue;
                 }
 
-                var episodeEntity = await _dbContext.Episodes
-                    .FirstOrDefaultAsync(e => e.Id == episodeId);
-                    
-                if (episodeEntity == null) continue;
-
-                await _mediaSubtitleProcessor.ProcessMedia(episodeEntity, MediaType.Episode);
+                await _automationService.ProcessSingleMediaForAutomationAsync(
+                    episodeId,
+                    MediaType.Episode,
+                    "sonarr_webhook");
             }
             
             _logger.LogInformation(

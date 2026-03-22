@@ -14,13 +14,16 @@ namespace Lingarr.Server.Listener;
 public class SettingChangedListener
 {
     private readonly IServiceProvider _serviceProvider;
+    private readonly IScheduleService _scheduleService;
     private readonly IHubContext<SettingUpdatesHub> _hubContext;
     private readonly ILogger<SettingChangedListener> _logger;
     public SettingChangedListener(IServiceProvider serviceProvider,
+        IScheduleService scheduleService,
         IHubContext<SettingUpdatesHub> hubContext,
         ILogger<SettingChangedListener> logger)
     {
         _serviceProvider = serviceProvider;
+        _scheduleService = scheduleService;
         _hubContext = hubContext;
         _logger = logger;
     }
@@ -157,21 +160,7 @@ public class SettingChangedListener
                 case "Automation":
                     _logger.LogInformation(
                         $"Settings changed for |Green|{jobName}|/Green|. Automation has been |Orange|modified|/Orange|.");
-                    if (settings[SettingKeys.Automation.AutomationEnabled] == "true")
-                    {
-                        var translationSchedule =
-                            await settingService.GetSetting(SettingKeys.Automation.TranslationSchedule);
-                        RecurringJob.RemoveIfExists(SettingKeys.Automation.TranslationSchedule);
-                        RecurringJob.AddOrUpdate<AutomatedTranslationJob>(
-                            "AutomatedTranslationJob",
-                            job => job.Execute(),
-                            translationSchedule);
-                    }
-                    else
-                    {
-                        RecurringJob.RemoveIfExists("AutomatedTranslationJob");
-                    }
-
+                    await _scheduleService.SyncAutomationJobAsync();
                     break;
             }
         }
@@ -207,14 +196,7 @@ public class SettingChangedListener
                     break;
 
                 case "Schedule":
-                    RecurringJob.AddOrUpdate<SyncMovieJob>(
-                        "SyncMovieJob",
-                        job => job.Execute(),
-                        settings[SettingKeys.Automation.MovieSchedule]);
-                    RecurringJob.AddOrUpdate<SyncShowJob>(
-                        "SyncShowJob",
-                        job => job.Execute(),
-                        settings[SettingKeys.Automation.ShowSchedule]);
+                    await _scheduleService.SyncIndexerJobsAsync();
                     break;
 
 

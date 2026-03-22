@@ -15,6 +15,7 @@ public class TokenUsageService : ITokenUsageService
     private readonly ISettingService _settings;
     private readonly ILogger<TokenUsageService> _logger;
     private readonly IMemoryCache _cache;
+    private readonly TimeProvider _timeProvider;
     
     private static readonly TimeSpan CacheLifetime = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan PollInterval = TimeSpan.FromMinutes(2);
@@ -25,12 +26,14 @@ public class TokenUsageService : ITokenUsageService
         LingarrDbContext dbContext,
         ISettingService settings,
         ILogger<TokenUsageService> logger,
-        IMemoryCache cache)
+        IMemoryCache cache,
+        TimeProvider timeProvider)
     {
         _dbContext = dbContext;
         _settings = settings;
         _logger = logger;
         _cache = cache;
+        _timeProvider = timeProvider;
     }
 
     public async Task EnsureTokensAvailableAsync(string service, CancellationToken cancellationToken)
@@ -41,8 +44,8 @@ public class TokenUsageService : ITokenUsageService
             return;
         }
 
-        var resetTime = await GetResetTime();
-        var usage = await GetUsageFromDb(service, resetTime);
+        var bounds = await GetWindowBoundsAsync();
+        var usage = await GetUsageFromDb(service, bounds);
 
         if (usage.TokensUsedToday < limit)
         {
@@ -51,57 +54,58 @@ public class TokenUsageService : ITokenUsageService
 
         _logger.LogWarning(
             "Token limit reached for {Service}: {Used}/{Limit} tokens. Pausing until {ResetTime}",
-            service, usage.TokensUsedToday, limit, resetTime);
+            service, usage.TokensUsedToday, limit, bounds.NextResetUtc);
 
-        await WaitForResetAsync(service, limit, resetTime, cancellationToken);
+        await WaitForResetAsync(service, limit, bounds.NextResetUtc, cancellationToken);
     }
 
     public async Task RecordUsageAsync(string service, int? promptTokens, int? completionTokens)
     {
         var outputTokens = completionTokens ?? 0;
-        if (outputTokens <= 0) return;
+        if (outputTokens <= 0)
+        {
+            return;
+        }
 
-        var cacheKey = $"token-usage-{service}";
+        var bounds = await GetWindowBoundsAsync();
+        var cacheKey = GetCacheKey(service, bounds);
         if (_cache.TryGetValue<TokenUsageSnapshot>(cacheKey, out var snapshot) && snapshot != null)
         {
             snapshot.TokensUsedToday += outputTokens;
-            snapshot.LastUpdated = DateTime.UtcNow;
+            snapshot.LastUpdated = _timeProvider.GetUtcNow().UtcDateTime;
             _cache.Set(cacheKey, snapshot, CacheLifetime);
         }
     }
 
     public async Task<TokenUsageSnapshot> GetUsageAsync(string service)
     {
-        var resetTime = await GetResetTime();
-        var usage = await GetUsageFromDb(service, resetTime);
+        var bounds = await GetWindowBoundsAsync();
+        var usage = await GetUsageFromDb(service, bounds);
         var limitSetting = await GetTokenLimitSetting(service);
         
         usage.TokenLimit = long.TryParse(limitSetting, out var limit) && limit > 0 ? limit : null;
-        usage.ResetAt = resetTime;
+        usage.ResetAt = bounds.NextResetUtc;
         
         return usage;
     }
 
-    private async Task<TokenUsageSnapshot> GetUsageFromDb(string service, DateTime resetTime)
+    private async Task<TokenUsageSnapshot> GetUsageFromDb(string service, TokenUsageWindowBounds bounds)
     {
-        var cacheKey = $"token-usage-{service}";
+        var cacheKey = GetCacheKey(service, bounds);
         if (_cache.TryGetValue<TokenUsageSnapshot>(cacheKey, out var cached) && cached != null)
         {
-            if (cached.LastUpdated > resetTime)
-            {
-                return cached;
-            }
+            return cached;
         }
 
         var tokensUsed = await _dbContext.ApiUsageLogs
-            .Where(log => log.Service == service && log.Timestamp >= resetTime)
+            .Where(log => log.Service == service && log.Timestamp >= bounds.WindowStartUtc)
             .SumAsync(log => log.CompletionTokens ?? log.TokensUsed ?? 0);
 
         var snapshot = new TokenUsageSnapshot
         {
             Service = service,
             TokensUsedToday = tokensUsed,
-            LastUpdated = DateTime.UtcNow
+            LastUpdated = _timeProvider.GetUtcNow().UtcDateTime
         };
 
         _cache.Set(cacheKey, snapshot, CacheLifetime);
@@ -121,42 +125,61 @@ public class TokenUsageService : ITokenUsageService
             _ => null
         };
 
-        return key != null ? await _settings.GetSetting(key) : string.Empty;
+        return key != null ? await _settings.GetSetting(key) ?? string.Empty : string.Empty;
     }
 
-    private async Task<DateTime> GetResetTime()
+    private async Task<TokenUsageWindowBounds> GetWindowBoundsAsync()
     {
         var resetTimeSetting = await _settings.GetSetting(SettingKeys.Translation.TokenLimits.TokenLimitResetTime);
-        
+        return GetWindowBounds(resetTimeSetting);
+    }
+
+    private TokenUsageWindowBounds GetWindowBounds(string? resetTimeSetting)
+    {
+        var nowUtc = _timeProvider.GetUtcNow().UtcDateTime;
+        var resetTimeOfDay = ParseResetTime(resetTimeSetting);
+        var resetTodayUtc = nowUtc.Date.Add(resetTimeOfDay);
+
+        return nowUtc >= resetTodayUtc
+            ? new TokenUsageWindowBounds(resetTodayUtc, resetTodayUtc.AddDays(1), resetTimeSetting ?? "00:00")
+            : new TokenUsageWindowBounds(resetTodayUtc.AddDays(-1), resetTodayUtc, resetTimeSetting ?? "00:00");
+    }
+
+    private static TimeSpan ParseResetTime(string? resetTimeSetting)
+    {
         if (string.IsNullOrWhiteSpace(resetTimeSetting))
         {
-            return DateTime.UtcNow.Date;
+            return TimeSpan.Zero;
         }
 
         var parts = resetTimeSetting.Split(':');
-        if (parts.Length == 2 && int.TryParse(parts[0], out var hours) && int.TryParse(parts[1], out var minutes))
+        if (parts.Length == 2 &&
+            int.TryParse(parts[0], out var hours) &&
+            int.TryParse(parts[1], out var minutes))
         {
-            var today = DateTime.UtcNow.Date;
-            var resetToday = today.AddHours(hours).AddMinutes(minutes);
-            
-            return resetToday <= DateTime.UtcNow ? resetToday.AddDays(1) : resetToday;
+            return new TimeSpan(hours, minutes, 0);
         }
 
-        return DateTime.UtcNow.Date;
+        return TimeSpan.Zero;
     }
 
-    private async Task WaitForResetAsync(string service, long limit, DateTime resetTime, CancellationToken cancellationToken)
+    private static string GetCacheKey(string service, TokenUsageWindowBounds bounds)
+    {
+        return $"token-usage-{service.ToLowerInvariant()}-{bounds.WindowStartUtc.Ticks}-{bounds.ResetTimeSetting}";
+    }
+
+    private async Task WaitForResetAsync(string service, long limit, DateTime nextResetUtc, CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            var now = DateTime.UtcNow;
-            if (now >= resetTime)
+            var now = _timeProvider.GetUtcNow().UtcDateTime;
+            if (now >= nextResetUtc)
             {
                 _logger.LogInformation("Token limit reset time reached for {Service}", service);
                 return;
             }
 
-            var waitTime = resetTime - now;
+            var waitTime = nextResetUtc - now;
             var actualWait = waitTime > PollInterval ? PollInterval : waitTime;
 
             _logger.LogInformation(
@@ -172,7 +195,8 @@ public class TokenUsageService : ITokenUsageService
                 throw;
             }
 
-            var usage = await GetUsageFromDb(service, resetTime);
+            var bounds = await GetWindowBoundsAsync();
+            var usage = await GetUsageFromDb(service, bounds);
             if (usage.TokensUsedToday < limit)
             {
                 _logger.LogInformation(
@@ -184,4 +208,9 @@ public class TokenUsageService : ITokenUsageService
 
         throw new OperationCanceledException("Token limit wait cancelled");
     }
+
+    private sealed record TokenUsageWindowBounds(
+        DateTime WindowStartUtc,
+        DateTime NextResetUtc,
+        string ResetTimeSetting);
 }

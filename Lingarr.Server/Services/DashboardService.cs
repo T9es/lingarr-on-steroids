@@ -5,6 +5,7 @@ using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Server.Interfaces;
 using Lingarr.Server.Interfaces.Services;
+using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models;
 using Microsoft.EntityFrameworkCore;
 
@@ -19,15 +20,18 @@ public class DashboardService : IDashboardService
     private readonly IStatisticsService _statisticsService;
     private readonly ITranslationRequestService _translationRequestService;
     private readonly LingarrDbContext _dbContext;
+    private readonly ITokenUsageService _tokenUsageService;
 
     public DashboardService(
         IStatisticsService statisticsService,
         ITranslationRequestService translationRequestService,
-        LingarrDbContext dbContext)
+        LingarrDbContext dbContext,
+        ITokenUsageService tokenUsageService)
     {
         _statisticsService = statisticsService;
         _translationRequestService = translationRequestService;
         _dbContext = dbContext;
+        _tokenUsageService = tokenUsageService;
     }
 
 /// <inheritdoc />
@@ -234,6 +238,11 @@ public class DashboardService : IDashboardService
         });
 
         await _dbContext.SaveChangesAsync();
+
+        if (success && completionTokens.GetValueOrDefault() > 0)
+        {
+            await _tokenUsageService.RecordUsageAsync(service, promptTokens, completionTokens);
+        }
     }
 
     /// <inheritdoc />
