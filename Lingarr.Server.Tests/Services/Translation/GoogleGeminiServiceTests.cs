@@ -11,6 +11,7 @@ using Lingarr.Core.Configuration;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models.Batch;
+using Lingarr.Server.Services;
 using Lingarr.Server.Services.Translation;
 using Microsoft.Extensions.Logging;
 using Moq;

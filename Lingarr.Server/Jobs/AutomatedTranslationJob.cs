@@ -1,7 +1,6 @@
-﻿using Hangfire;
-using Lingarr.Core.Entities;
+using Hangfire;
+using Lingarr.Core.Configuration;
 using Lingarr.Core.Enum;
-using Lingarr.Core.Interfaces;
 using Lingarr.Server.Filters;
 using Lingarr.Server.Interfaces.Services;
 using Microsoft.OpenApi.Extensions;
@@ -45,8 +44,8 @@ public class AutomatedTranslationJob
 
         try
         {
-            // Check if automation is enabled
-            var automationEnabled = await _settingService.GetSetting(SettingKeys.Automation.AutomationEnabled);
+            var automationEnabled = await _settingService.GetSetting(
+                SettingKeys.Automation.AutomationEnabled);
             if (automationEnabled != "true")
             {
                 _logger.LogInformation("Automation is disabled, skipping run");
@@ -54,27 +53,30 @@ public class AutomatedTranslationJob
                 return;
             }
 
-            // Get settings
             var settings = await _settingService.GetSettings([
                 SettingKeys.Automation.MaxTranslationsPerRun
             ]);
 
             var maxPerRun = int.TryParse(
-                settings.GetValueOrDefault(SettingKeys.Automation.MaxTranslationsPerRun), 
-                out var limit) ? limit : 10;
+                settings.GetValueOrDefault(SettingKeys.Automation.MaxTranslationsPerRun),
+                out var limit)
+                ? limit
+                : 10;
 
-            // Get media that needs work (efficient query using TranslationState)
             var mediaToProcess = await _mediaStateService.GetMediaNeedingTranslationAsync(maxPerRun * 2);
-            
+
             _logger.LogInformation(
-                "AutomatedTranslationJob: found {Count} candidates needing translation", 
+                "AutomatedTranslationJob: found {Count} candidates needing translation",
                 mediaToProcess.Count);
 
             var translationsQueued = 0;
             var processedCount = 0;
 
-            foreach (var (media, mediaType) in mediaToProcess)
+            foreach (var mediaItem in mediaToProcess)
             {
+                var media = mediaItem.Media;
+                var mediaType = mediaItem.Type;
+
                 if (translationsQueued >= maxPerRun)
                 {
                     _logger.LogInformation("Reached max translations per run ({Max}), stopping", maxPerRun);
@@ -98,15 +100,14 @@ public class AutomatedTranslationJob
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, 
-                        "Failed to process {Title} for translation", 
-                        media.Title);
+                    _logger.LogWarning(ex, "Failed to process {Title} for translation", media.Title);
                 }
             }
 
             _logger.LogInformation(
                 "AutomatedTranslationJob completed: processed {Processed}, queued {Queued} translations",
-                processedCount, translationsQueued);
+                processedCount,
+                translationsQueued);
 
             await _scheduleService.UpdateJobState(jobName, JobStatus.Succeeded.GetDisplayName());
         }

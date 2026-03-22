@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
@@ -17,7 +20,7 @@ public class TokenUsageServiceTests
     public async Task GetUsageAsync_WithMidnightReset_UsesCurrentUtcDayWindow()
     {
         var nowUtc = Utc(2026, 3, 22, 16, 0);
-        await using var dbContext = BuildContext(
+        await using var dbContext = await BuildContext(
         [
             CreateLog("gemini", Utc(2026, 3, 21, 23, 59), completionTokens: 20),
             CreateLog("gemini", Utc(2026, 3, 22, 10, 0), completionTokens: 30),
@@ -37,7 +40,7 @@ public class TokenUsageServiceTests
     public async Task GetUsageAsync_BeforeResetHour_UsesPreviousDayWindow()
     {
         var nowUtc = Utc(2026, 3, 22, 5, 0);
-        await using var dbContext = BuildContext(
+        await using var dbContext = await BuildContext(
         [
             CreateLog("gemini", Utc(2026, 3, 21, 5, 59), completionTokens: 7),
             CreateLog("gemini", Utc(2026, 3, 21, 6, 0), completionTokens: 11),
@@ -57,7 +60,7 @@ public class TokenUsageServiceTests
     public async Task GetUsageAsync_AfterResetHour_UsesCurrentDayWindow()
     {
         var nowUtc = Utc(2026, 3, 22, 7, 0);
-        await using var dbContext = BuildContext(
+        await using var dbContext = await BuildContext(
         [
             CreateLog("gemini", Utc(2026, 3, 22, 5, 59), completionTokens: 9),
             CreateLog("gemini", Utc(2026, 3, 22, 6, 0), completionTokens: 15),
@@ -77,7 +80,7 @@ public class TokenUsageServiceTests
     public async Task GetUsageAsync_WhenResetTimeChanges_RecalculatesUsingNewWindow()
     {
         var nowUtc = Utc(2026, 3, 22, 5, 0);
-        await using var dbContext = BuildContext(
+        await using var dbContext = await BuildContext(
         [
             CreateLog("gemini", Utc(2026, 3, 21, 12, 0), completionTokens: 10),
             CreateLog("gemini", Utc(2026, 3, 22, 1, 0), completionTokens: 20)
@@ -100,7 +103,7 @@ public class TokenUsageServiceTests
     public async Task RecordUsageAsync_UpdatesCachedSnapshotForCurrentWindow()
     {
         var nowUtc = Utc(2026, 3, 22, 16, 0);
-        await using var dbContext = BuildContext(
+        await using var dbContext = await BuildContext(
         [
             CreateLog("gemini", Utc(2026, 3, 22, 10, 0), completionTokens: 10)
         ]);
@@ -109,10 +112,11 @@ public class TokenUsageServiceTests
         var service = CreateService(dbContext, cache, nowUtc, "00:00");
 
         var usageBefore = await service.GetUsageAsync("gemini");
+        var tokensUsedBefore = usageBefore.TokensUsedToday;
         await service.RecordUsageAsync("gemini", promptTokens: 20, completionTokens: 5);
         var usageAfter = await service.GetUsageAsync("gemini");
 
-        Assert.Equal(10, usageBefore.TokensUsedToday);
+        Assert.Equal(10, tokensUsedBefore);
         Assert.Equal(15, usageAfter.TokensUsedToday);
     }
 
