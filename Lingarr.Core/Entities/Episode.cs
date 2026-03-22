@@ -47,8 +47,8 @@ public class Episode : BaseEntity, IMedia
     public int StateSettingsVersion { get; set; }
     
     /// <summary>
-    /// When the media directory was last checked for new subtitle files.
-    /// Used for mtime-based change detection during sync.
+    /// When the media directory was last checked while waiting for a source subtitle,
+    /// or when automation rotated this item to the back of the queue.
     /// </summary>
     public DateTime? LastSubtitleCheckAt { get; set; }
 }

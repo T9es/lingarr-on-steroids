@@ -112,8 +112,15 @@ public class EpisodeSync : IEpisodeSync
                 
                 if (shouldUpdateState)
                 {
-                    await _mediaStateService.UpdateStateAsync(entity, MediaType.Episode, saveChanges: false);
-                    entity.LastSubtitleCheckAt = DateTime.UtcNow;
+                    var refreshedState = await _mediaStateService.UpdateStateAsync(
+                        entity,
+                        MediaType.Episode,
+                        saveChanges: false);
+
+                    if (SubtitleCheckTimestampPolicy.ShouldStampAfterStateRefresh(refreshedState))
+                    {
+                        entity.LastSubtitleCheckAt = DateTime.UtcNow;
+                    }
                 }
             }
             catch (Exception ex)

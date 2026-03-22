@@ -160,8 +160,12 @@ public class MovieSync : IMovieSync
             
             if (shouldUpdateState)
             {
-                await _mediaStateService.UpdateStateAsync(movieEntity, MediaType.Movie);
-                movieEntity.LastSubtitleCheckAt = DateTime.UtcNow;
+                var refreshedState = await _mediaStateService.UpdateStateAsync(movieEntity, MediaType.Movie);
+
+                if (SubtitleCheckTimestampPolicy.ShouldStampAfterStateRefresh(refreshedState))
+                {
+                    movieEntity.LastSubtitleCheckAt = DateTime.UtcNow;
+                }
             }
         }
         catch (Exception ex)
