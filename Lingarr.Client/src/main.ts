@@ -19,24 +19,23 @@ import './utils'
 const pinia = createPinia()
 const app = createApp(App)
 
-new Promise((resolve) => resolve(true))
-    .then(async () => {
+app.use(i18nPlugin)
+app.directive('highlight', highlight)
+app.directive('show-title', showTitle)
+app.use(pinia)
+app.use(router)
+
+const bootstrap = async () => {
+    try {
         await i18n.loadTranslations()
-        app.use(i18nPlugin)
-    })
-    .then(() => {
-        app.directive('highlight', highlight)
-        app.directive('show-title', showTitle)
-    })
-    .then(() => {
-        app.use(pinia)
-        app.use(router)
-    })
-    .then(async () => {
-        await useSettingStore().applySettingsOnLoad()
-        await useInstanceStore().applyVersionOnLoad()
-        await useTranslationRequestStore().getActiveCount()
-    })
-    .finally(() => {
+        await useSettingStore(pinia).applySettingsOnLoad()
+        await useInstanceStore(pinia).applyVersionOnLoad()
+        await useTranslationRequestStore(pinia).getActiveCount()
+    } catch (error) {
+        console.error('Failed to initialize app bootstrap:', error)
+    } finally {
         app.mount('#app')
-    })
+    }
+}
+
+void bootstrap()

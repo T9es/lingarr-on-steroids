@@ -58,7 +58,7 @@
                 :use-css-transforms="true"
                 :responsive="true"
                 :breakpoints="{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }"
-                :cols="{ lg: 12, md: 8, sm: 4, xs: 2, xxs: 1 }"
+                :cols="{ lg: 12, md: 12, sm: 4, xs: 2, xxs: 1 }"
                 class="min-h-[200px]">
                 <GridItem
                     v-for="item in renderLayout"
