@@ -15,4 +15,20 @@ public interface ISeasonSync
     /// <param name="instanceApiKey">The Sonarr instance API key</param>
     /// <returns>The synchronized season entity</returns>
     Task<Season> SyncSeason(Show show, SonarrShow sonarrShow, SonarrSeason season, string instanceUrl, string instanceApiKey);
+
+    /// <summary>
+    /// Synchronizes the season for a single episode from Sonarr, resolving the path from that episode's file.
+    /// </summary>
+    /// <param name="show">The show entity the season belongs to</param>
+    /// <param name="sonarrShow">The Sonarr show containing the episode</param>
+    /// <param name="episode">The Sonarr episode used to resolve season data</param>
+    /// <param name="instanceUrl">The Sonarr instance URL</param>
+    /// <param name="instanceApiKey">The Sonarr instance API key</param>
+    /// <returns>The synchronized season entity</returns>
+    Task<Season> SyncSeasonForEpisode(
+        Show show,
+        SonarrShow sonarrShow,
+        SonarrEpisode episode,
+        string instanceUrl,
+        string instanceApiKey);
 }

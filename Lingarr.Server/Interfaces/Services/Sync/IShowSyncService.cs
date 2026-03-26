@@ -1,5 +1,6 @@
 using Lingarr.Core.Entities;
 using Lingarr.Server.Models.Integrations;
+using Lingarr.Server.Models.Sync;
 
 namespace Lingarr.Server.Interfaces.Services.Sync;
 
@@ -19,6 +20,15 @@ public interface IShowSyncService
     /// <param name="instanceId">The ID of the Sonarr instance this show belongs to</param>
     /// <returns>A task representing the asynchronous operation</returns>
     Task<Show?> SyncShow(SonarrShow show, string instanceId);
+
+    /// <summary>
+    /// Synchronizes a single episode from Sonarr, refreshing only the affected show metadata,
+    /// season path, and episode state needed for webhook processing.
+    /// </summary>
+    /// <param name="episode">The Sonarr episode to sync</param>
+    /// <param name="instanceId">The ID of the Sonarr instance this episode belongs to</param>
+    /// <returns>The targeted episode refresh result, or null if sync could not complete</returns>
+    Task<EpisodeRefreshResult?> SyncEpisode(SonarrEpisode episode, string instanceId);
 
     /// <summary>
     /// Removes shows that no longer exist in Sonarr for a specific instance

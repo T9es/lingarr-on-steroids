@@ -246,6 +246,56 @@ public class TranslationRequestService : ITranslationRequestService
         
         return count;
     }
+
+    /// <inheritdoc />
+    public async Task<int> InterruptActiveRequestsForMedia(MediaType mediaType, int mediaId)
+    {
+        var activeRequests = await _dbContext.TranslationRequests
+            .Where(tr => tr.MediaType == mediaType &&
+                         tr.MediaId == mediaId &&
+                         (tr.Status == TranslationStatus.Pending || tr.Status == TranslationStatus.InProgress))
+            .ToListAsync();
+
+        if (activeRequests.Count == 0)
+        {
+            return 0;
+        }
+
+        var now = DateTime.UtcNow;
+
+        foreach (var request in activeRequests)
+        {
+            _cancellationService.CancelJob(request.Id);
+
+            if (_asyncTranslationJobs.ContainsKey(request.Id))
+            {
+                await _asyncTranslationJobs[request.Id].CancelAsync();
+            }
+
+            request.CompletedAt = now;
+            request.Status = TranslationStatus.Interrupted;
+            request.IsActive = null;
+        }
+
+        await _dbContext.SaveChangesAsync();
+
+        foreach (var request in activeRequests)
+        {
+            await ClearMediaHash(request);
+            await _progressService.Emit(request, 0);
+        }
+
+        await UpdateActiveCount();
+        await UpdateMediaState(activeRequests[0]);
+
+        _logger.LogInformation(
+            "Interrupted {Count} active translation request(s) for {MediaType} {MediaId}",
+            activeRequests.Count,
+            mediaType,
+            mediaId);
+
+        return activeRequests.Count;
+    }
     
     /// <inheritdoc />
     public async Task<string?> CancelTranslationRequest(TranslationRequest cancelRequest)

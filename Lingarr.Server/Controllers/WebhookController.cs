@@ -9,6 +9,8 @@ namespace Lingarr.Server.Controllers;
 [Route("api/webhook")]
 public class WebhookController : ControllerBase
 {
+    private static readonly string[] AllowedWebhookEvents = ["Download"];
+
     private readonly IBackgroundJobClient _backgroundJobClient;
     private readonly ILogger<WebhookController> _logger;
 
@@ -36,6 +38,17 @@ public class WebhookController : ControllerBase
         {
             _logger.LogWarning("Invalid Radarr webhook payload: missing or invalid movie data");
             return BadRequest(new { message = "Invalid webhook payload: missing movie data" });
+        }
+
+        if (!IsAllowedEventType(payload.EventType))
+        {
+            var eventType = payload.EventType ?? "Unknown";
+            _logger.LogInformation(
+                "Ignoring Radarr webhook event {EventType} for movie '{Title}' from instance '{InstanceId}'",
+                eventType,
+                payload.Movie.Title,
+                instanceId);
+            return Ok(new { message = $"Ignored webhook event type '{eventType}'" });
         }
 
         _backgroundJobClient.Enqueue<WebhookJob>(job =>
@@ -72,6 +85,17 @@ public class WebhookController : ControllerBase
             return BadRequest(new { message = "Invalid webhook payload: missing episode data" });
         }
 
+        if (!IsAllowedEventType(payload.EventType))
+        {
+            var eventType = payload.EventType ?? "Unknown";
+            _logger.LogInformation(
+                "Ignoring Sonarr webhook event {EventType} for series '{Title}' from instance '{InstanceId}'",
+                eventType,
+                payload.Series.Title,
+                instanceId);
+            return Ok(new { message = $"Ignored webhook event type '{eventType}'" });
+        }
+
         _backgroundJobClient.Enqueue<WebhookJob>(job =>
             job.ProcessSonarrWebhook(payload, instanceId));
 
@@ -80,5 +104,10 @@ public class WebhookController : ControllerBase
             payload.Series.Title, payload.Series.Id, instanceId, payload.Episodes.Count);
 
         return Ok(new { message = "Webhook received and queued for processing" });
+    }
+
+    private static bool IsAllowedEventType(string? eventType)
+    {
+        return AllowedWebhookEvents.Contains(eventType ?? string.Empty, StringComparer.OrdinalIgnoreCase);
     }
 }

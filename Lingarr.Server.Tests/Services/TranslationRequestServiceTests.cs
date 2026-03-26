@@ -116,6 +116,56 @@ public class TranslationRequestServiceTests
         Assert.Equal(2, pendingCount);
     }
 
+    [Fact]
+    public async Task InterruptActiveRequestsForMedia_MarksRequestsInterruptedAndClearsMediaHash()
+    {
+        await using var context = BuildContext();
+
+        var movie = new Movie
+        {
+            Id = 50,
+            RadarrId = 50,
+            Title = "Movie",
+            FileName = "movie.mkv",
+            Path = "/movies",
+            MediaHash = "stale-hash",
+            DateAdded = DateTime.UtcNow.AddDays(-1)
+        };
+
+        context.Movies.Add(movie);
+        context.TranslationRequests.AddRange(
+            CreateRequest(1, 50, MediaType.Movie, "en", "pl", "/movies/movie.en.srt", TranslationStatus.Pending, DateTime.UtcNow.AddMinutes(-2)),
+            CreateRequest(2, 50, MediaType.Movie, "en", "de", "/movies/movie.en.srt", TranslationStatus.InProgress, DateTime.UtcNow.AddMinutes(-1)),
+            CreateRequest(3, 50, MediaType.Movie, "en", "fr", "/movies/movie.en.srt", TranslationStatus.Completed, DateTime.UtcNow.AddMinutes(-3)));
+        await context.SaveChangesAsync();
+
+        var cancellationMock = new Mock<ITranslationCancellationService>();
+        var mediaStateMock = new Mock<IMediaStateService>();
+        var service = CreateService(
+            context,
+            cancellationServiceMock: cancellationMock,
+            mediaStateServiceMock: mediaStateMock);
+
+        var interrupted = await service.InterruptActiveRequestsForMedia(MediaType.Movie, 50);
+
+        Assert.Equal(2, interrupted);
+
+        var requests = await context.TranslationRequests.OrderBy(r => r.Id).ToListAsync();
+        Assert.Equal(TranslationStatus.Interrupted, requests[0].Status);
+        Assert.Equal(TranslationStatus.Interrupted, requests[1].Status);
+        Assert.Equal(TranslationStatus.Completed, requests[2].Status);
+        Assert.Null(requests[0].IsActive);
+        Assert.Null(requests[1].IsActive);
+
+        var updatedMovie = await context.Movies.FindAsync(50);
+        Assert.NotNull(updatedMovie);
+        Assert.Equal(string.Empty, updatedMovie!.MediaHash);
+
+        cancellationMock.Verify(c => c.CancelJob(1), Times.Once);
+        cancellationMock.Verify(c => c.CancelJob(2), Times.Once);
+        mediaStateMock.Verify(m => m.UpdateStateAsync(It.IsAny<Movie>(), MediaType.Movie, true), Times.Once);
+    }
+
     private static LingarrDbContext BuildContext()
     {
         var options = new DbContextOptionsBuilder<LingarrDbContext>()
@@ -151,9 +201,13 @@ public class TranslationRequestServiceTests
 
     private static TranslationRequestService CreateService(
         LingarrDbContext context,
-        Mock<ITranslationWorkerService>? workerServiceMock = null)
+        Mock<ITranslationWorkerService>? workerServiceMock = null,
+        Mock<ITranslationCancellationService>? cancellationServiceMock = null,
+        Mock<IMediaStateService>? mediaStateServiceMock = null)
     {
         workerServiceMock ??= new Mock<ITranslationWorkerService>();
+        cancellationServiceMock ??= new Mock<ITranslationCancellationService>();
+        mediaStateServiceMock ??= new Mock<IMediaStateService>();
 
         var clientProxyMock = new Mock<IClientProxy>();
         clientProxyMock
@@ -177,7 +231,7 @@ public class TranslationRequestServiceTests
             new Mock<ISettingService>().Object,
             new Mock<IBatchFallbackService>().Object,
             NullLogger<TranslationRequestService>.Instance,
-            new Mock<ITranslationCancellationService>().Object,
-            new Mock<IMediaStateService>().Object);
+            cancellationServiceMock.Object,
+            mediaStateServiceMock.Object);
     }
 }

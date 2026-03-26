@@ -6,6 +6,7 @@ using Lingarr.Server.Interfaces.Services.Integration;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Interfaces.Services.Sync;
 using Lingarr.Server.Models.Integrations;
+using Lingarr.Server.Models.Sync;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
@@ -132,6 +133,63 @@ public class EpisodeSync : IEpisodeSync
         RemoveNonExistentEpisodes(season, episodes, instanceId);
     }
 
+    /// <inheritdoc />
+    public async Task<EpisodeRefreshResult?> SyncEpisode(
+        SonarrShow show,
+        SonarrEpisode episode,
+        Season season,
+        string instanceId,
+        string instanceUrl,
+        string instanceApiKey)
+    {
+        if (!episode.HasFile)
+        {
+            return null;
+        }
+
+        var episodePathResult = await _sonarrService.GetEpisodePath(episode.Id, instanceUrl, instanceApiKey);
+        var episodePath = _pathConversionService.ConvertAndMapPath(
+            episodePathResult?.EpisodeFile.Path ?? string.Empty,
+            MediaType.Show
+        );
+
+        var (entity, needsIndexing, oldPath, oldFileName) = await UpdateEpisodeMetadata(
+            episode,
+            episodePath,
+            season,
+            episodePathResult?.EpisodeFile.DateAdded,
+            instanceId);
+
+        if (_dbContext.ChangeTracker.HasChanges())
+        {
+            await _dbContext.SaveChangesAsync();
+        }
+
+        if (!string.IsNullOrEmpty(oldPath) && !string.IsNullOrEmpty(oldFileName) && oldFileName != entity.FileName)
+        {
+            await _orphanCleanupService.CleanupOrphansAsync(
+                oldPath,
+                oldFileName,
+                entity.FileName!);
+        }
+
+        if (needsIndexing)
+        {
+            await IndexEmbeddedSubtitles(entity);
+        }
+
+        await RefreshEpisodeState(entity, needsIndexing);
+
+        var fileChanged = !string.IsNullOrEmpty(oldPath) || !string.IsNullOrEmpty(oldFileName);
+
+        return new EpisodeRefreshResult(
+            entity.Id,
+            fileChanged,
+            oldFileName,
+            entity.FileName,
+            entity.IndexedAt);
+    }
+
     /// <summary>
     /// Updates or creates the episode entity metadata without saving to DB.
     /// Returns the entity, whether it needs indexing, and old path/filename if changed.
@@ -205,6 +263,48 @@ public class EpisodeSync : IEpisodeSync
             }
 
             _logger.LogWarning(ex, "Failed to index embedded subtitles for episode {Title}", episodeEntity.Title);
+        }
+    }
+
+    private async Task RefreshEpisodeState(Episode entity, bool needsIndexing)
+    {
+        try
+        {
+            var shouldUpdateState = true;
+
+            if (!needsIndexing &&
+                entity.TranslationState == TranslationState.AwaitingSource &&
+                !string.IsNullOrEmpty(entity.Path))
+            {
+                var dirInfo = new DirectoryInfo(entity.Path);
+                if (dirInfo.Exists)
+                {
+                    var dirMtime = dirInfo.LastWriteTimeUtc;
+                    if (entity.LastSubtitleCheckAt.HasValue &&
+                        dirMtime <= entity.LastSubtitleCheckAt.Value)
+                    {
+                        shouldUpdateState = false;
+                        _logger.LogDebug("Skipping subtitle check for {Title}: directory unchanged", entity.Title);
+                    }
+                }
+            }
+
+            if (shouldUpdateState)
+            {
+                var refreshedState = await _mediaStateService.UpdateStateAsync(
+                    entity,
+                    MediaType.Episode,
+                    saveChanges: false);
+
+                if (SubtitleCheckTimestampPolicy.ShouldStampAfterStateRefresh(refreshedState))
+                {
+                    entity.LastSubtitleCheckAt = DateTime.UtcNow;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to update translation state for episode {Title}", entity.Title);
         }
     }
 

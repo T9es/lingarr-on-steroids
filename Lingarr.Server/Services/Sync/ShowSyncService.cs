@@ -4,6 +4,7 @@ using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Sync;
 using Lingarr.Server.Models;
 using Lingarr.Server.Models.Integrations;
+using Lingarr.Server.Models.Sync;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 
@@ -138,6 +139,43 @@ public class ShowSyncService : IShowSyncService
         _logger.LogInformation("Synced a single show");
 
         return showEntity;
+    }
+
+    /// <inheritdoc />
+    public async Task<EpisodeRefreshResult?> SyncEpisode(SonarrEpisode episode, string instanceId)
+    {
+        var config = await _instanceConfigService.GetSonarrConfig(instanceId);
+        if (config == null)
+        {
+            _logger.LogWarning("Could not find Sonarr instance config for {InstanceId}", instanceId);
+            return null;
+        }
+
+        if (episode.Show == null)
+        {
+            _logger.LogWarning("Cannot sync Sonarr episode {EpisodeId} without series payload", episode.Id);
+            return null;
+        }
+
+        var showEntity = await _showSync.SyncShow(episode.Show, instanceId);
+        var seasonEntity = await _seasonSync.SyncSeasonForEpisode(
+            showEntity,
+            episode.Show,
+            episode,
+            config.Url,
+            config.ApiKey);
+        var result = await _episodeSync.SyncEpisode(
+            episode.Show,
+            episode,
+            seasonEntity,
+            instanceId,
+            config.Url,
+            config.ApiKey);
+
+        await _dbContext.SaveChangesAsync();
+        _logger.LogInformation("Synced targeted episode {EpisodeId} for show {ShowTitle}", episode.Id, episode.Show.Title);
+
+        return result;
     }
 
     /// <inheritdoc />

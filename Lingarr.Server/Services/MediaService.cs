@@ -10,6 +10,7 @@ using Lingarr.Server.Interfaces.Services.Sync;
 using Lingarr.Server.Interfaces.Services.Integration;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Core.Interfaces;
+using Lingarr.Server.Models.Sync;
 
 namespace Lingarr.Server.Services;
 
@@ -266,6 +267,66 @@ public class MediaService : IMediaService
             _logger.LogError(ex, "Failed to fetch or sync episode with Sonarr ID {EpisodeId} from instance '{InstanceId}'", 
                 episodeNumber, instanceId);
             return 0;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<EpisodeRefreshResult?> RefreshEpisodeFromSonarrEpisodeId(int sonarrEpisodeId, string? sourceInstanceId = null)
+    {
+        var instanceId = sourceInstanceId ?? "default";
+
+        try
+        {
+            var config = await _instanceConfigService.GetSonarrConfig(instanceId);
+
+            if (config == null)
+            {
+                _logger.LogWarning("No Sonarr instance config found for instanceId '{InstanceId}'", instanceId);
+                return null;
+            }
+
+            var episodeFetched = await _sonarrService.GetEpisode(sonarrEpisodeId, config.Url, config.ApiKey);
+            if (episodeFetched == null)
+            {
+                return null;
+            }
+
+            if (!episodeFetched.HasFile)
+            {
+                _logger.LogInformation(
+                    "Skipping targeted refresh for Sonarr episode {EpisodeId} from instance '{InstanceId}' because it has no file",
+                    sonarrEpisodeId,
+                    instanceId);
+                return null;
+            }
+
+            if (episodeFetched.Show == null)
+            {
+                _logger.LogWarning(
+                    "Skipping targeted refresh for Sonarr episode {EpisodeId} from instance '{InstanceId}' because series payload is missing",
+                    sonarrEpisodeId,
+                    instanceId);
+                return null;
+            }
+
+            return await _showSyncService.SyncEpisode(episodeFetched, instanceId);
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            _logger.LogWarning(
+                "Episode with Sonarr ID {EpisodeId} not found in instance '{InstanceId}' during targeted refresh (404)",
+                sonarrEpisodeId,
+                instanceId);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Failed to refresh episode with Sonarr ID {EpisodeId} from instance '{InstanceId}'",
+                sonarrEpisodeId,
+                instanceId);
+            return null;
         }
     }
 

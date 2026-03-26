@@ -1,5 +1,4 @@
 using Hangfire;
-using Lingarr.Core.Data;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Models.Webhooks;
@@ -11,17 +10,20 @@ public class WebhookJob
     private readonly IAutomationService _automationService;
     private readonly IMediaService _mediaService;
     private readonly IInstanceConfigService _instanceConfigService;
+    private readonly ITranslationRequestService _translationRequestService;
     private readonly ILogger<WebhookJob> _logger;
 
     public WebhookJob(
         IAutomationService automationService,
         IMediaService mediaService,
         IInstanceConfigService instanceConfigService,
+        ITranslationRequestService translationRequestService,
         ILogger<WebhookJob> logger)
     {
         _automationService = automationService;
         _mediaService = mediaService;
         _instanceConfigService = instanceConfigService;
+        _translationRequestService = translationRequestService;
         _logger = logger;
     }
 
@@ -122,19 +124,26 @@ public class WebhookJob
 
             foreach (var episode in payload.Episodes)
             {
-                var episodeId = await _mediaService.GetEpisodeIdOrSyncFromSonarrEpisodeId(
+                var refreshResult = await _mediaService.RefreshEpisodeFromSonarrEpisodeId(
                     episode.Id, instanceId);
-                
-                if (episodeId == 0)
+
+                if (refreshResult == null)
                 {
                     _logger.LogWarning(
-                        "Episode ID {EpisodeId} for '{SeriesTitle}' not found in instance '{InstanceId}'",
+                        "Episode ID {EpisodeId} for '{SeriesTitle}' could not be refreshed in instance '{InstanceId}'",
                         episode.Id, seriesTitle, instanceId);
                     continue;
                 }
 
+                if (refreshResult.FileChanged)
+                {
+                    await _translationRequestService.InterruptActiveRequestsForMedia(
+                        MediaType.Episode,
+                        refreshResult.EpisodeId);
+                }
+
                 await _automationService.ProcessSingleMediaForAutomationAsync(
-                    episodeId,
+                    refreshResult.EpisodeId,
                     MediaType.Episode,
                     "sonarr_webhook");
             }

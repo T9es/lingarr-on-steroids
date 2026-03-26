@@ -36,6 +36,15 @@ public interface ITranslationRequestService
     /// <returns>The current count of active translation requests</returns>
     Task<int> UpdateActiveCount();
 
+    /// <summary>
+    /// Interrupts all pending and in-progress translation requests for a specific media item.
+    /// Intended for cases where the source media file changed and active requests should not continue.
+    /// </summary>
+    /// <param name="mediaType">Type of media (Movie or Episode)</param>
+    /// <param name="mediaId">The ID of the media item</param>
+    /// <returns>The number of interrupted requests</returns>
+    Task<int> InterruptActiveRequestsForMedia(MediaType mediaType, int mediaId);
+
 	    /// <summary>
 	    /// Resumes all pending and in-progress translation requests by re-enqueueing them in the job queue.
 	    /// </summary>

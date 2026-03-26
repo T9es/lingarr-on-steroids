@@ -56,6 +56,40 @@ public class SeasonSync : ISeasonSync
         return seasonEntity;
     }
 
+    /// <inheritdoc />
+    public async Task<Season> SyncSeasonForEpisode(
+        Show show,
+        SonarrShow sonarrShow,
+        SonarrEpisode episode,
+        string instanceUrl,
+        string instanceApiKey)
+    {
+        var seasonPath = await GetSeasonPathForEpisode(episode.Id, episode.SeasonNumber, instanceUrl, instanceApiKey);
+
+        var seasonEntity = await _dbContext.Seasons
+            .Include(s => s.Episodes)
+            .FirstOrDefaultAsync(s => s.ShowId == show.Id && s.SeasonNumber == episode.SeasonNumber);
+
+        if (seasonEntity == null)
+        {
+            seasonEntity = new Season
+            {
+                SeasonNumber = episode.SeasonNumber,
+                Path = seasonPath,
+                Show = show
+            };
+            show.Seasons.Add(seasonEntity);
+        }
+        else
+        {
+            seasonEntity.SeasonNumber = episode.SeasonNumber;
+            seasonEntity.Path = seasonPath;
+            seasonEntity.Show = show;
+        }
+
+        return seasonEntity;
+    }
+
     /// <summary>
     /// Retrieves and formats the season path from an episode within the season
     /// </summary>
@@ -88,6 +122,35 @@ public class SeasonSync : ISeasonSync
         else
         {
             seasonPath = $"/Season {season.SeasonNumber}";
+        }
+
+        return _pathConversionService.ConvertAndMapPath(
+            seasonPath,
+            MediaType.Show
+        );
+    }
+
+    private async Task<string> GetSeasonPathForEpisode(
+        int episodeId,
+        int seasonNumber,
+        string instanceUrl,
+        string instanceApiKey)
+    {
+        var episodePathResult = await _sonarrService.GetEpisodePath(episodeId, instanceUrl, instanceApiKey);
+        var normalizePath = _pathConversionService.NormalizePath(episodePathResult?.EpisodeFile.Path ?? string.Empty);
+        var seasonPath = Path.GetDirectoryName(normalizePath);
+        _logger.LogInformation("Resolved season path from targeted episode {EpisodeId}: {SeasonPath}", episodeId, seasonPath);
+
+        if (seasonPath != null)
+        {
+            if (!seasonPath.StartsWith("/"))
+            {
+                seasonPath = $"/{seasonPath}";
+            }
+        }
+        else
+        {
+            seasonPath = $"/Season {seasonNumber}";
         }
 
         return _pathConversionService.ConvertAndMapPath(

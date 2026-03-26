@@ -2,6 +2,7 @@
 using Lingarr.Core.Enum;
 using Lingarr.Server.Models;
 using Lingarr.Server.Models.Api;
+using Lingarr.Server.Models.Sync;
 
 namespace Lingarr.Server.Interfaces.Services;
 
@@ -80,6 +81,16 @@ public interface IMediaService
     /// A task result containing the lingarr's episode id
     /// </returns>
     Task<int> GetEpisodeIdOrSyncFromSonarrEpisodeId(int episodeNumber, string? sourceInstanceId = null);
+
+    /// <summary>
+    /// Refreshes a single episode from Sonarr for webhook processing.
+    /// Always fetches fresh upstream state instead of reusing cached local metadata.
+    /// Returns null when the episode does not exist, has no file, or cannot be refreshed.
+    /// </summary>
+    /// <param name="sonarrEpisodeId">The Sonarr episode id to refresh</param>
+    /// <param name="sourceInstanceId">Optional source instance ID to filter by in multi-instance setups</param>
+    /// <returns>The targeted refresh result or null if refresh could not complete</returns>
+    Task<EpisodeRefreshResult?> RefreshEpisodeFromSonarrEpisodeId(int sonarrEpisodeId, string? sourceInstanceId = null);
 
     /// <summary>
     /// Toggles the exclusion status of a media item from translation.
