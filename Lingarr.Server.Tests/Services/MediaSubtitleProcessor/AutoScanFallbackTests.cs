@@ -80,7 +80,7 @@ public class AutoScanFallbackTests : MediaSubtitleProcessorTestBase
         // To test Auto Scan, we call ProcessMediaAsync, but we need to mock ProbeMedia returning the external subs.
         
         SubtitleServiceMock
-            .Setup(s => s.GetAllSubtitles(movie.Path))
+            .Setup(s => s.GetAllSubtitles(movie.Path!))
             .ReturnsAsync(externalSubtitles);
 
         var result = await Processor.ProcessMedia(movie, MediaType.Movie);

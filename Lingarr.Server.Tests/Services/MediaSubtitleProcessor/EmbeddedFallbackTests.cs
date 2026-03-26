@@ -45,7 +45,7 @@ public class EmbeddedFallbackTests : MediaSubtitleProcessorTestBase
 
         // Setup External Subtitles: Only Target (fr) exists, Source (en) is MISSING
         SubtitleServiceMock
-            .Setup(s => s.GetAllSubtitles(movie.Path))
+            .Setup(s => s.GetAllSubtitles(movie.Path!))
             .ReturnsAsync(new List<Subtitles>
             {
                 new() { FileName = "movie.mkv.fr.srt", Path = "/movies/test/movie.mkv.fr.srt", Language = "fr", Format = "srt" }
