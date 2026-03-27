@@ -6,7 +6,7 @@
                     <div
                         class="text-2xl font-bold"
                         :class="result.success ? 'text-success' : 'text-error'">
-                        {{ result.success ? '✓' : '✗' }}
+                        {{ result.success ? 'OK' : 'ERR' }}
                     </div>
                     <div class="text-secondary-content text-xs">Status</div>
                 </div>
@@ -21,7 +21,7 @@
                     <div class="text-secondary-content text-xs">Lines</div>
                 </div>
                 <div>
-                    <div class="text-2xl font-bold">{{ totalTokens ?? '—' }}</div>
+                    <div class="text-2xl font-bold">{{ totalTokens ?? '-' }}</div>
                     <div class="text-secondary-content text-xs">Tokens</div>
                 </div>
             </div>
@@ -33,61 +33,54 @@
             </summary>
             <div class="border-secondary/30 border-t px-4 py-2">
                 <div
-                    v-for="(call, i) in apiCalls"
-                    :key="i"
+                    v-for="(call, index) in apiCalls"
+                    :key="index"
                     class="border-secondary/20 border-b py-2 last:border-0">
                     <div class="flex items-center justify-between">
                         <span class="text-secondary-content text-sm">
-                            {{ translate('translationTest.debugPanel.call') }} #{{ i + 1 }}
+                            {{ translate('translationTest.debugPanel.call') }} #{{ index + 1 }}
                         </span>
-                        <span class="text-xs">{{ call.durationMs }}ms</span>
+                        <span class="text-xs">{{ call.durationMs?.toFixed(0) ?? '-' }}ms</span>
                     </div>
                     <details class="mt-2">
                         <summary class="text-accent cursor-pointer text-xs">
                             {{ translate('translationTest.debugPanel.viewRequest') }}
                         </summary>
-                        <pre
-                            class="bg-primary mt-1 max-h-40 overflow-auto rounded p-2 text-xs whitespace-pre-wrap"
-                            >{{ call.requestBody || 'N/A' }}</pre
-                        >
+                        <pre class="bg-primary mt-1 max-h-40 overflow-auto rounded p-2 text-xs whitespace-pre-wrap">{{
+                            call.requestBody || 'N/A'
+                        }}</pre>
                     </details>
                     <details class="mt-1">
                         <summary class="text-accent cursor-pointer text-xs">
                             {{ translate('translationTest.debugPanel.viewResponse') }}
                         </summary>
-                        <pre
-                            class="bg-primary mt-1 max-h-40 overflow-auto rounded p-2 text-xs whitespace-pre-wrap"
-                            >{{ call.responseBody || 'N/A' }}</pre
-                        >
+                        <pre class="bg-primary mt-1 max-h-40 overflow-auto rounded p-2 text-xs whitespace-pre-wrap">{{
+                            call.responseBody || 'N/A'
+                        }}</pre>
                     </details>
                 </div>
             </div>
         </details>
 
-        <details v-if="lineResults.length > 0" class="bg-secondary rounded-lg">
+        <details v-if="lineResults.length > 0" class="bg-secondary rounded-lg" open>
             <summary class="cursor-pointer px-4 py-3 font-medium">
-                {{ translate('translationTest.debugPanel.lineResults') }}
+                {{ translate('translationTest.debugPanel.lineResults') }} ({{ lineResults.length }})
             </summary>
-            <div class="border-secondary/30 border-t">
-                <div class="max-h-64 overflow-y-auto">
-                    <div
-                        v-for="line in lineResults"
-                        :key="line.position"
-                        class="hover:bg-tertiary grid grid-cols-12 gap-2 px-4 py-2 text-xs">
-                        <span class="text-secondary-content col-span-1">{{ line.position }}</span>
-                        <span class="col-span-5 truncate" :title="line.original">
-                            {{ line.original }}
-                        </span>
-                        <span
-                            class="col-span-5 truncate"
-                            :class="line.success ? '' : 'text-error'"
-                            :title="line.translated || line.error">
-                            {{ line.translated || line.error }}
-                        </span>
-                        <span class="text-secondary-content col-span-1 text-right">
-                            {{ line.durationMs?.toFixed(0) }}ms
-                        </span>
-                    </div>
+            <div class="border-secondary/30 border-t px-4 py-3">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <p class="text-secondary-content text-sm">
+                        {{
+                            t(
+                                'translationTest.debugPanel.compareDescription',
+                                'Open the side-by-side viewer to inspect original and translated lines together.'
+                            )
+                        }}
+                    </p>
+                    <button
+                        @click="showCompareModal = true"
+                        class="bg-accent text-primary-content rounded px-3 py-2 text-sm">
+                        {{ t('translationTest.debugPanel.openCompare', 'Open Compare View') }}
+                    </button>
                 </div>
             </div>
         </details>
@@ -98,20 +91,26 @@
             </summary>
             <div class="border-secondary/30 border-t px-4 py-2">
                 <div
-                    v-for="(ms, step) in timings"
+                    v-for="(milliseconds, step) in timings"
                     :key="step"
                     class="flex justify-between py-1 text-sm">
                     <span class="text-secondary-content">{{ step }}</span>
-                    <span>{{ ms }}ms</span>
+                    <span>{{ milliseconds }}ms</span>
                 </div>
             </div>
         </details>
     </div>
+
+    <TestLineCompareModal
+        :is-open="showCompareModal"
+        :lines="lineResults"
+        @close="showCompareModal = false" />
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from '@/plugins/i18n'
+import TestLineCompareModal, { type CompareLineResult } from './TestLineCompareModal.vue'
 
 interface TestResultDetail {
     id: number
@@ -126,52 +125,82 @@ interface TestResultDetail {
     timingJson?: string
 }
 
+interface ApiCall {
+    durationMs?: number
+    requestBody?: string
+    responseBody?: string
+}
+
 const props = defineProps<{
     result: TestResultDetail
 }>()
 
 const { translate } = useI18n()
 
-interface ApiCall {
-    durationMs: number
-    requestBody?: string
-    responseBody?: string
+const showCompareModal = ref(false)
+
+function t(key: string, fallback: string): string {
+    const value = translate(key)
+    return value === key ? fallback : value
 }
 
-interface LineResult {
-    position: number
-    original: string
-    translated?: string
-    success: boolean
-    error?: string
-    durationMs?: number
+function parseJson<T>(value?: string): T | null {
+    if (!value) {
+        return null
+    }
+
+    try {
+        return JSON.parse(value) as T
+    } catch {
+        return null
+    }
 }
 
 const apiCalls = computed<ApiCall[]>(() => {
-    if (!props.result.apiCallsJson) return []
-    try {
-        return JSON.parse(props.result.apiCallsJson)
-    } catch {
+    const parsed = parseJson<Record<string, unknown>[]>(props.result.apiCallsJson)
+
+    if (!parsed) {
         return []
     }
+
+    return parsed.map((call) => ({
+        durationMs: Number(call.durationMs ?? call.DurationMs ?? 0),
+        requestBody: (call.requestBody ?? call.RequestBody ?? '') as string,
+        responseBody: (call.responseBody ?? call.ResponseBody ?? '') as string
+    }))
 })
 
-const lineResults = computed<LineResult[]>(() => {
-    if (!props.result.lineResultsJson) return []
-    try {
-        return JSON.parse(props.result.lineResultsJson)
-    } catch {
+const lineResults = computed<CompareLineResult[]>(() => {
+    const parsed = parseJson<Record<string, unknown>[]>(props.result.lineResultsJson)
+
+    if (!parsed) {
         return []
     }
+
+    return parsed.map((line) => ({
+        position: Number(line.position ?? line.Position ?? 0),
+        original: String(line.original ?? line.Original ?? ''),
+        translated: String(line.translated ?? line.Translated ?? ''),
+        success: Boolean(line.success ?? line.Success),
+        error: (line.error ?? line.Error ?? undefined) as string | undefined,
+        durationMs:
+            line.durationMs !== undefined || line.DurationMs !== undefined
+                ? Number(line.durationMs ?? line.DurationMs)
+                : undefined,
+        startTimeMs:
+            line.startTimeMs !== undefined || line.StartTimeMs !== undefined
+                ? Number(line.startTimeMs ?? line.StartTimeMs)
+                : undefined,
+        endTimeMs:
+            line.endTimeMs !== undefined || line.EndTimeMs !== undefined
+                ? Number(line.endTimeMs ?? line.EndTimeMs)
+                : undefined
+    }))
 })
 
 const timings = computed<Record<string, number>>(() => {
-    if (!props.result.timingJson) return {}
-    try {
-        return JSON.parse(props.result.timingJson)
-    } catch {
-        return {}
-    }
+    const parsed = parseJson<Record<string, number>>(props.result.timingJson)
+    return parsed || {}
 })
 
 const totalTokens = computed(() => {

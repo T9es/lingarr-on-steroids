@@ -248,6 +248,7 @@ public class TestTranslationController : ControllerBase
             var resultJson = JsonSerializer.Serialize(new
             {
                 type = "result",
+                result.TestResultId,
                 result.Success,
                 result.ErrorMessage,
                 result.TotalSubtitles,
@@ -606,8 +607,6 @@ public class TestTranslationController : ControllerBase
                     return;
 
                 var subtitles = await _subtitleService.GetAllSubtitles(movie.Path);
-                if (subtitles.Count == 0)
-                    return;
 
                 // JIT sync embedded subtitles if not indexed (similar to SubtitleExtractionController)
                 if (movie.EmbeddedSubtitles == null || movie.EmbeddedSubtitles.Count == 0)
@@ -615,6 +614,23 @@ public class TestTranslationController : ControllerBase
                     await _extractionService.SyncEmbeddedSubtitles(movie);
                     await _dbContext.Entry(movie).Collection(m => m.EmbeddedSubtitles).LoadAsync();
                 }
+
+                var embeddedSubtitles = movie.EmbeddedSubtitles?
+                    .Where(e => e.IsTextBased)
+                    .Select(e => new EmbeddedSubtitleInfo
+                    {
+                        StreamIndex = e.StreamIndex,
+                        Language = e.Language,
+                        Title = e.Title,
+                        CodecName = e.CodecName,
+                        IsTextBased = e.IsTextBased,
+                        IsDefault = e.IsDefault,
+                        IsForced = e.IsForced
+                    })
+                    .ToList() ?? [];
+
+                if (subtitles.Count == 0 && embeddedSubtitles.Count == 0)
+                    return;
 
                 var posterImage = movie.Images.FirstOrDefault(img => img.Type == "poster");
                 var year = ExtractYearFromPath(movie.Path);
@@ -627,19 +643,7 @@ public class TestTranslationController : ControllerBase
                     PosterPath = posterImage != null ? $"movie{posterImage.Path}" : null,
                     Year = year,
                     Subtitles = subtitles,
-                    EmbeddedSubtitles = movie.EmbeddedSubtitles
-                        .Where(e => e.IsTextBased)
-                        .Select(e => new EmbeddedSubtitleInfo
-                        {
-                            StreamIndex = e.StreamIndex,
-                            Language = e.Language,
-                            Title = e.Title,
-                            CodecName = e.CodecName,
-                            IsTextBased = e.IsTextBased,
-                            IsDefault = e.IsDefault,
-                            IsForced = e.IsForced
-                        })
-                        .ToList()
+                    EmbeddedSubtitles = embeddedSubtitles
                 });
             }
             finally

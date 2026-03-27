@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
@@ -15,6 +16,12 @@ namespace Lingarr.Server.Services;
 
 public class TestTranslationService : ITestTranslationService
 {
+    private static readonly JsonSerializerOptions DebugJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+
     private readonly ILogger<TestTranslationService> _logger;
     private readonly ISettingService _settings;
     private readonly ISubtitleService _subtitleService;
@@ -100,9 +107,10 @@ public class TestTranslationService : ITestTranslationService
                        request.MediaType.Value,
                        request.SourceLanguage,
                        null,
-                       null);
+                       request.EmbeddedStreamIndex);
 
-                   if (subtitlePath != null)                   {
+                   if (subtitlePath != null)
+                   {
                        Log("INFORMATION", $"Extracted embedded subtitle to: {subtitlePath}");
                        temporaryFilePath = subtitlePath;
                    }
@@ -235,7 +243,10 @@ public class TestTranslationService : ITestTranslationService
                 Position = s.Position,
                 Original = string.Join(" ", s.Lines),
                 Translated = string.Join(" ", s.TranslatedLines ?? []),
-                Success = s.TranslatedLines?.Count > 0
+                Success = s.TranslatedLines?.Count > 0,
+                DurationMs = s.EndTime - s.StartTime,
+                StartTimeMs = s.StartTime,
+                EndTimeMs = s.EndTime
             }).ToList();
             
             foreach (var line in lineResults)
@@ -258,10 +269,10 @@ public class TestTranslationService : ITestTranslationService
                 FailedLines = failedCount,
                 DurationSeconds = stopwatch.Elapsed.TotalSeconds,
                 TranslationService = serviceType,
-                ApiCallsJson = JsonSerializer.Serialize(debugData.ApiCalls),
-                LineResultsJson = JsonSerializer.Serialize(debugData.LineResults),
-                TimingJson = JsonSerializer.Serialize(debugData.Timings),
-                PreviewJson = JsonSerializer.Serialize(preview)
+                ApiCallsJson = JsonSerializer.Serialize(debugData.ApiCalls, DebugJsonOptions),
+                LineResultsJson = JsonSerializer.Serialize(debugData.LineResults, DebugJsonOptions),
+                TimingJson = JsonSerializer.Serialize(debugData.Timings, DebugJsonOptions),
+                PreviewJson = JsonSerializer.Serialize(preview, DebugJsonOptions)
             };
             
             _dbContext.TestResults.Add(testResult);
@@ -346,6 +357,12 @@ public class TestTranslationService : ITestTranslationService
     
     private List<SubtitleItem> FilterSubtitles(List<SubtitleItem> subtitles, TestTranslationRequest request)
     {
+        if (request.SelectedLinePositions is { Count: > 0 })
+        {
+            var selectedPositions = request.SelectedLinePositions.ToHashSet();
+            return subtitles.Where(subtitle => selectedPositions.Contains(subtitle.Position)).ToList();
+        }
+
         if (request.MaxLines.HasValue && request.MaxLines.Value > 0)
         {
             return subtitles.Take(request.MaxLines.Value).ToList();

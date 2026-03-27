@@ -118,6 +118,22 @@ public class TestResultController : ControllerBase
         return Ok(new { Message = $"Deleted {results.Count} test results" });
     }
 
+    [HttpDelete("all")]
+    public async Task<ActionResult> DeleteAll(CancellationToken cancellationToken = default)
+    {
+        var results = await _dbContext.TestResults.ToListAsync(cancellationToken);
+
+        if (results.Count == 0)
+        {
+            return NotFound();
+        }
+
+        _dbContext.TestResults.RemoveRange(results);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return Ok(new { Message = $"Deleted {results.Count} test results" });
+    }
+
     [HttpGet("check-duplicate")]
     public async Task<ActionResult<object?>> CheckDuplicate(
         string subtitlePath,

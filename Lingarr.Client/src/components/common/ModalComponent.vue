@@ -28,7 +28,7 @@
                             </svg>
                         </button>
                     </div>
-                    <div class="max-h-[calc(90vh-8rem)] overflow-y-auto p-4">
+                    <div :class="bodyClasses">
                         <slot />
                     </div>
                     <div class="border-accent flex justify-end gap-2 border-t px-4 py-3">
@@ -46,10 +46,14 @@ import { computed } from 'vue'
 const props = withDefaults(
     defineProps<{
         isOpen: boolean
-        size?: 'sm' | 'md' | 'lg' | 'xl'
+        size?: 'sm' | 'md' | 'lg' | 'xl' | 'xxl'
+        bodyScrollable?: boolean
+        bodyClass?: string
     }>(),
     {
-        size: 'md'
+        size: 'md',
+        bodyScrollable: true,
+        bodyClass: ''
     }
 )
 
@@ -67,9 +71,27 @@ const sizeClasses = computed(() => {
             return 'max-w-4xl'
         case 'xl':
             return 'max-w-6xl'
+        case 'xxl':
+            return 'max-w-[95vw]'
         default:
             return 'max-w-2xl'
     }
+})
+
+const bodyClasses = computed(() => {
+    const classes = ['max-h-[calc(90vh-8rem)]']
+
+    if (props.bodyScrollable) {
+        classes.push('overflow-y-auto', 'p-4')
+    } else {
+        classes.push('overflow-hidden')
+    }
+
+    if (props.bodyClass) {
+        classes.push(props.bodyClass)
+    }
+
+    return classes.join(' ')
 })
 </script>
 

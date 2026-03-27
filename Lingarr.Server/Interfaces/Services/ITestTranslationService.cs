@@ -64,6 +64,12 @@ public class TestTranslationRequest
     /// If set, will extract this specific stream from the media file.
     /// </summary>
     public int? EmbeddedStreamIndex { get; set; }
+
+    /// <summary>
+    /// Explicit subtitle positions selected in the visual picker.
+    /// Preserves sparse multi-select ordering based on the original file.
+    /// </summary>
+    public List<int>? SelectedLinePositions { get; set; }
 }
 
 /// <summary>

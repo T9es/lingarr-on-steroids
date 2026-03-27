@@ -33,6 +33,8 @@ public class TestLineResult
     public bool Success { get; set; }
     public string? Error { get; set; }
     public double DurationMs { get; set; }
+    public int StartTimeMs { get; set; }
+    public int EndTimeMs { get; set; }
     public string? ApiRequest { get; set; }
     public string? ApiResponse { get; set; }
 }

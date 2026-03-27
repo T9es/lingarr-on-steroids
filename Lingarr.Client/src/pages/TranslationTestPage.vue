@@ -8,8 +8,8 @@
                 </p>
             </div>
 
-            <div class="grid gap-4 lg:grid-cols-2">
-                <div class="space-y-4">
+            <div class="space-y-4">
+                <div class="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1fr)]">
                     <div class="bg-secondary rounded-lg p-4">
                         <h2 class="mb-3 text-lg font-semibold">
                             {{ translate('translationTest.searchMedia') }}
@@ -39,7 +39,6 @@
                         </div>
 
                         <div v-else class="max-h-[60vh] space-y-3 overflow-y-auto">
-                            <!-- Movies -->
                             <div
                                 v-for="movie in hierarchicalSearchResults.movies"
                                 :key="`movie-${movie.movieId}`"
@@ -86,7 +85,7 @@
                                                 :key="`emb-${embSub.streamIndex}`"
                                                 class="rounded border px-1.5 py-0.5 text-[10px]"
                                                 :class="getEmbeddedBadgeClasses(embSub)">
-                                                <span class="mr-0.5">📦</span>
+                                                <span class="mr-0.5">[emb]</span>
                                                 {{ formatEmbeddedLanguage(embSub) }}
                                             </span>
                                             <span
@@ -102,7 +101,6 @@
                                 </div>
                             </div>
 
-                            <!-- Shows -->
                             <ShowResultCard
                                 v-for="show in hierarchicalSearchResults.shows"
                                 :key="`show-${show.showId}`"
@@ -111,68 +109,70 @@
                         </div>
                     </div>
 
-                    <TestHistoryList ref="historyList" @select="showTestResult" />
-                </div>
-
-                <div class="space-y-4">
-                    <div v-if="activeTestResult" class="bg-secondary rounded-lg p-4">
-                        <div class="mb-3 flex items-center justify-between">
-                            <h2 class="text-lg font-semibold">
-                                {{ translate('translationTest.testResult') }}
-                            </h2>
-                            <button
-                                @click="activeTestResult = null"
-                                class="text-secondary-content hover:text-primary-content text-sm">
-                                {{ translate('common.close') }}
-                            </button>
-                        </div>
-                        <TestDebugPanel :result="activeTestResult" />
-                    </div>
-
-                    <div v-else class="bg-secondary rounded-lg p-4">
-                        <h2 class="mb-3 text-lg font-semibold">
-                            {{ translate('translationTest.logs') }}
-                        </h2>
-                        <div
-                            ref="logContainer"
-                            class="bg-primary h-80 overflow-y-auto rounded p-2 font-mono text-xs">
-                            <div
-                                v-if="logs.length === 0"
-                                class="text-secondary-content flex h-full items-center justify-center">
-                                {{ translate('translationTest.waitingForLogs') }}
+                    <div class="space-y-4">
+                        <div v-if="activeTestResult" class="bg-secondary rounded-lg p-4">
+                            <div class="mb-3 flex items-center justify-between">
+                                <h2 class="text-lg font-semibold">
+                                    {{ translate('translationTest.testResult') }}
+                                </h2>
+                                <button
+                                    @click="activeTestResult = null"
+                                    class="text-secondary-content hover:text-primary-content text-sm">
+                                    {{ translate('common.close') }}
+                                </button>
                             </div>
-                            <div v-else>
+                            <TestDebugPanel :result="activeTestResult" />
+                        </div>
+
+                        <div v-else class="bg-secondary rounded-lg p-4">
+                            <h2 class="mb-3 text-lg font-semibold">
+                                {{ translate('translationTest.logs') }}
+                            </h2>
+                            <div
+                                ref="logContainer"
+                                class="bg-primary h-80 overflow-y-auto rounded p-2 font-mono text-xs">
                                 <div
-                                    v-for="(log, i) in logs"
-                                    :key="i"
-                                    class="border-secondary/30 border-b py-1">
-                                    <span class="text-secondary-content/70 mr-2">
-                                        {{ formatTime(log.timestamp) }}
-                                    </span>
-                                    <span
-                                        :class="getLogLevelClass(log.level)"
-                                        class="mr-2 font-semibold">
-                                        [{{ log.level }}]
-                                    </span>
-                                    <span>{{ log.message }}</span>
+                                    v-if="logs.length === 0"
+                                    class="text-secondary-content flex h-full items-center justify-center">
+                                    {{ translate('translationTest.waitingForLogs') }}
+                                </div>
+                                <div v-else>
+                                    <div
+                                        v-for="(log, index) in logs"
+                                        :key="index"
+                                        class="border-secondary/30 border-b py-1">
+                                        <span class="text-secondary-content/70 mr-2">
+                                            {{ formatTime(log.timestamp) }}
+                                        </span>
+                                        <span
+                                            :class="getLogLevelClass(log.level)"
+                                            class="mr-2 font-semibold">
+                                            [{{ log.level }}]
+                                        </span>
+                                        <span>{{ log.message }}</span>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                        <div class="mt-2 flex justify-end gap-2">
-                            <button
-                                v-if="isRunning"
-                                @click="cancelTest"
-                                class="bg-error hover:bg-error/80 text-primary-content rounded px-3 py-1.5 text-sm">
-                                {{ translate('translationTest.cancel') }}
-                            </button>
-                            <button
-                                v-else-if="logs.length > 0"
-                                @click="clearLogs"
-                                class="bg-tertiary hover:bg-tertiary/80 rounded px-3 py-1.5 text-sm">
-                                {{ translate('translationTest.clearLogs') }}
-                            </button>
+                            <div class="mt-2 flex justify-end gap-2">
+                                <button
+                                    v-if="isRunning"
+                                    @click="cancelTest"
+                                    class="bg-error hover:bg-error/80 text-primary-content rounded px-3 py-1.5 text-sm">
+                                    {{ translate('translationTest.cancel') }}
+                                </button>
+                                <button
+                                    v-else-if="logs.length > 0"
+                                    @click="clearLogs"
+                                    class="bg-tertiary hover:bg-tertiary/80 rounded px-3 py-1.5 text-sm">
+                                    {{ translate('translationTest.clearLogs') }}
+                                </button>
+                            </div>
                         </div>
                     </div>
+                </div>
+
+                <div class="bg-secondary rounded-lg p-4">
+                    <TestHistoryList ref="historyList" @select="showTestResult" />
                 </div>
             </div>
         </div>
@@ -182,26 +182,9 @@
         v-if="configModalOpen"
         :is-open="configModalOpen"
         :subtitle-path="selectedSubtitlePath"
-        :title="
-            selectedEpisode
-                ? `${selectedShow?.title} - ${selectedEpisode.displayTitle} - ${selectedEpisode.title}`
-                : hierarchicalSearchResults.movies.find((m: MovieResult) =>
-                      m.subtitles.some((s: Subtitle) => s.path === selectedSubtitlePath)
-                  )?.title
-        "
-        :poster-path="
-            selectedShow?.posterPath ||
-            hierarchicalSearchResults.movies.find((m: MovieResult) =>
-                m.subtitles.some((s: Subtitle) => s.path === selectedSubtitlePath)
-            )?.posterPath
-        "
-        :year="
-            selectedShow?.year ||
-            hierarchicalSearchResults.movies.find((m: MovieResult) =>
-                m.subtitles.some((s: Subtitle) => s.path === selectedSubtitlePath)
-            )?.year
-        "
-        :total-lines="selectedTotalLines"
+        :title="selectedMediaTitle"
+        :poster-path="selectedPosterPath"
+        :year="selectedYear"
         :default-source-language="defaultSourceLanguage"
         :default-target-language="defaultTargetLanguage"
         :available-source-languages="availableLanguages"
@@ -214,11 +197,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, nextTick, computed } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from '@/plugins/i18n'
 import { useSettingStore } from '@/store/setting'
-import { SETTINGS, ILanguage } from '@/ts'
+import { ILanguage, SETTINGS } from '@/ts'
 import useDebounce from '@/composables/useDebounce'
 import PageLayout from '@/components/layout/PageLayout.vue'
 import TestConfigModal from '@/components/features/translation-test/TestConfigModal.vue'
@@ -241,23 +224,6 @@ interface EmbeddedSubtitle {
     isDefault: boolean
     isForced: boolean
     isExtracted?: boolean
-}
-
-const getEmbeddedBadgeClasses = (sub: EmbeddedSubtitle): string => {
-    if (!sub.isTextBased) {
-        return 'text-secondary-content/50 border-secondary-content/30 bg-secondary/30 opacity-60'
-    }
-    if (sub.isExtracted) {
-        return 'text-green-300 border-green-500 bg-green-900/30'
-    }
-    return 'text-amber-300 border-amber-500 bg-amber-900/30'
-}
-
-const formatEmbeddedLanguage = (sub: EmbeddedSubtitle): string => {
-    if (sub.language) {
-        return sub.language.toUpperCase()
-    }
-    return `#${sub.streamIndex}`
 }
 
 interface MovieResult {
@@ -325,14 +291,13 @@ const isRunning = ref(false)
 const logs = ref<LogEntry[]>([])
 const logContainer = ref<HTMLElement | null>(null)
 const activeTestResult = ref<TestResultDetail | null>(null)
-const historyList = ref<{ loadHistory: () => void } | null>(null)
+const historyList = ref<{ loadHistory: (reset?: boolean) => Promise<void> } | null>(null)
 
 const configModalOpen = ref(false)
-const selectedSubtitle = ref<Subtitle | null>(null)
 const selectedSubtitlePath = ref('')
-const selectedTotalLines = ref(100)
-const selectedShow = ref<ShowSearchResult | null>(null)
-const selectedEpisode = ref<EpisodePreview | null>(null)
+const selectedMediaTitle = ref<string | undefined>(undefined)
+const selectedPosterPath = ref<string | undefined>(undefined)
+const selectedYear = ref<number | null>(null)
 const selectedMediaId = ref<number | null>(null)
 const selectedMediaType = ref<'Movie' | 'Episode' | null>(null)
 const availableSubtitles = ref<(Subtitle | EmbeddedSubtitle)[]>([])
@@ -348,23 +313,49 @@ const defaultSourceLanguage = computed(() => sourceLanguages.value[0]?.code || '
 const defaultTargetLanguage = computed(() => targetLanguages.value[0]?.code || 'pl')
 
 const availableLanguages = computed(() => {
-    const allLangs = [...sourceLanguages.value, ...targetLanguages.value]
-    const unique = new Map(allLangs.map((l) => [l.code, l]))
-    return Array.from(unique.values()).map((l) => ({ code: l.code, name: l.name }))
+    const allLanguages = [...sourceLanguages.value, ...targetLanguages.value]
+    const unique = new Map(allLanguages.map((language) => [language.code, language]))
+    return Array.from(unique.values()).map((language) => ({
+        code: language.code,
+        name: language.name
+    }))
 })
+
+const getEmbeddedBadgeClasses = (sub: EmbeddedSubtitle): string => {
+    if (!sub.isTextBased) {
+        return 'text-secondary-content/50 border-secondary-content/30 bg-secondary/30 opacity-60'
+    }
+
+    if (sub.isExtracted) {
+        return 'text-green-300 border-green-500 bg-green-900/30'
+    }
+
+    return 'text-amber-300 border-amber-500 bg-amber-900/30'
+}
+
+const formatEmbeddedLanguage = (sub: EmbeddedSubtitle): string => {
+    if (sub.language) {
+        return sub.language.toUpperCase()
+    }
+
+    return `#${sub.streamIndex}`
+}
 
 const performSearch = useDebounce(async (value: string) => {
     const trimmed = value.trim()
+
     if (trimmed.length < 2) {
         hierarchicalSearchResults.value = { movies: [], shows: [] }
         return
     }
 
     isSearching.value = true
+
     try {
         const response = await fetch(
             `/api/test-translation/search-hierarchical?query=${encodeURIComponent(trimmed)}`
         )
+
         if (response.ok) {
             hierarchicalSearchResults.value = await response.json()
         }
@@ -376,100 +367,71 @@ const performSearch = useDebounce(async (value: string) => {
 }, 300)
 
 watch(searchQuery, (value) => {
-    if (value) performSearch(value)
-    else hierarchicalSearchResults.value = { movies: [], shows: [] }
+    if (value) {
+        performSearch(value)
+    } else {
+        hierarchicalSearchResults.value = { movies: [], shows: [] }
+    }
 })
 
-async function openConfigModalFromMovie(movie: MovieResult) {
+function openConfigModalFromMovie(movie: MovieResult) {
     if (
         movie.subtitles.length === 0 &&
         (!movie.embeddedSubtitles || movie.embeddedSubtitles.length === 0)
-    )
+    ) {
         return
-
-    selectedShow.value = null
-    selectedEpisode.value = null
-    selectedMediaId.value = movie.movieId
-    selectedMediaType.value = 'Movie'
-
-    const allSubs: (Subtitle | EmbeddedSubtitle)[] = [
-        ...movie.subtitles,
-        ...(movie.embeddedSubtitles || [])
-    ]
-    availableSubtitles.value = allSubs
-
-    const firstExternal = movie.subtitles[0]
-    selectedSubtitle.value = firstExternal
-    selectedSubtitlePath.value = firstExternal.path
-
-    try {
-        const response = await fetch(
-            `/api/test-translation/subtitle-preview?path=${encodeURIComponent(firstExternal.path)}`
-        )
-        if (response.ok) {
-            const data = await response.json()
-            selectedTotalLines.value = data.totalLines || 100
-        }
-    } catch {
-        selectedTotalLines.value = 100
     }
 
+    selectedMediaTitle.value = movie.title
+    selectedPosterPath.value = movie.posterPath
+    selectedYear.value = movie.year ?? null
+    selectedMediaId.value = movie.movieId
+    selectedMediaType.value = 'Movie'
+    availableSubtitles.value = [...movie.subtitles, ...(movie.embeddedSubtitles || [])]
+    selectedSubtitlePath.value = movie.subtitles[0]?.path || ''
     configModalOpen.value = true
 }
 
-async function openConfigModalFromEpisode(episode: EpisodePreview, show: ShowSearchResult) {
+function openConfigModalFromEpisode(episode: EpisodePreview, show: ShowSearchResult) {
     if (
         episode.subtitles.length === 0 &&
         (!episode.embeddedSubtitles || episode.embeddedSubtitles.length === 0)
-    )
+    ) {
         return
-
-    selectedShow.value = show
-    selectedEpisode.value = episode
-    selectedMediaId.value = episode.episodeId
-    selectedMediaType.value = 'Episode'
-
-    const allSubs: (Subtitle | EmbeddedSubtitle)[] = [
-        ...episode.subtitles,
-        ...(episode.embeddedSubtitles || [])
-    ]
-    availableSubtitles.value = allSubs
-
-    const firstExternal = episode.subtitles[0]
-    selectedSubtitle.value = firstExternal
-    selectedSubtitlePath.value = firstExternal.path
-
-    try {
-        const response = await fetch(
-            `/api/test-translation/subtitle-preview?path=${encodeURIComponent(firstExternal.path)}`
-        )
-        if (response.ok) {
-            const data = await response.json()
-            selectedTotalLines.value = data.totalLines || 100
-        }
-    } catch {
-        selectedTotalLines.value = 100
     }
 
+    selectedMediaTitle.value = `${show.title} - ${episode.displayTitle} - ${episode.title}`
+    selectedPosterPath.value = show.posterPath
+    selectedYear.value = show.year ?? null
+    selectedMediaId.value = episode.episodeId
+    selectedMediaType.value = 'Episode'
+    availableSubtitles.value = [...episode.subtitles, ...(episode.embeddedSubtitles || [])]
+    selectedSubtitlePath.value = episode.subtitles[0]?.path || ''
     configModalOpen.value = true
 }
 
 function closeConfigModal() {
     configModalOpen.value = false
-    selectedShow.value = null
-    selectedEpisode.value = null
-    selectedSubtitle.value = null
+    selectedMediaTitle.value = undefined
+    selectedPosterPath.value = undefined
+    selectedYear.value = null
+    selectedMediaId.value = null
+    selectedMediaType.value = null
+    selectedSubtitlePath.value = ''
+    availableSubtitles.value = []
 }
 
 async function handleStartTest(config: {
     subtitlePath: string
     sourceLanguage: string
     targetLanguage: string
-    startLine?: number
-    endLine?: number
     maxLines?: number
     embeddedStreamIndex?: number
+    selectedLinePositions?: number[]
 }) {
+    const mediaId = selectedMediaId.value
+    const mediaType = selectedMediaType.value
+
     closeConfigModal()
     isRunning.value = true
     logs.value = []
@@ -483,30 +445,35 @@ async function handleStartTest(config: {
                 subtitlePath: config.subtitlePath || null,
                 sourceLanguage: config.sourceLanguage,
                 targetLanguage: config.targetLanguage,
-                startLine: config.startLine,
-                endLine: config.endLine,
                 maxLines: config.maxLines,
-                mediaId: selectedMediaId.value,
-                mediaType: selectedMediaType.value,
-                embeddedStreamIndex: config.embeddedStreamIndex
+                mediaId,
+                mediaType,
+                embeddedStreamIndex: config.embeddedStreamIndex,
+                selectedLinePositions: config.selectedLinePositions
             })
         })
 
         const reader = response.body?.getReader()
         const decoder = new TextDecoder()
 
-        if (!reader) throw new Error('Failed to get response reader')
+        if (!reader) {
+            throw new Error('Failed to get response reader')
+        }
 
         while (true) {
             const { done, value } = await reader.read()
-            if (done) break
+
+            if (done) {
+                break
+            }
 
             const text = decoder.decode(value)
-            const lines = text.split('\n').filter((line) => line.startsWith('data: '))
+            const dataLines = text.split('\n').filter((line) => line.startsWith('data: '))
 
-            for (const line of lines) {
+            for (const dataLine of dataLines) {
                 try {
-                    const data = JSON.parse(line.substring(6))
+                    const data = JSON.parse(dataLine.substring(6))
+
                     if (data.type === 'log') {
                         logs.value.push({
                             level: data.Level,
@@ -515,12 +482,14 @@ async function handleStartTest(config: {
                         })
                         scrollToBottom()
                     } else if (data.type === 'result') {
-                        if (data.TestResultId) {
-                            await loadTestResult(data.TestResultId)
+                        const testResultId = data.TestResultId ?? data.testResultId
+
+                        if (testResultId) {
+                            await loadTestResult(testResultId)
                         }
                     }
                 } catch {
-                    // Skip malformed JSON
+                    // Ignore malformed SSE chunks
                 }
             }
         }
@@ -532,13 +501,14 @@ async function handleStartTest(config: {
         })
     } finally {
         isRunning.value = false
-        historyList.value?.loadHistory()
+        await historyList.value?.loadHistory(true)
     }
 }
 
 async function loadTestResult(id: number) {
     try {
         const response = await fetch(`/api/test-results/${id}`)
+
         if (response.ok) {
             activeTestResult.value = await response.json()
         }
@@ -583,26 +553,19 @@ function getLogLevelClass(level: string): string {
 
 async function scrollToBottom() {
     await nextTick()
+
     if (logContainer.value) {
         logContainer.value.scrollTop = logContainer.value.scrollHeight
     }
 }
 
-onMounted(async () => {
+onMounted(() => {
     if (route.query.subtitlePath) {
         selectedSubtitlePath.value = route.query.subtitlePath as string
-        try {
-            const response = await fetch(
-                `/api/test-translation/subtitle-preview?path=${encodeURIComponent(selectedSubtitlePath.value)}`
-            )
-            if (response.ok) {
-                const data = await response.json()
-                selectedTotalLines.value = data.totalLines || 100
-            }
-        } catch {
-            selectedTotalLines.value = 100
-        }
-
+        selectedMediaTitle.value = undefined
+        selectedPosterPath.value = undefined
+        selectedYear.value = null
+        availableSubtitles.value = []
         configModalOpen.value = true
     }
 })

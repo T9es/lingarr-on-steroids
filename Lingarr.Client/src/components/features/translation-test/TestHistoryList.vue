@@ -20,11 +20,11 @@
             {{ translate('translationTest.noHistory') }}
         </div>
 
-        <div v-else class="grid gap-3">
+        <div v-else class="space-y-3">
             <div
                 v-for="result in testResults"
                 :key="result.id"
-                class="bg-secondary hover:bg-secondary/80 cursor-pointer rounded-lg p-4 transition"
+                class="bg-tertiary hover:bg-tertiary/80 cursor-pointer rounded-lg p-4 transition"
                 @click="$emit('select', result)">
                 <div class="flex items-start justify-between gap-4">
                     <div class="flex items-start gap-3">
@@ -46,19 +46,19 @@
                                             : 'bg-error/20 text-error'
                                     "
                                     class="rounded px-1.5 py-0.5">
-                                    {{ result.success ? '✓' : '✗' }}
+                                    {{ result.success ? 'OK' : 'ERR' }}
                                 </span>
                                 <span>
-                                    {{ result.sourceLanguage }} → {{ result.targetLanguage }}
+                                    {{ result.sourceLanguage }} -> {{ result.targetLanguage }}
                                 </span>
-                                <span>·</span>
+                                <span>|</span>
                                 <span>
                                     {{ result.translatedLines }}/{{ result.totalLines }}
                                     {{ translate('translationTest.lines') }}
                                 </span>
                             </div>
                             <div class="text-secondary-content/60 mt-1 text-xs">
-                                {{ formatDate(result.createdAt) }} ·
+                                {{ formatDate(result.createdAt) }} |
                                 {{ result.durationSeconds?.toFixed(1) }}s
                             </div>
                         </div>
@@ -76,12 +76,18 @@
                     </button>
                 </div>
             </div>
+
+            <div ref="sentinel" class="h-4"></div>
+
+            <div v-if="isLoadingMore" class="text-secondary-content py-2 text-center text-sm">
+                {{ translate('translationTest.loadingHistory') }}
+            </div>
         </div>
     </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from '@/plugins/i18n'
 
 interface TestResult {
@@ -106,39 +112,100 @@ const { translate } = useI18n()
 
 const testResults = ref<TestResult[]>([])
 const loading = ref(true)
+const isLoadingMore = ref(false)
+const currentPage = ref(1)
+const pageSize = 20
+const hasMore = ref(true)
+const sentinel = ref<HTMLElement | null>(null)
+let observer: IntersectionObserver | null = null
 
-async function loadHistory() {
+async function fetchPage(page: number) {
+    const response = await fetch(`/api/test-results?page=${page}&pageSize=${pageSize}`)
+
+    if (!response.ok) {
+        throw new Error('Failed to load history')
+    }
+
+    return response.json()
+}
+
+async function loadHistory(reset = true) {
+    if (reset) {
+        loading.value = true
+        currentPage.value = 1
+        hasMore.value = true
+    } else if (isLoadingMore.value || !hasMore.value) {
+        return
+    } else {
+        isLoadingMore.value = true
+    }
+
     try {
-        const response = await fetch('/api/test-results?page=1&pageSize=20')
-        if (!response.ok) throw new Error('Failed to load history')
-        const data = await response.json()
-        testResults.value = data.items
+        const data = await fetchPage(currentPage.value)
+        const items = data.items || []
+
+        if (reset) {
+            testResults.value = items
+        } else {
+            testResults.value = [...testResults.value, ...items]
+        }
+
+        const totalPages = Number(data.totalPages || 0)
+        hasMore.value = currentPage.value < totalPages
+
+        if (hasMore.value) {
+            currentPage.value += 1
+        }
     } catch (error) {
         console.error('Failed to load test history:', error)
     } finally {
         loading.value = false
+        isLoadingMore.value = false
+        await nextTick()
+        setupObserver()
+    }
+}
+
+function setupObserver() {
+    if (observer) {
+        observer.disconnect()
+    }
+
+    observer = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting && hasMore.value && !isLoadingMore.value && !loading.value) {
+            loadHistory(false)
+        }
+    })
+
+    if (sentinel.value) {
+        observer.observe(sentinel.value)
     }
 }
 
 async function deleteResult(id: number) {
     try {
         await fetch(`/api/test-results/${id}`, { method: 'DELETE' })
-        testResults.value = testResults.value.filter((r) => r.id !== id)
+        testResults.value = testResults.value.filter((result) => result.id !== id)
     } catch (error) {
         console.error('Failed to delete test result:', error)
     }
 }
 
 async function clearAll() {
-    if (!confirm(translate('translationTest.confirmClearAll'))) return
+    if (!confirm(translate('translationTest.confirmClearAll'))) {
+        return
+    }
+
     try {
-        const ids = testResults.value.map((r) => r.id)
-        await fetch('/api/test-results', {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(ids)
-        })
+        const response = await fetch('/api/test-results/all', { method: 'DELETE' })
+
+        if (!response.ok && response.status !== 404) {
+            throw new Error('Failed to clear test history')
+        }
+
         testResults.value = []
+        currentPage.value = 1
+        hasMore.value = false
     } catch (error) {
         console.error('Failed to clear test history:', error)
     }
@@ -148,7 +215,15 @@ function formatDate(dateStr: string): string {
     return new Date(dateStr).toLocaleString()
 }
 
-onMounted(loadHistory)
+onMounted(() => {
+    loadHistory(true)
+})
+
+onUnmounted(() => {
+    if (observer) {
+        observer.disconnect()
+    }
+})
 
 defineExpose({ loadHistory })
 </script>
