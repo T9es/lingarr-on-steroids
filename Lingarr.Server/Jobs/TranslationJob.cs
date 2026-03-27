@@ -2,6 +2,7 @@ using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
+using Lingarr.Server.Exceptions;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Interfaces.Services.Translation;
@@ -667,7 +668,11 @@ public class TranslationJob
                 }
 
                 // Add the failure entry as the final log message
-                var failureMessage = $"Translation failed: {ex.Message}";
+                var failureSummary = TranslationFailureClassifier.GetFailureSummary(ex);
+                var failureMessage = $"Translation failed: {failureSummary}";
+                var failureDetails = TranslationFailureClassifier.IsProviderUnavailable(ex)
+                    ? $"Root cause: translation provider unavailable.{Environment.NewLine}Summary: {failureSummary}{Environment.NewLine}{Environment.NewLine}{ex}"
+                    : ex.ToString();
                 _logger.LogError(ex, "Translation failed for request {RequestId}", translationRequest.Id);
                 
                 // Log to dashboard
@@ -675,7 +680,7 @@ public class TranslationJob
                     "TranslationJob",
                     failureMessage,
                     $"Request ID: {translationRequest.Id}\nMedia ID: {translationRequest.MediaId}",
-                    ex.ToString()
+                    failureDetails
                 );
                 
                 _dbContext.TranslationRequestLogs.Add(new TranslationRequestLog
@@ -683,7 +688,7 @@ public class TranslationJob
                     TranslationRequestId = translationRequest.Id,
                     Level = "Error",
                     Message = failureMessage,
-                    Details = ex.ToString()
+                    Details = failureDetails
                 });
 
                 await _dbContext.SaveChangesAsync();

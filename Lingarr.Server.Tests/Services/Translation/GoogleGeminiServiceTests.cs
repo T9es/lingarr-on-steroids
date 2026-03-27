@@ -203,6 +203,166 @@ public class GoogleGeminiServiceTests
     }
 
     [Fact]
+    public async Task TranslateAsync_ShouldRetryOnServiceUnavailableAndEventuallySucceed()
+    {
+        var settings = new Dictionary<string, string>
+        {
+            { SettingKeys.Translation.Gemini.ApiKey, "test-api-key" },
+            { SettingKeys.Translation.Gemini.Model, "gemini-pro" },
+            { SettingKeys.Translation.AiPrompt, "Translate this." },
+            { SettingKeys.Translation.AiContextPrompt, "Context." },
+            { SettingKeys.Translation.AiContextPromptEnabled, "false" },
+            { SettingKeys.Translation.CustomAiParameters, "[]" },
+            { SettingKeys.Translation.RequestTimeout, "30" },
+            { SettingKeys.Translation.MaxRetries, "3" },
+            { SettingKeys.Translation.RetryDelay, "0" },
+            { SettingKeys.Translation.RetryDelayMultiplier, "2" }
+        };
+
+        _settingsMock.Setup(s => s.GetSettings(It.IsAny<IEnumerable<string>>()))
+            .ReturnsAsync(settings);
+
+        var unavailableBody = """
+            {
+              "error": {
+                "code": 503,
+                "message": "This model is currently experiencing high demand. Please try again later.",
+                "status": "UNAVAILABLE"
+              }
+            }
+            """;
+
+        var successBody = JsonSerializer.Serialize(new
+        {
+            candidates = new[]
+            {
+                new
+                {
+                    content = new
+                    {
+                        parts = new[]
+                        {
+                            new { text = "Hola" }
+                        }
+                    }
+                }
+            }
+        });
+
+        _httpMessageHandlerMock
+            .Protected()
+            .SetupSequence<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(new HttpResponseMessage
+            {
+                StatusCode = HttpStatusCode.ServiceUnavailable,
+                Content = new StringContent(unavailableBody, Encoding.UTF8, "application/json")
+            })
+            .ReturnsAsync(new HttpResponseMessage
+            {
+                StatusCode = HttpStatusCode.OK,
+                Content = new StringContent(successBody, Encoding.UTF8, "application/json")
+            });
+
+        var result = await _service.TranslateAsync(
+            "Hello",
+            "en",
+            "es",
+            null,
+            null,
+            CancellationToken.None);
+
+        Assert.Equal("Hola", result);
+        _httpMessageHandlerMock.Protected().Verify(
+            "SendAsync",
+            Times.Exactly(2),
+            ItExpr.IsAny<HttpRequestMessage>(),
+            ItExpr.IsAny<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task TranslateBatchAsync_ShouldRetryOnServiceUnavailableAndEventuallySucceed()
+    {
+        var settings = new Dictionary<string, string>
+        {
+            { SettingKeys.Translation.Gemini.ApiKey, "test-api-key" },
+            { SettingKeys.Translation.Gemini.Model, "gemini-pro" },
+            { SettingKeys.Translation.AiPrompt, "Translate this." },
+            { SettingKeys.Translation.AiContextPrompt, "Context." },
+            { SettingKeys.Translation.AiContextPromptEnabled, "false" },
+            { SettingKeys.Translation.CustomAiParameters, "[]" },
+            { SettingKeys.Translation.RequestTimeout, "30" },
+            { SettingKeys.Translation.MaxRetries, "3" },
+            { SettingKeys.Translation.RetryDelay, "0" },
+            { SettingKeys.Translation.RetryDelayMultiplier, "2" }
+        };
+
+        _settingsMock.Setup(s => s.GetSettings(It.IsAny<IEnumerable<string>>()))
+            .ReturnsAsync(settings);
+
+        var batch = new List<BatchSubtitleItem>
+        {
+            new() { Position = 1, Line = "Hello" }
+        };
+
+        var unavailableBody = """
+            {
+              "error": {
+                "code": 503,
+                "message": "This model is currently experiencing high demand. Please try again later.",
+                "status": "UNAVAILABLE"
+              }
+            }
+            """;
+
+        var successBody = JsonSerializer.Serialize(new
+        {
+            candidates = new[]
+            {
+                new
+                {
+                    content = new
+                    {
+                        parts = new[]
+                        {
+                            new { text = "[{\"position\":1,\"line\":\"Hola\"}]" }
+                        }
+                    }
+                }
+            }
+        });
+
+        _httpMessageHandlerMock
+            .Protected()
+            .SetupSequence<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(new HttpResponseMessage
+            {
+                StatusCode = HttpStatusCode.ServiceUnavailable,
+                Content = new StringContent(unavailableBody, Encoding.UTF8, "application/json")
+            })
+            .ReturnsAsync(new HttpResponseMessage
+            {
+                StatusCode = HttpStatusCode.OK,
+                Content = new StringContent(successBody, Encoding.UTF8, "application/json")
+            });
+
+        var result = await _service.TranslateBatchAsync(batch, "en", "es", null, null, CancellationToken.None);
+
+        Assert.Single(result);
+        Assert.Equal("Hola", result[1]);
+        _httpMessageHandlerMock.Protected().Verify(
+            "SendAsync",
+            Times.Exactly(2),
+            ItExpr.IsAny<HttpRequestMessage>(),
+            ItExpr.IsAny<CancellationToken>());
+    }
+
+    [Fact]
     public async Task TranslateBatchAsync_Integration_LargeBatch_ShouldHandleTruncation()
     {
         // This test reproduces Issue #204 with the REAL API

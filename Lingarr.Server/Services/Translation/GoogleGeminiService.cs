@@ -200,11 +200,15 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
                     throw new TranslationException("Network error occurred during translation.", ex);
                 }
 
-                await Task.Delay(delay, linked.Token).ConfigureAwait(false);
-                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
-                
                 _logger.LogWarning(ex, "Network error (Transient). Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})", 
                     delay, attempt, _maxRetries);
+
+                await Task.Delay(delay, linked.Token).ConfigureAwait(false);
+                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+            }
+            catch (TranslationException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -283,8 +287,14 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
                 _apiSuggestedRetryDelay = ExtractRetryDelay(errorBody);
                 throw new HttpRequestException("Rate limit exceeded", null, HttpStatusCode.TooManyRequests);
             }
-            
-            throw new TranslationException("Translation using Gemini API failed.");
+
+            var failureMessage = BuildFailureMessage("Translation using Gemini API", response.StatusCode, errorBody);
+            if (IsRetryableStatus(response.StatusCode))
+            {
+                throw new HttpRequestException(failureMessage, null, response.StatusCode);
+            }
+
+            throw new TranslationException(failureMessage);
         }
 
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -472,6 +482,10 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
                 delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
             }
+            catch (TranslationException)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Unexpected error during batch translation attempt {Attempt}", attempt);
@@ -581,8 +595,14 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
                 _apiSuggestedRetryDelay = ExtractRetryDelay(batchErrorBody);
                 throw new HttpRequestException("Rate limit exceeded", null, HttpStatusCode.TooManyRequests);
             }
-            
-            throw new TranslationException("Batch translation using Gemini API failed.");
+
+            var failureMessage = BuildFailureMessage("Batch translation using Gemini API", response.StatusCode, batchErrorBody);
+            if (IsRetryableStatus(response.StatusCode))
+            {
+                throw new HttpRequestException(failureMessage, null, response.StatusCode);
+            }
+
+            throw new TranslationException(failureMessage);
         }
 
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -692,5 +712,33 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
         }
         
         return null;
+    }
+
+    private static bool IsRetryableStatus(HttpStatusCode statusCode)
+    {
+        return statusCode == HttpStatusCode.ServiceUnavailable ||
+               statusCode == HttpStatusCode.GatewayTimeout ||
+               statusCode == HttpStatusCode.BadGateway;
+    }
+
+    private static string BuildFailureMessage(string operationName, HttpStatusCode statusCode, string? responseBody)
+    {
+        var trimmedBody = TrimResponseBody(responseBody);
+        return string.IsNullOrWhiteSpace(trimmedBody)
+            ? $"{operationName} failed with status {(int)statusCode} ({statusCode})."
+            : $"{operationName} failed with status {(int)statusCode} ({statusCode}). Response: {trimmedBody}";
+    }
+
+    private static string TrimResponseBody(string? responseBody, int maxLength = 300)
+    {
+        if (string.IsNullOrWhiteSpace(responseBody))
+        {
+            return string.Empty;
+        }
+
+        var trimmed = responseBody.Trim();
+        return trimmed.Length <= maxLength
+            ? trimmed
+            : trimmed[..maxLength] + "...";
     }
 }
