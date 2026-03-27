@@ -58,7 +58,6 @@
                 </ul>
             </nav>
             <button
-                v-if="!isOpen"
                 class="border-accent/30 hover:bg-primary/30 text-primary-content/70 hover:text-primary-content mt-auto hidden w-full items-center justify-center border-t p-4 transition-colors md:flex"
                 @click="isOpen = !isOpen">
                 <CaretRightIcon
@@ -75,11 +74,6 @@
                     class="mask-gradient h-full w-full object-cover"
                     alt="poster" />
                 <div class="pointer-events-none absolute inset-0 bg-linear-to-t from-secondary via-secondary/60 to-transparent"></div>
-                <button
-                    class="border-primary-content/15 bg-secondary/70 text-primary-content/80 hover:bg-secondary/80 hover:text-primary-content absolute top-4 right-4 z-10 hidden items-center justify-center rounded-full border p-2 backdrop-blur-sm transition-colors md:flex"
-                    @click="isOpen = false">
-                    <CaretRightIcon class="h-5 w-5 rotate-180" />
-                </button>
                 <div
                     v-if="instanceStore.getVersion.currentVersion.length"
                     class="absolute right-0 bottom-0 z-10 flex w-full flex-col items-center gap-2 p-4">
