@@ -12,7 +12,7 @@
 
 ---
 
-> Snapshot vergeleken met `lingarr-translate/lingarr` op 27 maart 2026. Upstream kan daarna verder veranderen.
+> Deze README beschrijft onze fork en de stand van upstream Lingarr op 27 maart 2026. Als upstream daarna verder verandert, kunnen sommige details hier later wat achterlopen.
 >
 > Upgrade vanaf v1.x? Versie 2.0.0 bevat breaking changes. MySQL/MariaDB wordt niet meer ondersteund, instellingen worden niet automatisch gemigreerd en een schone start is vereist.
 
@@ -26,12 +26,12 @@ Deze fork richt zich op betrouwbaardere queues, multi-instance bibliotheken, sub
 
 ---
 
-## Geverifieerde verschillen van deze fork
+## Wat we hebben veranderd
 
 ### Backend en queueing
 
-| Onderdeel | Geverifieerd verschil in deze fork |
-|-----------|------------------------------------|
+| Onderdeel | Wat er in onze fork anders is |
+|-----------|-------------------------------|
 | Aangepaste translation worker | Vertaaljobs draaien via een eigen `BackgroundService` met instelbare parallelle workers, niet alleen via Hangfire-queues. |
 | PostgreSQL als standaard | PostgreSQL is de standaarddatabase. SQLite blijft ondersteund voor kleinere installaties. |
 | Media-statusmodel | Media gebruiken 9 statussen: `Unknown`, `NotApplicable`, `Pending`, `InProgress`, `Complete`, `Stale`, `AwaitingSource`, `NoSuitableSubtitles`, `Failed`. |
@@ -66,7 +66,7 @@ Deze fork richt zich op betrouwbaardere queues, multi-instance bibliotheken, sub
 
 ## Ondersteunde diensten
 
-Dit is de compatibiliteitslijst van deze fork op de snapshotdatum. Sommige diensten worden intussen ook door upstream ondersteund, dus dit is geen exclusieve fork-claim.
+Dit is wat er vandaag in onze fork werkt. Een deel hiervan wordt inmiddels ook door upstream ondersteund, dus dit is geen exclusieve fork-claim.
 
 **AI:**
 - [OpenAI](https://openai.com/) (GPT)

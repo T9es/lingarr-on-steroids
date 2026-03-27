@@ -12,7 +12,7 @@
 
 ---
 
-> Snapshot porownany z `lingarr-translate/lingarr` z dnia 27 marca 2026. Upstream moze sie po tej dacie dalej zmieniac.
+> To README opisuje nasz fork i stan upstreamowego Lingarra z 27 marca 2026. Jesli upstream zmieni sie pozniej, czesc szczegolow tutaj moze z czasem przestac byc idealnie aktualna.
 >
 > Aktualizacja z v1.x? Wersja 2.0.0 wprowadza breaking changes. MySQL/MariaDB nie jest juz wspierany, ustawienia nie sa automatycznie migrowane i wymagany jest czysty start.
 
@@ -26,12 +26,12 @@ Ten fork skupia sie na stabilnosci kolejek, obsludze wielu instancji, naprawie n
 
 ---
 
-## Zweryfikowane roznice tego forka
+## Co zmienilismy
 
 ### Backend i kolejkowanie
 
-| Obszar | Zweryfikowana roznica w tym forku |
-|--------|-----------------------------------|
+| Obszar | Co jest inne w naszym forku |
+|--------|------------------------------|
 | Wlasny translation worker | Zadania tlumaczen dzialaja przez wlasny `BackgroundService` z konfigurowalna liczba workerow, a nie tylko przez kolejki Hangfire. |
 | PostgreSQL jako domyslny wybor | PostgreSQL jest domyslna baza danych. SQLite nadal jest wspierany dla mniejszych instalacji. |
 | Model stanow mediow | Media uzywaja 9 stanow: `Unknown`, `NotApplicable`, `Pending`, `InProgress`, `Complete`, `Stale`, `AwaitingSource`, `NoSuitableSubtitles`, `Failed`. |
@@ -66,7 +66,7 @@ Ten fork skupia sie na stabilnosci kolejek, obsludze wielu instancji, naprawie n
 
 ## Obslugiwane uslugi
 
-To lista kompatybilnosci tego forka na dzien snapshotu. Czesc z tych uslug jest juz rowniez wspierana przez upstream, wiec nie traktuj tej listy jako claimu "only in fork".
+To jest lista tego, co dziala w naszym forku dzisiaj. Czesc z tych uslug jest juz tez wspierana przez upstream, wiec nie traktuj tego jako listy rzeczy "tylko u nas".
 
 **Sztuczna inteligencja (AI):**
 - [OpenAI](https://openai.com/) (GPT)

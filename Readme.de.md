@@ -12,7 +12,7 @@
 
 ---
 
-> Snapshot mit `lingarr-translate/lingarr` am 27. Marz 2026 abgeglichen. Upstream kann sich nach diesem Datum weiter verandern.
+> Dieses README beschreibt unseren Fork und den Stand von Upstream-Lingarr vom 27. Marz 2026. Wenn sich Upstream danach weiterentwickelt, konnen einzelne Details hier mit der Zeit veralten.
 >
 > Upgrade von v1.x? Version 2.0.0 bringt Breaking Changes mit. MySQL/MariaDB wird nicht mehr unterstutzt, Einstellungen werden nicht automatisch migriert, und ein sauberer Neustart ist erforderlich.
 
@@ -26,12 +26,12 @@ Dieser Fork konzentriert sich auf stabile Warteschlangen, Multi-Instance-Bibliot
 
 ---
 
-## Verifizierte Unterschiede dieses Forks
+## Was wir geandert haben
 
 ### Backend und Queueing
 
-| Bereich | Verifizierter Unterschied in diesem Fork |
-|---------|-----------------------------------------|
+| Bereich | Was in unserem Fork anders ist |
+|---------|-------------------------------|
 | Eigener Translation Worker | Ubersetzungsjobs laufen uber einen eigenen `BackgroundService` mit konfigurierbaren parallelen Workern und nicht nur uber Hangfire-Queues. |
 | PostgreSQL als Standard | PostgreSQL ist die Standard-Datenbank. SQLite bleibt fur kleinere Installationen verfugbar. |
 | Medien-Statusmodell | Medien nutzen 9 Zustande: `Unknown`, `NotApplicable`, `Pending`, `InProgress`, `Complete`, `Stale`, `AwaitingSource`, `NoSuitableSubtitles`, `Failed`. |
@@ -66,7 +66,7 @@ Dieser Fork konzentriert sich auf stabile Warteschlangen, Multi-Instance-Bibliot
 
 ## Unterstutzte Dienste
 
-Diese Liste beschreibt den Stand dieses Forks zum Snapshot-Datum. Einige dieser Dienste werden auch von Upstream unterstutzt, die Liste ist also eine Kompatibilitatsliste und kein exklusiver Fork-Claim.
+Das ist die aktuelle Kompatibilitatsliste fur unseren Fork. Ein Teil davon wird inzwischen auch von Upstream unterstutzt, also ist das kein Anspruch auf Exklusivitat.
 
 **KI:**
 - [OpenAI](https://openai.com/) (GPT)

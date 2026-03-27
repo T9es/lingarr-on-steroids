@@ -12,7 +12,7 @@
 
 ---
 
-> 本文内容已于 2026 年 3 月 27 日对照 `lingarr-translate/lingarr` 进行核对。上游项目在此日期之后仍可能继续变化。
+> 这份 README 反映的是我们这个 fork，以及上游 Lingarr 在 2026 年 3 月 27 日时的状态。之后如果上游继续变化，这里的部分细节可能会慢慢落后。
 >
 > 从 v1.x 升级？2.0.0 包含破坏性变更。MySQL/MariaDB 已不再受支持，配置不会自动迁移，需要全新初始化。
 
@@ -26,12 +26,12 @@ Lingarr on Steroids 是 [Lingarr](https://github.com/lingarr-translate/lingarr) 
 
 ---
 
-## 已验证的 fork 差异
+## 我们改了什么
 
 ### 后端与队列
 
-| 领域 | 此 fork 中已验证的差异 |
-|------|-------------------------|
+| 领域 | 我们这个 fork 里有什么不同 |
+|------|--------------------------|
 | 自定义 translation worker | 翻译任务通过自定义 `BackgroundService` 和可配置并行 worker 执行，而不只是依赖 Hangfire 队列。 |
 | 默认 PostgreSQL | PostgreSQL 是默认数据库，SQLite 仍适用于较小的部署。 |
 | 媒体状态模型 | 媒体使用 9 个状态：`Unknown`、`NotApplicable`、`Pending`、`InProgress`、`Complete`、`Stale`、`AwaitingSource`、`NoSuitableSubtitles`、`Failed`。 |
@@ -66,7 +66,7 @@ Lingarr on Steroids 是 [Lingarr](https://github.com/lingarr-translate/lingarr) 
 
 ## 支持的服务
 
-这是此 fork 在 snapshot 日期上的兼容性列表。其中部分服务上游也已支持，因此这不是“fork 独有”的声明。
+这是我们这个 fork 当前可用的兼容性列表。其中有些服务上游现在也已经支持，所以这里想表达的是“能不能用”，不是“只有我们有”。
 
 **AI：**
 - [OpenAI](https://openai.com/) (GPT)
