@@ -97,4 +97,35 @@ public class WebhookJobTests
         translationRequestServiceMock.Verify(s => s.InterruptActiveRequestsForMedia(It.IsAny<MediaType>(), It.IsAny<int>()), Times.Never);
         automationServiceMock.Verify(s => s.ProcessSingleMediaForAutomationAsync(It.IsAny<int>(), It.IsAny<MediaType>(), It.IsAny<string>()), Times.Never);
     }
+
+    [Fact]
+    public async Task ProcessRadarrWebhook_WhenInstanceConfigMissing_DoesNotFallbackOrProcess()
+    {
+        var automationServiceMock = new Mock<IAutomationService>();
+        var mediaServiceMock = new Mock<IMediaService>();
+        var instanceConfigServiceMock = new Mock<IInstanceConfigService>();
+        var translationRequestServiceMock = new Mock<ITranslationRequestService>();
+
+        instanceConfigServiceMock
+            .Setup(s => s.GetRadarrConfig("missing"))
+            .ReturnsAsync((InstanceConfig?)null);
+
+        var job = new WebhookJob(
+            automationServiceMock.Object,
+            mediaServiceMock.Object,
+            instanceConfigServiceMock.Object,
+            translationRequestServiceMock.Object,
+            NullLogger<WebhookJob>.Instance);
+
+        var payload = new RadarrWebhookPayload
+        {
+            EventType = "Download",
+            Movie = new RadarrWebhookMovie { Id = 123, Title = "Movie" }
+        };
+
+        await job.ProcessRadarrWebhook(payload, "missing");
+
+        mediaServiceMock.Verify(s => s.GetMovieIdOrSyncFromRadarrMovieId(It.IsAny<int>(), It.IsAny<string?>()), Times.Never);
+        automationServiceMock.Verify(s => s.ProcessSingleMediaForAutomationAsync(It.IsAny<int>(), It.IsAny<MediaType>(), It.IsAny<string>()), Times.Never);
+    }
 }

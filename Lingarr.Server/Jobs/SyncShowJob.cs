@@ -137,15 +137,21 @@ public class SyncShowJob
                 await _dbContext.SaveChangesAsync();
             }
 
-            // Cleanup orphaned translation requests for removed shows
+            // Cleanup orphaned translation requests for removed shows, seasons and episodes
             var existingShowIds = await _dbContext.Shows.Select(s => s.Id).ToListAsync();
+            var existingSeasonIds = await _dbContext.Seasons.Select(s => s.Id).ToListAsync();
+            var existingEpisodeIds = await _dbContext.Episodes.Select(e => e.Id).ToListAsync();
             var orphanedRequests = await _dbContext.TranslationRequests
-                .Where(tr => tr.MediaType == MediaType.Show &&
-                             tr.MediaId.HasValue &&
-                             !existingShowIds.Contains(tr.MediaId.Value) &&
+                .Where(tr => tr.MediaId.HasValue &&
                              (tr.Status == TranslationStatus.Pending ||
                               tr.Status == TranslationStatus.InProgress ||
-                              tr.Status == TranslationStatus.Failed))
+                              tr.Status == TranslationStatus.Failed) &&
+                             ((tr.MediaType == MediaType.Show &&
+                               !existingShowIds.Contains(tr.MediaId.Value)) ||
+                              (tr.MediaType == MediaType.Season &&
+                               !existingSeasonIds.Contains(tr.MediaId.Value)) ||
+                              (tr.MediaType == MediaType.Episode &&
+                               !existingEpisodeIds.Contains(tr.MediaId.Value))))
                 .ToListAsync();
 
             if (orphanedRequests.Count != 0)

@@ -60,6 +60,11 @@
                                     :is-expanded="expandedShow !== group.shows[0].id"
                                     class="pr-2" />
                                 {{ group.shows[0].title }}
+                                <span
+                                    class="text-secondary-content ml-2 cursor-help text-xs"
+                                    :title="formatOriginDetails(group.shows[0])">
+                                    details
+                                </span>
                             </div>
                             <div class="col-span-1 flex items-center px-4 py-2" @click.stop>
                                 <ToggleButton
@@ -281,9 +286,10 @@ const groupedShows = computed<IShowGroup[]>(() => {
     const groups = new Map<string, IShowGroup>()
 
     for (const show of shows.value.items) {
-        // Create a normalized key for grouping (title)
+        // Group only when title and normalized path match to avoid merging unrelated remakes.
         const normalizedTitle = show.title.toLowerCase().trim()
-        const groupKey = normalizedTitle
+        const normalizedPath = (show.path || '').toLowerCase().replace(/\/+$/, '')
+        const groupKey = `${normalizedTitle}-${normalizedPath}`
 
         if (!groups.has(groupKey)) {
             groups.set(groupKey, {
@@ -317,6 +323,10 @@ const getInstanceName = (sourceInstanceId: string | null | undefined): string =>
         }
     }
     return 'Default'
+}
+
+const formatOriginDetails = (show: IShow): string => {
+    return `Instance: ${getInstanceName(show.sourceInstanceId)} (${show.sourceInstanceId ?? 'default'})\nPath: ${show.path}`
 }
 
 const toggleGroup = (groupKey: string) => {

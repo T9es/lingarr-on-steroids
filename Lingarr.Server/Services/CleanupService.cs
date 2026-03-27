@@ -4,6 +4,7 @@ using Lingarr.Core.Entities;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Models;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace Lingarr.Server.Services;
 
@@ -106,17 +107,27 @@ public class CleanupService : ICleanupService
 
                     // Delete non-default shows that would collide (SonarrId already at 'default')
                     var collidingShows = await _dbContext.Shows
+                        .Include(s => s.Seasons)
+                            .ThenInclude(season => season.Episodes)
                         .Where(s => s.SourceInstanceId != null && s.SourceInstanceId != "default"
                                     && defaultSonarrIdSet.Contains(s.SonarrId))
                         .ToListAsync();
 
                     if (collidingShows.Count > 0)
                     {
+                        result.EpisodeDuplicatesRemoved += collidingShows
+                            .SelectMany(show => show.Seasons)
+                            .SelectMany(season => season.Episodes)
+                            .Count();
                         _dbContext.Shows.RemoveRange(collidingShows);
                         await _dbContext.SaveChangesAsync();
                         result.DuplicatesRemoved += collidingShows.Count;
                         _logger.LogInformation("Deleted {Count} colliding non-default shows (SonarrId already exists at 'default')", collidingShows.Count);
                     }
+
+                    var episodesReassigned = await _dbContext.Episodes
+                        .Where(e => e.SourceInstanceId != null && e.SourceInstanceId != "default")
+                        .ExecuteUpdateAsync(setters => setters.SetProperty(e => e.SourceInstanceId, "default"));
 
                     // Reassign remaining non-default shows to 'default' (safe, no collisions)
                     var showsReassigned = await _dbContext.Shows
@@ -124,14 +135,18 @@ public class CleanupService : ICleanupService
                         .ExecuteUpdateAsync(setters => setters.SetProperty(s => s.SourceInstanceId, "default"));
 
                     result.ShowsReassigned = showsReassigned;
+                    result.EpisodesReassigned = episodesReassigned;
                     _logger.LogInformation("Reassigned {Count} shows to 'default' instance", showsReassigned);
+                    _logger.LogInformation("Reassigned {Count} episodes to 'default' instance", episodesReassigned);
                 }
 
                 // Step 4: Clean up true duplicates (same RadarrId/SonarrId + same SourceInstanceId 'default')
                 // This runs AFTER reassignment so any collisions get resolved
                 var duplicateMoviesDeleted = await CleanupTrueDuplicates(isMovie: true);
                 var duplicateShowsDeleted = await CleanupTrueDuplicates(isMovie: false);
-                result.DuplicatesRemoved = duplicateMoviesDeleted + duplicateShowsDeleted;
+                var duplicateEpisodesDeleted = await CleanupDuplicateEpisodes();
+                result.DuplicatesRemoved += duplicateMoviesDeleted + duplicateShowsDeleted + duplicateEpisodesDeleted;
+                result.EpisodeDuplicatesRemoved += duplicateEpisodesDeleted;
 
                 // Step 5: Set NULL instance IDs to 'default'
                 var nullMoviesUpdated = await _dbContext.Movies
@@ -142,8 +157,12 @@ public class CleanupService : ICleanupService
                     .Where(s => s.SourceInstanceId == null)
                     .ExecuteUpdateAsync(setters => setters.SetProperty(s => s.SourceInstanceId, "default"));
 
-                _logger.LogInformation("Updated {Movies} movies and {Shows} shows with NULL instance ID to 'default'",
-                    nullMoviesUpdated, nullShowsUpdated);
+                var nullEpisodesUpdated = await _dbContext.Episodes
+                    .Where(e => e.SourceInstanceId == null)
+                    .ExecuteUpdateAsync(setters => setters.SetProperty(e => e.SourceInstanceId, "default"));
+
+                _logger.LogInformation("Updated {Movies} movies, {Shows} shows and {Episodes} episodes with NULL instance ID to 'default'",
+                    nullMoviesUpdated, nullShowsUpdated, nullEpisodesUpdated);
 
                 // Step 6: Save all changes
                 await _dbContext.SaveChangesAsync();
@@ -151,8 +170,8 @@ public class CleanupService : ICleanupService
                 // Step 7: Update settings to have only 'default' instance
                 await UpdateInstanceSettings(result);
 
-                result.Message = $"Cleanup complete. Reassigned {result.MoviesReassigned} movies and {result.ShowsReassigned} shows to 'default'. " +
-                               $"Removed {result.DuplicatesRemoved} true duplicates. " +
+                result.Message = $"Cleanup complete. Reassigned {result.MoviesReassigned} movies, {result.ShowsReassigned} shows and {result.EpisodesReassigned} episodes to 'default'. " +
+                               $"Removed {result.DuplicatesRemoved} duplicates ({result.EpisodeDuplicatesRemoved} episodes). " +
                                $"Consolidated {result.InstancesConsolidated} instances to 'default'.";
 
                 _logger.LogInformation(result.Message);
@@ -169,6 +188,32 @@ public class CleanupService : ICleanupService
         });
 
         return result;
+    }
+
+    /// <inheritdoc />
+    public async Task<CleanupPreviewResult> GetDuplicateCleanupPreview()
+    {
+        var preview = new CleanupPreviewResult
+        {
+            NonDefaultMovieCount = await _dbContext.Movies.CountAsync(m => m.SourceInstanceId != null && m.SourceInstanceId != "default"),
+            NonDefaultShowCount = await _dbContext.Shows.CountAsync(s => s.SourceInstanceId != null && s.SourceInstanceId != "default"),
+            NonDefaultEpisodeCount = await _dbContext.Episodes.CountAsync(e => e.SourceInstanceId != null && e.SourceInstanceId != "default")
+        };
+
+        var radarrInstances = await ReadInstances(SettingKeys.Integration.RadarrInstances);
+        var sonarrInstances = await ReadInstances(SettingKeys.Integration.SonarrInstances);
+
+        preview.DuplicateBackendConfigurations =
+            CountDuplicateBackendConfigurations(radarrInstances) +
+            CountDuplicateBackendConfigurations(sonarrInstances);
+        preview.HasDuplicateBackendConfigurations = preview.DuplicateBackendConfigurations > 0;
+        preview.HasCleanupCandidates =
+            preview.HasDuplicateBackendConfigurations ||
+            preview.NonDefaultMovieCount > 0 ||
+            preview.NonDefaultShowCount > 0 ||
+            preview.NonDefaultEpisodeCount > 0;
+
+        return preview;
     }
 
     /// <summary>
@@ -217,6 +262,31 @@ public class CleanupService : ICleanupService
                 _dbContext.Shows.RemoveRange(toDelete);
                 deletedCount += toDelete.Count;
             }
+        }
+
+        return deletedCount;
+    }
+
+    private async Task<int> CleanupDuplicateEpisodes()
+    {
+        var deletedCount = 0;
+
+        var duplicates = await _dbContext.Episodes
+            .GroupBy(e => new { e.SonarrId, e.SourceInstanceId })
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToListAsync();
+
+        foreach (var key in duplicates)
+        {
+            var toDelete = await _dbContext.Episodes
+                .Where(e => e.SonarrId == key.SonarrId && e.SourceInstanceId == key.SourceInstanceId)
+                .OrderByDescending(e => e.Id)
+                .Skip(1)
+                .ToListAsync();
+
+            _dbContext.Episodes.RemoveRange(toDelete);
+            deletedCount += toDelete.Count;
         }
 
         return deletedCount;
@@ -283,5 +353,57 @@ public class CleanupService : ICleanupService
         {
             _logger.LogWarning(ex, "Could not update instance settings, but database cleanup was successful");
         }
+    }
+
+    private async Task<List<InstanceSetting>> ReadInstances(string key)
+    {
+        var rawValue = await _settingService.GetSetting(key);
+        if (string.IsNullOrWhiteSpace(rawValue))
+        {
+            return [];
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<InstanceSetting>>(
+                rawValue,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "Failed to deserialize instance settings for key {Key}", key);
+            return [];
+        }
+    }
+
+    private static int CountDuplicateBackendConfigurations(IEnumerable<InstanceSetting> instances)
+    {
+        return instances
+            .Where(i => !string.IsNullOrWhiteSpace(i.Url))
+            .GroupBy(i => NormalizeUrl(i.Url))
+            .Where(g => g.Count() > 1)
+            .Sum(g => g.Count() - 1);
+    }
+
+    private static string NormalizeUrl(string url)
+    {
+        var trimmed = url.Trim();
+        if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var uri))
+        {
+            return trimmed.TrimEnd('/').ToLowerInvariant();
+        }
+
+        var builder = new UriBuilder(uri)
+        {
+            Scheme = uri.Scheme.ToLowerInvariant(),
+            Host = uri.Host.ToLowerInvariant(),
+            Query = string.Empty,
+            Fragment = string.Empty
+        };
+
+        var normalizedPath = builder.Path.TrimEnd('/');
+        builder.Path = string.IsNullOrEmpty(normalizedPath) ? "/" : normalizedPath;
+
+        return builder.Uri.GetLeftPart(UriPartial.Path).TrimEnd('/');
     }
 }

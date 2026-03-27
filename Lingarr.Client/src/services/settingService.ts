@@ -74,6 +74,28 @@ const service = (http: AxiosStatic, resource = '/api/setting'): ISettingService 
                 })
         })
     },
+    getCleanupDuplicatePreview<T>(): Promise<T> {
+        return new Promise((resolve, reject) => {
+            http.get(`${resource}/cleanup/duplicates/preflight`)
+                .then((response: AxiosResponse<T>) => {
+                    resolve(response.data)
+                })
+                .catch((error: AxiosError) => {
+                    reject(error.response)
+                })
+        })
+    },
+    cleanupDuplicateInstances<T>(): Promise<T> {
+        return new Promise((resolve, reject) => {
+            http.post(`${resource}/cleanup/duplicates`)
+                .then((response: AxiosResponse<T>) => {
+                    resolve(response.data)
+                })
+                .catch((error: AxiosError) => {
+                    reject(error.response)
+                })
+        })
+    },
     getSystemLimits<T>(): Promise<T> {
         return new Promise((resolve, reject) => {
             http.get(`${resource}/system/limits`)

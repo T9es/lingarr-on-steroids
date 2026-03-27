@@ -2,6 +2,8 @@
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Models;
 using Microsoft.AspNetCore.Mvc;
+using Lingarr.Core.Configuration;
+using System.Text.Json;
 
 namespace Lingarr.Server.Controllers;
 
@@ -57,6 +59,12 @@ public class SettingController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<bool>> SetSetting([FromBody] Setting setting)
     {
+        var validationError = ValidateSetting(setting.Key, setting.Value);
+        if (validationError != null)
+        {
+            return BadRequest(validationError);
+        }
+
         var value = await _settingService.SetSetting(setting.Key, setting.Value);
         if (value)
         {
@@ -75,6 +83,15 @@ public class SettingController : ControllerBase
     [HttpPost("multiple/set")]
     public async Task<ActionResult<bool>> SetSettings([FromBody] Dictionary<string, string> settings)
     {
+        foreach (var setting in settings)
+        {
+            var validationError = ValidateSetting(setting.Key, setting.Value);
+            if (validationError != null)
+            {
+                return BadRequest(validationError);
+            }
+        }
+
         var success = await _settingService.SetSettings(settings);
         if (success)
         {
@@ -92,6 +109,12 @@ public class SettingController : ControllerBase
     [HttpPost("encrypted")]
     public async Task<ActionResult> SetEncryptedSetting([FromBody] Setting setting)
     {
+        var validationError = ValidateSetting(setting.Key, setting.Value);
+        if (validationError != null)
+        {
+            return BadRequest(validationError);
+        }
+
         var success = await _settingService.SetEncryptedSetting(setting.Key, setting.Value);
         if (success)
         {
@@ -250,6 +273,99 @@ public class SettingController : ControllerBase
             return Ok(result);
         }
         return StatusCode(500, result);
+    }
+
+    /// <summary>
+    /// Returns whether duplicate cleanup should be offered to the user.
+    /// </summary>
+    [HttpGet("cleanup/duplicates/preflight")]
+    public async Task<ActionResult<CleanupPreviewResult>> GetCleanupDuplicatePreview(
+        [FromServices] ICleanupService cleanupService)
+    {
+        var result = await cleanupService.GetDuplicateCleanupPreview();
+        return Ok(result);
+    }
+
+    private static string? ValidateSetting(string key, string value)
+    {
+        if (key != SettingKeys.Integration.RadarrInstances &&
+            key != SettingKeys.Integration.SonarrInstances)
+        {
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        List<InstanceSetting>? instances;
+        try
+        {
+            instances = JsonSerializer.Deserialize<List<InstanceSetting>>(
+                value,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+        catch (JsonException)
+        {
+            return "Invalid instance configuration payload.";
+        }
+
+        instances ??= [];
+
+        var invalidInstance = instances.FirstOrDefault(i =>
+            string.IsNullOrWhiteSpace(i.Id) ||
+            string.IsNullOrWhiteSpace(i.Name) ||
+            string.IsNullOrWhiteSpace(i.Url) ||
+            string.IsNullOrWhiteSpace(i.ApiKey));
+        if (invalidInstance != null)
+        {
+            return "Every instance must define id, name, url, and apiKey.";
+        }
+
+        var duplicateIds = instances
+            .GroupBy(i => i.Id, StringComparer.Ordinal)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToList();
+        if (duplicateIds.Count != 0)
+        {
+            return $"Duplicate instance ids are not allowed: {string.Join(", ", duplicateIds)}.";
+        }
+
+        var duplicateUrls = instances
+            .GroupBy(i => NormalizeUrl(i.Url), StringComparer.Ordinal)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.First().Url)
+            .ToList();
+        if (duplicateUrls.Count != 0)
+        {
+            return $"Duplicate backend URLs are not allowed: {string.Join(", ", duplicateUrls)}.";
+        }
+
+        return null;
+    }
+
+    private static string NormalizeUrl(string url)
+    {
+        var trimmed = url.Trim();
+        if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var uri))
+        {
+            return trimmed.TrimEnd('/').ToLowerInvariant();
+        }
+
+        var builder = new UriBuilder(uri)
+        {
+            Scheme = uri.Scheme.ToLowerInvariant(),
+            Host = uri.Host.ToLowerInvariant(),
+            Query = string.Empty,
+            Fragment = string.Empty
+        };
+
+        var normalizedPath = builder.Path.TrimEnd('/');
+        builder.Path = string.IsNullOrEmpty(normalizedPath) ? "/" : normalizedPath;
+
+        return builder.Uri.GetLeftPart(UriPartial.Path).TrimEnd('/');
     }
 }
 

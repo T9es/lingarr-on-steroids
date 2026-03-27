@@ -448,4 +448,43 @@ public class MediaServiceTests
         showSyncServiceMock.Verify(s => s.SyncShows(It.IsAny<List<(Lingarr.Server.Models.Integrations.SonarrShow Show, string InstanceId)>>()), Times.Never);
         showSyncServiceMock.Verify(s => s.SyncEpisode(It.IsAny<Lingarr.Server.Models.Integrations.SonarrEpisode>(), It.IsAny<string>()), Times.Never);
     }
+
+    [Fact]
+    public async Task GetMovieIdOrSyncFromRadarrMovieId_WhenInstanceConfigMissing_DoesNotFetchFromFallback()
+    {
+        var options = new DbContextOptionsBuilder<LingarrDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        await using var context = new LingarrDbContext(options);
+
+        var sonarrMock = new Mock<ISonarrService>();
+        var radarrMock = new Mock<IRadarrService>();
+        var movieSyncMock = new Mock<IMovieSyncService>();
+        var subtitleMock = new Mock<ISubtitleService>();
+        var showSyncServiceMock = new Mock<IShowSyncService>();
+        var mediaSubtitleProcessorMock = new Mock<IMediaSubtitleProcessor>();
+        var instanceConfigServiceMock = new Mock<IInstanceConfigService>();
+
+        instanceConfigServiceMock
+            .Setup(s => s.GetRadarrConfig("missing-instance"))
+            .ReturnsAsync((InstanceConfig?)null);
+
+        var mediaService = new MediaService(
+            context,
+            subtitleMock.Object,
+            sonarrMock.Object,
+            showSyncServiceMock.Object,
+            radarrMock.Object,
+            movieSyncMock.Object,
+            mediaSubtitleProcessorMock.Object,
+            instanceConfigServiceMock.Object,
+            NullLogger<MediaService>.Instance);
+
+        var result = await mediaService.GetMovieIdOrSyncFromRadarrMovieId(42, "missing-instance");
+
+        Assert.Equal(0, result);
+        radarrMock.Verify(s => s.GetMovie(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        movieSyncMock.Verify(s => s.SyncMovie(It.IsAny<Lingarr.Server.Models.Integrations.RadarrMovie>(), It.IsAny<string>()), Times.Never);
+    }
 }

@@ -7,6 +7,11 @@ namespace Lingarr.Server.Services;
 
 public class InstanceConfigService : IInstanceConfigService
 {
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
     private readonly ISettingService _settingService;
     private readonly ILogger<InstanceConfigService> _logger;
 
@@ -49,7 +54,7 @@ public class InstanceConfigService : IInstanceConfigService
         {
             try
             {
-                var instances = JsonSerializer.Deserialize<List<InstanceSetting>>(instancesJson);
+                var instances = JsonSerializer.Deserialize<List<InstanceSetting>>(instancesJson, JsonOptions);
                 if (instances != null && instances.Count > 0)
                 {
                     InstanceSetting? instance = null;
@@ -57,6 +62,14 @@ public class InstanceConfigService : IInstanceConfigService
                     if (!string.IsNullOrEmpty(instanceId))
                     {
                         instance = instances.FirstOrDefault(i => i.Id == instanceId);
+                        if (instance == null)
+                        {
+                            _logger.LogWarning(
+                                "{Service} instance '{InstanceId}' not found in configured instances",
+                                serviceName,
+                                instanceId);
+                            return null;
+                        }
                     }
 
                     instance ??= instances.FirstOrDefault(i => i.Id == "default") ?? instances[0];

@@ -54,6 +54,11 @@
                     }}
                 </button>
             </div>
+            <div
+                v-if="saveError"
+                class="mt-3 rounded-md border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+                {{ saveError }}
+            </div>
 
             <div
                 v-translate="'settings.integrations.reindexTask'"
@@ -113,7 +118,9 @@
             </div>
 
             <!-- Cleanup Duplicates Section -->
-            <div class="border-secondary-content/20 mt-6 border-t pt-4">
+            <div
+                v-if="cleanupPreview?.hasCleanupCandidates"
+                class="border-secondary-content/20 mt-6 border-t pt-4">
                 <div class="flex items-center justify-between">
                     <div>
                         <h4 class="text-primary-content text-sm font-medium">
@@ -235,9 +242,20 @@ interface CleanupResult {
     message: string
     moviesReassigned: number
     showsReassigned: number
+    episodesReassigned: number
     duplicatesRemoved: number
+    episodeDuplicatesRemoved: number
     instancesConsolidated: number
     reassignedInstanceIds: string[]
+}
+
+interface CleanupPreviewResult {
+    hasCleanupCandidates: boolean
+    hasDuplicateBackendConfigurations: boolean
+    duplicateBackendConfigurations: number
+    nonDefaultMovieCount: number
+    nonDefaultShowCount: number
+    nonDefaultEpisodeCount: number
 }
 
 const { translate } = useI18n()
@@ -249,10 +267,12 @@ const settingsStore = useSettingStore()
 const localInstances = ref<InstanceWrapper[]>([])
 const originalInstances = ref<InstanceWrapper[]>([])
 const isSaving = ref(false)
+const saveError = ref('')
 
 // Cleanup state
 const isCleaningUp = ref(false)
 const cleanupResult = ref<CleanupResult | null>(null)
+const cleanupPreview = ref<CleanupPreviewResult | null>(null)
 
 // Connection status per instance
 const connectionStatuses = reactive<Record<string, Record<string, ConnectionStatus>>>({
@@ -331,6 +351,76 @@ const isValidInstance = (instance: IInstance): boolean => {
     return !!(instance.url && instance.apiKey)
 }
 
+const normalizeInstanceUrl = (url: string): string => {
+    const trimmed = url.trim()
+
+    try {
+        const parsed = new URL(trimmed)
+        const path = parsed.pathname.replace(/\/+$/, '')
+        return `${parsed.protocol.toLowerCase()}//${parsed.host.toLowerCase()}${path}`
+    } catch {
+        return trimmed.replace(/\/+$/, '').toLowerCase()
+    }
+}
+
+const findDuplicateBackendUrls = (): string[] => {
+    const duplicateUrls: string[] = []
+
+    ;(['radarr', 'sonarr'] as const).forEach((type) => {
+        const seen = new Map<string, string>()
+
+        localInstances.value
+            .filter((wrapper) => wrapper.type === type)
+            .map((wrapper) => wrapper.instance)
+            .filter(isValidInstance)
+            .forEach((instance) => {
+                const normalizedUrl = normalizeInstanceUrl(instance.url)
+                if (seen.has(normalizedUrl)) {
+                    duplicateUrls.push(instance.url)
+                } else {
+                    seen.set(normalizedUrl, instance.id)
+                }
+            })
+    })
+
+    return duplicateUrls
+}
+
+const findDuplicateInstanceIds = (): string[] => {
+    const duplicateIds: string[] = []
+
+    ;(['radarr', 'sonarr'] as const).forEach((type) => {
+        const seen = new Set<string>()
+
+        localInstances.value
+            .filter((wrapper) => wrapper.type === type)
+            .forEach((wrapper) => {
+                if (seen.has(wrapper.instance.id)) {
+                    duplicateIds.push(`${type}:${wrapper.instance.id}`)
+                    return
+                }
+
+                seen.add(wrapper.instance.id)
+            })
+    })
+
+    return duplicateIds
+}
+
+const validateBeforeSave = (): string | null => {
+    const duplicateIds = findDuplicateInstanceIds()
+    if (duplicateIds.length > 0) {
+        return `Duplicate instance IDs are not allowed: ${duplicateIds.join(', ')}.`
+    }
+
+    const duplicateUrls = findDuplicateBackendUrls()
+    if (duplicateUrls.length > 0) {
+        return `The same Radarr/Sonarr backend cannot be added twice: ${duplicateUrls.join(', ')}.`
+    }
+
+    return null
+}
+
 const buildWebhookUrl = (type: 'radarr' | 'sonarr', instanceId: string): string => {
     return `${webhookBaseUrl.value}/api/webhook/${type}/${encodeURIComponent(instanceId)}`
 }
@@ -346,6 +436,14 @@ const webhookInstances = computed<WebhookInstance[]>(() => {
             url: buildWebhookUrl(wrapper.type, wrapper.instance.id)
         }))
 })
+
+const fetchCleanupPreview = async (): Promise<void> => {
+    try {
+        cleanupPreview.value = await services.setting.getCleanupDuplicatePreview<CleanupPreviewResult>()
+    } catch {
+        cleanupPreview.value = null
+    }
+}
 
 // Load instances from store into local state
 const loadInstancesFromStore = (): void => {
@@ -407,7 +505,14 @@ const loadInstancesFromStore = (): void => {
 // Save changes to store
 const saveChanges = async (): Promise<void> => {
     isSaving.value = true
+    saveError.value = ''
     try {
+        const validationError = validateBeforeSave()
+        if (validationError) {
+            saveError.value = validationError
+            return
+        }
+
         const radarrs = localInstances.value
             .filter((i) => i.type === 'radarr')
             .map((i) => i.instance)
@@ -432,8 +537,11 @@ const saveChanges = async (): Promise<void> => {
 
         // Update originals to match current state
         originalInstances.value = JSON.parse(JSON.stringify(localInstances.value))
+        await fetchCleanupPreview()
 
         saveNotification.value?.show()
+    } catch (error) {
+        saveError.value = 'Failed to save instance settings. Check for duplicate IDs or backend URLs.'
     } finally {
         isSaving.value = false
     }
@@ -442,6 +550,7 @@ const saveChanges = async (): Promise<void> => {
 // Discard changes and reset to original
 const discardChanges = (): void => {
     localInstances.value = JSON.parse(JSON.stringify(originalInstances.value))
+    saveError.value = ''
 
     // Re-initialize connection statuses for current instances
     connectionStatuses.radarr = {}
@@ -599,25 +708,26 @@ const migrateLegacySettings = (): void => {
 
 // Cleanup duplicate instances
 const cleanupDuplicates = async (): Promise<void> => {
+    if (
+        typeof window !== 'undefined' &&
+        !window.confirm(
+            'This will consolidate duplicate instance data to the default instance. Continue?'
+        )
+    ) {
+        return
+    }
+
     isCleaningUp.value = true
     cleanupResult.value = null
 
     try {
-        const response = await fetch('/api/setting/cleanup/duplicates', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        })
-
-        const result = await response.json()
+        const result = await services.setting.cleanupDuplicateInstances<CleanupResult>()
         cleanupResult.value = result
 
         // Reload instances from store after cleanup
         if (result.success) {
-            setTimeout(() => {
-                loadInstancesFromStore()
-            }, 1000)
+            loadInstancesFromStore()
+            await fetchCleanupPreview()
         }
     } catch (error) {
         cleanupResult.value = {
@@ -625,7 +735,9 @@ const cleanupDuplicates = async (): Promise<void> => {
             message: 'Failed to connect to server',
             moviesReassigned: 0,
             showsReassigned: 0,
+            episodesReassigned: 0,
             duplicatesRemoved: 0,
+            episodeDuplicatesRemoved: 0,
             instancesConsolidated: 0,
             reassignedInstanceIds: []
         }
@@ -634,8 +746,9 @@ const cleanupDuplicates = async (): Promise<void> => {
     }
 }
 
-onMounted(() => {
+onMounted(async () => {
     migrateLegacySettings()
     loadInstancesFromStore()
+    await fetchCleanupPreview()
 })
 </script>

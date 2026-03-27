@@ -53,6 +53,8 @@ export interface ISettingService {
     setSetting(key: string, value: string): Promise<void>
     setEncryptedSetting(key: string, value: string): Promise<void>
     setSettings(keys: ISettings): Promise<void>
+    getCleanupDuplicatePreview<T>(): Promise<T>
+    cleanupDuplicateInstances<T>(): Promise<T>
     getSystemLimits<T>(): Promise<T>
     testRadarrConnection<T>(): Promise<T>
     testSonarrConnection<T>(): Promise<T>

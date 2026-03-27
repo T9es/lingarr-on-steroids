@@ -64,6 +64,11 @@
                             class="border-accent hover:bg-secondary/50 grid grid-cols-14 border-b transition-colors">
                             <div class="col-span-3 px-4 py-2">
                                 {{ group.movies[0].title }}
+                                <span
+                                    class="text-secondary-content ml-2 cursor-help text-xs"
+                                    :title="formatOriginDetails(group.movies[0])">
+                                    details
+                                </span>
                             </div>
                             <div class="col-span-1 flex items-center justify-center px-2 py-2">
                                 <TranslationStateBadge
@@ -550,6 +555,10 @@ const getInstanceName = (sourceInstanceId: string | null | undefined): string =>
         }
     }
     return 'Default'
+}
+
+const formatOriginDetails = (movie: IMovie): string => {
+    return `Instance: ${getInstanceName(movie.sourceInstanceId)} (${movie.sourceInstanceId ?? 'default'})\nPath: ${movie.path}`
 }
 
 const toggleGroup = (groupKey: string) => {
