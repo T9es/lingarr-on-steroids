@@ -1,6 +1,7 @@
 ﻿using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
+using Lingarr.Core.Enum;
 using Microsoft.EntityFrameworkCore;
 
 namespace Lingarr.Server.Services;
@@ -9,6 +10,7 @@ public class StartupService : IHostedService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<StartupService> _logger;
+    private static readonly SemaphoreSlim _cleanupLock = new(1, 1);
 
     public StartupService(IServiceProvider serviceProvider, ILogger<StartupService> logger)
     {
@@ -120,6 +122,12 @@ public class StartupService : IHostedService
             SettingKeys.Integration.SonarrApiKey
         ]);
 
+        // Clean up duplicate records from multi-instance migration
+        await CleanupDuplicateRecords(dbContext);
+        
+        // Auto-recover media stuck in AwaitingSource due to previous indexing bug
+        await FixStuckAwaitingSourceMedia(dbContext);
+
         // Ensure service_type is not empty
         var serviceType = await dbContext.Settings.FirstOrDefaultAsync(s => s.Key == SettingKeys.Translation.ServiceType);
         if (serviceType == null)
@@ -208,6 +216,7 @@ public class StartupService : IHostedService
             { "TARGET_LANGUAGES", SettingKeys.Translation.TargetLanguages },
 
             { "SERVICE_TYPE", SettingKeys.Translation.ServiceType },
+            { "MAX_PARALLEL_TRANSLATIONS", SettingKeys.Translation.MaxParallelTranslations },
             { "LIBRE_TRANSLATE_URL", SettingKeys.Translation.LibreTranslate.Url },
             { "LIBRE_TRANSLATE_API_KEY", SettingKeys.Translation.LibreTranslate.ApiKey },
             { "AI_PROMPT", SettingKeys.Translation.AiPrompt },
@@ -264,4 +273,170 @@ public class StartupService : IHostedService
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    /// <summary>
+    /// Cleans up duplicate movie and show records that may have been created
+    /// during the multi-instance migration. This happens when users upgrade from
+    /// a pre-multi-instance version where source_instance_id was NULL.
+    /// </summary>
+    private async Task CleanupDuplicateRecords(LingarrDbContext dbContext)
+    {
+        if (!await _cleanupLock.WaitAsync(0))
+        {
+            _logger.LogInformation("Cleanup already in progress, skipping");
+            return;
+        }
+
+        try
+        {
+            // Delete duplicate movies - keep the one with lowest ID (oldest)
+            // Group by both RadarrId AND SourceInstanceId to preserve legitimate multi-instance records
+            var duplicateMovies = await dbContext.Movies
+                .GroupBy(m => new { m.RadarrId, m.SourceInstanceId })
+                .Where(g => g.Count() > 1)
+                .Select(g => g.Key)
+                .ToListAsync();
+
+            if (duplicateMovies.Count > 0)
+            {
+                var moviesToDelete = new List<Movie>();
+                foreach (var key in duplicateMovies)
+                {
+                    var duplicates = await dbContext.Movies
+                        .Where(m => m.RadarrId == key.RadarrId && m.SourceInstanceId == key.SourceInstanceId)
+                        .OrderByDescending(m => m.Id)
+                        .Skip(1)
+                        .ToListAsync();
+                    moviesToDelete.AddRange(duplicates);
+                }
+
+                dbContext.Movies.RemoveRange(moviesToDelete);
+                await dbContext.SaveChangesAsync();
+                _logger.LogInformation("Cleaned up {Count} duplicate movie records from multi-instance migration.", moviesToDelete.Count);
+            }
+
+            // Delete duplicate shows - keep the one with lowest ID (oldest)
+            // Group by both SonarrId AND SourceInstanceId to preserve legitimate multi-instance records
+            var duplicateShows = await dbContext.Shows
+                .GroupBy(s => new { s.SonarrId, s.SourceInstanceId })
+                .Where(g => g.Count() > 1)
+                .Select(g => g.Key)
+                .ToListAsync();
+
+            if (duplicateShows.Count > 0)
+            {
+                var showsToDelete = new List<Show>();
+                foreach (var key in duplicateShows)
+                {
+                    var duplicates = await dbContext.Shows
+                        .Where(s => s.SonarrId == key.SonarrId && s.SourceInstanceId == key.SourceInstanceId)
+                        .OrderByDescending(s => s.Id)
+                        .Skip(1)
+                        .ToListAsync();
+                    showsToDelete.AddRange(duplicates);
+                }
+
+                dbContext.Shows.RemoveRange(showsToDelete);
+                await dbContext.SaveChangesAsync();
+                _logger.LogInformation("Cleaned up {Count} duplicate show records from multi-instance migration.", showsToDelete.Count);
+            }
+
+            // Update remaining records to have 'default' as source_instance_id if NULL
+            var moviesWithNullInstance = await dbContext.Movies
+                .Where(m => m.SourceInstanceId == null)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(m => m.SourceInstanceId, "default"));
+
+            var showsWithNullInstance = await dbContext.Shows
+                .Where(s => s.SourceInstanceId == null)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(s => s.SourceInstanceId, "default"));
+
+            if (moviesWithNullInstance > 0 || showsWithNullInstance > 0)
+            {
+                _logger.LogInformation("Updated {Movies} movies and {Shows} shows with NULL source_instance_id to 'default'.", 
+                    moviesWithNullInstance, showsWithNullInstance);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during duplicate record cleanup. Continuing startup...");
+        }
+        finally
+        {
+            _cleanupLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Recovers media stuck in AwaitingSource due to indexing issues.
+    /// Two scenarios are handled:
+    /// 1. Movies with embedded subtitles recorded but state wasn't updated (previous bug)
+    /// 2. Movies marked as indexed but with NO embedded subtitles (indexing failed silently)
+    /// Clears their IndexedAt and State so the sync job will re-evaluate them.
+    /// </summary>
+    private async Task FixStuckAwaitingSourceMedia(LingarrDbContext dbContext)
+    {
+        try
+        {
+            // Case 1: Has embedded subtitles but state wasn't updated
+            var moviesWithSubs = await dbContext.Movies
+                .Include(m => m.EmbeddedSubtitles)
+                .Where(m => m.TranslationState == TranslationState.AwaitingSource && m.IndexedAt != null)
+                .Where(m => m.EmbeddedSubtitles.Any(e => e.IsTextBased))
+                .ToListAsync();
+
+            // Case 2: Indexed but NO embedded subtitles (indexing failed or records lost)
+            var moviesWithoutSubs = await dbContext.Movies
+                .Include(m => m.EmbeddedSubtitles)
+                .Where(m => m.TranslationState == TranslationState.AwaitingSource && m.IndexedAt != null)
+                .Where(m => !m.EmbeddedSubtitles.Any())
+                .ToListAsync();
+
+            var allAffectedMovies = moviesWithSubs.Concat(moviesWithoutSubs).ToList();
+
+            if (allAffectedMovies.Count > 0)
+            {
+                foreach (var movie in allAffectedMovies)
+                {
+                    movie.IndexedAt = null;
+                    movie.TranslationState = TranslationState.Unknown;
+                }
+                await dbContext.SaveChangesAsync();
+                _logger.LogInformation(
+                    "Reset state for {Count} movies stuck in AwaitingSource ({WithSubs} with subs, {WithoutSubs} without subs).",
+                    allAffectedMovies.Count, moviesWithSubs.Count, moviesWithoutSubs.Count);
+            }
+            
+            // Same for episodes
+            var episodesWithSubs = await dbContext.Episodes
+                .Include(e => e.EmbeddedSubtitles)
+                .Where(e => e.TranslationState == TranslationState.AwaitingSource && e.IndexedAt != null)
+                .Where(e => e.EmbeddedSubtitles.Any(e => e.IsTextBased))
+                .ToListAsync();
+
+            var episodesWithoutSubs = await dbContext.Episodes
+                .Include(e => e.EmbeddedSubtitles)
+                .Where(e => e.TranslationState == TranslationState.AwaitingSource && e.IndexedAt != null)
+                .Where(e => !e.EmbeddedSubtitles.Any())
+                .ToListAsync();
+
+            var allAffectedEpisodes = episodesWithSubs.Concat(episodesWithoutSubs).ToList();
+
+            if (allAffectedEpisodes.Count > 0)
+            {
+                foreach (var episode in allAffectedEpisodes)
+                {
+                    episode.IndexedAt = null;
+                    episode.TranslationState = TranslationState.Unknown;
+                }
+                await dbContext.SaveChangesAsync();
+                _logger.LogInformation(
+                    "Reset state for {Count} episodes stuck in AwaitingSource ({WithSubs} with subs, {WithoutSubs} without subs).",
+                    allAffectedEpisodes.Count, episodesWithSubs.Count, episodesWithoutSubs.Count);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during AwaitingSource stuck media recovery. Continuing startup...");
+        }
+    }
 }
