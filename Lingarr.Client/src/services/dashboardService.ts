@@ -33,7 +33,7 @@ export const dashboardService = (axios: AxiosStatic) => ({
         offset: number = 0,
         limit: number = 10
     ): Promise<{
-        jobs: any[]
+        jobs: unknown[]
         totalCount: number
         hasMore: boolean
     }> => {

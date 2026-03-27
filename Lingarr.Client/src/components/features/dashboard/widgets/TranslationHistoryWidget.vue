@@ -15,6 +15,7 @@ import {
     Title,
     Tooltip
 } from 'chart.js/auto'
+import type { TooltipItem } from 'chart.js'
 import { Bar } from 'vue-chartjs'
 import { VueDatePicker } from '@vuepic/vue-datepicker'
 import '@vuepic/vue-datepicker/dist/main.css'
@@ -43,12 +44,28 @@ interface RecentTranslation {
     mediaType: string
 }
 
+interface RecentTranslationRaw {
+    id?: number
+    Id?: number
+    title?: string
+    Title?: string
+    sourceLanguage?: string
+    SourceLanguage?: string
+    targetLanguage?: string
+    TargetLanguage?: string
+    completedAt?: string | null
+    CompletedAt?: string | null
+    mediaType?: string
+    MediaType?: string
+}
+
 interface HourlyStatistic {
     hour: number
     translationCount: number
 }
 
 type TimeFilter = '24h' | '7d' | '30d' | '1y' | 'custom' | 'all'
+type ChartLabelContext = TooltipItem<'bar'>
 
 const recentTranslations = ref<RecentTranslation[]>([])
 const recentLoading = ref(false)
@@ -90,13 +107,14 @@ onMounted(async () => {
 const fetchRecentTranslations = async () => {
     recentLoading.value = true
     try {
-        const response = await services.translationRequest.getRecentCompleted<any>(5)
-        recentTranslations.value = (response || []).map((item: any) => ({
-            id: item.id || item.Id,
+        const response =
+            await services.translationRequest.getRecentCompleted<RecentTranslationRaw[]>(5)
+        recentTranslations.value = (response || []).map((item) => ({
+            id: item.id || item.Id || 0,
             title: item.title || item.Title || 'Unknown',
             sourceLanguage: item.sourceLanguage || item.SourceLanguage || '',
             targetLanguage: item.targetLanguage || item.TargetLanguage || '',
-            completedAt: item.completedAt || item.CompletedAt,
+            completedAt: item.completedAt || item.CompletedAt || null,
             mediaType: item.mediaType || item.MediaType || 'Movie'
         }))
     } catch (error) {
@@ -381,7 +399,7 @@ const chartOptions = computed(() => ({
             padding: 8,
             displayColors: false,
             callbacks: {
-                label: (context: any) => `${context.parsed.y} translations`
+                label: (context: ChartLabelContext) => `${context.parsed.y ?? 0} translations`
             }
         }
     },
@@ -473,7 +491,9 @@ const timeFilterOptions = [
                 class="!bg-secondary" />
         </div>
 
-        <div v-if="isLoading || hourlyLoading || filteredLoading" class="flex flex-1 items-center justify-center">
+        <div
+            v-if="isLoading || hourlyLoading || filteredLoading"
+            class="flex flex-1 items-center justify-center">
             <div
                 class="border-accent h-6 w-6 animate-spin rounded-full border-2 border-t-transparent"></div>
         </div>
@@ -491,7 +511,9 @@ const timeFilterOptions = [
                     <div class="text-primary-content text-lg font-bold">
                         {{
                             formatNumber(
-                                filteredStats?.linesCount ?? props.statistics?.totalLinesTranslated ?? 0
+                                filteredStats?.linesCount ??
+                                    props.statistics?.totalLinesTranslated ??
+                                    0
                             )
                         }}
                     </div>
@@ -501,7 +523,9 @@ const timeFilterOptions = [
                     <div class="text-primary-content text-lg font-bold">
                         {{
                             formatNumber(
-                                filteredStats?.filesCount ?? props.statistics?.totalFilesTranslated ?? 0
+                                filteredStats?.filesCount ??
+                                    props.statistics?.totalFilesTranslated ??
+                                    0
                             )
                         }}
                     </div>

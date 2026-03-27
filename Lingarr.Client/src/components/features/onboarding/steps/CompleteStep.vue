@@ -51,8 +51,8 @@
         <!-- Actions -->
         <div class="flex flex-col items-center gap-4">
             <button
-                @click="handleComplete"
-                class="border-accent bg-accent hover:bg-accent/80 text-primary-content rounded-md border px-6 py-2 font-semibold transition-colors">
+                class="border-accent bg-accent hover:bg-accent/80 text-primary-content rounded-md border px-6 py-2 font-semibold transition-colors"
+                @click="handleComplete">
                 {{ translate('onboarding.completeStep.startTranslating') }}
             </button>
             <router-link

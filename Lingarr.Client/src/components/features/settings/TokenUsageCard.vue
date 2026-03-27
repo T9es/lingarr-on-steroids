@@ -92,6 +92,7 @@
 import { onMounted, ref, computed } from 'vue'
 import { useI18n } from '@/plugins/i18n'
 import { useSettingStore } from '@/store/setting'
+import type { ISettings } from '@/ts'
 import type { TokenUsageResponse } from '@/ts/tokenUsage'
 import InputComponent from '@/components/common/InputComponent.vue'
 import services from '@/services'
@@ -99,8 +100,16 @@ import services from '@/services'
 const { translate } = useI18n()
 const settingsStore = useSettingStore()
 
+type TokenUsageService = 'openai' | 'anthropic' | 'gemini' | 'deepseek' | 'localai'
+type TokenLimitSettingKey =
+    | 'openai_token_limit'
+    | 'anthropic_token_limit'
+    | 'gemini_token_limit'
+    | 'deepseek_token_limit'
+    | 'localai_token_limit'
+
 const props = defineProps<{
-    service: string
+    service: TokenUsageService
 }>()
 
 const usage = ref<TokenUsageResponse | null>(null)
@@ -114,22 +123,24 @@ const presets = [
     { label: '50M', value: 50000000 }
 ]
 
-const tokenLimitSettingKey = computed(() => {
-    const keyMap: Record<string, string> = {
+const tokenLimitSettingKey = computed<TokenLimitSettingKey>(() => {
+    const keyMap: Record<TokenUsageService, TokenLimitSettingKey> = {
         openai: 'openai_token_limit',
         anthropic: 'anthropic_token_limit',
         gemini: 'gemini_token_limit',
         deepseek: 'deepseek_token_limit',
         localai: 'localai_token_limit'
     }
-    return keyMap[props.service as keyof typeof keyMap]
+    return keyMap[props.service]
 })
 
 onMounted(async () => {
     await loadUsage()
-    tokenLimit.value = (settingsStore.getSetting(tokenLimitSettingKey.value as any) as string) || ''
-    resetTime.value =
-        (settingsStore.getSetting('token_limit_reset_time' as any) as string) || '00:00'
+    const storedTokenLimit = settingsStore.getSetting(tokenLimitSettingKey.value as keyof ISettings)
+    const storedResetTime = settingsStore.getSetting('token_limit_reset_time')
+
+    tokenLimit.value = typeof storedTokenLimit === 'string' ? storedTokenLimit : ''
+    resetTime.value = typeof storedResetTime === 'string' ? storedResetTime : '00:00'
 })
 
 const loadUsage = async () => {
@@ -144,12 +155,16 @@ const loadUsage = async () => {
 }
 
 const saveTokenLimit = async () => {
-    await settingsStore.updateSetting(tokenLimitSettingKey.value as any, tokenLimit.value, true)
+    await settingsStore.updateSetting(
+        tokenLimitSettingKey.value as keyof ISettings,
+        tokenLimit.value,
+        true
+    )
     await loadUsage()
 }
 
 const saveResetTime = async () => {
-    await settingsStore.updateSetting('token_limit_reset_time' as any, resetTime.value, true)
+    await settingsStore.updateSetting('token_limit_reset_time', resetTime.value, true)
 }
 
 const applyPreset = (value: number) => {

@@ -24,6 +24,8 @@ using Lingarr.Server.Services.Integration;
 using Lingarr.Server.Services.Subtitle;
 using Lingarr.Server.Services.Sync;
 using Lingarr.Server.Services.Translation;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Options;
 using Microsoft.OpenApi.Models;
 using Polly;
@@ -46,6 +48,7 @@ public static class ServiceCollectionExtensions
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddMemoryCache();
         builder.Services.AddSingleton(TimeProvider.System);
+        builder.ConfigureDataProtection();
         
         // Configure HttpClient with retry policy and timeout for integration services
         builder.Services.AddHttpClient<IIntegrationService, IntegrationService>()
@@ -112,11 +115,23 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<IIntegrationSettingsProvider, IntegrationSettingsProvider>();
     }
 
+    private static void ConfigureDataProtection(this WebApplicationBuilder builder)
+    {
+        var keysPath = Environment.GetEnvironmentVariable("DATA_PROTECTION_KEYS_PATH") ??
+            Path.Combine(builder.Environment.ContentRootPath, "config", "keys");
+        Directory.CreateDirectory(keysPath);
+
+        builder.Services.AddDataProtection()
+            .SetApplicationName("Lingarr")
+            .PersistKeysToFileSystem(new DirectoryInfo(keysPath));
+    }
+
     private static void ConfigureServices(this WebApplicationBuilder builder)
     {
         // Register generic Lazy<T> support for breaking circular dependencies
         builder.Services.AddTransient(typeof(Lazy<>), typeof(LazyServiceWrapper<>));
         
+        builder.Services.AddSingleton<IEncryptionService, EncryptionService>();
         builder.Services.AddScoped<ISettingService, SettingService>();
         builder.Services.AddSingleton<SettingChangedListener>();
 
@@ -239,6 +254,7 @@ public static class ServiceCollectionExtensions
             if (dbConnection == "sqlite")
             {
                 var sqliteDbPath = Environment.GetEnvironmentVariable("DB_HANGFIRE_SQLITE_PATH") ?? "/app/config/Hangfire.db";
+                EnableSqliteWal(sqliteDbPath);
 
                 configuration
                     .UseSimpleAssemblyNameTypeSerializer()
@@ -270,5 +286,20 @@ public static class ServiceCollectionExtensions
 
             configuration.UseFilter(new JobContextFilter());
         });
+    }
+
+    private static void EnableSqliteWal(string sqliteDbPath)
+    {
+        var directory = Path.GetDirectoryName(sqliteDbPath);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        using var connection = new SqliteConnection($"Data Source={sqliteDbPath}");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA journal_mode=WAL;";
+        command.ExecuteNonQuery();
     }
 }

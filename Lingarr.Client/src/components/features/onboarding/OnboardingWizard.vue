@@ -128,7 +128,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, ref, onMounted, onUnmounted } from 'vue'
+import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, type Component } from 'vue'
 import { useOnboardingStore } from '@/store/onboarding'
 import { useInstanceStore } from '@/store/instance'
 import { THEMES, type ITheme } from '@/ts'
@@ -146,7 +146,7 @@ const themeDropdownPosition = ref({ top: 0, left: 0 })
 const themeButtonRef = ref<HTMLElement | null>(null)
 
 // Step component mapping
-const stepComponents: Record<string, any> = {
+const stepComponents: Record<string, Component> = {
     WelcomeStep: defineAsyncComponent(() => import('./steps/WelcomeStep.vue')),
     IntegrationStep: defineAsyncComponent(() => import('./steps/IntegrationStep.vue')),
     ServiceStep: defineAsyncComponent(() => import('./steps/ServiceStep.vue')),

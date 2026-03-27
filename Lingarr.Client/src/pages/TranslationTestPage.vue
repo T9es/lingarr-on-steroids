@@ -91,9 +91,7 @@
                                             <span
                                                 v-if="(movie.embeddedSubtitles?.length || 0) > 4"
                                                 class="text-secondary-content text-[10px]">
-                                                +{{
-                                                    (movie.embeddedSubtitles?.length || 0) - 4
-                                                }}
+                                                +{{ (movie.embeddedSubtitles?.length || 0) - 4 }}
                                                 emb
                                             </span>
                                         </div>

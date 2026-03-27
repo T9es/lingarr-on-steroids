@@ -40,10 +40,17 @@
                 <p
                     v-if="selectedSubtitle && isEmbedded(selectedSubtitle)"
                     class="text-accent mt-1 text-xs">
-                    {{ t('translationTest.embeddedSubtitleHint', 'Embedded subtitle will be extracted when needed') }}
+                    {{
+                        t(
+                            'translationTest.embeddedSubtitleHint',
+                            'Embedded subtitle will be extracted when needed'
+                        )
+                    }}
                 </p>
                 <p v-else-if="isLoadingSubtitleMeta" class="text-secondary-content mt-1 text-xs">
-                    {{ t('translationTest.loadingSubtitleMetadata', 'Loading subtitle metadata...') }}
+                    {{
+                        t('translationTest.loadingSubtitleMetadata', 'Loading subtitle metadata...')
+                    }}
                 </p>
                 <p v-else-if="subtitleMetaError" class="text-error mt-1 text-xs">
                     {{ subtitleMetaError }}
@@ -341,9 +348,7 @@ function autoSelectSubtitle(subs: SubtitleOption[], lang: string) {
 
     const embeddedMatch = subs.find(
         (sub) =>
-            isEmbedded(sub) &&
-            sub.isTextBased &&
-            sub.language?.toLowerCase() === normalizedLanguage
+            isEmbedded(sub) && sub.isTextBased && sub.language?.toLowerCase() === normalizedLanguage
     )
 
     if (embeddedMatch) {
@@ -449,7 +454,11 @@ const canOpenVisualPicker = computed(() => {
 })
 
 const canStart = computed(() => {
-    if (!sourceLanguage.value || !targetLanguage.value || sourceLanguage.value === targetLanguage.value) {
+    if (
+        !sourceLanguage.value ||
+        !targetLanguage.value ||
+        sourceLanguage.value === targetLanguage.value
+    ) {
         return false
     }
 

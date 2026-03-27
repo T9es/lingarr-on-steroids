@@ -104,6 +104,25 @@ export const SETTINGS = {
     TOKEN_LIMIT_RESET_TIME: 'token_limit_reset_time'
 } as const
 
+export const ENCRYPTED_SETTING_KEYS = new Set<string>([
+    SETTINGS.RADARR_API_KEY,
+    SETTINGS.SONARR_API_KEY,
+    SETTINGS.LIBRETRANSLATE_API_KEY,
+    SETTINGS.DEEPL_API_KEY,
+    SETTINGS.OPENAI_API_KEY,
+    SETTINGS.ANTHROPIC_API_KEY,
+    SETTINGS.LOCAL_AI_API_KEY,
+    SETTINGS.GEMINI_API_KEY,
+    SETTINGS.DEEPSEEK_API_KEY,
+    SETTINGS.CHUTES_API_KEY,
+    SETTINGS.RADARR_INSTANCES,
+    SETTINGS.SONARR_INSTANCES
+])
+
+export const isEncryptedSettingKey = (key: string): boolean => {
+    return ENCRYPTED_SETTING_KEYS.has(key)
+}
+
 export interface ISettings {
     radarr_api_key: string
     radarr_url: string

@@ -99,11 +99,11 @@
                                     </ContextMenu>
                                     <ContextMenu
                                         v-else
-                                        :embeddedSubtitle="item.data as IEmbeddedSubtitle"
+                                        v-slot="{ isExtracting }"
+                                        :embedded-subtitle="item.data as IEmbeddedSubtitle"
                                         :media="group.movies[0]"
                                         :media-type="MEDIA_TYPE.MOVIE"
-                                        @update:toggle="toggleMovie(group.movies[0])"
-                                        v-slot="{ isExtracting }">
+                                        @update:toggle="toggleMovie(group.movies[0])">
                                         <BadgeComponent
                                             :classes="
                                                 getEmbeddedBadgeClasses(
@@ -310,11 +310,11 @@
                                         </ContextMenu>
                                         <ContextMenu
                                             v-else
-                                            :embeddedSubtitle="itemSub.data as IEmbeddedSubtitle"
+                                            v-slot="{ isExtracting }"
+                                            :embedded-subtitle="itemSub.data as IEmbeddedSubtitle"
                                             :media="item"
                                             :media-type="MEDIA_TYPE.MOVIE"
-                                            @update:toggle="toggleMovie(item)"
-                                            v-slot="{ isExtracting }">
+                                            @update:toggle="toggleMovie(item)">
                                             <BadgeComponent
                                                 :classes="
                                                     getEmbeddedBadgeClasses(
@@ -535,10 +535,14 @@ const getInstanceName = (sourceInstanceId: string | null | undefined): string =>
     if (!sourceInstanceId) return 'Default'
 
     // Get instance name from setting store
-    const instancesJson = settingStore.getSetting(SETTINGS.RADARR_INSTANCES) as string
-    if (instancesJson) {
+    const instancesValue = settingStore.getSetting(SETTINGS.RADARR_INSTANCES) as
+        | string
+        | IInstance[]
+    if (instancesValue) {
         try {
-            const instances = JSON.parse(instancesJson) as IInstance[]
+            const instances = Array.isArray(instancesValue)
+                ? instancesValue
+                : (JSON.parse(instancesValue) as IInstance[])
             const instance = instances.find((i) => i.id === sourceInstanceId)
             return instance?.name || sourceInstanceId
         } catch {

@@ -46,17 +46,19 @@
                         <summary class="text-accent cursor-pointer text-xs">
                             {{ translate('translationTest.debugPanel.viewRequest') }}
                         </summary>
-                        <pre class="bg-primary mt-1 max-h-40 overflow-auto rounded p-2 text-xs whitespace-pre-wrap">{{
-                            call.requestBody || 'N/A'
-                        }}</pre>
+                        <pre
+                            class="bg-primary mt-1 max-h-40 overflow-auto rounded p-2 text-xs whitespace-pre-wrap"
+                            >{{ call.requestBody || 'N/A' }}</pre
+                        >
                     </details>
                     <details class="mt-1">
                         <summary class="text-accent cursor-pointer text-xs">
                             {{ translate('translationTest.debugPanel.viewResponse') }}
                         </summary>
-                        <pre class="bg-primary mt-1 max-h-40 overflow-auto rounded p-2 text-xs whitespace-pre-wrap">{{
-                            call.responseBody || 'N/A'
-                        }}</pre>
+                        <pre
+                            class="bg-primary mt-1 max-h-40 overflow-auto rounded p-2 text-xs whitespace-pre-wrap"
+                            >{{ call.responseBody || 'N/A' }}</pre
+                        >
                     </details>
                 </div>
             </div>

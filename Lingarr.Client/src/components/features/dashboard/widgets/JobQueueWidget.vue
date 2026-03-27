@@ -26,6 +26,43 @@ interface JobInfo {
     queue?: string
 }
 
+interface RawJobInfo {
+    Id?: string
+    id?: string
+    Name?: string
+    name?: string
+    JobName?: string
+    jobName?: string
+    State?: string
+    state?: string
+    Progress?: number
+    progress?: number
+    Cron?: string
+    cron?: string
+    LastExecution?: string
+    lastExecution?: string
+    NextExecution?: string
+    nextExecution?: string
+    ScheduledAt?: string
+    scheduledAt?: string
+    StartedAt?: string
+    startedAt?: string
+    FailedAt?: string
+    failedAt?: string
+    CompletedAt?: string
+    completedAt?: string
+    ErrorMessage?: string
+    errorMessage?: string
+    error?: string
+    Queue?: string
+    queue?: string
+}
+
+interface JobListResponse {
+    jobs?: RawJobInfo[]
+    Jobs?: RawJobInfo[]
+}
+
 const jobs = ref<JobInfo[]>([])
 const failedJobsList = ref<JobInfo[]>([])
 const failedJobsTotal = ref(0)
@@ -44,14 +81,12 @@ const fetchJobs = async () => {
     error.value = null
 
     try {
-        const data = await services.dashboard.getJobs<
-            { jobs: JobInfo[]; Jobs: JobInfo[] } | JobInfo[]
-        >()
-        const rawJobs = Array.isArray(data) ? data : (data as any).jobs || (data as any).Jobs || []
+        const data = await services.dashboard.getJobs<JobListResponse | RawJobInfo[]>()
+        const rawJobs = Array.isArray(data) ? data : data.jobs || data.Jobs || []
 
-        jobs.value = rawJobs.map((job: any) => ({
-            id: job.Id || job.id,
-            name: job.Name || job.name,
+        jobs.value = rawJobs.map((job) => ({
+            id: job.Id || job.id || '',
+            name: job.Name || job.name || '',
             jobName: job.JobName || job.jobName,
             state: (job.State || job.state || '').toLowerCase(),
             progress: job.Progress || job.progress,
@@ -81,14 +116,17 @@ const fetchJobs = async () => {
 const fetchFailedJobs = async (offset: number, limit: number) => {
     try {
         const response = await services.dashboard.getFailedJobs(offset, limit)
-        const normalizedJobs = response.jobs.map((job: any) => ({
-            id: job.Id || job.id,
-            name: job.Name || job.name,
-            jobName: job.JobName || job.jobName,
-            state: 'failed',
-            failedAt: job.FailedAt || job.failedAt,
-            error: job.ErrorMessage || job.errorMessage || job.error
-        }))
+        const normalizedJobs = response.jobs.map((job) => {
+            const failedJob = job as RawJobInfo
+            return {
+                id: failedJob.Id || failedJob.id || '',
+                name: failedJob.Name || failedJob.name || '',
+                jobName: failedJob.JobName || failedJob.jobName,
+                state: 'failed',
+                failedAt: failedJob.FailedAt || failedJob.failedAt,
+                error: failedJob.ErrorMessage || failedJob.errorMessage || failedJob.error
+            }
+        })
 
         if (offset === 0) {
             failedJobsList.value = normalizedJobs

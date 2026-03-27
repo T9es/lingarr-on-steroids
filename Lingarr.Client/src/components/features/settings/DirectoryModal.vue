@@ -15,6 +15,7 @@
                     enter-from-class="scale-90"
                     leave-to-class="scale-90">
                     <div
+                        v-if="isOpen"
                         class="bg-primary border-secondary flex h-96 w-full max-w-md flex-col rounded-lg border p-2 shadow-xl"
                         @click.stop>
                         <div class="shell-scroll grow overflow-auto text-sm">

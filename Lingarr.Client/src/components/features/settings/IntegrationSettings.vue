@@ -76,7 +76,9 @@
                     }}
                 </p>
 
-                <div v-if="webhookInstances.length > 0" class="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-2">
+                <div
+                    v-if="webhookInstances.length > 0"
+                    class="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-2">
                     <div
                         v-for="item in webhookInstances"
                         :key="item.key"

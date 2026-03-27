@@ -42,7 +42,8 @@
                 </div>
             </div>
 
-            <div class="border-secondary/20 bg-primary/40 grid grid-cols-[4rem_7rem_minmax(0,1fr)_minmax(0,1fr)_5rem] gap-3 border-b px-4 py-2 text-[11px] uppercase tracking-[0.2em]">
+            <div
+                class="border-secondary/20 bg-primary/40 grid grid-cols-[4rem_7rem_minmax(0,1fr)_minmax(0,1fr)_5rem] gap-3 border-b px-4 py-2 text-[11px] tracking-[0.2em] uppercase">
                 <span class="text-secondary-content/70 text-right">#</span>
                 <span class="text-secondary-content/70">
                     {{ t('translationTest.time', 'Time') }}
@@ -72,11 +73,11 @@
                     <span class="text-secondary-content/70">
                         {{ formatTimestamp(line.startTimeMs) }}
                     </span>
-                    <span class="text-primary-content whitespace-pre-wrap break-words">
+                    <span class="text-primary-content break-words whitespace-pre-wrap">
                         {{ line.original }}
                     </span>
                     <span
-                        class="whitespace-pre-wrap break-words"
+                        class="break-words whitespace-pre-wrap"
                         :class="line.success ? 'text-primary-content' : 'text-error'">
                         {{ line.translated || line.error || '-' }}
                     </span>

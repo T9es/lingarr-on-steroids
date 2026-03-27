@@ -22,7 +22,7 @@ export default function useValidation(props: ValidationProps) {
                     ? ''
                     : props.errorMessage || 'Please enter a valid number'
                 break
-            case 'string':
+            case 'string': {
                 const min = props.minLength ?? 0
                 const max = props.maxLength ?? Infinity
                 isValid.value = value.length >= min && value.length <= max
@@ -31,11 +31,13 @@ export default function useValidation(props: ValidationProps) {
                     : props.errorMessage?.format({ minLength: min, maxLength: max }) ||
                       `Length must be between ${min} and ${max === Infinity ? '∞' : max}`
                 break
-            case 'url':
-                const urlPattern = /^(http:\/\/|https:\/\/)[\w\-]+(\.[\w\-]+)*(:\d+)?(\/.*)?$/
+            }
+            case 'url': {
+                const urlPattern = /^(http:\/\/|https:\/\/)[\w-]+(\.[\w-]+)*(:\d+)?(\/.*)?$/
                 isValid.value = urlPattern.test(value)
                 error.value = isValid.value ? '' : props.errorMessage || 'Invalid URL'
                 break
+            }
             case 'cron':
                 isValid.value = isValidCron(value.trim(), {
                     seconds: false,

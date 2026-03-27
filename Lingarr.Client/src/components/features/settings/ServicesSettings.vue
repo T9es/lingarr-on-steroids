@@ -17,11 +17,7 @@
 
                 <ChutesUsageCard v-if="serviceType === SERVICE_TYPE.CHUTES" />
 
-                <TokenUsageCard
-                    v-if="showTokenUsageCard"
-                    :service="
-                        serviceType as 'openai' | 'anthropic' | 'gemini' | 'deepseek' | 'localai'
-                    " />
+                <TokenUsageCard v-if="tokenUsageService" :service="tokenUsageService" />
             </div>
 
             <SourceAndTarget @save="saveNotification?.show()" />
@@ -108,16 +104,33 @@ const tokenLimitServices = [
     SERVICE_TYPE.ANTHROPIC,
     SERVICE_TYPE.GEMINI,
     SERVICE_TYPE.DEEPSEEK
-]
+] as const
+
+type TokenUsageService = (typeof tokenLimitServices)[number] | typeof SERVICE_TYPE.LOCALAI
 
 const showTokenUsageCard = computed(() => {
-    const serviceTypes = tokenLimitServices as string[]
-    if (serviceTypes.includes(serviceType.value)) {
+    if (tokenLimitServices.includes(serviceType.value as (typeof tokenLimitServices)[number])) {
         return true
     }
     if (serviceType.value === SERVICE_TYPE.LOCALAI) {
         return settingsStore.getSetting('localai_token_limit_enabled') === 'true'
     }
     return false
+})
+
+const tokenUsageService = computed<TokenUsageService | null>(() => {
+    if (!showTokenUsageCard.value) {
+        return null
+    }
+
+    if (serviceType.value === SERVICE_TYPE.LOCALAI) {
+        return SERVICE_TYPE.LOCALAI
+    }
+
+    if (tokenLimitServices.includes(serviceType.value as (typeof tokenLimitServices)[number])) {
+        return serviceType.value as (typeof tokenLimitServices)[number]
+    }
+
+    return null
 })
 </script>

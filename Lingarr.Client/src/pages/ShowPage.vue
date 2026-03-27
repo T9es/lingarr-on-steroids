@@ -302,10 +302,14 @@ const getInstanceName = (sourceInstanceId: string | null | undefined): string =>
     if (!sourceInstanceId) return 'Default'
 
     // Get instance name from setting store
-    const instancesJson = settingStore.getSetting(SETTINGS.SONARR_INSTANCES) as string
-    if (instancesJson) {
+    const instancesValue = settingStore.getSetting(SETTINGS.SONARR_INSTANCES) as
+        | string
+        | IInstance[]
+    if (instancesValue) {
         try {
-            const instances = JSON.parse(instancesJson) as IInstance[]
+            const instances = Array.isArray(instancesValue)
+                ? instancesValue
+                : (JSON.parse(instancesValue) as IInstance[])
             const instance = instances.find((i) => i.id === sourceInstanceId)
             return instance?.name || sourceInstanceId
         } catch {

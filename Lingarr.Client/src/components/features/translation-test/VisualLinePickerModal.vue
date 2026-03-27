@@ -44,7 +44,8 @@
 
             <div v-if="loading" class="flex h-full items-center justify-center px-6 text-center">
                 <div class="space-y-3">
-                    <div class="border-accent mx-auto h-10 w-10 animate-spin rounded-full border-2 border-t-transparent"></div>
+                    <div
+                        class="border-accent mx-auto h-10 w-10 animate-spin rounded-full border-2 border-t-transparent"></div>
                     <p class="text-secondary-content text-sm">
                         {{ loadingLabel }}
                     </p>
@@ -58,7 +59,8 @@
             </div>
 
             <template v-else>
-                <div class="border-secondary/20 bg-primary/40 grid grid-cols-[4rem_7rem_minmax(0,1fr)] gap-3 border-b px-4 py-2 text-[11px] uppercase tracking-[0.2em]">
+                <div
+                    class="border-secondary/20 bg-primary/40 grid grid-cols-[4rem_7rem_minmax(0,1fr)] gap-3 border-b px-4 py-2 text-[11px] tracking-[0.2em] uppercase">
                     <span class="text-secondary-content/70 text-right">#</span>
                     <span class="text-secondary-content/70">
                         {{ t('translationTest.time', 'Time') }}
@@ -84,7 +86,7 @@
                         <span class="text-secondary-content/70">
                             {{ line.startTime }}
                         </span>
-                        <span class="text-primary-content whitespace-pre-wrap break-words">
+                        <span class="text-primary-content break-words whitespace-pre-wrap">
                             {{ line.text }}
                         </span>
                     </div>
@@ -102,7 +104,11 @@
                 @click="confirmSelection"
                 :disabled="selectedCount === 0"
                 class="bg-accent text-primary-content rounded px-4 py-2 font-medium disabled:opacity-50">
-                {{ t('translationTest.confirmSelection', `Confirm (${selectedCount})`, { count: selectedCount }) }}
+                {{
+                    t('translationTest.confirmSelection', `Confirm (${selectedCount})`, {
+                        count: selectedCount
+                    })
+                }}
             </button>
         </template>
     </ModalComponent>
@@ -144,11 +150,11 @@ function t(key: string, fallback: string, params?: Record<string, string | numbe
 const lines = ref<SubtitleLine[]>([])
 const loading = ref(true)
 const error = ref<string | null>(null)
-const selectedPositions = ref<number[]>([])
+const selectedLinePositions = ref<number[]>([])
 const lastClicked = ref<number | null>(null)
 
 const orderedPositions = computed(() => lines.value.map((line) => line.position))
-const selectedCount = computed(() => selectedPositions.value.length)
+const selectedCount = computed(() => selectedLinePositions.value.length)
 const loadingLabel = computed(() =>
     props.streamIndex !== undefined
         ? t('translationTest.extractingEmbeddedSubtitle', 'Extracting embedded subtitle...')
@@ -156,12 +162,14 @@ const loadingLabel = computed(() =>
 )
 
 function isSelected(position: number): boolean {
-    return selectedPositions.value.includes(position)
+    return selectedLinePositions.value.includes(position)
 }
 
 function setSelectedPositions(values: number[]) {
     const selected = new Set(values)
-    selectedPositions.value = orderedPositions.value.filter((position) => selected.has(position))
+    selectedLinePositions.value = orderedPositions.value.filter((position) =>
+        selected.has(position)
+    )
 }
 
 function toggleLine(position: number, event: MouseEvent) {
@@ -173,13 +181,13 @@ function toggleLine(position: number, event: MouseEvent) {
             const [from, to] =
                 startIndex < endIndex ? [startIndex, endIndex] : [endIndex, startIndex]
             const range = orderedPositions.value.slice(from, to + 1)
-            setSelectedPositions([...selectedPositions.value, ...range])
+            setSelectedPositions([...selectedLinePositions.value, ...range])
         }
     } else if (event.ctrlKey || event.metaKey) {
         if (isSelected(position)) {
-            setSelectedPositions(selectedPositions.value.filter((item) => item !== position))
+            setSelectedPositions(selectedLinePositions.value.filter((item) => item !== position))
         } else {
-            setSelectedPositions([...selectedPositions.value, position])
+            setSelectedPositions([...selectedLinePositions.value, position])
         }
     } else {
         setSelectedPositions([position])
@@ -189,17 +197,17 @@ function toggleLine(position: number, event: MouseEvent) {
 }
 
 function clearSelection() {
-    selectedPositions.value = []
+    selectedLinePositions.value = []
     lastClicked.value = null
 }
 
 function selectAll() {
-    selectedPositions.value = [...orderedPositions.value]
+    selectedLinePositions.value = [...orderedPositions.value]
     lastClicked.value = orderedPositions.value[0] ?? null
 }
 
 function confirmSelection() {
-    emit('select', selectedPositions.value)
+    emit('select', selectedLinePositions.value)
 }
 
 async function loadSubtitle() {
@@ -238,10 +246,12 @@ async function loadSubtitle() {
         const initialPositions =
             props.selectedPositions && props.selectedPositions.length > 0
                 ? props.selectedPositions
-                : lines.value.slice(0, Math.min(20, lines.value.length)).map((line) => line.position)
+                : lines.value
+                      .slice(0, Math.min(20, lines.value.length))
+                      .map((line) => line.position)
 
         setSelectedPositions(initialPositions)
-        lastClicked.value = selectedPositions.value[0] ?? null
+        lastClicked.value = selectedLinePositions.value[0] ?? null
     } catch (err) {
         console.error('Failed to load subtitle:', err)
         error.value = err instanceof Error ? err.message : 'Unknown error loading subtitle'

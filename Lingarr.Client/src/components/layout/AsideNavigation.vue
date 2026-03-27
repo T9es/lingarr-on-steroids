@@ -73,7 +73,8 @@
                     :src="`/api/image/${instanceStore.getPoster}`"
                     class="mask-gradient h-full w-full object-cover"
                     alt="poster" />
-                <div class="pointer-events-none absolute inset-0 bg-linear-to-t from-secondary via-secondary/60 to-transparent"></div>
+                <div
+                    class="from-secondary via-secondary/60 pointer-events-none absolute inset-0 bg-linear-to-t to-transparent"></div>
                 <div
                     v-if="instanceStore.getVersion.currentVersion.length"
                     class="absolute right-0 bottom-0 z-10 flex w-full flex-col items-center gap-2 p-4">

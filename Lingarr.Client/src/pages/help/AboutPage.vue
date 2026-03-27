@@ -32,7 +32,7 @@
                     <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                         <div class="bg-secondary/30 rounded-md p-4">
                             <div class="text-secondary-content text-sm">Current Build</div>
-                            <div class="text-primary-content mt-2 break-all text-lg font-semibold">
+                            <div class="text-primary-content mt-2 text-lg font-semibold break-all">
                                 {{ displayVersion }}
                             </div>
                         </div>
@@ -53,7 +53,9 @@
                         <div class="bg-secondary/30 rounded-md p-4">
                             <div class="text-secondary-content text-sm">Update Status</div>
                             <div class="mt-2">
-                                <span class="rounded px-2 py-1 text-sm font-medium" :class="statusBadgeClasses">
+                                <span
+                                    class="rounded px-2 py-1 text-sm font-medium"
+                                    :class="statusBadgeClasses">
                                     {{ updateStatusLabel }}
                                 </span>
                             </div>
@@ -78,7 +80,8 @@
                                     <div class="text-secondary-content text-xs uppercase">
                                         Commit
                                     </div>
-                                    <div class="text-primary-content mt-1 break-all font-mono text-sm">
+                                    <div
+                                        class="text-primary-content mt-1 font-mono text-sm break-all">
                                         {{ version.commitSha || 'tagged release' }}
                                     </div>
                                 </div>
@@ -137,7 +140,8 @@
             </template>
 
             <template v-else-if="error" #content>
-                <div class="rounded border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
+                <div
+                    class="rounded border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
                     {{ translate('help.about.failedToLoad') }}{{ error }}
                 </div>
             </template>
@@ -303,7 +307,12 @@ function buildReadmeSections(html: string) {
     }
 
     for (const node of children) {
-        if (node.tagName === 'H1' || node.tagName === 'HR' || isBadgeRow(node) || isLanguageRow(node)) {
+        if (
+            node.tagName === 'H1' ||
+            node.tagName === 'HR' ||
+            isBadgeRow(node) ||
+            isLanguageRow(node)
+        ) {
             continue
         }
 

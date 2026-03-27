@@ -219,9 +219,7 @@ const confirmReset = async () => {
 
 // Local reactive layout for grid-layout-plus
 const currentLayout = ref<LayoutItem[]>([])
-const renderLayout = computed(() =>
-    currentLayout.value.filter((item) => isWidgetVisible(item.i))
-)
+const renderLayout = computed(() => currentLayout.value.filter((item) => isWidgetVisible(item.i)))
 
 // Sync visibleLayout to currentLayout
 watch(

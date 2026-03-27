@@ -1,5 +1,5 @@
 <template>
-    <div class="relative" ref="containerRef">
+    <div ref="containerRef" class="relative">
         <div
             class="border-accent/50 hover:border-accent flex min-h-[200px] cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed transition-colors"
             @click="toggleMenu">

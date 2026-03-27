@@ -5,7 +5,9 @@ import {
     SETTINGS,
     ILanguage,
     SERVICE_TYPE,
-    ICustomAiParams
+    ICustomAiParams,
+    ENCRYPTED_SETTING_KEYS,
+    isEncryptedSettingKey
 } from '@/ts'
 import services from '@/services'
 import { useTranslateStore } from '@/store/translate'
@@ -119,12 +121,29 @@ export const useSettingStore = defineStore('setting', {
             this.settings[key] = value as never
         },
         async saveSetting(key: keyof ISettings, value: string) {
+            if (isEncryptedSettingKey(key)) {
+                await services.setting.setEncryptedSetting(key, value)
+                return
+            }
+
             await services.setting.setSetting(key, value)
         },
 
         async applySettingsOnLoad(): Promise<void> {
             const instanceStore = useInstanceStore()
-            const settings = await services.setting.getSettings<ISettings>(Object.values(SETTINGS))
+            const allKeys = Object.values(SETTINGS)
+            const encryptedKeys = allKeys.filter((key) => ENCRYPTED_SETTING_KEYS.has(key))
+            const plainKeys = allKeys.filter((key) => !ENCRYPTED_SETTING_KEYS.has(key))
+
+            const [plainSettings, encryptedSettings] = await Promise.all([
+                services.setting.getSettings<Partial<ISettings>>(plainKeys),
+                services.setting.getEncryptedSettings<Partial<ISettings>>(encryptedKeys)
+            ])
+
+            const settings = {
+                ...plainSettings,
+                ...encryptedSettings
+            } as ISettings
 
             this.settings = {
                 ...settings,

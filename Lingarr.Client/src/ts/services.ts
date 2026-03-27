@@ -49,7 +49,9 @@ export interface IMediaService {
 export interface ISettingService {
     getSetting<T>(key: string): Promise<T>
     getSettings<T>(keys: string[]): Promise<T>
+    getEncryptedSettings<T>(keys: string[]): Promise<T>
     setSetting(key: string, value: string): Promise<void>
+    setEncryptedSetting(key: string, value: string): Promise<void>
     setSettings(keys: ISettings): Promise<void>
     getSystemLimits<T>(): Promise<T>
     testRadarrConnection<T>(): Promise<T>
@@ -155,7 +157,7 @@ export interface IDashboardService {
         offset?: number,
         limit?: number
     ): Promise<{
-        jobs: any[]
+        jobs: unknown[]
         totalCount: number
         hasMore: boolean
     }>

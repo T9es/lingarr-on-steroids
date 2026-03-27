@@ -15,6 +15,7 @@
                     enter-from-class="scale-90"
                     leave-to-class="scale-90">
                     <div
+                        v-if="isOpen"
                         class="bg-primary border-secondary flex w-full max-w-lg flex-col rounded-lg border p-4 shadow-xl"
                         @click.stop>
                         <!-- Header -->
@@ -274,6 +275,11 @@ interface AvailableSubtitle {
     isSparse: boolean | null
 }
 
+interface ErrorResponse {
+    error?: string
+    message?: string
+}
+
 const props = defineProps<{
     isOpen: boolean
     mediaId: number
@@ -454,6 +460,14 @@ const selectSubtitle = (subtitle: AvailableSubtitle) => {
     selectedStreamIndex.value = subtitle.streamIndex
 }
 
+const getErrorResponse = (error: unknown): ErrorResponse | undefined => {
+    if (axios.isAxiosError<ErrorResponse>(error)) {
+        return error.response?.data
+    }
+
+    return undefined
+}
+
 const fetchSubtitles = async () => {
     if (!props.isOpen || !props.mediaId) return
 
@@ -472,8 +486,8 @@ const fetchSubtitles = async () => {
         if (firstTextBased) {
             selectedStreamIndex.value = firstTextBased.streamIndex
         }
-    } catch (err: any) {
-        error.value = err.response?.data?.error || 'Failed to load subtitles'
+    } catch (err: unknown) {
+        error.value = getErrorResponse(err)?.error || 'Failed to load subtitles'
         console.error('Failed to fetch subtitles:', err)
     } finally {
         isLoading.value = false
@@ -498,8 +512,8 @@ const extractAndTranslate = async () => {
         } else {
             emit('error', response.data.message)
         }
-    } catch (err: any) {
-        const message = err.response?.data?.message || 'Failed to queue translation'
+    } catch (err: unknown) {
+        const message = getErrorResponse(err)?.message || 'Failed to queue translation'
         emit('error', message)
         console.error('Failed to queue translation:', err)
     } finally {

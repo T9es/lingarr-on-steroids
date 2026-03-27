@@ -14,6 +14,7 @@ import {
     Filler,
     Tooltip
 } from 'chart.js/auto'
+import type { TooltipItem } from 'chart.js'
 import { Line } from 'vue-chartjs'
 
 ChartJS.register(CategoryScale, LinearScale, LineElement, PointElement, Filler, Tooltip)
@@ -38,6 +39,27 @@ interface ApiUsageInfo {
         tokenCount: number
     }[]
 }
+
+interface ApiUsageServiceRaw {
+    CallsToday?: number
+    callsToday?: number
+    CallsWeek?: number
+    callsWeek?: number
+    CallsMonth?: number
+    callsMonth?: number
+    TotalTokens?: number
+    totalTokens?: number
+    AverageResponseTime?: number
+    averageResponseTime?: number
+    ErrorCount?: number
+    errorCount?: number
+    SuccessRate?: number
+    successRate?: number
+    DailyBreakdown?: ApiUsageInfo['dailyBreakdown']
+    dailyBreakdown?: ApiUsageInfo['dailyBreakdown']
+}
+
+type ChartLabelContext = TooltipItem<'line'>
 
 const apiUsage = ref<ApiUsageInfo[]>([])
 const isLoading = ref(false)
@@ -71,20 +93,26 @@ const fetchApiUsage = async () => {
 
         const byService = data.ByService || data.byService || {}
         apiUsage.value = Object.entries(byService)
-            .map(([service, usage]: [string, any]) => ({
-                service,
-                callsToday: usage.CallsToday || usage.callsToday || 0,
-                callsWeek: usage.CallsWeek || usage.callsWeek || 0,
-                callsMonth: usage.CallsMonth || usage.callsMonth || 0,
-                tokensUsed: usage.TotalTokens || usage.totalTokens || 0,
-                totalTokens: usage.TotalTokens || usage.totalTokens || 0,
-                averageResponseTime: Math.round(
-                    usage.AverageResponseTime || usage.averageResponseTime || 0
-                ),
-                errorCount: usage.ErrorCount || usage.errorCount || 0,
-                successRate: usage.SuccessRate || usage.successRate || 100,
-                dailyBreakdown: usage.DailyBreakdown || usage.dailyBreakdown || []
-            }))
+            .map(([service, usage]) => {
+                const normalizedUsage = usage as ApiUsageServiceRaw
+                return {
+                    service,
+                    callsToday: normalizedUsage.CallsToday || normalizedUsage.callsToday || 0,
+                    callsWeek: normalizedUsage.CallsWeek || normalizedUsage.callsWeek || 0,
+                    callsMonth: normalizedUsage.CallsMonth || normalizedUsage.callsMonth || 0,
+                    tokensUsed: normalizedUsage.TotalTokens || normalizedUsage.totalTokens || 0,
+                    totalTokens: normalizedUsage.TotalTokens || normalizedUsage.totalTokens || 0,
+                    averageResponseTime: Math.round(
+                        normalizedUsage.AverageResponseTime ||
+                            normalizedUsage.averageResponseTime ||
+                            0
+                    ),
+                    errorCount: normalizedUsage.ErrorCount || normalizedUsage.errorCount || 0,
+                    successRate: normalizedUsage.SuccessRate || normalizedUsage.successRate || 100,
+                    dailyBreakdown:
+                        normalizedUsage.DailyBreakdown || normalizedUsage.dailyBreakdown || []
+                }
+            })
             .sort((left, right) => {
                 if (right.callsWeek !== left.callsWeek) {
                     return right.callsWeek - left.callsWeek
@@ -195,7 +223,7 @@ const getChartOptions = () => ({
             padding: 8,
             displayColors: false,
             callbacks: {
-                label: (context: any) => `${context.parsed.y} calls`
+                label: (context: ChartLabelContext) => `${context.parsed.y ?? 0} calls`
             }
         }
     },
@@ -317,7 +345,7 @@ onUnmounted(() => {
                 <div
                     v-for="usage in apiUsage"
                     :key="usage.service"
-                    class="bg-primary/35 border-secondary/30 rounded-md border transition-colors hover:bg-primary/50">
+                    class="bg-primary/35 border-secondary/30 hover:bg-primary/50 rounded-md border transition-colors">
                     <button
                         class="w-full cursor-pointer px-3 py-3 text-left"
                         @click="toggleService(usage.service)">
@@ -333,7 +361,8 @@ onUnmounted(() => {
 
                                 <div class="min-w-0 flex-1">
                                     <div class="flex items-center gap-2">
-                                        <span class="text-primary-content truncate text-sm font-medium">
+                                        <span
+                                            class="text-primary-content truncate text-sm font-medium">
                                             {{ getProviderLabel(usage.service) }}
                                         </span>
                                         <span
@@ -448,7 +477,11 @@ onUnmounted(() => {
                                     </div>
                                     <div
                                         class="mt-1 text-sm font-semibold"
-                                        :class="usage.errorCount > 0 ? 'text-red-400' : 'text-primary-content'">
+                                        :class="
+                                            usage.errorCount > 0
+                                                ? 'text-red-400'
+                                                : 'text-primary-content'
+                                        ">
                                         {{ usage.errorCount }}
                                     </div>
                                 </div>
