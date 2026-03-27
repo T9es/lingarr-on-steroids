@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using Lingarr.Server.Exceptions;
@@ -161,5 +163,47 @@ public class BatchFallbackServiceTests
                 It.IsAny<List<string>?>(),
                 It.IsAny<CancellationToken>()),
             Times.AtLeastOnce);
+    }
+
+    [Fact]
+    public async Task TranslateWithFallbackAsync_WhenProviderIsUnavailable_ShouldPreserveProviderCause()
+    {
+        var batch = new List<BatchSubtitleItem>
+        {
+            new() { Position = 1, Line = "Line 1" },
+            new() { Position = 2, Line = "Line 2" }
+        };
+
+        var batchServiceMock = new Mock<IBatchTranslationService>();
+        batchServiceMock
+            .Setup(s => s.TranslateBatchAsync(
+                It.IsAny<List<BatchSubtitleItem>>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new TranslationException(
+                "Gemini is temporarily unavailable. Retry limit reached.",
+                new HttpRequestException(
+                    "Batch translation using Gemini API failed with status 503 (ServiceUnavailable). Response: {\"error\":{\"status\":\"UNAVAILABLE\"}}",
+                    null,
+                    HttpStatusCode.ServiceUnavailable)));
+
+        var service = new BatchFallbackService(_loggerMock.Object);
+
+        var exception = await Assert.ThrowsAsync<TranslationException>(() => service.TranslateWithFallbackAsync(
+            batch,
+            batchServiceMock.Object,
+            sourceLanguage: "en",
+            targetLanguage: "es",
+            maxSplitAttempts: 2,
+            fileIdentifier: "TestFile",
+            batchNumber: 1,
+            totalBatches: 1,
+            cancellationToken: CancellationToken.None));
+
+        Assert.Contains("provider was unavailable", exception.Message);
+        Assert.Contains("Gemini is temporarily unavailable", exception.Message);
     }
 }

@@ -419,9 +419,14 @@ public class SubtitleTranslationService
             {
                 if (collectFailures)
                 {
+                    var failureType = TranslationFailureClassifier.IsProviderUnavailable(ex)
+                        ? "translation provider unavailability"
+                        : "batch translation/parsing failure";
+                    var failureSummary = TranslationFailureClassifier.GetFailureSummary(ex);
+
                     _logger.LogError(ex, 
-                        "[{FileId}] Batch {BatchNum} failed completely (likely JSON truncation or API error). Marking all {Count} items for deferred repair.", 
-                        fileIdentifier, batchNumber, batchItems.Count);
+                        "[{FileId}] Batch {BatchNum} failed completely due to {FailureType}. Marking all {Count} items for deferred repair. Summary: {FailureSummary}", 
+                        fileIdentifier, batchNumber, failureType, batchItems.Count, failureSummary);
                     
                     // Return all items as failures
                     return batchItems;

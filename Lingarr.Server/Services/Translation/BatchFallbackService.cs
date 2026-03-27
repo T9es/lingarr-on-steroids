@@ -39,6 +39,9 @@ public class BatchFallbackService : IBatchFallbackService
         
         var results = new Dictionary<int, string>();
         var failedItems = new List<BatchSubtitleItem>(batch);
+        string? lastFailureSummary = null;
+        var sawProviderUnavailableFailure = false;
+        var sawNonProviderFailure = false;
         
         // Log with batch progress context
         var batchProgress = totalBatches > 1 ? $"[Batch {batchNumber}/{totalBatches}] " : "";
@@ -95,6 +98,7 @@ public class BatchFallbackService : IBatchFallbackService
                     if (missingInChunk.Count > 0)
                     {
                         stillFailed.AddRange(missingInChunk);
+                        sawNonProviderFailure = true;
 
                         _logger.LogWarning(
                             "{BatchProgress}[{FileId}] Chunk had {MissingCount}/{ChunkCount} items with missing/empty translations at split level {Level}. These will be retried with smaller chunks if possible.",
@@ -113,6 +117,16 @@ public class BatchFallbackService : IBatchFallbackService
                 }
                 catch (TranslationException ex)
                 {
+                    lastFailureSummary = TranslationFailureClassifier.GetFailureSummary(ex);
+                    if (TranslationFailureClassifier.IsProviderUnavailable(ex))
+                    {
+                        sawProviderUnavailableFailure = true;
+                    }
+                    else
+                    {
+                        sawNonProviderFailure = true;
+                    }
+
                     _logger.LogWarning(ex,
                         "{BatchProgress}[{FileId}] Chunk failed at split level {Level}: {Count} items. Will retry with smaller chunks if available.",
                         batchProgress, fileIdentifier, splitLevel, chunk.Count);
@@ -120,6 +134,9 @@ public class BatchFallbackService : IBatchFallbackService
                 }
                 catch (Exception ex)
                 {
+                    lastFailureSummary = TranslationFailureClassifier.GetFailureSummary(ex);
+                    sawNonProviderFailure = true;
+
                     _logger.LogWarning(ex,
                         "{BatchProgress}[{FileId}] Unexpected error in chunk at split level {Level}: {Count} items",
                         batchProgress, fileIdentifier, splitLevel, chunk.Count);
@@ -151,8 +168,17 @@ public class BatchFallbackService : IBatchFallbackService
                 "{BatchProgress}[{FileId}] Sample of failed items: {SampleItems}",
                 batchProgress, fileIdentifier, sampleFailed);
 
-            throw new TranslationException(
-                $"Translation failed after {maxSplitAttempts} fallback attempts. {failedItems.Count} items could not be translated.");
+            var allFailuresWereProviderUnavailable = sawProviderUnavailableFailure && !sawNonProviderFailure;
+            var failureMessage = allFailuresWereProviderUnavailable
+                ? $"Translation failed after {maxSplitAttempts} fallback attempts because the translation provider was unavailable. {failedItems.Count} items could not be translated."
+                : $"Translation failed after {maxSplitAttempts} fallback attempts. {failedItems.Count} items could not be translated.";
+
+            if (!string.IsNullOrWhiteSpace(lastFailureSummary))
+            {
+                failureMessage += $" Last error: {lastFailureSummary}";
+            }
+
+            throw new TranslationException(failureMessage);
         }
         
         _logger.LogInformation("{BatchProgress}[{FileId}] Completed successfully: all {Count} items translated", 
