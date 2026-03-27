@@ -13,7 +13,7 @@
             {{ translate('settings.integrations.description') }}
         </template>
         <template #content>
-            <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div class="flex flex-wrap items-start justify-center gap-4">
                 <!-- All Instances -->
                 <InstanceCard
                     v-for="item in localInstances"
