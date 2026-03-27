@@ -1,10 +1,10 @@
 {
   "navigation": {
-    "dashboard": "Dashboard",
+    "dashboard": "Overzicht",
     "movies": "Films",
     "tvShows": "Series",
     "translations": "Vertalingen",
-    "translationTest": "Test",
+    "translationTest": "Vertaaltest",
     "settings": "Instellingen",
     "integrations": "Integraties",
     "services": "Diensten",
@@ -12,7 +12,7 @@
     "integrity": "Integriteit",
     "automation": "Automatisering",
     "tasks": "Taken",
-    "logs": "Logs",
+    "logs": "Logboeken",
     "help": "Hulp",
     "onboarding": "Installatie-assistent",
     "about": "Over Lingarr"
@@ -45,7 +45,7 @@
     "noSearchResults": "Geen media met ondertitels gevonden voor deze zoekopdracht.",
     "selectedFromSearch": "Geselecteerde ondertitel van",
     "subtitlePath": "Ondertitelbestandspad",
-    "subtitlePathPlaceholder": "/media/path/to/subtitle.srt",
+    "subtitlePathPlaceholder": "/media/pad/naar/ondertitel.srt",
     "sourceLanguage": "Brontaal",
     "targetLanguage": "Doeltaal",
     "startTest": "Start test",
@@ -59,7 +59,7 @@
     "duration": "Duur",
     "preview": "Voorbeeld",
     "original": "Origineel",
-"downloadOriginal": "Origineel",
+    "downloadOriginal": "Origineel",
     "downloadTranslated": "Vertaald",
     "subtitleToTranslate": "Te vertalen ondertitel",
     "linesToTranslate": "Te vertalen regels",
@@ -100,7 +100,7 @@
       "compareView": "Zij-aan-zij vergelijking",
       "openCompare": "Vergelijkingsweergave openen",
       "timing": "Tijdsoverzicht",
-      "tokens": "Tokens",
+      "tokens": "Tokenverbruik",
       "viewRequest": "Verzoek bekijken",
       "viewResponse": "Antwoord bekijken",
       "call": "Aanroep"
@@ -143,7 +143,7 @@
     "disconnected": "Niet verbonden",
     "source": "Bron",
     "target": "Doel",
-    "dashboard": "Dashboard",
+    "dashboard": "Overzicht",
     "configure": "Configureren",
     "resetLayout": "Indeling resetten",
     "saveLayout": "Opslaan",
@@ -173,14 +173,13 @@
     "callsToday": "aanroepen vandaag",
     "callsThisWeek": "aanroepen deze week",
     "noApiUsage": "Geen API-aanroepen geregistreerd",
-    "today": "Vandaag",
-    "week": "Week",
+    "week": "Afgelopen week",
     "month": "Maand",
     "avgResponse": "Gem",
     "calls": "aanroepen",
-    "tokens": "Tokens",
+    "tokens": "Tokenverbruik",
     "success": "Succes",
-    "errors": "Fouten",
+    "errors": "fouten",
     "refresh": "Vernieuwen",
     "errorLog": "Foutenlog",
     "recentErrors": "Recente fouten",
@@ -189,13 +188,9 @@
     "retry": "Opnieuw proberen",
     "duplicatesRemoved": "duplicaten verwijderd",
     "tokensUsed": "Tokens gebruikt",
-    "errors": "fouten",
     "warnings": "waarschuwingen",
     "used": "gebruikt",
-    "week": "Week",
-    "month": "Maand",
     "remaining": "Resterend",
-    "refresh": "Vernieuwen",
     "nextRun": "Volgende run",
     "lastRun": "Laatste run",
     "configMode": "Configuratiemodus",
@@ -204,7 +199,7 @@
     "resetLayoutConfirmMessage": "Weet je zeker dat je de dashboardindeling wilt resetten naar de standaardwaarden? Dit kan niet ongedaan worden gemaakt.",
     "hiddenWidgets": "Verborgen widgets",
     "clickToShow": "Klik om te tonen",
-    "recentTranslations": "Recent",
+    "recentTranslations": "Recente vertalingen",
     "noRecentTranslations": "Geen recente vertalingen"
   },
   "movies": {
@@ -226,7 +221,7 @@
     "season": "Seizoen",
     "episodes": "Afleveringen",
     "episodesLine": "afleveringen",
-    "specials": "Specials",
+    "specials": "Speciale afleveringen",
     "episode": "Aflevering",
     "episodeTitle": "Titel",
     "episodeSubtitles": "Ondertiteling",
@@ -242,7 +237,7 @@
     "title": "Titel",
     "source": "Bron",
     "target": "Doel",
-    "status": "Status",
+    "status": "Staat",
     "priority": "Prioriteitsmedia",
     "progress": "Voortgang",
     "completed": "Voltooid",
@@ -301,13 +296,13 @@
     "confirm": "Bevestigen",
     "currentVersion": "Versie: {version}",
     "devBuild": "Ontwikkelversie",
-    "disable": "Disable",
+    "disable": "Uitschakelen",
     "discard": "Negeren",
-"enabled": "Ingeschakeld",
+    "enabled": "Ingeschakeld",
     "disabled": "Uitgeschakeld",
     "ensureConnectionsConfigured": "Zorg dat alle verbindingen correct zijn geconfigureerd",
     "goToSettings": "Ga naar Instellingen",
-    "items": "items",
+    "items": "resultaten",
     "loading": "Laden...",
     "nextSteps": "Volgende stappen:",
     "noMediaDescription": "Het lijkt erop dat je media nog niet is verzameld. Maak je geen zorgen, we kunnen dat oplossen!",
@@ -363,14 +358,14 @@
       "cleanupTitle": "Duplicaten samenvoegen",
       "cleanupDescription": "Als je dubbele films of series hebt na migratie naar multi-instance, zal dit ze samenvoegen tot één standaard instantie.",
       "cleanupButton": "Duplicaten oplossen",
-      "cleanupStats": "Toegewezen aan standaard instantie"
-      ,"webhookDescription": "Voeg een webhook toe in de Connect/Webhook-instellingen van Radarr of Sonarr en gebruik de bijbehorende URL hieronder. Elke instantie moet zijn eigen URL gebruiken."
-      ,"webhookEmpty": "Voeg een instantie met een geldige URL en API-sleutel toe en sla die op om de webhook-URL te genereren."
-      ,"webhookSaveFirst": "Sla je wijzigingen op voordat je deze webhook-URL's gebruikt."
-      ,"webhookTitle": "Webhook-instelling"
+      "cleanupStats": "Toegewezen aan standaard instantie",
+      "webhookDescription": "Voeg een webhook toe in de Connect/Webhook-instellingen van Radarr of Sonarr en gebruik de bijbehorende URL hieronder. Elke instantie moet zijn eigen URL gebruiken.",
+      "webhookEmpty": "Voeg een instantie met een geldige URL en API-sleutel toe en sla die op om de webhook-URL te genereren.",
+      "webhookSaveFirst": "Sla je wijzigingen op voordat je deze webhook-URL's gebruikt.",
+      "webhookTitle": "Webhook-instelling"
     },
     "services": {
-      "title": "Services",
+      "title": "Diensten",
       "description": "Configureer de vertaalservice voor ondertitellokalisatie.",
       "serviceSelect": "Selecteer vertaalservice:",
       "serviceEnabled": "Ingeschakeld",
@@ -462,7 +457,7 @@
       "retryDelayMultiplierDescription": "Factor waarmee de vertraging toeneemt na elke retry.",
       "maxParallelTranslations": "Gelijktijdige bestandsvertalingen:",
       "maxParallelTranslationsDescription": "Maximum aantal ondertitelbestanden om gelijktijdig te vertalen. Hogere waarden versnellen de verwerking maar gebruiken meer API-verzoeken. Stel in op 1 voor sequentiële vertaling.",
-      "maxParallelTranslationsLimit": "Maximum: {max}",
+      "maxParallelTranslationsLimit": "Maximaal: {max}",
       "enableBatchFallback": "Mislukte batches opnieuw proberen:",
       "enableBatchFallbackDescription": "Wanneer een batchvertaling mislukt, automatisch opnieuw proberen met kleinere chunks voordat het hele bestand mislukt.",
       "maxBatchSplitAttempts": "Batch splitsniveaus:",
@@ -517,7 +512,7 @@
     "automation": {
       "title": "Automatisering",
       "description": "Stel automatisering in. Houd er rekening mee dat als automatisering wordt geïmplementeerd, je ook de benodigde",
-      "descriptionLink": "services",
+      "descriptionLink": "diensten",
       "enableAutomatedTranslation": "Geautomatiseerde vertaling:",
       "translationScheduleLabel": "Stel vertaalschema in:",
       "limitsHeader": "Limieten:",
@@ -584,11 +579,11 @@
           "description": "De taal waarin de ondertitelregel moet worden vertaald"
         },
         "contextBefore": {
-          "title": "Context",
+          "title": "Contexttekst",
           "description": "Ondertitels voor de ondertitelregel die als context kan dienen"
         },
         "contextAfter": {
-          "title": "Context",
+          "title": "Contexttekst",
           "description": "Ondertitels na de ondertitelregel die als context kan dienen"
         },
         "lineToTranslate": {
@@ -622,7 +617,7 @@
       "searchPlaceholder": "Logs zoeken...",
       "pause": "Pauzeren",
       "resume": "Hervatten",
-      "autoScroll": "Auto-scroll",
+      "autoScroll": "Automatisch scrollen",
       "enabled": "Ingeschakeld",
       "disabled": "Uitgeschakeld"
     },
@@ -636,7 +631,7 @@
       "stats": {
         "processed": "Verwerkt",
         "valid": "Geldig",
-        "corrupt": "Corrupt",
+        "corrupt": "Beschadigd",
         "queued": "In wachtrij",
         "total": "Totaal",
         "movies": "films",
@@ -700,7 +695,8 @@
       "cloudApis": "Cloud API's",
       "cloudApisDescription": "Professionele vertaalservices met API-sleutels",
       "freeWebApis": "Gratis web-API's",
-      "freeWebApisDescription": "Geen API-sleutel vereist, maar tariefbeperkt"
+      "freeWebApisDescription": "Geen API-sleutel vereist, maar tariefbeperkt",
+      "configureSelected": "{service} configureren"
     },
     "language": {
       "sourceTitle": "Brontalen",
@@ -720,7 +716,17 @@
     },
     "integration": {
       "radarr": "Radarr",
-      "sonarr": "Sonarr"
+      "sonarr": "Sonarr",
+      "noRadarrInstances": "Er zijn nog geen Radarr-instanties toegevoegd",
+      "addFirstRadarr": "Voeg je eerste Radarr-instantie toe",
+      "noSonarrInstances": "Er zijn nog geen Sonarr-instanties toegevoegd",
+      "addFirstSonarr": "Voeg je eerste Sonarr-instantie toe"
+    },
+    "welcome": {
+      "title": "Welkom bij Lingarr",
+      "description": "Stel je mediabibliotheek vertaalwerkstroom in een paar stappen in. Verbind je Radarr/Sonarr, kies een vertaalservice en begin met het vertalen van ondertitels.",
+      "startButton": "Installatie starten",
+      "skipButton": "Overslaan voor nu"
     }
   },
   "help": {
@@ -729,7 +735,7 @@
       "description": "De onboarding wizard helpt je Lingarr voor de eerste keer te configureren. Het begeleidt je door het verbinden van Radarr/Sonarr, het selecteren van een vertaalservice en het kiezen van je talen.",
       "completed": "Onboarding is eerder voltooid.",
       "skipped": "Onboarding is eerder overgeslagen.",
-      "startButton": "Start Onboarding Wizard"
+      "startButton": "Start onboardingwizard"
     },
     "about": {
       "title": "Over Lingarr",
@@ -762,7 +768,7 @@
   "subtitleSelector": {
     "title": "Ondertitelbron selecteren",
     "loadingSubtitles": "Ondertitels laden...",
-    "stream": "Stream",
+    "stream": "Spoor",
     "incompleteSubtitle": "Deze ondertitel is mogelijk onvolledig (Geforceerd/Alleen tekens)",
     "selectSubtitle": "Selecteer een ondertitel",
     "selectSubtitleDescription": "Selecteer een ondertitelstream om te gebruiken voor vertaling:",
@@ -788,16 +794,7 @@
     "selectLanguagesDesc": "Kies bron- en doeltalen voor vertaling",
     "translationSettings": "Vertaalinstellingen",
     "translationSettingsDesc": "Configureer batchvertaling en ondertitelverwerking",
-    "setupComplete": "Installatie voltooid"
-  },
-  "onboarding": {
-    "welcome": {
-      "title": "Welkom bij Lingarr",
-      "description": "Stel je mediabibliotheek vertaalwerkstroom in een paar stappen in. Verbind je Radarr/Sonarr, kies een vertaalservice en begin met het vertalen van ondertitels.",
-      "startButton": "Installatie starten",
-      "skipButton": "Overslaan voor nu"
-    }
-  },
+    "setupComplete": "Installatie voltooid",
     "setupCompleteDesc": "Je bent klaar om te beginnen met vertalen"
   }
 }

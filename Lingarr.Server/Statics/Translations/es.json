@@ -58,8 +58,8 @@
     "translated": "Traducido",
     "duration": "Duración",
     "preview": "Vista previa",
-    "original": "Original",
-"downloadOriginal": "Original",
+    "original": "Texto original",
+    "downloadOriginal": "Descargar original",
     "downloadTranslated": "Traducido",
     "subtitleToTranslate": "Subtítulo a traducir",
     "linesToTranslate": "Líneas a traducir",
@@ -100,7 +100,7 @@
       "compareView": "Comparación lado a lado",
       "openCompare": "Abrir comparación",
       "timing": "Desglose de tiempo",
-      "tokens": "Tokens",
+      "tokens": "Uso de tokens",
       "viewRequest": "Ver solicitud",
       "viewResponse": "Ver respuesta",
       "call": "Llamada"
@@ -173,14 +173,13 @@
     "callsToday": "llamadas hoy",
     "callsThisWeek": "llamadas esta semana",
     "noApiUsage": "Sin llamadas API registradas",
-    "today": "Hoy",
     "week": "Semana",
     "month": "Mes",
     "avgResponse": "Prom.",
     "calls": "llamadas",
-    "tokens": "Tokens",
+    "tokens": "Uso de tokens",
     "success": "Éxito",
-    "errors": "Errores",
+    "errors": "errores",
     "refresh": "Actualizar",
     "errorLog": "Registro de errores",
     "recentErrors": "Errores recientes",
@@ -189,13 +188,9 @@
     "retry": "Reintentar",
     "duplicatesRemoved": "duplicados eliminados",
     "tokensUsed": "Tokens usados",
-    "errors": "errores",
     "warnings": "advertencias",
     "used": "usado",
-    "week": "Semana",
-    "month": "Mes",
     "remaining": "Restante",
-    "refresh": "Actualizar",
     "nextRun": "Próxima ejecución",
     "lastRun": "Última ejecución",
     "configMode": "Modo de configuración",
@@ -204,7 +199,7 @@
     "resetLayoutConfirmMessage": "¿Estás seguro de que quieres restablecer el diseño del panel a los valores predeterminados? Esto no se puede deshacer.",
     "hiddenWidgets": "Widgets ocultos",
     "clickToShow": "Haz clic para mostrar",
-    "recentTranslations": "Reciente",
+    "recentTranslations": "Traducciones recientes",
     "noRecentTranslations": "Sin traducciones recientes"
   },
   "movies": {
@@ -301,9 +296,9 @@
     "confirm": "Confirmar",
     "currentVersion": "Versión: {version}",
     "devBuild": "Versión de desarrollo",
-    "disable": "Disable",
+    "disable": "Desactivar",
     "discard": "Descartar",
-"enabled": "Habilitado",
+    "enabled": "Habilitado",
     "disabled": "Deshabilitado",
     "ensureConnectionsConfigured": "Asegúrate de que todas las conexiones estén correctamente configuradas",
     "goToSettings": "Ir a configuración",
@@ -363,11 +358,11 @@
       "cleanupTitle": "Consolidar duplicados",
       "cleanupDescription": "Si tienes películas o series duplicadas por migrar a multi-instancia, esto las consolidará en una sola instancia por defecto.",
       "cleanupButton": "Corregir duplicados",
-      "cleanupStats": "Reasignado a instancia por defecto"
-      ,"webhookDescription": "Añade un webhook en la configuración Connect/Webhook de Radarr o Sonarr y usa la URL correspondiente de abajo. Cada instancia debe usar su propia URL."
-      ,"webhookEmpty": "Añade y guarda una instancia con una URL y una clave API válidas para generar su URL de webhook."
-      ,"webhookSaveFirst": "Guarda los cambios antes de usar estas URL de webhook."
-      ,"webhookTitle": "Configuración del webhook"
+      "cleanupStats": "Reasignado a instancia por defecto",
+      "webhookDescription": "Añade un webhook en la configuración Connect/Webhook de Radarr o Sonarr y usa la URL correspondiente de abajo. Cada instancia debe usar su propia URL.",
+      "webhookEmpty": "Añade y guarda una instancia con una URL y una clave API válidas para generar su URL de webhook.",
+      "webhookSaveFirst": "Guarda los cambios antes de usar estas URL de webhook.",
+      "webhookTitle": "Configuración del webhook"
     },
     "services": {
       "title": "Servicios",
@@ -403,7 +398,7 @@
       "overrideUsageLimitError": "Por favor ingresa un número válido",
       "overrideUsageLimitHelp": "Opcional: limita el número de solicitudes que Lingarr puede hacer cada día, incluso si tu plan permite más. Deja vacío para usar el límite completo del plan.",
       "chutesUsageTitle": "Uso de Chutes",
-      "chutesPlan": "Plan: {plan}",
+      "chutesPlan": "Plan contratado: {plan}",
       "chutesPlanUnknown": "Información del plan no disponible.",
       "refreshUsage": "Actualizar",
       "requestsToday": "Solicitudes hoy",
@@ -607,7 +602,7 @@
       "allLevels": "Todos los niveles",
       "information": "Información",
       "warning": "Advertencia",
-      "error": "Error",
+      "error": "Errores",
       "export": "Exportar",
       "disableAutoScroll": "Deshabilitar desplazamiento automático",
       "enableAutoScroll": "Habilitar desplazamiento automático",
@@ -638,7 +633,7 @@
         "valid": "Válido",
         "corrupt": "Corrupto",
         "queued": "En cola",
-        "total": "Total",
+        "total": "En total",
         "movies": "películas",
         "episodes": "episodios"
       }
@@ -680,7 +675,7 @@
       "sonarrPlaceholder": "Instancia Sonarr"
     },
     "addInstance": {
-"addNew": "Añadir",
+      "addNew": "Añadir",
       "addRadarr": "Añadir Radarr",
       "addSonarr": "Añadir Sonarr"
     },
@@ -700,7 +695,8 @@
       "cloudApis": "APIs en la nube",
       "cloudApisDescription": "Servicios de traducción profesionales con claves API",
       "freeWebApis": "APIs web gratuitas",
-      "freeWebApisDescription": "No se requiere clave API, pero con límites de tasa"
+      "freeWebApisDescription": "No se requiere clave API, pero con límites de tasa",
+      "configureSelected": "Configurar {service}"
     },
     "language": {
       "sourceTitle": "Idiomas de origen",
@@ -720,7 +716,17 @@
     },
     "integration": {
       "radarr": "Radarr",
-      "sonarr": "Sonarr"
+      "sonarr": "Sonarr",
+      "noRadarrInstances": "Todav?a no se ha agregado ninguna instancia de Radarr",
+      "addFirstRadarr": "Agrega tu primera instancia de Radarr",
+      "noSonarrInstances": "Todav?a no se ha agregado ninguna instancia de Sonarr",
+      "addFirstSonarr": "Agrega tu primera instancia de Sonarr"
+    },
+    "welcome": {
+      "title": "Bienvenido a Lingarr",
+      "description": "Configura tu flujo de trabajo de traducción de biblioteca multimedia en pocos pasos. Conecta Radarr/Sonarr, elige un servicio de traducción y comienza a traducir subtítulos.",
+      "startButton": "Iniciar configuración",
+      "skipButton": "Omitir por ahora"
     }
   },
   "help": {
@@ -739,7 +745,7 @@
       "loadingDocs": "Cargando documentación...",
       "failedToLoad": "Error al cargar la documentación: ",
       "checkUpdates": "Buscar actualizaciones",
-      "devBuild": "Dev Build",
+      "devBuild": "Versi?n de desarrollo",
       "updateAvailable": "Actualización disponible"
     }
   },
@@ -762,7 +768,7 @@
   "subtitleSelector": {
     "title": "Seleccionar fuente de subtítulos",
     "loadingSubtitles": "Cargando subtítulos...",
-    "stream": "Stream",
+    "stream": "Pista",
     "incompleteSubtitle": "Este subtítulo puede estar incompleto (Forzado/Sólo signos)",
     "selectSubtitle": "Seleccionar un subtítulo",
     "selectSubtitleDescription": "Seleccione un flujo de subtítulos para usar en la traducción:",
@@ -790,13 +796,5 @@
     "translationSettingsDesc": "Configura la traducción por lotes y el procesamiento de subtítulos",
     "setupComplete": "Configuración completada",
     "setupCompleteDesc": "Estás listo para empezar a traducir"
-  },
-  "onboarding": {
-    "welcome": {
-      "title": "Bienvenido a Lingarr",
-      "description": "Configura tu flujo de trabajo de traducción de biblioteca multimedia en pocos pasos. Conecta Radarr/Sonarr, elige un servicio de traducción y comienza a traducir subtítulos.",
-      "startButton": "Iniciar configuración",
-      "skipButton": "Omitir por ahora"
-    }
   }
 }

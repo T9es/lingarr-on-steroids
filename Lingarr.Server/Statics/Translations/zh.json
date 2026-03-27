@@ -59,7 +59,7 @@
     "duration": "持续时间",
     "preview": "预览",
     "original": "原文",
-"downloadOriginal": "原文",
+    "downloadOriginal": "原文",
     "downloadTranslated": "译文",
     "subtitleToTranslate": "要翻译的字幕",
     "linesToTranslate": "要翻译的行数",
@@ -173,7 +173,6 @@
     "callsToday": "今日调用",
     "callsThisWeek": "本周调用",
     "noApiUsage": "无API调用记录",
-    "today": "今天",
     "week": "周",
     "month": "月",
     "avgResponse": "平均",
@@ -189,13 +188,9 @@
     "retry": "重试",
     "duplicatesRemoved": "已删除重复项",
     "tokensUsed": "已使用令牌",
-    "errors": "错误",
     "warnings": "警告",
     "used": "已使用",
-    "week": "周",
-    "month": "月",
     "remaining": "剩余",
-    "refresh": "刷新",
     "nextRun": "下次运行",
     "lastRun": "上次运行",
     "configMode": "配置模式",
@@ -204,7 +199,7 @@
     "resetLayoutConfirmMessage": "确定要将仪表板布局重置为默认值吗？此操作无法撤销。",
     "hiddenWidgets": "隐藏的小部件",
     "clickToShow": "点击显示",
-    "recentTranslations": "最近",
+    "recentTranslations": "?????",
     "noRecentTranslations": "无最近翻译"
   },
   "movies": {
@@ -301,9 +296,9 @@
     "confirm": "确认",
     "currentVersion": "版本：{version}",
     "devBuild": "开发版本",
-    "disable": "Disable",
+    "disable": "??",
     "discard": "放弃",
-"enabled": "已启用",
+    "enabled": "已启用",
     "disabled": "已禁用",
     "ensureConnectionsConfigured": "确保所有连接配置正确",
     "goToSettings": "前往设置",
@@ -363,11 +358,11 @@
       "cleanupTitle": "合并重复项",
       "cleanupDescription": "如果您在迁移到多实例后有重复的电影或电视剧，这将把它们合并到单个默认实例。",
       "cleanupButton": "修复重复项",
-      "cleanupStats": "已重新分配到默认实例"
-      ,"webhookDescription": "请在 Radarr 或 Sonarr 的 Connect/Webhook 设置中添加 webhook，并使用下方对应的 URL。每个实例都必须使用自己的 URL。"
-      ,"webhookEmpty": "请添加并保存一个带有有效 URL 和 API 密钥的实例，以生成其 webhook URL。"
-      ,"webhookSaveFirst": "使用这些 webhook URL 之前，请先保存更改。"
-      ,"webhookTitle": "Webhook 配置"
+      "cleanupStats": "已重新分配到默认实例",
+      "webhookDescription": "请在 Radarr 或 Sonarr 的 Connect/Webhook 设置中添加 webhook，并使用下方对应的 URL。每个实例都必须使用自己的 URL。",
+      "webhookEmpty": "请添加并保存一个带有有效 URL 和 API 密钥的实例，以生成其 webhook URL。",
+      "webhookSaveFirst": "使用这些 webhook URL 之前，请先保存更改。",
+      "webhookTitle": "Webhook 配置"
     },
     "services": {
       "title": "服务",
@@ -700,7 +695,8 @@
       "cloudApis": "云API",
       "cloudApisDescription": "使用API密钥的专业翻译服务",
       "freeWebApis": "免费Web API",
-      "freeWebApisDescription": "无需API密钥，但有速率限制"
+      "freeWebApisDescription": "无需API密钥，但有速率限制",
+      "configureSelected": "?? {service}"
     },
     "language": {
       "sourceTitle": "源语言",
@@ -720,7 +716,17 @@
     },
     "integration": {
       "radarr": "Radarr",
-      "sonarr": "Sonarr"
+      "sonarr": "Sonarr",
+      "noRadarrInstances": "?????? Radarr ??",
+      "addFirstRadarr": "??????? Radarr ??",
+      "noSonarrInstances": "?????? Sonarr ??",
+      "addFirstSonarr": "??????? Sonarr ??"
+    },
+    "welcome": {
+      "title": "欢迎使用 Lingarr",
+      "description": "只需几个步骤即可设置媒体库翻译工作流。连接 Radarr/Sonarr，选择翻译服务，然后开始翻译字幕。",
+      "startButton": "开始设置",
+      "skipButton": "暂时跳过"
     }
   },
   "help": {
@@ -790,13 +796,5 @@
     "translationSettingsDesc": "配置批量翻译和字幕处理",
     "setupComplete": "设置完成",
     "setupCompleteDesc": "您已准备好开始翻译"
-  },
-  "onboarding": {
-    "welcome": {
-      "title": "欢迎使用 Lingarr",
-      "description": "只需几个步骤即可设置媒体库翻译工作流。连接 Radarr/Sonarr，选择翻译服务，然后开始翻译字幕。",
-      "startButton": "开始设置",
-      "skipButton": "暂时跳过"
-    }
   }
 }

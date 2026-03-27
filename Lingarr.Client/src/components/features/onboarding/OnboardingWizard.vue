@@ -79,7 +79,7 @@
                               ? 'bg-accent/60'
                               : 'bg-secondary-content/30'
                     ]"
-                    :title="step.title"
+                    :title="translate(step.titleKey)"
                     @click="onboardingStore.goToStep(index)" />
             </div>
 
@@ -88,10 +88,10 @@
                 <transition name="slide-fade" mode="out-in">
                     <div v-if="currentStepData" :key="currentStepData.id" class="space-y-4">
                         <h2 class="text-primary-content text-xl font-bold">
-                            {{ currentStepData.title }}
+                            {{ translate(currentStepData.titleKey) }}
                         </h2>
                         <p class="text-secondary-content">
-                            {{ currentStepData.description }}
+                            {{ translate(currentStepData.descriptionKey) }}
                         </p>
                         <component :is="currentStepComponent" :key="currentStepData.id" />
                     </div>

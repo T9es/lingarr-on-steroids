@@ -1,6 +1,8 @@
 <template>
     <div class="space-y-4">
-        <h3 class="text-primary-content text-lg font-semibold">Configure {{ serviceName }}</h3>
+        <h3 class="text-primary-content text-lg font-semibold">
+            {{ translate('onboarding.service.configureSelected', { service: serviceName }) }}
+        </h3>
         <component :is="serviceConfigComponent" v-if="serviceConfigComponent" @save="onSave" />
     </div>
 </template>
@@ -9,6 +11,7 @@
 import { computed } from 'vue'
 import { useSettingStore } from '@/store/setting'
 import { SETTINGS, SERVICE_TYPE } from '@/ts'
+import { useI18n } from '@/plugins/i18n'
 import LibreTranslateConfig from '@/components/features/settings/services/LibreTranslateConfig.vue'
 import DeepLConfig from '@/components/features/settings/services/DeepLConfig.vue'
 import FreeServiceConfig from '@/components/features/settings/services/FreeServiceConfig.vue'
@@ -23,26 +26,29 @@ const emit = defineEmits<{
     save: []
 }>()
 
+const { translate } = useI18n()
 const settingsStore = useSettingStore()
 
 const serviceType = computed(() => settingsStore.getSetting(SETTINGS.SERVICE_TYPE) as string)
 
 const serviceName = computed(() => {
-    const names: Record<string, string> = {
-        [SERVICE_TYPE.LIBRETRANSLATE]: 'LibreTranslate',
-        [SERVICE_TYPE.OPENAI]: 'OpenAI',
-        [SERVICE_TYPE.ANTHROPIC]: 'Anthropic',
-        [SERVICE_TYPE.LOCALAI]: 'LocalAI',
-        [SERVICE_TYPE.DEEPL]: 'DeepL',
-        [SERVICE_TYPE.GEMINI]: 'Gemini',
-        [SERVICE_TYPE.DEEPSEEK]: 'DeepSeek',
-        [SERVICE_TYPE.CHUTES]: 'Chutes.ai',
-        [SERVICE_TYPE.GOOGLE]: 'Google Translate',
-        [SERVICE_TYPE.BING]: 'Bing Translate',
-        [SERVICE_TYPE.MICROSOFT]: 'Microsoft Translator',
-        [SERVICE_TYPE.YANDEX]: 'Yandex Translate'
+    const nameKeys: Record<string, string> = {
+        [SERVICE_TYPE.LIBRETRANSLATE]: 'services.serviceNames.libretranslate',
+        [SERVICE_TYPE.OPENAI]: 'services.serviceNames.openai',
+        [SERVICE_TYPE.ANTHROPIC]: 'services.serviceNames.anthropic',
+        [SERVICE_TYPE.LOCALAI]: 'services.serviceNames.localai',
+        [SERVICE_TYPE.DEEPL]: 'services.serviceNames.deepl',
+        [SERVICE_TYPE.GEMINI]: 'services.serviceNames.gemini',
+        [SERVICE_TYPE.DEEPSEEK]: 'services.serviceNames.deepseek',
+        [SERVICE_TYPE.CHUTES]: 'services.serviceNames.chutes',
+        [SERVICE_TYPE.GOOGLE]: 'services.serviceNames.google',
+        [SERVICE_TYPE.BING]: 'services.serviceNames.bing',
+        [SERVICE_TYPE.MICROSOFT]: 'services.serviceNames.microsoft',
+        [SERVICE_TYPE.YANDEX]: 'services.serviceNames.yandex'
     }
-    return names[serviceType.value] || 'Service'
+
+    const nameKey = nameKeys[serviceType.value]
+    return nameKey ? translate(nameKey) : translate('onboardingSteps.configureService')
 })
 
 const serviceConfigComponent = computed(() => {

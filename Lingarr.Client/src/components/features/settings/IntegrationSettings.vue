@@ -508,7 +508,7 @@ const testRadarrConnection = async (instance: IInstance): Promise<void> => {
         status.version = result.version || null
     } catch (error) {
         status.connected = false
-        status.message = 'Connection failed'
+        status.message = translate('settings.integrations.connectionFailed')
     } finally {
         status.testing = false
         status.tested = true
@@ -533,7 +533,7 @@ const testSonarrConnection = async (instance: IInstance): Promise<void> => {
         status.version = result.version || null
     } catch (error) {
         status.connected = false
-        status.message = 'Connection failed'
+        status.message = translate('settings.integrations.connectionFailed')
     } finally {
         status.testing = false
         status.tested = true

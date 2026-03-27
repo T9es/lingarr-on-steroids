@@ -33,7 +33,7 @@
     "forced": "Forced",
     "default": "Default"
   },
-"translationTest": {
+  "translationTest": {
     "title": "Translation Test",
     "description": "Test translation of a subtitle file without saving results. Useful for debugging.",
     "configuration": "Configuration",
@@ -173,14 +173,13 @@
     "callsToday": "calls today",
     "callsThisWeek": "calls this week",
     "noApiUsage": "No API calls recorded",
-    "today": "Today",
     "week": "Week",
     "month": "Month",
     "avgResponse": "Avg",
     "calls": "calls",
     "tokens": "Tokens",
     "success": "Success",
-    "errors": "Errors",
+    "errors": "errors",
     "refresh": "Refresh",
     "errorLog": "Error Log",
     "recentErrors": "Recent Errors",
@@ -189,13 +188,9 @@
     "retry": "Retry",
     "duplicatesRemoved": "duplicates removed",
     "tokensUsed": "Tokens Used",
-    "errors": "errors",
     "warnings": "warnings",
     "used": "used",
-    "week": "Week",
-    "month": "Month",
     "remaining": "Remaining",
-    "refresh": "Refresh",
     "nextRun": "Next run",
     "lastRun": "Last run",
     "configMode": "Configuration Mode",
@@ -303,7 +298,7 @@
     "devBuild": "Dev Build",
     "disable": "Disable",
     "discard": "Discard",
-"enabled": "Enabled",
+    "enabled": "Enabled",
     "disabled": "Disabled",
     "ensureConnectionsConfigured": "Ensure all connections are properly configured",
     "goToSettings": "Go to Settings",
@@ -363,11 +358,11 @@
       "cleanupTitle": "Consolidate Duplicates",
       "cleanupDescription": "If you have duplicate movies or shows from migrating to multi-instance, this will consolidate them to a single default instance.",
       "cleanupButton": "Fix Duplicates",
-      "cleanupStats": "Reassigned to default instance"
-      ,"webhookDescription": "Add a webhook in the Connect/Webhook settings in Radarr or Sonarr and use the matching URL below. Each instance must use its own URL."
-      ,"webhookEmpty": "Add and save an instance with a valid URL and API key to generate its webhook URL."
-      ,"webhookSaveFirst": "Save your changes before using these webhook URLs."
-      ,"webhookTitle": "Webhook Setup"
+      "cleanupStats": "Reassigned to default instance",
+      "webhookDescription": "Add a webhook in the Connect/Webhook settings in Radarr or Sonarr and use the matching URL below. Each instance must use its own URL.",
+      "webhookEmpty": "Add and save an instance with a valid URL and API key to generate its webhook URL.",
+      "webhookSaveFirst": "Save your changes before using these webhook URLs.",
+      "webhookTitle": "Webhook Setup"
     },
     "services": {
       "title": "Services",
@@ -700,7 +695,8 @@
       "cloudApis": "Cloud APIs",
       "cloudApisDescription": "Professional translation services with API keys",
       "freeWebApis": "Free Web APIs",
-      "freeWebApisDescription": "No API key required, but rate-limited"
+      "freeWebApisDescription": "No API key required, but rate-limited",
+      "configureSelected": "Configure {service}"
     },
     "language": {
       "sourceTitle": "Source Languages",
@@ -720,7 +716,11 @@
     },
     "integration": {
       "radarr": "Radarr",
-      "sonarr": "Sonarr"
+      "sonarr": "Sonarr",
+      "noRadarrInstances": "No Radarr instances added yet",
+      "addFirstRadarr": "Add your first Radarr instance",
+      "noSonarrInstances": "No Sonarr instances added yet",
+      "addFirstSonarr": "Add your first Sonarr instance"
     },
     "welcome": {
       "title": "Welcome to Lingarr",

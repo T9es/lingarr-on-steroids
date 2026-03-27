@@ -3,45 +3,45 @@
     "steps": [
         {
             "id": "welcome",
-            "title": "Welcome to Lingarr",
+            "titleKey": "onboarding.welcome.title",
             "component": "WelcomeStep",
-            "description": "Set up your media library translation"
+            "descriptionKey": "onboarding.welcome.description"
         },
         {
             "id": "integration",
-            "title": "Connect Your Services",
+            "titleKey": "onboardingSteps.connectServices",
             "component": "IntegrationStep",
-            "description": "Connect Radarr and Sonarr to sync your media library"
+            "descriptionKey": "onboardingSteps.connectServicesDesc"
         },
         {
             "id": "service",
-            "title": "Choose Translation Service",
+            "titleKey": "onboardingSteps.chooseService",
             "component": "ServiceStep",
-            "description": "Select how you want subtitles translated"
+            "descriptionKey": "onboardingSteps.chooseServiceDesc"
         },
         {
             "id": "service-config",
-            "title": "Configure Service",
+            "titleKey": "onboardingSteps.configureService",
             "component": "ServiceConfigStep",
-            "description": "Set up your translation service credentials"
+            "descriptionKey": "onboardingSteps.configureServiceDesc"
         },
         {
             "id": "languages",
-            "title": "Select Languages",
+            "titleKey": "onboardingSteps.selectLanguages",
             "component": "LanguageStep",
-            "description": "Choose source and target languages for translation"
+            "descriptionKey": "onboardingSteps.selectLanguagesDesc"
         },
         {
             "id": "translation-settings",
-            "title": "Translation Settings",
+            "titleKey": "onboardingSteps.translationSettings",
             "component": "TranslationSettingsStep",
-            "description": "Configure batch translation and subtitle processing"
+            "descriptionKey": "onboardingSteps.translationSettingsDesc"
         },
         {
             "id": "complete",
-            "title": "Setup Complete",
+            "titleKey": "onboardingSteps.setupComplete",
             "component": "CompleteStep",
-            "description": "You're ready to start translating"
+            "descriptionKey": "onboardingSteps.setupCompleteDesc"
         }
     ]
 }

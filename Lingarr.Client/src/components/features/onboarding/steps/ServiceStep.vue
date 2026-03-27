@@ -20,7 +20,7 @@
                     ]"
                     @click="selectService(service.value)">
                     <span class="text-primary-content block font-medium">
-                        {{ service.label }}
+                        {{ translate(service.labelKey) }}
                     </span>
                 </button>
             </div>
@@ -46,7 +46,7 @@
                     ]"
                     @click="selectService(service.value)">
                     <span class="text-primary-content block font-medium">
-                        {{ service.label }}
+                        {{ translate(service.labelKey) }}
                     </span>
                 </button>
             </div>
@@ -72,7 +72,7 @@
                     ]"
                     @click="selectService(service.value)">
                     <span class="text-primary-content block font-medium">
-                        {{ service.label }}
+                        {{ translate(service.labelKey) }}
                     </span>
                 </button>
             </div>
@@ -91,24 +91,24 @@ const settingStore = useSettingStore()
 
 // Service groups (alphabetical within each group)
 const aiServices = [
-    { value: SERVICE_TYPE.ANTHROPIC, label: 'Anthropic' },
-    { value: SERVICE_TYPE.CHUTES, label: 'Chutes.ai' },
-    { value: SERVICE_TYPE.DEEPSEEK, label: 'DeepSeek' },
-    { value: SERVICE_TYPE.GEMINI, label: 'Gemini' },
-    { value: SERVICE_TYPE.LOCALAI, label: 'LocalAI' },
-    { value: SERVICE_TYPE.OPENAI, label: 'OpenAI' }
+    { value: SERVICE_TYPE.ANTHROPIC, labelKey: 'services.serviceNames.anthropic' },
+    { value: SERVICE_TYPE.CHUTES, labelKey: 'services.serviceNames.chutes' },
+    { value: SERVICE_TYPE.DEEPSEEK, labelKey: 'services.serviceNames.deepseek' },
+    { value: SERVICE_TYPE.GEMINI, labelKey: 'services.serviceNames.gemini' },
+    { value: SERVICE_TYPE.LOCALAI, labelKey: 'services.serviceNames.localai' },
+    { value: SERVICE_TYPE.OPENAI, labelKey: 'services.serviceNames.openai' }
 ]
 
 const cloudServices = [
-    { value: SERVICE_TYPE.DEEPL, label: 'DeepL' },
-    { value: SERVICE_TYPE.LIBRETRANSLATE, label: 'LibreTranslate' }
+    { value: SERVICE_TYPE.DEEPL, labelKey: 'services.serviceNames.deepl' },
+    { value: SERVICE_TYPE.LIBRETRANSLATE, labelKey: 'services.serviceNames.libretranslate' }
 ]
 
 const freeServices = [
-    { value: SERVICE_TYPE.BING, label: 'Bing' },
-    { value: SERVICE_TYPE.GOOGLE, label: 'Google' },
-    { value: SERVICE_TYPE.MICROSOFT, label: 'Microsoft' },
-    { value: SERVICE_TYPE.YANDEX, label: 'Yandex' }
+    { value: SERVICE_TYPE.BING, labelKey: 'services.serviceNames.bing' },
+    { value: SERVICE_TYPE.GOOGLE, labelKey: 'services.serviceNames.google' },
+    { value: SERVICE_TYPE.MICROSOFT, labelKey: 'services.serviceNames.microsoft' },
+    { value: SERVICE_TYPE.YANDEX, labelKey: 'services.serviceNames.yandex' }
 ]
 
 // Computed property for selected service

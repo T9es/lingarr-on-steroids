@@ -429,7 +429,7 @@ When adding a new language:
 
 **Verification:**
 - Ensure all translation files have the same structure and keys
-- Check for missing keys by running: `python3 scripts/verify_translations.py` (if available)
+- Check for invalid JSON, duplicate keys, missing frontend-used keys, and suspicious untranslated values by running: `python scripts/verify_translations.py`
 - Frontend will log warnings for missing translation keys in the browser console
 
 ### Maintaining AGENTS.md

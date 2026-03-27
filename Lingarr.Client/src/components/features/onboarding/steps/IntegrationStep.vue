@@ -11,11 +11,13 @@
                 v-if="onboardingStore.radarrInstances.length === 0"
                 class="border-accent/30 bg-primary/50 rounded-lg border-2 border-dashed p-8 text-center">
                 <RadarrIcon class="text-secondary-content mx-auto mb-3 h-10 w-10 opacity-50" />
-                <p class="text-secondary-content mb-3">No Radarr instances added yet</p>
+                <p class="text-secondary-content mb-3">
+                    {{ translate('onboarding.integration.noRadarrInstances') }}
+                </p>
                 <button
                     class="bg-accent text-primary-content hover:bg-accent/80 rounded-md px-4 py-2 text-sm font-medium transition-colors"
                     @click="addRadarrInstance">
-                    Add your first Radarr instance
+                    {{ translate('onboarding.integration.addFirstRadarr') }}
                 </button>
             </div>
             <!-- Instance cards grid -->
@@ -48,11 +50,13 @@
                 v-if="onboardingStore.sonarrInstances.length === 0"
                 class="border-accent/30 bg-primary/50 rounded-lg border-2 border-dashed p-8 text-center">
                 <SonarrIcon class="text-secondary-content mx-auto mb-3 h-10 w-10 opacity-50" />
-                <p class="text-secondary-content mb-3">No Sonarr instances added yet</p>
+                <p class="text-secondary-content mb-3">
+                    {{ translate('onboarding.integration.noSonarrInstances') }}
+                </p>
                 <button
                     class="bg-accent text-primary-content hover:bg-accent/80 rounded-md px-4 py-2 text-sm font-medium transition-colors"
                     @click="addSonarrInstance">
-                    Add your first Sonarr instance
+                    {{ translate('onboarding.integration.addFirstSonarr') }}
                 </button>
             </div>
             <!-- Instance cards grid -->
@@ -85,8 +89,10 @@ import InstanceCard from '@/components/features/onboarding/InstanceCard.vue'
 import AddInstanceButton from '@/components/features/onboarding/AddInstanceButton.vue'
 import RadarrIcon from '@/components/icons/RadarrIcon.vue'
 import SonarrIcon from '@/components/icons/SonarrIcon.vue'
+import { useI18n } from '@/plugins/i18n'
 import services from '@/services'
 
+const { translate } = useI18n()
 const onboardingStore = useOnboardingStore()
 
 interface ConnectionStatus {
@@ -221,7 +227,7 @@ const testRadarrConnection = async (instance: IInstance): Promise<void> => {
         status.version = result.version || null
     } catch (error) {
         status.connected = false
-        status.message = 'Connection failed'
+        status.message = translate('onboarding.instanceCard.connectionFailed')
     } finally {
         status.testing = false
         status.tested = true
@@ -247,7 +253,7 @@ const testSonarrConnection = async (instance: IInstance): Promise<void> => {
         status.version = result.version || null
     } catch (error) {
         status.connected = false
-        status.message = 'Connection failed'
+        status.message = translate('onboarding.instanceCard.connectionFailed')
     } finally {
         status.testing = false
         status.tested = true

@@ -1,10 +1,10 @@
 {
   "navigation": {
-    "dashboard": "Dashboard",
+    "dashboard": "?bersicht",
     "movies": "Filme",
     "tvShows": "Serien",
     "translations": "Übersetzungen",
-    "translationTest": "Test",
+    "translationTest": "?bersetzungstest",
     "settings": "Einstellungen",
     "integrations": "Integrationen",
     "services": "Dienste",
@@ -58,8 +58,8 @@
     "translated": "Übersetzt",
     "duration": "Dauer",
     "preview": "Vorschau",
-    "original": "Original",
-"downloadOriginal": "Original",
+    "original": "Originaltext",
+    "downloadOriginal": "Original herunterladen",
     "downloadTranslated": "Übersetzt",
     "subtitleToTranslate": "Zu übersetzender Untertitel",
     "linesToTranslate": "Zu übersetzende Zeilen",
@@ -100,7 +100,7 @@
       "compareView": "Seiten-an-Seiten-Vergleich",
       "openCompare": "Vergleichsansicht öffnen",
       "timing": "Zeitübersicht",
-      "tokens": "Tokens",
+      "tokens": "Tokenverbrauch",
       "viewRequest": "Anfrage anzeigen",
       "viewResponse": "Antwort anzeigen",
       "call": "Aufruf"
@@ -143,7 +143,7 @@
     "disconnected": "Getrennt",
     "source": "Quelle",
     "target": "Ziel",
-    "dashboard": "Dashboard",
+    "dashboard": "?bersicht",
     "configure": "Konfigurieren",
     "resetLayout": "Layout zurücksetzen",
     "saveLayout": "Speichern",
@@ -173,12 +173,11 @@
     "callsToday": "Anrufe heute",
     "callsThisWeek": "Anrufe diese Woche",
     "noApiUsage": "Keine API-Aufrufe protokolliert",
-    "today": "Heute",
     "week": "Woche",
     "month": "Monat",
     "avgResponse": "Durchschn.",
     "calls": "Aufrufe",
-    "tokens": "Tokens",
+    "tokens": "Tokenverbrauch",
     "success": "Erfolg",
     "errors": "Fehler",
     "refresh": "Aktualisieren",
@@ -189,13 +188,9 @@
     "retry": "Erneut versuchen",
     "duplicatesRemoved": "Duplikate entfernt",
     "tokensUsed": "Verwendete Tokens",
-    "errors": "Fehler",
     "warnings": "Warnungen",
     "used": "verwendet",
-    "week": "Woche",
-    "month": "Monat",
     "remaining": "Verbleibend",
-    "refresh": "Aktualisieren",
     "nextRun": "Nächste Ausführung",
     "lastRun": "Letzte Ausführung",
     "configMode": "Konfigurationsmodus",
@@ -204,7 +199,7 @@
     "resetLayoutConfirmMessage": "Sind Sie sicher, dass Sie das Dashboard-Layout auf die Standardeinstellungen zurücksetzen möchten? Dies kann nicht rückgängig gemacht werden.",
     "hiddenWidgets": "Ausgeblendete Widgets",
     "clickToShow": "Klicken zum Anzeigen",
-    "recentTranslations": "Aktuell",
+    "recentTranslations": "Neueste ?bersetzungen",
     "noRecentTranslations": "Keine aktuellen Übersetzungen"
   },
   "movies": {
@@ -226,8 +221,8 @@
     "season": "Staffel",
     "episodes": "Episoden",
     "episodesLine": "Episoden",
-    "specials": "Specials",
-    "episode": "Episode",
+    "specials": "Spezialfolgen",
+    "episode": "Folge",
     "episodeTitle": "Titel",
     "episodeSubtitles": "Untertitel",
     "ageThreshold": "Verzögerung",
@@ -242,7 +237,7 @@
     "title": "Titel",
     "source": "Quelle",
     "target": "Ziel",
-    "status": "Status",
+    "status": "Stand",
     "priority": "Prioritätsmedien",
     "progress": "Fortschritt",
     "completed": "Abgeschlossen",
@@ -301,9 +296,9 @@
     "confirm": "Bestätigen",
     "currentVersion": "Version: {version}",
     "devBuild": "Entwicklungsversion",
-    "disable": "Disable",
+    "disable": "Deaktivieren",
     "discard": "Verwerfen",
-"enabled": "Aktiviert",
+    "enabled": "Aktiviert",
     "disabled": "Deaktiviert",
     "ensureConnectionsConfigured": "Stellen Sie sicher, dass alle Verbindungen richtig konfiguriert sind",
     "goToSettings": "Zu den Einstellungen",
@@ -359,15 +354,15 @@
       "connectionSuccess": "Verbunden",
       "connectionFailed": "Verbindung fehlgeschlagen",
       "notTested": "Nicht getestet",
-      "version": "Version",
+      "version": "Versionsinfo",
       "cleanupTitle": "Duplikate zusammenführen",
       "cleanupDescription": "Wenn Sie doppelte Filme oder Serien durch die Migration zu Multi-Instance haben, werden diese zu einer einzelnen Standard-Instanz zusammengeführt.",
       "cleanupButton": "Duplikate beheben",
-      "cleanupStats": "Zur Standard-Instanz zugewiesen"
-      ,"webhookDescription": "Fügen Sie in den Connect-/Webhook-Einstellungen von Radarr oder Sonarr einen Webhook hinzu und verwenden Sie die passende URL unten. Jede Instanz muss ihre eigene URL verwenden."
-      ,"webhookEmpty": "Fügen Sie eine Instanz mit gültiger URL und API-Schlüssel hinzu und speichern Sie sie, um ihre Webhook-URL zu erzeugen."
-      ,"webhookSaveFirst": "Speichern Sie Ihre Änderungen, bevor Sie diese Webhook-URLs verwenden."
-      ,"webhookTitle": "Webhook-Einrichtung"
+      "cleanupStats": "Zur Standard-Instanz zugewiesen",
+      "webhookDescription": "Fügen Sie in den Connect-/Webhook-Einstellungen von Radarr oder Sonarr einen Webhook hinzu und verwenden Sie die passende URL unten. Jede Instanz muss ihre eigene URL verwenden.",
+      "webhookEmpty": "Fügen Sie eine Instanz mit gültiger URL und API-Schlüssel hinzu und speichern Sie sie, um ihre Webhook-URL zu erzeugen.",
+      "webhookSaveFirst": "Speichern Sie Ihre Änderungen, bevor Sie diese Webhook-URLs verwenden.",
+      "webhookTitle": "Webhook-Einrichtung"
     },
     "services": {
       "title": "Dienste",
@@ -392,7 +387,7 @@
       "localAiNotification": "API-Schlüssel ist optional und kann leer gelassen werden.",
       "enableTokenLimit": "Token-Limit aktivieren",
       "addressUrlError": "Bitte geben Sie eine gültige URL ein (z.B. http://localhost:3000 oder https://api.beispiel.com)",
-      "versionLabel": "Version",
+      "versionLabel": "Versionsinfo",
       "versionError": "Version darf nicht leer sein",
       "freeServiceLimits": "Kostenlose Übersetzungsdienste haben Tarifbeschränkungen, die zu Fehlern führen können.",
       "localAiPlaceholder": "http://ollama:11434/v1/chat/completions",
@@ -403,7 +398,7 @@
       "overrideUsageLimitError": "Bitte geben Sie eine gültige Zahl ein",
       "overrideUsageLimitHelp": "Optional: Begrenzen Sie die Anzahl der Anfragen, die Lingarr pro Tag stellen kann, auch wenn Ihr Plan mehr erlaubt. Leer lassen, um das vollständige Plan-Limit zu verwenden.",
       "chutesUsageTitle": "Chutes-Nutzung",
-      "chutesPlan": "Plan: {plan}",
+      "chutesPlan": "Tarif: {plan}",
       "chutesPlanUnknown": "Plan-Informationen nicht verfügbar.",
       "refreshUsage": "Aktualisieren",
       "requestsToday": "Anfragen heute",
@@ -462,7 +457,7 @@
       "retryDelayMultiplierDescription": "Faktor, um den die Verzögerung nach jeder Wiederholung zunimmt.",
       "maxParallelTranslations": "Gleichzeitige Dateiübersetzungen:",
       "maxParallelTranslationsDescription": "Maximale Anzahl von Untertiteldateien, die gleichzeitig übersetzt werden. Höhere Werte beschleunigen die Verarbeitung, verwenden aber mehr API-Anfragen. Auf 1 für sequentielle Übersetzung setzen.",
-      "maxParallelTranslationsLimit": "Maximum: {max}",
+      "maxParallelTranslationsLimit": "Maximal: {max}",
       "enableBatchFallback": "Fehlgeschlagene Batches wiederholen:",
       "enableBatchFallbackDescription": "Wenn eine Batch-Übersetzung fehlschlägt, automatisch mit kleineren Chunks erneut versuchen, bevor die gesamte Datei fehlschlägt.",
       "maxBatchSplitAttempts": "Batch-Aufteilungsstufen:",
@@ -520,7 +515,7 @@
       "descriptionLink": "Dienste",
       "enableAutomatedTranslation": "Automatisierte Übersetzung:",
       "translationScheduleLabel": "Übersetzungsplan festlegen:",
-      "limitsHeader": "Limits:",
+      "limitsHeader": "Grenzwerte:",
       "scheduleLimitLabel": "Begrenzen Sie die Anzahl der Übersetzungen pro Plan",
       "defaultAgeThresholdLabel": "Standard-Dateialter-Verzögerung für Übersetzung:",
       "movieAgeThresholdLabel": "Film-Dateialter-Verzögerung in 'Stunden'",
@@ -605,7 +600,7 @@
     "logs": {
       "systemLogs": "Systemprotokolle",
       "allLevels": "Alle Stufen",
-      "information": "Information",
+      "information": "Info",
       "warning": "Warnung",
       "error": "Fehler",
       "export": "Exportieren",
@@ -700,7 +695,8 @@
       "cloudApis": "Cloud-APIs",
       "cloudApisDescription": "Professionelle Übersetzungsdienste mit API-Schlüsseln",
       "freeWebApis": "Kostenlose Web-APIs",
-      "freeWebApisDescription": "Kein API-Schlüssel erforderlich, aber tarifbeschränkt"
+      "freeWebApisDescription": "Kein API-Schlüssel erforderlich, aber tarifbeschränkt",
+      "configureSelected": "{service} konfigurieren"
     },
     "language": {
       "sourceTitle": "Quellsprachen",
@@ -720,7 +716,17 @@
     },
     "integration": {
       "radarr": "Radarr",
-      "sonarr": "Sonarr"
+      "sonarr": "Sonarr",
+      "noRadarrInstances": "Noch keine Radarr-Instanzen hinzugef?gt",
+      "addFirstRadarr": "F?ge deine erste Radarr-Instanz hinzu",
+      "noSonarrInstances": "Noch keine Sonarr-Instanzen hinzugef?gt",
+      "addFirstSonarr": "F?ge deine erste Sonarr-Instanz hinzu"
+    },
+    "welcome": {
+      "title": "Willkommen bei Lingarr",
+      "description": "Richten Sie Ihren Medienbibliothek-Übersetzungsworkflow in wenigen Schritten ein. Verbinden Sie Radarr/Sonarr, wählen Sie einen Übersetzungsdienst und beginnen Sie mit der Untertitelübersetzung.",
+      "startButton": "Einrichtung starten",
+      "skipButton": "Jetzt überspringen"
     }
   },
   "help": {
@@ -762,7 +768,7 @@
   "subtitleSelector": {
     "title": "Untertitelquelle auswählen",
     "loadingSubtitles": "Untertitel werden geladen...",
-    "stream": "Stream",
+    "stream": "Spur",
     "incompleteSubtitle": "Dieser Untertitel ist möglicherweise unvollständig (Erzwungen/Nur Zeichen)",
     "selectSubtitle": "Untertitel auswählen",
     "selectSubtitleDescription": "Wählen Sie einen Untertitel-Stream zur Verwendung für die Übersetzung:",
@@ -790,13 +796,5 @@
     "translationSettingsDesc": "Stellen Sie Stapelübersetzung und Untertitelverarbeitung ein",
     "setupComplete": "Einrichtung abgeschlossen",
     "setupCompleteDesc": "Sie sind bereit, mit der Übersetzung zu beginnen"
-  },
-  "onboarding": {
-    "welcome": {
-      "title": "Willkommen bei Lingarr",
-      "description": "Richten Sie Ihren Medienbibliothek-Übersetzungsworkflow in wenigen Schritten ein. Verbinden Sie Radarr/Sonarr, wählen Sie einen Übersetzungsdienst und beginnen Sie mit der Untertitelübersetzung.",
-      "startButton": "Einrichtung starten",
-      "skipButton": "Jetzt überspringen"
-    }
   }
 }
