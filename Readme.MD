@@ -12,7 +12,7 @@
 
 ---
 
-> Snapshot verified against `lingarr-translate/lingarr` on March 27, 2026. Upstream may change after this date.
+> This README reflects our fork and the upstream Lingarr project as they looked on March 27, 2026. If upstream changes later, a few details here may drift over time.
 >
 > Upgrading from v1.x? Version 2.0.0 has breaking changes. MySQL/MariaDB is no longer supported, settings are not migrated automatically, and a clean start is required.
 
@@ -26,12 +26,12 @@ It still inherits Lingarr's base workflow: index media through Radarr and Sonarr
 
 ---
 
-## Verified fork differences
+## What we changed
 
 ### Backend and queueing
 
-| Area | Verified difference in this fork |
-|------|---------------------------------|
+| Area | What changed in our fork |
+|------|--------------------------|
 | Custom translation worker | Translation jobs run through a custom `BackgroundService` with configurable parallel workers instead of relying only on Hangfire queues. |
 | PostgreSQL-first deployment | PostgreSQL is the default database. SQLite remains supported for smaller installs. |
 | Media translation states | Media uses a 9-state model: `Unknown`, `NotApplicable`, `Pending`, `InProgress`, `Complete`, `Stale`, `AwaitingSource`, `NoSuitableSubtitles`, `Failed`. |
@@ -66,7 +66,7 @@ It still inherits Lingarr's base workflow: index media through Radarr and Sonarr
 
 ## Supported services
 
-These are available in this fork as of the snapshot date. Some are also available upstream, so this list describes compatibility, not fork exclusivity.
+This is what works in our fork today. Some of these are supported upstream as well, so this section is about compatibility, not exclusivity.
 
 **AI:**
 - [OpenAI](https://openai.com/) (GPT)

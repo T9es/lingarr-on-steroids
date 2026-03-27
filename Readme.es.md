@@ -12,7 +12,7 @@
 
 ---
 
-> Snapshot verificado contra `lingarr-translate/lingarr` el 27 de marzo de 2026. Upstream puede cambiar despues de esa fecha.
+> Este README describe nuestro fork y el estado de Lingarr upstream a fecha del 27 de marzo de 2026. Si upstream cambia despues, algunos detalles aqui pueden quedarse un poco desactualizados con el tiempo.
 >
 > Actualizando desde v1.x? La version 2.0.0 introduce breaking changes. MySQL/MariaDB ya no esta soportado, la configuracion no se migra automaticamente y hace falta un inicio limpio.
 
@@ -26,12 +26,12 @@ Este fork se centra en colas mas fiables, bibliotecas con varias instancias, rep
 
 ---
 
-## Diferencias verificadas de este fork
+## Lo que cambiamos
 
 ### Backend y colas
 
-| Area | Diferencia verificada en este fork |
-|------|-----------------------------------|
+| Area | Que es distinto en nuestro fork |
+|------|----------------------------------|
 | Translation worker propio | Los trabajos de traduccion pasan por un `BackgroundService` propio con workers paralelos configurables y no solo por colas Hangfire. |
 | PostgreSQL por defecto | PostgreSQL es la base de datos por defecto. SQLite sigue disponible para instalaciones pequenas. |
 | Modelo de estados de medios | Los medios usan 9 estados: `Unknown`, `NotApplicable`, `Pending`, `InProgress`, `Complete`, `Stale`, `AwaitingSource`, `NoSuitableSubtitles`, `Failed`. |
@@ -66,7 +66,7 @@ Este fork se centra en colas mas fiables, bibliotecas con varias instancias, rep
 
 ## Servicios soportados
 
-Esta es la lista de compatibilidad de este fork en la fecha del snapshot. Parte de estos servicios tambien estan presentes en upstream, asi que no es una reclamacion exclusiva del fork.
+Esto es lo que funciona hoy en nuestro fork. Parte de estos servicios tambien estan soportados por upstream, asi que esta seccion habla de compatibilidad, no de exclusividad.
 
 **IA:**
 - [OpenAI](https://openai.com/) (GPT)
