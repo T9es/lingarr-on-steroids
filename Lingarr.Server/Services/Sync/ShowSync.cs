@@ -20,12 +20,13 @@ public class ShowSync : IShowSync
     }
 
     /// <inheritdoc />
-    public async Task<Show> SyncShow(SonarrShow sonarrShow)
+    public async Task<Show> SyncShow(SonarrShow sonarrShow, string instanceId)
     {
+        // Match by SonarrId AND SourceInstanceId for multi-instance support
         var showEntity = await _dbContext.Shows
             .Include(s => s.Images)
             .Include(s => s.Seasons)
-            .FirstOrDefaultAsync(s => s.SonarrId == sonarrShow.Id);
+            .FirstOrDefaultAsync(s => s.SonarrId == sonarrShow.Id && s.SourceInstanceId == instanceId);
 
         if (showEntity == null)
         {
@@ -34,7 +35,8 @@ public class ShowSync : IShowSync
                 SonarrId = sonarrShow.Id,
                 Title = sonarrShow.Title,
                 Path = sonarrShow.Path,
-                DateAdded = !string.IsNullOrEmpty(sonarrShow.Added) ? DateTime.Parse(sonarrShow.Added).ToUniversalTime() : DateTime.UtcNow
+                DateAdded = !string.IsNullOrEmpty(sonarrShow.Added) ? DateTime.Parse(sonarrShow.Added).ToUniversalTime() : DateTime.UtcNow,
+                SourceInstanceId = instanceId
             };
             _dbContext.Shows.Add(showEntity);
         }
@@ -43,6 +45,7 @@ public class ShowSync : IShowSync
             showEntity.Title = sonarrShow.Title;
             showEntity.Path = sonarrShow.Path;
             showEntity.DateAdded = !string.IsNullOrEmpty(sonarrShow.Added) ? DateTime.Parse(sonarrShow.Added).ToUniversalTime() : DateTime.UtcNow;
+            showEntity.SourceInstanceId = instanceId;
         }
 
         if (sonarrShow.Images?.Any() == true)

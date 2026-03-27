@@ -55,6 +55,21 @@ public class TestTranslationRequest
     public Lingarr.Core.Enum.MediaType? MediaType { get; set; }
     public required string SourceLanguage { get; set; }
     public required string TargetLanguage { get; set; }
+    public int? StartLine { get; set; }
+    public int? EndLine { get; set; }
+    public int? MaxLines { get; set; }
+    
+    /// <summary>
+    /// Stream index for embedded subtitle extraction.
+    /// If set, will extract this specific stream from the media file.
+    /// </summary>
+    public int? EmbeddedStreamIndex { get; set; }
+
+    /// <summary>
+    /// Explicit subtitle positions selected in the visual picker.
+    /// Preserves sparse multi-select ordering based on the original file.
+    /// </summary>
+    public List<int>? SelectedLinePositions { get; set; }
 }
 
 /// <summary>
@@ -68,6 +83,7 @@ public class TestTranslationResult
     public int TranslatedCount { get; set; }
     public TimeSpan Duration { get; set; }
     public List<TranslatedSubtitlePreview>? Preview { get; set; }
+    public int? TestResultId { get; set; }
 }
 
 /// <summary>

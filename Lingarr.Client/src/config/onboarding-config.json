@@ -1,0 +1,47 @@
+{
+    "version": 1,
+    "steps": [
+        {
+            "id": "welcome",
+            "titleKey": "onboarding.welcome.title",
+            "component": "WelcomeStep",
+            "descriptionKey": "onboarding.welcome.description"
+        },
+        {
+            "id": "integration",
+            "titleKey": "onboardingSteps.connectServices",
+            "component": "IntegrationStep",
+            "descriptionKey": "onboardingSteps.connectServicesDesc"
+        },
+        {
+            "id": "service",
+            "titleKey": "onboardingSteps.chooseService",
+            "component": "ServiceStep",
+            "descriptionKey": "onboardingSteps.chooseServiceDesc"
+        },
+        {
+            "id": "service-config",
+            "titleKey": "onboardingSteps.configureService",
+            "component": "ServiceConfigStep",
+            "descriptionKey": "onboardingSteps.configureServiceDesc"
+        },
+        {
+            "id": "languages",
+            "titleKey": "onboardingSteps.selectLanguages",
+            "component": "LanguageStep",
+            "descriptionKey": "onboardingSteps.selectLanguagesDesc"
+        },
+        {
+            "id": "translation-settings",
+            "titleKey": "onboardingSteps.translationSettings",
+            "component": "TranslationSettingsStep",
+            "descriptionKey": "onboardingSteps.translationSettingsDesc"
+        },
+        {
+            "id": "complete",
+            "titleKey": "onboardingSteps.setupComplete",
+            "component": "CompleteStep",
+            "descriptionKey": "onboardingSteps.setupCompleteDesc"
+        }
+    ]
+}

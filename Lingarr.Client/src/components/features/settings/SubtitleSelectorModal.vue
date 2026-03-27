@@ -15,13 +15,16 @@
                     enter-from-class="scale-90"
                     leave-to-class="scale-90">
                     <div
-                        class="flex w-full max-w-lg flex-col rounded-lg bg-black p-4"
+                        v-if="isOpen"
+                        class="bg-primary border-secondary flex w-full max-w-lg flex-col rounded-lg border p-4 shadow-xl"
                         @click.stop>
                         <!-- Header -->
                         <div class="mb-4 flex items-center justify-between">
-                            <h3 class="text-lg font-semibold">Select Subtitle Source</h3>
+                            <h3 class="text-lg font-semibold">
+                                {{ translate('subtitleSelector.title') }}
+                            </h3>
                             <button
-                                class="text-gray-400 hover:text-white"
+                                class="text-primary-content/60 hover:text-primary-content"
                                 @click="$emit('close')">
                                 <svg
                                     class="h-6 w-6"
@@ -38,15 +41,17 @@
                         </div>
 
                         <!-- Media Info -->
-                        <div class="mb-4 rounded bg-gray-900 p-3">
+                        <div class="bg-secondary/50 mb-4 rounded p-3">
                             <div class="font-medium">{{ mediaTitle }}</div>
-                            <div class="text-sm text-gray-400">{{ mediaType }} #{{ mediaId }}</div>
+                            <div class="text-primary-content/70 text-sm">
+                                {{ mediaType }} #{{ mediaId }}
+                            </div>
                         </div>
 
                         <!-- Loading State -->
                         <div v-if="isLoading" class="flex items-center justify-center py-8">
                             <svg
-                                class="h-8 w-8 animate-spin text-accent"
+                                class="text-accent h-8 w-8 animate-spin"
                                 xmlns="http://www.w3.org/2000/svg"
                                 fill="none"
                                 viewBox="0 0 24 24">
@@ -62,23 +67,29 @@
                                     fill="currentColor"
                                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                             </svg>
-                            <span class="ml-2">Loading subtitles...</span>
+                            <span class="ml-2">
+                                {{ translate('subtitleSelector.loadingSubtitles') }}
+                            </span>
                         </div>
 
                         <!-- Error State -->
-                        <div v-else-if="error" class="rounded border border-red-500/30 bg-red-500/10 p-4 text-red-400">
+                        <div
+                            v-else-if="error"
+                            class="rounded border border-red-500/30 bg-red-500/10 p-4 text-red-400">
                             {{ error }}
                         </div>
 
                         <!-- Empty State -->
-                        <div v-else-if="subtitles.length === 0" class="py-8 text-center text-gray-400">
+                        <div
+                            v-else-if="subtitles.length === 0"
+                            class="text-primary-content/70 py-8 text-center">
                             No embedded subtitles found for this media.
                         </div>
 
                         <!-- Subtitle List -->
                         <div v-else class="max-h-96 overflow-y-auto">
-                            <div class="mb-2 text-sm text-gray-400">
-                                Select a subtitle stream to use for translation:
+                            <div class="text-primary-content/70 mb-2 text-sm">
+                                {{ translate('subtitleSelector.selectSubtitle') }}
                             </div>
                             <div class="space-y-2">
                                 <div
@@ -86,8 +97,10 @@
                                     :key="subtitle.streamIndex"
                                     class="cursor-pointer rounded border p-3 transition-colors"
                                     :class="{
-                                        'border-accent bg-accent/10': selectedStreamIndex === subtitle.streamIndex,
-                                        'border-gray-700 hover:border-gray-500': selectedStreamIndex !== subtitle.streamIndex,
+                                        'border-accent bg-accent/10':
+                                            selectedStreamIndex === subtitle.streamIndex,
+                                        'border-secondary/30 hover:border-accent':
+                                            selectedStreamIndex !== subtitle.streamIndex,
                                         'opacity-50': !subtitle.isTextBased
                                     }"
                                     @click="selectSubtitle(subtitle)">
@@ -95,14 +108,16 @@
                                         <div class="flex-1">
                                             <div class="flex items-center gap-2">
                                                 <!-- Language Flag/Icon -->
-                                                <span class="text-lg">{{ getLanguageEmoji(subtitle.language) }}</span>
+                                                <span class="text-lg">
+                                                    {{ getLanguageEmoji(subtitle.language) }}
+                                                </span>
                                                 <span class="font-medium">
                                                     {{ getLanguageName(subtitle.language) }}
                                                 </span>
                                                 <!-- Title Badge -->
                                                 <span
                                                     v-if="subtitle.title"
-                                                    class="rounded bg-gray-700 px-2 py-0.5 text-xs">
+                                                    class="bg-secondary rounded px-2 py-0.5 text-xs">
                                                     {{ subtitle.title }}
                                                 </span>
                                                 <!-- Default Badge -->
@@ -112,25 +127,43 @@
                                                     Default
                                                 </span>
                                             </div>
-                                            <div class="mt-1 flex items-center gap-2 text-sm text-gray-400">
-                                                <span>Stream {{ subtitle.streamIndex }}</span>
+                                            <div
+                                                class="text-primary-content/70 mt-1 flex items-center gap-2 text-sm">
+                                                <span>
+                                                    {{ translate('subtitleSelector.stream') }}
+                                                    {{ subtitle.streamIndex }}
+                                                </span>
                                                 <span>•</span>
                                                 <span
-                                                    :class="subtitle.isTextBased ? 'text-green-400' : 'text-red-400'">
+                                                    :class="
+                                                        subtitle.isTextBased
+                                                            ? 'text-green-400'
+                                                            : 'text-red-400'
+                                                    ">
                                                     {{ subtitle.codecName }}
                                                 </span>
                                                 <!-- Entry Count -->
-                                                <template v-if="subtitle.entryCount !== null && subtitle.entryCount !== undefined">
+                                                <template
+                                                    v-if="
+                                                        subtitle.entryCount !== null &&
+                                                        subtitle.entryCount !== undefined
+                                                    ">
                                                     <span>•</span>
                                                     <span
-                                                        :class="subtitle.isSparse ? 'text-yellow-400' : 'text-green-400'">
+                                                        :class="
+                                                            subtitle.isSparse
+                                                                ? 'text-yellow-400'
+                                                                : 'text-green-400'
+                                                        ">
                                                         {{ subtitle.entryCount }} entries
                                                     </span>
                                                 </template>
                                             </div>
                                         </div>
                                         <!-- Warning Icon for Forced/Signs -->
-                                        <div v-if="subtitle.isForced || subtitle.isSparse" class="ml-2">
+                                        <div
+                                            v-if="subtitle.isForced || subtitle.isSparse"
+                                            class="ml-2">
                                             <svg
                                                 class="h-5 w-5 text-yellow-500"
                                                 fill="none"
@@ -146,13 +179,20 @@
                                         </div>
                                     </div>
                                     <!-- Warning Text -->
-                                    <div v-if="subtitle.isForced" class="mt-1 text-xs text-yellow-500">
-                                        ⚠️ Forced subtitle - may only contain foreign language segments
+                                    <div
+                                        v-if="subtitle.isForced"
+                                        class="mt-1 text-xs text-yellow-500">
+                                        ⚠️ Forced subtitle - may only contain foreign language
+                                        segments
                                     </div>
-                                    <div v-else-if="subtitle.isSparse" class="mt-1 text-xs text-yellow-500">
+                                    <div
+                                        v-else-if="subtitle.isSparse"
+                                        class="mt-1 text-xs text-yellow-500">
                                         ⚠️ Low entry count - may be Signs/Songs only
                                     </div>
-                                    <div v-else-if="!subtitle.isTextBased" class="mt-1 text-xs text-red-400">
+                                    <div
+                                        v-else-if="!subtitle.isTextBased"
+                                        class="mt-1 text-xs text-red-400">
                                         ❌ Image-based subtitle - cannot be translated
                                     </div>
                                 </div>
@@ -160,8 +200,9 @@
                         </div>
 
                         <!-- Footer -->
-                        <div class="mt-4 flex items-center justify-between border-t border-gray-700 pt-4">
-                            <div class="text-sm text-gray-400">
+                        <div
+                            class="border-secondary/30 mt-4 flex items-center justify-between border-t pt-4">
+                            <div class="text-primary-content/70 text-sm">
                                 <span v-if="selectedStreamIndex !== null">
                                     Selected: Stream {{ selectedStreamIndex }}
                                 </span>
@@ -169,13 +210,17 @@
                             </div>
                             <div class="flex gap-2">
                                 <button
-                                    class="rounded bg-gray-700 px-4 py-2 text-sm font-medium hover:bg-gray-600"
+                                    class="bg-secondary hover:bg-secondary/80 rounded px-4 py-2 text-sm font-medium"
                                     @click="$emit('close')">
                                     Cancel
                                 </button>
                                 <button
-                                    :disabled="selectedStreamIndex === null || isQueuing || !selectedSubtitle?.isTextBased"
-                                    class="rounded bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent/80 disabled:cursor-not-allowed disabled:bg-gray-700 disabled:opacity-50"
+                                    :disabled="
+                                        selectedStreamIndex === null ||
+                                        isQueuing ||
+                                        !selectedSubtitle?.isTextBased
+                                    "
+                                    class="bg-accent hover:bg-accent/80 text-primary-content disabled:bg-secondary/50 rounded px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
                                     @click="extractAndTranslate">
                                     <span v-if="isQueuing" class="flex items-center">
                                         <svg
@@ -211,6 +256,9 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import axios from 'axios'
+import { useI18n } from '@/plugins/i18n'
+
+const { translate } = useI18n()
 
 interface AvailableSubtitle {
     id: number
@@ -225,6 +273,11 @@ interface AvailableSubtitle {
     extractedPath: string | null
     entryCount: number | null
     isSparse: boolean | null
+}
+
+interface ErrorResponse {
+    error?: string
+    message?: string
 }
 
 const props = defineProps<{
@@ -248,146 +301,146 @@ const error = ref('')
 const selectedStreamIndex = ref<number | null>(null)
 
 const selectedSubtitle = computed(() => {
-    return subtitles.value.find(s => s.streamIndex === selectedStreamIndex.value) || null
+    return subtitles.value.find((s) => s.streamIndex === selectedStreamIndex.value) || null
 })
 
 // Language code to emoji mapping
 const languageEmojis: Record<string, string> = {
-    'eng': '🇬🇧',
-    'en': '🇬🇧',
-    'jpn': '🇯🇵',
-    'ja': '🇯🇵',
-    'fra': '🇫🇷',
-    'fr': '🇫🇷',
-    'deu': '🇩🇪',
-    'de': '🇩🇪',
-    'spa': '🇪🇸',
-    'es': '🇪🇸',
-    'ita': '🇮🇹',
-    'it': '🇮🇹',
-    'por': '🇵🇹',
-    'pt': '🇵🇹',
-    'rus': '🇷🇺',
-    'ru': '🇷🇺',
-    'kor': '🇰🇷',
-    'ko': '🇰🇷',
-    'cmn': '🇨🇳',
-    'zh': '🇨🇳',
-    'chi': '🇨🇳',
-    'nld': '🇳🇱',
-    'nl': '🇳🇱',
-    'pol': '🇵🇱',
-    'pl': '🇵🇱',
-    'tur': '🇹🇷',
-    'tr': '🇹🇷',
-    'swe': '🇸🇪',
-    'sv': '🇸🇪',
-    'nor': '🇳🇴',
-    'no': '🇳🇴',
-    'dan': '🇩🇰',
-    'da': '🇩🇰',
-    'fin': '🇫🇮',
-    'fi': '🇫🇮',
-    'gre': '🇬🇷',
-    'el': '🇬🇷',
-    'hun': '🇭🇺',
-    'hu': '🇭🇺',
-    'cze': '🇨🇿',
-    'cs': '🇨🇿',
-    'slk': '🇸🇰',
-    'sk': '🇸🇰',
-    'ron': '🇷🇴',
-    'ro': '🇷🇴',
-    'hrv': '🇭🇷',
-    'hr': '🇭🇷',
-    'srp': '🇷🇸',
-    'sr': '🇷🇸',
-    'ukr': '🇺🇦',
-    'uk': '🇺🇦',
-    'ara': '🇸🇦',
-    'ar': '🇸🇦',
-    'heb': '🇮🇱',
-    'he': '🇮🇱',
-    'hin': '🇮🇳',
-    'hi': '🇮🇳',
-    'tha': '🇹🇭',
-    'th': '🇹🇭',
-    'vie': '🇻🇳',
-    'vi': '🇻🇳',
-    'ind': '🇮🇩',
-    'id': '🇮🇩',
-    'msa': '🇲🇾',
-    'ms': '🇲🇾',
-    'und': '🌐',
+    eng: '🇬🇧',
+    en: '🇬🇧',
+    jpn: '🇯🇵',
+    ja: '🇯🇵',
+    fra: '🇫🇷',
+    fr: '🇫🇷',
+    deu: '🇩🇪',
+    de: '🇩🇪',
+    spa: '🇪🇸',
+    es: '🇪🇸',
+    ita: '🇮🇹',
+    it: '🇮🇹',
+    por: '🇵🇹',
+    pt: '🇵🇹',
+    rus: '🇷🇺',
+    ru: '🇷🇺',
+    kor: '🇰🇷',
+    ko: '🇰🇷',
+    cmn: '🇨🇳',
+    zh: '🇨🇳',
+    chi: '🇨🇳',
+    nld: '🇳🇱',
+    nl: '🇳🇱',
+    pol: '🇵🇱',
+    pl: '🇵🇱',
+    tur: '🇹🇷',
+    tr: '🇹🇷',
+    swe: '🇸🇪',
+    sv: '🇸🇪',
+    nor: '🇳🇴',
+    no: '🇳🇴',
+    dan: '🇩🇰',
+    da: '🇩🇰',
+    fin: '🇫🇮',
+    fi: '🇫🇮',
+    gre: '🇬🇷',
+    el: '🇬🇷',
+    hun: '🇭🇺',
+    hu: '🇭🇺',
+    cze: '🇨🇿',
+    cs: '🇨🇿',
+    slk: '🇸🇰',
+    sk: '🇸🇰',
+    ron: '🇷🇴',
+    ro: '🇷🇴',
+    hrv: '🇭🇷',
+    hr: '🇭🇷',
+    srp: '🇷🇸',
+    sr: '🇷🇸',
+    ukr: '🇺🇦',
+    uk: '🇺🇦',
+    ara: '🇸🇦',
+    ar: '🇸🇦',
+    heb: '🇮🇱',
+    he: '🇮🇱',
+    hin: '🇮🇳',
+    hi: '🇮🇳',
+    tha: '🇹🇭',
+    th: '🇹🇭',
+    vie: '🇻🇳',
+    vi: '🇻🇳',
+    ind: '🇮🇩',
+    id: '🇮🇩',
+    msa: '🇲🇾',
+    ms: '🇲🇾',
+    und: '🌐'
 }
 
 const languageNames: Record<string, string> = {
-    'eng': 'English',
-    'en': 'English',
-    'jpn': 'Japanese',
-    'ja': 'Japanese',
-    'fra': 'French',
-    'fr': 'French',
-    'deu': 'German',
-    'de': 'German',
-    'spa': 'Spanish',
-    'es': 'Spanish',
-    'ita': 'Italian',
-    'it': 'Italian',
-    'por': 'Portuguese',
-    'pt': 'Portuguese',
-    'rus': 'Russian',
-    'ru': 'Russian',
-    'kor': 'Korean',
-    'ko': 'Korean',
-    'cmn': 'Chinese',
-    'zh': 'Chinese',
-    'chi': 'Chinese',
-    'nld': 'Dutch',
-    'nl': 'Dutch',
-    'pol': 'Polish',
-    'pl': 'Polish',
-    'tur': 'Turkish',
-    'tr': 'Turkish',
-    'swe': 'Swedish',
-    'sv': 'Swedish',
-    'nor': 'Norwegian',
-    'no': 'Norwegian',
-    'dan': 'Danish',
-    'da': 'Danish',
-    'fin': 'Finnish',
-    'fi': 'Finnish',
-    'gre': 'Greek',
-    'el': 'Greek',
-    'hun': 'Hungarian',
-    'hu': 'Hungarian',
-    'cze': 'Czech',
-    'cs': 'Czech',
-    'slk': 'Slovak',
-    'sk': 'Slovak',
-    'ron': 'Romanian',
-    'ro': 'Romanian',
-    'hrv': 'Croatian',
-    'hr': 'Croatian',
-    'srp': 'Serbian',
-    'sr': 'Serbian',
-    'ukr': 'Ukrainian',
-    'uk': 'Ukrainian',
-    'ara': 'Arabic',
-    'ar': 'Arabic',
-    'heb': 'Hebrew',
-    'he': 'Hebrew',
-    'hin': 'Hindi',
-    'hi': 'Hindi',
-    'tha': 'Thai',
-    'th': 'Thai',
-    'vie': 'Vietnamese',
-    'vi': 'Vietnamese',
-    'ind': 'Indonesian',
-    'id': 'Indonesian',
-    'msa': 'Malay',
-    'ms': 'Malay',
-    'und': 'Undefined',
+    eng: 'English',
+    en: 'English',
+    jpn: 'Japanese',
+    ja: 'Japanese',
+    fra: 'French',
+    fr: 'French',
+    deu: 'German',
+    de: 'German',
+    spa: 'Spanish',
+    es: 'Spanish',
+    ita: 'Italian',
+    it: 'Italian',
+    por: 'Portuguese',
+    pt: 'Portuguese',
+    rus: 'Russian',
+    ru: 'Russian',
+    kor: 'Korean',
+    ko: 'Korean',
+    cmn: 'Chinese',
+    zh: 'Chinese',
+    chi: 'Chinese',
+    nld: 'Dutch',
+    nl: 'Dutch',
+    pol: 'Polish',
+    pl: 'Polish',
+    tur: 'Turkish',
+    tr: 'Turkish',
+    swe: 'Swedish',
+    sv: 'Swedish',
+    nor: 'Norwegian',
+    no: 'Norwegian',
+    dan: 'Danish',
+    da: 'Danish',
+    fin: 'Finnish',
+    fi: 'Finnish',
+    gre: 'Greek',
+    el: 'Greek',
+    hun: 'Hungarian',
+    hu: 'Hungarian',
+    cze: 'Czech',
+    cs: 'Czech',
+    slk: 'Slovak',
+    sk: 'Slovak',
+    ron: 'Romanian',
+    ro: 'Romanian',
+    hrv: 'Croatian',
+    hr: 'Croatian',
+    srp: 'Serbian',
+    sr: 'Serbian',
+    ukr: 'Ukrainian',
+    uk: 'Ukrainian',
+    ara: 'Arabic',
+    ar: 'Arabic',
+    heb: 'Hebrew',
+    he: 'Hebrew',
+    hin: 'Hindi',
+    hi: 'Hindi',
+    tha: 'Thai',
+    th: 'Thai',
+    vie: 'Vietnamese',
+    vi: 'Vietnamese',
+    ind: 'Indonesian',
+    id: 'Indonesian',
+    msa: 'Malay',
+    ms: 'Malay',
+    und: 'Undefined'
 }
 
 const getLanguageEmoji = (lang: string | null): string => {
@@ -407,6 +460,14 @@ const selectSubtitle = (subtitle: AvailableSubtitle) => {
     selectedStreamIndex.value = subtitle.streamIndex
 }
 
+const getErrorResponse = (error: unknown): ErrorResponse | undefined => {
+    if (axios.isAxiosError<ErrorResponse>(error)) {
+        return error.response?.data
+    }
+
+    return undefined
+}
+
 const fetchSubtitles = async () => {
     if (!props.isOpen || !props.mediaId) return
 
@@ -421,12 +482,12 @@ const fetchSubtitles = async () => {
         subtitles.value = response.data
 
         // Auto-select the first text-based subtitle
-        const firstTextBased = subtitles.value.find(s => s.isTextBased)
+        const firstTextBased = subtitles.value.find((s) => s.isTextBased)
         if (firstTextBased) {
             selectedStreamIndex.value = firstTextBased.streamIndex
         }
-    } catch (err: any) {
-        error.value = err.response?.data?.error || 'Failed to load subtitles'
+    } catch (err: unknown) {
+        error.value = getErrorResponse(err)?.error || 'Failed to load subtitles'
         console.error('Failed to fetch subtitles:', err)
     } finally {
         isLoading.value = false
@@ -451,8 +512,8 @@ const extractAndTranslate = async () => {
         } else {
             emit('error', response.data.message)
         }
-    } catch (err: any) {
-        const message = err.response?.data?.message || 'Failed to queue translation'
+    } catch (err: unknown) {
+        const message = getErrorResponse(err)?.message || 'Failed to queue translation'
         emit('error', message)
         console.error('Failed to queue translation:', err)
     } finally {
@@ -460,9 +521,12 @@ const extractAndTranslate = async () => {
     }
 }
 
-watch(() => props.isOpen, (newValue) => {
-    if (newValue) {
-        fetchSubtitles()
+watch(
+    () => props.isOpen,
+    (newValue) => {
+        if (newValue) {
+            fetchSubtitles()
+        }
     }
-})
+)
 </script>

@@ -18,9 +18,33 @@ public interface IIntegrationService
     Task<T?> GetApiResponse<T>(string apiUrl, IntegrationSettingKeys settingKeys);
     
     /// <summary>
+    /// Asynchronously sends an HTTP GET request to the specified API endpoint with explicit URL and API key.
+    /// Used for multi-instance support where URL/API key are provided directly.
+    /// </summary>
+    /// <typeparam name="T">The expected type of the response data.</typeparam>
+    /// <param name="apiUrl">The relative API endpoint URL to send the request to.</param>
+    /// <param name="url">The base URL of the integration service.</param>
+    /// <param name="apiKey">The API key for authentication.</param>
+    /// <returns>
+    /// A task that represents the asynchronous operation. The task result contains the deserialized response
+    /// of type <typeparamref name="T"/>, or <c>null</c> if the request fails or the deserialization is unsuccessful.
+    /// </returns>
+    /// <exception cref="HttpRequestException">Thrown when the API request fails.</exception>
+    Task<T?> GetApiResponse<T>(string apiUrl, string url, string apiKey);
+    
+    /// <summary>
     /// Tests a connection to an integration service by calling its health endpoint.
     /// </summary>
     /// <param name="settingKeys">The integration settings containing the base URL and API key.</param>
     /// <returns>A task that contains the connection test result including success status and version info.</returns>
     Task<IntegrationTestResult> TestConnection(IntegrationSettingKeys settingKeys);
+    
+    /// <summary>
+    /// Tests a connection to an integration service with explicit URL and API key.
+    /// Used for testing instance connections without mutating shared settings.
+    /// </summary>
+    /// <param name="url">The base URL of the integration service.</param>
+    /// <param name="apiKey">The API key for authentication.</param>
+    /// <returns>A task that contains the connection test result including success status and version info.</returns>
+    Task<IntegrationTestResult> TestConnection(string url, string apiKey);
 }

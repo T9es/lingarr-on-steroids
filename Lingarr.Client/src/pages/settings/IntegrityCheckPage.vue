@@ -10,7 +10,7 @@
                     <div class="flex items-center justify-center">
                         <button
                             :disabled="isRunning"
-                            class="bg-accent hover:bg-accent/80 disabled:bg-base-300 rounded px-6 py-3 font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:text-gray-500"
+                            class="bg-accent hover:bg-accent/80 disabled:bg-secondary text-primary-content disabled:text-primary-content/50 rounded px-6 py-3 font-semibold transition-colors disabled:cursor-not-allowed"
                             @click="startBulkCheck">
                             <span v-if="isRunning" class="flex items-center">
                                 <svg
@@ -46,7 +46,8 @@
                                 <span>{{ translate('settings.integrity.progress') }}</span>
                                 <span>{{ Math.round(stats.progressPercent) }}%</span>
                             </div>
-                            <div class="bg-base-300 h-4 w-full overflow-hidden rounded-full">
+                            <div
+                                class="bg-secondary-content/20 h-4 w-full overflow-hidden rounded-full">
                                 <div
                                     class="bg-accent h-full transition-all duration-300"
                                     :style="{ width: `${stats.progressPercent}%` }"></div>
@@ -55,13 +56,13 @@
 
                         <!-- Stats Grid -->
                         <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
-                            <div class="bg-base-200 rounded p-4 text-center">
+                            <div class="bg-secondary/30 rounded p-4 text-center">
                                 <div class="text-2xl font-bold">{{ stats.processedCount }}</div>
                                 <div class="text-sm opacity-70">
                                     {{ translate('settings.integrity.stats.processed') }}
                                 </div>
                             </div>
-                            <div class="bg-base-200 rounded p-4 text-center">
+                            <div class="bg-secondary/30 rounded p-4 text-center">
                                 <div class="text-2xl font-bold text-green-500">
                                     {{ stats.validCount }}
                                 </div>
@@ -69,7 +70,7 @@
                                     {{ translate('settings.integrity.stats.valid') }}
                                 </div>
                             </div>
-                            <div class="bg-base-200 rounded p-4 text-center">
+                            <div class="bg-secondary/30 rounded p-4 text-center">
                                 <div class="text-2xl font-bold text-yellow-500">
                                     {{ stats.corruptCount }}
                                 </div>
@@ -77,7 +78,7 @@
                                     {{ translate('settings.integrity.stats.corrupt') }}
                                 </div>
                             </div>
-                            <div class="bg-base-200 rounded p-4 text-center">
+                            <div class="bg-secondary/30 rounded p-4 text-center">
                                 <div class="text-2xl font-bold text-blue-500">
                                     {{ stats.queuedCount }}
                                 </div>
@@ -118,17 +119,19 @@
         <!-- Subtitle Source Issues Section -->
         <CardComponent title="Subtitle Source Issues">
             <template #description>
-                Detects potentially incomplete source subtitles (Forced/Signs-only) based on entry count. Subtitles with fewer than 50 entries may need re-translation with a different source.
+                Detects potentially incomplete source subtitles (Forced/Signs-only) based on entry
+                count. Subtitles with fewer than 50 entries may need re-translation with a different
+                source.
             </template>
             <template #content>
                 <div class="flex flex-col space-y-6">
                     <!-- Action Button -->
                     <div class="flex items-center justify-center">
                         <button
-                            :disabled="subtitleTypeIsRunning"
-                            class="bg-accent hover:bg-accent/80 disabled:bg-base-300 rounded px-6 py-3 font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:text-gray-500"
+                            :disabled="subtitleTypeHasStarted"
+                            class="bg-accent hover:bg-accent/80 disabled:bg-secondary text-primary-content disabled:text-primary-content/50 rounded px-6 py-3 font-semibold transition-colors disabled:cursor-not-allowed"
                             @click="startSubtitleTypeValidation">
-                            <span v-if="subtitleTypeIsRunning" class="flex items-center">
+                            <span v-if="subtitleTypeHasStarted" class="flex items-center">
                                 <svg
                                     class="mr-2 h-5 w-5 animate-spin"
                                     xmlns="http://www.w3.org/2000/svg"
@@ -146,7 +149,9 @@
                                         fill="currentColor"
                                         d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                 </svg>
-                                Scanning...
+                                {{ Math.round(subtitleTypeValidationStats.progressPercent) }}% ({{
+                                    subtitleTypeValidationStats.processedCount
+                                }}/{{ subtitleTypeValidationStats.total }})
                             </span>
                             <span v-else>Check Subtitle Sources</span>
                         </button>
@@ -156,13 +161,13 @@
                     <div v-if="subtitleTypeResult" class="w-full space-y-4">
                         <!-- Stats Grid -->
                         <div class="grid w-full grid-cols-2 gap-4">
-                            <div class="bg-base-200 rounded p-4 text-center">
+                            <div class="bg-secondary/30 rounded p-4 text-center">
                                 <div class="text-2xl font-bold">
                                     {{ subtitleTypeResult.totalScanned }}
                                 </div>
                                 <div class="text-sm opacity-70">Translations Scanned</div>
                             </div>
-                            <div class="bg-base-200 rounded p-4 text-center">
+                            <div class="bg-secondary/30 rounded p-4 text-center">
                                 <div
                                     class="text-2xl font-bold"
                                     :class="
@@ -178,23 +183,26 @@
 
                         <!-- Flagged Items List -->
                         <div
-                            v-if="subtitleTypeResult.flaggedItems && subtitleTypeResult.flaggedItems.length > 0"
+                            v-if="
+                                subtitleTypeResult.flaggedItems &&
+                                subtitleTypeResult.flaggedItems.length > 0
+                            "
                             class="w-full space-y-3">
                             <div class="flex items-center justify-between">
                                 <h4 class="font-semibold">Flagged Incomplete Subtitles</h4>
                                 <button
-                                    class="bg-accent hover:bg-accent/80 rounded px-4 py-2 text-sm font-semibold text-white"
+                                    class="bg-accent hover:bg-accent/80 text-primary-content rounded px-4 py-2 text-sm font-semibold"
                                     @click="requeueAllIncomplete">
                                     Auto-fix All
                                 </button>
                             </div>
-                            <div class="bg-base-200 max-h-96 w-full overflow-y-auto rounded">
+                            <div class="bg-secondary/30 max-h-96 w-full overflow-y-auto rounded">
                                 <div
                                     v-for="item in subtitleTypeResult.flaggedItems"
                                     :key="item.translationId"
-                                    class="border-base-300 border-b last:border-0">
+                                    class="border-secondary/50 border-b last:border-0">
                                     <div
-                                        class="hover:bg-base-300/50 flex cursor-pointer items-center justify-between p-3"
+                                        class="hover:bg-secondary/50 flex cursor-pointer items-center justify-between p-3"
                                         @click="toggleSubtitleTypeExpand(item.translationId)">
                                         <div class="flex-1 overflow-hidden">
                                             <div class="truncate font-medium">
@@ -203,7 +211,7 @@
                                             <div class="truncate text-xs opacity-50">
                                                 {{ item.subtitlePath }}
                                             </div>
-                                            <div class="flex items-center gap-2 mt-1">
+                                            <div class="mt-1 flex items-center gap-2">
                                                 <span class="text-xs text-yellow-500">
                                                     {{ item.entryCount }} entries (threshold: 50)
                                                 </span>
@@ -214,12 +222,12 @@
                                                 </span>
                                                 <span
                                                     v-if="item.dismissed"
-                                                    class="rounded bg-gray-500/20 px-2 py-0.5 text-xs text-gray-400">
+                                                    class="bg-secondary-content/20 text-secondary-content/70 rounded px-2 py-0.5 text-xs">
                                                     Dismissed
                                                 </span>
                                             </div>
                                         </div>
-                                         <div class="ml-2 flex items-center gap-1">
+                                        <div class="ml-2 flex items-center gap-1">
                                             <button
                                                 v-if="!item.isQueued && !item.dismissed"
                                                 class="rounded bg-green-500/20 px-2 py-1 text-xs text-green-400 hover:bg-green-500/30"
@@ -228,7 +236,7 @@
                                             </button>
                                             <button
                                                 v-if="!item.isQueued && !item.dismissed"
-                                                class="rounded bg-accent/20 px-2 py-1 text-xs text-accent hover:bg-accent/30"
+                                                class="bg-accent/20 text-accent hover:bg-accent/30 rounded px-2 py-1 text-xs"
                                                 @click.stop="requeueSubtitleType(item)">
                                                 Auto-fix
                                             </button>
@@ -240,7 +248,7 @@
                                             </button>
                                             <button
                                                 v-if="!item.isQueued && !item.dismissed"
-                                                class="rounded bg-gray-500/20 px-2 py-1 text-xs text-gray-400 hover:bg-gray-500/30"
+                                                class="bg-secondary-content/20 text-secondary-content/70 hover:bg-secondary-content/30 rounded px-2 py-1 text-xs"
                                                 @click.stop="dismissSubtitleType(item)">
                                                 Dismiss
                                             </button>
@@ -249,13 +257,16 @@
                                     <!-- Expandable details -->
                                     <div
                                         v-if="
-                                            expandedSubtitleTypeItems.includes(item.translationId) &&
-                                            item.warning
+                                            expandedSubtitleTypeItems.includes(
+                                                item.translationId
+                                            ) && item.warning
                                         "
-                                        class="bg-base-300/30 border-base-300 border-t p-3 text-xs">
+                                        class="bg-tertiary/50 border-secondary/50 border-t p-3 text-xs">
                                         <div class="mb-1 font-semibold opacity-70">Warning:</div>
                                         <div class="text-yellow-400">{{ item.warning }}</div>
-                                        <div class="mt-2 mb-1 font-semibold opacity-70">Recommended Action:</div>
+                                        <div class="mt-2 mb-1 font-semibold opacity-70">
+                                            Recommended Action:
+                                        </div>
                                         <div class="text-accent">{{ item.recommendedAction }}</div>
                                     </div>
                                 </div>
@@ -283,10 +294,10 @@
                     <!-- Action Button -->
                     <div class="flex items-center justify-center">
                         <button
-                            :disabled="assIsRunning"
-                            class="bg-accent hover:bg-accent/80 disabled:bg-base-300 rounded px-6 py-3 font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:text-gray-500"
+                            :disabled="assHasStarted"
+                            class="bg-accent hover:bg-accent/80 disabled:bg-secondary text-primary-content disabled:text-primary-content/50 rounded px-6 py-3 font-semibold transition-colors disabled:cursor-not-allowed"
                             @click="startAssVerification">
-                            <span v-if="assIsRunning" class="flex items-center">
+                            <span v-if="assHasStarted" class="flex items-center">
                                 <svg
                                     class="mr-2 h-5 w-5 animate-spin"
                                     xmlns="http://www.w3.org/2000/svg"
@@ -304,7 +315,9 @@
                                         fill="currentColor"
                                         d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                 </svg>
-                                Scanning...
+                                {{ Math.round(assValidationStats.progressPercent) }}% ({{
+                                    assValidationStats.processedCount
+                                }}/{{ assValidationStats.total }})
                             </span>
                             <span v-else>Verify ASS Integrity</span>
                         </button>
@@ -314,13 +327,13 @@
                     <div v-if="assResult" class="w-full space-y-4">
                         <!-- Stats Grid -->
                         <div class="grid w-full grid-cols-2 gap-4">
-                            <div class="bg-base-200 rounded p-4 text-center">
+                            <div class="bg-secondary/30 rounded p-4 text-center">
                                 <div class="text-2xl font-bold">
                                     {{ assResult.totalFilesScanned }}
                                 </div>
                                 <div class="text-sm opacity-70">Files Scanned</div>
                             </div>
-                            <div class="bg-base-200 rounded p-4 text-center">
+                            <div class="bg-secondary/30 rounded p-4 text-center">
                                 <div
                                     class="text-2xl font-bold"
                                     :class="
@@ -341,18 +354,18 @@
                             <div class="flex items-center justify-between">
                                 <h4 class="font-semibold">Flagged Files</h4>
                                 <button
-                                    class="bg-accent hover:bg-accent/80 rounded px-4 py-2 text-sm font-semibold text-white"
+                                    class="bg-accent hover:bg-accent/80 text-primary-content rounded px-4 py-2 text-sm font-semibold"
                                     @click="requeueAll">
                                     Requeue All for Translation
                                 </button>
                             </div>
-                            <div class="bg-base-200 max-h-96 w-full overflow-y-auto rounded">
+                            <div class="bg-secondary/30 max-h-96 w-full overflow-y-auto rounded">
                                 <div
                                     v-for="item in assResult.flaggedItems"
                                     :key="item.subtitlePath"
-                                    class="border-base-300 border-b last:border-0">
+                                    class="border-secondary/50 border-b last:border-0">
                                     <div
-                                        class="hover:bg-base-300/50 flex cursor-pointer items-center justify-between p-3"
+                                        class="hover:bg-secondary/50 flex cursor-pointer items-center justify-between p-3"
                                         @click="toggleExpand(item.subtitlePath)">
                                         <div class="flex-1 overflow-hidden">
                                             <div class="truncate font-medium">
@@ -386,7 +399,7 @@
                                             expandedItems.includes(item.subtitlePath) &&
                                             item.suspiciousLines
                                         "
-                                        class="bg-base-300/30 border-base-300 border-t p-3 text-xs">
+                                        class="bg-tertiary/50 border-secondary/50 border-t p-3 text-xs">
                                         <div class="mb-2 font-semibold opacity-70">
                                             Suspicious lines:
                                         </div>
@@ -489,7 +502,28 @@ interface SubtitleTypeCheckSummary {
     flaggedItems: SubtitleTypeCheckResult[]
 }
 
-const subtitleTypeIsRunning = ref(false)
+// Subtitle Type Validation Stats
+interface SubtitleTypeValidationStats {
+    total: number
+    processedCount: number
+    incompleteCount: number
+    isComplete: boolean
+    isRunning: boolean
+    error: string | null
+    progressPercent: number
+}
+
+const subtitleTypeValidationStats = reactive<SubtitleTypeValidationStats>({
+    total: 0,
+    processedCount: 0,
+    incompleteCount: 0,
+    isComplete: false,
+    isRunning: false,
+    error: null,
+    progressPercent: 0
+})
+
+const subtitleTypeHasStarted = ref(false)
 const subtitleTypeResult = ref<SubtitleTypeCheckSummary | null>(null)
 const expandedSubtitleTypeItems = ref<number[]>([])
 
@@ -536,27 +570,39 @@ const handleSubtitleModalError = (message: string) => {
 
 const toggleSubtitleTypeExpand = (translationId: number) => {
     if (expandedSubtitleTypeItems.value.includes(translationId)) {
-        expandedSubtitleTypeItems.value = expandedSubtitleTypeItems.value.filter((id) => id !== translationId)
+        expandedSubtitleTypeItems.value = expandedSubtitleTypeItems.value.filter(
+            (id) => id !== translationId
+        )
     } else {
         expandedSubtitleTypeItems.value.push(translationId)
     }
 }
 
+const handleSubtitleTypeValidationProgress = (newStats: SubtitleTypeValidationStats) => {
+    Object.assign(subtitleTypeValidationStats, newStats)
+    if (newStats.isComplete) {
+        subtitleTypeHasStarted.value = false
+    }
+}
+
 const startSubtitleTypeValidation = async () => {
     try {
-        subtitleTypeIsRunning.value = true
-        const response = await axios.post('/api/subtitle/validate-subtitle-types')
-        subtitleTypeResult.value = response.data
-
-        // Persist result
-        await axios.post('/api/setting', {
-            key: 'subtitle_type_validation_last_result',
-            value: JSON.stringify(response.data)
+        subtitleTypeHasStarted.value = true
+        Object.assign(subtitleTypeValidationStats, {
+            total: 0,
+            processedCount: 0,
+            incompleteCount: 0,
+            isComplete: false,
+            isRunning: true,
+            error: null,
+            progressPercent: 0
         })
+
+        await axios.post('/api/subtitle/validate-subtitle-types')
     } catch (error) {
         console.error('Failed to start subtitle type validation:', error)
-    } finally {
-        subtitleTypeIsRunning.value = false
+        subtitleTypeHasStarted.value = false
+        subtitleTypeValidationStats.isRunning = false
     }
 }
 
@@ -628,10 +674,12 @@ const requeueAllIncomplete = async () => {
         }
 
         // Mark all as queued
-        subtitleTypeResult.value.flaggedItems = subtitleTypeResult.value.flaggedItems.map((item) => ({
-            ...item,
-            isQueued: true
-        }))
+        subtitleTypeResult.value.flaggedItems = subtitleTypeResult.value.flaggedItems.map(
+            (item) => ({
+                ...item,
+                isQueued: true
+            })
+        )
 
         // Update persisted result
         await axios.post('/api/setting', {
@@ -710,7 +758,9 @@ onMounted(async () => {
 
     // Load persisted subtitle type validation result
     try {
-        const subtitleTypeResponse = await axios.get('/api/setting/subtitle_type_validation_last_result')
+        const subtitleTypeResponse = await axios.get(
+            '/api/setting/subtitle_type_validation_last_result'
+        )
         if (subtitleTypeResponse.data) {
             subtitleTypeResult.value = JSON.parse(subtitleTypeResponse.data)
         }
@@ -718,13 +768,46 @@ onMounted(async () => {
         console.debug('No existing subtitle type validation result')
     }
 
+    try {
+        const assStatusResponse = await axios.get('/api/subtitle/verify-ass/status')
+        if (assStatusResponse.data.isRunning) {
+            Object.assign(assValidationStats, assStatusResponse.data)
+            assHasStarted.value = true
+        } else {
+            const assResultResponse = await axios.get(
+                '/api/setting/subtitle_ass_verification_last_result'
+            )
+            if (assResultResponse.data) {
+                assResult.value = JSON.parse(assResultResponse.data)
+            }
+        }
+    } catch (error) {
+        console.debug('No existing ASS verification result')
+    }
+
+    try {
+        const subtitleTypeStatusResponse = await axios.get(
+            '/api/subtitle/validate-subtitle-types/status'
+        )
+        if (subtitleTypeStatusResponse.data.isRunning) {
+            Object.assign(subtitleTypeValidationStats, subtitleTypeStatusResponse.data)
+            subtitleTypeHasStarted.value = true
+        }
+    } catch (error) {
+        console.debug('No existing subtitle type validation status')
+    }
+
     hubConnection.value = await signalR.connect('JobProgress', '/signalr/JobProgress')
     await hubConnection.value.joinGroup({ group: 'JobProgress' })
     hubConnection.value.on('BulkIntegrityProgress', handleProgress)
+    hubConnection.value.on('AssVerificationProgress', handleAssVerificationProgress)
+    hubConnection.value.on('SubtitleTypeValidationProgress', handleSubtitleTypeValidationProgress)
 })
 
 onUnmounted(() => {
     hubConnection.value?.off('BulkIntegrityProgress', handleProgress)
+    hubConnection.value?.off('AssVerificationProgress', handleAssVerificationProgress)
+    hubConnection.value?.off('SubtitleTypeValidationProgress', handleSubtitleTypeValidationProgress)
 })
 
 // ASS Verification
@@ -745,7 +828,25 @@ interface AssVerificationResult {
     flaggedItems: AssVerificationItem[]
 }
 
-const assIsRunning = ref(false)
+interface AssVerificationStats {
+    total: number
+    processedCount: number
+    isComplete: boolean
+    isRunning: boolean
+    error: string | null
+    progressPercent: number
+}
+
+const assValidationStats = reactive<AssVerificationStats>({
+    total: 0,
+    processedCount: 0,
+    isComplete: false,
+    isRunning: false,
+    error: null,
+    progressPercent: 0
+})
+
+const assHasStarted = ref(false)
 const assResult = ref<AssVerificationResult | null>(null)
 const expandedItems = ref<string[]>([])
 
@@ -757,21 +858,30 @@ const toggleExpand = (path: string) => {
     }
 }
 
+const handleAssVerificationProgress = (newStats: AssVerificationStats) => {
+    Object.assign(assValidationStats, newStats)
+    if (newStats.isComplete) {
+        assHasStarted.value = false
+    }
+}
+
 const startAssVerification = async () => {
     try {
-        assIsRunning.value = true
-        const response = await axios.post('/api/subtitle/verify-ass')
-        assResult.value = response.data
-
-        // Persist result
-        await axios.post('/api/setting', {
-            key: 'subtitle_ass_verification_last_result',
-            value: JSON.stringify(response.data)
+        assHasStarted.value = true
+        Object.assign(assValidationStats, {
+            total: 0,
+            processedCount: 0,
+            isComplete: false,
+            isRunning: true,
+            error: null,
+            progressPercent: 0
         })
+
+        await axios.post('/api/subtitle/verify-ass')
     } catch (error) {
         console.error('Failed to start ASS verification:', error)
-    } finally {
-        assIsRunning.value = false
+        assHasStarted.value = false
+        assValidationStats.isRunning = false
     }
 }
 
@@ -781,7 +891,7 @@ const requeueAll = async () => {
     try {
         // Only requeue items that are not already in queue
         const itemsToRequeue = assResult.value.flaggedItems.filter((item) => !item.isQueued)
-        
+
         for (const item of itemsToRequeue) {
             // MediaType should be string like 'Movie' or 'Episode'
             await axios.post('/api/translate/media', {
@@ -789,7 +899,7 @@ const requeueAll = async () => {
                 mediaType: item.mediaType
             })
         }
-        
+
         // Mark requeued items as isQueued instead of removing them
         assResult.value.flaggedItems = assResult.value.flaggedItems.map((item) => ({
             ...item,

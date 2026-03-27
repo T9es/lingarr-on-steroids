@@ -1,17 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Threading.Tasks;
 using Lingarr.Core.Configuration;
-using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
 using Lingarr.Core.Interfaces;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Jobs;
-using Lingarr.Server.Models;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
@@ -19,13 +15,11 @@ using Xunit;
 namespace Lingarr.Server.Tests.Jobs;
 
 /// <summary>
-/// Tests for the redesigned AutomatedTranslationJob.
-/// The new job delegates media selection to IMediaStateService.
+/// Tests for the automated translation fallback sweep job.
 /// </summary>
-public class AutomatedTranslationJobTests : IDisposable
+public class AutomatedTranslationJobTests
 {
-    private readonly LingarrDbContext _dbContext;
-    private readonly Mock<IMediaSubtitleProcessor> _processorMock;
+    private readonly Mock<IAutomationService> _automationServiceMock;
     private readonly Mock<IScheduleService> _scheduleServiceMock;
     private readonly Mock<ISettingService> _settingServiceMock;
     private readonly Mock<IMediaStateService> _mediaStateServiceMock;
@@ -33,25 +27,18 @@ public class AutomatedTranslationJobTests : IDisposable
 
     public AutomatedTranslationJobTests()
     {
-        var options = new DbContextOptionsBuilder<LingarrDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .Options;
-        _dbContext = new LingarrDbContext(options);
-
-        _processorMock = new Mock<IMediaSubtitleProcessor>();
+        _automationServiceMock = new Mock<IAutomationService>();
         _scheduleServiceMock = new Mock<IScheduleService>();
         _settingServiceMock = new Mock<ISettingService>();
         _mediaStateServiceMock = new Mock<IMediaStateService>();
 
         _job = new AutomatedTranslationJob(
-            _dbContext,
+            _automationServiceMock.Object,
             NullLogger<AutomatedTranslationJob>.Instance,
-            _processorMock.Object,
             _scheduleServiceMock.Object,
             _settingServiceMock.Object,
             _mediaStateServiceMock.Object);
 
-        // Default settings setup
         _settingServiceMock
             .Setup(s => s.GetSetting(SettingKeys.Automation.AutomationEnabled))
             .ReturnsAsync("true");
@@ -60,232 +47,165 @@ public class AutomatedTranslationJobTests : IDisposable
             .Setup(s => s.GetSettings(It.IsAny<IEnumerable<string>>()))
             .ReturnsAsync(new Dictionary<string, string>
             {
-                { SettingKeys.Automation.MaxTranslationsPerRun, "10" },
-                { SettingKeys.Automation.MovieAgeThreshold, "0" },
-                { SettingKeys.Automation.ShowAgeThreshold, "0" }
+                { SettingKeys.Automation.MaxTranslationsPerRun, "10" }
             });
     }
 
     [Fact]
     public async Task Execute_WhenAutomationDisabled_SkipsProcessing()
     {
-        // Arrange
         _settingServiceMock
             .Setup(s => s.GetSetting(SettingKeys.Automation.AutomationEnabled))
             .ReturnsAsync("false");
 
-        // Act
         await _job.Execute();
 
-        // Assert - should not call GetMediaNeedingTranslationAsync
         _mediaStateServiceMock.Verify(
             m => m.GetMediaNeedingTranslationAsync(It.IsAny<int>(), It.IsAny<bool>()),
+            Times.Never);
+        _automationServiceMock.Verify(
+            m => m.ProcessLoadedMediaForAutomationAsync(
+                It.IsAny<IMedia>(),
+                It.IsAny<MediaType>(),
+                It.IsAny<string>(),
+                It.IsAny<bool>(),
+                It.IsAny<bool>()),
             Times.Never);
     }
 
     [Fact]
     public async Task Execute_WhenAutomationEnabled_QueriesMediaStateService()
     {
-        // Arrange
         _mediaStateServiceMock
             .Setup(m => m.GetMediaNeedingTranslationAsync(It.IsAny<int>(), It.IsAny<bool>()))
-            .ReturnsAsync(new List<(IMedia, MediaType)>());
+            .ReturnsAsync([]);
 
-        // Act
         await _job.Execute();
 
-        // Assert
         _mediaStateServiceMock.Verify(
-            m => m.GetMediaNeedingTranslationAsync(It.IsAny<int>(), It.IsAny<bool>()),
+            m => m.GetMediaNeedingTranslationAsync(20, true),
             Times.Once);
     }
 
     [Fact]
-    public async Task Execute_WithPendingMedia_ProcessesThem()
+    public async Task Execute_WithPendingMedia_DelegatesToAutomationService()
     {
-        // Arrange
-        var movie = new Movie
-        {
-            Id = 1,
-            RadarrId = 1,
-            Title = "Test Movie",
-            Path = "/test/path",
-            FileName = "test",
-            DateAdded = DateTime.UtcNow.AddDays(-7),
-            TranslationState = TranslationState.Pending
-        };
-        
-        _dbContext.Movies.Add(movie);
-        await _dbContext.SaveChangesAsync();
+        var movie = CreateMovie(1, "Test Movie");
 
         _mediaStateServiceMock
             .Setup(m => m.GetMediaNeedingTranslationAsync(It.IsAny<int>(), It.IsAny<bool>()))
-            .ReturnsAsync(new List<(IMedia, MediaType)> { (movie, MediaType.Movie) });
+            .ReturnsAsync([(movie, MediaType.Movie)]);
 
-        _processorMock
-            .Setup(p => p.ProcessMediaForceAsync(
-                It.IsAny<IMedia>(), 
-                It.IsAny<MediaType>(), 
-                It.IsAny<bool>(), 
-                It.IsAny<bool>(),
-                It.IsAny<bool>()))
+        _automationServiceMock
+            .Setup(a => a.ProcessLoadedMediaForAutomationAsync(
+                movie,
+                MediaType.Movie,
+                "fallback_schedule",
+                true,
+                false))
             .ReturnsAsync(1);
 
-        // Act
         await _job.Execute();
 
-        // Assert
-        _processorMock.Verify(
-            p => p.ProcessMediaForceAsync(movie, MediaType.Movie, false, false, false),
+        _automationServiceMock.Verify(
+            a => a.ProcessLoadedMediaForAutomationAsync(
+                movie,
+                MediaType.Movie,
+                "fallback_schedule",
+                true,
+                false),
             Times.Once);
-    }
-
-    [Fact]
-    public async Task Execute_WithStaleMedia_RefreshesState()
-    {
-        // Arrange
-        var movie = new Movie
-        {
-            Id = 1,
-            RadarrId = 1,
-            Title = "Stale Movie",
-            Path = "/test/path",
-            FileName = "test",
-            DateAdded = DateTime.UtcNow.AddDays(-7),
-            TranslationState = TranslationState.Stale
-        };
-        
-        _dbContext.Movies.Add(movie);
-        await _dbContext.SaveChangesAsync();
-
-        _mediaStateServiceMock
-            .Setup(m => m.GetMediaNeedingTranslationAsync(It.IsAny<int>(), It.IsAny<bool>()))
-            .ReturnsAsync(new List<(IMedia, MediaType)> { (movie, MediaType.Movie) });
-
-        _mediaStateServiceMock
-            .Setup(m => m.UpdateStateAsync(It.IsAny<IMedia>(), It.IsAny<MediaType>(), It.IsAny<bool>()))
-            .ReturnsAsync(TranslationState.Pending);
-
-        _processorMock
-            .Setup(p => p.ProcessMediaForceAsync(
-                It.IsAny<IMedia>(), 
-                It.IsAny<MediaType>(), 
-                It.IsAny<bool>(), 
-                It.IsAny<bool>(),
-                It.IsAny<bool>()))
-            .ReturnsAsync(1);
-
-        // Act
-        await _job.Execute();
-
-        // Assert - should refresh state before processing
-        _mediaStateServiceMock.Verify(
-            m => m.UpdateStateAsync(movie, MediaType.Movie, It.IsAny<bool>()),
-            Times.AtLeastOnce);
-    }
-
-    [Fact]
-    public async Task Execute_WithStaleMediaThatBecomesComplete_SkipsProcessing()
-    {
-        // Arrange
-        var movie = new Movie
-        {
-            Id = 1,
-            RadarrId = 1,
-            Title = "Stale But Complete",
-            Path = "/test/path",
-            FileName = "test",
-            DateAdded = DateTime.UtcNow.AddDays(-7),
-            TranslationState = TranslationState.Stale
-        };
-        
-        _dbContext.Movies.Add(movie);
-        await _dbContext.SaveChangesAsync();
-
-        _mediaStateServiceMock
-            .Setup(m => m.GetMediaNeedingTranslationAsync(It.IsAny<int>(), It.IsAny<bool>()))
-            .ReturnsAsync(new List<(IMedia, MediaType)> { (movie, MediaType.Movie) });
-
-        // Refreshing state shows it's actually complete
-        _mediaStateServiceMock
-            .Setup(m => m.UpdateStateAsync(It.IsAny<IMedia>(), It.IsAny<MediaType>(), It.IsAny<bool>()))
-            .ReturnsAsync(TranslationState.Complete);
-
-        // Act
-        await _job.Execute();
-
-        // Assert - should NOT process since it's complete
-        _processorMock.Verify(
-            p => p.ProcessMediaForceAsync(
-                It.IsAny<IMedia>(), 
-                It.IsAny<MediaType>(), 
-                It.IsAny<bool>(), 
-                It.IsAny<bool>(),
-                It.IsAny<bool>()),
-            Times.Never);
     }
 
     [Fact]
     public async Task Execute_RespectsMaxTranslationsPerRun()
     {
-        // Arrange
         _settingServiceMock
             .Setup(s => s.GetSettings(It.IsAny<IEnumerable<string>>()))
             .ReturnsAsync(new Dictionary<string, string>
             {
-                { SettingKeys.Automation.MaxTranslationsPerRun, "2" },
-                { SettingKeys.Automation.MovieAgeThreshold, "0" },
-                { SettingKeys.Automation.ShowAgeThreshold, "0" }
+                { SettingKeys.Automation.MaxTranslationsPerRun, "2" }
             });
 
-        var movies = new List<(IMedia, MediaType)>();
-        for (int i = 1; i <= 5; i++)
+        var movies = new List<(IMedia Media, MediaType Type)>
         {
-            var movie = new Movie
-            {
-                Id = i,
-                RadarrId = i,
-                Title = $"Movie {i}",
-                Path = "/test/path",
-                FileName = $"movie{i}",
-                DateAdded = DateTime.UtcNow.AddDays(-7),
-                TranslationState = TranslationState.Pending
-            };
-            _dbContext.Movies.Add(movie);
-            movies.Add((movie, MediaType.Movie));
-        }
-        await _dbContext.SaveChangesAsync();
+            (CreateMovie(1, "Movie 1"), MediaType.Movie),
+            (CreateMovie(2, "Movie 2"), MediaType.Movie),
+            (CreateMovie(3, "Movie 3"), MediaType.Movie)
+        };
 
         _mediaStateServiceMock
             .Setup(m => m.GetMediaNeedingTranslationAsync(It.IsAny<int>(), It.IsAny<bool>()))
             .ReturnsAsync(movies);
 
-        _processorMock
-            .Setup(p => p.ProcessMediaForceAsync(
-                It.IsAny<IMedia>(), 
-                It.IsAny<MediaType>(), 
-                It.IsAny<bool>(), 
-                It.IsAny<bool>(),
-                It.IsAny<bool>()))
+        _automationServiceMock
+            .Setup(a => a.ProcessLoadedMediaForAutomationAsync(
+                It.IsAny<IMedia>(),
+                It.IsAny<MediaType>(),
+                "fallback_schedule",
+                true,
+                false))
             .ReturnsAsync(1);
 
-        // Act
         await _job.Execute();
 
-        // Assert - should only process 2 (max per run)
-        _processorMock.Verify(
-            p => p.ProcessMediaForceAsync(
-                It.IsAny<IMedia>(), 
-                It.IsAny<MediaType>(), 
-                It.IsAny<bool>(), 
-                It.IsAny<bool>(),
-                It.IsAny<bool>()),
+        _automationServiceMock.Verify(
+            a => a.ProcessLoadedMediaForAutomationAsync(
+                It.IsAny<IMedia>(),
+                It.IsAny<MediaType>(),
+                "fallback_schedule",
+                true,
+                false),
             Times.Exactly(2));
     }
 
-    public void Dispose()
+    [Fact]
+    public async Task Execute_ContinuesAfterDirectoryNotFound()
     {
-        _dbContext?.Dispose();
-        GC.SuppressFinalize(this);
+        var firstMovie = CreateMovie(1, "Missing Dir");
+        var secondMovie = CreateMovie(2, "Still Processed");
+
+        _mediaStateServiceMock
+            .Setup(m => m.GetMediaNeedingTranslationAsync(It.IsAny<int>(), It.IsAny<bool>()))
+            .ReturnsAsync(
+            [
+                (firstMovie, MediaType.Movie),
+                (secondMovie, MediaType.Movie)
+            ]);
+
+        _automationServiceMock
+            .SetupSequence(a => a.ProcessLoadedMediaForAutomationAsync(
+                It.IsAny<IMedia>(),
+                It.IsAny<MediaType>(),
+                "fallback_schedule",
+                true,
+                false))
+            .ThrowsAsync(new DirectoryNotFoundException())
+            .ReturnsAsync(1);
+
+        await _job.Execute();
+
+        _automationServiceMock.Verify(
+            a => a.ProcessLoadedMediaForAutomationAsync(
+                It.IsAny<IMedia>(),
+                It.IsAny<MediaType>(),
+                "fallback_schedule",
+                true,
+                false),
+            Times.Exactly(2));
+    }
+
+    private static Movie CreateMovie(int id, string title)
+    {
+        return new Movie
+        {
+            Id = id,
+            RadarrId = id,
+            Title = title,
+            Path = "/test/path",
+            FileName = $"movie{id}",
+            DateAdded = DateTime.UtcNow.AddDays(-7),
+            TranslationState = TranslationState.Pending
+        };
     }
 }

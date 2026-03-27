@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using GTranslate.Translators;
@@ -19,12 +19,16 @@ using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Listener;
 using Lingarr.Server.Providers;
 using Lingarr.Server.Services;
+using Lingarr.Server.Services.Cleanup;
 using Lingarr.Server.Services.Integration;
 using Lingarr.Server.Services.Subtitle;
 using Lingarr.Server.Services.Sync;
 using Lingarr.Server.Services.Translation;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Options;
 using Microsoft.OpenApi.Models;
+using Polly;
 
 namespace Lingarr.Server.Extensions;
 
@@ -42,8 +46,21 @@ public static class ServiceCollectionExtensions
         });
 
         builder.Services.AddEndpointsApiExplorer();
-        ;
         builder.Services.AddMemoryCache();
+        builder.Services.AddSingleton(TimeProvider.System);
+        builder.ConfigureDataProtection();
+        
+        // Configure HttpClient with retry policy and timeout for integration services
+        builder.Services.AddHttpClient<IIntegrationService, IntegrationService>()
+            .AddTransientHttpErrorPolicy(policy => policy.WaitAndRetryAsync(
+                3, // 3 retries
+                attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt)))) // Exponential backoff: 2s, 4s, 8s
+            .ConfigureHttpClient(client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(30);
+            });
+        
+        // Generic HttpClient for other services (no special retry policy)
         builder.Services.AddHttpClient();
 
         builder.ConfigureSwagger();
@@ -98,19 +115,34 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<IIntegrationSettingsProvider, IntegrationSettingsProvider>();
     }
 
+    private static void ConfigureDataProtection(this WebApplicationBuilder builder)
+    {
+        var keysPath = Environment.GetEnvironmentVariable("DATA_PROTECTION_KEYS_PATH") ??
+            Path.Combine(builder.Environment.ContentRootPath, "config", "keys");
+        Directory.CreateDirectory(keysPath);
+
+        builder.Services.AddDataProtection()
+            .SetApplicationName("Lingarr")
+            .PersistKeysToFileSystem(new DirectoryInfo(keysPath));
+    }
+
     private static void ConfigureServices(this WebApplicationBuilder builder)
     {
         // Register generic Lazy<T> support for breaking circular dependencies
         builder.Services.AddTransient(typeof(Lazy<>), typeof(LazyServiceWrapper<>));
         
+        builder.Services.AddSingleton<IEncryptionService, EncryptionService>();
         builder.Services.AddScoped<ISettingService, SettingService>();
         builder.Services.AddSingleton<SettingChangedListener>();
 
         builder.Services.AddHostedService<ScheduleInitializationService>();
         builder.Services.AddSingleton<IScheduleService, ScheduleService>();
+        builder.Services.AddScoped<IDashboardService, DashboardService>();
 
         builder.Services.AddScoped<IImageService, ImageService>();
         builder.Services.AddScoped<IIntegrationService, IntegrationService>();
+        builder.Services.AddScoped<IInstanceConfigService, InstanceConfigService>();
+        builder.Services.AddScoped<IAutomationService, AutomationService>();
         builder.Services.AddScoped<IMediaService, MediaService>();
         builder.Services.AddScoped<IProgressService, ProgressService>();
         builder.Services.AddScoped<IRadarrService, RadarrService>();
@@ -138,6 +170,9 @@ public static class ServiceCollectionExtensions
         
         // Added startup service to clean up orphaned Hangfire locks
         builder.Services.AddHostedService<HangfireLockCleanupService>();
+        
+        // Add temp file cleanup service to remove orphaned subtitle files on startup
+        builder.Services.AddHostedService<TempFileCleanupService>();
 
         // Add translation services
         builder.Services.AddTransient<GoogleTranslator>();
@@ -149,6 +184,7 @@ public static class ServiceCollectionExtensions
         builder.Services.AddTransient<PathConversionService>();
         builder.Services.AddScoped<IStatisticsService, StatisticsService>();
         builder.Services.AddScoped<IChutesUsageService, ChutesUsageService>();
+        builder.Services.AddScoped<ITokenUsageService, TokenUsageService>();
         
         // Translation worker service (singleton BackgroundService that manages translation workers)
         builder.Services.AddSingleton<ITranslationWorkerService, TranslationWorkerService>();
@@ -179,6 +215,9 @@ public static class ServiceCollectionExtensions
         // Media state service for intelligent translation automation
         builder.Services.AddScoped<IMediaStateService, MediaStateService>();
         
+        // Cleanup service for fixing duplicate instances
+        builder.Services.AddScoped<ICleanupService, CleanupService>();
+        
         // Translation job (scoped to match all its dependencies like LingarrDbContext)
         // This was previously only instantiated by Hangfire, but now TranslationWorkerService needs to resolve it
         builder.Services.AddScoped<Jobs.TranslationJob>();
@@ -201,7 +240,7 @@ public static class ServiceCollectionExtensions
         builder.Services.AddHangfireServer(options =>
         {
             options.ServerName = $"{Environment.MachineName}:{Environment.ProcessId}:sync";
-            options.Queues = ["movies", "shows", "system", "default"];
+            options.Queues = ["movies", "shows", "system", "webhook", "default"];
             options.WorkerCount = syncWorkers;
         });
 
@@ -215,6 +254,7 @@ public static class ServiceCollectionExtensions
             if (dbConnection == "sqlite")
             {
                 var sqliteDbPath = Environment.GetEnvironmentVariable("DB_HANGFIRE_SQLITE_PATH") ?? "/app/config/Hangfire.db";
+                EnableSqliteWal(sqliteDbPath);
 
                 configuration
                     .UseSimpleAssemblyNameTypeSerializer()
@@ -246,5 +286,20 @@ public static class ServiceCollectionExtensions
 
             configuration.UseFilter(new JobContextFilter());
         });
+    }
+
+    private static void EnableSqliteWal(string sqliteDbPath)
+    {
+        var directory = Path.GetDirectoryName(sqliteDbPath);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        using var connection = new SqliteConnection($"Data Source={sqliteDbPath}");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA journal_mode=WAL;";
+        command.ExecuteNonQuery();
     }
 }

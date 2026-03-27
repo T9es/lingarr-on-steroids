@@ -13,6 +13,19 @@ namespace Lingarr.Server.Services;
 
 public class ScheduleService : IScheduleService
 {
+    private sealed record JobMetadata(string DisplayNameKey, string? ScheduleSettingKey, bool IsEditable);
+
+    private static readonly IReadOnlyDictionary<string, JobMetadata> JobMetadataMap =
+        new Dictionary<string, JobMetadata>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["AutomatedTranslationJob"] = new("schedule.jobDisplay.automatedTranslation", SettingKeys.Automation.TranslationSchedule, true),
+            ["SyncMovieJob"] = new("schedule.jobDisplay.syncMovies", SettingKeys.Automation.MovieSchedule, true),
+            ["SyncShowJob"] = new("schedule.jobDisplay.syncShows", SettingKeys.Automation.ShowSchedule, true),
+            ["CleanupJob"] = new("schedule.jobDisplay.cleanup", null, false),
+            ["StatisticsJob"] = new("schedule.jobDisplay.statistics", null, false),
+            ["RetryFailedRequestsJob"] = new("schedule.jobDisplay.retryFailed", null, false)
+        };
+
     private readonly IHubContext<JobProgressHub> _hubContext;
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<IScheduleService> _logger;
@@ -34,44 +47,9 @@ public class ScheduleService : IScheduleService
         var settingService = scope.ServiceProvider.GetRequiredService<ISettingService>();
         var translationRequestService = scope.ServiceProvider.GetRequiredService<ITranslationRequestService>();
 
-        var settings = await settingService.GetSettings([
-            SettingKeys.Automation.MovieSchedule,
-            SettingKeys.Automation.ShowSchedule,
-            SettingKeys.Automation.AutomationEnabled
-        ]);
-
         _logger.LogInformation("Configuring media indexers.");
-        foreach (var setting in settings)
-        {
-            switch (setting.Key)
-            {
-                case "movie_schedule":
-                    RecurringJob.AddOrUpdate<SyncMovieJob>(
-                        "SyncMovieJob",
-                        job => job.Execute(),
-                        setting.Value);
-                    break;
-                case "show_schedule":
-                    RecurringJob.AddOrUpdate<SyncShowJob>(
-                        "SyncShowJob",
-                        job => job.Execute(),
-                        setting.Value);
-                    break;
-                case "automation_enabled":
-                    if (setting.Value == "true")
-                    {
-                        var translationSchedule = await settingService.GetSetting("translation_schedule");
-                        _logger.LogDebug("AutomatedTranslationJob schedule: '{Schedule}'", translationSchedule);
-                        RecurringJob.AddOrUpdate<AutomatedTranslationJob>(
-                            "AutomatedTranslationJob",
-                            job => job.Execute(),
-                            translationSchedule,
-                            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
-                    }
-
-                    break;
-            }
-        }
+        await SyncIndexerJobsAsync();
+        await SyncAutomationJobAsync();
 
         RecurringJob.AddOrUpdate<CleanupJob>(
             "CleanupJob",
@@ -104,6 +82,66 @@ public class ScheduleService : IScheduleService
             .Select(job => MapToJobStatus(job, monitor))
             .OrderBy(j => j.Id)
             .ToList();
+    }
+
+    /// <inheritdoc />
+    public async Task SyncAutomationJobAsync()
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var settingService = scope.ServiceProvider.GetRequiredService<ISettingService>();
+
+        var settings = await settingService.GetSettings([
+            SettingKeys.Automation.AutomationEnabled,
+            SettingKeys.Automation.TranslationSchedule
+        ]);
+
+        var automationEnabled =
+            settings.GetValueOrDefault(SettingKeys.Automation.AutomationEnabled) == "true";
+        var translationSchedule =
+            settings.GetValueOrDefault(SettingKeys.Automation.TranslationSchedule);
+
+        if (automationEnabled && !string.IsNullOrWhiteSpace(translationSchedule))
+        {
+            _logger.LogDebug("AutomatedTranslationJob schedule: '{Schedule}'", translationSchedule);
+            RecurringJob.AddOrUpdate<AutomatedTranslationJob>(
+                "AutomatedTranslationJob",
+                job => job.Execute(),
+                translationSchedule,
+                new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+            return;
+        }
+
+        RecurringJob.RemoveIfExists("AutomatedTranslationJob");
+    }
+
+    /// <inheritdoc />
+    public async Task SyncIndexerJobsAsync()
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var settingService = scope.ServiceProvider.GetRequiredService<ISettingService>();
+
+        var settings = await settingService.GetSettings([
+            SettingKeys.Automation.MovieSchedule,
+            SettingKeys.Automation.ShowSchedule
+        ]);
+
+        var movieSchedule = settings.GetValueOrDefault(SettingKeys.Automation.MovieSchedule);
+        if (!string.IsNullOrWhiteSpace(movieSchedule))
+        {
+            RecurringJob.AddOrUpdate<SyncMovieJob>(
+                "SyncMovieJob",
+                job => job.Execute(),
+                movieSchedule);
+        }
+
+        var showSchedule = settings.GetValueOrDefault(SettingKeys.Automation.ShowSchedule);
+        if (!string.IsNullOrWhiteSpace(showSchedule))
+        {
+            RecurringJob.AddOrUpdate<SyncShowJob>(
+                "SyncShowJob",
+                job => job.Execute(),
+                showSchedule);
+        }
     }
 
     public string GetJobState(string jobId)
@@ -139,11 +177,18 @@ public class ScheduleService : IScheduleService
 
     private RecurringJobStatus MapToJobStatus(RecurringJobDto dto, IMonitoringApi monitor)
     {
+        var metadata = JobMetadataMap.TryGetValue(dto.Id, out var jobMetadata)
+            ? jobMetadata
+            : new JobMetadata("schedule.jobDisplay.custom", null, false);
+
         var status = new RecurringJobStatus
         {
             Id = dto.Id,
+            DisplayNameKey = metadata.DisplayNameKey,
             Cron = dto.Cron,
             Queue = dto.Queue,
+            ScheduleSettingKey = metadata.ScheduleSettingKey,
+            IsEditable = metadata.IsEditable,
             JobMethod = dto.Job?.Method?.Name ?? string.Empty,
             NextExecution = dto.NextExecution,
             LastJobId = dto.LastJobId,

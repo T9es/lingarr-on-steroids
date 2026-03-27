@@ -2,7 +2,7 @@
     <div class="group relative">
         <button
             type="button"
-            class="border-accent hover:bg-accent flex w-full cursor-pointer items-center justify-between rounded-md border px-2 py-1 text-xs transition-colors hover:text-white"
+            class="border-accent hover:bg-accent hover:text-primary-content flex w-full cursor-pointer items-center justify-between rounded-md border px-2 py-1 text-xs transition-colors"
             @click="$emit('insert', placeholder)">
             <span>{{ placeholderText }}</span>
             <ArrowUp class="ml-1 h-3.5 w-3.5" />

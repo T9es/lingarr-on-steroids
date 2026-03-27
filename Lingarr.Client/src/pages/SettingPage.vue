@@ -1,33 +1,27 @@
 <template>
     <PageLayout>
-        <div class="grid h-full grid-cols-[auto_1fr]">
-            <aside class="bg-secondary w-[3.175rem] shrink-0 md:w-40">
-                <nav class="pt-4 md:pt-8 md:pl-4">
-                    <ul class="flex flex-col space-y-4">
-                        <li
-                            v-for="(item, index) in menuItems"
-                            :key="index"
-                            class="w-full hover:brightness-150"
+        <div class="flex h-full flex-col">
+            <nav
+                class="bg-secondary border-accent/30 custom-scrollbar flex-none overflow-x-auto border-b">
+                <ul class="flex w-max min-w-full">
+                    <li v-for="(item, index) in menuItems" :key="index" class="flex-1 sm:flex-none">
+                        <router-link
+                            :to="{ name: item.route }"
+                            :title="item.label"
+                            class="hover:bg-primary/30 flex items-center justify-center px-4 py-3 text-sm font-medium transition-colors"
                             :class="[
-                                'w-full hover:brightness-150',
-                                { 'brightness-150': $route.name === item.route }
+                                $route.name === item.route
+                                    ? 'border-accent text-accent bg-primary/50 border-b-2'
+                                    : 'text-primary-content/70 hover:text-primary-content'
                             ]">
-                            <router-link
-                                :to="{ name: item.route }"
-                                :title="item.label"
-                                :aria-label="item.label"
-                                class="flex w-full cursor-pointer items-center justify-center md:justify-start">
-                                <component :is="item.icon" class="h-4 w-4 md:mr-3" />
-                                <span class="hidden text-sm md:inline-block">
-                                    {{ item.label }}
-                                </span>
-                            </router-link>
-                        </li>
-                    </ul>
-                </nav>
-            </aside>
+                            <component :is="item.icon" class="mr-2 h-4 w-4 shrink-0" />
+                            <span class="whitespace-nowrap">{{ item.label }}</span>
+                        </router-link>
+                    </li>
+                </ul>
+            </nav>
 
-            <main class="flex">
+            <main class="w-full flex-1 overflow-auto">
                 <router-view></router-view>
             </main>
         </div>
@@ -35,6 +29,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useI18n } from '@/plugins/i18n'
 import { MenuItem } from '@/ts'
 import PageLayout from '@/components/layout/PageLayout.vue'
@@ -48,7 +43,7 @@ import CheckMarkIcon from '@/components/icons/CheckMarkIcon.vue'
 
 const { translate } = useI18n()
 
-const menuItems: MenuItem[] = [
+const menuItems = computed<MenuItem[]>(() => [
     {
         label: translate('navigation.integrations'),
         icon: IntegrationIcon,
@@ -81,5 +76,5 @@ const menuItems: MenuItem[] = [
     },
     { label: translate('navigation.tasks'), icon: TaskIcon, route: 'tasks-settings', children: [] },
     { label: translate('navigation.logs'), icon: LogIcon, route: 'logs-settings', children: [] }
-]
+])
 </script>

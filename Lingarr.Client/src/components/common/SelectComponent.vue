@@ -1,13 +1,13 @@
 ﻿<template>
     <div class="relative">
-        <label v-if="label" class="mb-1 block text-sm">
+        <label v-if="label" class="text-primary-content mb-1 block text-sm">
             {{ label }}
         </label>
         <div
             ref="excludeClickOutside"
             class="border-accent flex h-12 cursor-pointer items-center justify-between rounded-md border px-4 py-2"
             @click="toggleDropdown">
-            <span v-if="!selected" class="text-gray-400">{{ placeholder }}</span>
+            <span v-if="!selected" class="!text-secondary-content">{{ displayPlaceholder }}</span>
             <div v-else class="flex max-h-12 flex-wrap gap-2 overflow-auto">
                 <span
                     class="bg-accent flex cursor-pointer items-center rounded-md px-3 py-1 text-sm font-medium">
@@ -18,25 +18,27 @@
                 <LoaderCircleIcon v-if="isLoading" class="mr-2 h-4 w-4 animate-spin" />
                 <CaretRightIcon
                     :class="{ 'rotate-90': isOpen }"
-                    class="arrow-right h-5 w-5 transition-transform duration-200" />
+                    class="arrow-right text-primary-content h-5 w-5 transition-transform duration-200" />
             </div>
         </div>
         <ul
             v-show="isOpen"
             ref="clickOutside"
             class="border-accent bg-primary absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md border shadow-lg">
-            <li v-if="enableSearch" class="border-border border-b p-2">
+            <li v-if="enableSearch" class="border-secondary border-b p-2">
                 <input
                     v-model="searchQuery"
                     type="text"
-                    class="border-border w-full rounded border bg-transparent px-2 py-1 text-sm outline-hidden"
+                    class="border-secondary text-primary-content focus:ring-accent w-full rounded border bg-transparent px-2 py-1 text-sm outline-hidden focus:border-transparent focus:ring-2"
                     :placeholder="translate('settings.services.modelSearchPlaceholder')" />
             </li>
-            <li v-if="!filteredOptions.length" class="p-3">{{ noOptions }}</li>
+            <li v-if="!filteredOptions.length" class="text-primary-content p-3">
+                {{ displayNoOptions }}
+            </li>
             <li
                 v-for="(option, index) in filteredOptions"
                 :key="`${option.value}-${index}`"
-                class="cursor-pointer px-4 py-2"
+                class="text-primary-content hover:bg-accent/20 cursor-pointer px-4 py-2"
                 :class="{ 'bg-accent/20': isSelected(option.value) }"
                 @click="selectOption(option)">
                 {{ option.label }}
@@ -72,8 +74,10 @@ const props = withDefaults(
         label: '',
         options: () => [],
         selected: '',
-        placeholder: 'Select items...',
-        noOptions: 'Select a source language first.',
+        disabled: false,
+        loadOnOpen: false,
+        placeholder: '',
+        noOptions: '',
         selectedLabel: '',
         enableSearch: false
     }
@@ -81,6 +85,12 @@ const props = withDefaults(
 
 const emit = defineEmits(['update:selected', 'fetch-options'])
 const { translate } = useI18n()
+
+// Computed properties for placeholder and noOptions that use translations as defaults
+const displayPlaceholder = computed(() => props.placeholder || translate('common.selectItems'))
+const displayNoOptions = computed(
+    () => props.noOptions || translate('common.selectSourceLanguageFirst')
+)
 
 const isOpen: Ref<boolean> = ref(false)
 const isLoading: Ref<boolean> = ref(false)

@@ -72,6 +72,24 @@ const routes: RouteRecordRaw[] = [
                 component: () => import('@/pages/settings/LogsPage.vue')
             }
         ]
+    },
+    {
+        path: '/help',
+        component: () => import('@/pages/HelpPage.vue'),
+        name: 'help',
+        redirect: { name: 'help-about' },
+        children: [
+            {
+                name: 'help-onboarding',
+                path: 'onboarding',
+                component: () => import('@/pages/help/OnboardingPage.vue')
+            },
+            {
+                name: 'help-about',
+                path: 'about',
+                component: () => import('@/pages/help/AboutPage.vue')
+            }
+        ]
     }
 ] as RouteRecordRaw[]
 

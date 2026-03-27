@@ -1,4 +1,7 @@
+using System.Diagnostics;
+using System.IO;
 using System.Net;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using Lingarr.Core.Configuration;
@@ -16,6 +19,9 @@ public class AnthropicService : BaseLanguageService, ITranslationService, IBatch
 {
     private readonly string? _endpoint = "https://api.anthropic.com/v1";
     private readonly HttpClient _httpClient;
+    private readonly IDashboardService? _dashboardService;
+    private readonly ITokenUsageService? _tokenUsageService;
+    private const string ServiceName = "anthropic";
     private string? _model;
     private string? _prompt;
     private string? _apiKey;
@@ -30,10 +36,14 @@ public class AnthropicService : BaseLanguageService, ITranslationService, IBatch
 
     public AnthropicService(ISettingService settings,
         HttpClient httpClient,
-        ILogger<AnthropicService> logger)
+        ILogger<AnthropicService> logger,
+        IDashboardService? dashboardService = null,
+        ITokenUsageService? tokenUsageService = null)
         : base(settings, logger, "/app/Statics/ai_languages.json")
     {
         _httpClient = httpClient;
+        _dashboardService = dashboardService;
+        _tokenUsageService = tokenUsageService;
     }
 
     /// <summary>
@@ -124,6 +134,11 @@ public class AnthropicService : BaseLanguageService, ITranslationService, IBatch
     {
         await InitializeAsync(sourceLanguage, targetLanguage);
 
+        if (_tokenUsageService != null)
+        {
+            await _tokenUsageService.EnsureTokensAvailableAsync(ServiceName, cancellationToken);
+        }
+
         text = ApplyContextIfEnabled(text, contextLinesBefore, contextLinesAfter);
         using var retry = new CancellationTokenSource();
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, retry.Token);
@@ -150,10 +165,18 @@ public class AnthropicService : BaseLanguageService, ITranslationService, IBatch
                     "application/json"
                 );
 
+                var stopwatch = Stopwatch.StartNew();
                 var response =
                     await _httpClient.PostAsync($"{_endpoint}/messages", content, linked.Token);
+                stopwatch.Stop();
+
                 if (!response.IsSuccessStatusCode)
                 {
+                    if (_dashboardService != null && response.StatusCode != HttpStatusCode.TooManyRequests)
+                    {
+                        await _dashboardService.LogApiUsage(ServiceName, null, stopwatch.ElapsedMilliseconds, false, $"Status: {response.StatusCode}");
+                    }
+
                     if (response.StatusCode == HttpStatusCode.TooManyRequests)
                     {
                         throw new HttpRequestException("Rate limit exceeded", null, HttpStatusCode.TooManyRequests);
@@ -167,6 +190,29 @@ public class AnthropicService : BaseLanguageService, ITranslationService, IBatch
 
                 var responseBody = await response.Content.ReadAsStringAsync(linked.Token);
                 var jsonResponse = JsonSerializer.Deserialize<JsonElement>(responseBody);
+                
+if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var usageProp))
+                {
+                    int inputTokens = 0;
+                    int outputTokens = 0;
+                    if (usageProp.TryGetProperty("input_tokens", out var inputTokensProp)) inputTokens = inputTokensProp.GetInt32();
+                    if (usageProp.TryGetProperty("output_tokens", out var outputTokensProp)) outputTokens = outputTokensProp.GetInt32();
+                    int totalTokens = inputTokens + outputTokens;
+                    
+                    await _dashboardService.LogApiUsage(
+                        ServiceName, 
+                        totalTokens > 0 ? totalTokens : null, 
+                        stopwatch.ElapsedMilliseconds, 
+                        true, 
+                        null, 
+                        inputTokens > 0 ? inputTokens : null, 
+                        outputTokens > 0 ? outputTokens : null);
+                }
+                else if (_dashboardService != null)
+                {
+                    await _dashboardService.LogApiUsage(ServiceName, null, stopwatch.ElapsedMilliseconds, true);
+                }
+
                 var subtitleLine = jsonResponse.GetProperty("content")[0].GetProperty("text").GetString();
                 return subtitleLine ?? throw new InvalidOperationException();
             }
@@ -185,9 +231,40 @@ public class AnthropicService : BaseLanguageService, ITranslationService, IBatch
                     "Anthropic rate limit hit. Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})",
                     delay, attempt, _maxRetries);
             }
+            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable || 
+                ex.StatusCode == HttpStatusCode.GatewayTimeout || ex.StatusCode == HttpStatusCode.BadGateway)
+            {
+                if (attempt == _maxRetries)
+                {
+                    _logger.LogError(ex, "Anthropic server error. Max retries exhausted for text: {Text}", text);
+                    throw new TranslationException("Anthropic is temporarily unavailable. Retry limit reached.", ex);
+                }
+
+                await Task.Delay(delay, linked.Token).ConfigureAwait(false);
+                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+                
+                _logger.LogWarning(
+                    "Anthropic service unavailable ({StatusCode}). Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})",
+                    ex.StatusCode, delay, attempt, _maxRetries);
+            }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 throw;
+            }
+            catch (Exception ex) when (ex is IOException || ex is SocketException || ex is TaskCanceledException || 
+                (ex is HttpRequestException && ex.InnerException is IOException))
+            {
+                if (attempt == _maxRetries)
+                {
+                    _logger.LogError(ex, "Network error during translation. Max retries exhausted for text: {Text}", text);
+                    throw new TranslationException("Network error occurred during translation.", ex);
+                }
+
+                await Task.Delay(delay, linked.Token).ConfigureAwait(false);
+                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+                
+                _logger.LogWarning(ex, "Network error (Transient). Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})", 
+                    delay, attempt, _maxRetries);
             }
             catch (Exception ex)
             {
@@ -239,6 +316,41 @@ public class AnthropicService : BaseLanguageService, ITranslationService, IBatch
 
                 _logger.LogWarning(
                     "Anthropic rate limit hit. Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})",
+                    delay, attempt, _maxRetries);
+
+                await Task.Delay(delay, linked.Token).ConfigureAwait(false);
+                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+            }
+            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable || 
+                ex.StatusCode == HttpStatusCode.GatewayTimeout || ex.StatusCode == HttpStatusCode.BadGateway)
+            {
+                if (attempt == _maxRetries)
+                {
+                    _logger.LogError(ex, "Service unavailable. Max retries exhausted for batch translation");
+                    throw new TranslationException("Anthropic is temporarily unavailable. Retry limit reached.", ex);
+                }
+
+                _logger.LogWarning(
+                    "Anthropic service unavailable ({StatusCode}). Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})",
+                    ex.StatusCode, delay, attempt, _maxRetries);
+
+                await Task.Delay(delay, linked.Token).ConfigureAwait(false);
+                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex) when (ex is IOException || ex is SocketException || ex is TaskCanceledException || 
+                (ex is HttpRequestException && ex.InnerException is IOException))
+            {
+                if (attempt == _maxRetries)
+                {
+                    _logger.LogError(ex, "Network error during batch translation. Max retries exhausted");
+                    throw new TranslationException("Network error occurred during batch translation.", ex);
+                }
+
+                _logger.LogWarning(ex, "Network error (Transient). Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})", 
                     delay, attempt, _maxRetries);
 
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
@@ -339,9 +451,17 @@ public class AnthropicService : BaseLanguageService, ITranslationService, IBatch
             Encoding.UTF8,
             "application/json");
 
+        var stopwatch = Stopwatch.StartNew();
         var response = await _httpClient.PostAsync($"{_endpoint}/messages", content, cancellationToken);
+        stopwatch.Stop();
+
         if (!response.IsSuccessStatusCode)
         {
+            if (_dashboardService != null && response.StatusCode != HttpStatusCode.TooManyRequests)
+            {
+                await _dashboardService.LogApiUsage(ServiceName, null, stopwatch.ElapsedMilliseconds, false, $"Status: {response.StatusCode}");
+            }
+
             _logger.LogError("Response Status Code: {StatusCode}", response.StatusCode);
             _logger.LogError("Response Content: {ResponseContent}",
                 await response.Content.ReadAsStringAsync(cancellationToken));
@@ -350,6 +470,28 @@ public class AnthropicService : BaseLanguageService, ITranslationService, IBatch
 
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
         var jsonResponse = JsonSerializer.Deserialize<JsonElement>(responseBody);
+
+if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var usageProp))
+        {
+            int inputTokens = 0;
+            int outputTokens = 0;
+            if (usageProp.TryGetProperty("input_tokens", out var inputTokensProp)) inputTokens = inputTokensProp.GetInt32();
+            if (usageProp.TryGetProperty("output_tokens", out var outputTokensProp)) outputTokens = outputTokensProp.GetInt32();
+            int totalTokens = inputTokens + outputTokens;
+            
+            await _dashboardService.LogApiUsage(
+                ServiceName, 
+                totalTokens > 0 ? totalTokens : null, 
+                stopwatch.ElapsedMilliseconds, 
+                true, 
+                null, 
+                inputTokens > 0 ? inputTokens : null, 
+                outputTokens > 0 ? outputTokens : null);
+        }
+        else if (_dashboardService != null)
+        {
+            await _dashboardService.LogApiUsage(ServiceName, null, stopwatch.ElapsedMilliseconds, true);
+        }
 
         // Extract tool use result from Anthropic response
         if (!jsonResponse.TryGetProperty("content", out var contentArray) || 

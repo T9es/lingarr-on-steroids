@@ -1,6 +1,13 @@
 import { ILanguage } from '@/ts/language'
 import { ILocale, ITheme } from '@/ts/store'
 
+export interface IInstance {
+    id: string
+    name: string
+    url: string
+    apiKey: string
+}
+
 export const SETTINGS = {
     RADARR_API_KEY: 'radarr_api_key',
     RADARR_URL: 'radarr_url',
@@ -76,8 +83,45 @@ export const SETTINGS = {
     CLEAN_SOURCE_ASS_DRAWINGS: 'clean_source_ass_drawings',
     BATCH_CONTEXT_ENABLED: 'batch_context_enabled',
     BATCH_CONTEXT_BEFORE: 'batch_context_before',
-    BATCH_CONTEXT_AFTER: 'batch_context_after'
+    BATCH_CONTEXT_AFTER: 'batch_context_after',
+    SKIP_WHEN_TARGET_EMBEDDED: 'skip_when_target_embedded',
+    RADARR_INSTANCES: 'radarr_instances',
+    SONARR_INSTANCES: 'sonarr_instances',
+    ONBOARDING_COMPLETED: 'onboarding_completed',
+    ONBOARDING_SKIPPED: 'onboarding_skipped',
+    ONBOARDING_CURRENT_STEP: 'onboarding_current_step',
+    ONBOARDING_STEP_PROGRESS: 'onboarding_step_progress',
+
+    // Token limits
+    OPENAI_TOKEN_LIMIT: 'openai_token_limit',
+    ANTHROPIC_TOKEN_LIMIT: 'anthropic_token_limit',
+    GEMINI_TOKEN_LIMIT: 'gemini_token_limit',
+    DEEPSEEK_TOKEN_LIMIT: 'deepseek_token_limit',
+    LOCALAI_TOKEN_LIMIT: 'localai_token_limit',
+    LOCALAI_TOKEN_LIMIT_ENABLED: 'localai_token_limit_enabled',
+    CHUTES_TOKEN_LIMIT: 'chutes_token_limit',
+    CHUTES_MODE: 'chutes_mode',
+    TOKEN_LIMIT_RESET_TIME: 'token_limit_reset_time'
 } as const
+
+export const ENCRYPTED_SETTING_KEYS = new Set<string>([
+    SETTINGS.RADARR_API_KEY,
+    SETTINGS.SONARR_API_KEY,
+    SETTINGS.LIBRETRANSLATE_API_KEY,
+    SETTINGS.DEEPL_API_KEY,
+    SETTINGS.OPENAI_API_KEY,
+    SETTINGS.ANTHROPIC_API_KEY,
+    SETTINGS.LOCAL_AI_API_KEY,
+    SETTINGS.GEMINI_API_KEY,
+    SETTINGS.DEEPSEEK_API_KEY,
+    SETTINGS.CHUTES_API_KEY,
+    SETTINGS.RADARR_INSTANCES,
+    SETTINGS.SONARR_INSTANCES
+])
+
+export const isEncryptedSettingKey = (key: string): boolean => {
+    return ENCRYPTED_SETTING_KEYS.has(key)
+}
 
 export interface ISettings {
     radarr_api_key: string
@@ -155,6 +199,23 @@ export interface ISettings {
     batch_context_enabled: string
     batch_context_before: string
     batch_context_after: string
+    skip_when_target_embedded: string
+    radarr_instances: string | IInstance[]
+    sonarr_instances: string | IInstance[]
+    onboarding_completed: string
+    onboarding_skipped: string
+    onboarding_current_step: string
+    onboarding_step_progress: string
+    // Token limits
+    openai_token_limit: string
+    anthropic_token_limit: string
+    gemini_token_limit: string
+    deepseek_token_limit: string
+    localai_token_limit: string
+    localai_token_limit_enabled: string
+    chutes_token_limit: string
+    chutes_mode: string
+    token_limit_reset_time: string
 }
 
 export interface ICustomAiParams {

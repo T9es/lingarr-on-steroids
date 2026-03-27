@@ -10,6 +10,16 @@ public static class SettingKeys
         public const string SonarrApiKey = "sonarr_api_key";
         public const string RadarrSettingsCompleted = "radarr_settings_completed";
         public const string SonarrSettingsCompleted = "sonarr_settings_completed";
+        
+        /// <summary>
+        /// JSON array of Radarr instances. Each instance has: id, name, url, apiKey
+        /// </summary>
+        public const string RadarrInstances = "radarr_instances";
+        
+        /// <summary>
+        /// JSON array of Sonarr instances. Each instance has: id, name, url, apiKey
+        /// </summary>
+        public const string SonarrInstances = "sonarr_instances";
     }
 
     public static class Translation
@@ -60,6 +70,19 @@ public static class SettingKeys
             public const string ApiKey = "chutes_api_key";
             public const string UsageLimitOverride = "chutes_usage_limit_override";
             public const string RequestBuffer = "chutes_request_buffer";
+        }
+
+        public static class TokenLimits
+        {
+            public const string OpenAiTokenLimit = "openai_token_limit";
+            public const string AnthropicTokenLimit = "anthropic_token_limit";
+            public const string GeminiTokenLimit = "gemini_token_limit";
+            public const string DeepSeekTokenLimit = "deepseek_token_limit";
+            public const string LocalAiTokenLimit = "localai_token_limit";
+            public const string ChutesTokenLimit = "chutes_token_limit";
+            public const string LocalAiTokenLimitEnabled = "localai_token_limit_enabled";
+            public const string ChutesMode = "chutes_mode";
+            public const string TokenLimitResetTime = "token_limit_reset_time";
         }
 
         public static class LibreTranslate
@@ -155,6 +178,12 @@ public static class SettingKeys
         public const string ValidateSubtitles = "subtitle_validation_enabled";
         public const string IntegrityValidationEnabled = "subtitle_integrity_validation_enabled";
         
+        /// <summary>
+        /// When enabled, skip translation if the target language subtitle is already embedded in the media container.
+        /// This saves API costs and time when the desired subtitle already exists.
+        /// </summary>
+        public const string SkipWhenTargetEmbedded = "skip_when_target_embedded";
+        
         // Persistent scan results
         public const string LastIntegrityCheckResult = "subtitle_integrity_last_result";
         public const string LastAssVerificationResult = "subtitle_ass_verification_last_result";
@@ -166,5 +195,37 @@ public static class SettingKeys
         /// Extraction mode: "on_demand" | "specific_language" | "extract_all"
         /// </summary>
         public const string ExtractionMode = "subtitle_extraction_mode";
+    }
+
+    public static class Onboarding
+    {
+        /// <summary>
+        /// Whether the user has completed the onboarding wizard.
+        /// </summary>
+        public const string Completed = "onboarding_completed";
+        
+        /// <summary>
+        /// Whether the user has explicitly skipped the onboarding wizard.
+        /// </summary>
+        public const string Skipped = "onboarding_skipped";
+        
+        /// <summary>
+        /// The current step the user is on (for resuming).
+        /// </summary>
+        public const string CurrentStep = "onboarding_current_step";
+        
+        /// <summary>
+        /// JSON object tracking which steps have been completed.
+        /// </summary>
+        public const string StepProgress = "onboarding_step_progress";
+    }
+    
+    public static class Dashboard
+    {
+        /// <summary>
+        /// JSON object containing dashboard widget layout configuration.
+        /// Includes layout positions, widget visibility, and version.
+        /// </summary>
+        public const string Layout = "dashboard_layout";
     }
 }

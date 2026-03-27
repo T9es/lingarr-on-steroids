@@ -8,7 +8,7 @@
             role="switch"
             :aria-checked="String(modelValue) === 'true'"
             :class="[
-                'border-accent relative inline-flex shrink-0 cursor-pointer items-center border transition-colors duration-200 ease-in-out',
+                'border-accent focus-visible:ring-accent focus-visible:ring-offset-primary relative inline-flex shrink-0 cursor-pointer items-center border transition-colors duration-200 ease-in-out focus-visible:ring-2 focus-visible:ring-offset-2',
                 String(modelValue) === 'true' ? 'bg-accent/30' : '',
                 size === 'small'
                     ? 'h-[1.17rem] w-[2.08rem] rounded-sm p-0.5'

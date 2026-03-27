@@ -11,17 +11,21 @@ namespace Lingarr.Server.Services.Translation;
 public class ChutesAiService : OpenAiService
 {
     private readonly IChutesUsageService _usageService;
+    // Note: _tokenUsageService is inherited from OpenAiService
 
     protected override string ModelSettingKey => SettingKeys.Translation.Chutes.Model;
     protected override string ApiKeySettingKey => SettingKeys.Translation.Chutes.ApiKey;
     protected override string EndpointBase => "https://llm.chutes.ai/v1/";
+    protected override string ServiceName => "chutes";
 
     public ChutesAiService(
         ISettingService settings,
         ILogger<ChutesAiService> logger,
         IChutesUsageService usageService,
-        IHttpClientFactory httpClientFactory)
-        : base(settings, logger, httpClientFactory.CreateClient(nameof(ChutesAiService)))
+        IHttpClientFactory httpClientFactory,
+        IDashboardService? dashboardService = null,
+        ITokenUsageService? tokenUsageService = null)
+        : base(settings, logger, httpClientFactory.CreateClient(nameof(ChutesAiService)), dashboardService, tokenUsageService)
     {
         _usageService = usageService;
     }
@@ -35,7 +39,16 @@ public class ChutesAiService : OpenAiService
         CancellationToken cancellationToken)
     {
         var model = await _settings.GetSetting(ModelSettingKey);
-        await _usageService.EnsureRequestAllowedAsync(model, cancellationToken);
+        var mode = await _settings.GetSetting(SettingKeys.Translation.TokenLimits.ChutesMode);
+
+        if (mode == "payg" && _tokenUsageService != null)
+        {
+            await _tokenUsageService.EnsureTokensAvailableAsync(ServiceName, cancellationToken);
+        }
+        else
+        {
+            await _usageService.EnsureRequestAllowedAsync(model, cancellationToken);
+        }
 
         try
         {
@@ -47,10 +60,18 @@ public class ChutesAiService : OpenAiService
                 contextLinesAfter,
                 cancellationToken);
 
-            await _usageService.RecordRequestAsync(model, cancellationToken);
+            if (mode == "payg")
+            {
+                // Token usage already recorded by base OpenAiService
+            }
+            else
+            {
+                await _usageService.RecordRequestAsync(model, cancellationToken);
+            }
+            
             return result;
         }
-        catch (TranslationException ex) when (IsPaymentRequiredError(ex))
+        catch (TranslationException ex) when (mode != "payg" && IsPaymentRequiredError(ex))
         {
             var resetTimestamp = ExtractResetTimestamp(ex);
             _usageService.NotifyPaymentRequired(resetTimestamp);
@@ -67,16 +88,33 @@ public class ChutesAiService : OpenAiService
         CancellationToken cancellationToken)
     {
         var model = await _settings.GetSetting(ModelSettingKey);
-        await _usageService.EnsureRequestAllowedAsync(model, cancellationToken);
+        var mode = await _settings.GetSetting(SettingKeys.Translation.TokenLimits.ChutesMode);
+
+        if (mode == "payg" && _tokenUsageService != null)
+        {
+            await _tokenUsageService.EnsureTokensAvailableAsync(ServiceName, cancellationToken);
+        }
+        else
+        {
+            await _usageService.EnsureRequestAllowedAsync(model, cancellationToken);
+        }
 
         try
         {
             var result = await base.TranslateBatchAsync(subtitleBatch, sourceLanguage, targetLanguage, preContext, postContext, cancellationToken);
 
-            await _usageService.RecordRequestAsync(model, cancellationToken);
+            if (mode == "payg")
+            {
+                // Token usage already recorded by base OpenAiService
+            }
+            else
+            {
+                await _usageService.RecordRequestAsync(model, cancellationToken);
+            }
+            
             return result;
         }
-        catch (TranslationException ex) when (IsPaymentRequiredError(ex))
+        catch (TranslationException ex) when (mode != "payg" && IsPaymentRequiredError(ex))
         {
             var resetTimestamp = ExtractResetTimestamp(ex);
             _usageService.NotifyPaymentRequired(resetTimestamp);

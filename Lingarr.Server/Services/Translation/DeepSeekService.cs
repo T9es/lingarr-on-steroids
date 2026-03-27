@@ -1,4 +1,5 @@
-﻿using System.Net;
+using System.Diagnostics;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Sockets;
 using System.IO;
@@ -6,6 +7,7 @@ using System.Text;
 using System.Text.Json;
 using Lingarr.Core.Configuration;
 using Lingarr.Server.Interfaces.Services;
+using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models;
 using Lingarr.Server.Models.Batch;
 using Lingarr.Server.Models.Batch.Response;
@@ -22,12 +24,15 @@ public class DeepSeekService : OpenAiService
     protected override string ModelSettingKey => SettingKeys.Translation.DeepSeek.Model;
     protected override string ApiKeySettingKey => SettingKeys.Translation.DeepSeek.ApiKey;
     protected override string EndpointBase => "https://api.deepseek.com/";
+    protected override string ServiceName => "deepseek";
 
     public DeepSeekService(
         ISettingService settings,
         ILogger<DeepSeekService> logger,
-        IHttpClientFactory httpClientFactory)
-        : base(settings, logger, httpClientFactory.CreateClient(nameof(DeepSeekService)))
+        IHttpClientFactory httpClientFactory,
+        IDashboardService? dashboardService = null,
+        ITokenUsageService? tokenUsageService = null)
+        : base(settings, logger, httpClientFactory.CreateClient(nameof(DeepSeekService)), dashboardService, tokenUsageService)
     {
     }
 
@@ -240,11 +245,24 @@ public class DeepSeekService : OpenAiService
             Encoding.UTF8,
             "application/json");
 
+        var stopwatch = Stopwatch.StartNew();
         var response = await _httpClient.PostAsync(requestUrl, requestContent, cancellationToken);
+        stopwatch.Stop();
 
         if (!response.IsSuccessStatusCode)
         {
             var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            // Log failed API usage
+            if (_dashboardService != null && response.StatusCode != HttpStatusCode.TooManyRequests)
+            {
+                await _dashboardService.LogApiUsage(
+                    ServiceName,
+                    null,
+                    stopwatch.ElapsedMilliseconds,
+                    false,
+                    $"Status: {response.StatusCode}");
+            }
 
             if (response.StatusCode == HttpStatusCode.TooManyRequests)
             {
@@ -256,12 +274,12 @@ public class DeepSeekService : OpenAiService
             {
                 throw new HttpRequestException("DeepSeek temporary unavailable", null, statusCode: HttpStatusCode.ServiceUnavailable);
             }
-            
+
             _logger.LogError(
                 "Batch translation API failed. Status: {StatusCode}, BatchSize: {BatchSize}, Endpoint: {Endpoint}",
                 response.StatusCode, subtitleBatch.Count, requestUrl);
             _logger.LogError("API Response Body: {ResponseContent}", responseBody);
-            
+
             throw new TranslationException($"Batch translation using DeepSeek API failed. Status: {response.StatusCode}");
         }
 
@@ -270,7 +288,21 @@ public class DeepSeekService : OpenAiService
         {
             throw new TranslationException("No completion choices returned from DeepSeek");
         }
-        
+
+        // Log successful API usage
+        if (_dashboardService != null)
+        {
+            var tokensUsed = completionResponse.Usage?.TotalTokens;
+            await _dashboardService.LogApiUsage(
+                ServiceName,
+                tokensUsed,
+                stopwatch.ElapsedMilliseconds,
+                true,
+                null,
+                completionResponse.Usage?.PromptTokens,
+                completionResponse.Usage?.CompletionTokens);
+        }
+
         var translatedJson = completionResponse.Choices[0].Message.Content;
         try
         {

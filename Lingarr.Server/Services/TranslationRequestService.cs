@@ -210,12 +210,25 @@ public class TranslationRequestService : ITranslationRequestService
         return requests;
     }
 
-    /// <inheritdoc />
+/// <inheritdoc />
     public async Task<List<TranslationRequest>> GetInProgressRequests()
     {
         var requests = await _dbContext.TranslationRequests
             .Where(tr => tr.Status == TranslationStatus.InProgress)
             .OrderByDescending(tr => tr.CreatedAt)
+            .ToListAsync();
+
+        await PopulatePriorityFlagsAsync(requests);
+        return requests;
+    }
+
+    /// <inheritdoc />
+    public async Task<List<TranslationRequest>> GetRecentCompletedRequests(int limit = 10)
+    {
+        var requests = await _dbContext.TranslationRequests
+            .Where(tr => tr.Status == TranslationStatus.Completed)
+            .OrderByDescending(tr => tr.CompletedAt)
+            .Take(limit)
             .ToListAsync();
 
         await PopulatePriorityFlagsAsync(requests);
@@ -232,6 +245,56 @@ public class TranslationRequestService : ITranslationRequestService
         });
         
         return count;
+    }
+
+    /// <inheritdoc />
+    public async Task<int> InterruptActiveRequestsForMedia(MediaType mediaType, int mediaId)
+    {
+        var activeRequests = await _dbContext.TranslationRequests
+            .Where(tr => tr.MediaType == mediaType &&
+                         tr.MediaId == mediaId &&
+                         (tr.Status == TranslationStatus.Pending || tr.Status == TranslationStatus.InProgress))
+            .ToListAsync();
+
+        if (activeRequests.Count == 0)
+        {
+            return 0;
+        }
+
+        var now = DateTime.UtcNow;
+
+        foreach (var request in activeRequests)
+        {
+            _cancellationService.CancelJob(request.Id);
+
+            if (_asyncTranslationJobs.ContainsKey(request.Id))
+            {
+                await _asyncTranslationJobs[request.Id].CancelAsync();
+            }
+
+            request.CompletedAt = now;
+            request.Status = TranslationStatus.Interrupted;
+            request.IsActive = null;
+        }
+
+        await _dbContext.SaveChangesAsync();
+
+        foreach (var request in activeRequests)
+        {
+            await ClearMediaHash(request);
+            await _progressService.Emit(request, 0);
+        }
+
+        await UpdateActiveCount();
+        await UpdateMediaState(activeRequests[0]);
+
+        _logger.LogInformation(
+            "Interrupted {Count} active translation request(s) for {MediaType} {MediaId}",
+            activeRequests.Count,
+            mediaType,
+            mediaId);
+
+        return activeRequests.Count;
     }
     
     /// <inheritdoc />
@@ -438,7 +501,58 @@ public class TranslationRequestService : ITranslationRequestService
             });
         }
 
-        return totalRetried;
+return totalRetried;
+    }
+
+    /// <inheritdoc />
+    public async Task<int> RemoveAllFailedRequests()
+    {
+        var failedRequests = await _dbContext.TranslationRequests
+            .Where(tr => tr.Status == TranslationStatus.Failed)
+            .Select(tr => new { tr.Id, tr.MediaId, tr.MediaType })
+            .ToListAsync();
+
+        if (!failedRequests.Any()) return 0;
+
+        const int batchSize = 50;
+        var totalRemoved = 0;
+        var mediaToUpdate = new List<(int? MediaId, MediaType MediaType)>();
+
+        foreach (var batch in failedRequests.Chunk(batchSize))
+        {
+            var ids = batch.Select(r => r.Id).ToList();
+            var toDelete = await _dbContext.TranslationRequests
+                .Where(tr => ids.Contains(tr.Id))
+                .ToListAsync();
+
+            _dbContext.TranslationRequests.RemoveRange(toDelete);
+            await _dbContext.SaveChangesAsync();
+
+            totalRemoved += toDelete.Count;
+            mediaToUpdate.AddRange(batch.Select(r => (r.MediaId, r.MediaType)));
+
+            await Task.Delay(50);
+        }
+
+        await UpdateActiveCount();
+
+        foreach (var (mediaId, mediaType) in mediaToUpdate.Where(m => m.MediaId.HasValue).Distinct())
+        {
+            var tempRequest = new TranslationRequest
+            {
+                MediaId = mediaId,
+                MediaType = mediaType,
+                Title = string.Empty,
+                SourceLanguage = string.Empty,
+                TargetLanguage = string.Empty,
+                Status = TranslationStatus.Failed
+            };
+            await UpdateMediaState(tempRequest);
+        }
+
+        _logger.LogInformation("Removed {Count} failed translation requests", totalRemoved);
+
+        return totalRemoved;
     }
 
     /// <inheritdoc />

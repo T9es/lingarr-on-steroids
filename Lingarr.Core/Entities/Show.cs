@@ -12,4 +12,10 @@ public class Show : BaseEntity
     public int? TranslationAgeThreshold { get; set; }
     public bool IsPriority { get; set; }
     public DateTime? PriorityDate { get; set; }
+    
+    /// <summary>
+    /// Identifier for the Sonarr instance this show was synced from.
+    /// Used when multiple Sonarr instances are configured.
+    /// </summary>
+    public string? SourceInstanceId { get; set; }
 }

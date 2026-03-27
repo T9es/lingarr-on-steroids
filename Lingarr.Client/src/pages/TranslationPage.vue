@@ -13,19 +13,6 @@
                     @click="activeTab = 'list'">
                     {{ translate('translations.tabList') }}
                 </button>
-                <button
-                    class="relative px-6 py-3 font-medium transition-colors"
-                    :class="
-                        activeTab === 'test'
-                            ? 'border-accent text-accent border-b-2'
-                            : 'text-secondary-content hover:text-primary-content'
-                    "
-                    @click="activeTab = 'test'">
-                    {{ translate('translations.tabRunTest') }}
-                    <span
-                        v-if="testStore.isRunning"
-                        class="bg-accent absolute -top-1 -right-1 h-2 w-2 animate-pulse rounded-full"></span>
-                </button>
             </div>
 
             <!-- List Tab Content -->
@@ -130,14 +117,22 @@
                             <h2 class="text-sm font-semibold tracking-wide uppercase">
                                 {{ translate('common.statusFailed') }}
                             </h2>
-                            <button
-                                v-if="failedRequests.length"
-                                class="border-accent text-primary-content hover:bg-accent cursor-pointer rounded-md border px-3 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-60"
-                                :disabled="retryingFailed"
-                                @click="retryAllFailed">
-                                {{ translate('common.retry') }}
-                                ({{ failedRequests.length }})
-                            </button>
+                            <div v-if="failedRequests.length" class="flex gap-2">
+                                <button
+                                    class="cursor-pointer rounded-md border border-red-500/50 px-3 py-1 text-xs text-red-400 transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                                    :disabled="removingFailed || retryingFailed"
+                                    @click="showRemoveConfirm = true">
+                                    {{ translate('translations.removeAllFailed') }}
+                                    ({{ failedRequests.length }})
+                                </button>
+                                <button
+                                    class="border-accent text-primary-content hover:bg-accent cursor-pointer rounded-md border px-3 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+                                    :disabled="retryingFailed || removingFailed"
+                                    @click="retryAllFailed">
+                                    {{ translate('common.retry') }}
+                                    ({{ failedRequests.length }})
+                                </button>
+                            </div>
                             <span v-else class="text-secondary-content text-xs">
                                 0 {{ translate('common.items') }}
                             </span>
@@ -188,6 +183,33 @@
                         </div>
                         <div v-else class="text-secondary-content py-4 text-center text-sm">
                             {{ translate('translations.noFailedTranslations') }}
+                        </div>
+                    </div>
+
+                    <!-- Remove All Failed Confirmation Modal -->
+                    <div
+                        v-if="showRemoveConfirm"
+                        class="bg-secondary/80 fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm">
+                        <div
+                            class="bg-secondary border-secondary mx-4 max-w-sm rounded-lg border p-6">
+                            <h3 class="text-primary-content mb-2 text-lg font-semibold">
+                                {{ translate('translations.removeAllFailed') }}
+                            </h3>
+                            <p class="text-primary-content/70 mb-4 text-sm">
+                                {{ translate('translations.removeAllFailedConfirm') }}
+                            </p>
+                            <div class="flex justify-end gap-2">
+                                <button
+                                    @click="showRemoveConfirm = false"
+                                    class="text-primary-content/60 hover:text-primary-content rounded-md px-4 py-2 text-sm transition-colors hover:bg-white/5">
+                                    {{ translate('common.cancel') }}
+                                </button>
+                                <button
+                                    @click="removeAllFailed"
+                                    class="text-primary-content rounded-md bg-red-500/80 px-4 py-2 text-sm font-medium transition-colors hover:bg-red-500">
+                                    {{ translate('common.confirm') }}
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -367,11 +389,6 @@
                     :page-size="translationRequests.pageSize" />
             </div>
 
-            <!-- Test Tab Content -->
-            <div v-show="activeTab === 'test'" class="p-4">
-                <TestPanel />
-            </div>
-
             <!-- Logs Modal -->
             <div
                 v-if="logsModalOpen"
@@ -396,7 +413,7 @@
                     <div class="bg-secondary h-[60vh] overflow-y-auto p-3 font-mono text-xs">
                         <div
                             v-if="logsLoading"
-                            class="flex h-full items-center justify-center text-gray-400">
+                            class="text-secondary-content/60 flex h-full items-center justify-center">
                             {{ translate('translations.waitingForLogs') }}
                         </div>
                         <div v-else-if="logsError" class="text-error">
@@ -404,7 +421,7 @@
                         </div>
                         <div
                             v-else-if="requestLogs.length === 0"
-                            class="flex h-full items-center justify-center text-gray-400">
+                            class="text-secondary-content/60 flex h-full items-center justify-center">
                             {{ translate('translations.noLogs') }}
                         </div>
                         <div v-else class="space-y-1">
@@ -412,7 +429,7 @@
                                 v-for="log in requestLogs"
                                 :key="log.id"
                                 class="border-secondary/30 border-b pb-1">
-                                <span class="mr-2 text-gray-400">
+                                <span class="text-secondary-content/70 mr-2">
                                     {{ new Date(log.createdAt).toLocaleTimeString() }}
                                 </span>
                                 <span
@@ -423,7 +440,7 @@
                                 <span>{{ log.message }}</span>
                                 <div
                                     v-if="log.details"
-                                    class="ml-4 text-[0.7rem] whitespace-pre-wrap text-gray-500">
+                                    class="text-secondary-content/60 ml-4 text-[0.7rem] whitespace-pre-wrap">
                                     {{ log.details }}
                                 </div>
                             </div>
@@ -448,7 +465,6 @@ import {
     TRANSLATION_STATUS
 } from '@/ts'
 import { useTranslationRequestStore } from '@/store/translationRequest'
-import { useTestTranslationStore } from '@/store/testTranslation'
 import { useSignalR } from '@/composables/useSignalR'
 import useDebounce from '@/composables/useDebounce'
 import { useI18n } from '@/plugins/i18n'
@@ -463,14 +479,14 @@ import TranslationCompletedAt from '@/components/common/TranslationCompletedAt.v
 import BadgeComponent from '@/components/common/BadgeComponent.vue'
 import PageLayout from '@/components/layout/PageLayout.vue'
 import CheckboxComponent from '@/components/common/CheckboxComponent.vue'
-import TestPanel from '@/components/features/translations/TestPanel.vue'
 import TestIcon from '@/components/icons/TestIcon.vue'
+import { useRouter } from 'vue-router'
 
 const { translate } = useI18n()
+const router = useRouter()
 const signalR = useSignalR()
 const hubConnection = ref<Hub>()
 const translationRequestStore = useTranslationRequestStore()
-const testStore = useTestTranslationStore()
 
 const logsModalOpen = ref(false)
 const logsLoading = ref(false)
@@ -478,6 +494,8 @@ const logsError = ref<string | null>(null)
 const activeLogRequest = ref<ITranslationRequest | null>(null)
 const requestLogs = ref<ITranslationRequestLog[]>([])
 const retryingFailed = ref(false)
+const removingFailed = ref(false)
+const showRemoveConfirm = ref(false)
 const reenqueuingQueued = ref(false)
 const cancellingQueued = ref(false)
 
@@ -557,6 +575,19 @@ const retryAllFailed = async () => {
     }
 }
 
+const removeAllFailed = async () => {
+    if (!failedRequests.value.length || removingFailed.value) return
+
+    showRemoveConfirm.value = false
+    removingFailed.value = true
+    try {
+        await translationRequestStore.removeAllFailed()
+        await translationRequestStore.fetch()
+    } finally {
+        removingFailed.value = false
+    }
+}
+
 const reenqueueQueued = async () => {
     if (!queuedRequests.value.length || reenqueuingQueued.value) return
 
@@ -588,26 +619,17 @@ const cancelAllQueued = async () => {
 function runTestForItem(item: ITranslationRequest) {
     if (!item.subtitleToTranslate && !(item.mediaId && item.mediaType)) return
 
-    // Pass null for subtitlePath if it doesn't exist (embedded)
-    const subtitlePath = item.subtitleToTranslate || null
-
-    testStore.setActiveTest({
-        title: item.title,
-        subtitlePath: subtitlePath,
-        mediaId: item.mediaId,
-        mediaType: item.mediaType,
-        sourceLanguage: item.sourceLanguage,
-        targetLanguage: item.targetLanguage
+    router.push({
+        path: '/translation-test',
+        query: {
+            subtitlePath: item.subtitleToTranslate,
+            mediaId: item.mediaId?.toString(),
+            mediaType: item.mediaType,
+            sourceLanguage: item.sourceLanguage,
+            targetLanguage: item.targetLanguage,
+            title: item.title
+        }
     })
-
-    activeTab.value = 'test'
-    testStore.startTest(
-        subtitlePath,
-        item.sourceLanguage,
-        item.targetLanguage,
-        item.mediaId,
-        item.mediaType
-    )
 }
 
 onMounted(async () => {

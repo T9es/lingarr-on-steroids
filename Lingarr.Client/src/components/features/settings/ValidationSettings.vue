@@ -31,25 +31,25 @@
                     <div class="flex flex-wrap gap-2">
                         <button
                             type="button"
-                            class="border-accent hover:bg-accent cursor-pointer rounded border px-2 py-1 text-xs transition-colors hover:text-white"
+                            class="border-accent hover:bg-accent hover:text-primary-content cursor-pointer rounded border px-2 py-1 text-xs transition-colors"
                             @click="minDurationMs = '100'">
                             0.2s
                         </button>
                         <button
                             type="button"
-                            class="border-accent hover:bg-accent cursor-pointer rounded border px-2 py-1 text-xs transition-colors hover:text-white"
+                            class="border-accent hover:bg-accent hover:text-primary-content cursor-pointer rounded border px-2 py-1 text-xs transition-colors"
                             @click="minDurationMs = '500'">
                             0.5s
                         </button>
                         <button
                             type="button"
-                            class="border-accent hover:bg-accent cursor-pointer rounded border px-2 py-1 text-xs transition-colors hover:text-white"
+                            class="border-accent hover:bg-accent hover:text-primary-content cursor-pointer rounded border px-2 py-1 text-xs transition-colors"
                             @click="minDurationMs = '1000'">
                             1s
                         </button>
                         <button
                             type="button"
-                            class="border-accent hover:bg-accent cursor-pointer rounded border px-2 py-1 text-xs transition-colors hover:text-white"
+                            class="border-accent hover:bg-accent hover:text-primary-content cursor-pointer rounded border px-2 py-1 text-xs transition-colors"
                             @click="minDurationMs = '1500'">
                             1.5s
                         </button>
@@ -86,25 +86,25 @@
                     <div class="flex flex-wrap gap-2">
                         <button
                             type="button"
-                            class="border-accent hover:bg-accent cursor-pointer rounded border px-2 py-1 text-xs transition-colors hover:text-white"
+                            class="border-accent hover:bg-accent hover:text-primary-content cursor-pointer rounded border px-2 py-1 text-xs transition-colors"
                             @click="maxFileSizeBytes = (512 * 1024).toString()">
                             0.5 KB
                         </button>
                         <button
                             type="button"
-                            class="border-accent hover:bg-accent cursor-pointer rounded border px-2 py-1 text-xs transition-colors hover:text-white"
+                            class="border-accent hover:bg-accent hover:text-primary-content cursor-pointer rounded border px-2 py-1 text-xs transition-colors"
                             @click="maxFileSizeBytes = (1024 * 1024).toString()">
                             1 MB
                         </button>
                         <button
                             type="button"
-                            class="border-accent hover:bg-accent cursor-pointer rounded border px-2 py-1 text-xs transition-colors hover:text-white"
+                            class="border-accent hover:bg-accent hover:text-primary-content cursor-pointer rounded border px-2 py-1 text-xs transition-colors"
                             @click="maxFileSizeBytes = (1.5 * 1024 * 1024).toString()">
                             1.5 MB
                         </button>
                         <button
                             type="button"
-                            class="border-accent hover:bg-accent cursor-pointer rounded border px-2 py-1 text-xs transition-colors hover:text-white"
+                            class="border-accent hover:bg-accent hover:text-primary-content cursor-pointer rounded border px-2 py-1 text-xs transition-colors"
                             @click="maxFileSizeBytes = (2 * 1024 * 1024).toString()">
                             2 MB
                         </button>
@@ -112,7 +112,7 @@
                 </InputComponent>
 
                 <!-- Integrity Validation Section -->
-                <div class="border-base-300 mt-6 border-t pt-4">
+                <div class="border-secondary/50 mt-6 border-t pt-4">
                     <div class="flex flex-col space-y-4">
                         <div class="flex flex-col space-y-2">
                             <span class="font-semibold">

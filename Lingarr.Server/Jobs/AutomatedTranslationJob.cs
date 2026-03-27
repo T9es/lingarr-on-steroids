@@ -1,9 +1,6 @@
-﻿using Hangfire;
+using Hangfire;
 using Lingarr.Core.Configuration;
-using Lingarr.Core.Data;
-using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
-using Lingarr.Core.Interfaces;
 using Lingarr.Server.Filters;
 using Lingarr.Server.Interfaces.Services;
 using Microsoft.OpenApi.Extensions;
@@ -17,26 +14,23 @@ namespace Lingarr.Server.Jobs;
 /// </summary>
 public class AutomatedTranslationJob
 {
-    private readonly LingarrDbContext _dbContext;
+    private readonly IAutomationService _automationService;
     private readonly ILogger<AutomatedTranslationJob> _logger;
-    private readonly IMediaSubtitleProcessor _mediaSubtitleProcessor;
     private readonly ISettingService _settingService;
     private readonly IScheduleService _scheduleService;
     private readonly IMediaStateService _mediaStateService;
 
     public AutomatedTranslationJob(
-        LingarrDbContext dbContext,
+        IAutomationService automationService,
         ILogger<AutomatedTranslationJob> logger,
-        IMediaSubtitleProcessor mediaSubtitleProcessor,
         IScheduleService scheduleService,
         ISettingService settingService,
         IMediaStateService mediaStateService)
     {
-        _dbContext = dbContext;
+        _automationService = automationService;
         _logger = logger;
         _settingService = settingService;
         _scheduleService = scheduleService;
-        _mediaSubtitleProcessor = mediaSubtitleProcessor;
         _mediaStateService = mediaStateService;
     }
 
@@ -50,8 +44,8 @@ public class AutomatedTranslationJob
 
         try
         {
-            // Check if automation is enabled
-            var automationEnabled = await _settingService.GetSetting(SettingKeys.Automation.AutomationEnabled);
+            var automationEnabled = await _settingService.GetSetting(
+                SettingKeys.Automation.AutomationEnabled);
             if (automationEnabled != "true")
             {
                 _logger.LogInformation("Automation is disabled, skipping run");
@@ -59,34 +53,30 @@ public class AutomatedTranslationJob
                 return;
             }
 
-            // Get settings
             var settings = await _settingService.GetSettings([
-                SettingKeys.Automation.MaxTranslationsPerRun,
-                SettingKeys.Automation.MovieAgeThreshold,
-                SettingKeys.Automation.ShowAgeThreshold
+                SettingKeys.Automation.MaxTranslationsPerRun
             ]);
 
             var maxPerRun = int.TryParse(
-                settings.GetValueOrDefault(SettingKeys.Automation.MaxTranslationsPerRun), 
-                out var limit) ? limit : 10;
+                settings.GetValueOrDefault(SettingKeys.Automation.MaxTranslationsPerRun),
+                out var limit)
+                ? limit
+                : 10;
 
-            var movieAgeThreshold = TimeSpan.FromHours(
-                int.TryParse(settings.GetValueOrDefault(SettingKeys.Automation.MovieAgeThreshold), out var mh) ? mh : 0);
-            var showAgeThreshold = TimeSpan.FromHours(
-                int.TryParse(settings.GetValueOrDefault(SettingKeys.Automation.ShowAgeThreshold), out var sh) ? sh : 0);
-
-            // Get media that needs work (efficient query using TranslationState)
             var mediaToProcess = await _mediaStateService.GetMediaNeedingTranslationAsync(maxPerRun * 2);
-            
+
             _logger.LogInformation(
-                "AutomatedTranslationJob: found {Count} candidates needing translation", 
+                "AutomatedTranslationJob: found {Count} candidates needing translation",
                 mediaToProcess.Count);
 
             var translationsQueued = 0;
             var processedCount = 0;
 
-            foreach (var (media, mediaType) in mediaToProcess)
+            foreach (var mediaItem in mediaToProcess)
             {
+                var media = mediaItem.Media;
+                var mediaType = mediaItem.Type;
+
                 if (translationsQueued >= maxPerRun)
                 {
                     _logger.LogInformation("Reached max translations per run ({Max}), stopping", maxPerRun);
@@ -95,89 +85,14 @@ public class AutomatedTranslationJob
 
                 processedCount++;
 
-                // For stale/unknown items, refresh state first
-                TranslationState currentState;
-                if (mediaType == MediaType.Movie)
-                {
-                    currentState = ((Movie)media).TranslationState;
-                }
-                else
-                {
-                    currentState = ((Episode)media).TranslationState;
-                }
-
-                if (currentState == TranslationState.Stale || currentState == TranslationState.Unknown)
-                {
-                    var newState = await _mediaStateService.UpdateStateAsync(media, mediaType);
-                    // Allow proceeding if Pending, OR if AwaitingSource but unindexed (needs scan)
-                    DateTime? indexedAt = null;
-                    if (mediaType == MediaType.Movie && media is Movie m) indexedAt = m.IndexedAt;
-                    else if (mediaType == MediaType.Episode && media is Episode e) indexedAt = e.IndexedAt;
-
-                    var isUnindexed = indexedAt == null;
-                    
-                    if (newState != TranslationState.Pending && !(newState == TranslationState.AwaitingSource && isUnindexed))
-                    {
-                         _logger.LogInformation(
-                            "Skipping {Title}: state refreshed to {State} (was {OldState})", 
-                            media.Title, newState, currentState);
-                        continue;
-                    }
-                }
-
-                // Check age threshold
-                var ageThreshold = mediaType == MediaType.Movie ? movieAgeThreshold : showAgeThreshold;
-                
-                // Check for custom override on movie
-                if (mediaType == MediaType.Movie && media is Movie movie && movie.TranslationAgeThreshold.HasValue)
-                {
-                    ageThreshold = TimeSpan.FromHours(movie.TranslationAgeThreshold.Value);
-                }
-                // Check for custom override on show
-                else if (mediaType == MediaType.Episode && media is Episode episode)
-                {
-                    var show = episode.Season?.Show;
-                    if (show?.TranslationAgeThreshold.HasValue == true)
-                    {
-                        ageThreshold = TimeSpan.FromHours(show.TranslationAgeThreshold.Value);
-                    }
-                }
-                
-                if (!MeetsAgeThreshold(media, ageThreshold))
-                {
-                    _logger.LogDebug(
-                        "Skipping {Title}: does not meet age threshold", 
-                        media.Title);
-                    continue;
-                }
-
-                // Queue translation
                 try
                 {
-                    // Update rotation timestamp FIRST to ensure it goes to back of queue
-                    // even if processing crashes.
-                    await _mediaStateService.UpdateLastSubtitleCheckAt(media.Id, mediaType);
-                    
-                    var count = await _mediaSubtitleProcessor.ProcessMediaForceAsync(
-                        media, mediaType,
-                        forceProcess: false,
-                        forceTranslation: false);
-
-                    if (count > 0)
-                    {
-                        translationsQueued += count;
-                        
-                        // Update state to InProgress
-                        await _mediaStateService.UpdateStateAsync(media, mediaType);
-                        
-                        _logger.LogInformation(
-                            "Queued {Count} translation(s) for {Title}",
-                            count, media.Title);
-                    }
-                    else
-                    {
-                         _logger.LogInformation("Processed {Title} but no translations were queued (Count=0). MediaId: {Id}", media.Title, media.Id);
-                    }
+                    var count = await _automationService.ProcessLoadedMediaForAutomationAsync(
+                        media,
+                        mediaType,
+                        "fallback_schedule",
+                        updateRotationTimestamp: true);
+                    translationsQueued += count;
                 }
                 catch (DirectoryNotFoundException)
                 {
@@ -185,15 +100,14 @@ public class AutomatedTranslationJob
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, 
-                        "Failed to process {Title} for translation", 
-                        media.Title);
+                    _logger.LogWarning(ex, "Failed to process {Title} for translation", media.Title);
                 }
             }
 
             _logger.LogInformation(
                 "AutomatedTranslationJob completed: processed {Processed}, queued {Queued} translations",
-                processedCount, translationsQueued);
+                processedCount,
+                translationsQueued);
 
             await _scheduleService.UpdateJobState(jobName, JobStatus.Succeeded.GetDisplayName());
         }
@@ -203,17 +117,5 @@ public class AutomatedTranslationJob
             await _scheduleService.UpdateJobState(jobName, JobStatus.Failed.GetDisplayName());
             throw;
         }
-    }
-
-    private static bool MeetsAgeThreshold(IMedia media, TimeSpan threshold)
-    {
-        if (threshold == TimeSpan.Zero)
-            return true;
-
-        if (media.DateAdded == null)
-            return true;
-
-        var age = DateTime.UtcNow - media.DateAdded.Value.ToUniversalTime();
-        return age >= threshold;
     }
 }

@@ -1,12 +1,16 @@
-﻿using Hangfire;
+using Hangfire;
 using Microsoft.EntityFrameworkCore;
+using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Filters;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Integration;
 using Lingarr.Server.Interfaces.Services.Sync;
+using Lingarr.Server.Models;
+using Lingarr.Server.Models.Integrations;
 using Microsoft.OpenApi.Extensions;
+using System.Text.Json;
 
 namespace Lingarr.Server.Jobs;
 
@@ -17,19 +21,22 @@ public class SyncMovieJob
     private readonly IScheduleService _scheduleService;
     private readonly IMovieSyncService _movieSyncService;
     private readonly LingarrDbContext _dbContext;
+    private readonly ISettingService _settingService;
 
     public SyncMovieJob(
         IRadarrService radarrService,
         ILogger<SyncMovieJob> logger,
         IScheduleService scheduleService,
         IMovieSyncService movieSyncService,
-        LingarrDbContext dbContext)
+        LingarrDbContext dbContext,
+        ISettingService settingService)
     {
         _radarrService = radarrService;
         _logger = logger;
         _scheduleService = scheduleService;
         _movieSyncService = movieSyncService;
         _dbContext = dbContext;
+        _settingService = settingService;
     }
 
     [DisableConcurrentExecution(timeoutInSeconds: 60 * 60)]
@@ -44,24 +51,110 @@ public class SyncMovieJob
         {
             await _scheduleService.UpdateJobState(jobName, JobStatus.Processing.GetDisplayName());
 
-            var movies = await _radarrService.GetMovies();
-            if (movies == null) return;
+            // Get instances from settings
+            var instances = await GetRadarrInstances();
+            if (instances.Count == 0)
+            {
+                _logger.LogWarning("No Radarr instances configured");
+                await _scheduleService.UpdateJobState(jobName, JobStatus.Succeeded.GetDisplayName());
+                return;
+            }
 
-            _logger.LogInformation("Fetched {Count} movies from Radarr", movies.Count());
+            var allMovies = new List<(RadarrMovie Movie, string InstanceId)>();
+            var instanceMovieIds = new Dictionary<string, HashSet<int>>();
 
-            // Sync movies incrementally - each batch commits independently for UI visibility
-            await _movieSyncService.SyncMovies(movies);
+            foreach (var instance in instances)
+            {
+                try
+                {
+                    var movies = await _radarrService.GetMovies(instance.Url, instance.ApiKey);
+                    if (movies != null)
+                    {
+                        _logger.LogInformation("Fetched {Count} movies from Radarr instance '{Name}'",
+                            movies.Count, instance.Name);
 
-            // Deletion is the risky operation - wrap in transaction for atomicity
+                        var movieIds = new HashSet<int>();
+                        foreach (var movie in movies)
+                        {
+                            allMovies.Add((movie, instance.Id));
+                            movieIds.Add(movie.Id);
+                        }
+                        instanceMovieIds[instance.Id] = movieIds;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to fetch movies from Radarr instance '{Name}'", instance.Name);
+                }
+            }
+
+            if (allMovies.Count == 0)
+            {
+                _logger.LogWarning("No movies fetched from any Radarr instance");
+                await _scheduleService.UpdateJobState(jobName, JobStatus.Succeeded.GetDisplayName());
+                return;
+            }
+
+            // Sync all movies with their instance IDs
+            await _movieSyncService.SyncMovies(allMovies);
+
+// Remove non-existent movies per instance
             var strategy = _dbContext.Database.CreateExecutionStrategy();
             await strategy.ExecuteAsync(async () =>
             {
                 await using var transaction = await _dbContext.Database.BeginTransactionAsync();
-                await _movieSyncService.RemoveNonExistentMovies(movies.Select(m => m.Id));
+                
+                foreach (var instance in instances)
+                {
+                    if (instanceMovieIds.TryGetValue(instance.Id, out var movieIds))
+                    {
+                        await _movieSyncService.RemoveNonExistentMovies(movieIds, instance.Id);
+                    }
+                }
+                
                 await transaction.CommitAsync();
             });
+
+            // Cleanup orphaned movies from deleted instances
+            var configuredInstanceIds = instances.Select(i => i.Id).ToHashSet();
+
+            // Include "default" and "legacy" to avoid removing migrated records
+            configuredInstanceIds.Add("default");
+            configuredInstanceIds.Add("legacy");
+
+            var orphanedMovies = await _dbContext.Movies
+                .Where(m => !string.IsNullOrEmpty(m.SourceInstanceId) && 
+                            !configuredInstanceIds.Contains(m.SourceInstanceId))
+                .ToListAsync();
+
+            if (orphanedMovies.Count != 0)
+            {
+                _logger.LogWarning("Removing {Count} movies from deleted instances", orphanedMovies.Count);
+                _dbContext.Movies.RemoveRange(orphanedMovies);
+                await _dbContext.SaveChangesAsync();
+            }
+
+// Cleanup orphaned translation requests for removed movies
+            var existingMovieIds = await _dbContext.Movies.Select(m => m.Id).ToListAsync();
+            var orphanedRequests = await _dbContext.TranslationRequests
+                .Where(tr => tr.MediaType == MediaType.Movie &&
+                             tr.MediaId.HasValue &&
+                             !existingMovieIds.Contains(tr.MediaId.Value) &&
+                             (tr.Status == TranslationStatus.Pending ||
+                              tr.Status == TranslationStatus.InProgress ||
+                              tr.Status == TranslationStatus.Failed))
+                .ToListAsync();
+
+            if (orphanedRequests.Count != 0)
+            {
+                _logger.LogInformation("Removing {Count} orphaned translation requests for removed movies", 
+                    orphanedRequests.Count);
+                _dbContext.TranslationRequests.RemoveRange(orphanedRequests);
+                await _dbContext.SaveChangesAsync();
+            }
+
             await _scheduleService.UpdateJobState(jobName, JobStatus.Succeeded.GetDisplayName());
-            _logger.LogInformation("Movies synced successfully.");
+            _logger.LogInformation("Movies synced successfully from {Count} instances.", instances.Count);
         }
         catch (Exception ex)
         {
@@ -70,5 +163,93 @@ public class SyncMovieJob
                 "An error occurred when syncing movies. Exception details: {ExceptionMessage}, Stack Trace: {StackTrace}",
                 ex.Message, ex.StackTrace);
         }
+    }
+
+    /// <summary>
+    /// Gets the list of Radarr instances from settings.
+    /// Falls back to single instance from old settings if multi-instance is not configured.
+    /// </summary>
+    private async Task<List<RadarrInstance>> GetRadarrInstances()
+    {
+        var instancesJson = await _settingService.GetSetting(SettingKeys.Integration.RadarrInstances);
+
+        if (!string.IsNullOrEmpty(instancesJson))
+        {
+            try
+            {
+                var instances = JsonSerializer.Deserialize<List<RadarrInstance>>(instancesJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (instances != null && instances.Count > 0)
+                {
+                    // Filter out instances with missing required fields
+                    var originalCount = instances.Count;
+                    instances = instances
+                        .Where(i => !string.IsNullOrWhiteSpace(i.Id) &&
+                                    !string.IsNullOrWhiteSpace(i.Name) &&
+                                    !string.IsNullOrWhiteSpace(i.Url) &&
+                                    !string.IsNullOrWhiteSpace(i.ApiKey))
+                        .ToList();
+                    
+                    if (instances.Count < originalCount)
+                    {
+                        _logger.LogWarning("Filtered out {Count} invalid Radarr instances with missing required fields",
+                            originalCount - instances.Count);
+                    }
+                    
+                    if (instances.Count == 0)
+                    {
+                        _logger.LogWarning("No valid Radarr instances after filtering");
+                        return new List<RadarrInstance>();
+                    }
+                    
+                    // Validate no duplicate IDs (would cause data corruption)
+                    var duplicateIds = instances
+                        .GroupBy(i => i.Id)
+                        .Where(g => g.Count() > 1)
+                        .Select(g => g.Key)
+                        .ToList();
+                        
+                    if (duplicateIds.Count != 0)
+                    {
+                        _logger.LogError("Duplicate Radarr instance IDs detected: {Ids}. Each instance must have a unique ID to prevent data corruption.", 
+                            string.Join(", ", duplicateIds));
+                        // Filter to first occurrence of each ID to prevent corruption
+                        instances = instances
+                            .GroupBy(i => i.Id)
+                            .Select(g => g.First())
+                            .ToList();
+                        _logger.LogWarning("Filtered to unique instances: {Count} remaining", instances.Count);
+                    }
+                    
+                    // Validate maximum instances
+                    const int maxInstances = 10;
+                    if (instances.Count > maxInstances)
+                    {
+                        _logger.LogWarning("Too many Radarr instances configured ({Count}). Maximum is {Max}. Using first {Max} instances.",
+                            instances.Count, maxInstances, maxInstances);
+                        instances = instances.Take(maxInstances).ToList();
+                    }
+                    
+                    return instances;
+                }
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(ex, "Failed to deserialize Radarr instances from settings");
+            }
+        }
+
+        // Fall back to single instance from old settings
+        var url = await _settingService.GetSetting(SettingKeys.Integration.RadarrUrl);
+        var apiKey = await _settingService.GetSetting(SettingKeys.Integration.RadarrApiKey);
+
+        if (!string.IsNullOrEmpty(url) && !string.IsNullOrEmpty(apiKey))
+        {
+            return new List<RadarrInstance>
+            {
+                new() { Id = "default", Name = "Default", Url = url, ApiKey = apiKey }
+            };
+        }
+
+        return new List<RadarrInstance>();
     }
 }

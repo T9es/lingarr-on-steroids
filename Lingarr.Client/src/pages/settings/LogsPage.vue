@@ -22,23 +22,26 @@
                         </select>
 
                         <!-- Text Search -->
-                        <input 
+                        <input
                             v-model="searchQuery"
                             type="text"
                             :placeholder="translate('settings.logs.searchPlaceholder')"
-                            class="bg-secondary text-accent-content border-secondary rounded border px-2 py-1 text-sm w-48 focus:w-64 transition-all"
-                        />
+                            class="bg-secondary text-accent-content border-secondary w-48 rounded border px-2 py-1 text-sm transition-all focus:w-64" />
                     </div>
 
                     <div class="flex space-x-2">
                         <button
-                            class="bg-accent hover:bg-accent/80 cursor-pointer rounded px-3 py-1 text-sm font-medium text-white transition"
+                            class="bg-accent hover:bg-accent/80 text-primary-content cursor-pointer rounded px-3 py-1 text-sm font-medium transition"
                             @click="exportLogs">
                             {{ translate('settings.logs.export') }}
                         </button>
                         <button
-                            class="cursor-pointer rounded px-3 py-1 text-sm font-medium text-white transition"
-                            :class="isPaused ? 'bg-success hover:bg-success/80' : 'bg-warning hover:bg-warning/80'"
+                            class="text-primary-content cursor-pointer rounded px-3 py-1 text-sm font-medium transition"
+                            :class="
+                                isPaused
+                                    ? 'bg-success hover:bg-success/80'
+                                    : 'bg-warning hover:bg-warning/80'
+                            "
                             @click="togglePause">
                             {{
                                 isPaused
@@ -47,7 +50,7 @@
                             }}
                         </button>
                         <button
-                            class="bg-error hover:bg-error/80 cursor-pointer rounded px-3 py-1 text-sm font-medium text-white transition"
+                            class="bg-error hover:bg-error/80 text-primary-content cursor-pointer rounded px-3 py-1 text-sm font-medium transition"
                             @click="clearLogs">
                             {{ translate('settings.logs.clear') }}
                         </button>
@@ -74,9 +77,9 @@
 
         <div
             ref="logContainer"
-            class="bg-primary text-accent-content h-[70vh] overflow-y-auto overflow-x-hidden font-mono text-sm">
+            class="bg-primary text-accent-content h-[70vh] overflow-x-hidden overflow-y-auto font-mono text-sm">
             <div v-if="filteredLogs.length === 0" class="flex h-full items-center justify-center">
-                <div class="text-center text-gray-500">
+                <div class="text-secondary-content/60 text-center">
                     <div class="mb-2 text-lg">📋</div>
                     <div>{{ translate('settings.logs.waitingForLogs') }}</div>
                 </div>
@@ -84,10 +87,13 @@
 
             <!-- Log Entries -->
             <div class="log-list">
-                <div v-for="(log, index) in filteredLogs" :key="log.uniqueId || index" class="log-entry">
+                <div
+                    v-for="(log, index) in filteredLogs"
+                    :key="log.uniqueId || index"
+                    class="log-entry">
                     <div
                         class="hover:bg-secondary/20 border-secondary/30 grid grid-cols-12 border-b py-2 transition-colors">
-                        <div class="col-span-1 px-4 text-gray-400">
+                        <div class="text-secondary-content/70 col-span-1 px-4">
                             {{ log.formattedTime }}
                         </div>
                         <div class="col-span-1 px-4">
@@ -174,7 +180,7 @@ const filteredLogs = computed(() => {
                 return false
             }
         }
-        
+
         // Filter by Search Query
         if (searchQuery.value) {
             const query = searchQuery.value.toLowerCase()
@@ -184,7 +190,7 @@ const filteredLogs = computed(() => {
                 return false
             }
         }
-        
+
         return true
     })
 })
@@ -239,7 +245,7 @@ const togglePause = () => {
         if (pendingLogs.value.length > 0) {
             logs.value.push(...pendingLogs.value)
             pendingLogs.value = []
-            
+
             // Trim if needed
             if (logs.value.length > maxLogs.value) {
                 logs.value = logs.value.slice(logs.value.length - maxLogs.value)
@@ -306,7 +312,7 @@ onMounted(() => {
         try {
             const logData = JSON.parse(event.data) as ILogEntryWithId
             logData.uniqueId = Math.random().toString(36).substring(7)
-            
+
             if (isPaused.value) {
                 pendingLogs.value.push(logData)
                 // Limit pending logs too to avoid memory issues
@@ -334,7 +340,7 @@ onMounted(() => {
                 stackTrace: error instanceof Error ? error.stack : undefined,
                 uniqueId: Math.random().toString(36).substring(7)
             }
-            
+
             if (!isPaused.value) {
                 logs.value.push(fallbackEntry)
                 scrollToBottom()
@@ -353,9 +359,9 @@ onMounted(() => {
             category: 'System',
             uniqueId: Math.random().toString(36).substring(7)
         }
-        
+
         logs.value.push(errorLog)
-        
+
         // reconnect
         if (eventSource) {
             eventSource.close()

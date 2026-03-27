@@ -28,7 +28,8 @@ public class SrtWriter : ISubtitleWriter
         List<string> lines = new List<string>();
         lines.Add(subtitleEntryNumber.ToString());
         lines.Add(FormatTimeCodeLine());
-        lines.AddRange(subtitleItem.TranslatedLines);
+        var linesToUse = subtitleItem.TranslatedLines.Count > 0 ? subtitleItem.TranslatedLines : subtitleItem.Lines;
+        lines.AddRange(linesToUse);
 
         return lines;
     }

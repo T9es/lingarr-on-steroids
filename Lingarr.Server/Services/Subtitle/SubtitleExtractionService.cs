@@ -58,9 +58,11 @@ public class SubtitleExtractionService : ISubtitleExtractionService
     
     /// <summary>
     /// Minimum number of subtitle entries required for a track to be considered valid.
-    /// Tracks below this threshold are likely Signs/Songs or otherwise incomplete.
+    /// Tracks below this threshold are likely Signs/Songs, Forced, or otherwise incomplete.
+    /// Based on analysis: even "A Quiet Place" (minimal dialogue) has 165 entries.
+    /// Signs/Forced tracks typically have 0-30 entries.
     /// </summary>
-    public const int MinimumDialogueEntries = 100;
+    public const int MinimumDialogueEntries = 50;
 
     public SubtitleExtractionService(
         ILogger<SubtitleExtractionService> logger,
@@ -298,7 +300,9 @@ public class SubtitleExtractionService : ISubtitleExtractionService
         var mediaPath = FindMediaFile(episode.Path, episode.FileName);
         if (mediaPath == null)
         {
-            _logger.LogWarning("Could not find media file for episode: {FileName} in {Path}", episode.FileName, episode.Path);
+            _logger.LogWarning(
+                "Could not find media file for {Type}: {FileName} in {Path}. Directory exists: {DirExists}",
+                "episode", episode.FileName, episode.Path, Directory.Exists(episode.Path));
             return;
         }
         
@@ -317,7 +321,9 @@ public class SubtitleExtractionService : ISubtitleExtractionService
         var mediaPath = FindMediaFile(movie.Path, movie.FileName);
         if (mediaPath == null)
         {
-            _logger.LogWarning("Could not find media file for movie: {FileName} in {Path}", movie.FileName, movie.Path);
+            _logger.LogWarning(
+                "Could not find media file for {Type}: {FileName} in {Path}. Directory exists: {DirExists}",
+                "movie", movie.FileName, movie.Path, Directory.Exists(movie.Path));
             return;
         }
         
@@ -335,8 +341,17 @@ public class SubtitleExtractionService : ISubtitleExtractionService
 
         // Use language tag if available (e.g., ".eng.srt"), otherwise fall back to stream index
         var languageTag = !string.IsNullOrEmpty(language) ? language : $"stream{streamIndex}";
-        var outputFileName = $"{baseFileName}.{languageTag}{extension}";
-        return Path.Combine(outputDirectory, outputFileName);
+        var primaryPath = Path.Combine(outputDirectory, $"{baseFileName}.{languageTag}{extension}");
+
+        // If the primary path exists and does NOT have our extraction marker, it's a user file.
+        // We must not overwrite it. Fallback to a stream-specific name.
+        if (File.Exists(primaryPath) && !IsLingarrExtracted(primaryPath))
+        {
+            var fallbackTag = !string.IsNullOrEmpty(language) ? $"{language}.s{streamIndex}" : $"stream{streamIndex}";
+            return Path.Combine(outputDirectory, $"{baseFileName}.{fallbackTag}{extension}");
+        }
+
+        return primaryPath;
     }
 
     /// <summary>
@@ -521,7 +536,12 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 items = parser.ParseStream(stream, System.Text.Encoding.UTF8);
             }
 
-            if (items.Count == 0) return;
+            if (items.Count == 0)
+            {
+                // Write the marker so Lingarr knows it extracted this file, even if it's empty
+                await File.WriteAllTextAsync(filePath, $"{ExtractionMarkerPrefix} StreamIndex={0}, Entries=0\r\n\r\n");
+                return;
+            }
 
             // PRE-FILTER: Remove ASS drawing commands and empty lines
             var filteredItems = new List<SubtitleItem>();
@@ -542,7 +562,12 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 filteredItems.Add(item);
             }
 
-            if (filteredItems.Count == 0) return;
+            if (filteredItems.Count == 0)
+            {
+                // Write the marker so Lingarr knows it extracted this file, even if it's empty after filtering
+                await File.WriteAllTextAsync(filePath, $"{ExtractionMarkerPrefix} StreamIndex={0}, Entries=0\r\n\r\n");
+                return;
+            }
 
             // PASS 1: Merge Concurrent Layers (e.g. "Text Part 1" and "Text Part 2" appearing at same time)
             // Heuristic: If two subtitles start at roughly the same time (< 50ms diff) 
@@ -799,7 +824,7 @@ public class SubtitleExtractionService : ISubtitleExtractionService
         int mediaId, 
         MediaType mediaType, 
         string sourceLanguage, 
-        List<string>? excludedPaths = null,
+        List<int>? excludedStreamIndices = null,
         int? preferredStreamIndex = null)
     {
         try
@@ -928,22 +953,15 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 return null;
             }
 
-            // Iterate through candidates to find one that isn't excluded
+            // Iterate through candidates to find a valid one
             foreach (var candidate in candidates)
             {
-                // Predict the output path to see if it should be excluded
-                var predictedPath = GetExtractedSubtitlePath(
-                    outputDir!,
-                    mediaPath!,
-                    candidate.CodecName,
-                    candidate.Language,
-                    candidate.StreamIndex);
-
-                if (excludedPaths != null && excludedPaths.Contains(predictedPath))
+                // Skip streams that have already been tried
+                if (excludedStreamIndices != null && excludedStreamIndices.Contains(candidate.StreamIndex))
                 {
-                    _logger.LogInformation(
-                        "Skipping candidate Stream {StreamIndex} ({Language}) as its output path is excluded: {Path}",
-                        candidate.StreamIndex, candidate.Language, predictedPath);
+                    _logger.LogDebug(
+                        "Skipping candidate Stream {StreamIndex} ({Language}) as it was already tried",
+                        candidate.StreamIndex, candidate.Language);
                     continue;
                 }
 
@@ -963,11 +981,53 @@ public class SubtitleExtractionService : ISubtitleExtractionService
 
                     if (!string.IsNullOrEmpty(extractedPath))
                     {
-                        // Update the database record
+                        // Validate entry count - sparse tracks (Signs/Songs/Forced) have very few entries
+                        // Check Lingarr marker FIRST to avoid wasting I/O on non-Lingarr files
+                        if (!IsLingarrExtracted(extractedPath))
+                        {
+                            _logger.LogWarning(
+                                "Stream {StreamIndex} extracted file has no Lingarr marker, preserving (may be user file)",
+                                candidate.StreamIndex);
+                            // Don't delete user files, but don't use them either
+                            excludedStreamIndices ??= new List<int>();
+                            excludedStreamIndices.Add(candidate.StreamIndex);
+                            continue;
+                        }
+                        
+                        var entryCount = CountSubtitleEntries(extractedPath);
+                        
+                        if (entryCount < MinimumDialogueEntries)
+                        {
+                            _logger.LogWarning(
+                                "Stream {StreamIndex} has only {Entries} entries (minimum: {Min}), likely sparse track. Deleting and trying next candidate.",
+                                candidate.StreamIndex, entryCount, MinimumDialogueEntries);
+                            
+                            // Delete the sparse file immediately - we don't want residue
+                            try
+                            {
+                                File.Delete(extractedPath);
+                            }
+                            catch (Exception deleteEx)
+                            {
+                                _logger.LogWarning(deleteEx, "Failed to delete sparse subtitle file: {Path}", extractedPath);
+                            }
+                            
+                            // Mark this stream as tried so we don't attempt it again
+                            excludedStreamIndices ??= new List<int>();
+                            excludedStreamIndices.Add(candidate.StreamIndex);
+                            
+                            continue; // Try next candidate
+                        }
+                        
+                        // Valid subtitle with sufficient entries
                         candidate.IsExtracted = true;
                         candidate.ExtractedPath = extractedPath;
                         await _dbContext.SaveChangesAsync();
 
+                        _logger.LogInformation(
+                            "Successfully extracted Stream {StreamIndex} with {Entries} entries to: {Path}",
+                            candidate.StreamIndex, entryCount, extractedPath);
+                        
                         return extractedPath;
                     }
                 }
@@ -990,6 +1050,34 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             _logger.LogError(ex, "Error during embedded subtitle extraction for media {MediaId}", mediaId);
             throw new InvalidOperationException($"Embedded subtitle extraction failed: {ex.Message}", ex);
         }
+    }
+
+    /// <inheritdoc />
+    public async Task ClearExtractionMetadataAsync(int mediaId, MediaType mediaType, string extractedPath)
+    {
+        if (string.IsNullOrWhiteSpace(extractedPath))
+        {
+            return;
+        }
+
+        var subtitle = await _dbContext.EmbeddedSubtitles.FirstOrDefaultAsync(es =>
+            es.ExtractedPath == extractedPath &&
+            ((mediaType == MediaType.Movie && es.MovieId == mediaId) ||
+             (mediaType == MediaType.Episode && es.EpisodeId == mediaId)));
+
+        if (subtitle == null)
+        {
+            return;
+        }
+
+        if (!subtitle.IsExtracted && string.IsNullOrEmpty(subtitle.ExtractedPath))
+        {
+            return;
+        }
+
+        subtitle.IsExtracted = false;
+        subtitle.ExtractedPath = null;
+        await _dbContext.SaveChangesAsync();
     }
 
     /// <summary>
@@ -1032,7 +1120,6 @@ public class SubtitleExtractionService : ISubtitleExtractionService
     {
         var result = new List<AvailableSubtitleResponse>();
         List<EmbeddedSubtitle>? embeddedSubtitles = null;
-        string? mediaPath = null;
 
         // Get media and its embedded subtitles
         if (mediaType == MediaType.Episode)
@@ -1061,7 +1148,6 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             }
 
             embeddedSubtitles = episode.EmbeddedSubtitles;
-            mediaPath = Path.Combine(episode.Path, episode.FileName);
         }
         else if (mediaType == MediaType.Movie)
         {
@@ -1089,7 +1175,6 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             }
 
             embeddedSubtitles = movie.EmbeddedSubtitles;
-            mediaPath = Path.Combine(movie.Path, movie.FileName);
         }
         else
         {
@@ -1100,6 +1185,23 @@ public class SubtitleExtractionService : ISubtitleExtractionService
         if (embeddedSubtitles == null || embeddedSubtitles.Count == 0)
         {
             return result;
+        }
+
+        var staleSubtitles = embeddedSubtitles
+            .Where(sub => sub.IsExtracted &&
+                          !string.IsNullOrEmpty(sub.ExtractedPath) &&
+                          !File.Exists(sub.ExtractedPath))
+            .ToList();
+
+        if (staleSubtitles.Count > 0)
+        {
+            foreach (var staleSubtitle in staleSubtitles)
+            {
+                staleSubtitle.IsExtracted = false;
+                staleSubtitle.ExtractedPath = null;
+            }
+
+            await _dbContext.SaveChangesAsync();
         }
 
         // Build response with entry counts for extracted subtitles

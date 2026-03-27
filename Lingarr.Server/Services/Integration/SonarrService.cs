@@ -61,4 +61,40 @@ public class SonarrService : ISonarrService
                 ApiKey = "sonarr_api_key"
             });
     }
+
+    /// <inheritdoc />
+    public async Task<List<SonarrShow>?> GetShows(string url, string apiKey)
+    {
+        return await _integrationService.GetApiResponse<List<SonarrShow>>(
+            "/api/v3/series/",
+            url,
+            apiKey);
+    }
+
+    /// <inheritdoc />
+    public async Task<List<SonarrEpisode>?> GetEpisodes(int seriesNumber, int seasonNumber, string url, string apiKey)
+    {
+        return await _integrationService.GetApiResponse<List<SonarrEpisode>>(
+            $"/api/v3/episode?seriesId={seriesNumber}&seasonNumber={seasonNumber}&includeImages=true",
+            url,
+            apiKey);
+    }
+
+    /// <inheritdoc />
+    public async Task<SonarrEpisode?> GetEpisode(int episodeNumber, string url, string apiKey)
+    {
+        return await _integrationService.GetApiResponse<SonarrEpisode>(
+            $"/api/v3/episode/{episodeNumber}?includeImages=true",
+            url,
+            apiKey);
+    }
+
+    /// <inheritdoc />
+    public async Task<SonarrEpisodePath?> GetEpisodePath(int episodeNumber, string url, string apiKey)
+    {
+        return await _integrationService.GetApiResponse<SonarrEpisodePath>(
+            $"/api/v3/episode/{episodeNumber}",
+            url,
+            apiKey);
+    }
 }

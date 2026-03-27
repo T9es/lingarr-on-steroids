@@ -6,8 +6,11 @@ namespace Lingarr.Server.Models;
 public class RecurringJobStatus
 {
     public string Id { get; set; } = string.Empty;
+    public string DisplayNameKey { get; set; } = string.Empty;
     public string Cron { get; set; } = string.Empty;
     public string Queue { get; set; } = string.Empty;
+    public string? ScheduleSettingKey { get; set; }
+    public bool IsEditable { get; set; }
     
     public string JobMethod { get; set; } = string.Empty;
     

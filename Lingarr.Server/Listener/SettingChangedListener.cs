@@ -14,18 +14,16 @@ namespace Lingarr.Server.Listener;
 public class SettingChangedListener
 {
     private readonly IServiceProvider _serviceProvider;
+    private readonly IScheduleService _scheduleService;
     private readonly IHubContext<SettingUpdatesHub> _hubContext;
     private readonly ILogger<SettingChangedListener> _logger;
-    private static readonly HashSet<string> BatchServiceTypes = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "openai", "anthropic", "localai", "gemini", "deepseek", "chutes"
-    };
-
     public SettingChangedListener(IServiceProvider serviceProvider,
+        IScheduleService scheduleService,
         IHubContext<SettingUpdatesHub> hubContext,
         ILogger<SettingChangedListener> logger)
     {
         _serviceProvider = serviceProvider;
+        _scheduleService = scheduleService;
         _hubContext = hubContext;
         _logger = logger;
     }
@@ -162,21 +160,7 @@ public class SettingChangedListener
                 case "Automation":
                     _logger.LogInformation(
                         $"Settings changed for |Green|{jobName}|/Green|. Automation has been |Orange|modified|/Orange|.");
-                    if (settings[SettingKeys.Automation.AutomationEnabled] == "true")
-                    {
-                        var translationSchedule =
-                            await settingService.GetSetting(SettingKeys.Automation.TranslationSchedule);
-                        RecurringJob.RemoveIfExists(SettingKeys.Automation.TranslationSchedule);
-                        RecurringJob.AddOrUpdate<AutomatedTranslationJob>(
-                            "AutomatedTranslationJob",
-                            job => job.Execute(),
-                            translationSchedule);
-                    }
-                    else
-                    {
-                        RecurringJob.RemoveIfExists("AutomatedTranslationJob");
-                    }
-
+                    await _scheduleService.SyncAutomationJobAsync();
                     break;
             }
         }
@@ -212,33 +196,10 @@ public class SettingChangedListener
                     break;
 
                 case "Schedule":
-                    RecurringJob.AddOrUpdate<SyncMovieJob>(
-                        "SyncMovieJob",
-                        job => job.Execute(),
-                        settings[SettingKeys.Automation.MovieSchedule]);
-                    RecurringJob.AddOrUpdate<SyncShowJob>(
-                        "SyncShowJob",
-                        job => job.Execute(),
-                        settings[SettingKeys.Automation.ShowSchedule]);
+                    await _scheduleService.SyncIndexerJobsAsync();
                     break;
 
-                case "ServiceType":
-                    var serviceType = await settingService.GetSetting(SettingKeys.Translation.ServiceType);
-                    
-                    // If the selected service type is in the batch-capable list, we reset the batch setting to false.
-                    // This seems to be legacy logic to ensure a fresh state when switching providers.
-                    if (serviceType != null && BatchServiceTypes.Contains(serviceType))
-                    {
-                        await settingService.SetSetting(SettingKeys.Translation.UseBatchTranslation, "false");
-                        
-                        // Notify frontend of the change
-                        await _hubContext.Clients.Group("SettingUpdates").SendAsync("SettingUpdate", new
-                        {
-                            Key = SettingKeys.Translation.UseBatchTranslation,
-                            Value = "false"
-                        });
-                    }
-                    break;
+
 
                 case "BatchTranslation":
                     var useBatchTranslation = await settingService.GetSetting(SettingKeys.Translation.UseBatchTranslation);

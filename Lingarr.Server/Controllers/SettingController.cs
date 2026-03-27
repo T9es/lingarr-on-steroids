@@ -2,6 +2,8 @@
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Models;
 using Microsoft.AspNetCore.Mvc;
+using Lingarr.Core.Configuration;
+using System.Text.Json;
 
 namespace Lingarr.Server.Controllers;
 
@@ -57,6 +59,12 @@ public class SettingController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<bool>> SetSetting([FromBody] Setting setting)
     {
+        var validationError = ValidateSetting(setting.Key, setting.Value);
+        if (validationError != null)
+        {
+            return BadRequest(validationError);
+        }
+
         var value = await _settingService.SetSetting(setting.Key, setting.Value);
         if (value)
         {
@@ -75,6 +83,15 @@ public class SettingController : ControllerBase
     [HttpPost("multiple/set")]
     public async Task<ActionResult<bool>> SetSettings([FromBody] Dictionary<string, string> settings)
     {
+        foreach (var setting in settings)
+        {
+            var validationError = ValidateSetting(setting.Key, setting.Value);
+            if (validationError != null)
+            {
+                return BadRequest(validationError);
+            }
+        }
+
         var success = await _settingService.SetSettings(settings);
         if (success)
         {
@@ -82,6 +99,42 @@ public class SettingController : ControllerBase
         }
 
         return BadRequest("Some settings were not found or could not be updated.");
+    }
+
+    /// <summary>
+    /// Encrypts and stores a single sensitive setting value.
+    /// </summary>
+    /// <param name="setting">The setting object containing the key and plaintext value to encrypt and store.</param>
+    /// <returns>Returns an HTTP 200 OK response if the setting was successfully updated or created; otherwise, an HTTP 400 Bad Request response.</returns>
+    [HttpPost("encrypted")]
+    public async Task<ActionResult> SetEncryptedSetting([FromBody] Setting setting)
+    {
+        var validationError = ValidateSetting(setting.Key, setting.Value);
+        if (validationError != null)
+        {
+            return BadRequest(validationError);
+        }
+
+        var success = await _settingService.SetEncryptedSetting(setting.Key, setting.Value);
+        if (success)
+        {
+            return Ok();
+        }
+
+        return BadRequest("Setting not found or could not be updated.");
+    }
+
+    /// <summary>
+    /// Retrieves and decrypts multiple sensitive settings by their keys.
+    /// </summary>
+    /// <param name="keys">A list of encrypted setting keys to retrieve.</param>
+    /// <returns>Returns an HTTP 200 OK response with a dictionary of decrypted setting keys and values.</returns>
+    [HttpPost("multiple/encrypted/get")]
+    public async Task<ActionResult<Dictionary<string, string>>> GetEncryptedSettings(
+        [FromBody] IEnumerable<string> keys)
+    {
+        var settings = await _settingService.GetEncryptedSettings(keys);
+        return Ok(settings);
     }
     
     /// <summary>
@@ -179,4 +232,144 @@ public class SettingController : ControllerBase
             });
         return Ok(result);
     }
+    
+    /// <summary>
+    /// Tests the connection to a Radarr instance without mutating shared settings.
+    /// </summary>
+    /// <param name="request">The URL and API key to test.</param>
+    /// <returns>Returns the connection status and version information.</returns>
+    [HttpPost("test/radarr-instance")]
+    public async Task<ActionResult<IntegrationTestResult>> TestRadarrInstance([FromBody] TestInstanceRequest request)
+    {
+        var result = await _integrationService.TestConnection(request.Url, request.ApiKey);
+        return Ok(result);
+    }
+    
+    /// <summary>
+    /// Tests the connection to a Sonarr instance without mutating shared settings.
+    /// </summary>
+    /// <param name="request">The URL and API key to test.</param>
+    /// <returns>Returns the connection status and version information.</returns>
+    [HttpPost("test/sonarr-instance")]
+    public async Task<ActionResult<IntegrationTestResult>> TestSonarrInstance([FromBody] TestInstanceRequest request)
+    {
+        var result = await _integrationService.TestConnection(request.Url, request.ApiKey);
+        return Ok(result);
+    }
+    
+    /// <summary>
+    /// Cleans up duplicate movies/shows and consolidates all media to a single 'default' instance.
+    /// This fixes issues caused by the multi-instance migration where users ended up with duplicate
+    /// instance configurations pointing to the same Radarr/Sonarr server.
+    /// </summary>
+    /// <returns>Returns the result of the cleanup operation.</returns>
+    [HttpPost("cleanup/duplicates")]
+    public async Task<ActionResult<CleanupResult>> CleanupDuplicateInstances(
+        [FromServices] ICleanupService cleanupService)
+    {
+        var result = await cleanupService.CleanupDuplicateInstances();
+        if (result.Success)
+        {
+            return Ok(result);
+        }
+        return StatusCode(500, result);
+    }
+
+    /// <summary>
+    /// Returns whether duplicate cleanup should be offered to the user.
+    /// </summary>
+    [HttpGet("cleanup/duplicates/preflight")]
+    public async Task<ActionResult<CleanupPreviewResult>> GetCleanupDuplicatePreview(
+        [FromServices] ICleanupService cleanupService)
+    {
+        var result = await cleanupService.GetDuplicateCleanupPreview();
+        return Ok(result);
+    }
+
+    private static string? ValidateSetting(string key, string value)
+    {
+        if (key != SettingKeys.Integration.RadarrInstances &&
+            key != SettingKeys.Integration.SonarrInstances)
+        {
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        List<InstanceSetting>? instances;
+        try
+        {
+            instances = JsonSerializer.Deserialize<List<InstanceSetting>>(
+                value,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+        catch (JsonException)
+        {
+            return "Invalid instance configuration payload.";
+        }
+
+        instances ??= [];
+
+        var invalidInstance = instances.FirstOrDefault(i =>
+            string.IsNullOrWhiteSpace(i.Id) ||
+            string.IsNullOrWhiteSpace(i.Name) ||
+            string.IsNullOrWhiteSpace(i.Url) ||
+            string.IsNullOrWhiteSpace(i.ApiKey));
+        if (invalidInstance != null)
+        {
+            return "Every instance must define id, name, url, and apiKey.";
+        }
+
+        var duplicateIds = instances
+            .GroupBy(i => i.Id, StringComparer.Ordinal)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToList();
+        if (duplicateIds.Count != 0)
+        {
+            return $"Duplicate instance ids are not allowed: {string.Join(", ", duplicateIds)}.";
+        }
+
+        var duplicateUrls = instances
+            .GroupBy(i => NormalizeUrl(i.Url), StringComparer.Ordinal)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.First().Url)
+            .ToList();
+        if (duplicateUrls.Count != 0)
+        {
+            return $"Duplicate backend URLs are not allowed: {string.Join(", ", duplicateUrls)}.";
+        }
+
+        return null;
+    }
+
+    private static string NormalizeUrl(string url)
+    {
+        var trimmed = url.Trim();
+        if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var uri))
+        {
+            return trimmed.TrimEnd('/').ToLowerInvariant();
+        }
+
+        var builder = new UriBuilder(uri)
+        {
+            Scheme = uri.Scheme.ToLowerInvariant(),
+            Host = uri.Host.ToLowerInvariant(),
+            Query = string.Empty,
+            Fragment = string.Empty
+        };
+
+        var normalizedPath = builder.Path.TrimEnd('/');
+        builder.Path = string.IsNullOrEmpty(normalizedPath) ? "/" : normalizedPath;
+
+        return builder.Uri.GetLeftPart(UriPartial.Path).TrimEnd('/');
+    }
 }
+
+/// <summary>
+/// Request model for testing instance connection.
+/// </summary>
+public record TestInstanceRequest(string Url, string ApiKey);

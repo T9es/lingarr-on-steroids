@@ -1,4 +1,4 @@
-﻿using Lingarr.Core.Configuration;
+using Lingarr.Core.Configuration;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Lingarr.Core.Entities;
@@ -20,6 +20,9 @@ public class LingarrDbContext : DbContext
     public DbSet<DailyStatistics> DailyStatistics { get; set; }
     public DbSet<EmbeddedSubtitle> EmbeddedSubtitles { get; set; }
     public DbSet<SubtitleCleanupLog> SubtitleCleanupLogs { get; set; }
+    public DbSet<ApiUsageLog> ApiUsageLogs { get; set; }
+    public DbSet<ErrorLog> ErrorLogs { get; set; }
+    public DbSet<TestResult> TestResults { get; set; }
 
     public LingarrDbContext(DbContextOptions options) : base(options)
     {
@@ -63,6 +66,9 @@ public class LingarrDbContext : DbContext
         modelBuilder.ApplyConfiguration(new SeasonConfiguration());
         modelBuilder.ApplyConfiguration(new EpisodeConfiguration());
         modelBuilder.ApplyConfiguration(new ImageConfiguration());
+        modelBuilder.ApplyConfiguration(new TranslationRequestConfiguration());
+        modelBuilder.ApplyConfiguration(new TranslationRequestLogConfiguration());
+        modelBuilder.ApplyConfiguration(new EmbeddedSubtitleConfiguration());
 
         modelBuilder.Entity<TranslationRequest>(b =>
         {
@@ -77,7 +83,35 @@ public class LingarrDbContext : DbContext
                 .IsUnique()
                 .HasDatabaseName("ux_translation_requests_active_dedupe");
 
+            // CompletedAt index retained for historical queries
+            b.HasIndex(tr => tr.CompletedAt)
+                .HasDatabaseName("ix_translation_requests_completed_at");
+
             b.Property(tr => tr.IsActive).HasColumnName("is_active");
+        });
+
+        // DailyStatistics: unique index on Date to prevent race condition duplicates
+        modelBuilder.Entity<DailyStatistics>(b =>
+        {
+            b.HasIndex(d => d.Date)
+                .IsUnique()
+                .HasDatabaseName("ux_daily_statistics_date");
+        });
+
+        // ApiUsageLog: index on Timestamp for efficient queries, index on Service for filtering
+        modelBuilder.Entity<ApiUsageLog>(b =>
+        {
+            b.HasIndex(a => a.Timestamp)
+                .HasDatabaseName("ix_api_usage_logs_timestamp");
+            b.HasIndex(a => a.Service)
+                .HasDatabaseName("ix_api_usage_logs_service");
+        });
+
+        // ErrorLog: index on Timestamp for efficient queries
+        modelBuilder.Entity<ErrorLog>(b =>
+        {
+            b.HasIndex(e => e.Timestamp)
+                .HasDatabaseName("ix_error_logs_timestamp");
         });
     }
 

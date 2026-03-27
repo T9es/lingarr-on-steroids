@@ -1,4 +1,5 @@
 ﻿using Lingarr.Core.Entities;
+using Lingarr.Server.Models;
 using Lingarr.Server.Models.Batch.Response;
 using Lingarr.Server.Models.FileSystem;
 
@@ -7,7 +8,9 @@ namespace Lingarr.Server.Interfaces.Services;
 public interface IStatisticsService
 {
     Task<Statistics> GetStatistics();
-    Task<IEnumerable<DailyStatistics>> GetDailyStatistics(int days = 30);
+    Task<IEnumerable<DailyStatistics>> GetDailyStatistics(int? days = null);
+    Task<IEnumerable<HourlyStatistics>> GetHourlyStatistics(DateTime? date = null);
+    Task<FilteredStatistics> GetFilteredStatistics(DateTime? startDate, DateTime? endDate);
     Task<int> UpdateTranslationStatisticsFromSubtitles(
         TranslationRequest request,
         string serviceType,
@@ -16,4 +19,9 @@ public interface IStatisticsService
         TranslationRequest request, 
         string serviceType, 
         BatchTranslatedLine[] translatedLines);
+    
+    /// <summary>
+    /// Invalidates the statistics cache. Called after translation completion.
+    /// </summary>
+    void InvalidateCache();
 }

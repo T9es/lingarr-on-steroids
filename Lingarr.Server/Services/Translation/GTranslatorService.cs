@@ -1,5 +1,6 @@
-﻿using System.Net;
+using System.Net;
 using GTranslate.Translators;
+using Lingarr.Core.Configuration;
 using Lingarr.Server.Exceptions;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Services.Translation.Base;
@@ -9,6 +10,11 @@ namespace Lingarr.Server.Services.Translation;
 public class GTranslatorService<T> : BaseLanguageService where T : ITranslator
 {
     private readonly T _translator;
+    private bool _initialized;
+    private readonly SemaphoreSlim _initLock = new(1, 1);
+    private int _maxRetries;
+    private TimeSpan _retryDelay;
+    private int _retryDelayMultiplier;
 
     public GTranslatorService(
         T translator,
@@ -18,49 +24,90 @@ public class GTranslatorService<T> : BaseLanguageService where T : ITranslator
     {
         _translator = translator;
     }
+
+    private async Task InitializeAsync()
+    {
+        if (_initialized) return;
+
+        try
+        {
+            await _initLock.WaitAsync();
+            if (_initialized) return;
+
+            var settings = await _settings.GetSettings([
+                SettingKeys.Translation.MaxRetries,
+                SettingKeys.Translation.RetryDelay,
+                SettingKeys.Translation.RetryDelayMultiplier
+            ]);
+
+            _maxRetries = int.TryParse(settings[SettingKeys.Translation.MaxRetries], out var maxRetries)
+                ? maxRetries
+                : 5;
+            var retryDelaySeconds = int.TryParse(settings[SettingKeys.Translation.RetryDelay], out var delaySeconds)
+                ? delaySeconds
+                : 1;
+            _retryDelay = TimeSpan.FromSeconds(retryDelaySeconds);
+            _retryDelayMultiplier =
+                int.TryParse(settings[SettingKeys.Translation.RetryDelayMultiplier], out var multiplier)
+                    ? multiplier
+                    : 2;
+
+            _initialized = true;
+        }
+        finally
+        {
+            _initLock.Release();
+        }
+    }
     
     /// <inheritdoc />
     public override async Task<string> TranslateAsync(
-        string text, 
-        string sourceLanguage, 
+        string text,
+        string sourceLanguage,
         string targetLanguage,
-        List<string>? contextLinesBefore, 
-        List<string>? contextLinesAfter, 
+        List<string>? contextLinesBefore,
+        List<string>? contextLinesAfter,
         CancellationToken cancellationToken)
     {
+        await InitializeAsync();
+
         using var retry = new CancellationTokenSource();
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, retry.Token);
-        
-        const int maxRetries = 5;
-        var delay = TimeSpan.FromSeconds(1);
-        var maxDelay = TimeSpan.FromSeconds(32);
-        for (var attempt = 1; attempt <= maxRetries; attempt++)
+
+        var delay = _retryDelay;
+        for (var attempt = 1; attempt <= _maxRetries; attempt++)
         {
             try
             {
-                var result = await _translator.TranslateAsync(
-                    text, 
-                    targetLanguage, 
-                    sourceLanguage)
+                var result = await _translator.TranslateAsync(text, targetLanguage, sourceLanguage)
                     .WaitAsync(linked.Token)
                     .ConfigureAwait(false);
-                
+
                 return result.Translation;
             }
-            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
+            catch (HttpRequestException ex) when (
+                ex.StatusCode == HttpStatusCode.TooManyRequests ||
+                ex.StatusCode == HttpStatusCode.ServiceUnavailable)
             {
-                if (attempt == maxRetries)
+                if (attempt == _maxRetries)
                 {
-                    _logger.LogError(ex, "Too many requests. Max retries exhausted for text: {Text}", text);
-                    throw new TranslationException("Too many requests. Retry limit reached.", ex);
+                    _logger.LogError(
+                        ex,
+                        "Translator request failed with {StatusCode}. Max retries exhausted for text: {Text}",
+                        ex.StatusCode,
+                        text);
+                    throw new TranslationException("Retry limit reached.", ex);
                 }
 
                 _logger.LogWarning(
-                    "429 Too Many Requests. Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})",
-                    delay, attempt, maxRetries);
+                    "Translator request failed with {StatusCode}. Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})",
+                    ex.StatusCode,
+                    delay,
+                    attempt,
+                    _maxRetries);
 
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
-                delay = TimeSpan.FromTicks(Math.Min(delay.Ticks * 2, maxDelay.Ticks));
+                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {

@@ -4,7 +4,7 @@
             ref="excludeClickOutside"
             class="border-accent flex h-12 cursor-pointer items-center justify-between rounded-md border px-4 py-2"
             @click="toggleDropdown">
-            <span v-if="selectedItems.length === 0" class="text-gray-400">
+            <span v-if="selectedItems.length === 0" class="text-primary-content/50">
                 {{ translate('settings.translate.languageSelectPlaceholder') }}
             </span>
             <div v-else class="flex max-h-12 flex-wrap gap-2 overflow-auto">
@@ -20,27 +20,27 @@
             </div>
             <CaretRightIcon
                 :class="{ 'rotate-90': isOpen }"
-                class="arrow-right h-5 w-5 transition-transform duration-200" />
+                class="arrow-right text-secondary-content h-5 w-5 transition-transform duration-200" />
         </div>
         <ul
             v-show="isOpen"
             ref="clickOutside"
             class="border-accent bg-primary absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md border shadow-lg">
-            <li v-if="!options?.length" class="p-3">
+            <li v-if="!options?.length" class="text-primary-content p-3">
                 {{ translate('settings.translate.languageSelectTargetNotification') }}
             </li>
             <li v-else class="flex items-center">
                 <input
                     ref="searchInput"
                     v-model="searchTerm"
-                    class="border-accent relative w-full border-b bg-transparent p-2 outline-hidden"
+                    class="border-accent text-primary-content relative w-full border-b bg-transparent p-2 outline-hidden"
                     :placeholder="
                         translate('settings.translate.selectOrSearchLanguagePlaceholder')
                     " />
 
                 <span
                     v-if="searchTerm"
-                    class="absolute right-0 z-10 flex cursor-pointer items-center p-3"
+                    class="text-primary-content absolute right-0 z-10 flex cursor-pointer items-center p-3"
                     @click="searchTerm = ''">
                     <TimesIcon class="h-4 w-4" />
                 </span>
@@ -49,7 +49,7 @@
                 v-for="(language, index) in filteredLanguages"
                 :key="`${language.code}-${index}`"
                 :data-key="`${language.code}-${index}`"
-                class="cursor-pointer px-4 py-2"
+                class="text-primary-content hover:bg-accent/20 cursor-pointer px-4 py-2"
                 :class="{ 'bg-accent/20': isSelected(language) }"
                 @click="selectItem(language)">
                 {{ language.name }}

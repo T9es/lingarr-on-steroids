@@ -13,7 +13,7 @@ namespace Lingarr.Server.Services;
 
 public class SubtitleService : ISubtitleService
 {
-    private static readonly string[] SupportedExtensions = [".srt", ".ssa", ".ass"];
+    private static readonly string[] SupportedExtensions = [".srt", ".ssa", ".ass", ".vtt"];
     private static readonly string[] SupportedCaptions = ["sdh", "cc", "forced", "hi"];
     private static readonly char[] WhitespaceCharacters = [' ', '\t', '\n', '\r'];
 
@@ -107,6 +107,7 @@ public class SubtitleService : ISubtitleService
         {
             ".srt" => new SrtParser(),
             ".ssa" or ".ass" => new SsaParser(),
+            ".vtt" => new VttParser(),
             _ => throw new NotSupportedException($"Subtitle format {extension} is not supported")
         };
 
@@ -122,6 +123,7 @@ public class SubtitleService : ISubtitleService
         {
             ".srt" => new SrtWriter(),
             ".ssa" or ".ass" => new SsaWriter(),
+            ".vtt" => new VttWriter(),
             _ => throw new NotSupportedException($"Subtitle format {extension} is not supported")
         };
 
@@ -468,7 +470,7 @@ public class SubtitleService : ISubtitleService
             }
 
             var expectedPosition = 1;
-            SubtitleItem previousItem = null;
+            SubtitleItem? previousItem = null;
 
             foreach (var item in subtitles)
             {

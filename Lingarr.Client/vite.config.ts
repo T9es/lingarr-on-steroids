@@ -5,8 +5,9 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig(({ command, mode }) => {
     const isProduction = mode === 'production'
-    const env = loadEnv(mode, process.cwd(), "VITE_");
-    const baseServerURL = env.VITE_BASE_SERVER_URL || "Lingarr.Server:9876";
+    const env = loadEnv(mode, process.cwd(), 'VITE_')
+    const defaultServerURL = command === 'serve' ? 'localhost:9877' : 'Lingarr.Server:9876'
+    const baseServerURL = env.VITE_BASE_SERVER_URL || defaultServerURL
 
     return {
         esbuild: {

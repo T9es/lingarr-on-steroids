@@ -41,6 +41,28 @@ public interface ISettingService
     /// <param name="settings">A dictionary where the keys are setting keys and the values are the new values to assign.</param>
     /// <returns>A task that represents the asynchronous operation. The task result is <c>true</c> if all settings were successfully updated, <c>false</c> otherwise.</returns>
     Task<bool> SetSettings(Dictionary<string, string> settings);
+
+    /// <summary>
+    /// Asynchronously encrypts and updates the value of a sensitive setting.
+    /// </summary>
+    /// <param name="key">The key of the setting to update.</param>
+    /// <param name="value">The plaintext value to encrypt and store.</param>
+    /// <returns>A task that represents the asynchronous operation. The task result is <c>true</c> if the update was successful, <c>false</c> otherwise.</returns>
+    Task<bool> SetEncryptedSetting(string key, string value);
+
+    /// <summary>
+    /// Asynchronously retrieves and decrypts a sensitive setting value.
+    /// </summary>
+    /// <param name="key">The key of the setting to retrieve.</param>
+    /// <returns>A task that represents the asynchronous operation. The task result contains the decrypted setting value, or <c>null</c> if the key is not found.</returns>
+    Task<string?> GetEncryptedSetting(string key);
+
+    /// <summary>
+    /// Asynchronously retrieves and decrypts multiple sensitive setting values.
+    /// </summary>
+    /// <param name="keys">An enumerable collection of keys for the settings to retrieve.</param>
+    /// <returns>A task that represents the asynchronous operation. The task result contains a dictionary with decrypted values for each requested key.</returns>
+    Task<Dictionary<string, string>> GetEncryptedSettings(IEnumerable<string> keys);
     
     /// <summary>
     /// Retrieves a setting value as a JSON-deserialized list of objects.

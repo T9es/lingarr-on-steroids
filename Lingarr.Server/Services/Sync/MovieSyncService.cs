@@ -1,8 +1,9 @@
-﻿using Lingarr.Core.Data;
+using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Server.Interfaces.Services.Sync;
 using Lingarr.Server.Models.Integrations;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Lingarr.Server.Services.Sync;
 
@@ -24,31 +25,64 @@ public class MovieSyncService : IMovieSyncService
     }
 
     /// <inheritdoc />
-    public async Task SyncMovies(List<RadarrMovie> movies)
+    public async Task SyncMovies(List<(RadarrMovie Movie, string InstanceId)> movies)
     {
-        var processedCount = 0;
-        
-        foreach (var movie in movies)
+        var strategy = _dbContext.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async () =>
         {
-            await _movieSync.SyncMovie(movie);
-            processedCount++;
+            var processedCount = 0;
+            IDbContextTransaction? currentTransaction = null;
 
-            if (processedCount % BatchSize == 0)
+            try
             {
-                await SaveChanges(processedCount, movies.Count);
-            }
-        }
+                currentTransaction = await _dbContext.Database.BeginTransactionAsync();
 
-        if (processedCount % BatchSize != 0)
-        {
-            await SaveChanges(processedCount, movies.Count);
-        }
+                foreach (var (movie, instanceId) in movies)
+                {
+                    await _movieSync.SyncMovie(movie, instanceId);
+                    processedCount++;
+
+                    if (processedCount % BatchSize == 0)
+                    {
+                        await SaveChanges(processedCount, movies.Count);
+                        await currentTransaction.CommitAsync();
+                        await currentTransaction.DisposeAsync();
+                        currentTransaction = await _dbContext.Database.BeginTransactionAsync();
+                    }
+                }
+
+                if (processedCount % BatchSize != 0)
+                {
+                    await SaveChanges(processedCount, movies.Count);
+                }
+
+                await currentTransaction.CommitAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during movie sync. Rolling back transaction.");
+
+                if (currentTransaction != null)
+                {
+                    await currentTransaction.RollbackAsync();
+                }
+
+                throw;
+            }
+            finally
+            {
+                if (currentTransaction != null)
+                {
+                    await currentTransaction.DisposeAsync();
+                }
+            }
+        });
     }
 
     /// <inheritdoc />
-    public async Task<Movie?> SyncMovie(RadarrMovie movie)
+    public async Task<Movie?> SyncMovie(RadarrMovie movie, string instanceId)
     {
-        var movieEntity = await _movieSync.SyncMovie(movie);
+        var movieEntity = await _movieSync.SyncMovie(movie, instanceId);
         await _dbContext.SaveChangesAsync();
 
         if (movieEntity != null)
@@ -60,17 +94,19 @@ public class MovieSyncService : IMovieSyncService
     }
 
     /// <inheritdoc />
-    public async Task RemoveNonExistentMovies(IEnumerable<int> existingRadarrIds)
+    public async Task RemoveNonExistentMovies(IEnumerable<int> existingRadarrIds, string instanceId)
     {
         var moviesToRemove = await _dbContext.Movies
             .Include(m => m.Images)
             .Include(m => m.EmbeddedSubtitles)
+            .Where(movie => movie.SourceInstanceId == instanceId)
             .Where(movie => !existingRadarrIds.Contains(movie.RadarrId))
             .ToListAsync();
 
         if (moviesToRemove.Any())
         {
-            _logger.LogInformation("Removing {Count} movies that no longer exist in Radarr", moviesToRemove.Count);
+            _logger.LogInformation("Removing {Count} movies that no longer exist in Radarr instance '{InstanceId}'", 
+                moviesToRemove.Count, instanceId);
 
             // Bulk remove all images, embedded subtitles and movies
             var imagesToRemove = moviesToRemove.SelectMany(m => m.Images).ToList();

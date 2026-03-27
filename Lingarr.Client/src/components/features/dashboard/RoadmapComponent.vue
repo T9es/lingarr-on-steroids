@@ -44,7 +44,7 @@
                                 ? 'bg-green-500 text-green-100'
                                 : item.status === 'In Progress'
                                   ? 'bg-blue-500 text-blue-100'
-                                  : 'bg-gray-600 text-gray-100',
+                                  : 'bg-secondary-content/20 text-secondary-content/80',
                             item.fade ? 'brightness-50' : ''
                         ]">
                         {{ item.status }}

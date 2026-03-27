@@ -1,4 +1,5 @@
-﻿using System.Net.Http.Headers;
+using System.Net;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using Lingarr.Core.Configuration;
@@ -17,6 +18,9 @@ public class LibreService : BaseLanguageService
     private string? _apiKey;
     private bool _initialized;
     private readonly SemaphoreSlim _initLock = new(1, 1);
+    private int _maxRetries;
+    private TimeSpan _retryDelay;
+    private int _retryDelayMultiplier;
 
     public LibreService(
         HttpClient httpClient,
@@ -43,11 +47,27 @@ public class LibreService : BaseLanguageService
 
             var settings = await _settings.GetSettings([
                 SettingKeys.Translation.LibreTranslate.Url,
-                SettingKeys.Translation.LibreTranslate.ApiKey
+                SettingKeys.Translation.LibreTranslate.ApiKey,
+                SettingKeys.Translation.MaxRetries,
+                SettingKeys.Translation.RetryDelay,
+                SettingKeys.Translation.RetryDelayMultiplier
             ]);
+
             _apiUrl = settings[SettingKeys.Translation.LibreTranslate.Url] ?? "http://libretranslate:5000";
             settings.TryGetValue(SettingKeys.Translation.LibreTranslate.ApiKey, out _apiKey);
             _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+            _maxRetries = int.TryParse(settings[SettingKeys.Translation.MaxRetries], out var maxRetries)
+                ? maxRetries
+                : 5;
+            var retryDelaySeconds = int.TryParse(settings[SettingKeys.Translation.RetryDelay], out var delaySeconds)
+                ? delaySeconds
+                : 1;
+            _retryDelay = TimeSpan.FromSeconds(retryDelaySeconds);
+            _retryDelayMultiplier =
+                int.TryParse(settings[SettingKeys.Translation.RetryDelayMultiplier], out var multiplier)
+                    ? multiplier
+                    : 2;
 
             _initialized = true;
         }
@@ -111,26 +131,74 @@ public class LibreService : BaseLanguageService
             throw new InvalidOperationException("LibreTranslate URL is not configured.");
         }
 
-        var content = new StringContent(JsonSerializer.Serialize(new
-        {
-            q = text,
-            source = sourceLanguage,
-            target = targetLanguage,
-            format = "text",
-            api_key = _apiKey
-        }), Encoding.UTF8, "application/json");
+        using var retry = new CancellationTokenSource();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, retry.Token);
 
-        content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
-
-        var response = await _httpClient.PostAsync($"{_apiUrl}/translate", content, cancellationToken);
-        if (!response.IsSuccessStatusCode)
+        var delay = _retryDelay;
+        for (var attempt = 1; attempt <= _maxRetries; attempt++)
         {
-            _logger.LogError("Response Status Code: {StatusCode}", response.StatusCode);
-            _logger.LogError("Response Content: {ResponseContent}", await response.Content.ReadAsStringAsync(cancellationToken));
-            throw new TranslationException("Translation using LibreTranslate failed.");
+            try
+            {
+                using var content = new StringContent(JsonSerializer.Serialize(new
+                {
+                    q = text,
+                    source = sourceLanguage,
+                    target = targetLanguage,
+                    format = "text",
+                    api_key = _apiKey
+                }), Encoding.UTF8, "application/json");
+
+                content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+
+                var response = await _httpClient.PostAsync($"{_apiUrl}/translate", content, linked.Token);
+                if (!response.IsSuccessStatusCode)
+                {
+                    if (response.StatusCode == HttpStatusCode.TooManyRequests)
+                    {
+                        throw new HttpRequestException("LibreTranslate rate limit exceeded", null, HttpStatusCode.TooManyRequests);
+                    }
+
+                    if (response.StatusCode == HttpStatusCode.ServiceUnavailable)
+                    {
+                        throw new HttpRequestException("LibreTranslate temporarily unavailable", null, HttpStatusCode.ServiceUnavailable);
+                    }
+
+                    _logger.LogError("Response Status Code: {StatusCode}", response.StatusCode);
+                    _logger.LogError(
+                        "Response Content: {ResponseContent}",
+                        await response.Content.ReadAsStringAsync(linked.Token));
+                    throw new TranslationException("Translation using LibreTranslate failed.");
+                }
+
+                var result = await response.Content.ReadFromJsonAsync<TranslationResponse>(linked.Token);
+                return result?.TranslatedText ?? string.Empty;
+            }
+            catch (HttpRequestException ex) when (
+                ex.StatusCode == HttpStatusCode.TooManyRequests ||
+                ex.StatusCode == HttpStatusCode.ServiceUnavailable)
+            {
+                if (attempt == _maxRetries)
+                {
+                    _logger.LogError(
+                        ex,
+                        "LibreTranslate retry limit reached after {Attempts} attempts for text: {Text}",
+                        _maxRetries,
+                        text);
+                    throw new TranslationException("LibreTranslate retry limit reached.", ex);
+                }
+
+                _logger.LogWarning(
+                    "LibreTranslate returned {StatusCode}. Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})",
+                    ex.StatusCode,
+                    delay,
+                    attempt,
+                    _maxRetries);
+
+                await Task.Delay(delay, linked.Token).ConfigureAwait(false);
+                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+            }
         }
 
-        var result = await response.Content.ReadFromJsonAsync<TranslationResponse>();
-        return result?.TranslatedText ?? string.Empty;
+        throw new TranslationException("Translation failed after maximum retry attempts.");
     }
 }

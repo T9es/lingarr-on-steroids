@@ -1,5 +1,7 @@
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
+using Lingarr.Core.Enum;
+using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Models.Api;
 using Microsoft.AspNetCore.Mvc;
@@ -13,15 +15,18 @@ public class SubtitleExtractionController : ControllerBase
 {
     private readonly LingarrDbContext _dbContext;
     private readonly ISubtitleExtractionService _extractionService;
+    private readonly IMediaStateService _mediaStateService;
     private readonly ILogger<SubtitleExtractionController> _logger;
 
     public SubtitleExtractionController(
         LingarrDbContext dbContext,
         ISubtitleExtractionService extractionService,
+        IMediaStateService mediaStateService,
         ILogger<SubtitleExtractionController> logger)
     {
         _dbContext = dbContext;
         _extractionService = extractionService;
+        _mediaStateService = mediaStateService;
         _logger = logger;
     }
 
@@ -48,6 +53,8 @@ public class SubtitleExtractionController : ControllerBase
             await _extractionService.SyncEmbeddedSubtitles(movie);
             await _dbContext.Entry(movie).Collection(m => m.EmbeddedSubtitles!).LoadAsync();
         }
+
+        await NormalizeStaleExtractedSubtitlesAsync(movie.EmbeddedSubtitles);
 
         var response = (movie.EmbeddedSubtitles ?? new List<EmbeddedSubtitle>())
             .Select(MapToResponse)
@@ -79,6 +86,8 @@ public class SubtitleExtractionController : ControllerBase
             await _extractionService.SyncEmbeddedSubtitles(episode);
             await _dbContext.Entry(episode).Collection(e => e.EmbeddedSubtitles!).LoadAsync();
         }
+
+        await NormalizeStaleExtractedSubtitlesAsync(episode.EmbeddedSubtitles);
 
         var response = (episode.EmbeddedSubtitles ?? new List<EmbeddedSubtitle>())
             .Select(MapToResponse)
@@ -212,6 +221,9 @@ public class SubtitleExtractionController : ControllerBase
         }
 
         await _extractionService.SyncEmbeddedSubtitles(movie);
+        movie.IndexedAt = DateTime.UtcNow;
+        
+        await _mediaStateService.UpdateStateAsync(movie, MediaType.Movie);
         
         var embeddedSubs = await _dbContext.EmbeddedSubtitles
             .Where(e => e.MovieId == id)
@@ -233,6 +245,9 @@ public class SubtitleExtractionController : ControllerBase
         }
 
         await _extractionService.SyncEmbeddedSubtitles(episode);
+        episode.IndexedAt = DateTime.UtcNow;
+        
+        await _mediaStateService.UpdateStateAsync(episode, MediaType.Episode);
         
         var embeddedSubs = await _dbContext.EmbeddedSubtitles
             .Where(e => e.EpisodeId == id)
@@ -292,6 +307,33 @@ public class SubtitleExtractionController : ControllerBase
                 Error = $"Extraction failed: {ex.Message}"
             });
         }
+    }
+
+    private async Task NormalizeStaleExtractedSubtitlesAsync(List<EmbeddedSubtitle>? subtitles)
+    {
+        if (subtitles == null || subtitles.Count == 0)
+        {
+            return;
+        }
+
+        var staleSubtitles = subtitles
+            .Where(sub => sub.IsExtracted &&
+                          !string.IsNullOrEmpty(sub.ExtractedPath) &&
+                          !System.IO.File.Exists(sub.ExtractedPath))
+            .ToList();
+
+        if (staleSubtitles.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var staleSubtitle in staleSubtitles)
+        {
+            staleSubtitle.IsExtracted = false;
+            staleSubtitle.ExtractedPath = null;
+        }
+
+        await _dbContext.SaveChangesAsync();
     }
 
     private static EmbeddedSubtitleResponse MapToResponse(EmbeddedSubtitle entity) => new()

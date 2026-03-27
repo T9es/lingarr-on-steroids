@@ -1,8 +1,12 @@
-﻿using Lingarr.Core.Data;
+using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
+using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Sync;
+using Lingarr.Server.Models;
 using Lingarr.Server.Models.Integrations;
+using Lingarr.Server.Models.Sync;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Lingarr.Server.Services.Sync;
 
@@ -14,6 +18,7 @@ public class ShowSyncService : IShowSyncService
     private readonly IShowSync _showSync;
     private readonly ISeasonSync _seasonSync;
     private readonly IEpisodeSync _episodeSync;
+    private readonly IInstanceConfigService _instanceConfigService;
     private readonly ILogger<ShowSyncService> _logger;
 
     public ShowSyncService(
@@ -21,53 +26,113 @@ public class ShowSyncService : IShowSyncService
         IShowSync showSync,
         ISeasonSync seasonSync,
         IEpisodeSync episodeSync,
+        IInstanceConfigService instanceConfigService,
         ILogger<ShowSyncService> logger)
     {
         _dbContext = dbContext;
         _showSync = showSync;
         _seasonSync = seasonSync;
         _episodeSync = episodeSync;
+        _instanceConfigService = instanceConfigService;
         _logger = logger;
     }
 
     /// <inheritdoc />
-    public async Task SyncShows(List<SonarrShow> shows)
+    public async Task SyncShows(List<(SonarrShow Show, string InstanceId)> shows)
     {
-        var processedCount = 0;
+        var uniqueInstanceIds = shows.Select(s => s.InstanceId).Distinct().ToList();
+        var instanceConfigs = new Dictionary<string, InstanceConfig>();
         
-        foreach (var show in shows)
+        foreach (var instanceId in uniqueInstanceIds)
         {
-            var showEntity = await _showSync.SyncShow(show);
-
-            foreach (var season in show.Seasons)
+            var config = await _instanceConfigService.GetSonarrConfig(instanceId);
+            if (config != null)
             {
-                var seasonEntity = await _seasonSync.SyncSeason(showEntity, show, season);
-                await _episodeSync.SyncEpisodes(show, seasonEntity);
-            }
-            
-            processedCount++;
-
-            if (processedCount % BatchSize == 0)
-            {
-                await SaveChanges(processedCount, shows.Count);
+                instanceConfigs[instanceId] = config;
             }
         }
 
-        if (processedCount % BatchSize != 0)
+        var strategy = _dbContext.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async () =>
         {
-            await SaveChanges(processedCount, shows.Count);
-        }
+            var processedCount = 0;
+            IDbContextTransaction? currentTransaction = null;
+
+            try
+            {
+                currentTransaction = await _dbContext.Database.BeginTransactionAsync();
+
+                foreach (var (show, instanceId) in shows)
+                {
+                    if (!instanceConfigs.TryGetValue(instanceId, out var config))
+                    {
+                        _logger.LogWarning("Could not find Sonarr instance config for {InstanceId}, skipping", instanceId);
+                        continue;
+                    }
+
+                    var showEntity = await _showSync.SyncShow(show, instanceId);
+
+                    foreach (var season in show.Seasons)
+                    {
+                        var seasonEntity = await _seasonSync.SyncSeason(showEntity, show, season, config.Url, config.ApiKey);
+                        await _episodeSync.SyncEpisodes(show, seasonEntity, instanceId, config.Url, config.ApiKey);
+                    }
+
+                    processedCount++;
+
+                    if (processedCount % BatchSize == 0)
+                    {
+                        await SaveChanges(processedCount, shows.Count);
+                        await currentTransaction.CommitAsync();
+                        await currentTransaction.DisposeAsync();
+                        currentTransaction = await _dbContext.Database.BeginTransactionAsync();
+                    }
+                }
+
+                if (processedCount % BatchSize != 0)
+                {
+                    await SaveChanges(processedCount, shows.Count);
+                }
+
+                await currentTransaction.CommitAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during show sync. Rolling back transaction.");
+
+                if (currentTransaction != null)
+                {
+                    await currentTransaction.RollbackAsync();
+                }
+
+                throw;
+            }
+            finally
+            {
+                if (currentTransaction != null)
+                {
+                    await currentTransaction.DisposeAsync();
+                }
+            }
+        });
     }
 
     /// <inheritdoc />
-    public async Task<Show> SyncShow(SonarrShow show)
+    public async Task<Show?> SyncShow(SonarrShow show, string instanceId)
     {
-        var showEntity = await _showSync.SyncShow(show);
+        var config = await _instanceConfigService.GetSonarrConfig(instanceId);
+        if (config == null)
+        {
+            _logger.LogWarning("Could not find Sonarr instance config for {InstanceId}", instanceId);
+            return null;
+        }
+        
+        var showEntity = await _showSync.SyncShow(show, instanceId);
 
         foreach (var season in show.Seasons)
         {
-            var seasonEntity = await _seasonSync.SyncSeason(showEntity, show, season);
-            await _episodeSync.SyncEpisodes(show, seasonEntity);
+            var seasonEntity = await _seasonSync.SyncSeason(showEntity, show, season, config.Url, config.ApiKey);
+            await _episodeSync.SyncEpisodes(show, seasonEntity, instanceId, config.Url, config.ApiKey);
         }
 
         await _dbContext.SaveChangesAsync();
@@ -77,19 +142,58 @@ public class ShowSyncService : IShowSyncService
     }
 
     /// <inheritdoc />
-    public async Task RemoveNonExistentShows(HashSet<int> existingSonarrIds)
+    public async Task<EpisodeRefreshResult?> SyncEpisode(SonarrEpisode episode, string instanceId)
+    {
+        var config = await _instanceConfigService.GetSonarrConfig(instanceId);
+        if (config == null)
+        {
+            _logger.LogWarning("Could not find Sonarr instance config for {InstanceId}", instanceId);
+            return null;
+        }
+
+        if (episode.Show == null)
+        {
+            _logger.LogWarning("Cannot sync Sonarr episode {EpisodeId} without series payload", episode.Id);
+            return null;
+        }
+
+        var showEntity = await _showSync.SyncShow(episode.Show, instanceId);
+        var seasonEntity = await _seasonSync.SyncSeasonForEpisode(
+            showEntity,
+            episode.Show,
+            episode,
+            config.Url,
+            config.ApiKey);
+        var result = await _episodeSync.SyncEpisode(
+            episode.Show,
+            episode,
+            seasonEntity,
+            instanceId,
+            config.Url,
+            config.ApiKey);
+
+        await _dbContext.SaveChangesAsync();
+        _logger.LogInformation("Synced targeted episode {EpisodeId} for show {ShowTitle}", episode.Id, episode.Show.Title);
+
+        return result;
+    }
+
+    /// <inheritdoc />
+    public async Task RemoveNonExistentShows(IEnumerable<int> existingSonarrIds, string instanceId)
     {
         var showsToDelete = await _dbContext.Shows
             .Include(s => s.Images)
             .Include(s => s.Seasons)
                 .ThenInclude(s => s.Episodes)
                     .ThenInclude(e => e.EmbeddedSubtitles)
+            .Where(s => s.SourceInstanceId == instanceId)
             .Where(s => !existingSonarrIds.Contains(s.SonarrId))
             .ToListAsync();
 
         if (showsToDelete.Any())
         {
-            _logger.LogInformation("Removing {Count} shows that no longer exist in Sonarr", showsToDelete.Count);
+            _logger.LogInformation("Removing {Count} shows that no longer exist in Sonarr instance '{InstanceId}'", 
+                showsToDelete.Count, instanceId);
 
             var episodes = showsToDelete.SelectMany(s => s.Seasons.SelectMany(season => season.Episodes)).ToList();
             var embeddedSubtitles = episodes.SelectMany(e => e.EmbeddedSubtitles).ToList();
@@ -118,4 +222,5 @@ public class ShowSyncService : IShowSyncService
         _logger.LogInformation("Synced and saved {ProcessedCount} out of {TotalCount} shows", 
             processedCount, totalCount);
     }
+
 }

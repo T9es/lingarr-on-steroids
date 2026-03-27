@@ -7,6 +7,7 @@ public class MovieResponse
 {
     public int Id { get; set; }
     public required int RadarrId { get; set; }
+    public string? SourceInstanceId { get; set; }
     public required string Title { get; set; }
     public required string FileName { get; set; }
     public required string Path { get; set; }

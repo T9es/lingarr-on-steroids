@@ -16,6 +16,8 @@
                     @save="saveNotification?.show()" />
 
                 <ChutesUsageCard v-if="serviceType === SERVICE_TYPE.CHUTES" />
+
+                <TokenUsageCard v-if="tokenUsageService" :service="tokenUsageService" />
             </div>
 
             <SourceAndTarget @save="saveNotification?.show()" />
@@ -41,6 +43,7 @@ import DeepSeekConfig from '@/components/features/settings/services/DeepSeekConf
 import SourceAndTarget from '@/components/features/settings/SourceAndTarget.vue'
 import ChutesConfig from '@/components/features/settings/services/ChutesConfig.vue'
 import ChutesUsageCard from '@/components/features/settings/ChutesUsageCard.vue'
+import TokenUsageCard from '@/components/features/settings/TokenUsageCard.vue'
 
 const saveNotification = ref<InstanceType<typeof SaveNotification> | null>(null)
 const settingsStore = useSettingStore()
@@ -94,5 +97,40 @@ const serviceConfigComponent = computed(() => {
         default:
             return null
     }
+})
+
+const tokenLimitServices = [
+    SERVICE_TYPE.OPENAI,
+    SERVICE_TYPE.ANTHROPIC,
+    SERVICE_TYPE.GEMINI,
+    SERVICE_TYPE.DEEPSEEK
+] as const
+
+type TokenUsageService = (typeof tokenLimitServices)[number] | typeof SERVICE_TYPE.LOCALAI
+
+const showTokenUsageCard = computed(() => {
+    if (tokenLimitServices.includes(serviceType.value as (typeof tokenLimitServices)[number])) {
+        return true
+    }
+    if (serviceType.value === SERVICE_TYPE.LOCALAI) {
+        return settingsStore.getSetting('localai_token_limit_enabled') === 'true'
+    }
+    return false
+})
+
+const tokenUsageService = computed<TokenUsageService | null>(() => {
+    if (!showTokenUsageCard.value) {
+        return null
+    }
+
+    if (serviceType.value === SERVICE_TYPE.LOCALAI) {
+        return SERVICE_TYPE.LOCALAI
+    }
+
+    if (tokenLimitServices.includes(serviceType.value as (typeof tokenLimitServices)[number])) {
+        return serviceType.value as (typeof tokenLimitServices)[number]
+    }
+
+    return null
 })
 </script>

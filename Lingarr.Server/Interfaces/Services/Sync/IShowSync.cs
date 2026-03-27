@@ -9,6 +9,7 @@ public interface IShowSync
     /// Synchronizes a single show from Sonarr
     /// </summary>
     /// <param name="show">The Sonarr show to sync</param>
+    /// <param name="instanceId">The ID of the Sonarr instance this show belongs to</param>
     /// <returns>The synchronized show entity</returns>
-    Task<Show> SyncShow(SonarrShow show);
+    Task<Show> SyncShow(SonarrShow show, string instanceId);
 }

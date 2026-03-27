@@ -17,6 +17,60 @@ namespace Lingarr.Migrations.SQLite.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.11");
 
+            modelBuilder.Entity("Lingarr.Core.Entities.ApiUsageLog", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("id");
+
+                    b.Property<int?>("CompletionTokens")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("completion_tokens");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("error_message");
+
+                    b.Property<int?>("PromptTokens")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("prompt_tokens");
+
+                    b.Property<long>("ResponseTimeMs")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("response_time_ms");
+
+                    b.Property<string>("Service")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("service");
+
+                    b.Property<bool>("Success")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("success");
+
+                    b.Property<DateTime>("Timestamp")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("timestamp");
+
+                    b.Property<int?>("TokensUsed")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("tokens_used");
+
+                    b.HasKey("Id")
+                        .HasName("pk_api_usage_logs");
+
+                    b.HasIndex("Service")
+                        .HasDatabaseName("ix_api_usage_logs_service");
+
+                    b.HasIndex("Timestamp")
+                        .HasDatabaseName("ix_api_usage_logs_timestamp");
+
+                    b.ToTable("api_usage_logs", (string)null);
+                });
+
             modelBuilder.Entity("Lingarr.Core.Entities.DailyStatistics", b =>
                 {
                     b.Property<int>("Id")
@@ -42,6 +96,10 @@ namespace Lingarr.Migrations.SQLite.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_daily_statistics");
+
+                    b.HasIndex("Date")
+                        .IsUnique()
+                        .HasDatabaseName("ux_daily_statistics_date");
 
                     b.ToTable("daily_statistics", (string)null);
                 });
@@ -110,10 +168,22 @@ namespace Lingarr.Migrations.SQLite.Migrations
                         .HasName("pk_embedded_subtitles");
 
                     b.HasIndex("EpisodeId")
-                        .HasDatabaseName("ix_embedded_subtitles_episode_id");
+                        .HasDatabaseName("IX_EmbeddedSubtitles_EpisodeId");
+
+                    b.HasIndex("IsExtracted")
+                        .HasDatabaseName("IX_EmbeddedSubtitles_IsExtracted");
+
+                    b.HasIndex("Language")
+                        .HasDatabaseName("IX_EmbeddedSubtitles_Language");
 
                     b.HasIndex("MovieId")
-                        .HasDatabaseName("ix_embedded_subtitles_movie_id");
+                        .HasDatabaseName("IX_EmbeddedSubtitles_MovieId");
+
+                    b.HasIndex("EpisodeId", "IsExtracted")
+                        .HasDatabaseName("IX_EmbeddedSubtitles_EpisodeId_IsExtracted");
+
+                    b.HasIndex("MovieId", "IsExtracted")
+                        .HasDatabaseName("IX_EmbeddedSubtitles_MovieId_IsExtracted");
 
                     b.ToTable("embedded_subtitles", (string)null);
                 });
@@ -169,6 +239,11 @@ namespace Lingarr.Migrations.SQLite.Migrations
                         .HasColumnType("INTEGER")
                         .HasColumnName("sonarr_id");
 
+                    b.Property<string>("SourceInstanceId")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("source_instance_id");
+
                     b.Property<int>("StateSettingsVersion")
                         .HasColumnType("INTEGER")
                         .HasColumnName("state_settings_version");
@@ -195,7 +270,52 @@ namespace Lingarr.Migrations.SQLite.Migrations
                     b.HasIndex("TranslationState")
                         .HasDatabaseName("IX_Episodes_TranslationState");
 
+                    b.HasIndex("SourceInstanceId", "SonarrId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Episodes_SourceInstanceId_SonarrId");
+
                     b.ToTable("episodes", (string)null);
+                });
+
+            modelBuilder.Entity("Lingarr.Core.Entities.ErrorLog", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Details")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("details");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("message");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("source");
+
+                    b.Property<string>("StackTrace")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("stack_trace");
+
+                    b.Property<DateTime>("Timestamp")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("timestamp");
+
+                    b.HasKey("Id")
+                        .HasName("pk_error_logs");
+
+                    b.HasIndex("Timestamp")
+                        .HasDatabaseName("ix_error_logs_timestamp");
+
+                    b.ToTable("error_logs", (string)null);
                 });
 
             modelBuilder.Entity("Lingarr.Core.Entities.Image", b =>
@@ -286,6 +406,10 @@ namespace Lingarr.Migrations.SQLite.Migrations
                         .HasColumnType("INTEGER")
                         .HasColumnName("radarr_id");
 
+                    b.Property<string>("SourceInstanceId")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("source_instance_id");
+
                     b.Property<int>("StateSettingsVersion")
                         .HasColumnType("INTEGER")
                         .HasColumnName("state_settings_version");
@@ -312,6 +436,10 @@ namespace Lingarr.Migrations.SQLite.Migrations
 
                     b.HasIndex("TranslationState")
                         .HasDatabaseName("IX_Movies_TranslationState");
+
+                    b.HasIndex("SourceInstanceId", "RadarrId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Movies_SourceInstanceId_RadarrId");
 
                     b.ToTable("movies", (string)null);
                 });
@@ -385,8 +513,11 @@ namespace Lingarr.Migrations.SQLite.Migrations
                     b.HasKey("Id")
                         .HasName("pk_seasons");
 
+                    b.HasIndex("SeasonNumber")
+                        .HasDatabaseName("IX_Seasons_SeasonNumber");
+
                     b.HasIndex("ShowId")
-                        .HasDatabaseName("ix_seasons_show_id");
+                        .HasDatabaseName("IX_Seasons_ShowId");
 
                     b.ToTable("seasons", (string)null);
                 });
@@ -445,6 +576,10 @@ namespace Lingarr.Migrations.SQLite.Migrations
                         .HasColumnType("INTEGER")
                         .HasColumnName("sonarr_id");
 
+                    b.Property<string>("SourceInstanceId")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("source_instance_id");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasColumnType("TEXT")
@@ -460,6 +595,10 @@ namespace Lingarr.Migrations.SQLite.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_shows");
+
+                    b.HasIndex("SourceInstanceId", "SonarrId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Shows_SourceInstanceId_SonarrId");
 
                     b.ToTable("shows", (string)null);
                 });
@@ -561,6 +700,103 @@ namespace Lingarr.Migrations.SQLite.Migrations
                     b.ToTable("subtitle_cleanup_logs", (string)null);
                 });
 
+            modelBuilder.Entity("Lingarr.Core.Entities.TestResult", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ApiCallsJson")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("api_calls_json");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("created_at");
+
+                    b.Property<double>("DurationSeconds")
+                        .HasColumnType("REAL")
+                        .HasColumnName("duration_seconds");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("error_message");
+
+                    b.Property<int>("FailedLines")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("failed_lines");
+
+                    b.Property<string>("LineResultsJson")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("line_results_json");
+
+                    b.Property<string>("PosterPath")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("poster_path");
+
+                    b.Property<string>("PreviewJson")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("preview_json");
+
+                    b.Property<string>("SourceLanguage")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnName("source_language");
+
+                    b.Property<string>("SubtitlePath")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnName("subtitle_path");
+
+                    b.Property<bool>("Success")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("success");
+
+                    b.Property<string>("TargetLanguage")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnName("target_language");
+
+                    b.Property<string>("TimingJson")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("timing_json");
+
+                    b.Property<string>("Title")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("title");
+
+                    b.Property<int?>("TokenUsageCompletion")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("token_usage_completion");
+
+                    b.Property<int?>("TokenUsagePrompt")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("token_usage_prompt");
+
+                    b.Property<int>("TotalLines")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("total_lines");
+
+                    b.Property<int>("TranslatedLines")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("translated_lines");
+
+                    b.Property<string>("TranslationService")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnName("translation_service");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_test_results");
+
+                    b.ToTable("test_results", (string)null);
+                });
+
             modelBuilder.Entity("Lingarr.Core.Entities.TranslationRequest", b =>
                 {
                     b.Property<int>("Id")
@@ -575,6 +811,10 @@ namespace Lingarr.Migrations.SQLite.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT")
                         .HasColumnName("created_at");
+
+                    b.Property<DateTime?>("FailedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("failed_at");
 
                     b.Property<bool?>("IsActive")
                         .HasColumnType("INTEGER")
@@ -600,9 +840,17 @@ namespace Lingarr.Migrations.SQLite.Migrations
                         .HasColumnType("INTEGER")
                         .HasColumnName("media_type");
 
+                    b.Property<DateTime?>("NextRetryAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("next_retry_at");
+
                     b.Property<int>("Progress")
                         .HasColumnType("INTEGER")
                         .HasColumnName("progress");
+
+                    b.Property<int>("RetryCount")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("retry_count");
 
                     b.Property<string>("SelectedStreamTitle")
                         .HasColumnType("TEXT")
@@ -654,6 +902,24 @@ namespace Lingarr.Migrations.SQLite.Migrations
                     b.HasKey("Id")
                         .HasName("pk_translation_requests");
 
+                    b.HasIndex("CompletedAt")
+                        .HasDatabaseName("ix_translation_requests_completed_at");
+
+                    b.HasIndex("FailedAt")
+                        .HasDatabaseName("IX_TranslationRequests_FailedAt");
+
+                    b.HasIndex("IsPriority")
+                        .HasDatabaseName("IX_TranslationRequests_IsPriority");
+
+                    b.HasIndex("NextRetryAt")
+                        .HasDatabaseName("IX_TranslationRequests_NextRetryAt");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("IX_TranslationRequests_Status");
+
+                    b.HasIndex("Status", "IsPriority", "CreatedAt")
+                        .HasDatabaseName("IX_TranslationRequests_Status_Priority_Created");
+
                     b.HasIndex("MediaId", "MediaType", "SourceLanguage", "TargetLanguage", "IsActive")
                         .IsUnique()
                         .HasDatabaseName("ux_translation_requests_active_dedupe");
@@ -697,8 +963,11 @@ namespace Lingarr.Migrations.SQLite.Migrations
                     b.HasKey("Id")
                         .HasName("pk_translation_request_logs");
 
+                    b.HasIndex("Level")
+                        .HasDatabaseName("IX_TranslationRequestLog_Level");
+
                     b.HasIndex("TranslationRequestId")
-                        .HasDatabaseName("ix_translation_request_logs_translation_request_id");
+                        .HasDatabaseName("IX_TranslationRequestLog_TranslationRequestId");
 
                     b.ToTable("translation_request_logs", (string)null);
                 });

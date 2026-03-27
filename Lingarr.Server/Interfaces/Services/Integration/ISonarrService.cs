@@ -46,4 +46,44 @@ public interface ISonarrService
     /// with the path information of the episode, or <c>null</c> if the API call fails.
     /// </returns>
     Task<SonarrEpisodePath?> GetEpisodePath(int episodeNumber);
+
+    /// <summary>
+    /// Asynchronously retrieves a list of shows from a specific Sonarr instance.
+    /// Used for multi-instance support where URL/API key are provided directly.
+    /// </summary>
+    /// <param name="url">The Sonarr server URL</param>
+    /// <param name="apiKey">The Sonarr API key</param>
+    /// <returns>List of shows or null if the API call fails</returns>
+    Task<List<SonarrShow>?> GetShows(string url, string apiKey);
+
+    /// <summary>
+    /// Asynchronously retrieves a list of episodes for a specified series and season from a specific Sonarr instance.
+    /// Used for multi-instance support where URL/API key are provided directly.
+    /// </summary>
+    /// <param name="seriesNumber">The ID of the series for which episodes are to be retrieved.</param>
+    /// <param name="seasonNumber">The season number within the series for which episodes are to be retrieved.</param>
+    /// <param name="url">The Sonarr server URL</param>
+    /// <param name="apiKey">The Sonarr API key</param>
+    /// <returns>List of episodes or null if the API call fails</returns>
+    Task<List<SonarrEpisode>?> GetEpisodes(int seriesNumber, int seasonNumber, string url, string apiKey);
+
+    /// <summary>
+    /// Asynchronously retrieves an episode for a specified episode id from a specific Sonarr instance.
+    /// Used for multi-instance support where URL/API key are provided directly.
+    /// </summary>
+    /// <param name="episodeNumber">The ID of the episode for which the data are to be retrieved.</param>
+    /// <param name="url">The Sonarr server URL</param>
+    /// <param name="apiKey">The Sonarr API key</param>
+    /// <returns>The episode or null if the API call fails</returns>
+    Task<SonarrEpisode?> GetEpisode(int episodeNumber, string url, string apiKey);
+
+    /// <summary>
+    /// Asynchronously retrieves the path information for a specified episode from a specific Sonarr instance.
+    /// Used for multi-instance support where URL/API key are provided directly.
+    /// </summary>
+    /// <param name="episodeNumber">The ID of the episode for which the path information is to be retrieved.</param>
+    /// <param name="url">The Sonarr server URL</param>
+    /// <param name="apiKey">The Sonarr API key</param>
+    /// <returns>The episode path or null if the API call fails</returns>
+    Task<SonarrEpisodePath?> GetEpisodePath(int episodeNumber, string url, string apiKey);
 }

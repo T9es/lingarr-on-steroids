@@ -1,203 +1,214 @@
-﻿<template>
+<template>
     <SaveNotification ref="saveNotification" />
-    <CardComponent :title="translate('settings.integrations.radarrHeader')">
+
+    <!-- Media Servers Section -->
+    <CardComponent :title="translate('settings.integrations.title') || 'Media Servers'">
         <template #icon>
-            <RadarrIcon />
+            <div class="flex gap-2">
+                <RadarrIcon />
+                <SonarrIcon />
+            </div>
         </template>
         <template #description>
             {{ translate('settings.integrations.description') }}
         </template>
         <template #content>
-            <div class="flex flex-col space-y-2">
-                <InputComponent
-                    v-model="radarrUrl"
-                    validation-type="url"
-                    :label="translate('settings.integrations.radarrAddress')"
-                    :error-message="translate('settings.integrations.radarrAddressError')"
-                    @update:validation="(val) => (isValid.radarrUrl = val)" />
-                <InputComponent
-                    v-model="radarrApiKey"
-                    :min-length="32"
-                    :max-length="32"
-                    validation-type="string"
-                    type="password"
-                    :label="translate('settings.integrations.radarrApiKey')"
-                    :error-message="translate('settings.integrations.radarrApiKeyError')"
-                    @update:validation="(val) => (isValid.radarrApiKey = val)" />
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                <!-- All Instances -->
+                <InstanceCard
+                    v-for="item in localInstances"
+                    :key="`${item.type}-${item.instance.id}`"
+                    :instance="item.instance"
+                    :type="item.type"
+                    :connection-status="getConnectionStatus(item.type, item.instance.id)"
+                    @update:instance="
+                        (inst) => updateLocalInstance(item.instance.id, inst, item.type)
+                    "
+                    @remove="removeLocalInstance(item.instance.id, item.type)"
+                    @test-connection="testConnection(item.type, item.instance)" />
 
-                <!-- Connection Status -->
-                <div class="flex items-center gap-3 pt-2">
+                <!-- Single Add Button with Dropdown -->
+                <AddInstanceButton v-if="localInstances.length < 10" @add="handleAddInstance" />
+            </div>
+
+            <!-- Save/Discard Button Bar -->
+            <div
+                v-if="hasChanges"
+                class="border-secondary-content/20 mt-6 flex items-center justify-end gap-3 border-t pt-4">
+                <span class="text-secondary-content text-sm">
+                    {{ translate('common.unsavedChanges') || 'You have unsaved changes' }}
+                </span>
+                <button
+                    @click="discardChanges"
+                    class="text-secondary-content hover:bg-secondary-content/10 border-secondary-content/30 rounded-md border px-4 py-2 text-sm transition-colors">
+                    {{ translate('common.discard') || 'Discard' }}
+                </button>
+                <button
+                    @click="saveChanges"
+                    :disabled="isSaving"
+                    class="bg-accent text-primary-content hover:bg-accent/80 rounded-md px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50">
+                    {{
+                        isSaving
+                            ? translate('common.saving') || 'Saving...'
+                            : translate('common.saveChanges') || 'Save Changes'
+                    }}
+                </button>
+            </div>
+            <div
+                v-if="saveError"
+                class="mt-3 rounded-md border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+                {{ saveError }}
+            </div>
+
+            <div
+                v-translate="'settings.integrations.reindexTask'"
+                class="text-secondary-content pt-4 text-sm" />
+
+            <div class="border-secondary-content/20 mt-6 border-t pt-4">
+                <h4 class="text-primary-content text-sm font-medium">
+                    {{ translate('settings.integrations.webhookTitle') || 'Webhook Setup' }}
+                </h4>
+                <p class="text-secondary-content mt-1 text-xs">
+                    {{
+                        translate('settings.integrations.webhookDescription') ||
+                        'Add a webhook in the Connect/Webhook settings in Radarr or Sonarr and use the matching URL below. Each instance must use its own URL.'
+                    }}
+                </p>
+                <p v-if="hasChanges" class="text-accent mt-2 text-xs">
+                    {{
+                        translate('settings.integrations.webhookSaveFirst') ||
+                        'Save your changes before using these webhook URLs.'
+                    }}
+                </p>
+
+                <div
+                    v-if="webhookInstances.length > 0"
+                    class="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-2">
+                    <div
+                        v-for="item in webhookInstances"
+                        :key="item.key"
+                        class="border-secondary-content/20 bg-tertiary/40 rounded-md border p-3">
+                        <div class="flex items-center justify-between gap-3">
+                            <div>
+                                <p class="text-primary-content text-sm font-medium">
+                                    {{ item.name }}
+                                </p>
+                                <p class="text-secondary-content text-xs">
+                                    {{ item.typeLabel }}
+                                </p>
+                            </div>
+                            <span
+                                class="border-secondary-content/30 text-secondary-content rounded-full border px-2 py-0.5 text-[11px]">
+                                {{ item.instanceId }}
+                            </span>
+                        </div>
+                        <code
+                            class="bg-primary/60 text-primary-content mt-3 block overflow-x-auto rounded-md px-3 py-2 text-xs leading-5 break-all">
+                            {{ item.url }}
+                        </code>
+                    </div>
+                </div>
+
+                <p v-else class="text-secondary-content mt-3 text-xs">
+                    {{
+                        translate('settings.integrations.webhookEmpty') ||
+                        'Add and save an instance with a valid URL and API key to generate its webhook URL.'
+                    }}
+                </p>
+            </div>
+
+            <!-- Cleanup Duplicates Section -->
+            <div
+                v-if="cleanupPreview?.hasCleanupCandidates"
+                class="border-secondary-content/20 mt-6 border-t pt-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h4 class="text-primary-content text-sm font-medium">
+                            {{
+                                translate('settings.integrations.cleanupTitle') ||
+                                'Fix Duplicate Instances'
+                            }}
+                        </h4>
+                        <p class="text-secondary-content mt-1 text-xs">
+                            {{
+                                translate('settings.integrations.cleanupDescription') ||
+                                'If you see duplicate movies/shows after onboarding, click this button to consolidate all media to a single instance.'
+                            }}
+                        </p>
+                    </div>
                     <button
-                        type="button"
-                        class="bg-primary-600 hover:bg-primary-700 rounded-md px-3 py-1.5 text-sm text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-                        :disabled="
-                            radarrStatus.testing || !isValid.radarrUrl || !isValid.radarrApiKey
-                        "
-                        @click="testRadarrConnection">
-                        <span v-if="radarrStatus.testing" class="flex items-center gap-2">
-                            <svg
-                                class="h-4 w-4 animate-spin"
-                                xmlns="http://www.w3.org/2000/svg"
-                                fill="none"
-                                viewBox="0 0 24 24">
+                        @click="cleanupDuplicates"
+                        :disabled="isCleaningUp"
+                        class="hover:bg-accent/80 bg-accent/20 text-accent rounded-md px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50">
+                        <span v-if="isCleaningUp" class="flex items-center gap-1">
+                            <svg class="h-3 w-3 animate-spin" viewBox="0 0 24 24">
                                 <circle
                                     class="opacity-25"
                                     cx="12"
                                     cy="12"
                                     r="10"
                                     stroke="currentColor"
-                                    stroke-width="4"></circle>
+                                    stroke-width="4"
+                                    fill="none" />
                                 <path
                                     class="opacity-75"
                                     fill="currentColor"
-                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                             </svg>
-                            {{ translate('settings.integrations.testing') }}
+                            {{ translate('common.cleaning') || 'Cleaning...' }}
                         </span>
-                        <span v-else>{{ translate('settings.integrations.testConnection') }}</span>
+                        <span v-else>
+                            {{
+                                translate('settings.integrations.cleanupButton') || 'Fix Duplicates'
+                            }}
+                        </span>
                     </button>
-
-                    <div v-if="radarrStatus.tested" class="flex items-center gap-2 text-sm">
-                        <span
-                            v-if="radarrStatus.connected"
-                            class="flex items-center gap-1 text-green-500">
-                            <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
-                                <path
-                                    fill-rule="evenodd"
-                                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                                    clip-rule="evenodd" />
-                            </svg>
-                            {{ translate('settings.integrations.connectionSuccess') }}
-                            <span v-if="radarrStatus.version" class="text-gray-500">
-                                ({{ translate('settings.integrations.version') }}:
-                                {{ radarrStatus.version }})
-                            </span>
-                        </span>
-                        <span v-else class="flex items-center gap-1 text-red-500">
-                            <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
-                                <path
-                                    fill-rule="evenodd"
-                                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                                    clip-rule="evenodd" />
-                            </svg>
-                            {{ translate('settings.integrations.connectionFailed') }}:
-                            {{ radarrStatus.message }}
-                        </span>
-                    </div>
                 </div>
-            </div>
-            <div v-translate="'settings.integrations.reindexTask'" class="pt-2" />
-        </template>
-    </CardComponent>
-
-    <CardComponent :title="translate('settings.integrations.sonarrHeader')">
-        <template #icon>
-            <SonarrIcon />
-        </template>
-        <template #description>
-            {{ translate('settings.integrations.description') }}
-        </template>
-        <template #content>
-            <div class="flex flex-col space-y-2">
-                <InputComponent
-                    v-model="sonarrUrl"
-                    validation-type="url"
-                    :label="translate('settings.integrations.sonarrAddress')"
-                    :error-message="translate('settings.integrations.sonarrAddressError')"
-                    @update:validation="(val) => (isValid.sonarrUrl = val)" />
-                <InputComponent
-                    v-model="sonarrApiKey"
-                    :min-length="32"
-                    :max-length="32"
-                    validation-type="string"
-                    type="password"
-                    :label="translate('settings.integrations.sonarrApiKey')"
-                    :error-message="translate('settings.integrations.sonarrApiKeyError')"
-                    @update:validation="(val) => (isValid.sonarrApiKey = val)" />
-
-                <!-- Connection Status -->
-                <div class="flex items-center gap-3 pt-2">
-                    <button
-                        type="button"
-                        class="bg-primary-600 hover:bg-primary-700 rounded-md px-3 py-1.5 text-sm text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-                        :disabled="
-                            sonarrStatus.testing || !isValid.sonarrUrl || !isValid.sonarrApiKey
+                <div
+                    v-if="cleanupResult"
+                    :class="[
+                        'mt-3 rounded-md p-3 text-sm',
+                        cleanupResult.success
+                            ? 'bg-green-500/10 text-green-400'
+                            : 'bg-red-500/10 text-red-400'
+                    ]">
+                    {{ cleanupResult.message }}
+                    <div
+                        v-if="
+                            cleanupResult.success &&
+                            (cleanupResult.moviesReassigned > 0 ||
+                                cleanupResult.showsReassigned > 0)
                         "
-                        @click="testSonarrConnection">
-                        <span v-if="sonarrStatus.testing" class="flex items-center gap-2">
-                            <svg
-                                class="h-4 w-4 animate-spin"
-                                xmlns="http://www.w3.org/2000/svg"
-                                fill="none"
-                                viewBox="0 0 24 24">
-                                <circle
-                                    class="opacity-25"
-                                    cx="12"
-                                    cy="12"
-                                    r="10"
-                                    stroke="currentColor"
-                                    stroke-width="4"></circle>
-                                <path
-                                    class="opacity-75"
-                                    fill="currentColor"
-                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                            {{ translate('settings.integrations.testing') }}
-                        </span>
-                        <span v-else>{{ translate('settings.integrations.testConnection') }}</span>
-                    </button>
-
-                    <div v-if="sonarrStatus.tested" class="flex items-center gap-2 text-sm">
-                        <span
-                            v-if="sonarrStatus.connected"
-                            class="flex items-center gap-1 text-green-500">
-                            <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
-                                <path
-                                    fill-rule="evenodd"
-                                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                                    clip-rule="evenodd" />
-                            </svg>
-                            {{ translate('settings.integrations.connectionSuccess') }}
-                            <span v-if="sonarrStatus.version" class="text-gray-500">
-                                ({{ translate('settings.integrations.version') }}:
-                                {{ sonarrStatus.version }})
-                            </span>
-                        </span>
-                        <span v-else class="flex items-center gap-1 text-red-500">
-                            <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
-                                <path
-                                    fill-rule="evenodd"
-                                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                                    clip-rule="evenodd" />
-                            </svg>
-                            {{ translate('settings.integrations.connectionFailed') }}:
-                            {{ sonarrStatus.message }}
+                        class="mt-1 text-xs opacity-75">
+                        {{ cleanupResult.moviesReassigned }}
+                        {{ translate('statistics.movies') || 'movies' }},
+                        {{ cleanupResult.showsReassigned }}
+                        {{ translate('statistics.tvShows') || 'shows' }}
+                        <span v-if="cleanupResult.duplicatesRemoved > 0">
+                            ({{ cleanupResult.duplicatesRemoved }}
+                            {{ translate('statistics.duplicatesRemoved') || 'duplicates removed' }})
                         </span>
                     </div>
                 </div>
             </div>
-            <div v-translate="'settings.integrations.reindexTask'" class="pt-2" />
         </template>
     </CardComponent>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, reactive } from 'vue'
+import { computed, ref, reactive, onMounted } from 'vue'
 import { useSettingStore } from '@/store/setting'
+import { useOnboardingStore } from '@/store/onboarding'
 import SaveNotification from '@/components/common/SaveNotification.vue'
 import { SETTINGS } from '@/ts'
+import type { IInstance } from '@/ts/setting'
 import CardComponent from '@/components/common/CardComponent.vue'
-import InputComponent from '@/components/common/InputComponent.vue'
 import RadarrIcon from '@/components/icons/RadarrIcon.vue'
 import SonarrIcon from '@/components/icons/SonarrIcon.vue'
+import InstanceCard from '@/components/features/onboarding/InstanceCard.vue'
+import AddInstanceButton from '@/components/features/onboarding/AddInstanceButton.vue'
 import services from '@/services'
 import { useI18n } from '@/plugins/i18n'
-
-interface ConnectionTestResult {
-    isConnected: boolean
-    message?: string
-    version?: string
-}
 
 interface ConnectionStatus {
     testing: boolean
@@ -207,106 +218,537 @@ interface ConnectionStatus {
     version: string | null
 }
 
+interface ConnectionTestResult {
+    isConnected: boolean
+    message?: string
+    version?: string
+}
+
+interface InstanceWrapper {
+    type: 'radarr' | 'sonarr'
+    instance: IInstance
+}
+
+interface WebhookInstance {
+    key: string
+    instanceId: string
+    name: string
+    typeLabel: string
+    url: string
+}
+
+interface CleanupResult {
+    success: boolean
+    message: string
+    moviesReassigned: number
+    showsReassigned: number
+    episodesReassigned: number
+    duplicatesRemoved: number
+    episodeDuplicatesRemoved: number
+    instancesConsolidated: number
+    reassignedInstanceIds: string[]
+}
+
+interface CleanupPreviewResult {
+    hasCleanupCandidates: boolean
+    hasDuplicateBackendConfigurations: boolean
+    duplicateBackendConfigurations: number
+    nonDefaultMovieCount: number
+    nonDefaultShowCount: number
+    nonDefaultEpisodeCount: number
+}
+
 const { translate } = useI18n()
-
-const isValid = reactive({
-    radarrUrl: false,
-    radarrApiKey: false,
-    sonarrUrl: false,
-    sonarrApiKey: false
-})
-
-const radarrStatus = reactive<ConnectionStatus>({
-    testing: false,
-    tested: false,
-    connected: false,
-    message: '',
-    version: null
-})
-
-const sonarrStatus = reactive<ConnectionStatus>({
-    testing: false,
-    tested: false,
-    connected: false,
-    message: '',
-    version: null
-})
 
 const saveNotification = ref<InstanceType<typeof SaveNotification> | null>(null)
 const settingsStore = useSettingStore()
 
-const testRadarrConnection = async () => {
-    radarrStatus.testing = true
-    radarrStatus.tested = false
-    try {
-        const result = await services.setting.testRadarrConnection<ConnectionTestResult>()
-        radarrStatus.connected = result.isConnected
-        radarrStatus.message = result.message || ''
-        radarrStatus.version = result.version || null
-    } catch (error) {
-        radarrStatus.connected = false
-        radarrStatus.message = 'Request failed'
-    } finally {
-        radarrStatus.testing = false
-        radarrStatus.tested = true
+// Local state for unsaved changes
+const localInstances = ref<InstanceWrapper[]>([])
+const originalInstances = ref<InstanceWrapper[]>([])
+const isSaving = ref(false)
+const saveError = ref('')
+
+// Cleanup state
+const isCleaningUp = ref(false)
+const cleanupResult = ref<CleanupResult | null>(null)
+const cleanupPreview = ref<CleanupPreviewResult | null>(null)
+
+// Connection status per instance
+const connectionStatuses = reactive<Record<string, Record<string, ConnectionStatus>>>({
+    radarr: {},
+    sonarr: {}
+})
+
+// Generate unique ID
+const generateId = (): string => {
+    return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
+}
+
+// Deep equality check for instances
+const instancesEqual = (a: InstanceWrapper[], b: InstanceWrapper[]): boolean => {
+    if (a.length !== b.length) return false
+    return JSON.stringify(a) === JSON.stringify(b)
+}
+
+// Computed to check if there are unsaved changes
+const hasChanges = computed(() => {
+    return !instancesEqual(localInstances.value, originalInstances.value)
+})
+
+const webhookBaseUrl = computed(() => {
+    if (typeof window === 'undefined') {
+        return ''
+    }
+
+    return window.location.origin.replace(/\/$/, '')
+})
+
+// Get connection status for an instance
+const getConnectionStatus = (type: 'radarr' | 'sonarr', id: string): ConnectionStatus => {
+    return (
+        connectionStatuses[type][id] || {
+            testing: false,
+            tested: false,
+            connected: false,
+            message: '',
+            version: null
+        }
+    )
+}
+
+// Initialize connection status for an instance
+const initConnectionStatus = (type: 'radarr' | 'sonarr', id: string): void => {
+    if (!connectionStatuses[type][id]) {
+        connectionStatuses[type][id] = {
+            testing: false,
+            tested: false,
+            connected: false,
+            message: '',
+            version: null
+        }
     }
 }
 
-const testSonarrConnection = async () => {
-    sonarrStatus.testing = true
-    sonarrStatus.tested = false
+// Parse instances from settings (handle both string and array formats)
+const parseInstances = (value: string | IInstance[]): IInstance[] => {
+    if (Array.isArray(value)) {
+        return JSON.parse(JSON.stringify(value)) // Deep clone
+    }
+    if (typeof value === 'string' && value) {
+        try {
+            const parsed = JSON.parse(value)
+            return Array.isArray(parsed) ? JSON.parse(JSON.stringify(parsed)) : []
+        } catch {
+            return []
+        }
+    }
+    return []
+}
+
+// Validate that an instance has required fields
+const isValidInstance = (instance: IInstance): boolean => {
+    return !!(instance.url && instance.apiKey)
+}
+
+const normalizeInstanceUrl = (url: string): string => {
+    const trimmed = url.trim()
+
     try {
-        const result = await services.setting.testSonarrConnection<ConnectionTestResult>()
-        sonarrStatus.connected = result.isConnected
-        sonarrStatus.message = result.message || ''
-        sonarrStatus.version = result.version || null
-    } catch (error) {
-        sonarrStatus.connected = false
-        sonarrStatus.message = 'Request failed'
-    } finally {
-        sonarrStatus.testing = false
-        sonarrStatus.tested = true
+        const parsed = new URL(trimmed)
+        const path = parsed.pathname.replace(/\/+$/, '')
+        return `${parsed.protocol.toLowerCase()}//${parsed.host.toLowerCase()}${path}`
+    } catch {
+        return trimmed.replace(/\/+$/, '').toLowerCase()
     }
 }
 
-const radarrApiKey = computed({
-    get: (): string => settingsStore.getSetting(SETTINGS.RADARR_API_KEY) as string,
-    set: (newValue: string): void => {
-        settingsStore.updateSetting(SETTINGS.RADARR_API_KEY, newValue, isValid.radarrApiKey)
-        if (isValid.radarrApiKey) {
-            saveNotification.value?.show()
-            radarrStatus.tested = false // Reset status when settings change
-        }
+const findDuplicateBackendUrls = (): string[] => {
+    const duplicateUrls: string[] = []
+
+    ;(['radarr', 'sonarr'] as const).forEach((type) => {
+        const seen = new Map<string, string>()
+
+        localInstances.value
+            .filter((wrapper) => wrapper.type === type)
+            .map((wrapper) => wrapper.instance)
+            .filter(isValidInstance)
+            .forEach((instance) => {
+                const normalizedUrl = normalizeInstanceUrl(instance.url)
+                if (seen.has(normalizedUrl)) {
+                    duplicateUrls.push(instance.url)
+                } else {
+                    seen.set(normalizedUrl, instance.id)
+                }
+            })
+    })
+
+    return duplicateUrls
+}
+
+const findDuplicateInstanceIds = (): string[] => {
+    const duplicateIds: string[] = []
+
+    ;(['radarr', 'sonarr'] as const).forEach((type) => {
+        const seen = new Set<string>()
+
+        localInstances.value
+            .filter((wrapper) => wrapper.type === type)
+            .forEach((wrapper) => {
+                if (seen.has(wrapper.instance.id)) {
+                    duplicateIds.push(`${type}:${wrapper.instance.id}`)
+                    return
+                }
+
+                seen.add(wrapper.instance.id)
+            })
+    })
+
+    return duplicateIds
+}
+
+const validateBeforeSave = (): string | null => {
+    const duplicateIds = findDuplicateInstanceIds()
+    if (duplicateIds.length > 0) {
+        return `Duplicate instance IDs are not allowed: ${duplicateIds.join(', ')}.`
     }
+
+    const duplicateUrls = findDuplicateBackendUrls()
+    if (duplicateUrls.length > 0) {
+        return `The same Radarr/Sonarr backend cannot be added twice: ${duplicateUrls.join(', ')}.`
+    }
+
+    return null
+}
+
+const buildWebhookUrl = (type: 'radarr' | 'sonarr', instanceId: string): string => {
+    return `${webhookBaseUrl.value}/api/webhook/${type}/${encodeURIComponent(instanceId)}`
+}
+
+const webhookInstances = computed<WebhookInstance[]>(() => {
+    return localInstances.value
+        .filter((wrapper) => isValidInstance(wrapper.instance))
+        .map((wrapper) => ({
+            key: `${wrapper.type}-${wrapper.instance.id}`,
+            instanceId: wrapper.instance.id,
+            name: wrapper.instance.name || (wrapper.type === 'radarr' ? 'Radarr' : 'Sonarr'),
+            typeLabel: wrapper.type === 'radarr' ? 'Radarr' : 'Sonarr',
+            url: buildWebhookUrl(wrapper.type, wrapper.instance.id)
+        }))
 })
-const sonarrApiKey = computed({
-    get: (): string => settingsStore.getSetting(SETTINGS.SONARR_API_KEY) as string,
-    set: (newValue: string): void => {
-        settingsStore.updateSetting(SETTINGS.SONARR_API_KEY, newValue, isValid.sonarrApiKey)
-        if (isValid.sonarrApiKey) {
-            saveNotification.value?.show()
-            sonarrStatus.tested = false // Reset status when settings change
+
+const fetchCleanupPreview = async (): Promise<void> => {
+    try {
+        cleanupPreview.value = await services.setting.getCleanupDuplicatePreview<CleanupPreviewResult>()
+    } catch {
+        cleanupPreview.value = null
+    }
+}
+
+// Load instances from store into local state
+const loadInstancesFromStore = (): void => {
+    let radarrInsts = parseInstances(
+        settingsStore.getSetting(SETTINGS.RADARR_INSTANCES) as string | IInstance[]
+    )
+    let sonarrInsts = parseInstances(
+        settingsStore.getSetting(SETTINGS.SONARR_INSTANCES) as string | IInstance[]
+    )
+
+    // Filter to only valid instances (non-empty URL and ApiKey)
+    radarrInsts = radarrInsts.filter(isValidInstance)
+    sonarrInsts = sonarrInsts.filter(isValidInstance)
+
+    // Fallback to legacy settings if no valid instances exist
+    if (radarrInsts.length === 0) {
+        const legacyUrl = settingsStore.getSetting(SETTINGS.RADARR_URL) as string
+        const legacyKey = settingsStore.getSetting(SETTINGS.RADARR_API_KEY) as string
+        if (legacyUrl && legacyKey) {
+            radarrInsts = [
+                {
+                    id: 'default',
+                    name: 'Radarr',
+                    url: legacyUrl,
+                    apiKey: legacyKey
+                }
+            ]
         }
     }
-})
-const radarrUrl = computed({
-    get: (): string => settingsStore.getSetting(SETTINGS.RADARR_URL) as string,
-    set: (newValue: string): void => {
-        settingsStore.updateSetting(SETTINGS.RADARR_URL, newValue, isValid.radarrUrl)
-        if (isValid.radarrUrl) {
-            saveNotification.value?.show()
-            radarrStatus.tested = false // Reset status when settings change
+
+    if (sonarrInsts.length === 0) {
+        const legacyUrl = settingsStore.getSetting(SETTINGS.SONARR_URL) as string
+        const legacyKey = settingsStore.getSetting(SETTINGS.SONARR_API_KEY) as string
+        if (legacyUrl && legacyKey) {
+            sonarrInsts = [
+                {
+                    id: 'default',
+                    name: 'Sonarr',
+                    url: legacyUrl,
+                    apiKey: legacyKey
+                }
+            ]
         }
     }
-})
-const sonarrUrl = computed({
-    get: (): string => settingsStore.getSetting(SETTINGS.SONARR_URL) as string,
-    set: (newValue: string): void => {
-        settingsStore.updateSetting(SETTINGS.SONARR_URL, newValue, isValid.sonarrUrl)
-        if (isValid.sonarrUrl) {
-            saveNotification.value?.show()
-            sonarrStatus.tested = false // Reset status when settings change
+
+    const combined: InstanceWrapper[] = [
+        ...radarrInsts.map((i) => ({ type: 'radarr' as const, instance: i })),
+        ...sonarrInsts.map((i) => ({ type: 'sonarr' as const, instance: i }))
+    ]
+
+    localInstances.value = combined
+    originalInstances.value = JSON.parse(JSON.stringify(combined))
+
+    // Initialize connection statuses
+    radarrInsts.forEach((inst) => initConnectionStatus('radarr', inst.id))
+    sonarrInsts.forEach((inst) => initConnectionStatus('sonarr', inst.id))
+}
+
+// Save changes to store
+const saveChanges = async (): Promise<void> => {
+    isSaving.value = true
+    saveError.value = ''
+    try {
+        const validationError = validateBeforeSave()
+        if (validationError) {
+            saveError.value = validationError
+            return
         }
+
+        const radarrs = localInstances.value
+            .filter((i) => i.type === 'radarr')
+            .map((i) => i.instance)
+            .filter(isValidInstance)
+        const sonarrs = localInstances.value
+            .filter((i) => i.type === 'sonarr')
+            .map((i) => i.instance)
+            .filter(isValidInstance)
+
+        settingsStore.updateSetting(
+            SETTINGS.RADARR_INSTANCES,
+            JSON.parse(JSON.stringify(radarrs)),
+            true,
+            true
+        )
+        settingsStore.updateSetting(
+            SETTINGS.SONARR_INSTANCES,
+            JSON.parse(JSON.stringify(sonarrs)),
+            true,
+            true
+        )
+
+        // Update originals to match current state
+        originalInstances.value = JSON.parse(JSON.stringify(localInstances.value))
+        await fetchCleanupPreview()
+
+        saveNotification.value?.show()
+    } catch (error) {
+        saveError.value = 'Failed to save instance settings. Check for duplicate IDs or backend URLs.'
+    } finally {
+        isSaving.value = false
     }
+}
+
+// Discard changes and reset to original
+const discardChanges = (): void => {
+    localInstances.value = JSON.parse(JSON.stringify(originalInstances.value))
+    saveError.value = ''
+
+    // Re-initialize connection statuses for current instances
+    connectionStatuses.radarr = {}
+    connectionStatuses.sonarr = {}
+    localInstances.value.forEach((wrapper) =>
+        initConnectionStatus(wrapper.type, wrapper.instance.id)
+    )
+}
+
+// Handle add instance from unified button
+const handleAddInstance = (type: 'radarr' | 'sonarr'): void => {
+    const currentCount = localInstances.value.filter((i) => i.type === type).length
+    const id = currentCount === 0 ? 'default' : generateId()
+    const namePrefix = type === 'radarr' ? 'Radarr' : 'Sonarr'
+
+    const instance: IInstance = {
+        id,
+        name: `${namePrefix} ${currentCount + 1}`,
+        url: '',
+        apiKey: ''
+    }
+
+    initConnectionStatus(type, id)
+    localInstances.value.push({ type, instance })
+}
+
+// Update local instance
+const updateLocalInstance = (
+    id: string,
+    updatedInstance: IInstance,
+    type: 'radarr' | 'sonarr'
+): void => {
+    const index = localInstances.value.findIndex(
+        (wrapper) => wrapper.instance.id === id && wrapper.type === type
+    )
+    if (index !== -1) {
+        const newInstances = [...localInstances.value]
+        newInstances[index].instance = updatedInstance
+        localInstances.value = newInstances
+    }
+}
+
+// Remove local instance
+const removeLocalInstance = (id: string, type: 'radarr' | 'sonarr'): void => {
+    delete connectionStatuses[type][id]
+    localInstances.value = localInstances.value.filter(
+        (wrapper) => !(wrapper.instance.id === id && wrapper.type === type)
+    )
+}
+
+// Test Radarr connection
+const testRadarrConnection = async (instance: IInstance): Promise<void> => {
+    const status = connectionStatuses.radarr[instance.id]
+    if (!status) return
+
+    status.testing = true
+    status.tested = false
+
+    try {
+        const result = await services.setting.testRadarrInstance<ConnectionTestResult>({
+            url: instance.url,
+            apiKey: instance.apiKey
+        })
+        status.connected = result.isConnected
+        status.message = result.message || ''
+        status.version = result.version || null
+    } catch (error) {
+        status.connected = false
+        status.message = translate('settings.integrations.connectionFailed')
+    } finally {
+        status.testing = false
+        status.tested = true
+    }
+}
+
+// Test Sonarr connection
+const testSonarrConnection = async (instance: IInstance): Promise<void> => {
+    const status = connectionStatuses.sonarr[instance.id]
+    if (!status) return
+
+    status.testing = true
+    status.tested = false
+
+    try {
+        const result = await services.setting.testSonarrInstance<ConnectionTestResult>({
+            url: instance.url,
+            apiKey: instance.apiKey
+        })
+        status.connected = result.isConnected
+        status.message = result.message || ''
+        status.version = result.version || null
+    } catch (error) {
+        status.connected = false
+        status.message = translate('settings.integrations.connectionFailed')
+    } finally {
+        status.testing = false
+        status.tested = true
+    }
+}
+
+// Test connection
+const testConnection = async (type: 'radarr' | 'sonarr', instance: IInstance): Promise<void> => {
+    if (type === 'radarr') {
+        await testRadarrConnection(instance)
+    } else {
+        await testSonarrConnection(instance)
+    }
+}
+
+// Migrate legacy single instance to instances array
+// Only runs if onboarding is NOT active (prevents race condition)
+const migrateLegacySettings = (): void => {
+    const onboardingStore = useOnboardingStore()
+
+    // Don't migrate if onboarding is active - let onboarding handle it
+    if (onboardingStore.isActive) {
+        return
+    }
+
+    const radarrUrl = settingsStore.getSetting(SETTINGS.RADARR_URL) as string
+    const radarrApiKey = settingsStore.getSetting(SETTINGS.RADARR_API_KEY) as string
+    const sonarrUrl = settingsStore.getSetting(SETTINGS.SONARR_URL) as string
+    const sonarrApiKey = settingsStore.getSetting(SETTINGS.SONARR_API_KEY) as string
+
+    const existingRadarrInstances = parseInstances(
+        settingsStore.getSetting(SETTINGS.RADARR_INSTANCES) as string | IInstance[]
+    ).filter(isValidInstance)
+    const existingSonarrInstances = parseInstances(
+        settingsStore.getSetting(SETTINGS.SONARR_INSTANCES) as string | IInstance[]
+    ).filter(isValidInstance)
+
+    // Only migrate if no valid instances exist AND legacy settings are complete
+    if (existingRadarrInstances.length === 0 && radarrUrl && radarrApiKey) {
+        const instance: IInstance = {
+            id: 'default',
+            name: 'Radarr',
+            url: radarrUrl,
+            apiKey: radarrApiKey
+        }
+        initConnectionStatus('radarr', 'default')
+        settingsStore.updateSetting(SETTINGS.RADARR_INSTANCES, [instance], true, true)
+    }
+
+    if (existingSonarrInstances.length === 0 && sonarrUrl && sonarrApiKey) {
+        const instance: IInstance = {
+            id: 'default',
+            name: 'Sonarr',
+            url: sonarrUrl,
+            apiKey: sonarrApiKey
+        }
+        initConnectionStatus('sonarr', 'default')
+        settingsStore.updateSetting(SETTINGS.SONARR_INSTANCES, [instance], true, true)
+    }
+}
+
+// Cleanup duplicate instances
+const cleanupDuplicates = async (): Promise<void> => {
+    if (
+        typeof window !== 'undefined' &&
+        !window.confirm(
+            'This will consolidate duplicate instance data to the default instance. Continue?'
+        )
+    ) {
+        return
+    }
+
+    isCleaningUp.value = true
+    cleanupResult.value = null
+
+    try {
+        const result = await services.setting.cleanupDuplicateInstances<CleanupResult>()
+        cleanupResult.value = result
+
+        // Reload instances from store after cleanup
+        if (result.success) {
+            loadInstancesFromStore()
+            await fetchCleanupPreview()
+        }
+    } catch (error) {
+        cleanupResult.value = {
+            success: false,
+            message: 'Failed to connect to server',
+            moviesReassigned: 0,
+            showsReassigned: 0,
+            episodesReassigned: 0,
+            duplicatesRemoved: 0,
+            episodeDuplicatesRemoved: 0,
+            instancesConsolidated: 0,
+            reassignedInstanceIds: []
+        }
+    } finally {
+        isCleaningUp.value = false
+    }
+}
+
+onMounted(async () => {
+    migrateLegacySettings()
+    loadInstancesFromStore()
+    await fetchCleanupPreview()
 })
 </script>

@@ -60,6 +60,7 @@ public interface IMediaStateService
     /// <summary>
     /// Updates the LastSubtitleCheckAt timestamp for a media item.
     /// Used for queue rotation to prevent starvation.
+    /// Sync jobs should only stamp this field for AwaitingSource items.
     /// </summary>
     Task UpdateLastSubtitleCheckAt(int mediaId, MediaType mediaType);
 }

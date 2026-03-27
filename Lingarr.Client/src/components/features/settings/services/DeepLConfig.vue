@@ -1,13 +1,17 @@
 ﻿<template>
-    <InputComponent
-        v-model="deepLApiKey"
-        validation-type="string"
-        type="password"
-        :min-length="1"
-        :label="translate('settings.services.apiKey')"
-        :error-message="translate('settings.services.apiKeyError')"
-        @update:validation="(val) => (isValid = val)" />
-    <div v-translate="'settings.services.deeplNotification'" class="pt-2 text-xs" />
+    <div class="text-primary-content flex flex-col space-y-3">
+        <InputComponent
+            v-model="deepLApiKey"
+            validation-type="string"
+            type="password"
+            :min-length="1"
+            :label="translate('settings.services.apiKey')"
+            :error-message="translate('settings.services.apiKeyError')"
+            @update:validation="(val) => (isValid = val)" />
+        <div
+            v-translate="'settings.services.deeplNotification'"
+            class="text-secondary-content text-xs leading-5" />
+    </div>
 </template>
 
 <script lang="ts" setup>

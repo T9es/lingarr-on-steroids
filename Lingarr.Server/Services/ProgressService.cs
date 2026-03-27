@@ -39,10 +39,14 @@ public class ProgressService : IProgressService
             .Where(tr => tr.Id == translationRequest.Id)
             .ExecuteUpdateAsync(setters => setters.SetProperty(tr => tr.Progress, progress));
 
-        await _hubContext.Clients.Group("TranslationRequests").SendAsync("RequestProgress", new
+await _hubContext.Clients.Group("TranslationRequests").SendAsync("RequestProgress", new
         {
             Id = translationRequest.Id,
-            JobId = translationRequest.JobId,
+            Title = translationRequest.Title,
+            MediaType = translationRequest.MediaType.ToString(),
+            SourceLanguage = translationRequest.SourceLanguage,
+            TargetLanguage = translationRequest.TargetLanguage,
+            StartedAt = translationRequest.StartedAt,
             CompletedAt = translationRequest.CompletedAt,
             Status = translationRequest.Status.GetDisplayName(),
             Progress = progress
@@ -75,10 +79,14 @@ public class ProgressService : IProgressService
         {
             foreach (var request in batch)
             {
-                await _hubContext.Clients.Group("TranslationRequests").SendAsync("RequestProgress", new
+await _hubContext.Clients.Group("TranslationRequests").SendAsync("RequestProgress", new
                 {
                     Id = request.Id,
-                    JobId = request.JobId,
+                    Title = request.Title,
+                    MediaType = request.MediaType.ToString(),
+                    SourceLanguage = request.SourceLanguage,
+                    TargetLanguage = request.TargetLanguage,
+                    StartedAt = request.StartedAt,
                     CompletedAt = request.CompletedAt,
                     Status = request.Status.GetDisplayName(),
                     Progress = progress

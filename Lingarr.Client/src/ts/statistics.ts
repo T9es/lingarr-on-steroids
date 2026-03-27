@@ -14,3 +14,9 @@ export interface DailyStatistic {
     date: string
     translationCount: number
 }
+
+export interface FilteredStatistics {
+    translationCount: number
+    linesCount: number
+    filesCount: number
+}

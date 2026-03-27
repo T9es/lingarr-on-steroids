@@ -41,21 +41,23 @@ export const useTranslationRequestStore = defineStore('translateRequest', {
         getFailedRequests: (state: IUseTranslationRequestStore): ITranslationRequest[] => {
             const query = state.filter.searchQuery?.toLowerCase() || ''
             if (!query) return state.failedRequests
-            
-            return state.failedRequests.filter((req) => 
-                req.title.toLowerCase().includes(query) || 
-                req.sourceLanguage.toLowerCase().includes(query) || 
-                req.targetLanguage.toLowerCase().includes(query)
+
+            return state.failedRequests.filter(
+                (req) =>
+                    req.title.toLowerCase().includes(query) ||
+                    req.sourceLanguage.toLowerCase().includes(query) ||
+                    req.targetLanguage.toLowerCase().includes(query)
             )
         },
         getInProgressRequests: (state: IUseTranslationRequestStore): ITranslationRequest[] => {
             const query = state.filter.searchQuery?.toLowerCase() || ''
             if (!query) return state.inProgressRequests
 
-            return state.inProgressRequests.filter((req) => 
-                req.title.toLowerCase().includes(query) || 
-                req.sourceLanguage.toLowerCase().includes(query) || 
-                req.targetLanguage.toLowerCase().includes(query)
+            return state.inProgressRequests.filter(
+                (req) =>
+                    req.title.toLowerCase().includes(query) ||
+                    req.sourceLanguage.toLowerCase().includes(query) ||
+                    req.targetLanguage.toLowerCase().includes(query)
             )
         }
     },
@@ -117,6 +119,11 @@ export const useTranslationRequestStore = defineStore('translateRequest', {
         async retryAllFailed() {
             const count = await services.translationRequest.retryAllFailed<number>()
             // Optimistically clear all failed requests as they are now being retried
+            this.failedRequests = []
+            return count
+        },
+        async removeAllFailed() {
+            const count = await services.translationRequest.removeAllFailed<number>()
             this.failedRequests = []
             return count
         },

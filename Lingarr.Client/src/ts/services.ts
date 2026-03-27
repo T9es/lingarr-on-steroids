@@ -14,6 +14,7 @@ export interface Services {
     subtitle: ISubtitleService
     translate: ITranslateService
     chutes: IChutesService
+    tokenUsage: ITokenUsageService
     translationRequest: ITranslationRequestService
     version: IVersionService
     media: IMediaService
@@ -22,6 +23,7 @@ export interface Services {
     directory: IDirectoryService
     statistics: IStatisticsService
     logs: ILogsService
+    dashboard: IDashboardService
 }
 
 export interface IMediaService {
@@ -47,11 +49,17 @@ export interface IMediaService {
 export interface ISettingService {
     getSetting<T>(key: string): Promise<T>
     getSettings<T>(keys: string[]): Promise<T>
+    getEncryptedSettings<T>(keys: string[]): Promise<T>
     setSetting(key: string, value: string): Promise<void>
+    setEncryptedSetting(key: string, value: string): Promise<void>
     setSettings(keys: ISettings): Promise<void>
+    getCleanupDuplicatePreview<T>(): Promise<T>
+    cleanupDuplicateInstances<T>(): Promise<T>
     getSystemLimits<T>(): Promise<T>
     testRadarrConnection<T>(): Promise<T>
     testSonarrConnection<T>(): Promise<T>
+    testRadarrInstance<T>(request: { url: string; apiKey: string }): Promise<T>
+    testSonarrInstance<T>(request: { url: string; apiKey: string }): Promise<T>
 }
 
 export interface ISubtitleService {
@@ -86,10 +94,17 @@ export interface IChutesService {
     getUsage<T>(forceRefresh?: boolean): Promise<T>
 }
 
+export interface ITokenUsageService {
+    getUsage<T>(service: string): Promise<T>
+    setChutesMode(mode: 'subscription' | 'payg'): Promise<void>
+    getChutesMode<T>(): Promise<T>
+}
+
 export interface ITranslationRequestService {
     getActiveCount<T>(): Promise<T>
     getFailedRequests<T>(): Promise<T>
     getInProgressRequests<T>(): Promise<T>
+    getRecentCompleted<T>(limit?: number): Promise<T>
     requests<T>(
         pageNumber: number,
         searchQuery: string,
@@ -100,6 +115,7 @@ export interface ITranslationRequestService {
     remove<T>(translationRequest: ITranslationRequest): Promise<T>
     retry<T>(translationRequest: ITranslationRequest): Promise<T>
     retryAllFailed<T>(): Promise<T>
+    removeAllFailed<T>(): Promise<T>
     reenqueueQueued<T>(includeInProgress?: boolean): Promise<T>
     cancelAll<T>(includeInProgress?: boolean): Promise<T>
     logs<T extends ITranslationRequestLog[]>(translationRequestId: number): Promise<T>
@@ -125,8 +141,26 @@ export interface IDirectoryService {
 export interface IStatisticsService {
     getStatistics<T>(): Promise<T>
     getDailyStatistics<T>(days?: number): Promise<T>
+    getFilteredStatistics<T>(startDate?: Date, endDate?: Date): Promise<T>
 }
 
 export interface ILogsService {
     getStream(): EventSource
+}
+
+export interface IDashboardService {
+    getLayout<T>(): Promise<T | null>
+    saveLayout(layoutJson: string): Promise<void>
+    resetLayout(): Promise<void>
+    getJobs<T>(): Promise<T>
+    getApiUsage<T>(): Promise<T>
+    clearFailedJobs(): Promise<{ cleared: number }>
+    getFailedJobs(
+        offset?: number,
+        limit?: number
+    ): Promise<{
+        jobs: unknown[]
+        totalCount: number
+        hasMore: boolean
+    }>
 }

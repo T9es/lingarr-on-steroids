@@ -37,8 +37,14 @@ public class Movie : BaseEntity, IMedia
     public int StateSettingsVersion { get; set; }
     
     /// <summary>
-    /// When the media directory was last checked for new subtitle files.
-    /// Used for mtime-based change detection during sync.
+    /// When the media directory was last checked while waiting for a source subtitle,
+    /// or when automation rotated this item to the back of the queue.
     /// </summary>
     public DateTime? LastSubtitleCheckAt { get; set; }
+    
+    /// <summary>
+    /// Identifier for the Radarr instance this movie was synced from.
+    /// Used when multiple Radarr instances are configured.
+    /// </summary>
+    public string? SourceInstanceId { get; set; }
 }

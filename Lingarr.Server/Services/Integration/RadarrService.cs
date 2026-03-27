@@ -1,4 +1,4 @@
-﻿using Lingarr.Server.Interfaces.Services;
+using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Integration;
 using Lingarr.Server.Models;
 using Lingarr.Server.Models.Integrations;
@@ -27,14 +27,32 @@ public class RadarrService : IRadarrService
     }
 
     /// <inheritdoc />
-    public async Task<RadarrMovie?> GetMovie(int moveId)
+    public async Task<RadarrMovie?> GetMovie(int movieId)
     {
         return await _integrationService.GetApiResponse<RadarrMovie>(
-            $"/api/v3/movie/{moveId}",
+            $"/api/v3/movie/{movieId}",
             new IntegrationSettingKeys
             {
                 Url = "radarr_url",
                 ApiKey = "radarr_api_key"
             });
+    }
+
+    /// <inheritdoc />
+    public async Task<List<RadarrMovie>?> GetMovies(string url, string apiKey)
+    {
+        return await _integrationService.GetApiResponse<List<RadarrMovie>>(
+            "/api/v3/movie/",
+            url,
+            apiKey);
+    }
+
+    /// <inheritdoc />
+    public async Task<RadarrMovie?> GetMovie(int movieId, string url, string apiKey)
+    {
+        return await _integrationService.GetApiResponse<RadarrMovie>(
+            $"/api/v3/movie/{movieId}",
+            url,
+            apiKey);
     }
 }

@@ -3,7 +3,7 @@
         <input
             :value="modelValue.searchQuery"
             type="text"
-            placeholder="Search media..."
+            :placeholder="translate('common.searchMedia')"
             class="border-accent bg-primary text-primary-content placeholder-primary/60 block w-full rounded-md border px-8 py-1 text-sm outline-hidden"
             @input="search" />
         <SearchIcon
@@ -19,6 +19,9 @@
 import { IFilter } from '@/ts'
 import SearchIcon from '@/components/icons/SearchIcon.vue'
 import TimesIcon from '@/components/icons/TimesIcon.vue'
+import { useI18n } from '@/plugins/i18n'
+
+const { translate } = useI18n()
 
 const emit = defineEmits(['update:modelValue'])
 const { modelValue } = defineProps<{

@@ -36,6 +36,15 @@ public interface ITranslationRequestService
     /// <returns>The current count of active translation requests</returns>
     Task<int> UpdateActiveCount();
 
+    /// <summary>
+    /// Interrupts all pending and in-progress translation requests for a specific media item.
+    /// Intended for cases where the source media file changed and active requests should not continue.
+    /// </summary>
+    /// <param name="mediaType">Type of media (Movie or Episode)</param>
+    /// <param name="mediaId">The ID of the media item</param>
+    /// <returns>The number of interrupted requests</returns>
+    Task<int> InterruptActiveRequestsForMedia(MediaType mediaType, int mediaId);
+
 	    /// <summary>
 	    /// Resumes all pending and in-progress translation requests by re-enqueueing them in the job queue.
 	    /// </summary>
@@ -116,11 +125,17 @@ public interface ITranslationRequestService
         TranslationRequest cancelRequest
     );
 
-    /// <summary>
+/// <summary>
     /// Retries all translation requests with Failed status
     /// </summary>
     /// <returns>Int representing number of retried requests</returns>
     Task<int> RetryAllFailedRequests();
+
+    /// <summary>
+    /// Removes all translation requests with Failed status
+    /// </summary>
+    /// <returns>Int representing number of removed requests</returns>
+    Task<int> RemoveAllFailedRequests();
     
     /// <summary>
     /// Retries an existing translation request
@@ -188,9 +203,16 @@ public interface ITranslationRequestService
     /// <returns>List of all failed translation requests</returns>
     Task<List<TranslationRequest>> GetFailedRequests();
 
-    /// <summary>
+/// <summary>
     /// Retrieves all translation requests with InProgress status.
     /// </summary>
     /// <returns>List of all in-progress translation requests</returns>
     Task<List<TranslationRequest>> GetInProgressRequests();
+
+    /// <summary>
+    /// Retrieves recent completed translation requests.
+    /// </summary>
+    /// <param name="limit">Maximum number of requests to return</param>
+    /// <returns>List of recent completed translation requests</returns>
+    Task<List<TranslationRequest>> GetRecentCompletedRequests(int limit = 10);
 }

@@ -37,7 +37,7 @@
                 <span class="block md:hidden">⊘</span>
             </div>
         </div>
-        <div v-for="episode in episodes" :key="episode.id" class="grid grid-cols-14">
+        <div v-for="episode in sortedEpisodes" :key="episode.id" class="grid grid-cols-14">
             <div class="col-span-1 px-4 py-2">
                 {{ episode.episodeNumber }}
             </div>
@@ -50,45 +50,67 @@
             </div>
             <div class="col-span-4 pr-4 md:col-span-4">
                 <div v-if="episode?.fileName" class="flex flex-wrap items-center gap-2 py-2">
-                    <!-- External subtitles (blue badges) -->
-                    <ContextMenu
-                        v-for="(subtitle, jndex) in getSubtitle(episode.fileName)"
-                        :key="`ext-${episode.id}-${jndex}`"
-                        :media-type="MEDIA_TYPE.EPISODE"
-                        :media="episode"
-                        :subtitle="subtitle">
-                        <BadgeComponent>
-                            {{ subtitle.language.toUpperCase() }}
-                            <span v-if="subtitle.caption" class="text-primary-content/50">
-                                - {{ subtitle.caption.toUpperCase() }}
-                            </span>
-                        </BadgeComponent>
-                    </ContextMenu>
-                    <!-- Embedded subtitles (amber badges with 📦 icon) -->
-                    <ContextMenu
-                        v-for="embeddedSub in getEmbeddedSubtitles(episode)"
-                        :key="`emb-${episode.id}-${embeddedSub.id}`"
-                        :embeddedSubtitle="embeddedSub"
-                        :media="episode"
-                        :media-type="MEDIA_TYPE.EPISODE"
-                        v-slot="{ isExtracting }">
-                        <BadgeComponent :classes="getEmbeddedBadgeClasses(embeddedSub)">
-                            <span class="mr-1">📦</span>
-                            {{ formatEmbeddedLanguage(embeddedSub) }}
-                            <span v-if="embeddedSub.title" class="ml-1 text-amber-200/70">
-                                ({{ truncate(embeddedSub.title, 10) }})
-                            </span>
-                            <span v-if="embeddedSub.isForced" class="ml-1 text-xs opacity-70">
-                                F
-                            </span>
-                            <span v-if="embeddedSub.isDefault" class="ml-1 text-xs opacity-70">
-                                D
-                            </span>
-                            <LoaderCircleIcon
-                                v-if="isExtracting"
-                                class="ml-1 h-3 w-3 animate-spin" />
-                        </BadgeComponent>
-                    </ContextMenu>
+                    <template
+                        v-for="item in getAllSubtitles(episode).slice(
+                            0,
+                            isSubtitlesExpanded(episode.id) ? undefined : MAX_VISIBLE_SUBTITLES
+                        )"
+                        :key="item.key">
+                        <ContextMenu
+                            v-if="item.type === 'external'"
+                            :media-type="MEDIA_TYPE.EPISODE"
+                            :media="episode"
+                            :subtitle="item.data as ISubtitle">
+                            <BadgeComponent>
+                                {{ (item.data as ISubtitle).language.toUpperCase() }}
+                                <span
+                                    v-if="(item.data as ISubtitle).caption"
+                                    class="text-primary-content/50">
+                                    - {{ (item.data as ISubtitle).caption.toUpperCase() }}
+                                </span>
+                            </BadgeComponent>
+                        </ContextMenu>
+                        <ContextMenu
+                            v-else
+                            :embeddedSubtitle="item.data as IEmbeddedSubtitle"
+                            :media="episode"
+                            :media-type="MEDIA_TYPE.EPISODE"
+                            v-slot="{ isExtracting }">
+                            <BadgeComponent
+                                :classes="getEmbeddedBadgeClasses(item.data as IEmbeddedSubtitle)">
+                                <span class="mr-1">📦</span>
+                                {{ formatEmbeddedLanguage(item.data as IEmbeddedSubtitle) }}
+                                <span
+                                    v-if="(item.data as IEmbeddedSubtitle).title"
+                                    class="ml-1 text-amber-200/70">
+                                    ({{ truncate((item.data as IEmbeddedSubtitle).title, 10) }})
+                                </span>
+                                <span
+                                    v-if="(item.data as IEmbeddedSubtitle).isForced"
+                                    class="ml-1 text-xs opacity-70">
+                                    F
+                                </span>
+                                <span
+                                    v-if="(item.data as IEmbeddedSubtitle).isDefault"
+                                    class="ml-1 text-xs opacity-70">
+                                    D
+                                </span>
+                                <LoaderCircleIcon
+                                    v-if="isExtracting"
+                                    class="ml-1 h-3 w-3 animate-spin" />
+                            </BadgeComponent>
+                        </ContextMenu>
+                    </template>
+                    <button
+                        v-if="getAllSubtitles(episode).length > MAX_VISIBLE_SUBTITLES"
+                        class="border-accent text-secondary-content hover:bg-accent/20 cursor-pointer rounded-full border px-3 py-1 text-xs font-semibold"
+                        @click="toggleSubtitles(episode.id)">
+                        {{
+                            isSubtitlesExpanded(episode.id)
+                                ? 'Show less'
+                                : `+${getAllSubtitles(episode).length - MAX_VISIBLE_SUBTITLES} more`
+                        }}
+                    </button>
                 </div>
             </div>
             <div class="col-span-1 flex items-center justify-center py-2 md:col-span-1">
@@ -125,7 +147,7 @@
     </div>
 </template>
 <script setup lang="ts">
-import { reactive, onMounted } from 'vue'
+import { computed, reactive, onMounted, ref } from 'vue'
 import { IEpisode, ISubtitle, IEmbeddedSubtitle, MEDIA_TYPE, TRANSLATION_STATE } from '@/ts'
 import { useI18n } from '@/plugins/i18n'
 import BadgeComponent from '@/components/common/BadgeComponent.vue'
@@ -146,9 +168,23 @@ const props = defineProps<{
 }>()
 const showStore = useShowStore()
 
+const sortedEpisodes = computed(() => {
+    return [...props.episodes].sort((a, b) => {
+        if (a.episodeNumber !== b.episodeNumber) {
+            return a.episodeNumber - b.episodeNumber
+        }
+
+        return a.id - b.id
+    })
+})
+
 // Track which episodes are currently being translated
 const translatingEpisode = reactive<Record<number, boolean>>({})
 const integrityCheckingEpisode = reactive<Record<number, boolean>>({})
+
+// Subtitle collapse state
+const expandedSubtitles = ref<Set<number>>(new Set())
+const MAX_VISIBLE_SUBTITLES = 4
 
 interface TranslateMediaResponse {
     translationsQueued: number
@@ -188,7 +224,7 @@ const checkIntegrityEpisode = async (episode: IEpisode) => {
 
 // Fetch embedded subtitles for episodes on mount
 onMounted(async () => {
-    for (const episode of props.episodes) {
+    for (const episode of sortedEpisodes.value) {
         if (!episode.embeddedSubtitles || episode.embeddedSubtitles.length === 0) {
             try {
                 episode.embeddedSubtitles = await services.subtitle.getEmbeddedSubtitles<
@@ -242,14 +278,15 @@ const formatEmbeddedLanguage = (sub: IEmbeddedSubtitle): string => {
     return `#${sub.streamIndex}`
 }
 
-const truncate = (str: string, len: number): string => {
+const truncate = (str: string | null | undefined, len: number): string => {
+    if (!str) return ''
     return str.length > len ? str.substring(0, len) + '...' : str
 }
 
 const getEmbeddedBadgeClasses = (sub: IEmbeddedSubtitle): string => {
     if (!sub.isTextBased) {
         // Image-based (PGS/VobSub) - gray, non-clickable
-        return 'cursor-not-allowed text-gray-400 border-gray-500 bg-gray-700/50 opacity-60'
+        return 'cursor-not-allowed text-secondary-content/50 border-secondary-content/30 bg-secondary/30 opacity-60'
     }
     if (sub.isExtracted) {
         // Extracted - green tint
@@ -257,5 +294,48 @@ const getEmbeddedBadgeClasses = (sub: IEmbeddedSubtitle): string => {
     }
     // Text-based, not extracted - amber
     return 'cursor-pointer text-amber-300 border-amber-500 bg-amber-900/30'
+}
+
+const toggleSubtitles = (episodeId: number) => {
+    if (expandedSubtitles.value.has(episodeId)) {
+        expandedSubtitles.value.delete(episodeId)
+    } else {
+        expandedSubtitles.value.add(episodeId)
+    }
+}
+
+const isSubtitlesExpanded = (episodeId: number): boolean => {
+    return expandedSubtitles.value.has(episodeId)
+}
+
+interface SubtitleItem {
+    type: 'external' | 'embedded'
+    data: ISubtitle | IEmbeddedSubtitle
+    key: string
+}
+
+const getAllSubtitles = (episode: IEpisode): SubtitleItem[] => {
+    const items: SubtitleItem[] = []
+    const fileName = episode.fileName ?? null
+    const externalSubs: ISubtitle[] = getSubtitle(fileName) ?? []
+    const embeddedSubs = getEmbeddedSubtitles(episode)
+
+    externalSubs.forEach((sub, index) => {
+        items.push({
+            type: 'external',
+            data: sub,
+            key: `ext-${episode.id}-${index}`
+        })
+    })
+
+    embeddedSubs.forEach((sub) => {
+        items.push({
+            type: 'embedded',
+            data: sub,
+            key: `emb-${episode.id}-${sub.id}`
+        })
+    })
+
+    return items
 }
 </script>

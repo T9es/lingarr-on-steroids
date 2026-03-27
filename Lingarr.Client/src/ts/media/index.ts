@@ -17,6 +17,7 @@ export interface IShow extends IBaseEntity {
     translationAgeThreshold: string
     isPriority: boolean
     priorityDate?: Date | null
+    sourceInstanceId?: string | null
 }
 
 export interface IEmbeddedSubtitle {
@@ -46,6 +47,7 @@ export interface IMovie extends IBaseEntity {
     isPriority: boolean
     priorityDate?: Date | null
     translationState?: TranslationStateType
+    sourceInstanceId?: string | null
 }
 
 export interface ITranslationRequest {
@@ -63,6 +65,7 @@ export interface ITranslationRequest {
     completedAt?: string | null
     isPriority?: boolean
     isActive?: boolean
+    startedAt?: string | null
 }
 
 export interface ITranslationRequestLog {
@@ -76,6 +79,11 @@ export interface ITranslationRequestLog {
 export interface IRequestProgress {
     id: number
     jobId: string
+    title: string
+    mediaType: MediaType
+    sourceLanguage: string
+    targetLanguage: string
+    startedAt?: string | null
     status: TranslationStatus
     progress: number
     completed: boolean

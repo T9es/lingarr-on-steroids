@@ -147,4 +147,41 @@ public class SubtitleFormatterServiceTests
         var result = SubtitleFormatterService.IsMeaningless(input);
         Assert.Equal(expected, result);
     }
+
+    [Theory]
+    [InlineData("Hello\nWorld", "Hello World")]
+    [InlineData("Hello\r\nWorld", "Hello World")]
+    [InlineData("Hello\rWorld", "Hello World")]
+    [InlineData("Line1\nLine2\nLine3", "Line1 Line2 Line3")]
+    [InlineData("Mixed\r\nand\nand\r", "Mixed and and ")]
+    [InlineData("No breaks here", "No breaks here")]
+    [InlineData("", "")]
+    public void NormalizeLineBreaks_ShouldRemoveActualNewlines(string input, string expected)
+    {
+        var result = SubtitleFormatterService.NormalizeLineBreaks(input);
+        Assert.Equal(expected, result);
+    }
+
+    [Fact]
+    public void NormalizeLineBreaks_ShouldReturnInput_WhenInputIsNull()
+    {
+        var result = SubtitleFormatterService.NormalizeLineBreaks(null!);
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void NormalizeLineBreaks_ShouldPreserveAssEscapeSequences()
+    {
+        var input = "Hello\\NWorld";
+        var result = SubtitleFormatterService.NormalizeLineBreaks(input);
+        Assert.Equal("Hello\\NWorld", result);
+    }
+
+    [Fact]
+    public void NormalizeLineBreaks_ShouldHandleMixedActualAndAssBreaks()
+    {
+        var input = "Line1\nLine2\\NLine3";
+        var result = SubtitleFormatterService.NormalizeLineBreaks(input);
+        Assert.Equal("Line1 Line2\\NLine3", result);
+    }
 }

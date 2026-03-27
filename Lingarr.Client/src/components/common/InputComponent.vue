@@ -1,6 +1,6 @@
 ﻿<template>
     <div class="relative">
-        <label v-if="label" :for="id" class="mb-1 block text-sm">
+        <label v-if="label" :for="id" class="!text-primary-content mb-1 block text-sm">
             {{ label }}
         </label>
         <div class="mb-1">
@@ -29,7 +29,7 @@
             <button
                 v-if="type === 'password'"
                 type="button"
-                class="absolute inset-y-0 right-0 flex cursor-pointer items-center pr-3"
+                class="!text-primary-content absolute inset-y-0 right-0 flex cursor-pointer items-center pr-3 hover:brightness-125"
                 @click="togglePassword">
                 <EyeOnIcon v-if="showPassword" class="h-5 w-5" />
                 <EyeOffIcon v-else class="h-5 w-5" />
@@ -90,7 +90,7 @@ onMounted(() => {
 const showPassword = ref(false)
 const inputClasses = computed(() => [
     '[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none',
-    'w-full rounded-md border bg-transparent outline-hidden transition-colors duration-200 ',
+    'w-full rounded-md border bg-transparent !text-primary-content outline-hidden transition-colors duration-200 focus:ring-2 focus:ring-accent focus:border-transparent',
     {
         'px-6 py-3 text-lg': props.size === 'lg',
         'px-4 py-2': props.size === 'md',

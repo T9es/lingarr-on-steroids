@@ -1,4 +1,5 @@
-﻿using Lingarr.Core.Data;
+﻿using Lingarr.Core.Configuration;
+using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Models;
@@ -9,6 +10,7 @@ using Lingarr.Server.Interfaces.Services.Sync;
 using Lingarr.Server.Interfaces.Services.Integration;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Core.Interfaces;
+using Lingarr.Server.Models.Sync;
 
 namespace Lingarr.Server.Services;
 
@@ -20,8 +22,9 @@ public class MediaService : IMediaService
     private readonly IShowSyncService _showSyncService;
     private readonly IRadarrService _radarrService;
     private readonly IMovieSyncService _movieSyncService;
-    private readonly ILogger<MediaService> _logger;
     private readonly IMediaSubtitleProcessor _mediaSubtitleProcessor;
+    private readonly IInstanceConfigService _instanceConfigService;
+    private readonly ILogger<MediaService> _logger;
 
     public MediaService(LingarrDbContext dbContext, 
         ISubtitleService subtitleService,
@@ -30,6 +33,7 @@ public class MediaService : IMediaService
         IRadarrService radarrService,
         IMovieSyncService movieSyncService,
         IMediaSubtitleProcessor mediaSubtitleProcessor,
+        IInstanceConfigService instanceConfigService,
         ILogger<MediaService> logger)
     {
         _dbContext = dbContext;
@@ -39,6 +43,7 @@ public class MediaService : IMediaService
         _radarrService = radarrService;
         _movieSyncService = movieSyncService;
         _mediaSubtitleProcessor = mediaSubtitleProcessor;
+        _instanceConfigService = instanceConfigService;
         _logger = logger;
     }
     
@@ -86,6 +91,7 @@ public class MediaService : IMediaService
             {
                 Id = movie.Id,
                 RadarrId = movie.RadarrId,
+                SourceInstanceId = movie.SourceInstanceId,
                 Title = movie.Title,
                 FileName = movie.FileName ?? string.Empty,
                 Path = movie.Path,
@@ -113,26 +119,37 @@ public class MediaService : IMediaService
     }
 
     /// <inheritdoc />
-    public async Task<int> GetMovieIdOrSyncFromRadarrMovieId(int movieId)
+    public async Task<int> GetMovieIdOrSyncFromRadarrMovieId(int movieId, string? sourceInstanceId = null)
     {
-        var movie = await _dbContext.Movies.Where(s => s.RadarrId == movieId).FirstOrDefaultAsync();
+        var instanceId = sourceInstanceId ?? "default";
+        
+        var query = _dbContext.Movies.Where(s => s.RadarrId == movieId && s.SourceInstanceId == instanceId);
+        var movie = await query.FirstOrDefaultAsync();
         if (movie != null)
         {
             return movie.Id;
         }
 
         // Movie not found, maybe out of sync.
-        // Sync the movie
+        // Sync the movie from the correct instance
         try
         {
-            var movieFetched = await _radarrService.GetMovie(movieId);
+            var config = await _instanceConfigService.GetRadarrConfig(instanceId);
+            
+            if (config == null)
+            {
+                _logger.LogWarning("No Radarr instance config found for instanceId '{InstanceId}'", instanceId);
+                return 0;
+            }
+            
+            var movieFetched = await _radarrService.GetMovie(movieId, config.Url, config.ApiKey);
             if (movieFetched == null)
             {
                 // Unknown movie
                 return 0;
             }
 
-            var movieEntity = await _movieSyncService.SyncMovie(movieFetched);
+            var movieEntity = await _movieSyncService.SyncMovie(movieFetched, instanceId);
             if (movieEntity == null)
             {
                 // Movie had no file
@@ -144,30 +161,47 @@ public class MediaService : IMediaService
         catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
             // Movie doesn't exist in Radarr
-            _logger.LogWarning("Movie with Radarr ID {MovieId} not found in Radarr (404)", movieId);
+            _logger.LogWarning("Movie with Radarr ID {MovieId} not found in instance '{InstanceId}' (404)", 
+                movieId, instanceId);
             return 0;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to fetch or sync movie with Radarr ID {MovieId}", movieId);
+            _logger.LogError(ex, "Failed to fetch or sync movie with Radarr ID {MovieId} from instance '{InstanceId}'", 
+                movieId, instanceId);
             return 0;
         }
     }
 
     /// <inheritdoc />
-    public async Task<int> GetEpisodeIdOrSyncFromSonarrEpisodeId(int episodeNumber)
+    public async Task<int> GetEpisodeIdOrSyncFromSonarrEpisodeId(int episodeNumber, string? sourceInstanceId = null)
     {
-        var episode = await _dbContext.Episodes.Where(s => s.SonarrId == episodeNumber).FirstOrDefaultAsync();
+        var instanceId = sourceInstanceId ?? "default";
+        
+        var query = _dbContext.Episodes
+            .Include(e => e.Season)
+            .ThenInclude(s => s.Show)
+            .Where(e => e.SonarrId == episodeNumber && e.SourceInstanceId == instanceId);
+        
+        var episode = await query.FirstOrDefaultAsync();
         if (episode != null)
         {
             return episode.Id;
         }
 
         // Episode not found, maybe out of sync.
-        // Sync the show
+        // Sync the show from the correct instance
         try
         {
-            var episodeFetched = await _sonarrService.GetEpisode(episodeNumber);
+            var config = await _instanceConfigService.GetSonarrConfig(instanceId);
+            
+            if (config == null)
+            {
+                _logger.LogWarning("No Sonarr instance config found for instanceId '{InstanceId}'", instanceId);
+                return 0;
+            }
+            
+            var episodeFetched = await _sonarrService.GetEpisode(episodeNumber, config.Url, config.ApiKey);
             if (episodeFetched == null)
             {
                 // Unknown episode
@@ -180,26 +214,42 @@ public class MediaService : IMediaService
                 return 0;
             }
 
-            var show = await _showSyncService.SyncShow(episodeFetched.Show);
+            var show = await _showSyncService.SyncShow(episodeFetched.Show, instanceId);
             // Find the episode id or return 0 if not found
+            if (show == null)
+            {
+                _logger.LogWarning("Show sync returned null for episode {EpisodeId}", episodeNumber);
+                return 0;
+            }
             return show.Seasons
                 .SelectMany(s => s.Episodes)
-                .FirstOrDefault(e => e.SonarrId == episodeNumber)?.Id ?? 0;
+                .FirstOrDefault(e => e.SonarrId == episodeNumber && e.SourceInstanceId == instanceId)?.Id ?? 0;
         }
         catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
             // Episode doesn't exist in Sonarr
-            _logger.LogWarning("Episode with Sonarr ID {EpisodeId} not found in Sonarr (404)", episodeNumber);
+            _logger.LogWarning("Episode with Sonarr ID {EpisodeId} not found in instance '{InstanceId}' (404)", 
+                episodeNumber, instanceId);
             try
             {
                 // Attempt a more comprehensive resync of all shows in case the Sonarr ID is stale
                 _logger.LogInformation("Sonarr episode {EpisodeId} returned 404 — attempting full show resync as a fallback.", episodeNumber);
-                var shows = await _sonarrService.GetShows();
+                
+                var instanceConfig = await _instanceConfigService.GetSonarrConfig(instanceId);
+                if (instanceConfig == null)
+                {
+                    _logger.LogWarning("Could not find Sonarr instance config for {InstanceId}, skipping fallback sync", instanceId);
+                    return 0;
+                }
+                
+                var shows = await _sonarrService.GetShows(instanceConfig.Url, instanceConfig.ApiKey);
                 if (shows != null && shows.Any())
                 {
-                    await _showSyncService.SyncShows(shows);
-                    // Try to find the episode again after resync
-                    var matchedEpisode = await _dbContext.Episodes.Where(s => s.SonarrId == episodeNumber).FirstOrDefaultAsync();
+                    var showsWithInstanceId = shows.Select(s => (s, instanceId)).ToList();
+                    await _showSyncService.SyncShows(showsWithInstanceId);
+                    var matchedEpisode = await _dbContext.Episodes
+                        .Where(e => e.SonarrId == episodeNumber && e.SourceInstanceId == instanceId)
+                        .FirstOrDefaultAsync();
                     if (matchedEpisode != null)
                     {
                         return matchedEpisode.Id;
@@ -214,8 +264,69 @@ public class MediaService : IMediaService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to fetch or sync episode with Sonarr ID {EpisodeId}", episodeNumber);
+            _logger.LogError(ex, "Failed to fetch or sync episode with Sonarr ID {EpisodeId} from instance '{InstanceId}'", 
+                episodeNumber, instanceId);
             return 0;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<EpisodeRefreshResult?> RefreshEpisodeFromSonarrEpisodeId(int sonarrEpisodeId, string? sourceInstanceId = null)
+    {
+        var instanceId = sourceInstanceId ?? "default";
+
+        try
+        {
+            var config = await _instanceConfigService.GetSonarrConfig(instanceId);
+
+            if (config == null)
+            {
+                _logger.LogWarning("No Sonarr instance config found for instanceId '{InstanceId}'", instanceId);
+                return null;
+            }
+
+            var episodeFetched = await _sonarrService.GetEpisode(sonarrEpisodeId, config.Url, config.ApiKey);
+            if (episodeFetched == null)
+            {
+                return null;
+            }
+
+            if (!episodeFetched.HasFile)
+            {
+                _logger.LogInformation(
+                    "Skipping targeted refresh for Sonarr episode {EpisodeId} from instance '{InstanceId}' because it has no file",
+                    sonarrEpisodeId,
+                    instanceId);
+                return null;
+            }
+
+            if (episodeFetched.Show == null)
+            {
+                _logger.LogWarning(
+                    "Skipping targeted refresh for Sonarr episode {EpisodeId} from instance '{InstanceId}' because series payload is missing",
+                    sonarrEpisodeId,
+                    instanceId);
+                return null;
+            }
+
+            return await _showSyncService.SyncEpisode(episodeFetched, instanceId);
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            _logger.LogWarning(
+                "Episode with Sonarr ID {EpisodeId} not found in instance '{InstanceId}' during targeted refresh (404)",
+                sonarrEpisodeId,
+                instanceId);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Failed to refresh episode with Sonarr ID {EpisodeId} from instance '{InstanceId}'",
+                sonarrEpisodeId,
+                instanceId);
+            return null;
         }
     }
 
@@ -264,12 +375,32 @@ public class MediaService : IMediaService
     /// <inheritdoc />
     public async Task<Show?> GetShow(int id)
     {
-        return await _dbContext.Shows
+        var show = await _dbContext.Shows
             .Include(s => s.Images)
             .Include(s => s.Seasons)
             .ThenInclude(season => season.Episodes)
             .AsSplitQuery()
             .FirstOrDefaultAsync(s => s.Id == id);
+
+        if (show == null)
+        {
+            return null;
+        }
+
+        show.Seasons = show.Seasons
+            .OrderBy(season => season.SeasonNumber)
+            .ThenBy(season => season.Id)
+            .ToList();
+
+        foreach (var season in show.Seasons)
+        {
+            season.Episodes = season.Episodes
+                .OrderBy(episode => episode.EpisodeNumber)
+                .ThenBy(episode => episode.Id)
+                .ToList();
+        }
+
+        return show;
     }
     
     /// <inheritdoc />

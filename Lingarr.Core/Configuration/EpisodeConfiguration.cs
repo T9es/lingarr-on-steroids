@@ -18,5 +18,9 @@ public class EpisodeConfiguration : IEntityTypeConfiguration<Episode>
 
         builder.HasIndex(e => e.TranslationState)
             .HasDatabaseName("IX_Episodes_TranslationState");
+
+        builder.HasIndex(e => new { e.SourceInstanceId, e.SonarrId })
+            .IsUnique()
+            .HasDatabaseName("IX_Episodes_SourceInstanceId_SonarrId");
     }
 }

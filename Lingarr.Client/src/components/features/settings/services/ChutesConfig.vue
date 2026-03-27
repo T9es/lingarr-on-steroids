@@ -1,8 +1,8 @@
 <template>
     <div class="flex flex-col space-y-3">
-        <div>
+        <div class="text-primary-content leading-6">
             {{ translate('settings.services.aiWarningIntro') }}
-            <span :class="automationEnabled == 'true' ? 'text-red-500' : 'text-green-500'">
+            <span class="font-semibold">
                 {{
                     automationEnabled == 'true'
                         ? translate('settings.services.serviceEnabled')
@@ -10,7 +10,7 @@
                 }}
             </span>
         </div>
-        <p class="text-xs">
+        <p class="text-secondary-content text-xs leading-5">
             {{ translate('settings.services.aiCostDescription') }}
         </p>
 
@@ -23,7 +23,7 @@
             :error-message="translate('settings.services.apiKeyError')"
             @update:validation="(val) => (apiKeyIsValid = val)" />
 
-        <label class="mb-1 block text-sm">
+        <label class="text-secondary-content mb-1 block text-sm">
             {{ translate('settings.services.aiModel') }}
         </label>
         <SelectComponent

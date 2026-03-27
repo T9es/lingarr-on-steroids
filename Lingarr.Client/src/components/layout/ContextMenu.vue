@@ -14,10 +14,12 @@
             <div class="px-3 py-1" role="menu" aria-orientation="vertical">
                 <!-- Embedded Options -->
                 <div v-if="embeddedSubtitle" class="border-accent mb-1 border-b pb-1">
-                    <span class="text-xs" role="menuitem">{{ translate('embedded.title') }}</span>
+                    <span class="text-primary-content text-xs" role="menuitem">
+                        {{ translate('embedded.title') }}
+                    </span>
                     <div
                         v-if="!embeddedSubtitle.isExtracted"
-                        class="flex text-sm"
+                        class="text-primary-content flex text-sm"
                         role="menuitem"
                         @click="handleJustExtract">
                         <span class="h-full w-full cursor-pointer py-2 hover:brightness-150">
@@ -42,18 +44,16 @@
                             <template v-else-if="isReextractHovered">
                                 {{ translate('embedded.extractAgain') || 'Extract again?' }}
                             </template>
-                            <template v-else>
-                                {{ translate('embedded.extracted') }} ✓
-                            </template>
+                            <template v-else>{{ translate('embedded.extracted') }} ✓</template>
                         </span>
                     </div>
                 </div>
 
-                <span class="text-xs" role="menuitem">Translate to ...</span>
+                <span class="text-primary-content text-xs" role="menuitem">Translate to ...</span>
                 <div
                     v-for="language in languages"
                     :key="language.code"
-                    class="mb-1 flex text-sm"
+                    class="text-primary-content mb-1 flex text-sm"
                     role="menuitem"
                     @click="selectOption(language)">
                     <span class="h-full w-full cursor-pointer py-2 hover:brightness-150">
@@ -156,7 +156,10 @@ async function handleJustExtract() {
 }
 
 async function handleReExtract() {
-    const confirmed = confirm(translate('embedded.reextractConfirm') || 'Re-extract this subtitle? The existing file will be overwritten.')
+    const confirmed = confirm(
+        translate('embedded.reextractConfirm') ||
+            'Re-extract this subtitle? The existing file will be overwritten.'
+    )
     if (!confirmed) return
 
     const success = await extractSubtitle(true) // force = true

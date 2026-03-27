@@ -6,6 +6,7 @@ using Lingarr.Server.Interfaces.Services.Integration;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Interfaces.Services.Sync;
 using Lingarr.Server.Models.Integrations;
+using Lingarr.Server.Models.Sync;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
@@ -41,22 +42,27 @@ public class EpisodeSync : IEpisodeSync
     }
 
     /// <inheritdoc />
-    public async Task SyncEpisodes(SonarrShow show, Season season)
+    public async Task SyncEpisodes(
+        SonarrShow show, 
+        Season season, 
+        string instanceId,
+        string instanceUrl, 
+        string instanceApiKey)
     {
-        var episodes = await _sonarrService.GetEpisodes(show.Id, season.SeasonNumber);
+        var episodes = await _sonarrService.GetEpisodes(show.Id, season.SeasonNumber, instanceUrl, instanceApiKey);
         if (episodes == null) return;
 
         var syncedEpisodes = new List<(Episode Entity, bool NeedsIndexing, string? OldPath, string? OldFileName)>();
 
         foreach (var episode in episodes.Where(e => e.HasFile))
         {
-            var episodePathResult = await _sonarrService.GetEpisodePath(episode.Id);
+            var episodePathResult = await _sonarrService.GetEpisodePath(episode.Id, instanceUrl, instanceApiKey);
             var episodePath = _pathConversionService.ConvertAndMapPath(
                 episodePathResult?.EpisodeFile.Path ?? string.Empty,
                 MediaType.Show
             );
             
-            var (entity, needsIndexing, oldPath, oldFileName) = await UpdateEpisodeMetadata(episode, episodePath, season, episodePathResult?.EpisodeFile.DateAdded);
+            var (entity, needsIndexing, oldPath, oldFileName) = await UpdateEpisodeMetadata(episode, episodePath, season, episodePathResult?.EpisodeFile.DateAdded, instanceId);
             syncedEpisodes.Add((entity, needsIndexing, oldPath, oldFileName));
         }
 
@@ -88,7 +94,8 @@ public class EpisodeSync : IEpisodeSync
             {
                 var shouldUpdateState = true;
                 
-                if (entity.TranslationState == TranslationState.AwaitingSource && 
+                if (!needsIndexing &&
+                    entity.TranslationState == TranslationState.AwaitingSource && 
                     !string.IsNullOrEmpty(entity.Path))
                 {
                     var dirInfo = new DirectoryInfo(entity.Path);
@@ -106,8 +113,15 @@ public class EpisodeSync : IEpisodeSync
                 
                 if (shouldUpdateState)
                 {
-                    await _mediaStateService.UpdateStateAsync(entity, MediaType.Episode, saveChanges: false);
-                    entity.LastSubtitleCheckAt = DateTime.UtcNow;
+                    var refreshedState = await _mediaStateService.UpdateStateAsync(
+                        entity,
+                        MediaType.Episode,
+                        saveChanges: false);
+
+                    if (SubtitleCheckTimestampPolicy.ShouldStampAfterStateRefresh(refreshedState))
+                    {
+                        entity.LastSubtitleCheckAt = DateTime.UtcNow;
+                    }
                 }
             }
             catch (Exception ex)
@@ -116,16 +130,78 @@ public class EpisodeSync : IEpisodeSync
             }
         }
 
-        RemoveNonExistentEpisodes(season, episodes);
+        RemoveNonExistentEpisodes(season, episodes, instanceId);
+    }
+
+    /// <inheritdoc />
+    public async Task<EpisodeRefreshResult?> SyncEpisode(
+        SonarrShow show,
+        SonarrEpisode episode,
+        Season season,
+        string instanceId,
+        string instanceUrl,
+        string instanceApiKey)
+    {
+        if (!episode.HasFile)
+        {
+            return null;
+        }
+
+        var episodePathResult = await _sonarrService.GetEpisodePath(episode.Id, instanceUrl, instanceApiKey);
+        var episodePath = _pathConversionService.ConvertAndMapPath(
+            episodePathResult?.EpisodeFile.Path ?? string.Empty,
+            MediaType.Show
+        );
+
+        var (entity, needsIndexing, oldPath, oldFileName) = await UpdateEpisodeMetadata(
+            episode,
+            episodePath,
+            season,
+            episodePathResult?.EpisodeFile.DateAdded,
+            instanceId);
+
+        if (_dbContext.ChangeTracker.HasChanges())
+        {
+            await _dbContext.SaveChangesAsync();
+        }
+
+        if (!string.IsNullOrEmpty(oldPath) && !string.IsNullOrEmpty(oldFileName) && oldFileName != entity.FileName)
+        {
+            await _orphanCleanupService.CleanupOrphansAsync(
+                oldPath,
+                oldFileName,
+                entity.FileName!);
+        }
+
+        if (needsIndexing)
+        {
+            await IndexEmbeddedSubtitles(entity);
+        }
+
+        await RefreshEpisodeState(entity, needsIndexing);
+
+        var fileChanged = !string.IsNullOrEmpty(oldPath) || !string.IsNullOrEmpty(oldFileName);
+
+        return new EpisodeRefreshResult(
+            entity.Id,
+            fileChanged,
+            oldFileName,
+            entity.FileName,
+            entity.IndexedAt);
     }
 
     /// <summary>
     /// Updates or creates the episode entity metadata without saving to DB.
     /// Returns the entity, whether it needs indexing, and old path/filename if changed.
     /// </summary>
-    private async Task<(Episode Entity, bool NeedsIndexing, string? OldPath, string? OldFileName)> UpdateEpisodeMetadata(SonarrEpisode episode, string episodePath, Season season, DateTime? dateAdded)
+    private async Task<(Episode Entity, bool NeedsIndexing, string? OldPath, string? OldFileName)> UpdateEpisodeMetadata(
+        SonarrEpisode episode, 
+        string episodePath, 
+        Season season, 
+        DateTime? dateAdded,
+        string instanceId)
     {
-        var episodeEntity = season.Episodes.FirstOrDefault(se => se.SonarrId == episode.Id);
+        var episodeEntity = season.Episodes.FirstOrDefault(se => se.SonarrId == episode.Id && se.SourceInstanceId == instanceId);
         
         var isNew = episodeEntity == null;
         var oldPath = episodeEntity?.Path;
@@ -141,7 +217,8 @@ public class EpisodeSync : IEpisodeSync
                 FileName = Path.GetFileNameWithoutExtension(episodePath),
                 Path = Path.GetDirectoryName(episodePath),
                 Season = season,
-                DateAdded = dateAdded?.ToUniversalTime()
+                DateAdded = dateAdded?.ToUniversalTime(),
+                SourceInstanceId = instanceId
             };
             season.Episodes.Add(episodeEntity);
         }
@@ -152,6 +229,7 @@ public class EpisodeSync : IEpisodeSync
             episodeEntity.FileName = Path.GetFileNameWithoutExtension(episodePath);
             episodeEntity.Path = Path.GetDirectoryName(episodePath);
             episodeEntity.DateAdded = dateAdded?.ToUniversalTime();
+            episodeEntity.SourceInstanceId = instanceId;
         }
 
         var fileChanged = !isNew && (
@@ -188,13 +266,57 @@ public class EpisodeSync : IEpisodeSync
         }
     }
 
+    private async Task RefreshEpisodeState(Episode entity, bool needsIndexing)
+    {
+        try
+        {
+            var shouldUpdateState = true;
+
+            if (!needsIndexing &&
+                entity.TranslationState == TranslationState.AwaitingSource &&
+                !string.IsNullOrEmpty(entity.Path))
+            {
+                var dirInfo = new DirectoryInfo(entity.Path);
+                if (dirInfo.Exists)
+                {
+                    var dirMtime = dirInfo.LastWriteTimeUtc;
+                    if (entity.LastSubtitleCheckAt.HasValue &&
+                        dirMtime <= entity.LastSubtitleCheckAt.Value)
+                    {
+                        shouldUpdateState = false;
+                        _logger.LogDebug("Skipping subtitle check for {Title}: directory unchanged", entity.Title);
+                    }
+                }
+            }
+
+            if (shouldUpdateState)
+            {
+                var refreshedState = await _mediaStateService.UpdateStateAsync(
+                    entity,
+                    MediaType.Episode,
+                    saveChanges: false);
+
+                if (SubtitleCheckTimestampPolicy.ShouldStampAfterStateRefresh(refreshedState))
+                {
+                    entity.LastSubtitleCheckAt = DateTime.UtcNow;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to update translation state for episode {Title}", entity.Title);
+        }
+    }
+
     /// <summary>
     /// Removes episodes from the season that no longer exist in Sonarr
+    /// Filters by SourceInstanceId to avoid removing episodes from other instances
     /// </summary>
-    private static void RemoveNonExistentEpisodes(Season season, List<SonarrEpisode> currentEpisodes)
+    private static void RemoveNonExistentEpisodes(Season season, List<SonarrEpisode> currentEpisodes, string instanceId)
     {
         var episodesToRemove = season.Episodes
-            .Where(seasonEpisode => currentEpisodes.All(episode => episode.Id != seasonEpisode.SonarrId))
+            .Where(seasonEpisode => seasonEpisode.SourceInstanceId == instanceId &&
+                                    currentEpisodes.All(episode => episode.Id != seasonEpisode.SonarrId))
             .ToList();
 
         foreach (var episodeToRemove in episodesToRemove)

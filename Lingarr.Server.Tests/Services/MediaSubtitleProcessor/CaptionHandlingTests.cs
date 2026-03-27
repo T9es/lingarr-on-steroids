@@ -53,7 +53,7 @@ public class CaptionHandlingTests : MediaSubtitleProcessorTestBase
             s => s.CreateRequest(It.Is<TranslateAbleSubtitle>(t =>
                 t.SourceLanguage == "en" &&
                 t.TargetLanguage == "ro" &&
-                t.SubtitlePath.Contains("en.forced.srt")), It.IsAny<bool>()),
+                t.SubtitlePath!.Contains("en.forced.srt")), It.IsAny<bool>()),
             Times.Never); // Should NOT create request because ro already exists
     }
 
@@ -97,7 +97,7 @@ public class CaptionHandlingTests : MediaSubtitleProcessorTestBase
             s => s.CreateRequest(It.Is<TranslateAbleSubtitle>(t =>
                 t.SourceLanguage == "en" &&
                 t.TargetLanguage == "ro" &&
-                t.SubtitlePath.Contains("test.movie.en.srt") &&
+                t.SubtitlePath!.Contains("test.movie.en.srt") &&
                 !t.SubtitlePath.Contains("forced")), It.IsAny<bool>()),
             Times.Once);
     }
@@ -134,7 +134,7 @@ public class CaptionHandlingTests : MediaSubtitleProcessorTestBase
             s => s.CreateRequest(It.Is<TranslateAbleSubtitle>(t =>
                 t.SourceLanguage == "en" &&
                 t.TargetLanguage == "ro" &&
-                t.SubtitlePath.Contains("en.hi.srt")), It.IsAny<bool>()),
+                t.SubtitlePath!.Contains("en.hi.srt")), It.IsAny<bool>()),
             Times.Once);
     }
 
@@ -170,7 +170,7 @@ public class CaptionHandlingTests : MediaSubtitleProcessorTestBase
             s => s.CreateRequest(It.Is<TranslateAbleSubtitle>(t =>
                 t.SourceLanguage == "en" &&
                 t.TargetLanguage == "ro" &&
-                t.SubtitlePath.Contains("en.forced.srt")), It.IsAny<bool>()),
+                t.SubtitlePath!.Contains("en.forced.srt")), It.IsAny<bool>()),
             Times.Once);
     }
 
@@ -206,7 +206,7 @@ public class CaptionHandlingTests : MediaSubtitleProcessorTestBase
             s => s.CreateRequest(It.Is<TranslateAbleSubtitle>(t =>
                 t.SourceLanguage == "en" &&
                 t.TargetLanguage == "ro" &&
-                t.SubtitlePath.Contains("en.sdh.srt")), It.IsAny<bool>()),
+                t.SubtitlePath!.Contains("en.sdh.srt")), It.IsAny<bool>()),
             Times.Once);
     }
 
@@ -242,7 +242,7 @@ public class CaptionHandlingTests : MediaSubtitleProcessorTestBase
             s => s.CreateRequest(It.Is<TranslateAbleSubtitle>(t =>
                 t.SourceLanguage == "en" &&
                 t.TargetLanguage == "ro" &&
-                t.SubtitlePath.Contains("en.cc.srt")), It.IsAny<bool>()),
+                t.SubtitlePath!.Contains("en.cc.srt")), It.IsAny<bool>()),
             Times.Once);
     }
 
@@ -310,7 +310,7 @@ public class CaptionHandlingTests : MediaSubtitleProcessorTestBase
             s => s.CreateRequest(It.Is<TranslateAbleSubtitle>(t =>
                 t.SourceLanguage == "en" &&
                 t.TargetLanguage == "ro" &&
-                t.SubtitlePath.Contains("test.movie.en.srt") &&
+                t.SubtitlePath!.Contains("test.movie.en.srt") &&
                 !t.SubtitlePath.Contains("forced") &&
                 !t.SubtitlePath.Contains(".hi.") &&
                 !t.SubtitlePath.Contains("sdh") &&

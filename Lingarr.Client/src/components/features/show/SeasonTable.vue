@@ -22,7 +22,7 @@
         </div>
         <!-- Seasons -->
         <div
-            v-for="season in seasons"
+            v-for="season in sortedSeasons"
             :key="season.id"
             class="bg-primary text-accent-content text-sm md:text-base">
             <div
@@ -79,7 +79,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, Ref, reactive } from 'vue'
+import { computed, ref, Ref, reactive } from 'vue'
 import { ISeason, ISubtitle, MEDIA_TYPE } from '@/ts'
 import { useI18n } from '@/plugins/i18n'
 import services from '@/services'
@@ -92,7 +92,7 @@ import { useShowStore } from '@/store/show'
 
 const { translate } = useI18n()
 
-defineProps<{
+const props = defineProps<{
     seasons: ISeason[]
 }>()
 
@@ -100,6 +100,16 @@ const showStore = useShowStore()
 const subtitles: Ref<ISubtitle[]> = ref([])
 const expandedSeason: Ref<ISeason | null> = ref(null)
 const translatingSeason = reactive<Record<number, boolean>>({})
+
+const sortedSeasons = computed(() => {
+    return [...props.seasons].sort((a, b) => {
+        if (a.seasonNumber !== b.seasonNumber) {
+            return a.seasonNumber - b.seasonNumber
+        }
+
+        return a.id - b.id
+    })
+})
 
 interface TranslateMediaResponse {
     translationsQueued: number

@@ -3,15 +3,19 @@
         :class="[`${instanceStore.getTheme}`, 'bg-primary text-primary-content flex min-h-screen']">
         <AsideNavigation />
 
-        <div class="flex w-full flex-col drop-shadow-xl">
+        <div
+            class="flex flex-col drop-shadow-xl transition-all duration-300 ease-in-out"
+            :class="
+                isOpen ? 'md:ml-64 md:w-[calc(100%-16rem)]' : 'md:ml-20 md:w-[calc(100%-5rem)]'
+            ">
             <!-- Header -->
             <header class="bg-secondary px-4 py-2 shadow-lg sm:px-6 lg:px-8">
                 <div class="flex w-full items-center justify-between space-x-2 md:justify-end">
                     <div class="md:hidden">
                         <MenuIcon class="block h-5 w-5 cursor-pointer" @click="isOpen = !isOpen" />
                     </div>
-                    <div class="flex items-center justify-between">
-                        <!--<LanguageSelect />-->
+                    <div class="flex items-center justify-between gap-3">
+                        <LanguageSelect />
                         <DropdownComponent width="medium">
                             <template #button>
                                 <ThemeIcon class="h-5 w-5" />
@@ -51,7 +55,7 @@ import AsideNavigation from '@/components/layout/AsideNavigation.vue'
 import DropdownComponent from '@/components/common/DropdownComponent.vue'
 import ThemeIcon from '@/components/icons/ThemeIcon.vue'
 import MenuIcon from '@/components/icons/MenuIcon.vue'
-// import LanguageSelect from '@/components/common/LanguageSelect.vue'
+import LanguageSelect from '@/components/common/LanguageSelect.vue'
 
 const instanceStore = useInstanceStore()
 const themeDropdown: Ref = ref(false)

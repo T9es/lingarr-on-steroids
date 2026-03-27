@@ -45,7 +45,7 @@ public class SubtitleFormatTests : MediaSubtitleProcessorTestBase
             s => s.CreateRequest(It.Is<TranslateAbleSubtitle>(t =>
                 t.SourceLanguage == "en" &&
                 t.TargetLanguage == "ro" &&
-                t.SubtitlePath.Contains("test.movie.en.ass") &&
+                t.SubtitlePath!.Contains("test.movie.en.ass") &&
                 t.SubtitleFormat == ".ass"), It.IsAny<bool>()),
             Times.Once);
     }
@@ -82,7 +82,7 @@ public class SubtitleFormatTests : MediaSubtitleProcessorTestBase
             s => s.CreateRequest(It.Is<TranslateAbleSubtitle>(t =>
                 t.SourceLanguage == "en" &&
                 t.TargetLanguage == "ro" &&
-                t.SubtitlePath.Contains("test.movie.en.ssa") &&
+                t.SubtitlePath!.Contains("test.movie.en.ssa") &&
                 t.SubtitleFormat == ".ssa"), It.IsAny<bool>()),
             Times.Once);
     }

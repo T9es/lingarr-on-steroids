@@ -26,8 +26,38 @@ public class TestTranslationSearchResult
     public int MediaId { get; set; }
 
     /// <summary>
+    /// Path to the poster image (relative to image API).
+    /// Format: "movie{path}" or "show{path}" for use with /api/image/ endpoint.
+    /// </summary>
+    public string? PosterPath { get; set; }
+
+    /// <summary>
+    /// Release year for movies, or show start year for episodes.
+    /// </summary>
+    public int? Year { get; set; }
+
+    /// <summary>
     /// Available subtitle files for this media item.
     /// </summary>
     public List<Subtitles> Subtitles { get; set; } = new();
+
+    /// <summary>
+    /// Embedded subtitles from the media file.
+    /// </summary>
+    public List<EmbeddedSubtitleInfo> EmbeddedSubtitles { get; set; } = new();
+}
+
+/// <summary>
+/// Embedded subtitle information for API responses.
+/// </summary>
+public class EmbeddedSubtitleInfo
+{
+    public int StreamIndex { get; set; }
+    public string? Language { get; set; }
+    public string? Title { get; set; }
+    public string CodecName { get; set; } = "";
+    public bool IsTextBased { get; set; }
+    public bool IsDefault { get; set; }
+    public bool IsForced { get; set; }
 }
 

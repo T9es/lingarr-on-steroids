@@ -1,5 +1,8 @@
+using System.Diagnostics;
+using System.IO;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using Lingarr.Core.Configuration;
@@ -16,6 +19,9 @@ namespace Lingarr.Server.Services.Translation;
 public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTranslationService
 {
     private readonly HttpClient _httpClient;
+    private readonly IDashboardService? _dashboardService;
+    private readonly ITokenUsageService? _tokenUsageService;
+    private const string ServiceName = "localai";
     private string? _model;
     private string? _endpoint;
     private string? _prompt;
@@ -32,10 +38,14 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
     public LocalAiService(
         ISettingService settings,
         HttpClient httpClient,
-        ILogger<LocalAiService> logger)
+        ILogger<LocalAiService> logger,
+        IDashboardService? dashboardService = null,
+        ITokenUsageService? tokenUsageService = null)
         : base(settings, logger, "/app/Statics/ai_languages.json")
     {
         _httpClient = httpClient;
+        _dashboardService = dashboardService;
+        _tokenUsageService = tokenUsageService;
     }
 
     /// <summary>
@@ -131,6 +141,12 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
     {
         await InitializeAsync(sourceLanguage, targetLanguage);
 
+        var tokenLimitEnabled = await _settings.GetSetting(SettingKeys.Translation.TokenLimits.LocalAiTokenLimitEnabled);
+        if (_tokenUsageService != null && tokenLimitEnabled == "true")
+        {
+            await _tokenUsageService.EnsureTokensAvailableAsync(ServiceName, cancellationToken);
+        }
+
         text = ApplyContextIfEnabled(text, contextLinesBefore, contextLinesAfter);
         using var retry = new CancellationTokenSource();
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, retry.Token);
@@ -159,9 +175,40 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
                     "429 Too Many Requests. Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})",
                     delay, attempt, _maxRetries);
             }
+            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable ||
+                ex.StatusCode == HttpStatusCode.GatewayTimeout || ex.StatusCode == HttpStatusCode.BadGateway)
+            {
+                if (attempt == _maxRetries)
+                {
+                    _logger.LogError(ex, "LocalAI server error. Max retries exhausted for text: {Text}", text);
+                    throw new TranslationException("LocalAI is temporarily unavailable. Retry limit reached.", ex);
+                }
+
+                await Task.Delay(delay, linked.Token).ConfigureAwait(false);
+                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+
+                _logger.LogWarning(
+                    "LocalAI service unavailable ({StatusCode}). Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})",
+                    ex.StatusCode, delay, attempt, _maxRetries);
+            }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 throw;
+            }
+            catch (Exception ex) when (ex is IOException || ex is SocketException || ex is TaskCanceledException ||
+                (ex is HttpRequestException && ex.InnerException is IOException))
+            {
+                if (attempt == _maxRetries)
+                {
+                    _logger.LogError(ex, "Network error during translation. Max retries exhausted for text: {Text}", text);
+                    throw new TranslationException("Network error occurred during translation.", ex);
+                }
+
+                await Task.Delay(delay, linked.Token).ConfigureAwait(false);
+                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+
+                _logger.LogWarning(ex, "Network error (Transient). Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})",
+                    delay, attempt, _maxRetries);
             }
             catch (Exception ex)
             {
@@ -215,6 +262,41 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
 
                 _logger.LogWarning(
                     "429 Too Many Requests. Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})",
+                    delay, attempt, _maxRetries);
+
+                await Task.Delay(delay, linked.Token).ConfigureAwait(false);
+                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+            }
+            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable ||
+                ex.StatusCode == HttpStatusCode.GatewayTimeout || ex.StatusCode == HttpStatusCode.BadGateway)
+            {
+                if (attempt == _maxRetries)
+                {
+                    _logger.LogError(ex, "Service unavailable. Max retries exhausted for batch translation");
+                    throw new TranslationException("LocalAI is temporarily unavailable. Retry limit reached.", ex);
+                }
+
+                _logger.LogWarning(
+                    "LocalAI service unavailable ({StatusCode}). Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})",
+                    ex.StatusCode, delay, attempt, _maxRetries);
+
+                await Task.Delay(delay, linked.Token).ConfigureAwait(false);
+                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex) when (ex is IOException || ex is SocketException || ex is TaskCanceledException ||
+                (ex is HttpRequestException && ex.InnerException is IOException))
+            {
+                if (attempt == _maxRetries)
+                {
+                    _logger.LogError(ex, "Network error during batch translation. Max retries exhausted");
+                    throw new TranslationException("Network error occurred during batch translation.", ex);
+                }
+
+                _logger.LogWarning(ex, "Network error (Transient). Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})",
                     delay, attempt, _maxRetries);
 
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
@@ -341,9 +423,17 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
             Encoding.UTF8,
             "application/json");
 
+        var stopwatch = Stopwatch.StartNew();
         var response = await _httpClient.PostAsync(_endpoint, requestContent, cancellationToken);
+        stopwatch.Stop();
+        
         if (!response.IsSuccessStatusCode)
         {
+            if (_dashboardService != null && response.StatusCode != HttpStatusCode.TooManyRequests)
+            {
+                await _dashboardService.LogApiUsage(ServiceName, null, stopwatch.ElapsedMilliseconds, false, $"Status: {response.StatusCode}");
+            }
+
             _logger.LogError("Response Status Code: {StatusCode}", response.StatusCode);
             _logger.LogError("Response Content: {ResponseContent}",
                 await response.Content.ReadAsStringAsync(cancellationToken));
@@ -352,6 +442,19 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
 
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
         var chatResponse = JsonSerializer.Deserialize<ChatResponse>(responseBody);
+        
+        if (_dashboardService != null)
+        {
+            await _dashboardService.LogApiUsage(
+                ServiceName, 
+                chatResponse?.Usage?.TotalTokens, 
+                stopwatch.ElapsedMilliseconds, 
+                true,
+                null,
+                chatResponse?.Usage?.PromptTokens,
+                chatResponse?.Usage?.CompletionTokens);
+        }
+
         if (chatResponse?.Choices == null || chatResponse.Choices.Count == 0)
         {
             throw new TranslationException("No completion choices returned from LocalAI");
@@ -429,9 +532,17 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
             Encoding.UTF8,
             "application/json");
 
+        var stopwatch = Stopwatch.StartNew();
         var response = await _httpClient.PostAsync(_endpoint, requestContent, cancellationToken);
+        stopwatch.Stop();
+        
         if (!response.IsSuccessStatusCode)
         {
+            if (_dashboardService != null && response.StatusCode != HttpStatusCode.TooManyRequests)
+            {
+                await _dashboardService.LogApiUsage(ServiceName, null, stopwatch.ElapsedMilliseconds, false, $"Status: {response.StatusCode}");
+            }
+
             _logger.LogError("Response Status Code: {StatusCode}", response.StatusCode);
             _logger.LogError("Response Content: {ResponseContent}",
                 await response.Content.ReadAsStringAsync(cancellationToken));
@@ -440,6 +551,18 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
 
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
         var chatResponse = JsonSerializer.Deserialize<ChatResponse>(responseBody);
+
+        if (_dashboardService != null)
+        {
+            await _dashboardService.LogApiUsage(
+                ServiceName, 
+                chatResponse?.Usage?.TotalTokens, 
+                stopwatch.ElapsedMilliseconds, 
+                true,
+                null,
+                chatResponse?.Usage?.PromptTokens,
+                chatResponse?.Usage?.CompletionTokens);
+        }
 
         if (chatResponse?.Choices == null || chatResponse.Choices.Count == 0)
         {
@@ -501,9 +624,17 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
         var content = new StringContent(JsonSerializer.Serialize(requestData),
             Encoding.UTF8, "application/json");
 
+        var stopwatch = Stopwatch.StartNew();
         var response = await _httpClient.PostAsync(_endpoint, content, cancellationToken);
+        stopwatch.Stop();
+        
         if (!response.IsSuccessStatusCode)
         {
+            if (_dashboardService != null && response.StatusCode != HttpStatusCode.TooManyRequests)
+            {
+                await _dashboardService.LogApiUsage(ServiceName, null, stopwatch.ElapsedMilliseconds, false, $"Status: {response.StatusCode}");
+            }
+
             _logger.LogError("Response Status Code: {StatusCode}", response.StatusCode);
             _logger.LogError("Response Content: {ResponseContent}",
                 await response.Content.ReadAsStringAsync(cancellationToken));
@@ -512,6 +643,12 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
 
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
         var generateResponse = JsonSerializer.Deserialize<GenerateResponse>(responseBody);
+
+        if (_dashboardService != null)
+        {
+            // Generate API doesn't return usage
+            await _dashboardService.LogApiUsage(ServiceName, null, stopwatch.ElapsedMilliseconds, true);
+        }
 
         if (generateResponse == null || string.IsNullOrEmpty(generateResponse.Response))
         {
@@ -600,10 +737,17 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
         var content = new StringContent(JsonSerializer.Serialize(requestBody),
             Encoding.UTF8, "application/json");
 
+        var stopwatch = Stopwatch.StartNew();
         var response = await _httpClient.PostAsync(_endpoint, content, cancellationToken);
+        stopwatch.Stop();
 
         if (!response.IsSuccessStatusCode)
         {
+            if (_dashboardService != null && response.StatusCode != HttpStatusCode.TooManyRequests)
+            {
+                await _dashboardService.LogApiUsage(ServiceName, null, stopwatch.ElapsedMilliseconds, false, $"Status: {response.StatusCode}");
+            }
+
             _logger.LogError("Response Status Code: {StatusCode}", response.StatusCode);
             _logger.LogError("Response Content: {ResponseContent}",
                 await response.Content.ReadAsStringAsync(cancellationToken));
@@ -612,6 +756,18 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
 
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
         var chatResponse = JsonSerializer.Deserialize<ChatResponse>(responseBody);
+
+        if (_dashboardService != null)
+        {
+            await _dashboardService.LogApiUsage(
+                ServiceName, 
+                chatResponse?.Usage?.TotalTokens, 
+                stopwatch.ElapsedMilliseconds, 
+                true,
+                null,
+                chatResponse?.Usage?.PromptTokens,
+                chatResponse?.Usage?.CompletionTokens);
+        }
 
         if (chatResponse?.Choices == null || chatResponse.Choices.Count == 0)
         {
