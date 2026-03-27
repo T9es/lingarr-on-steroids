@@ -1,17 +1,58 @@
 <template>
-    <div class="space-y-4">
-        <h3 class="text-primary-content text-lg font-semibold">
-            {{ translate('onboarding.service.configureSelected', { service: serviceName }) }}
-        </h3>
-        <component :is="serviceConfigComponent" v-if="serviceConfigComponent" @save="onSave" />
+    <div class="space-y-5">
+        <div
+            class="rounded-2xl border p-4 sm:p-5"
+            :style="{
+                borderColor: toRgba(providerMeta.color, 0.35),
+                backgroundColor: toRgba(providerMeta.color, 0.08)
+            }">
+            <div class="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-center">
+                <div
+                    class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border"
+                    :style="{
+                        borderColor: toRgba(providerMeta.color, 0.28),
+                        backgroundColor: toRgba(providerMeta.color, 0.14)
+                    }">
+                    <ProviderIcon
+                        v-if="hasOfficialProviderLogo(serviceType)"
+                        :service="serviceType"
+                        fallback="none"
+                        class="h-7 w-7"
+                        :style="{ color: providerMeta.color }" />
+                    <span v-else class="text-lg font-semibold" :style="{ color: providerMeta.color }">
+                        {{ providerMeta.label.slice(0, 2) }}
+                    </span>
+                </div>
+
+                <div class="min-w-0 flex-1 space-y-1">
+                    <p class="text-secondary-content text-xs font-semibold tracking-[0.18em] uppercase">
+                        {{ translate('onboardingSteps.configureService') }}
+                    </p>
+                    <h3 class="text-primary-content text-lg font-semibold sm:text-xl">
+                        {{ translate('onboarding.service.configureSelected', { service: serviceName }) }}
+                    </h3>
+                    <p class="text-secondary-content text-sm leading-6">
+                        {{ providerMeta.label }}
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div
+            v-if="serviceConfigComponent"
+            class="bg-primary/40 border-secondary/30 rounded-2xl border p-4 sm:p-5">
+            <component :is="serviceConfigComponent" @save="onSave" />
+        </div>
     </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import ProviderIcon from '@/components/icons/ProviderIcon.vue'
 import { useSettingStore } from '@/store/setting'
 import { SETTINGS, SERVICE_TYPE } from '@/ts'
 import { useI18n } from '@/plugins/i18n'
+import { getProviderMeta, hasOfficialProviderLogo, toRgba } from '@/utils/providerMetadata'
 import LibreTranslateConfig from '@/components/features/settings/services/LibreTranslateConfig.vue'
 import DeepLConfig from '@/components/features/settings/services/DeepLConfig.vue'
 import FreeServiceConfig from '@/components/features/settings/services/FreeServiceConfig.vue'
@@ -30,6 +71,7 @@ const { translate } = useI18n()
 const settingsStore = useSettingStore()
 
 const serviceType = computed(() => settingsStore.getSetting(SETTINGS.SERVICE_TYPE) as string)
+const providerMeta = computed(() => getProviderMeta(serviceType.value))
 
 const serviceName = computed(() => {
     const nameKeys: Record<string, string> = {

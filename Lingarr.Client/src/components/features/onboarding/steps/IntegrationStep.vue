@@ -1,16 +1,23 @@
 <template>
-    <div class="space-y-8">
+    <div class="space-y-6 lg:space-y-8">
         <!-- Radarr Section -->
-        <div>
-            <div class="mb-4 flex items-center gap-2">
-                <RadarrIcon class="text-primary-content h-6 w-6" />
+        <section
+            class="rounded-2xl border p-4 sm:p-5"
+            :style="getSectionStyle('radarr')">
+            <div class="mb-4 flex items-center gap-3">
+                <div
+                    class="flex h-11 w-11 items-center justify-center rounded-xl border"
+                    :style="getSectionBadgeStyle('radarr')">
+                    <RadarrIcon class="h-6 w-6" />
+                </div>
                 <h3 class="text-primary-content text-lg font-semibold">Radarr</h3>
             </div>
             <!-- Empty state for Radarr -->
             <div
                 v-if="onboardingStore.radarrInstances.length === 0"
-                class="border-accent/30 bg-primary/50 rounded-lg border-2 border-dashed p-8 text-center">
-                <RadarrIcon class="text-secondary-content mx-auto mb-3 h-10 w-10 opacity-50" />
+                class="rounded-xl border-2 border-dashed p-8 text-center"
+                :style="getEmptyStateStyle('radarr')">
+                <RadarrIcon class="mx-auto mb-3 h-10 w-10 opacity-75" />
                 <p class="text-secondary-content mb-3">
                     {{ translate('onboarding.integration.noRadarrInstances') }}
                 </p>
@@ -21,7 +28,7 @@
                 </button>
             </div>
             <!-- Instance cards grid -->
-            <div v-else class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div v-else class="flex flex-wrap justify-center gap-4">
                 <InstanceCard
                     v-for="instance in onboardingStore.radarrInstances"
                     :key="instance.id"
@@ -37,19 +44,26 @@
                     type="radarr"
                     @add="addRadarrInstance" />
             </div>
-        </div>
+        </section>
 
         <!-- Sonarr Section -->
-        <div>
-            <div class="mb-4 flex items-center gap-2">
-                <SonarrIcon class="text-primary-content h-6 w-6" />
+        <section
+            class="rounded-2xl border p-4 sm:p-5"
+            :style="getSectionStyle('sonarr')">
+            <div class="mb-4 flex items-center gap-3">
+                <div
+                    class="flex h-11 w-11 items-center justify-center rounded-xl border"
+                    :style="getSectionBadgeStyle('sonarr')">
+                    <SonarrIcon class="h-6 w-6" />
+                </div>
                 <h3 class="text-primary-content text-lg font-semibold">Sonarr</h3>
             </div>
             <!-- Empty state for Sonarr -->
             <div
                 v-if="onboardingStore.sonarrInstances.length === 0"
-                class="border-accent/30 bg-primary/50 rounded-lg border-2 border-dashed p-8 text-center">
-                <SonarrIcon class="text-secondary-content mx-auto mb-3 h-10 w-10 opacity-50" />
+                class="rounded-xl border-2 border-dashed p-8 text-center"
+                :style="getEmptyStateStyle('sonarr')">
+                <SonarrIcon class="mx-auto mb-3 h-10 w-10 opacity-90" />
                 <p class="text-secondary-content mb-3">
                     {{ translate('onboarding.integration.noSonarrInstances') }}
                 </p>
@@ -60,7 +74,7 @@
                 </button>
             </div>
             <!-- Instance cards grid -->
-            <div v-else class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div v-else class="flex flex-wrap justify-center gap-4">
                 <InstanceCard
                     v-for="instance in onboardingStore.sonarrInstances"
                     :key="instance.id"
@@ -76,7 +90,7 @@
                     type="sonarr"
                     @add="addSonarrInstance" />
             </div>
-        </div>
+        </section>
     </div>
 </template>
 
@@ -94,6 +108,19 @@ import services from '@/services'
 
 const { translate } = useI18n()
 const onboardingStore = useOnboardingStore()
+
+const typePalette = {
+    radarr: {
+        borderColor: 'rgba(255, 194, 48, 0.36)',
+        backgroundColor: 'rgba(255, 194, 48, 0.05)',
+        badgeColor: 'rgba(255, 194, 48, 0.09)'
+    },
+    sonarr: {
+        borderColor: 'rgba(0, 204, 255, 0.34)',
+        backgroundColor: 'rgba(0, 204, 255, 0.05)',
+        badgeColor: 'rgba(0, 204, 255, 0.09)'
+    }
+} as const
 
 interface ConnectionStatus {
     testing: boolean
@@ -118,6 +145,33 @@ const connectionStatuses = reactive<Record<string, Record<string, ConnectionStat
 // Generate unique ID
 const generateId = (): string => {
     return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
+}
+
+const getSectionStyle = (type: 'radarr' | 'sonarr') => {
+    const palette = typePalette[type]
+
+    return {
+        borderColor: palette.borderColor,
+        backgroundColor: palette.backgroundColor
+    }
+}
+
+const getSectionBadgeStyle = (type: 'radarr' | 'sonarr') => {
+    const palette = typePalette[type]
+
+    return {
+        borderColor: palette.borderColor,
+        backgroundColor: palette.badgeColor
+    }
+}
+
+const getEmptyStateStyle = (type: 'radarr' | 'sonarr') => {
+    const palette = typePalette[type]
+
+    return {
+        borderColor: palette.borderColor,
+        backgroundColor: palette.backgroundColor
+    }
 }
 
 // Get connection status for an instance

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { normalizeServiceKey } from '@/utils/providerMetadata'
 import anthropicLogo from '@/assets/providers/anthropic-official.svg'
 import deepLLogo from '@/assets/providers/deepl-official.svg'
 import libreTranslateLogo from '@/assets/providers/libretranslate-official.svg'
@@ -8,14 +9,16 @@ import openAiLogo from '@/assets/providers/openai.svg'
 const props = withDefaults(
     defineProps<{
         service: string
+        fallback?: 'chart' | 'none'
     }>(),
     {
-        service: ''
+        service: '',
+        fallback: 'chart'
     }
 )
 
 const normalizedService = computed(() => {
-    return props.service.toLowerCase().replace(/[^a-z]/g, '')
+    return normalizeServiceKey(props.service)
 })
 
 const officialLogos: Record<string, string> = {
@@ -40,7 +43,7 @@ const officialLogoUrl = computed(() => {
     </div>
 
     <svg
-        v-else
+        v-else-if="props.fallback !== 'none'"
         viewBox="0 0 24 24"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"

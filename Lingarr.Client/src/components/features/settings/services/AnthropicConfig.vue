@@ -1,8 +1,8 @@
 ﻿<template>
-    <div class="flex flex-col space-y-2">
-        <div>
+    <div class="text-primary-content flex flex-col space-y-3">
+        <div class="leading-6">
             {{ translate('settings.services.aiWarningIntro') }}
-            <span :class="automationEnabled == 'true' ? 'text-red-500' : 'text-green-500'">
+            <span class="font-semibold">
                 {{
                     automationEnabled == 'true'
                         ? translate('settings.services.serviceEnabled')
@@ -10,7 +10,7 @@
                 }}
             </span>
         </div>
-        <p class="text-xs">
+        <p class="text-secondary-content text-xs leading-5">
             {{ translate('settings.services.aiCostDescription') }}
         </p>
 
@@ -44,9 +44,11 @@
             :no-options="errorMessage || translate('settings.services.loadingModels')"
             @fetch-options="loadOptions" />
 
-        <p>
+        <p class="text-secondary-content text-sm leading-6">
             {{ translate('settings.services.batchSupportAvailable') }}
-            <a class="cursor-pointer underline" @click="router.push({ name: 'subtitle-settings' })">
+            <a
+                class="text-accent cursor-pointer underline transition hover:brightness-125"
+                @click="router.push({ name: 'subtitle-settings' })">
                 {{ translate('settings.services.batchSupportLink') }}
             </a>
         </p>

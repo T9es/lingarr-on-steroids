@@ -1,57 +1,70 @@
 <template>
-    <div class="space-y-3">
-        <p class="text-secondary-content -mt-2 mb-4 text-sm">
+    <div class="space-y-4 lg:space-y-5">
+        <p class="text-secondary-content -mt-1 text-sm leading-6">
             {{ translate('settings.translation.description') }}
         </p>
 
-        <!-- Batch Translation Section -->
-        <details class="border-accent group rounded-md border">
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div
+                v-for="item in settingsSummaryItems"
+                :key="item.label"
+                class="bg-primary/40 border-secondary/30 min-w-0 rounded-2xl border p-4">
+                <p class="text-secondary-content text-xs font-semibold tracking-[0.16em] uppercase">
+                    {{ item.label }}
+                </p>
+                <p class="text-primary-content mt-2 text-lg font-semibold">
+                    {{ item.value }}
+                </p>
+                <p class="text-secondary-content mt-1 text-xs leading-5">
+                    {{ item.description }}
+                </p>
+            </div>
+        </div>
+
+        <details class="group bg-primary/35 border-secondary/30 overflow-hidden rounded-2xl border">
             <summary
-                class="bg-secondary/50 hover:bg-secondary/70 flex cursor-pointer list-none items-center justify-between px-4 py-3">
-                <div class="flex items-center gap-3">
-                    <span class="text-primary-content font-semibold">
+                class="bg-secondary/40 hover:bg-secondary/60 flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-4 sm:px-5">
+                <div class="min-w-0">
+                    <span class="text-primary-content block font-semibold">
                         {{ translate('settings.translation.title') }}
                     </span>
                     <span class="text-secondary-content text-sm">
-                        ({{
-                            useBatchTranslation === 'true'
-                                ? translate('common.enabled')
-                                : translate('common.disabled')
-                        }})
+                        {{ translateBoolean(useBatchTranslation) }}
                     </span>
                 </div>
                 <CaretRightIcon
-                    class="text-secondary-content h-4 w-4 transition-transform group-open:rotate-90" />
+                    class="text-secondary-content h-4 w-4 shrink-0 transition-transform group-open:rotate-90" />
             </summary>
-            <div class="space-y-4 px-4 pt-2 pb-4">
-                <div class="grid grid-cols-2 gap-4">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <span class="text-primary-content font-semibold">
-                                {{ translate('settings.translation.useBatchTranslation') }}
-                            </span>
-                            <p class="text-secondary-content text-xs">
-                                {{
-                                    translate('settings.translation.useBatchTranslationDescription')
-                                }}
-                            </p>
+            <div class="space-y-4 px-4 py-4 sm:px-5">
+                <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    <div
+                        class="bg-secondary/20 border-secondary/20 min-w-0 rounded-xl border p-4 md:col-span-2 xl:col-span-1">
+                        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div class="min-w-0">
+                                <span class="text-primary-content font-semibold">
+                                    {{ translate('settings.translation.useBatchTranslation') }}
+                                </span>
+                                <p class="text-secondary-content text-xs leading-5">
+                                    {{
+                                        translate('settings.translation.useBatchTranslationDescription')
+                                    }}
+                                </p>
+                            </div>
+                            <ToggleButton v-model="useBatchTranslation">
+                                <span class="text-primary-content text-sm font-medium">
+                                    {{ translateBoolean(useBatchTranslation) }}
+                                </span>
+                            </ToggleButton>
                         </div>
-                        <ToggleButton v-model="useBatchTranslation">
-                            <span class="text-primary-content text-sm font-medium">
-                                {{
-                                    useBatchTranslation === 'true'
-                                        ? translate('common.enabled')
-                                        : translate('common.disabled')
-                                }}
-                            </span>
-                        </ToggleButton>
                     </div>
 
-                    <div v-if="useBatchTranslation === 'true'">
+                    <div
+                        v-if="useBatchTranslation === 'true'"
+                        class="bg-secondary/20 border-secondary/20 min-w-0 rounded-xl border p-4">
                         <span class="text-primary-content font-semibold">
                             {{ translate('settings.translation.maxBatchSize') }}
                         </span>
-                        <p class="text-secondary-content text-xs">
+                        <p class="text-secondary-content text-xs leading-5">
                             {{ translate('settings.translation.maxBatchSizeDescription') }}
                         </p>
                         <InputComponent
@@ -61,16 +74,18 @@
                             @update:validation="(val) => (isValid.maxBatchSize = val)" />
                     </div>
 
-                    <div v-if="useBatchTranslation === 'true'">
+                    <div
+                        v-if="useBatchTranslation === 'true'"
+                        class="bg-secondary/20 border-secondary/20 min-w-0 rounded-xl border p-4">
                         <span class="text-primary-content font-semibold">
                             {{ translate('settings.translation.batchRetryMode') }}
                         </span>
-                        <p class="text-secondary-content text-xs">
+                        <p class="text-secondary-content text-xs leading-5">
                             {{ translate('settings.translation.batchRetryModeDescription') }}
                         </p>
                         <select
                             v-model="batchRetryMode"
-                            class="border-accent bg-primary text-primary-content focus:ring-accent mt-2 h-10 w-full cursor-pointer rounded-md border px-3 py-2 focus:ring-2 focus:outline-none">
+                            class="border-accent bg-primary text-primary-content focus:ring-accent mt-2 h-10 w-full min-w-0 cursor-pointer rounded-md border px-3 py-2 focus:ring-2 focus:outline-none">
                             <option value="deferred">
                                 {{ translate('settings.translation.batchRetryModeDeferred') }}
                             </option>
@@ -83,28 +98,27 @@
             </div>
         </details>
 
-        <!-- Retry Settings Section -->
-        <details class="border-accent group rounded-md border">
+        <details class="group bg-primary/35 border-secondary/30 overflow-hidden rounded-2xl border">
             <summary
-                class="bg-secondary/50 hover:bg-secondary/70 flex cursor-pointer list-none items-center justify-between px-4 py-3">
-                <div class="flex items-center gap-3">
-                    <span class="text-primary-content font-semibold">
+                class="bg-secondary/40 hover:bg-secondary/60 flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-4 sm:px-5">
+                <div class="min-w-0">
+                    <span class="text-primary-content block font-semibold">
                         {{ translate('onboarding.settings.retryTitle') }}
                     </span>
                     <span class="text-secondary-content text-sm">
-                        ({{ maxRetries }} {{ translate('onboarding.settings.retries') }})
+                        {{ maxRetries }} {{ translate('onboarding.settings.retries') }}
                     </span>
                 </div>
                 <CaretRightIcon
-                    class="text-secondary-content h-4 w-4 transition-transform group-open:rotate-90" />
+                    class="text-secondary-content h-4 w-4 shrink-0 transition-transform group-open:rotate-90" />
             </summary>
-            <div class="space-y-4 px-4 pt-2 pb-4">
-                <div class="grid grid-cols-3 gap-4">
-                    <div>
+            <div class="space-y-4 px-4 py-4 sm:px-5">
+                <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    <div class="bg-secondary/20 border-secondary/20 min-w-0 rounded-xl border p-4">
                         <span class="text-primary-content font-semibold">
                             {{ translate('settings.translation.maxRetries') }}
                         </span>
-                        <p class="text-secondary-content text-xs">
+                        <p class="text-secondary-content text-xs leading-5">
                             {{ translate('settings.translation.maxRetriesDescription') }}
                         </p>
                         <InputComponent
@@ -114,11 +128,11 @@
                             @update:validation="(val) => (isValid.maxRetries = val)" />
                     </div>
 
-                    <div>
+                    <div class="bg-secondary/20 border-secondary/20 min-w-0 rounded-xl border p-4">
                         <span class="text-primary-content font-semibold">
                             {{ translate('settings.translation.retryDelay') }}
                         </span>
-                        <p class="text-secondary-content text-xs">
+                        <p class="text-secondary-content text-xs leading-5">
                             {{ translate('settings.translation.retryDelayDescription') }}
                         </p>
                         <InputComponent
@@ -128,11 +142,11 @@
                             @update:validation="(val) => (isValid.retryDelay = val)" />
                     </div>
 
-                    <div>
+                    <div class="bg-secondary/20 border-secondary/20 min-w-0 rounded-xl border p-4">
                         <span class="text-primary-content font-semibold">
                             {{ translate('settings.translation.retryDelayMultiplier') }}
                         </span>
-                        <p class="text-secondary-content text-xs">
+                        <p class="text-secondary-content text-xs leading-5">
                             {{ translate('settings.translation.retryDelayMultiplierDescription') }}
                         </p>
                         <InputComponent
@@ -145,177 +159,167 @@
             </div>
         </details>
 
-        <!-- Parallel Translations Section -->
-        <details class="border-accent group rounded-md border">
+        <details class="group bg-primary/35 border-secondary/30 overflow-hidden rounded-2xl border">
             <summary
-                class="bg-secondary/50 hover:bg-secondary/70 flex cursor-pointer list-none items-center justify-between px-4 py-3">
-                <div class="flex items-center gap-3">
-                    <span class="text-primary-content font-semibold">
+                class="bg-secondary/40 hover:bg-secondary/60 flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-4 sm:px-5">
+                <div class="min-w-0">
+                    <span class="text-primary-content block font-semibold">
                         {{ translate('onboarding.settings.parallelTitle') }}
                     </span>
                     <span class="text-secondary-content text-sm">
-                        ({{ maxParallelTranslations }}
-                        {{ translate('onboarding.settings.concurrent') }})
+                        {{ maxParallelTranslations }}
+                        {{ translate('onboarding.settings.concurrent') }}
                     </span>
                 </div>
                 <CaretRightIcon
-                    class="text-secondary-content h-4 w-4 transition-transform group-open:rotate-90" />
+                    class="text-secondary-content h-4 w-4 shrink-0 transition-transform group-open:rotate-90" />
             </summary>
-            <div class="space-y-4 px-4 pt-2 pb-4">
-                <div>
-                    <span class="text-primary-content font-semibold">
-                        {{ translate('settings.translation.maxParallelTranslations') }}
-                    </span>
-                    <p class="text-secondary-content text-xs">
-                        {{ translate('settings.translation.maxParallelTranslationsDescription') }}
-                    </p>
-                    <span v-if="maxConcurrentLimit" class="text-secondary-content/60 text-xs">
-                        {{
-                            translate('settings.translation.maxParallelTranslationsLimit').format({
-                                max: maxConcurrentLimit
-                            })
-                        }}
-                    </span>
-                    <InputComponent
-                        v-model="maxParallelTranslations"
-                        validation-type="number"
-                        placeholder="1"
-                        :max="maxConcurrentLimit"
-                        @update:validation="(val) => (isValid.maxParallelTranslations = val)" />
+            <div class="space-y-4 px-4 py-4 sm:px-5">
+                <div class="grid grid-cols-1 gap-4">
+                    <div class="bg-secondary/20 border-secondary/20 min-w-0 rounded-xl border p-4">
+                        <span class="text-primary-content font-semibold">
+                            {{ translate('settings.translation.maxParallelTranslations') }}
+                        </span>
+                        <p class="text-secondary-content text-xs leading-5">
+                            {{ translate('settings.translation.maxParallelTranslationsDescription') }}
+                        </p>
+                        <span v-if="maxConcurrentLimit" class="text-secondary-content/70 text-xs leading-5">
+                            {{
+                                translate('settings.translation.maxParallelTranslationsLimit').format({
+                                    max: maxConcurrentLimit
+                                })
+                            }}
+                        </span>
+                        <InputComponent
+                            v-model="maxParallelTranslations"
+                            validation-type="number"
+                            placeholder="1"
+                            :max="maxConcurrentLimit"
+                            @update:validation="(val) => (isValid.maxParallelTranslations = val)" />
+                    </div>
                 </div>
             </div>
         </details>
 
-        <!-- Subtitle Processing Section -->
-        <details class="border-accent group rounded-md border">
+        <details class="group bg-primary/35 border-secondary/30 overflow-hidden rounded-2xl border">
             <summary
-                class="bg-secondary/50 hover:bg-secondary/70 flex cursor-pointer list-none items-center justify-between px-4 py-3">
-                <div class="flex items-center gap-3">
-                    <span class="text-primary-content font-semibold">
+                class="bg-secondary/40 hover:bg-secondary/60 flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-4 sm:px-5">
+                <div class="min-w-0">
+                    <span class="text-primary-content block font-semibold">
                         {{ translate('settings.subtitle.title') }}
                     </span>
                     <span class="text-secondary-content text-sm">
-                        ({{ enabledSubtitleProcessingCount }}/3)
+                        {{ enabledSubtitleProcessingCount }}/3
                     </span>
                 </div>
                 <CaretRightIcon
-                    class="text-secondary-content h-4 w-4 transition-transform group-open:rotate-90" />
+                    class="text-secondary-content h-4 w-4 shrink-0 transition-transform group-open:rotate-90" />
             </summary>
-            <div class="space-y-4 px-4 pt-2 pb-4">
-                <div class="grid grid-cols-2 gap-4">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <span class="text-primary-content font-semibold">
-                                {{ translate('settings.subtitle.fixOverlappingSubtitles') }}
-                            </span>
-                            <p class="text-secondary-content text-xs">
-                                {{
-                                    translate(
-                                        'settings.subtitle.fixOverlappingSubtitlesDescription'
-                                    )
-                                }}
-                            </p>
+            <div class="space-y-4 px-4 py-4 sm:px-5">
+                <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    <div class="bg-secondary/20 border-secondary/20 min-w-0 rounded-xl border p-4">
+                        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div class="min-w-0">
+                                <span class="text-primary-content font-semibold">
+                                    {{ translate('settings.subtitle.fixOverlappingSubtitles') }}
+                                </span>
+                                <p class="text-secondary-content text-xs leading-5">
+                                    {{
+                                        translate(
+                                            'settings.subtitle.fixOverlappingSubtitlesDescription'
+                                        )
+                                    }}
+                                </p>
+                            </div>
+                            <ToggleButton v-model="fixOverlappingSubtitles">
+                                <span class="text-primary-content text-sm font-medium">
+                                    {{ translateBoolean(fixOverlappingSubtitles) }}
+                                </span>
+                            </ToggleButton>
                         </div>
-                        <ToggleButton v-model="fixOverlappingSubtitles">
-                            <span class="text-primary-content text-sm font-medium">
-                                {{
-                                    fixOverlappingSubtitles === 'true'
-                                        ? translate('common.enabled')
-                                        : translate('common.disabled')
-                                }}
-                            </span>
-                        </ToggleButton>
                     </div>
 
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <span class="text-primary-content font-semibold">
-                                {{ translate('settings.subtitle.stripSubtitleFormatting') }}
-                            </span>
-                            <p class="text-secondary-content text-xs">
-                                {{
-                                    translate(
-                                        'settings.subtitle.stripSubtitleFormattingDescription'
-                                    )
-                                }}
-                            </p>
+                    <div class="bg-secondary/20 border-secondary/20 min-w-0 rounded-xl border p-4">
+                        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div class="min-w-0">
+                                <span class="text-primary-content font-semibold">
+                                    {{ translate('settings.subtitle.stripSubtitleFormatting') }}
+                                </span>
+                                <p class="text-secondary-content text-xs leading-5">
+                                    {{
+                                        translate(
+                                            'settings.subtitle.stripSubtitleFormattingDescription'
+                                        )
+                                    }}
+                                </p>
+                            </div>
+                            <ToggleButton v-model="stripSubtitleFormatting">
+                                <span class="text-primary-content text-sm font-medium">
+                                    {{ translateBoolean(stripSubtitleFormatting) }}
+                                </span>
+                            </ToggleButton>
                         </div>
-                        <ToggleButton v-model="stripSubtitleFormatting">
-                            <span class="text-primary-content text-sm font-medium">
-                                {{
-                                    stripSubtitleFormatting === 'true'
-                                        ? translate('common.enabled')
-                                        : translate('common.disabled')
-                                }}
-                            </span>
-                        </ToggleButton>
                     </div>
 
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <span class="text-primary-content font-semibold">
-                                {{ translate('settings.subtitle.addTranslatorInfo') }}
-                            </span>
-                            <p class="text-secondary-content text-xs">
-                                {{ translate('settings.subtitle.addTranslatorInfoDescription') }}
-                            </p>
+                    <div class="bg-secondary/20 border-secondary/20 min-w-0 rounded-xl border p-4">
+                        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div class="min-w-0">
+                                <span class="text-primary-content font-semibold">
+                                    {{ translate('settings.subtitle.addTranslatorInfo') }}
+                                </span>
+                                <p class="text-secondary-content text-xs leading-5">
+                                    {{ translate('settings.subtitle.addTranslatorInfoDescription') }}
+                                </p>
+                            </div>
+                            <ToggleButton v-model="addTranslatorInfo">
+                                <span class="text-primary-content text-sm font-medium">
+                                    {{ translateBoolean(addTranslatorInfo) }}
+                                </span>
+                            </ToggleButton>
                         </div>
-                        <ToggleButton v-model="addTranslatorInfo">
-                            <span class="text-primary-content text-sm font-medium">
-                                {{
-                                    addTranslatorInfo === 'true'
-                                        ? translate('common.enabled')
-                                        : translate('common.disabled')
-                                }}
-                            </span>
-                        </ToggleButton>
                     </div>
                 </div>
             </div>
         </details>
 
-        <!-- Subtitle Tagging Section -->
-        <details class="border-accent group rounded-md border">
+        <details class="group bg-primary/35 border-secondary/30 overflow-hidden rounded-2xl border">
             <summary
-                class="bg-secondary/50 hover:bg-secondary/70 flex cursor-pointer list-none items-center justify-between px-4 py-3">
-                <div class="flex items-center gap-3">
-                    <span class="text-primary-content font-semibold">
+                class="bg-secondary/40 hover:bg-secondary/60 flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-4 sm:px-5">
+                <div class="min-w-0">
+                    <span class="text-primary-content block font-semibold">
                         {{ translate('onboarding.settings.taggingTitle') }}
                     </span>
                     <span class="text-secondary-content text-sm">
-                        ({{
-                            useSubtitleTagging === 'true'
-                                ? translate('common.enabled')
-                                : translate('common.disabled')
-                        }})
+                        {{ translateBoolean(useSubtitleTagging) }}
                     </span>
                 </div>
                 <CaretRightIcon
-                    class="text-secondary-content h-4 w-4 transition-transform group-open:rotate-90" />
+                    class="text-secondary-content h-4 w-4 shrink-0 transition-transform group-open:rotate-90" />
             </summary>
-            <div class="space-y-4 px-4 pt-2 pb-4">
-                <div class="grid grid-cols-2 gap-4">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <span class="text-primary-content font-semibold">
-                                {{ translate('settings.subtitle.useSubtitleTagging') }}
-                            </span>
-                            <p class="text-secondary-content text-xs">
-                                {{ translate('settings.subtitle.useSubtitleTaggingDescription') }}
-                            </p>
+            <div class="space-y-4 px-4 py-4 sm:px-5">
+                <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    <div
+                        class="bg-secondary/20 border-secondary/20 min-w-0 rounded-xl border p-4 md:col-span-2 xl:col-span-1">
+                        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div class="min-w-0">
+                                <span class="text-primary-content font-semibold">
+                                    {{ translate('settings.subtitle.useSubtitleTagging') }}
+                                </span>
+                                <p class="text-secondary-content text-xs leading-5">
+                                    {{ translate('settings.subtitle.useSubtitleTaggingDescription') }}
+                                </p>
+                            </div>
+                            <ToggleButton v-model="useSubtitleTagging">
+                                <span class="text-primary-content text-sm font-medium">
+                                    {{ translateBoolean(useSubtitleTagging) }}
+                                </span>
+                            </ToggleButton>
                         </div>
-                        <ToggleButton v-model="useSubtitleTagging">
-                            <span class="text-primary-content text-sm font-medium">
-                                {{
-                                    useSubtitleTagging === 'true'
-                                        ? translate('common.enabled')
-                                        : translate('common.disabled')
-                                }}
-                            </span>
-                        </ToggleButton>
                     </div>
 
-                    <div v-if="useSubtitleTagging === 'true'">
+                    <div
+                        v-if="useSubtitleTagging === 'true'"
+                        class="bg-secondary/20 border-secondary/20 min-w-0 rounded-xl border p-4">
                         <span class="text-primary-content font-semibold">
                             {{ translate('settings.subtitle.subtitleTag') }}
                         </span>
@@ -326,11 +330,13 @@
                             @update:validation="(val) => (isValid.subtitleTag = val)" />
                     </div>
 
-                    <div v-if="useSubtitleTagging === 'true'">
+                    <div
+                        v-if="useSubtitleTagging === 'true'"
+                        class="bg-secondary/20 border-secondary/20 min-w-0 rounded-xl border p-4">
                         <span class="text-primary-content font-semibold">
                             {{ translate('settings.subtitle.subtitleTagShort') }}
                         </span>
-                        <p class="text-secondary-content text-xs">
+                        <p class="text-secondary-content text-xs leading-5">
                             {{ translate('settings.subtitle.subtitleTagShortDescription') }}
                         </p>
                         <InputComponent
@@ -492,4 +498,31 @@ const subtitleTagShort = computed({
         settingsStore.updateSetting(SETTINGS.SUBTITLE_TAG_SHORT, newValue, isValid.subtitleTagShort)
     }
 })
+
+const settingsSummaryItems = computed(() => [
+    {
+        label: translate('settings.translation.useBatchTranslation'),
+        value: translateBoolean(useBatchTranslation.value),
+        description: translate('settings.translation.useBatchTranslationDescription')
+    },
+    {
+        label: translate('settings.translation.maxRetries'),
+        value: `${maxRetries.value} ${translate('onboarding.settings.retries')}`,
+        description: translate('settings.translation.maxRetriesDescription')
+    },
+    {
+        label: translate('settings.translation.maxParallelTranslations'),
+        value: `${maxParallelTranslations.value}/${maxConcurrentLimit.value}`,
+        description: translate('settings.translation.maxParallelTranslationsDescription')
+    },
+    {
+        label: translate('settings.subtitle.title'),
+        value: `${enabledSubtitleProcessingCount.value}/3`,
+        description: translate('settings.subtitle.fixOverlappingSubtitlesDescription')
+    }
+])
+
+function translateBoolean(value: string): string {
+    return value === 'true' ? translate('common.enabled') : translate('common.disabled')
+}
 </script>

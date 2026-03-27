@@ -14,10 +14,10 @@
         <!-- Main Onboarding: Full-screen takeover -->
         <div
             v-else
-            class="bg-secondary flex h-[95vh] w-full max-w-6xl flex-col overflow-hidden rounded-lg shadow-2xl">
+            class="bg-secondary flex h-[95vh] w-full max-w-6xl flex-col overflow-x-hidden overflow-y-hidden rounded-lg shadow-2xl">
             <!-- Header with language selector, theme selector and skip button -->
             <header
-                class="border-accent flex items-center justify-between overflow-visible border-b px-8 py-4">
+                class="border-accent flex items-center justify-between gap-4 overflow-visible border-b px-4 py-4 sm:px-6 lg:px-8">
                 <div class="relative flex items-center gap-3">
                     <!-- Language Selector -->
                     <LanguageSelect />
@@ -67,7 +67,8 @@
             </header>
 
             <!-- Progress indicator -->
-            <div class="border-accent flex items-center justify-center gap-2 border-b px-8 py-4">
+            <div
+                class="border-accent flex items-center justify-center gap-2 border-b px-4 py-4 sm:px-6 lg:px-8">
                 <button
                     v-for="(step, index) in onboardingStore.steps"
                     :key="step.id"
@@ -84,7 +85,7 @@
             </div>
 
             <!-- Step content with transition -->
-            <div class="flex-1 overflow-y-auto px-8 py-6">
+            <div class="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-5 sm:px-6 lg:px-8 lg:py-6">
                 <transition name="slide-fade" mode="out-in">
                     <div v-if="currentStepData" :key="currentStepData.id" class="space-y-4">
                         <h2 class="text-primary-content text-xl font-bold">
@@ -99,7 +100,8 @@
             </div>
 
             <!-- Navigation buttons -->
-            <footer class="border-accent flex items-center justify-between border-t px-8 py-4">
+            <footer
+                class="border-accent flex items-center justify-between gap-3 border-t px-4 py-4 sm:px-6 lg:px-8">
                 <button
                     v-if="!isFirstStep"
                     class="border-accent text-secondary-content hover:bg-secondary-focus cursor-pointer rounded-md border px-4 py-2 text-sm transition-colors"

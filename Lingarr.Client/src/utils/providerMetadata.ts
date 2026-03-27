@@ -44,6 +44,8 @@ const aliasMap: Record<string, string> = {
     libretranslate: 'libretranslate'
 }
 
+const officialProviderKeys = new Set(['anthropic', 'deepl', 'libretranslate', 'openai'])
+
 export const normalizeServiceKey = (service: string): string => {
     const normalized = service.toLowerCase().replace(/[^a-z]/g, '')
 
@@ -60,6 +62,10 @@ export const getProviderMeta = (service: string): ProviderMeta => {
             color: '#9333ea'
         }
     )
+}
+
+export const hasOfficialProviderLogo = (service: string): boolean => {
+    return officialProviderKeys.has(normalizeServiceKey(service))
 }
 
 export const toRgba = (hex: string, opacity: number): string => {

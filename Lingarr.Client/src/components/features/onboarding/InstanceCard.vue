@@ -1,6 +1,7 @@
 <template>
     <div
-        class="border-accent bg-secondary rounded-md border p-4 transition-all hover:-translate-y-1 hover:shadow-lg">
+        class="bg-secondary w-full rounded-xl border p-4 transition-all hover:-translate-y-1 hover:shadow-lg sm:w-[320px]"
+        :style="cardStyle">
         <!-- Header with icon, name input, and X button -->
         <div class="mb-4 flex items-center gap-2">
             <div class="relative flex-1">
@@ -15,7 +16,8 @@
                             ? translate('onboarding.instanceCard.radarrPlaceholder')
                             : translate('onboarding.instanceCard.sonarrPlaceholder')
                     "
-                    class="border-accent text-primary-content focus:border-accent/70 w-full rounded-md border bg-transparent py-1.5 pr-3 pl-10 text-sm outline-hidden transition-colors" />
+                    class="text-primary-content w-full rounded-md border bg-transparent py-1.5 pr-3 pl-10 text-sm outline-hidden transition-colors"
+                    :style="nameInputStyle" />
             </div>
             <button
                 type="button"
@@ -43,7 +45,7 @@
             @update:validation="(val) => (isValid.apiKey = val)" />
 
         <!-- Connection Status -->
-        <div class="flex items-center gap-3 pt-2">
+        <div class="flex flex-wrap items-center gap-3 pt-2">
             <button
                 type="button"
                 class="bg-accent text-primary rounded-md px-3 py-1.5 text-sm transition-colors hover:brightness-125 disabled:cursor-not-allowed disabled:opacity-50"
@@ -75,8 +77,8 @@
             <div v-if="connectionStatus.tested" class="flex items-center gap-2 text-sm">
                 <span
                     v-if="connectionStatus.connected"
-                    class="flex items-center gap-1 text-green-500">
-                    <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                    class="bg-primary/60 border-secondary/30 text-primary-content flex items-center gap-1 rounded-full border px-2.5 py-1">
+                    <svg class="text-accent h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
                         <path
                             fill-rule="evenodd"
                             d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
@@ -87,8 +89,10 @@
                         (v{{ connectionStatus.version }})
                     </span>
                 </span>
-                <span v-else class="flex items-center gap-1 text-red-500">
-                    <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                <span
+                    v-else
+                    class="bg-primary/60 border-secondary/30 text-primary-content flex items-center gap-1 rounded-full border px-2.5 py-1">
+                    <svg class="text-secondary-content h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
                         <path
                             fill-rule="evenodd"
                             d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
@@ -163,4 +167,33 @@ watch(
 
 // Dynamic icon based on type
 const typeIcon = computed(() => (props.type === 'radarr' ? RadarrIcon : SonarrIcon))
+
+const typePalette = {
+    radarr: {
+        borderColor: 'rgba(255, 194, 48, 0.48)',
+        backgroundColor: 'rgba(255, 194, 48, 0.08)',
+        hoverShadow: 'rgba(255, 194, 48, 0.08)'
+    },
+    sonarr: {
+        borderColor: 'rgba(0, 204, 255, 0.42)',
+        backgroundColor: 'rgba(0, 204, 255, 0.08)',
+        hoverShadow: 'rgba(0, 204, 255, 0.08)'
+    }
+} as const
+
+const cardStyle = computed(() => {
+    const palette = typePalette[props.type]
+
+    return {
+        borderColor: palette.borderColor,
+        background: `linear-gradient(180deg, ${palette.backgroundColor} 0%, rgba(36, 45, 60, 0.96) 30%, rgba(36, 45, 60, 1) 100%)`,
+        boxShadow: `0 18px 40px -30px ${palette.hoverShadow}`
+    }
+})
+
+const nameInputStyle = computed(() => {
+    return {
+        borderColor: typePalette[props.type].borderColor
+    }
+})
 </script>

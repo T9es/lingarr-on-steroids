@@ -1,11 +1,20 @@
 <template>
-    <div ref="containerRef" class="relative">
+    <div ref="containerRef" class="relative w-full sm:w-[320px]">
         <div
-            class="border-accent/50 hover:border-accent flex min-h-[200px] cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed transition-colors"
-            @click="toggleMenu">
-            <PlusIcon class="text-secondary-content mb-2 h-8 w-8" />
-            <span class="text-secondary-content font-medium">
+            class="flex min-h-[228px] cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 text-center transition-all hover:-translate-y-1"
+            :class="[isTypedButton ? 'bg-primary/35' : 'bg-primary/20']"
+            :style="tileStyle"
+            @click="handleClick">
+            <component :is="displayIcon" class="mb-3 h-9 w-9 text-primary-content" />
+            <span class="text-primary-content text-base font-semibold">
                 {{ translate('onboarding.addInstance.addNew') }}
+            </span>
+            <span v-if="type" class="text-secondary-content mt-2 text-sm">
+                {{
+                    type === 'radarr'
+                        ? translate('onboarding.addInstance.addRadarr')
+                        : translate('onboarding.addInstance.addSonarr')
+                }}
             </span>
         </div>
 
@@ -18,7 +27,7 @@
             leave-from-class="transform opacity-100 scale-100"
             leave-to-class="transform opacity-0 scale-95">
             <div
-                v-if="isOpen"
+                v-if="isOpen && !type"
                 class="border-accent bg-primary absolute top-full right-0 left-0 z-10 mt-2 overflow-hidden rounded-md border shadow-lg">
                 <button
                     type="button"
@@ -44,13 +53,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import PlusIcon from '@/components/icons/PlusIcon.vue'
 import RadarrIcon from '@/components/icons/RadarrIcon.vue'
 import SonarrIcon from '@/components/icons/SonarrIcon.vue'
 import { useI18n } from '@/plugins/i18n'
 
 const { translate } = useI18n()
+
+const props = defineProps<{
+    type?: 'radarr' | 'sonarr'
+}>()
 
 const emit = defineEmits<{
     (e: 'add', type: 'radarr' | 'sonarr'): void
@@ -59,8 +72,50 @@ const emit = defineEmits<{
 const isOpen = ref(false)
 const containerRef = ref<HTMLElement | null>(null)
 
+const typePalette = {
+    radarr: {
+        borderColor: 'rgba(255, 194, 48, 0.45)',
+        backgroundColor: 'rgba(255, 194, 48, 0.08)'
+    },
+    sonarr: {
+        borderColor: 'rgba(0, 204, 255, 0.42)',
+        backgroundColor: 'rgba(0, 204, 255, 0.08)'
+    }
+} as const
+
+const isTypedButton = computed(() => !!props.type)
+
+const displayIcon = computed(() => {
+    if (props.type === 'radarr') {
+        return RadarrIcon
+    }
+
+    if (props.type === 'sonarr') {
+        return SonarrIcon
+    }
+
+    return PlusIcon
+})
+
+const tileStyle = computed(() => {
+    if (!props.type) {
+        return undefined
+    }
+
+    return typePalette[props.type]
+})
+
 const toggleMenu = () => {
     isOpen.value = !isOpen.value
+}
+
+const handleClick = () => {
+    if (props.type) {
+        selectType(props.type)
+        return
+    }
+
+    toggleMenu()
 }
 
 const selectType = (type: 'radarr' | 'sonarr') => {
