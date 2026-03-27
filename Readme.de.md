@@ -6,71 +6,74 @@
 [![License](https://img.shields.io/badge/license-AGPL--3.0-green.svg?style=for-the-badge)](LICENSE)
 [![Discord](https://img.shields.io/discord/1293119073739210885?style=for-the-badge&logo=discord&logoColor=white&label=discord&color=7289DA)](https://discord.gg/HkubmH2rcR)
 
-**Untertitel-Übersetzung, die wirklich funktioniert** - für Nutzer mit großen Medienbibliotheken.
+**Untertitel-Ubersetzung fur echte Radarr/Sonarr-Bibliotheken.**
 
-[English](Readme.MD) | [Deutsch](Readme.de.md) | [Polski](Readme.pl.md) | [Nederlands](Readme.nl.md) | [Français](Readme.fr.md) | [Español](Readme.es.md) | [Chinese](Readme.zh.md)
+[English](Readme.MD) | [Deutsch](Readme.de.md) | [Polski](Readme.pl.md) | [Nederlands](Readme.nl.md) | [Francais](Readme.fr.md) | [Espanol](Readme.es.md) | [中文](Readme.zh.md)
 
 ---
 
-> **Upgrade von v1.x?** Version 2.0.0 enthält Breaking Changes - MySQL/MariaDB wurde entfernt, Einstellungen werden NICHT migriert, ein Neuanfang ist erforderlich. Details siehe unten.
+> Snapshot mit `lingarr-translate/lingarr` am 27. Marz 2026 abgeglichen. Upstream kann sich nach diesem Datum weiter verandern.
+>
+> Upgrade von v1.x? Version 2.0.0 bringt Breaking Changes mit. MySQL/MariaDB wird nicht mehr unterstutzt, Einstellungen werden nicht automatisch migriert, und ein sauberer Neustart ist erforderlich.
 
 ---
 
 ## Was ist das?
 
-Lingarr on Steroids ist ein Fork von [Lingarr](https://github.com/lingarr-translate/lingarr). Wir haben die Kernidee beibehalten (Untertitel via Radarr/Sonarr übersetzen), aber den Großteil des Backends neu geschrieben und zahlreiche UI-Verbesserungen hinzugefügt.
+Lingarr on Steroids ist ein Fork von [Lingarr](https://github.com/lingarr-translate/lingarr). Die Grundidee bleibt gleich: Medien uber Radarr und Sonarr indizieren, Untertitel finden, mit unterstutzten Diensten ubersetzen und alles uber eine Weboberflache verwalten.
 
-Entstanden ist das Projekt, da das ursprüngliche Lingarr unter Last Zuverlässigkeitsprobleme aufwies. Wir brauchten eine Lösung, die nicht abstürzt, wenn man Tausende von Serien verwaltet.
+Dieser Fork konzentriert sich auf stabile Warteschlangen, Multi-Instance-Bibliotheken, robustere Reparatur von Untertiteln und bessere Betriebs-Transparenz fur grossere Setups.
 
 ---
 
-## Was wir geändert haben
+## Verifizierte Unterschiede dieses Forks
 
-### Backend
+### Backend und Queueing
 
-| Was | Warum |
-|------|-----|
-| Eigener Übersetzungs-Worker | Hangfire war mit großen Warteschlangen überfordert. Wir haben einen eigenen BackgroundService geschrieben, der 1-20 parallele Worker, Prioritätswarteschlangen und automatische Fehlerbehebung bei Abstürzen unterstützt. |
-| PostgreSQL als Standard | SQLite blockiert bei gleichzeitigen Workern. MVCC in PostgreSQL funktioniert zuverlässig. SQLite bleibt als Option für kleine Setups erhalten. |
-| 9-Status-Übersetzungsverfolgung | Das Original hatte keine gute Möglichkeit zu beantworten, "Was muss übersetzt werden?". Wir haben Status hinzugefügt (Unbekannt, Ausstehend, In Bearbeitung, Abgeschlossen, Veraltet, Warten auf Quelle, Keine passenden Untertitel, Fehlgeschlagen, Unterbrochen), sodass Abfragen schnell sind. |
-| Multi-Instanz-Support | Eine Radarr/Sonarr-Instanz reicht für manche nicht aus. Du kannst nun mehrere *arr-Server mit einem Lingarr verbinden. |
-| Verzögerte Reparatur | Fehlgeschlagene Zeilen werden mit umgebendem Kontext (standardmäßig 10 Zeilen) erneut versucht. Die Qualität der LLM-Übersetzung steigt deutlich, wenn die KI sehen kann, was davor/danach passiert. |
+| Bereich | Verifizierter Unterschied in diesem Fork |
+|---------|-----------------------------------------|
+| Eigener Translation Worker | Ubersetzungsjobs laufen uber einen eigenen `BackgroundService` mit konfigurierbaren parallelen Workern und nicht nur uber Hangfire-Queues. |
+| PostgreSQL als Standard | PostgreSQL ist die Standard-Datenbank. SQLite bleibt fur kleinere Installationen verfugbar. |
+| Medien-Statusmodell | Medien nutzen 9 Zustande: `Unknown`, `NotApplicable`, `Pending`, `InProgress`, `Complete`, `Stale`, `AwaitingSource`, `NoSuitableSubtitles`, `Failed`. |
+| Multi-Instance-Support | Filme und Serien speichern `SourceInstanceId`, sodass mehrere Radarr- und Sonarr-Instanzen an eine Installation angebunden werden konnen. |
+| Deferred Repair | Fehlgeschlagene Zeilen konnen mit umgebendem Kontext erneut versucht werden, was Reparaturlaufe robuster macht. |
 
 ### Untertitel-Verarbeitung
 
-- **FFmpeg-Extraktion** - extrahiert Untertitel aus MKV/MP4-Containern, wenn diese eingebettet sind
-- **ASS/SSA-Bereinigung** - entfernt Zeichenbefehle, Musiksymbole, Platzhalter für Soundeffekte und URLs
-- **Sparse-Track-Filter** - überspringt Tracks mit <100 Einträgen (z. B. nur Schilder oder Lieder)
-- **Erkennung externer Untertitel** - findet manuell hinzugefügte Untertiteldateien und verfolgt diese
+- FFmpeg kann textbasierte Untertitel aus eingebetteten MKV- und MP4-Spuren extrahieren.
+- ASS/SSA-Bereinigung entfernt Zeichenbefehle, Musikmarker, Platzhalter-Effekte und URLs vor der Ubersetzung.
+- Sparse Tracks mit weniger als 50 Dialogzeilen werden ubersprungen.
+- Externe Untertitel-Erkennung erfasst manuell hinzugefugte Untertiteldateien automatisch.
 
-### UI/UX
+### UI und Betrieb
 
-- **Dashboard-Widgets** - Drag-and-Drop-Layout, Echtzeit-Updates via SignalR
-- **Job-Warteschlangen-Widget** - zeigt, was läuft, was geplant ist und was fehlgeschlagen ist
-- **Übersetzungsverlauf** - Diagramm + Liste, die zeigt, was wann übersetzt wurde
-- **API-Nutzungs-Tracker** - Sparkline-Diagramme zeigen die Ausgaben pro Dienst
-- **Einrichtungsassistent** - führt dich beim ersten Start durch die Radarr/Sonarr-Konfiguration
-- **Theme-Unterstützung** - Dunkel/Hell mit CSS-Variablen, damit es zu deinem Setup passt
-- **7 Sprachen** - EN, NL, DE, FR, ES, PL, ZH
-- **Offline-Erkennung** - zeigt an, wenn die App nicht erreichbar ist
+- Der Onboarding-Assistent begleitet die erste Konfiguration von Radarr und Sonarr.
+- Dashboard-Widgets unterstutzen Drag-and-Drop-Layouts und Live-Updates uber SignalR.
+- Job-Queue- und Ubersetzungsverlauf-Widgets liefern Einblicke, die Upstream aktuell nicht mitbringt.
+- Das API-Usage-Widget zeigt Aufrufe, Token, Latenz, Fehler und Erfolgsquote.
+- Der Client bietet 11 integrierte Themes und nicht nur einen Hell/Dunkel-Schalter.
+- Die UI ist in Englisch, Niederlandisch, Deutsch, Franzosisch, Spanisch, Polnisch und vereinfachtem Chinesisch verfugbar.
 
-### Zuverlässigkeit
+### Zuverlassigkeit
 
-- **Bereinigung von verwaisten Dateien** - erkennt, wenn ein Upgrade die Datei umbenennt und deine KI-Übersetzungen nun verwaist sind
-- **Massen-Integritätsprüfung** - validiert jede Übersetzung in deiner Bibliothek
-- **Bereinigung von Geister-Jobs** - entfernt hängengebliebene Jobs, die nie abgeschlossen wurden
-- **Exponentielles Backoff** - wiederholt fehlgeschlagene API-Aufrufe mit Verzögerung (Jitter), um APIs nicht zu überlasten
+- Orphan-Subtitle-Cleanup erkennt umbenannte Mediendateien, die ubersetzte Untertitel zuruckgelassen haben.
+- Bulk-Integrity-Checks konnen ubersetzte Untertitel in der gesamten Bibliothek validieren.
+- Ghost-Job-Schutz verhindert das Uberschreiben terminaler Status und bereinigt unterbrochene Arbeit nach Neustarts.
+- Exponentielles Backoff und verzogertes Requeueing reduzieren Druck auf instabile Provider.
+- Die Chutes-Integration bringt quota-aware Steuerung und providerspezifische Logik in diesem Fork mit.
 
 ---
 
-## Unterstützte Dienste
+## Unterstutzte Dienste
+
+Diese Liste beschreibt den Stand dieses Forks zum Snapshot-Datum. Einige dieser Dienste werden auch von Upstream unterstutzt, die Liste ist also eine Kompatibilitatsliste und kein exklusiver Fork-Claim.
 
 **KI:**
 - [OpenAI](https://openai.com/) (GPT)
 - [Anthropic](https://www.anthropic.com/) (Claude)
 - [Google Gemini](https://gemini.google.com/)
 - [DeepSeek](https://deepseek.com/)
-- [Chutes.ai](https://chutes.ai/) (mit Quota-Tracking & Auto-Pause)
+- [Chutes.ai](https://chutes.ai/) (mit Quota-Tracking und Auto-Pause)
 - LocalAI / Ollama (selbst gehostet)
 
 **Cloud APIs:**
@@ -93,9 +96,9 @@ Entstanden ist das Projekt, da das ursprüngliche Lingarr unter Last Zuverlässi
 | `1.2.3` | Spezifische Version | `linux/amd64`, `linux/arm64` |
 | `main` | Entwicklungs-Build | `linux/amd64`, `linux/arm64` |
 
-PostgreSQL wird empfohlen. SQLite funktioniert für kleine Setups (Einzelbenutzer, <1000 Medieneinträge).
+PostgreSQL wird empfohlen. SQLite ist fur kleine Setups geeignet (ein Benutzer, <1000 Medienobjekte).
 
-> **Hinweis:** Alle Images unterstützen sowohl AMD64 (Intel/AMD) als auch ARM64 (Raspberry Pi, Apple Silicon).
+> Hinweis: Alle Images unterstutzen sowohl AMD64 (Intel/AMD) als auch ARM64 (Raspberry Pi, Apple Silicon).
 
 ### PostgreSQL (empfohlen)
 
@@ -107,7 +110,7 @@ services:
     image: ree0/lingarr-on-steroids:latest
     container_name: lingarr
     environment:
-      - TZ=Europe/Berlin
+      - TZ=Your/Timezone
       - DB_CONNECTION=postgresql
       - DB_HOST=postgres
       - DB_PORT=5432
@@ -153,8 +156,9 @@ services:
   lingarr:
     image: ree0/lingarr-on-steroids:latest
     environment:
-      - TZ=Europe/Berlin
+      - TZ=Your/Timezone
       - DB_CONNECTION=sqlite
+      - SQLITE_DB_PATH=lingarr.db
     volumes:
       - ./movies:/movies
       - ./tv:/tv
@@ -169,30 +173,34 @@ services:
 ## Konfiguration
 
 | Variable | Beschreibung | Standardwert |
-|----------|-------------|---------|
-| `ASPNETCORE_URLS` | Port | `http://+:9876` |
+|----------|-------------|--------------|
+| `TZ` | Container-Zeitzone | - |
+| `ASPNETCORE_URLS` | HTTP-Bind-Adresse | `http://+:9876` |
 | `DB_CONNECTION` | `postgresql` oder `sqlite` | `postgresql` |
-| `DB_HOST` | PostgreSQL Host | - |
-| `DB_PORT` | PostgreSQL Port | `5432` |
+| `SQLITE_DB_PATH` | SQLite-Dateiname in `/app/config` | `local.db` |
+| `DB_HOST` | PostgreSQL-Host | - |
+| `DB_PORT` | PostgreSQL-Port | `5432` |
 | `DB_DATABASE` | Datenbankname | - |
-| `DB_USERNAME` | DB Benutzername | - |
-| `DB_PASSWORD` | DB Passwort | - |
-| `RADARR_URL` | Deine Radarr URL | - |
-| `RADARR_API_KEY` | Radarr API-Schlüssel | - |
-| `SONARR_URL` | Deine Sonarr URL | - |
-| `SONARR_API_KEY` | Sonarr API-Schlüssel | - |
+| `DB_USERNAME` | DB-Benutzername | - |
+| `DB_PASSWORD` | DB-Passwort | - |
+| `MAX_PARALLEL_TRANSLATIONS` | Startwert fur den eigenen Translation-Worker-Pool | `1` |
+| `MAX_CONCURRENT_JOBS` | Hangfire-Workerzahl fur Sync- und System-Queues | `5` |
+| `RADARR_URL` | Deine Radarr-URL | - |
+| `RADARR_API_KEY` | Radarr-API-Schlussel | - |
+| `SONARR_URL` | Deine Sonarr-URL | - |
+| `SONARR_API_KEY` | Sonarr-API-Schlussel | - |
 
-Die vollständige Liste findest du unter [Settings.MD](Settings.MD).
+Die vollstandige Umgebungsvariablen-Referenz findest du in [Settings.MD](Settings.MD).
 
 ---
 
 ## Credits
 
-Ursprüngliches Lingarr von [rowanfuchs](https://github.com/lingarr-translate/lingarr).
+Originales Lingarr von [rowanfuchs](https://github.com/lingarr-translate/lingarr).
 
 Icons: [Lucide](https://lucide.dev/icons).  
 Untertitel-Parsing: [AlexPoint](https://github.com/AlexPoint/SubtitlesParser).  
-Übersetzung: LibreTranslate, GTranslate Bibliothek.
+Ubersetzung: LibreTranslate, GTranslate-Bibliothek.
 
 ---
 

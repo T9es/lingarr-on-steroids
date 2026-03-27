@@ -6,13 +6,15 @@
 [![License](https://img.shields.io/badge/license-AGPL--3.0-green.svg?style=for-the-badge)](LICENSE)
 [![Discord](https://img.shields.io/discord/1293119073739210885?style=for-the-badge&logo=discord&logoColor=white&label=discord&color=7289DA)](https://discord.gg/HkubmH2rcR)
 
-**Subtitle translation that actually works** - for people running media libraries at scale.
+**Subtitle translation for real-world Radarr/Sonarr libraries.**
 
 [English](Readme.MD) | [Deutsch](Readme.de.md) | [Polski](Readme.pl.md) | [Nederlands](Readme.nl.md) | [Francais](Readme.fr.md) | [Espanol](Readme.es.md) | [Chinese](Readme.zh.md)
 
 ---
 
-> **Upgrading from v1.x?** Version 2.0.0 has breaking changes - MySQL/MariaDB removed, settings are NOT migrated, fresh start required. See below for details.
+> Snapshot verified against `lingarr-translate/lingarr` on March 27, 2026. Upstream may change after this date.
+>
+> Upgrading from v1.x? Version 2.0.0 has breaking changes. MySQL/MariaDB is no longer supported, settings are not migrated automatically, and a clean start is required.
 
 ---
 
@@ -20,50 +22,51 @@
 
 Lingarr on Steroids is a fork of [Lingarr](https://github.com/lingarr-translate/lingarr). We kept the core idea (translate subtitles via Radarr/Sonarr) but rebuilt most of the backend and added a lot of UI improvements.
 
-It started because the original Lingarr had reliability issues under load. We needed something that wouldn't fall over when you have thousands of shows.
+It still inherits Lingarr's base workflow: index media through Radarr and Sonarr, discover subtitle tracks, translate them with supported providers, and manage everything from a web UI. This fork focuses on queue reliability, multi-instance libraries, subtitle repair, and operational visibility that we need for larger installs.
 
 ---
 
-## What we changed
+## Verified fork differences
 
-### Backend
+### Backend and queueing
 
-| What | Why |
-|------|-----|
-| Custom translation worker | Hangfire was choking on large queues. We wrote our own BackgroundService that handles 1-20 parallel workers, priority queuing, and auto-recovers from crashes. |
-| PostgreSQL by default | SQLite locks up with concurrent workers. MVCC in PostgreSQL actually works. We kept SQLite as an option for tiny setups. |
-| 9-state translation tracking | The original had no good way to answer "what needs translation?" We added states (Unknown, Pending, InProgress, Complete, Stale, AwaitingSource, NoSuitableSubtitles, Failed, Interrupted) so queries are fast. |
-| Multi-instance support | One Radarr/Sonarr instance isn't enough for some people. You can now connect multiple *arr servers to one Lingarr. |
-| Deferred repair | Failed lines get retried with surrounding context (10 lines by default). LLM translation quality jumps significantly when the AI can see what's happening before/after. |
+| Area | Verified difference in this fork |
+|------|---------------------------------|
+| Custom translation worker | Translation jobs run through a custom `BackgroundService` with configurable parallel workers instead of relying only on Hangfire queues. |
+| PostgreSQL-first deployment | PostgreSQL is the default database. SQLite remains supported for smaller installs. |
+| Media translation states | Media uses a 9-state model: `Unknown`, `NotApplicable`, `Pending`, `InProgress`, `Complete`, `Stale`, `AwaitingSource`, `NoSuitableSubtitles`, `Failed`. |
+| Multi-instance support | Movies and shows track `SourceInstanceId`, so one Lingarr install can connect to multiple Radarr and Sonarr instances. |
+| Deferred repair | Failed lines can be retried with surrounding context so repair passes are less brittle and usually translate better. |
 
 ### Subtitle processing
 
-- **FFmpeg extraction** - pulls subtitles out of MKV/MP4 containers when they're embedded
-- **ASS/SSA cleanup** - strips drawing commands, musical symbols, sound effect placeholders, URLs
-- **Sparse track filter** - skips tracks with <100 entries (signs, songs)
-- **External subtitle discovery** - finds subtitle files you add manually and tracks them
+- FFmpeg extraction can pull text subtitles out of MKV and MP4 containers when they are embedded.
+- ASS/SSA cleanup strips drawing commands, musical markers, placeholder effects, and URLs before translation.
+- Sparse subtitle tracks with fewer than 50 dialogue entries are skipped.
+- External subtitle discovery picks up subtitle files you add manually and keeps them tracked.
 
-### UI/UX
+### UI and operations
 
-- **Dashboard widgets** - drag-and-drop layout, real-time updates via SignalR
-- **Job queue widget** - shows what's running, what's scheduled, what's failed
-- **Translation history** - chart + list showing what translated when
-- **API usage tracker** - sparkline charts showing spend per service
-- **Onboarding wizard** - first-time setup guides you through Radarr/Sonarr config
-- **Theme support** - dark/light with CSS variables so you can match your Setup
-- **7 languages** - EN, NL, DE, FR, ES, PL, ZH
-- **Offline detection** - shows when the app is unreachable
+- The onboarding wizard guides first-time setup for Radarr and Sonarr.
+- Dashboard widgets support drag-and-drop layouts and live updates over SignalR.
+- Job queue and translation history widgets add visibility that upstream does not currently ship.
+- The API usage widget tracks usage metrics such as calls, tokens, latency, errors, and success rate.
+- The client includes 11 built-in themes, not just a light/dark toggle.
+- The UI is translated into English, Dutch, German, French, Spanish, Polish, and Simplified Chinese.
 
 ### Reliability
 
-- **Orphan cleanup** - detects when upgrade renames the file and your AI translations are now orphaned
-- **Bulk integrity check** - validates every translation in your library
-- **Ghost job cleanup** - removes stuck jobs that never finished
-- **Exponential backoff** - retries with jitter so you don't hammer failed APIs
+- Orphan subtitle cleanup detects renamed media that left translated subtitle files behind.
+- Bulk integrity checks can validate translated subtitles across the library.
+- Ghost-job protection avoids overwriting terminal request states and cleans up interrupted work after restarts.
+- Exponential backoff and delayed requeue logic reduce pressure on unstable providers.
+- Chutes integration includes quota-aware usage handling and provider-specific controls in this fork.
 
 ---
 
 ## Supported services
+
+These are available in this fork as of the snapshot date. Some are also available upstream, so this list describes compatibility, not fork exclusivity.
 
 **AI:**
 - [OpenAI](https://openai.com/) (GPT)
@@ -155,6 +158,7 @@ services:
     environment:
       - TZ=Your/Timezone
       - DB_CONNECTION=sqlite
+      - SQLITE_DB_PATH=lingarr.db
     volumes:
       - ./movies:/movies
       - ./tv:/tv
@@ -170,19 +174,23 @@ services:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `ASPNETCORE_URLS` | Port | `http://+:9876` |
+| `TZ` | Container timezone | - |
+| `ASPNETCORE_URLS` | HTTP bind address | `http://+:9876` |
 | `DB_CONNECTION` | `postgresql` or `sqlite` | `postgresql` |
+| `SQLITE_DB_PATH` | SQLite file name inside `/app/config` | `local.db` |
 | `DB_HOST` | PostgreSQL host | - |
 | `DB_PORT` | PostgreSQL port | `5432` |
 | `DB_DATABASE` | Database name | - |
 | `DB_USERNAME` | DB username | - |
 | `DB_PASSWORD` | DB password | - |
+| `MAX_PARALLEL_TRANSLATIONS` | Startup value for custom translation workers | `1` |
+| `MAX_CONCURRENT_JOBS` | Hangfire worker count for sync and system queues | `5` |
 | `RADARR_URL` | Your Radarr URL | - |
 | `RADARR_API_KEY` | Radarr API key | - |
 | `SONARR_URL` | Your Sonarr URL | - |
 | `SONARR_API_KEY` | Sonarr API key | - |
 
-Full list in [Settings.MD](Settings.MD).
+Full environment reference in [Settings.MD](Settings.MD).
 
 ---
 

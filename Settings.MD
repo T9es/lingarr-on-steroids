@@ -1,121 +1,133 @@
-## Settings
-These settings can be configured as environment variables to persist configurations across reinstallations.
+# Settings
 
-### **Performance Configuration**
+These are the environment variables currently read by Lingarr on Steroids as of March 27, 2026.
 
-| **Environment Variable** | **Description**                                                                 | **Default** |
-|--------------------------|---------------------------------------------------------------------------------|-------------|
-| `MAX_PARALLEL_TRANSLATIONS` | Maximum number of concurrent translation jobs.                                | `4`         |
-| `MAX_CONCURRENT_JOBS`    | Maximum number of concurrent sync/background workers (Radarr/Sonarr sync, etc.). Higher values may cause database contention. | `5`         |
+When a variable maps to an application setting, Lingarr applies it on startup and persists it to the database. Not every UI setting is env-backed: multi-instance arrays, token limits, subtitle validation rules, onboarding progress, dashboard layout, and most automation options are still configured through the UI or API.
 
----
+## Container and runtime
 
-### **Radarr Configuration**
+| Environment variable | Description | Default |
+|----------------------|-------------|---------|
+| `TZ` | Container timezone. Handled by the container/runtime, not by Lingarr code directly. | - |
+| `ASPNETCORE_URLS` | HTTP bind address for the ASP.NET app. | `http://+:9876` |
 
-| **Environment Variable** | **Description**                                                                 |
-|--------------------------|---------------------------------------------------------------------------------|
-| `RADARR_URL`             | The base URL for the Radarr API. Example: `http://localhost:7878`.              |
-| `RADARR_API_KEY`         | The API key for authenticating with Radarr. Obtain this from your Radarr instance. |
+## Database and background jobs
 
----
+| Environment variable | Description | Default |
+|----------------------|-------------|---------|
+| `DB_CONNECTION` | Database backend. Supported values: `postgresql`, `sqlite`. | `postgresql` |
+| `DB_HOST` | PostgreSQL host. Used when `DB_CONNECTION=postgresql`. | `lingarr-postgres` |
+| `DB_PORT` | PostgreSQL port. Used when `DB_CONNECTION=postgresql`. | `5432` |
+| `DB_DATABASE` | PostgreSQL database name. Used when `DB_CONNECTION=postgresql`. | `lingarr` |
+| `DB_USERNAME` | PostgreSQL username. Used when `DB_CONNECTION=postgresql`. | `lingarr` |
+| `DB_PASSWORD` | PostgreSQL password. Used when `DB_CONNECTION=postgresql`. | `lingarr` |
+| `SQLITE_DB_PATH` | SQLite file name inside `/app/config`. Used when `DB_CONNECTION=sqlite`. | `local.db` |
+| `DB_HANGFIRE_SQLITE_PATH` | Separate SQLite file used by Hangfire storage when `DB_CONNECTION=sqlite`. | `/app/config/Hangfire.db` |
+| `MAX_CONCURRENT_JOBS` | Hangfire worker count for sync, system, webhook, and default queues. | `5` |
+| `MAX_PARALLEL_TRANSLATIONS` | Startup value for the custom translation worker pool. Applied to the `max_parallel_translations` setting. | `1` |
+| `HANGFIRE_USERNAME` | Username for the Hangfire dashboard at `/hangfire`. | `admin` if unset |
+| `HANGFIRE_PASSWORD` | Password for the Hangfire dashboard at `/hangfire`. A random password is generated if unset. | random if unset |
 
-### **Sonarr Configuration**
+## Integration bootstrap
 
-| **Environment Variable** | **Description**                                                                 |
-|--------------------------|---------------------------------------------------------------------------------|
-| `SONARR_URL`             | The base URL for the Sonarr API. Example: `http://localhost:8989`.              |
-| `SONARR_API_KEY`         | The API key for authenticating with Sonarr. Obtain this from your Sonarr instance. |
+| Environment variable | Description |
+|----------------------|-------------|
+| `RADARR_URL` | Base URL for Radarr. Example: `http://radarr:7878`. |
+| `RADARR_API_KEY` | API key for Radarr. |
+| `SONARR_URL` | Base URL for Sonarr. Example: `http://sonarr:8989`. |
+| `SONARR_API_KEY` | API key for Sonarr. |
+| `SOURCE_LANGUAGES` | Minified JSON array of source languages. |
+| `TARGET_LANGUAGES` | Minified JSON array of target languages. |
+| `SERVICE_TYPE` | Active translation provider. See supported values below. |
+| `AI_PROMPT` | Prompt template used by AI-based providers. |
 
----
+`SOURCE_LANGUAGES` and `TARGET_LANGUAGES` must be JSON arrays of objects with `name` and `code`.
 
-### **Translation Service Configuration**
+Example:
 
-#### **General Translation Settings**
-
-| **Environment Variable** | **Description**                                                                 |
-|--------------------------|---------------------------------------------------------------------------------|
-| `SERVICE_TYPE`           | The type of translation service to use. Supported values: `libretranslate`, `openai`, `anthropic`, `localai`, `deepl`, `google`, `bing`, `microsoft`, `yandex`. |
-| `SOURCE_LANGUAGES`       | A minified JSON array of source languages for translation. |
-| `TARGET_LANGUAGES`       | A minified JSON array of target languages for translation. |
-
-The `SOURCE_LANGUAGES` and `TARGET_LANGUAGES` variables should be provided as a minified JSON array. Each object in the array should contain the `name` and `code` of the language.
-
-#### Example:
 ```json
-[{"name":"English","code":"en"},{"name":"Dutch","code":"nl"}]
+[{"name":"English","code":"en"},{"name":"Polish","code":"pl"}]
 ```
 
-### Service type
+## Supported `SERVICE_TYPE` values
 
-#### **LibreTranslate**
+| Value | Description |
+|-------|-------------|
+| `libretranslate` | LibreTranslate |
+| `openai` | OpenAI chat models |
+| `anthropic` | Anthropic Claude models |
+| `localai` | LocalAI or compatible self-hosted chat endpoint |
+| `deepl` | DeepL API |
+| `google` | Google Translate via `GTranslate` |
+| `bing` | Bing Translate via `GTranslate` |
+| `microsoft` | Microsoft Translator via `GTranslate` |
+| `yandex` | Yandex Translate via `GTranslate` |
+| `gemini` | Google Gemini |
+| `deepseek` | DeepSeek |
+| `chutes` | Chutes.ai |
 
-| **Environment Variable**     | **Description**                                                                 |
-|------------------------------|---------------------------------------------------------------------------------|
-| `LIBRE_TRANSLATE_URL`        | The base URL for the LibreTranslate API. Example: `https://libretranslate.com`. |
-| `LIBRE_TRANSLATE_API_KEY`    | The API key to use for the LibreTranslate API. This is optional, and only needed if using an instance that requires one. |
+## Provider-specific variables
 
-#### **OpenAI**
+### LibreTranslate
 
-| **Environment Variable** | **Description**                                                                 |
-|--------------------------|---------------------------------------------------------------------------------|
-| `OPENAI_MODEL`           | The model to use for OpenAI translations. Example: `gpt-4`, `gpt-3.5-turbo`.    |
-| `OPENAI_API_KEY`         | The API key for authenticating with OpenAI.                                     |
-| `AI_PROMPT`              | The prompt template for AI-based translation services.                          |
+| Environment variable | Description |
+|----------------------|-------------|
+| `LIBRE_TRANSLATE_URL` | LibreTranslate base URL. Example: `https://libretranslate.com`. |
+| `LIBRE_TRANSLATE_API_KEY` | Optional API key for hosted or private LibreTranslate instances. |
 
-#### **Anthropic**
+### OpenAI
 
-| **Environment Variable** | **Description**                                                                 |
-|--------------------------|---------------------------------------------------------------------------------|
-| `ANTHROPIC_MODEL`        | The model to use for Anthropic translations. Example: `claude-2`.               |
-| `ANTHROPIC_API_KEY`      | The API key for authenticating with Anthropic.                                  |
-| `ANTHROPIC_VERSION`      | The version of the Anthropic API to use.                                        |
-| `AI_PROMPT`              | The prompt template for AI-based translation services.                          |
+| Environment variable | Description |
+|----------------------|-------------|
+| `OPENAI_MODEL` | Model ID used for OpenAI translations. |
+| `OPENAI_API_KEY` | OpenAI API key. |
 
-#### **Gemini**
+### Anthropic
 
-| **Environment Variable** | **Description**                                                                 |
-|--------------------------|---------------------------------------------------------------------------------|
-| `GEMINI_MODEL`        | The model to use for Anthropic translations. Example: `gemini-2.0-flash`.        |
-| `GEMINI_API_KEY`      | The API key for authenticating with Anthropic.                                  |
-| `AI_PROMPT`            | The prompt template for AI-based translation services.                          |
+| Environment variable | Description | Default |
+|----------------------|-------------|---------|
+| `ANTHROPIC_MODEL` | Model ID used for Anthropic translations. | - |
+| `ANTHROPIC_API_KEY` | Anthropic API key. | - |
+| `ANTHROPIC_VERSION` | Anthropic API version header. | `2023-06-01` |
 
-#### **DeepSeek**
+### Gemini
 
-| **Environment Variable** | **Description**                                                                 |
-|--------------------------|---------------------------------------------------------------------------------|
-| `DEEPSEEK_MODEL`        | The model to use for Anthropic translations. Example: `deepseek-chat`.               |
-| `DEEPSEEK_API_KEY`      | The API key for authenticating with Anthropic.                                  |
-| `AI_PROMPT`              | The prompt template for AI-based translation services.                          |
+| Environment variable | Description |
+|----------------------|-------------|
+| `GEMINI_MODEL` | Model ID used for Gemini translations. |
+| `GEMINI_API_KEY` | Gemini API key. |
 
-#### **LocalAI**
+### DeepSeek
 
-| **Environment Variable** | **Description**                                                                 |
-|--------------------------|---------------------------------------------------------------------------------|
-| `LOCAL_AI_MODEL`         | The model to use for LocalAI translations.                                      |
-| `LOCAL_AI_API_KEY`       | The API key for authenticating with LocalAI.                                    |
-| `LOCAL_AI_ENDPOINT`      | The endpoint URL for the LocalAI service. Example: `http://localhost:8080`.     |
-| `AI_PROMPT`              | The prompt template for AI-based translation services.                          |
+| Environment variable | Description |
+|----------------------|-------------|
+| `DEEPSEEK_MODEL` | Model ID used for DeepSeek translations. |
+| `DEEPSEEK_API_KEY` | DeepSeek API key. |
 
-#### **DeepL**
+### LocalAI
 
-| **Environment Variable** | **Description**                                                                 |
-|--------------------------|---------------------------------------------------------------------------------|
-| `DEEPL_API_KEY`          | The API key for authenticating with DeepL.                                      |
+| Environment variable | Description |
+|----------------------|-------------|
+| `LOCAL_AI_MODEL` | Model ID used for LocalAI translations. |
+| `LOCAL_AI_API_KEY` | Optional API key for LocalAI or compatible endpoints. |
+| `LOCAL_AI_ENDPOINT` | Base endpoint for LocalAI. Example: `http://localhost:8080`. |
 
----
+### DeepL
 
-### **Translation Services**
+| Environment variable | Description |
+|----------------------|-------------|
+| `DEEPL_API_KEY` | DeepL API key. |
 
-The `SERVICE_TYPE` variable determines which translation service to use. Below are the supported values:
+### Chutes
 
-| **Value**       | **Description**                                                                 |
-|-----------------|---------------------------------------------------------------------------------|
-| `libretranslate`| Use the LibreTranslate service for translations.                                |
-| `openai`        | Use OpenAI's models (e.g., GPT-4, GPT-3.5) for translations.                    |
-| `anthropic`     | Use Anthropic's models (e.g., Claude-2) for translations.                       |
-| `localai`       | Use a locally hosted AI model for translations.                                 |
-| `deepl`         | Use the DeepL API for translations.                                             |
-| `google`        | Use Google Translate for translations.                                          |
-| `bing`          | Use Bing Translate for translations.                                            |
-| `microsoft`     | Use Microsoft Translator for translations.                                      |
-| `yandex`        | Use Yandex Translate for translations.                                          |
+| Environment variable | Description |
+|----------------------|-------------|
+| `CHUTES_MODEL` | Model ID used for Chutes translations. |
+| `CHUTES_API_KEY` | Chutes API key. |
+| `CHUTES_USAGE_LIMIT_OVERRIDE` | Optional daily request limit override used by the quota-aware Chutes integration. |
+
+## Not currently bootstrapped from env
+
+- Multi-instance Radarr and Sonarr definitions are stored as JSON settings in the database and managed through the UI.
+- Token-limit controls, Chutes mode, subtitle validation rules, extraction mode, dashboard layout, and onboarding progress are not imported from environment variables on startup.
+- If you need those settings to survive reinstalls, keep the application database and `/app/config` volume.

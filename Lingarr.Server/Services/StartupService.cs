@@ -216,6 +216,7 @@ public class StartupService : IHostedService
             { "TARGET_LANGUAGES", SettingKeys.Translation.TargetLanguages },
 
             { "SERVICE_TYPE", SettingKeys.Translation.ServiceType },
+            { "MAX_PARALLEL_TRANSLATIONS", SettingKeys.Translation.MaxParallelTranslations },
             { "LIBRE_TRANSLATE_URL", SettingKeys.Translation.LibreTranslate.Url },
             { "LIBRE_TRANSLATE_API_KEY", SettingKeys.Translation.LibreTranslate.ApiKey },
             { "AI_PROMPT", SettingKeys.Translation.AiPrompt },

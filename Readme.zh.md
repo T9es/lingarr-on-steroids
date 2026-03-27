@@ -6,74 +6,77 @@
 [![License](https://img.shields.io/badge/license-AGPL--3.0-green.svg?style=for-the-badge)](LICENSE)
 [![Discord](https://img.shields.io/discord/1293119073739210885?style=for-the-badge&logo=discord&logoColor=white&label=discord&color=7289DA)](https://discord.gg/HkubmH2rcR)
 
-**真正好用的字幕翻译工具** - 专为管理大规模媒体库的用户设计。
+**面向真实 Radarr/Sonarr 媒体库的字幕翻译。**
 
-[English](Readme.MD) | [Deutsch](Readme.de.md) | [Polski](Readme.pl.md) | [Nederlands](Readme.nl.md) | [Français](Readme.fr.md) | [Español](Readme.es.md) | [Chinese](Readme.zh.md)
+[English](Readme.MD) | [Deutsch](Readme.de.md) | [Polski](Readme.pl.md) | [Nederlands](Readme.nl.md) | [Francais](Readme.fr.md) | [Espanol](Readme.es.md) | [中文](Readme.zh.md)
 
 ---
 
-> **从 v1.x 升级？** 版本 2.0.0 包含重大变更 - 已移除 MySQL/MariaDB，设置**不会**自动迁移，需要全新安装。详情请见下文。
+> 本文内容已于 2026 年 3 月 27 日对照 `lingarr-translate/lingarr` 进行核对。上游项目在此日期之后仍可能继续变化。
+>
+> 从 v1.x 升级？2.0.0 包含破坏性变更。MySQL/MariaDB 已不再受支持，配置不会自动迁移，需要全新初始化。
 
 ---
 
 ## 这是什么？
 
-Lingarr on Steroids 是 [Lingarr](https://github.com/lingarr-translate/lingarr) 的分支。我们保留了核心理念（通过 Radarr/Sonarr 获取并翻译字幕），但重写了大部分后端代码，并增加了许多用户界面 (UI) 改进。
+Lingarr on Steroids 是 [Lingarr](https://github.com/lingarr-translate/lingarr) 的一个 fork。它保留了原始工作流：通过 Radarr 和 Sonarr 索引媒体、发现字幕轨道、使用支持的提供商进行翻译，并通过 Web UI 统一管理。
 
-发起这个项目是因为最初的 Lingarr 在高负载下存在可靠性问题。当你有成千上万部剧集和电影时，我们需要一个不会崩溃的系统。
+这个 fork 更关注队列可靠性、多实例媒体库、字幕修复能力，以及面向大型部署的运维可见性。
 
 ---
 
-## 我们改变了什么
+## 已验证的 fork 差异
 
-### 后端
+### 后端与队列
 
-| 改进项 | 原因 |
-|------|-----|
-| 自定义翻译工作流 | Hangfire 在队列过大时容易崩溃。我们编写了自己的 BackgroundService，支持 1-20 个并行工作进程、优先级队列以及崩溃后的自动恢复功能。 |
-| 默认使用 PostgreSQL | SQLite 在并发进程下容易发生锁死。PostgreSQL 的多版本并发控制 (MVCC) 表现优异。我们保留了 SQLite 作为小型环境的选项。 |
-| 9 种状态追踪 | 原版无法直观地回答“哪些内容需要翻译？”。我们加入了 9 种状态（未知，待处理，处理中，已完成，已过期，等待源文件，无合适字幕，失败，已中断），让查询速度大幅提升。 |
-| 多实例支持 | 一个 Radarr/Sonarr 实例对某些人来说是不够的。你现在可以将多个 *arr 服务器连接到一个 Lingarr。 |
-| 延迟修复与重试 | 翻译失败的行会带上上下文（默认为前后 10 行）进行重试。当 AI 能看到前因后果时，大语言模型 (LLM) 的翻译质量会显著提升。 |
+| 领域 | 此 fork 中已验证的差异 |
+|------|-------------------------|
+| 自定义 translation worker | 翻译任务通过自定义 `BackgroundService` 和可配置并行 worker 执行，而不只是依赖 Hangfire 队列。 |
+| 默认 PostgreSQL | PostgreSQL 是默认数据库，SQLite 仍适用于较小的部署。 |
+| 媒体状态模型 | 媒体使用 9 个状态：`Unknown`、`NotApplicable`、`Pending`、`InProgress`、`Complete`、`Stale`、`AwaitingSource`、`NoSuitableSubtitles`、`Failed`。 |
+| 多实例支持 | 电影和剧集记录 `SourceInstanceId`，因此一个 Lingarr 安装可以连接多个 Radarr 和 Sonarr 实例。 |
+| 延迟修复 | 失败的字幕行可以带上下文重新尝试，使修复流程更稳健。 |
 
 ### 字幕处理
 
-- **FFmpeg 提取** - 当字幕内嵌于 MKV/MP4 容器时，自动提取字幕
-- **ASS/SSA 清理** - 移除绘图指令、音乐符号、音效标签和 URL 链接
-- **强制/非完整字幕过滤** - 跳过条目 <100 行的字幕轨道（如仅包含招牌翻译或歌曲）
-- **外部字幕检测** - 自动发现并追踪你手动添加的字幕文件
+- FFmpeg 可以从嵌入式 MKV 和 MP4 轨道中提取文本字幕。
+- ASS/SSA 清理会在翻译前移除绘图命令、音乐标记、占位效果和 URL。
+- 少于 50 条对白的稀疏字幕轨道会被跳过。
+- 外部字幕发现功能会识别并持续跟踪你手动添加的字幕文件。
 
-### UI/UX
+### UI 与运维
 
-- **仪表板小部件** - 拖放式布局，通过 SignalR 实现实时更新
-- **任务队列小部件** - 显示正在运行、已排队和失败的任务
-- **翻译历史记录** - 用图表和列表展示历史翻译数据
-- **API 使用追踪** - 使用迷你走势图 (Sparklines) 显示各服务的花销
-- **安装向导** - 首次启动向导会指导你完成 Radarr/Sonarr 的配置
-- **主题支持** - 深色/浅色模式，使用 CSS 变量匹配你的桌面环境
-- **7 种语言** - 英文, 荷兰文, 德文, 法文, 西班牙文, 波兰文, 中文
-- **离线检测** - 当应用程序无法连接时显示离线状态
+- Onboarding 向导会引导首次配置 Radarr 和 Sonarr。
+- 仪表盘组件支持拖拽布局，并通过 SignalR 提供实时更新。
+- 任务队列和翻译历史组件提供了上游当前没有的可见性。
+- API 使用组件展示调用次数、token、延迟、错误数和成功率。
+- 客户端内置 11 个主题，而不只是明暗两种模式。
+- UI 已翻译为英语、荷兰语、德语、法语、西班牙语、波兰语和简体中文。
 
 ### 可靠性
 
-- **清理孤立文件** - 当由于媒体文件升级重命名，导致之前的 AI 翻译文件变成孤立文件时，自动检测并处理
-- **大规模完整性检查** - 验证媒体库中的每一份翻译
-- **无响应任务清理** - 移除卡死且永远不会完成的任务
-- **指数退避重试 (Backoff)** - 带有随机抖动 (jitter) 的重试机制，避免在 API 失败时被过度请求封禁
+- 孤儿字幕清理可以检测重命名媒体后遗留下来的已翻译字幕文件。
+- 批量完整性检查可以验证整个媒体库中的翻译字幕。
+- Ghost job 保护会避免覆盖终态请求，并在重启后清理被中断的工作。
+- 指数退避和延迟重新入队逻辑可降低对不稳定提供商的压力。
+- 此 fork 中的 Chutes 集成包含额度感知控制和提供商专用逻辑。
 
 ---
 
 ## 支持的服务
 
-**人工智能 (AI):**
+这是此 fork 在 snapshot 日期上的兼容性列表。其中部分服务上游也已支持，因此这不是“fork 独有”的声明。
+
+**AI：**
 - [OpenAI](https://openai.com/) (GPT)
 - [Anthropic](https://www.anthropic.com/) (Claude)
 - [Google Gemini](https://gemini.google.com/)
 - [DeepSeek](https://deepseek.com/)
-- [Chutes.ai](https://chutes.ai/) (带配额跟踪和自动暂停)
-- LocalAI / Ollama (自托管)
+- [Chutes.ai](https://chutes.ai/)（包含额度跟踪与自动暂停）
+- LocalAI / Ollama（自托管）
 
-**云端 API:**
+**云 API：**
 - [LibreTranslate](https://libretranslate.com/)
 - [DeepL](https://www.deepl.com/)
 - [Google Translate](https://translate.google.com/)
@@ -87,17 +90,17 @@ Lingarr on Steroids 是 [Lingarr](https://github.com/lingarr-translate/lingarr) 
 
 ### Docker 镜像标签
 
-| 标签 | 描述 | 架构 |
-|-----|-------------|---------------|
-| `latest` | 最新稳定版 | `linux/amd64`, `linux/arm64` |
-| `1.2.3` | 特定版本 | `linux/amd64`, `linux/arm64` |
-| `main` | 开发测试版 | `linux/amd64`, `linux/arm64` |
+| 标签 | 说明 | 架构 |
+|------|------|------|
+| `latest` | 最新稳定版本 | `linux/amd64`, `linux/arm64` |
+| `1.2.3` | 指定版本 | `linux/amd64`, `linux/arm64` |
+| `main` | 开发构建版本 | `linux/amd64`, `linux/arm64` |
 
-推荐使用 PostgreSQL。SQLite 适用于小型环境（单用户，<1000 个媒体项目）。
+推荐使用 PostgreSQL。SQLite 适合较小的部署（单用户、少于 1000 个媒体项目）。
 
-> **注意：** 所有镜像均支持 AMD64 (Intel/AMD) 和 ARM64 (树莓派, Apple Silicon)。
+> 注意：所有镜像都支持 AMD64（Intel/AMD）和 ARM64（Raspberry Pi、Apple Silicon）。
 
-### PostgreSQL (推荐)
+### PostgreSQL（推荐）
 
 ```yaml
 version: "3.8"
@@ -107,7 +110,7 @@ services:
     image: ree0/lingarr-on-steroids:latest
     container_name: lingarr
     environment:
-      - TZ=Asia/Shanghai
+      - TZ=Your/Timezone
       - DB_CONNECTION=postgresql
       - DB_HOST=postgres
       - DB_PORT=5432
@@ -144,7 +147,7 @@ volumes:
   postgres_data:
 ```
 
-### SQLite (快速上手)
+### SQLite（快速开始）
 
 ```yaml
 version: "3.8"
@@ -153,8 +156,9 @@ services:
   lingarr:
     image: ree0/lingarr-on-steroids:latest
     environment:
-      - TZ=Asia/Shanghai
+      - TZ=Your/Timezone
       - DB_CONNECTION=sqlite
+      - SQLITE_DB_PATH=lingarr.db
     volumes:
       - ./movies:/movies
       - ./tv:/tv
@@ -168,31 +172,35 @@ services:
 
 ## 配置
 
-| 变量 | 描述 | 默认值 |
-|----------|-------------|---------|
-| `ASPNETCORE_URLS` | 端口 | `http://+:9876` |
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `TZ` | 容器时区 | - |
+| `ASPNETCORE_URLS` | HTTP 监听地址 | `http://+:9876` |
 | `DB_CONNECTION` | `postgresql` 或 `sqlite` | `postgresql` |
-| `DB_HOST` | PostgreSQL 地址 | - |
+| `SQLITE_DB_PATH` | `/app/config` 中的 SQLite 文件名 | `local.db` |
+| `DB_HOST` | PostgreSQL 主机 | - |
 | `DB_PORT` | PostgreSQL 端口 | `5432` |
 | `DB_DATABASE` | 数据库名称 | - |
 | `DB_USERNAME` | 数据库用户名 | - |
 | `DB_PASSWORD` | 数据库密码 | - |
+| `MAX_PARALLEL_TRANSLATIONS` | 自定义翻译 worker 的启动并发值 | `1` |
+| `MAX_CONCURRENT_JOBS` | Hangfire 同步和系统队列的 worker 数量 | `5` |
 | `RADARR_URL` | 你的 Radarr URL | - |
-| `RADARR_API_KEY` | Radarr API 密钥 | - |
+| `RADARR_API_KEY` | Radarr API Key | - |
 | `SONARR_URL` | 你的 Sonarr URL | - |
-| `SONARR_API_KEY` | Sonarr API 密钥 | - |
+| `SONARR_API_KEY` | Sonarr API Key | - |
 
-完整列表请见 [Settings.MD](Settings.MD)。
+完整环境变量参考见 [Settings.MD](Settings.MD)。
 
 ---
 
-## 鸣谢与版权
+## 致谢与版权
 
-原版 Lingarr 开发者：[rowanfuchs](https://github.com/lingarr-translate/lingarr).
+原始 Lingarr 作者：[rowanfuchs](https://github.com/lingarr-translate/lingarr)。
 
-图标设计：[Lucide](https://lucide.dev/icons).  
-字幕解析器：[AlexPoint](https://github.com/AlexPoint/SubtitlesParser).  
-翻译支持：LibreTranslate，GTranslate 库.
+图标： [Lucide](https://lucide.dev/icons)。  
+字幕解析： [AlexPoint](https://github.com/AlexPoint/SubtitlesParser)。  
+翻译： LibreTranslate、GTranslate 库。
 
 ---
 
