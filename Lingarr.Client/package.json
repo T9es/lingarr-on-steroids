@@ -17,7 +17,7 @@
         "chart.js": "^4.5.1",
         "cron-validator": "^1.4.0",
         "grid-layout-plus": "^1.1.1",
-        "marked": "^17.0.3",
+        "marked": "^18.0.0",
         "pinia": "^3.0.4",
         "vue": "^3.5.31",
         "vue-chartjs": "^5.3.3",
