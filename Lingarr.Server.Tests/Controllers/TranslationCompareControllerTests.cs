@@ -8,6 +8,7 @@ using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Controllers;
 using Lingarr.Server.Interfaces.Services;
+using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Models.Api;
 using Lingarr.Server.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -183,7 +184,76 @@ public class TranslationCompareControllerTests : IDisposable
         Assert.Equal(translatedPath, persistedRequest!.TranslatedSubtitle);
     }
 
-    private TranslationCompareController CreateController()
+    [Fact]
+    public async Task GetCompletedTranslationCompare_TemporarilyExtractsMissingSourceSubtitle()
+    {
+        var missingSourcePath = Path.Combine(_tempDirectory, "missing-source.en.srt");
+        var translatedPath = Path.Combine(_tempDirectory, "recovered.pl.srt");
+        var mediaDirectory = Path.Combine(_tempDirectory, "media");
+        Directory.CreateDirectory(mediaDirectory);
+
+        await File.WriteAllTextAsync(
+            translatedPath,
+            "1\n00:00:01,000 --> 00:00:02,000\nOdzyskany tekst\n");
+
+        var movie = new Movie
+        {
+            RadarrId = 42,
+            Title = "Recovered Movie",
+            FileName = "Recovered Movie.mkv",
+            Path = mediaDirectory,
+            DateAdded = DateTime.UtcNow,
+            EmbeddedSubtitles =
+            [
+                new EmbeddedSubtitle
+                {
+                    StreamIndex = 3,
+                    Language = "eng",
+                    Title = "Full Dialogue",
+                    CodecName = "subrip",
+                    IsTextBased = true,
+                    IsForced = false
+                }
+            ]
+        };
+
+        _dbContext.Movies.Add(movie);
+        await _dbContext.SaveChangesAsync();
+
+        var request = new TranslationRequest
+        {
+            Title = "Recovered Movie",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = missingSourcePath,
+            TranslatedSubtitle = translatedPath,
+            MediaId = movie.Id,
+            MediaType = MediaType.Movie,
+            SelectedStreamTitle = "Full Dialogue",
+            SourceSubtitleType = "Full",
+            Status = TranslationStatus.Completed,
+            CompletedAt = DateTime.UtcNow
+        };
+
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var extractionService = new FakeSubtitleExtractionService(_tempDirectory);
+        var controller = CreateController(extractionService);
+
+        var actionResult = await controller.GetCompletedTranslationCompare(request.Id);
+        var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
+        var payload = Assert.IsType<CompletedTranslationCompareResponse>(okResult.Value);
+
+        Assert.Equal("Recovered source line", payload.Lines[0].Original);
+        Assert.Equal("Odzyskany tekst", payload.Lines[0].Translated);
+        Assert.NotNull(extractionService.LastExtractedPath);
+        Assert.False(File.Exists(extractionService.LastExtractedPath));
+        Assert.Equal(1, extractionService.ExtractCalls);
+    }
+
+    private TranslationCompareController CreateController(
+        ISubtitleExtractionService? extractionService = null)
     {
         return new TranslationCompareController(
             _dbContext,
@@ -194,8 +264,65 @@ public class TranslationCompareControllerTests : IDisposable
                 [SettingKeys.Translation.SubtitleTag] = "[Lingarr]",
                 [SettingKeys.Translation.SubtitleTagShort] = "-ai-"
             }),
+            extractionService ?? new FakeSubtitleExtractionService(_tempDirectory),
             new SubtitleService(NullLogger<SubtitleService>.Instance),
             NullLogger<TranslationCompareController>.Instance);
+    }
+
+    private sealed class FakeSubtitleExtractionService : ISubtitleExtractionService
+    {
+        public FakeSubtitleExtractionService(string tempDirectory) { }
+
+        public int ExtractCalls { get; private set; }
+
+        public string? LastExtractedPath { get; private set; }
+
+        public Task<List<EmbeddedSubtitle>> ProbeEmbeddedSubtitles(string mediaFilePath)
+            => Task.FromResult(new List<EmbeddedSubtitle>());
+
+        public Task<List<AvailableSubtitleResponse>> ListAvailableSubtitlesAsync(
+            int mediaId,
+            MediaType mediaType)
+            => Task.FromResult(new List<AvailableSubtitleResponse>());
+
+        public async Task<string?> ExtractSubtitle(
+            string mediaFilePath,
+            int streamIndex,
+            string outputDirectory,
+            string codecName,
+            string? language)
+        {
+            ExtractCalls++;
+            Directory.CreateDirectory(outputDirectory);
+
+            var extractedPath = Path.Combine(
+                outputDirectory,
+                $"compare-{Guid.NewGuid():N}.{(codecName == "ass" ? "ass" : "srt")}");
+
+            await File.WriteAllTextAsync(
+                extractedPath,
+                "1\n00:00:01,000 --> 00:00:02,000\nRecovered source line\n");
+
+            LastExtractedPath = extractedPath;
+            return extractedPath;
+        }
+
+        public Task SyncEmbeddedSubtitles(Episode episode) => Task.CompletedTask;
+
+        public Task<string?> TryExtractEmbeddedSubtitle(
+            int mediaId,
+            MediaType mediaType,
+            string sourceLanguage,
+            List<int>? excludedStreamIndices = null,
+            int? preferredStreamIndex = null)
+            => Task.FromResult<string?>(null);
+
+        public Task ClearExtractionMetadataAsync(int mediaId, MediaType mediaType, string extractedPath)
+            => Task.CompletedTask;
+
+        public Task SyncEmbeddedSubtitles(Movie movie) => Task.CompletedTask;
+
+        public Task<bool> IsFfmpegAvailable() => Task.FromResult(true);
     }
 
     private sealed class FakeSettingService : ISettingService
