@@ -1,0 +1,54 @@
+name: Dependabot Auto Merge
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    name: Auto-merge safe Dependabot updates
+    if: github.event.pull_request.user.login == 'dependabot[bot]' && github.repository == 'T9es/lingarr-on-steroids'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@d7267f607e9d3fb96fc2fbe83e0af444713e90b7
+        with:
+          github-token: '${{ secrets.GITHUB_TOKEN }}'
+
+      - name: Approve safe updates
+        if: |
+          steps.metadata.outputs.maintainer-changes != 'true' &&
+          (
+            steps.metadata.outputs.dependency-group == 'npm-development' ||
+            (
+              steps.metadata.outputs.update-type == 'version-update:semver-patch' &&
+              steps.metadata.outputs.dependency-group != 'npm-security' &&
+              steps.metadata.outputs.dependency-group != 'nuget-security'
+            )
+          )
+        run: gh pr review --approve "$PR_URL"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+
+      - name: Enable auto-merge for safe updates
+        if: |
+          steps.metadata.outputs.maintainer-changes != 'true' &&
+          (
+            steps.metadata.outputs.dependency-group == 'npm-development' ||
+            (
+              steps.metadata.outputs.update-type == 'version-update:semver-patch' &&
+              steps.metadata.outputs.dependency-group != 'npm-security' &&
+              steps.metadata.outputs.dependency-group != 'nuget-security'
+            )
+          )
+        run: gh pr merge --auto "$PR_URL"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
