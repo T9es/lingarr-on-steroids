@@ -565,8 +565,17 @@ public class TranslationJob
                 ? settings[SettingKeys.Translation.SubtitleTagShort]
                 : null;
 
-            await WriteSubtitles(request, translatedSubtitles, stripSubtitleFormatting, subtitleTag ?? "", subtitleTagShort ?? "", removeLanguageTag);
-            AddRequestLog("Information", "Translation completed successfully and subtitle file was written");
+            var translatedSubtitlePath = await WriteSubtitles(
+                request,
+                translatedSubtitles,
+                stripSubtitleFormatting,
+                subtitleTag ?? "",
+                subtitleTagShort ?? "",
+                removeLanguageTag);
+            request.TranslatedSubtitle = translatedSubtitlePath;
+            AddRequestLog(
+                "Information",
+                $"Translation completed successfully and subtitle file was written to: {translatedSubtitlePath}");
             await HandleCompletion(request, effectiveCancellationToken);
         }
         catch (TaskCanceledException)
@@ -718,7 +727,7 @@ public class TranslationJob
         }
     }
 
-    private async Task WriteSubtitles(TranslationRequest translationRequest,
+    private async Task<string> WriteSubtitles(TranslationRequest translationRequest,
         List<SubtitleItem> translatedSubtitles,
         bool stripSubtitleFormatting,
         string subtitleTag,
@@ -771,6 +780,7 @@ public class TranslationJob
 
             _logger.LogInformation("TranslateJob completed and created subtitle: |Green|{filePath}|/Green|",
                 usedPath);
+            return usedPath;
         }
         catch (Exception e)
         {

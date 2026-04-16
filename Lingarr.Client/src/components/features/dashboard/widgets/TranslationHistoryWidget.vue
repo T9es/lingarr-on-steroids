@@ -6,6 +6,7 @@ import services from '@/services'
 import TrendUpIcon from '@/components/icons/TrendUpIcon.vue'
 import TrendDownIcon from '@/components/icons/TrendDownIcon.vue'
 import TrendFlatIcon from '@/components/icons/TrendFlatIcon.vue'
+import CompletedTranslationCompareModal from '@/components/features/translation-compare/CompletedTranslationCompareModal.vue'
 import type { DailyStatistic, FilteredStatistics } from '@/ts/statistics'
 import {
     Chart as ChartJS,
@@ -84,6 +85,8 @@ const recentPageSize = 10
 const recentScrollContainer = ref<HTMLElement | null>(null)
 const recentSentinel = ref<HTMLElement | null>(null)
 let recentObserver: IntersectionObserver | null = null
+const selectedCompareRequestId = ref<number | null>(null)
+const compareModalOpen = ref(false)
 const chartKey = ref(0)
 const selectedFilter = ref<TimeFilter>('30d')
 const customDateRange = ref<Date[]>([])
@@ -209,6 +212,16 @@ const setupRecentObserver = () => {
     if (recentSentinel.value) {
         recentObserver.observe(recentSentinel.value)
     }
+}
+
+const openCompareModal = (requestId: number) => {
+    selectedCompareRequestId.value = requestId
+    compareModalOpen.value = true
+}
+
+const closeCompareModal = () => {
+    compareModalOpen.value = false
+    selectedCompareRequestId.value = null
 }
 
 const fetchHourlyStatistics = async () => {
@@ -673,7 +686,8 @@ const timeFilterOptions = [
                     <div
                         v-for="item in recentTranslations"
                         :key="item.id"
-                        class="bg-primary/30 rounded-md p-2">
+                        class="bg-primary/30 hover:bg-primary/40 cursor-pointer rounded-md p-2 transition-colors"
+                        @click="openCompareModal(item.id)">
                         <div class="text-primary-content truncate text-xs font-medium">
                             {{ item.title }}
                         </div>
@@ -693,7 +707,10 @@ const timeFilterOptions = [
                 </div>
             </div>
         </div>
-
+        <CompletedTranslationCompareModal
+            :is-open="compareModalOpen"
+            :translation-request-id="selectedCompareRequestId"
+            @close="closeCompareModal" />
     </div>
 </template>
 
