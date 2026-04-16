@@ -21,17 +21,20 @@ public class MediaStateService : IMediaStateService
     private readonly LingarrDbContext _dbContext;
     private readonly ISettingService _settingService;
     private readonly ISubtitleService _subtitleService;
+    private readonly ISourceSubtitleSnapshotService _sourceSubtitleSnapshotService;
     private readonly ILogger<MediaStateService> _logger;
 
     public MediaStateService(
         LingarrDbContext dbContext,
         ISettingService settingService,
         ISubtitleService subtitleService,
+        ISourceSubtitleSnapshotService sourceSubtitleSnapshotService,
         ILogger<MediaStateService> logger)
     {
         _dbContext = dbContext;
         _settingService = settingService;
         _subtitleService = subtitleService;
+        _sourceSubtitleSnapshotService = sourceSubtitleSnapshotService;
         _logger = logger;
     }
 
@@ -184,8 +187,31 @@ public class MediaStateService : IMediaStateService
             .Where(t => !existingTargetLanguages.Contains(t))
             .ToList();
 
+        var sourceSnapshot = await _sourceSubtitleSnapshotService.ResolveCurrentSnapshotAsync(
+            media,
+            mediaType,
+            embeddedSubtitles,
+            externalSubtitles);
+
         if (missingTargets.Count == 0)
         {
+            var staleTargets = await _sourceSubtitleSnapshotService.GetStaleTargetLanguagesAsync(
+                media.Id,
+                mediaType,
+                targetLanguages,
+                sourceSnapshot);
+
+            if (staleTargets.Count > 0)
+            {
+                _logger.LogDebug(
+                    "Detected stale translated subtitles for {Type} {Id} ({Title}): {Targets}",
+                    mediaType,
+                    media.Id,
+                    media.Title,
+                    string.Join(", ", staleTargets));
+                return TranslationState.Stale;
+            }
+
             return TranslationState.Complete;
         }
 

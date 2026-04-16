@@ -1,0 +1,205 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Threading.Tasks;
+using Lingarr.Core.Configuration;
+using Lingarr.Core.Data;
+using Lingarr.Core.Entities;
+using Lingarr.Core.Enum;
+using Lingarr.Server.Interfaces.Services;
+using Lingarr.Server.Models;
+using Lingarr.Server.Models.FileSystem;
+using Lingarr.Server.Models.Subtitle;
+using Lingarr.Server.Services.Subtitle;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
+using Xunit;
+
+namespace Lingarr.Server.Tests.Services.Subtitle;
+
+public class SourceSubtitleSnapshotServiceTests
+{
+    [Fact]
+    public async Task GetStaleTargetLanguagesAsync_ShouldReturnTarget_WhenFingerprintChanged()
+    {
+        var dbContext = CreateDbContext();
+        dbContext.TranslationRequests.Add(new TranslationRequest
+        {
+            Id = 1,
+            MediaId = 100,
+            Title = "Movie",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Completed,
+            CompletedAt = DateTime.UtcNow.AddHours(-1),
+            SourceSnapshotVersion = SourceSubtitleSnapshot.CurrentVersion,
+            SourceSnapshotFingerprint = "OLD"
+        });
+        await dbContext.SaveChangesAsync();
+
+        var service = CreateService(dbContext);
+        var currentSnapshot = new SourceSubtitleSnapshot
+        {
+            SourceType = SourceSubtitleSnapshot.ExternalType,
+            SourceLanguage = "en",
+            Identity = "external|en|/movies/movie.en.srt",
+            Fingerprint = "NEW"
+        };
+
+        var stale = await service.GetStaleTargetLanguagesAsync(
+            100,
+            MediaType.Movie,
+            ["pl"],
+            currentSnapshot);
+
+        Assert.Contains("pl", stale);
+    }
+
+    [Fact]
+    public async Task GetStaleTargetLanguagesAsync_ShouldReturnEmpty_WhenFingerprintUnchanged()
+    {
+        var dbContext = CreateDbContext();
+        dbContext.TranslationRequests.Add(new TranslationRequest
+        {
+            Id = 2,
+            MediaId = 101,
+            Title = "Movie",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Completed,
+            CompletedAt = DateTime.UtcNow.AddHours(-1),
+            SourceSnapshotVersion = SourceSubtitleSnapshot.CurrentVersion,
+            SourceSnapshotFingerprint = "SAME"
+        });
+        await dbContext.SaveChangesAsync();
+
+        var service = CreateService(dbContext);
+        var currentSnapshot = new SourceSubtitleSnapshot
+        {
+            SourceType = SourceSubtitleSnapshot.ExternalType,
+            SourceLanguage = "en",
+            Identity = "external|en|/movies/movie.en.srt",
+            Fingerprint = "SAME"
+        };
+
+        var stale = await service.GetStaleTargetLanguagesAsync(
+            101,
+            MediaType.Movie,
+            ["pl"],
+            currentSnapshot);
+
+        Assert.Empty(stale);
+    }
+
+    [Fact]
+    public async Task ResolveCurrentSnapshotAsync_ShouldIgnoreTemporaryExternalSourceAndUseEmbedded()
+    {
+        var dbContext = CreateDbContext();
+        var settingServiceMock = new Mock<ISettingService>();
+        var subtitleServiceMock = new Mock<ISubtitleService>();
+
+        settingServiceMock
+            .Setup(s => s.GetSettingAsJson<SourceLanguage>(SettingKeys.Translation.SourceLanguages))
+            .ReturnsAsync([new SourceLanguage { Name = "English", Code = "en" }]);
+
+        settingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.Translation.IgnoreCaptions))
+            .ReturnsAsync("false");
+
+        var service = new SourceSubtitleSnapshotService(
+            dbContext,
+            settingServiceMock.Object,
+            subtitleServiceMock.Object,
+            NullLogger<SourceSubtitleSnapshotService>.Instance);
+
+        var movie = new Movie
+        {
+            Id = 1,
+            RadarrId = 1,
+            Title = "Movie",
+            Path = "/movies",
+            FileName = "movie.mkv",
+            DateAdded = DateTime.UtcNow
+        };
+
+        var snapshot = await service.ResolveCurrentSnapshotAsync(
+            movie,
+            MediaType.Movie,
+            [
+                new EmbeddedSubtitle
+                {
+                    StreamIndex = 0,
+                    Language = "eng",
+                    CodecName = "subrip",
+                    IsTextBased = true
+                }
+            ],
+            [
+                new Subtitles
+                {
+                    Path = "/movies/lingarr_temp_source_123.en.srt",
+                    FileName = "movie.en",
+                    Language = "en",
+                    Format = "srt"
+                }
+            ]);
+
+        Assert.NotNull(snapshot);
+        Assert.Equal(SourceSubtitleSnapshot.EmbeddedType, snapshot!.SourceType);
+        Assert.Equal(0, snapshot.StreamIndex);
+    }
+
+    [Fact]
+    public void CreateExternalSnapshot_ShouldUseContentFingerprint_WhenMetadataIsUnchanged()
+    {
+        var dbContext = CreateDbContext();
+        var service = CreateService(dbContext);
+        var tempPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.en.srt");
+        var fixedTimestamp = new DateTime(2026, 4, 16, 12, 0, 0, DateTimeKind.Utc);
+
+        try
+        {
+            File.WriteAllText(tempPath, "AAAA");
+            File.SetLastWriteTimeUtc(tempPath, fixedTimestamp);
+            var before = service.CreateExternalSnapshot(tempPath, "en");
+
+            File.WriteAllText(tempPath, "BBBB");
+            File.SetLastWriteTimeUtc(tempPath, fixedTimestamp);
+            var after = service.CreateExternalSnapshot(tempPath, "en");
+
+            Assert.Equal(before.FileSizeBytes, after.FileSizeBytes);
+            Assert.Equal(before.LastWriteUtc, after.LastWriteUtc);
+            Assert.NotEqual(before.Fingerprint, after.Fingerprint);
+        }
+        finally
+        {
+            if (File.Exists(tempPath))
+            {
+                File.Delete(tempPath);
+            }
+        }
+    }
+
+    private static LingarrDbContext CreateDbContext()
+    {
+        var options = new DbContextOptionsBuilder<LingarrDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
+            .Options;
+        return new LingarrDbContext(options);
+    }
+
+    private static SourceSubtitleSnapshotService CreateService(LingarrDbContext dbContext)
+    {
+        var settingServiceMock = new Mock<ISettingService>();
+        var subtitleServiceMock = new Mock<ISubtitleService>();
+
+        return new SourceSubtitleSnapshotService(
+            dbContext,
+            settingServiceMock.Object,
+            subtitleServiceMock.Object,
+            NullLogger<SourceSubtitleSnapshotService>.Instance);
+    }
+}

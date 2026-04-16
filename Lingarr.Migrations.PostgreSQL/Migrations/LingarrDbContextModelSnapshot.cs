@@ -17,7 +17,7 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "9.0.11")
+                .HasAnnotation("ProductVersion", "9.0.14")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -894,6 +894,35 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                         .HasColumnType("text")
                         .HasColumnName("source_language");
 
+                    b.Property<long?>("SourceSnapshotFileSizeBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("source_snapshot_file_size_bytes");
+
+                    b.Property<string>("SourceSnapshotFingerprint")
+                        .HasColumnType("text")
+                        .HasColumnName("source_snapshot_fingerprint");
+
+                    b.Property<string>("SourceSnapshotIdentity")
+                        .HasColumnType("text")
+                        .HasColumnName("source_snapshot_identity");
+
+                    b.Property<DateTime?>("SourceSnapshotLastWriteUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("source_snapshot_last_write_utc");
+
+                    b.Property<int?>("SourceSnapshotStreamIndex")
+                        .HasColumnType("integer")
+                        .HasColumnName("source_snapshot_stream_index");
+
+                    b.Property<string>("SourceSnapshotType")
+                        .HasColumnType("text")
+                        .HasColumnName("source_snapshot_type");
+
+                    b.Property<int>("SourceSnapshotVersion")
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1)
+                        .HasColumnName("source_snapshot_version");
+
                     b.Property<int>("SourceSubtitleEntryCount")
                         .HasColumnType("integer")
                         .HasColumnName("source_subtitle_entry_count");
@@ -956,6 +985,9 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                     b.HasIndex("MediaId", "MediaType", "SourceLanguage", "TargetLanguage", "IsActive")
                         .IsUnique()
                         .HasDatabaseName("ux_translation_requests_active_dedupe");
+
+                    b.HasIndex("MediaId", "MediaType", "TargetLanguage", "Status", "CompletedAt")
+                        .HasDatabaseName("IX_TranslationRequests_FreshnessLookup");
 
                     b.ToTable("translation_requests", (string)null);
                 });

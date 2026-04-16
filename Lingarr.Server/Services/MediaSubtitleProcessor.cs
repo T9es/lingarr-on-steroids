@@ -23,6 +23,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
     private readonly ISubtitleExtractionService _extractionService;
     private readonly LingarrDbContext _dbContext;
     private readonly ISubtitleIntegrityService _integrityService;
+    private readonly ISourceSubtitleSnapshotService _sourceSubtitleSnapshotService;
     private string _hash = string.Empty;
     private IMedia _media = null!;
     private MediaType _mediaType;
@@ -34,6 +35,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         ISubtitleService subtitleService,
         ISubtitleExtractionService extractionService,
         ISubtitleIntegrityService integrityService,
+        ISourceSubtitleSnapshotService sourceSubtitleSnapshotService,
         LingarrDbContext dbContext)
     {
         _translationRequestService = translationRequestService;
@@ -41,6 +43,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         _subtitleService = subtitleService;
         _extractionService = extractionService;
         _integrityService = integrityService;
+        _sourceSubtitleSnapshotService = sourceSubtitleSnapshotService;
         _dbContext = dbContext;
         _logger = logger;
     }
@@ -508,17 +511,17 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             return 0;
         }
 
-        var sourceLanguage = existingLanguages.FirstOrDefault(lang => sourceLanguages.Contains(lang));
-        _logger.LogDebug("Source language match result: {SourceLanguage}", sourceLanguage ?? "NONE");
-        
-        if (sourceLanguage != null && targetLanguages.Any())
+        var resolvedExternalSource = await _sourceSubtitleSnapshotService.ResolveExternalSourceAsync(
+            media,
+            subtitles);
+        var resolvedSourceLanguage = resolvedExternalSource?.SourceLanguage;
+        _logger.LogDebug("Source language match result: {SourceLanguage}", resolvedSourceLanguage ?? "NONE");
 
+        if (resolvedExternalSource != null && targetLanguages.Any())
         {
-            var sourceSubtitle = ignoreCaptions == "true"
-                ? subtitles.FirstOrDefault(s => s.Language == sourceLanguage && string.IsNullOrEmpty(s.Caption)) 
-                    ?? subtitles.FirstOrDefault(s => s.Language == sourceLanguage)
-                : subtitles.FirstOrDefault(s => s.Language == sourceLanguage);
-                
+            var sourceLanguage = resolvedExternalSource.SourceLanguage;
+            var sourceSubtitle = resolvedExternalSource.Subtitle;
+
             if (sourceSubtitle != null)
             {
                 // When forceTranslation is true, translate to all target languages even if they exist
@@ -528,6 +531,25 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 
                 // Check integrity of existing target subtitles and add corrupt ones for re-translation
                 var foundCorruption = false;
+                if (!forceTranslation)
+                {
+                    var staleTargets = await _sourceSubtitleSnapshotService.GetStaleTargetLanguagesAsync(
+                        media.Id,
+                        mediaType,
+                        targetLanguages,
+                        resolvedExternalSource.Snapshot);
+
+                    if (staleTargets.Count > 0)
+                    {
+                        foundCorruption = true;
+                        languagesToTranslate = languagesToTranslate.Union(staleTargets).ToList();
+                        _logger.LogInformation(
+                            "Detected stale target subtitles for {FileName}: {Targets}. Scheduling re-translation.",
+                            media.FileName,
+                            string.Join(", ", staleTargets));
+                    }
+                }
+
                 if (!forceTranslation)
                 {
                     var corruptLanguages = new List<string>();
@@ -948,6 +970,29 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         // For integrity validation (forceTranslation=false), we need to extract temp source and check existing targets
         string? tempSourcePath = null;
         var foundCorruption = false;
+
+        if (!forceTranslation)
+        {
+            var currentSnapshot = _sourceSubtitleSnapshotService.CreateEmbeddedSnapshot(
+                selectedSubtitle,
+                selectedSourceLanguage);
+            var staleTargets = await _sourceSubtitleSnapshotService.GetStaleTargetLanguagesAsync(
+                media.Id,
+                mediaType,
+                targetLanguages,
+                currentSnapshot);
+
+            if (staleTargets.Count > 0)
+            {
+                foundCorruption = true;
+                languagesToTranslate = languagesToTranslate.Union(staleTargets).ToList();
+                _logger.LogInformation(
+                    "Detected stale embedded target subtitles for {FileName}: {Targets}. Scheduling re-translation.",
+                    media.FileName,
+                    string.Join(", ", staleTargets));
+            }
+        }
+
         try
         {
             // Debug logging to trace validation check

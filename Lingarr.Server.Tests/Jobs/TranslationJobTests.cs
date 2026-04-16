@@ -61,7 +61,8 @@ public class TranslationJobTests : IDisposable
             Mock.Of<ITranslationCancellationService>(),
             Mock.Of<IMediaStateService>(),
             Mock.Of<IDeferredRepairService>(),
-            Mock.Of<IDashboardService>());
+            Mock.Of<IDashboardService>(),
+            Mock.Of<ISourceSubtitleSnapshotService>());
 
         _tempDirectory = Path.Combine(Path.GetTempPath(), "lingarr-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_tempDirectory);

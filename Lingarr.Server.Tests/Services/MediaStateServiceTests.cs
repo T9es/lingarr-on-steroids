@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data.Common;
+using System.Threading;
 using System.Threading.Tasks;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
@@ -8,6 +9,7 @@ using Lingarr.Core.Enum;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Models;
+using Lingarr.Server.Models.Subtitle;
 using Lingarr.Server.Services;
 using Lingarr.Server.Services.Subtitle;
 using Microsoft.EntityFrameworkCore;
@@ -23,6 +25,7 @@ public class MediaStateServiceTests : IDisposable
     private readonly LingarrDbContext _context;
     private readonly Mock<ISettingService> _settingServiceMock;
     private readonly Mock<ISubtitleService> _subtitleServiceMock;
+    private readonly Mock<ISourceSubtitleSnapshotService> _sourceSubtitleSnapshotServiceMock;
     private readonly DbConnection _connection;
 
     public MediaStateServiceTests()
@@ -39,6 +42,25 @@ public class MediaStateServiceTests : IDisposable
         
         _settingServiceMock = new Mock<ISettingService>();
         _subtitleServiceMock = new Mock<ISubtitleService>();
+        _sourceSubtitleSnapshotServiceMock = new Mock<ISourceSubtitleSnapshotService>();
+
+        _sourceSubtitleSnapshotServiceMock
+            .Setup(s => s.ResolveCurrentSnapshotAsync(
+                It.IsAny<Lingarr.Core.Interfaces.IMedia>(),
+                It.IsAny<MediaType>(),
+                It.IsAny<IReadOnlyCollection<EmbeddedSubtitle>>(),
+                It.IsAny<IReadOnlyCollection<Models.FileSystem.Subtitles>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((SourceSubtitleSnapshot?)null);
+
+        _sourceSubtitleSnapshotServiceMock
+            .Setup(s => s.GetStaleTargetLanguagesAsync(
+                It.IsAny<int>(),
+                It.IsAny<MediaType>(),
+                It.IsAny<IEnumerable<string>>(),
+                It.IsAny<SourceSubtitleSnapshot?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new HashSet<string>());
     }
 
     public void Dispose()
@@ -102,6 +124,7 @@ public class MediaStateServiceTests : IDisposable
             _context,
             _settingServiceMock.Object,
             _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
             NullLogger<MediaStateService>.Instance);
 
         // Act
@@ -153,6 +176,7 @@ public class MediaStateServiceTests : IDisposable
             _context,
             _settingServiceMock.Object,
             _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
             NullLogger<MediaStateService>.Instance);
 
         // Act
@@ -219,12 +243,159 @@ public class MediaStateServiceTests : IDisposable
             _context,
             _settingServiceMock.Object,
             _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
             NullLogger<MediaStateService>.Instance);
 
         // Act
         var state = await service.UpdateStateAsync(movie, MediaType.Movie);
 
         // Assert - Should be Complete because both Dutch (external) and German (embedded) are satisfied
+        Assert.Equal(TranslationState.Complete, state);
+    }
+
+    [Fact]
+    public async Task ComputeStateAsync_ShouldReturnStale_WhenTargetSnapshotIsOutdated()
+    {
+        var movie = new Movie
+        {
+            Id = 20,
+            RadarrId = 20,
+            Title = "Stale Snapshot Movie",
+            Path = "/movies/stale",
+            FileName = "stale.mkv",
+            DateAdded = DateTime.UtcNow
+        };
+
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = 20,
+            Language = "eng",
+            IsTextBased = true,
+            CodecName = "subrip",
+            StreamIndex = 0
+        });
+
+        _context.Movies.Add(movie);
+        await _context.SaveChangesAsync();
+
+        _settingServiceMock
+            .SetupSequence(s => s.GetSettingAsJson<SourceLanguage>(It.IsAny<string>()))
+            .ReturnsAsync([new SourceLanguage { Name = "English", Code = "en" }])
+            .ReturnsAsync([new SourceLanguage { Name = "Polish", Code = "pl" }]);
+
+        _subtitleServiceMock
+            .Setup(s => s.GetAllSubtitles(It.IsAny<string>()))
+            .ReturnsAsync([
+                new Models.FileSystem.Subtitles { FileName = "stale.en", Language = "en", Path = "/movies/stale/stale.en.srt" },
+                new Models.FileSystem.Subtitles { FileName = "stale.pl", Language = "pl", Path = "/movies/stale/stale.pl.srt" }
+            ]);
+
+        _sourceSubtitleSnapshotServiceMock
+            .Setup(s => s.ResolveCurrentSnapshotAsync(
+                It.IsAny<Lingarr.Core.Interfaces.IMedia>(),
+                MediaType.Movie,
+                It.IsAny<IReadOnlyCollection<EmbeddedSubtitle>>(),
+                It.IsAny<IReadOnlyCollection<Models.FileSystem.Subtitles>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SourceSubtitleSnapshot
+            {
+                SourceType = SourceSubtitleSnapshot.ExternalType,
+                SourceLanguage = "en",
+                Identity = "external|en|/movies/stale/stale.en.srt",
+                Fingerprint = "NEW"
+            });
+
+        _sourceSubtitleSnapshotServiceMock
+            .Setup(s => s.GetStaleTargetLanguagesAsync(
+                movie.Id,
+                MediaType.Movie,
+                It.IsAny<IEnumerable<string>>(),
+                It.IsAny<SourceSubtitleSnapshot?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new HashSet<string> { "pl" });
+
+        var service = new MediaStateService(
+            _context,
+            _settingServiceMock.Object,
+            _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
+            NullLogger<MediaStateService>.Instance);
+
+        var state = await service.UpdateStateAsync(movie, MediaType.Movie);
+
+        Assert.Equal(TranslationState.Stale, state);
+    }
+
+    [Fact]
+    public async Task ComputeStateAsync_ShouldRemainComplete_WhenTargetSnapshotMatches()
+    {
+        var movie = new Movie
+        {
+            Id = 21,
+            RadarrId = 21,
+            Title = "Fresh Snapshot Movie",
+            Path = "/movies/fresh",
+            FileName = "fresh.mkv",
+            DateAdded = DateTime.UtcNow
+        };
+
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = 21,
+            Language = "eng",
+            IsTextBased = true,
+            CodecName = "subrip",
+            StreamIndex = 0
+        });
+
+        _context.Movies.Add(movie);
+        await _context.SaveChangesAsync();
+
+        _settingServiceMock
+            .SetupSequence(s => s.GetSettingAsJson<SourceLanguage>(It.IsAny<string>()))
+            .ReturnsAsync([new SourceLanguage { Name = "English", Code = "en" }])
+            .ReturnsAsync([new SourceLanguage { Name = "Polish", Code = "pl" }]);
+
+        _subtitleServiceMock
+            .Setup(s => s.GetAllSubtitles(It.IsAny<string>()))
+            .ReturnsAsync([
+                new Models.FileSystem.Subtitles { FileName = "fresh.en", Language = "en", Path = "/movies/fresh/fresh.en.srt" },
+                new Models.FileSystem.Subtitles { FileName = "fresh.pl", Language = "pl", Path = "/movies/fresh/fresh.pl.srt" }
+            ]);
+
+        _sourceSubtitleSnapshotServiceMock
+            .Setup(s => s.ResolveCurrentSnapshotAsync(
+                It.IsAny<Lingarr.Core.Interfaces.IMedia>(),
+                MediaType.Movie,
+                It.IsAny<IReadOnlyCollection<EmbeddedSubtitle>>(),
+                It.IsAny<IReadOnlyCollection<Models.FileSystem.Subtitles>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SourceSubtitleSnapshot
+            {
+                SourceType = SourceSubtitleSnapshot.ExternalType,
+                SourceLanguage = "en",
+                Identity = "external|en|/movies/fresh/fresh.en.srt",
+                Fingerprint = "SAME"
+            });
+
+        _sourceSubtitleSnapshotServiceMock
+            .Setup(s => s.GetStaleTargetLanguagesAsync(
+                movie.Id,
+                MediaType.Movie,
+                It.IsAny<IEnumerable<string>>(),
+                It.IsAny<SourceSubtitleSnapshot?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new HashSet<string>());
+
+        var service = new MediaStateService(
+            _context,
+            _settingServiceMock.Object,
+            _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
+            NullLogger<MediaStateService>.Instance);
+
+        var state = await service.UpdateStateAsync(movie, MediaType.Movie);
+
         Assert.Equal(TranslationState.Complete, state);
     }
 
@@ -272,6 +443,7 @@ public class MediaStateServiceTests : IDisposable
             _context,
             _settingServiceMock.Object,
             _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
             NullLogger<MediaStateService>.Instance);
 
         // Act
@@ -345,6 +517,7 @@ public class MediaStateServiceTests : IDisposable
             _context,
             _settingServiceMock.Object,
             _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
             NullLogger<MediaStateService>.Instance);
 
         // Act

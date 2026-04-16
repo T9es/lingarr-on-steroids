@@ -54,6 +54,41 @@ public class TranslationRequest : BaseEntity
     /// Number of times this request has been retried after failure
     /// </summary>
     public int RetryCount { get; set; }
+
+    /// <summary>
+    /// Version of the source snapshot format used to capture source freshness metadata.
+    /// </summary>
+    public int SourceSnapshotVersion { get; set; } = 1;
+
+    /// <summary>
+    /// Source snapshot type used by this translation request ("external" or "embedded").
+    /// </summary>
+    public string? SourceSnapshotType { get; set; }
+
+    /// <summary>
+    /// Stable identity for the source subtitle candidate used during translation.
+    /// </summary>
+    public string? SourceSnapshotIdentity { get; set; }
+
+    /// <summary>
+    /// Fingerprint of the source subtitle revision used for translation.
+    /// </summary>
+    public string? SourceSnapshotFingerprint { get; set; }
+
+    /// <summary>
+    /// Source subtitle file size in bytes when the request was translated (external source only).
+    /// </summary>
+    public long? SourceSnapshotFileSizeBytes { get; set; }
+
+    /// <summary>
+    /// Source subtitle file last write UTC timestamp when translated (external source only).
+    /// </summary>
+    public DateTime? SourceSnapshotLastWriteUtc { get; set; }
+
+    /// <summary>
+    /// Selected source stream index when translating from embedded subtitles.
+    /// </summary>
+    public int? SourceSnapshotStreamIndex { get; set; }
     
     /// <summary>
     /// When the request last failed (null if never failed)

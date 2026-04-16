@@ -143,7 +143,7 @@ public class AutomationService : IAutomationService
             await _mediaStateService.UpdateLastSubtitleCheckAt(media.Id, mediaType);
         }
 
-        var forceProcess = currentState == TranslationState.Pending;
+        var forceProcess = currentState == TranslationState.Pending || currentState == TranslationState.Stale;
         var queuedCount = await _mediaSubtitleProcessor.ProcessMediaForceAsync(
             media,
             mediaType,
@@ -216,6 +216,7 @@ public class AutomationService : IAutomationService
     private static bool CanAttemptAutomation(TranslationState state, DateTime? indexedAt)
     {
         return state == TranslationState.Pending
+            || state == TranslationState.Stale
             || (state == TranslationState.AwaitingSource && indexedAt == null);
     }
 

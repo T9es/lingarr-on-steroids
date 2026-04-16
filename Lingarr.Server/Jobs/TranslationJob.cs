@@ -32,6 +32,7 @@ public class TranslationJob
     private readonly IMediaStateService _mediaStateService;
     private readonly IDeferredRepairService _deferredRepairService;
     private readonly IDashboardService _dashboardService;
+    private readonly ISourceSubtitleSnapshotService _sourceSubtitleSnapshotService;
 
     public TranslationJob(
         ILogger<TranslationJob> logger,
@@ -48,7 +49,8 @@ public class TranslationJob
         ITranslationCancellationService cancellationService,
         IMediaStateService mediaStateService,
         IDeferredRepairService deferredRepairService,
-        IDashboardService dashboardService)
+        IDashboardService dashboardService,
+        ISourceSubtitleSnapshotService sourceSubtitleSnapshotService)
     {
         _logger = logger;
         _settings = settings;
@@ -65,6 +67,7 @@ public class TranslationJob
         _mediaStateService = mediaStateService;
         _deferredRepairService = deferredRepairService;
         _dashboardService = dashboardService;
+        _sourceSubtitleSnapshotService = sourceSubtitleSnapshotService;
     }
 
     /// <summary>
@@ -361,6 +364,22 @@ public class TranslationJob
                             "[{FileId}] External subtitle: Type={Type}, Entries={Entries}",
                             fileIdentifier, request.SourceSubtitleType, request.SourceSubtitleEntryCount);
                     }
+
+                    var sourceSnapshot = selectedSubtitle != null
+                        ? _sourceSubtitleSnapshotService.CreateEmbeddedSnapshot(
+                            selectedSubtitle,
+                            request.SourceLanguage)
+                        : _sourceSubtitleSnapshotService.CreateExternalSnapshot(
+                            request.SubtitleToTranslate!,
+                            request.SourceLanguage);
+
+                    request.SourceSnapshotVersion = sourceSnapshot.Version;
+                    request.SourceSnapshotType = sourceSnapshot.SourceType;
+                    request.SourceSnapshotIdentity = sourceSnapshot.Identity;
+                    request.SourceSnapshotFingerprint = sourceSnapshot.Fingerprint;
+                    request.SourceSnapshotFileSizeBytes = sourceSnapshot.FileSizeBytes;
+                    request.SourceSnapshotLastWriteUtc = sourceSnapshot.LastWriteUtc;
+                    request.SourceSnapshotStreamIndex = sourceSnapshot.StreamIndex;
                     await _dbContext.SaveChangesAsync(effectiveCancellationToken);
                     break;
                 }
