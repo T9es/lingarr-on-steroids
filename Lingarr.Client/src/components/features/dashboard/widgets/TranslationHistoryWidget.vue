@@ -598,7 +598,7 @@ const timeFilterOptions = [
                 class="border-accent h-6 w-6 animate-spin rounded-full border-2 border-t-transparent"></div>
         </div>
 
-        <div v-else class="flex flex-1 flex-col gap-3">
+        <div v-else class="flex min-h-0 flex-1 flex-col gap-3">
             <div class="grid grid-cols-4 gap-2">
                 <div class="bg-primary/50 rounded-md p-2 text-center">
                     <div class="text-primary-content/50 text-xs">Translations</div>
@@ -663,13 +663,13 @@ const timeFilterOptions = [
                 </div>
             </div>
 
-            <div class="min-h-0 flex-1 overflow-hidden">
+            <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
                 <h4 class="text-primary-content/50 mb-1 text-xs font-medium">
                     {{ i18n.translate('statistics.recentTranslations') || 'Recent' }}
                 </h4>
                 <div
                     ref="recentScrollContainer"
-                    class="scrollbar-thin h-full space-y-1.5 overflow-y-auto pr-1">
+                    class="scrollbar-thin min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-1">
                     <div
                         v-if="recentLoading"
                         class="text-primary-content/50 py-2 text-center text-xs">

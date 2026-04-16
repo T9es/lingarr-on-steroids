@@ -1,10 +1,13 @@
+using System.Collections.Generic;
 using System;
 using System.IO;
 using System.Threading.Tasks;
+using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Controllers;
+using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Models.Api;
 using Lingarr.Server.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -139,12 +142,120 @@ public class TranslationCompareControllerTests : IDisposable
         Assert.IsType<NotFoundObjectResult>(actionResult.Result);
     }
 
+    [Fact]
+    public async Task GetCompletedTranslationCompare_ResolvesTranslatedPathWhenStoredPathIsMissing()
+    {
+        var sourcePath = Path.Combine(_tempDirectory, "legacy.en.srt");
+        var translatedPath = Path.Combine(_tempDirectory, "legacy.pl.srt");
+
+        await File.WriteAllTextAsync(
+            sourcePath,
+            "1\n00:00:01,000 --> 00:00:02,000\nHello there\n");
+        await File.WriteAllTextAsync(
+            translatedPath,
+            "1\n00:00:01,000 --> 00:00:02,000\nCzesc tam\n");
+
+        var request = new TranslationRequest
+        {
+            Title = "Legacy Request",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = sourcePath,
+            TranslatedSubtitle = null,
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Completed,
+            CompletedAt = DateTime.UtcNow
+        };
+
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var controller = CreateController();
+
+        var actionResult = await controller.GetCompletedTranslationCompare(request.Id);
+        var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
+        var payload = Assert.IsType<CompletedTranslationCompareResponse>(okResult.Value);
+
+        Assert.Equal(translatedPath, payload.TranslatedSubtitlePath);
+
+        var persistedRequest = await _dbContext.TranslationRequests.FindAsync(request.Id);
+        Assert.NotNull(persistedRequest);
+        Assert.Equal(translatedPath, persistedRequest!.TranslatedSubtitle);
+    }
+
     private TranslationCompareController CreateController()
     {
         return new TranslationCompareController(
             _dbContext,
+            new FakeSettingService(new Dictionary<string, string>
+            {
+                [SettingKeys.Translation.UseSubtitleTagging] = "false",
+                [SettingKeys.Translation.RemoveLanguageTag] = "false",
+                [SettingKeys.Translation.SubtitleTag] = "[Lingarr]",
+                [SettingKeys.Translation.SubtitleTagShort] = "-ai-"
+            }),
             new SubtitleService(NullLogger<SubtitleService>.Instance),
             NullLogger<TranslationCompareController>.Instance);
+    }
+
+    private sealed class FakeSettingService : ISettingService
+    {
+        private readonly Dictionary<string, string> _settings;
+
+        public FakeSettingService(Dictionary<string, string> settings)
+        {
+            _settings = settings;
+        }
+
+        public event SettingChangedHandler? SettingChanged;
+
+        public Task<string?> GetSetting(string key)
+        {
+            _settings.TryGetValue(key, out var value);
+            return Task.FromResult<string?>(value);
+        }
+
+        public Task<Dictionary<string, string>> GetSettings(IEnumerable<string> keys)
+        {
+            var result = new Dictionary<string, string>();
+            foreach (var key in keys)
+            {
+                if (_settings.TryGetValue(key, out var value))
+                {
+                    result[key] = value;
+                }
+            }
+
+            return Task.FromResult(result);
+        }
+
+        public Task<bool> SetSetting(string key, string value)
+        {
+            _settings[key] = value;
+            return Task.FromResult(true);
+        }
+
+        public Task<bool> SetSettings(Dictionary<string, string> settings)
+        {
+            foreach (var (key, value) in settings)
+            {
+                _settings[key] = value;
+            }
+
+            return Task.FromResult(true);
+        }
+
+        public Task<bool> SetEncryptedSetting(string key, string value) => Task.FromResult(false);
+
+        public Task<string?> GetEncryptedSetting(string key) => Task.FromResult<string?>(null);
+
+        public Task<Dictionary<string, string>> GetEncryptedSettings(IEnumerable<string> keys)
+            => Task.FromResult(new Dictionary<string, string>());
+
+        public Task<List<T>> GetSettingAsJson<T>(string key) where T : class
+        {
+            throw new NotImplementedException();
+        }
     }
 
     public void Dispose()
