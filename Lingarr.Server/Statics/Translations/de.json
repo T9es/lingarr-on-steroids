@@ -717,10 +717,10 @@
     "integration": {
       "radarr": "Radarr",
       "sonarr": "Sonarr",
-      "noRadarrInstances": "Noch keine Radarr-Instanzen hinzugef?gt",
-      "addFirstRadarr": "F?ge deine erste Radarr-Instanz hinzu",
-      "noSonarrInstances": "Noch keine Sonarr-Instanzen hinzugef?gt",
-      "addFirstSonarr": "F?ge deine erste Sonarr-Instanz hinzu"
+      "noRadarrInstances": "Noch keine Radarr-Instanzen hinzugefügt",
+      "addFirstRadarr": "Füge deine erste Radarr-Instanz hinzu",
+      "noSonarrInstances": "Noch keine Sonarr-Instanzen hinzugefügt",
+      "addFirstSonarr": "Füge deine erste Sonarr-Instanz hinzu"
     },
     "welcome": {
       "title": "Willkommen bei Lingarr",

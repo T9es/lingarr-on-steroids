@@ -36,7 +36,7 @@
   "translationTest": {
     "title": "Test de traduction",
     "description": "Testez la traduction d'un fichier de sous-titres sans enregistrer les résultats. Utile pour le débogage.",
-    "configuration": "Param?trage",
+    "configuration": "Paramétrage",
     "searchMedia": "Rechercher des médias",
     "searchPlaceholder": "Rechercher par film, série ou épisode...",
     "searchHelp": "Commencez à taper un nom de film, série ou épisode et choisissez un sous-titre ci-dessous pour remplir automatiquement le chemin.",
@@ -59,7 +59,7 @@
     "duration": "Durée",
     "preview": "Aperçu",
     "original": "Texte original",
-    "downloadOriginal": "T?l?charger l'original",
+    "downloadOriginal": "Télécharger l'original",
     "downloadTranslated": "Traduit",
     "subtitleToTranslate": "Sous-titre à traduire",
     "linesToTranslate": "Lignes à traduire",
@@ -199,7 +199,7 @@
     "resetLayoutConfirmMessage": "Êtes-vous sûr de vouloir réinitialiser la disposition du tableau de bord aux valeurs par défaut ? Cette action est irréversible.",
     "hiddenWidgets": "Widgets masqués",
     "clickToShow": "Cliquez pour afficher",
-    "recentTranslations": "Traductions r?centes",
+    "recentTranslations": "Traductions récentes",
     "noRecentTranslations": "Aucune traduction récente"
   },
   "movies": {
@@ -273,7 +273,7 @@
     "state": "État",
     "lastExecution": "Dernière exécution",
     "nextExecution": "Prochaine exécution",
-    "actions": "Op?rations",
+    "actions": "Opérations",
     "run": "Exécuter",
     "enqueued": "En file",
     "planned": "Planifié",
@@ -296,7 +296,7 @@
     "confirm": "Confirmer",
     "currentVersion": "Version : {version}",
     "devBuild": "Version de développement",
-    "disable": "D?sactiver",
+    "disable": "Désactiver",
     "discard": "Ignorer",
     "enabled": "Activé",
     "disabled": "Désactivé",
@@ -387,7 +387,7 @@
       "localAiNotification": "La clé API est optionnelle et peut être laissée vide.",
       "enableTokenLimit": "Activer la limite de tokens",
       "addressUrlError": "Veuillez entrer une URL valide (ex: http://localhost:3000 ou https://api.exemple.com)",
-      "versionLabel": "Version du mod?le",
+      "versionLabel": "Version du modèle",
       "versionError": "La version ne doit pas être vide",
       "freeServiceLimits": "Les services de traduction gratuits ont des limitations de débit qui peuvent causer des échecs.",
       "localAiPlaceholder": "http://ollama:11434/v1/chat/completions",
@@ -633,7 +633,7 @@
         "valid": "Valide",
         "corrupt": "Corrompu",
         "queued": "En file",
-        "total": "Total g?n?ral",
+        "total": "Total général",
         "movies": "films",
         "episodes": "épisodes"
       }
@@ -717,10 +717,10 @@
     "integration": {
       "radarr": "Radarr",
       "sonarr": "Sonarr",
-      "noRadarrInstances": "Aucune instance Radarr n'a encore ?t? ajout?e",
-      "addFirstRadarr": "Ajoutez votre premi?re instance Radarr",
-      "noSonarrInstances": "Aucune instance Sonarr n'a encore ?t? ajout?e",
-      "addFirstSonarr": "Ajoutez votre premi?re instance Sonarr"
+      "noRadarrInstances": "Aucune instance Radarr n'a encore été ajoutée",
+      "addFirstRadarr": "Ajoutez votre première instance Radarr",
+      "noSonarrInstances": "Aucune instance Sonarr n'a encore été ajoutée",
+      "addFirstSonarr": "Ajoutez votre première instance Sonarr"
     },
     "welcome": {
       "title": "Bienvenue sur Lingarr",

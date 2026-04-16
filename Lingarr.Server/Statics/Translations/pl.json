@@ -4,7 +4,7 @@
     "movies": "Filmy",
     "tvShows": "Seriale",
     "translations": "Tłumaczenia",
-    "translationTest": "Test t?umaczenia",
+    "translationTest": "Test tłumaczenia",
     "settings": "Ustawienia",
     "integrations": "Integracje",
     "services": "Usługi",
@@ -199,7 +199,7 @@
     "resetLayoutConfirmMessage": "Czy na pewno chcesz zresetować układ panelu do wartości domyślnych? Tej operacji nie można cofnąć.",
     "hiddenWidgets": "Ukryte widżety",
     "clickToShow": "Kliknij, aby pokazać",
-    "recentTranslations": "Ostatnie t?umaczenia",
+    "recentTranslations": "Ostatnie tłumaczenia",
     "noRecentTranslations": "Brak ostatnich tłumaczeń"
   },
   "movies": {
@@ -296,7 +296,7 @@
     "confirm": "Potwierdź",
     "currentVersion": "Wersja: {version}",
     "devBuild": "Wersja deweloperska",
-    "disable": "Wy??cz",
+    "disable": "Wyłącz",
     "discard": "Odrzuć",
     "enabled": "Włączone",
     "disabled": "Wyłączone",
@@ -633,7 +633,7 @@
         "valid": "Prawidłowe",
         "corrupt": "Uszkodzone",
         "queued": "W kolejce",
-        "total": "??cznie",
+        "total": "Łącznie",
         "movies": "filmy",
         "episodes": "odcinki"
       }

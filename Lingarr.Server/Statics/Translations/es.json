@@ -717,9 +717,9 @@
     "integration": {
       "radarr": "Radarr",
       "sonarr": "Sonarr",
-      "noRadarrInstances": "Todav?a no se ha agregado ninguna instancia de Radarr",
+      "noRadarrInstances": "Todavía no se ha agregado ninguna instancia de Radarr",
       "addFirstRadarr": "Agrega tu primera instancia de Radarr",
-      "noSonarrInstances": "Todav?a no se ha agregado ninguna instancia de Sonarr",
+      "noSonarrInstances": "Todavía no se ha agregado ninguna instancia de Sonarr",
       "addFirstSonarr": "Agrega tu primera instancia de Sonarr"
     },
     "welcome": {
@@ -745,7 +745,7 @@
       "loadingDocs": "Cargando documentación...",
       "failedToLoad": "Error al cargar la documentación: ",
       "checkUpdates": "Buscar actualizaciones",
-      "devBuild": "Versi?n de desarrollo",
+      "devBuild": "Versión de desarrollo",
       "updateAvailable": "Actualización disponible"
     }
   },

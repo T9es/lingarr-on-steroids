@@ -199,7 +199,7 @@
     "resetLayoutConfirmMessage": "确定要将仪表板布局重置为默认值吗？此操作无法撤销。",
     "hiddenWidgets": "隐藏的小部件",
     "clickToShow": "点击显示",
-    "recentTranslations": "?????",
+    "recentTranslations": "最近翻译",
     "noRecentTranslations": "无最近翻译"
   },
   "movies": {
@@ -296,7 +296,7 @@
     "confirm": "确认",
     "currentVersion": "版本：{version}",
     "devBuild": "开发版本",
-    "disable": "??",
+    "disable": "禁用",
     "discard": "放弃",
     "enabled": "已启用",
     "disabled": "已禁用",
@@ -696,7 +696,7 @@
       "cloudApisDescription": "使用API密钥的专业翻译服务",
       "freeWebApis": "免费Web API",
       "freeWebApisDescription": "无需API密钥，但有速率限制",
-      "configureSelected": "?? {service}"
+      "configureSelected": "配置 {service}"
     },
     "language": {
       "sourceTitle": "源语言",
@@ -717,10 +717,10 @@
     "integration": {
       "radarr": "Radarr",
       "sonarr": "Sonarr",
-      "noRadarrInstances": "?????? Radarr ??",
-      "addFirstRadarr": "??????? Radarr ??",
-      "noSonarrInstances": "?????? Sonarr ??",
-      "addFirstSonarr": "??????? Sonarr ??"
+      "noRadarrInstances": "尚未添加 Radarr 实例",
+      "addFirstRadarr": "添加您的第一个 Radarr 实例",
+      "noSonarrInstances": "尚未添加 Sonarr 实例",
+      "addFirstSonarr": "添加您的第一个 Sonarr 实例"
     },
     "welcome": {
       "title": "欢迎使用 Lingarr",
