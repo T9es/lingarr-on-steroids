@@ -1,20 +1,67 @@
-# To get started with Dependabot version updates, you'll need to specify which
-# package ecosystems to update and where the package manifests are located.
-# Please see the documentation for all configuration options:
-# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
-
 version: 2
+
 updates:
-  # Frontend dependencies
-  - package-ecosystem: "npm"
-    directory: "/Lingarr.Client"
+  - package-ecosystem: 'npm'
+    directory: '/Lingarr.Client'
+    target-branch: 'latest'
     schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 5
-    
-  # Backend .NET dependencies
-  - package-ecosystem: "nuget"
-    directory: "/"
+      interval: 'weekly'
+      day: 'monday'
+      time: '06:00'
+      timezone: 'Europe/Warsaw'
+    open-pull-requests-limit: 2
+    cooldown:
+      semver-major-days: 14
+      semver-minor-days: 7
+      semver-patch-days: 3
+    commit-message:
+      prefix: 'chore'
+      prefix-development: 'chore'
+      include: 'scope'
+    groups:
+      npm-security:
+        applies-to: security-updates
+        patterns:
+          - '*'
+      npm-production:
+        dependency-type: production
+        update-types:
+          - minor
+          - patch
+        patterns:
+          - '*'
+      npm-development:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+        patterns:
+          - '*'
+
+  - package-ecosystem: 'nuget'
+    directory: '/'
+    target-branch: 'latest'
     schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 5
+      interval: 'weekly'
+      day: 'monday'
+      time: '06:30'
+      timezone: 'Europe/Warsaw'
+    open-pull-requests-limit: 2
+    cooldown:
+      semver-major-days: 14
+      semver-minor-days: 7
+      semver-patch-days: 3
+    commit-message:
+      prefix: 'chore'
+      include: 'scope'
+    groups:
+      nuget-security:
+        applies-to: security-updates
+        patterns:
+          - '*'
+      nuget-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+        patterns:
+          - '*'
