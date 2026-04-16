@@ -38,9 +38,9 @@ const service = (
                 })
         })
     },
-    getRecentCompleted<T>(limit = 10): Promise<T> {
+    getRecentCompleted<T>(offset = 0, limit = 10): Promise<T> {
         return new Promise((resolve, reject) => {
-            http.get(`${resource}/recent`.addParams({ limit }))
+            http.get(`${resource}/recent`.addParams({ offset, limit }))
                 .then((response: AxiosResponse<T>) => {
                     resolve(response.data)
                 })

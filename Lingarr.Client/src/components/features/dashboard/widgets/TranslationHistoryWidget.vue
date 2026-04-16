@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from '@/plugins/i18n'
 import { useInstanceStore } from '@/store/instance'
 import services from '@/services'
@@ -59,6 +59,15 @@ interface RecentTranslationRaw {
     MediaType?: string
 }
 
+interface RecentTranslationsResponseRaw {
+    items?: RecentTranslationRaw[]
+    Items?: RecentTranslationRaw[]
+    totalCount?: number
+    TotalCount?: number
+    hasMore?: boolean
+    HasMore?: boolean
+}
+
 interface HourlyStatistic {
     hour: number
     translationCount: number
@@ -69,6 +78,12 @@ type ChartLabelContext = TooltipItem<'bar'>
 
 const recentTranslations = ref<RecentTranslation[]>([])
 const recentLoading = ref(false)
+const recentLoadingMore = ref(false)
+const recentHasMore = ref(true)
+const recentPageSize = 10
+const recentScrollContainer = ref<HTMLElement | null>(null)
+const recentSentinel = ref<HTMLElement | null>(null)
+let recentObserver: IntersectionObserver | null = null
 const chartKey = ref(0)
 const selectedFilter = ref<TimeFilter>('30d')
 const customDateRange = ref<Date[]>([])
@@ -99,17 +114,49 @@ watch(customDateRange, async () => {
     }
 })
 
+watch(
+    () => [props.isLoading, hourlyLoading.value, filteredLoading.value],
+    async ([isPageLoading, isHourlyLoading, isFilteredLoading]) => {
+        if (!isPageLoading && !isHourlyLoading && !isFilteredLoading) {
+            await nextTick()
+            setupRecentObserver()
+        }
+    }
+)
+
 onMounted(async () => {
-    await fetchRecentTranslations()
+    await fetchRecentTranslations(true)
     await fetchFilteredStatistics()
+    await nextTick()
+    setupRecentObserver()
 })
 
-const fetchRecentTranslations = async () => {
-    recentLoading.value = true
+onUnmounted(() => {
+    if (recentObserver) {
+        recentObserver.disconnect()
+    }
+})
+
+const fetchRecentTranslations = async (reset = false) => {
+    if (reset) {
+        recentLoading.value = true
+        recentTranslations.value = []
+        recentHasMore.value = true
+    } else if (recentLoading.value || recentLoadingMore.value || !recentHasMore.value) {
+        return
+    } else {
+        recentLoadingMore.value = true
+    }
+
     try {
+        const offset = reset ? 0 : recentTranslations.value.length
         const response =
-            await services.translationRequest.getRecentCompleted<RecentTranslationRaw[]>(5)
-        recentTranslations.value = (response || []).map((item) => ({
+            await services.translationRequest.getRecentCompleted<RecentTranslationsResponseRaw>(
+                offset,
+                recentPageSize
+            )
+        const rawItems = response?.items || response?.Items || []
+        const mappedItems = rawItems.map((item) => ({
             id: item.id || item.Id || 0,
             title: item.title || item.Title || 'Unknown',
             sourceLanguage: item.sourceLanguage || item.SourceLanguage || '',
@@ -117,10 +164,50 @@ const fetchRecentTranslations = async () => {
             completedAt: item.completedAt || item.CompletedAt || null,
             mediaType: item.mediaType || item.MediaType || 'Movie'
         }))
+
+        recentTranslations.value = reset
+            ? mappedItems
+            : [...recentTranslations.value, ...mappedItems]
+
+        recentHasMore.value =
+            response?.hasMore ?? response?.HasMore ?? mappedItems.length === recentPageSize
     } catch (error) {
         console.warn('Failed to fetch recent translations:', error)
     } finally {
         recentLoading.value = false
+        recentLoadingMore.value = false
+    }
+}
+
+const loadMoreRecentTranslations = async () => {
+    if (recentLoading.value || recentLoadingMore.value || !recentHasMore.value) {
+        return
+    }
+
+    await fetchRecentTranslations(false)
+}
+
+const setupRecentObserver = () => {
+    if (recentObserver) {
+        recentObserver.disconnect()
+    }
+
+    recentObserver = new IntersectionObserver(
+        (entries) => {
+            if (
+                entries[0].isIntersecting &&
+                recentHasMore.value &&
+                !recentLoading.value &&
+                !recentLoadingMore.value
+            ) {
+                loadMoreRecentTranslations()
+            }
+        },
+        { root: recentScrollContainer.value, threshold: 0.1 }
+    )
+
+    if (recentSentinel.value) {
+        recentObserver.observe(recentSentinel.value)
     }
 }
 
@@ -567,7 +654,9 @@ const timeFilterOptions = [
                 <h4 class="text-primary-content/50 mb-1 text-xs font-medium">
                     {{ i18n.translate('statistics.recentTranslations') || 'Recent' }}
                 </h4>
-                <div class="scrollbar-thin h-full space-y-1.5 overflow-y-auto pr-1">
+                <div
+                    ref="recentScrollContainer"
+                    class="scrollbar-thin h-full space-y-1.5 overflow-y-auto pr-1">
                     <div
                         v-if="recentLoading"
                         class="text-primary-content/50 py-2 text-center text-xs">
@@ -595,9 +684,16 @@ const timeFilterOptions = [
                             </span>
                         </div>
                     </div>
+                    <div ref="recentSentinel" class="h-1"></div>
+                    <div
+                        v-if="recentLoadingMore"
+                        class="text-primary-content/50 py-1 text-center text-xs">
+                        {{ i18n.translate('common.loading') }}
+                    </div>
                 </div>
             </div>
         </div>
+
     </div>
 </template>
 

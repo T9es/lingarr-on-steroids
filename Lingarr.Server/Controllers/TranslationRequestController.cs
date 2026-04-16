@@ -58,17 +58,28 @@ public class TranslationRequestController : ControllerBase
     }
 
     /// <summary>
-    /// Gets recent completed translation requests
+    /// Gets recent completed translation requests with pagination.
     /// </summary>
-    /// <param name="limit">Maximum number of requests to return (default: 10)</param>
-    /// <response code="200">Returns recent completed translation requests</response>
+    /// <param name="offset">Number of items to skip (default: 0)</param>
+    /// <param name="limit">Maximum number of items to return (default: 10)</param>
+    /// <response code="200">Returns paginated recent completed translation requests</response>
     /// <response code="500">If there was an error retrieving completed requests</response>
-    /// <returns>ActionResult containing the list of recent completed translation requests</returns>
+    /// <returns>ActionResult containing items, total count and has-more flag</returns>
     [HttpGet("recent")]
-    public async Task<ActionResult<List<TranslationRequest>>> GetRecentCompletedRequests([FromQuery] int limit = 10)
+    public async Task<ActionResult<object>> GetRecentCompletedRequests(
+        [FromQuery] int offset = 0,
+        [FromQuery] int limit = 10)
     {
-        var requests = await _translationRequestService.GetRecentCompletedRequests(limit);
-        return Ok(requests);
+        var (requests, totalCount) = await _translationRequestService.GetRecentCompletedRequests(
+            offset,
+            limit);
+
+        return Ok(new
+        {
+            items = requests,
+            totalCount,
+            hasMore = offset + requests.Count < totalCount
+        });
     }
 
     /// <summary>

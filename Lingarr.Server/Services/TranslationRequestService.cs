@@ -223,16 +223,25 @@ public class TranslationRequestService : ITranslationRequestService
     }
 
     /// <inheritdoc />
-    public async Task<List<TranslationRequest>> GetRecentCompletedRequests(int limit = 10)
+    public async Task<(List<TranslationRequest> Requests, int TotalCount)> GetRecentCompletedRequests(
+        int offset = 0,
+        int limit = 10)
     {
-        var requests = await _dbContext.TranslationRequests
+        offset = Math.Max(0, offset);
+        limit = Math.Clamp(limit, 1, 100);
+
+        var query = _dbContext.TranslationRequests
             .Where(tr => tr.Status == TranslationStatus.Completed)
-            .OrderByDescending(tr => tr.CompletedAt)
+            .OrderByDescending(tr => tr.CompletedAt);
+
+        var totalCount = await query.CountAsync();
+        var requests = await query
+            .Skip(offset)
             .Take(limit)
             .ToListAsync();
 
         await PopulatePriorityFlagsAsync(requests);
-        return requests;
+        return (requests, totalCount);
     }
 
     /// <inheritdoc />

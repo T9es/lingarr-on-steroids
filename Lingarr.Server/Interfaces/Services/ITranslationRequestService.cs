@@ -210,9 +210,14 @@ public interface ITranslationRequestService
     Task<List<TranslationRequest>> GetInProgressRequests();
 
     /// <summary>
-    /// Retrieves recent completed translation requests.
+    /// Retrieves recent completed translation requests using offset-based pagination.
     /// </summary>
+    /// <param name="offset">Number of records to skip</param>
     /// <param name="limit">Maximum number of requests to return</param>
-    /// <returns>List of recent completed translation requests</returns>
-    Task<List<TranslationRequest>> GetRecentCompletedRequests(int limit = 10);
+    /// <returns>
+    /// Tuple containing the page of completed requests and the total completed requests count
+    /// </returns>
+    Task<(List<TranslationRequest> Requests, int TotalCount)> GetRecentCompletedRequests(
+        int offset = 0,
+        int limit = 10);
 }
