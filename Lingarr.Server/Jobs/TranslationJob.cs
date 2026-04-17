@@ -346,7 +346,11 @@ public class TranslationJob
                 {
                     request.SourceSubtitleEntryCount = subtitles.Count;
                     selectedSubtitle = await GetEmbeddedSubtitleMetadata(request);
-                    if (selectedSubtitle != null)
+                    var sourceIsEmbedded = ShouldUseEmbeddedSourceSubtitle(
+                        request.SubtitleToTranslate,
+                        selectedSubtitle);
+
+                    if (sourceIsEmbedded && selectedSubtitle != null)
                     {
                         request.SelectedStreamTitle = selectedSubtitle.Title;
                         request.IsForcedSubtitle = selectedSubtitle.IsForced;
@@ -365,7 +369,7 @@ public class TranslationJob
                             fileIdentifier, request.SourceSubtitleType, request.SourceSubtitleEntryCount);
                     }
 
-                    var sourceSnapshot = selectedSubtitle != null
+                    var sourceSnapshot = sourceIsEmbedded && selectedSubtitle != null
                         ? _sourceSubtitleSnapshotService.CreateEmbeddedSnapshot(
                             selectedSubtitle,
                             request.SourceLanguage)
@@ -1113,6 +1117,22 @@ public class TranslationJob
         }
 
         return false;
+    }
+
+    internal static bool ShouldUseEmbeddedSourceSubtitle(string? subtitlePath, EmbeddedSubtitle? selectedSubtitle)
+    {
+        if (selectedSubtitle == null || string.IsNullOrWhiteSpace(subtitlePath))
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(selectedSubtitle.ExtractedPath) &&
+            string.Equals(selectedSubtitle.ExtractedPath, subtitlePath, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return SubtitleExtractionService.IsLingarrExtracted(subtitlePath);
     }
 
     /// <summary>

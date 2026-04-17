@@ -167,6 +167,49 @@ public class TranslationJobTests : IDisposable
         Assert.Contains("Regular dialogue", content);
     }
 
+    [Fact]
+    public async Task ShouldUseEmbeddedSourceSubtitle_ReturnsFalse_ForExternalSubtitlePath()
+    {
+        var subtitlePath = Path.Combine(_tempDirectory, "external-source.en.srt");
+        await File.WriteAllTextAsync(
+            subtitlePath,
+            "1\n00:00:01,000 --> 00:00:02,000\nHello\n");
+
+        var selectedSubtitle = new EmbeddedSubtitle
+        {
+            StreamIndex = 0,
+            Language = "eng",
+            CodecName = "subrip",
+            IsTextBased = true
+        };
+
+        var result = TranslationJob.ShouldUseEmbeddedSourceSubtitle(subtitlePath, selectedSubtitle);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task ShouldUseEmbeddedSourceSubtitle_ReturnsTrue_ForLingarrExtractedSubtitlePath()
+    {
+        var subtitlePath = Path.Combine(_tempDirectory, "embedded-source.eng.srt");
+        await File.WriteAllTextAsync(
+            subtitlePath,
+            $"{SubtitleExtractionService.ExtractionMarkerPrefix} StreamIndex=0, Entries=1{Environment.NewLine}{Environment.NewLine}" +
+            "1\n00:00:01,000 --> 00:00:02,000\nHello\n");
+
+        var selectedSubtitle = new EmbeddedSubtitle
+        {
+            StreamIndex = 0,
+            Language = "eng",
+            CodecName = "subrip",
+            IsTextBased = true
+        };
+
+        var result = TranslationJob.ShouldUseEmbeddedSourceSubtitle(subtitlePath, selectedSubtitle);
+
+        Assert.True(result);
+    }
+
     public void Dispose()
     {
         _dbContext.Dispose();
