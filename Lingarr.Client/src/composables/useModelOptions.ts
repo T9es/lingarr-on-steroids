@@ -1,14 +1,13 @@
-﻿import { ref } from 'vue'
+import { ref, type Ref } from 'vue'
 import { LabelValue, SelectComponentExpose, TranslateModelsResponse } from '@/ts'
 import { delay } from '@/utils/delay'
 import services from '@/services'
 import { useI18n } from '@/plugins/i18n'
 
-export function useModelOptions() {
+export function useModelOptions(selectRef: Ref<SelectComponentExpose | null>) {
     const { translate } = useI18n()
     const options = ref<LabelValue[]>([])
     const errorMessage = ref<string | null>(null)
-    const selectRef = ref<SelectComponentExpose | null>(null)
 
     const loadOptions = async () => {
         try {
@@ -34,7 +33,6 @@ export function useModelOptions() {
     return {
         options,
         errorMessage,
-        selectRef,
         loadOptions
     }
 }

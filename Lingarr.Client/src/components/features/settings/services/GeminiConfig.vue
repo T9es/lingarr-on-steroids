@@ -48,9 +48,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, useTemplateRef } from 'vue'
 import { useSettingStore } from '@/store/setting'
-import { SETTINGS } from '@/ts'
+import { SETTINGS, type SelectComponentExpose } from '@/ts'
 import SelectComponent from '@/components/common/SelectComponent.vue'
 import InputComponent from '@/components/common/InputComponent.vue'
 import { useRouter } from 'vue-router'
@@ -58,7 +58,8 @@ import { useI18n } from '@/plugins/i18n'
 import { useModelOptions } from '@/composables/useModelOptions'
 
 const { translate } = useI18n()
-const { options, errorMessage, selectRef, loadOptions } = useModelOptions()
+const selectRef = useTemplateRef<SelectComponentExpose>('selectRef')
+const { options, errorMessage, loadOptions } = useModelOptions(selectRef)
 
 const settingsStore = useSettingStore()
 const emit = defineEmits(['save'])
