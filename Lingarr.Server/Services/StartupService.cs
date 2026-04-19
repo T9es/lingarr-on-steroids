@@ -91,11 +91,19 @@ public class StartupService : IHostedService
             // Automation
             { SettingKeys.Automation.AutomationEnabled, "false" },
             { SettingKeys.Automation.TranslationSchedule, "0 * * * *" },
+            { SettingKeys.Automation.CustomSourceScanSchedule, "15 * * * *" },
             { SettingKeys.Automation.MaxTranslationsPerRun, "100" },
             { SettingKeys.Automation.MovieSchedule, "0 4 * * *" },
             { SettingKeys.Automation.ShowSchedule, "0 4 * * *" },
             { SettingKeys.Automation.MovieAgeThreshold, "0" },
             { SettingKeys.Automation.ShowAgeThreshold, "0" },
+
+            // Upload workspace
+            { SettingKeys.UploadWorkspace.StorageRoot, "/app/config/uploads" },
+            { SettingKeys.UploadWorkspace.RetentionDays, "7" },
+            { SettingKeys.UploadWorkspace.ReservedWorkerSlots, "0" },
+            { SettingKeys.UploadWorkspace.MaxBatchSize, "100" },
+            { SettingKeys.UploadWorkspace.MaxFileSizeBytes, "2147483648" },
 
             // Subtitle Extraction
             { SettingKeys.SubtitleExtraction.ExtractionMode, "on_demand" },

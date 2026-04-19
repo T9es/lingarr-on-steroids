@@ -71,6 +71,181 @@ namespace Lingarr.Migrations.SQLite.Migrations
                     b.ToTable("api_usage_logs", (string)null);
                 });
 
+            modelBuilder.Entity("Lingarr.Core.Entities.CustomMediaItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("CustomSourceId")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("custom_source_id");
+
+                    b.Property<DateTime?>("DateAdded")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("date_added");
+
+                    b.Property<int?>("EpisodeNumber")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("episode_number");
+
+                    b.Property<bool>("ExcludeFromTranslation")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("exclude_from_translation");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnName("file_name");
+
+                    b.Property<DateTime?>("IndexedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("indexed_at");
+
+                    b.Property<bool>("IsPriority")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("is_priority");
+
+                    b.Property<int>("ItemKind")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("item_kind");
+
+                    b.Property<DateTime?>("LastSubtitleCheckAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("last_subtitle_check_at");
+
+                    b.Property<string>("MediaHash")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("media_hash");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnName("path");
+
+                    b.Property<DateTime?>("PriorityDate")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("priority_date");
+
+                    b.Property<string>("RelativePath")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnName("relative_path");
+
+                    b.Property<int?>("SeasonNumber")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("season_number");
+
+                    b.Property<string>("SeriesTitle")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("series_title");
+
+                    b.Property<int>("StateSettingsVersion")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("state_settings_version");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnName("title");
+
+                    b.Property<int>("TranslationState")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("translation_state");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_custom_media_items");
+
+                    b.HasIndex("CustomSourceId")
+                        .HasDatabaseName("IX_CustomMediaItems_CustomSourceId");
+
+                    b.HasIndex("TranslationState")
+                        .HasDatabaseName("IX_CustomMediaItems_TranslationState");
+
+                    b.HasIndex("CustomSourceId", "Path")
+                        .IsUnique()
+                        .HasDatabaseName("IX_CustomMediaItems_CustomSourceId_Path");
+
+                    b.ToTable("custom_media_items", (string)null);
+                });
+
+            modelBuilder.Entity("Lingarr.Core.Entities.CustomSource", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("created_at");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("enabled");
+
+                    b.Property<bool>("IncludeInAutomation")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("include_in_automation");
+
+                    b.Property<string>("LastScanError")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("last_scan_error");
+
+                    b.Property<string>("LastScanResult")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("last_scan_result");
+
+                    b.Property<DateTime?>("LastScannedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("last_scanned_at");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("name");
+
+                    b.Property<bool>("Recursive")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("recursive");
+
+                    b.Property<string>("RootPath")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("root_path");
+
+                    b.Property<int>("SourceType")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("source_type");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_custom_sources");
+
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasDatabaseName("IX_CustomSources_Name");
+
+                    b.HasIndex("RootPath")
+                        .HasDatabaseName("IX_CustomSources_RootPath");
+
+                    b.ToTable("custom_sources", (string)null);
+                });
+
             modelBuilder.Entity("Lingarr.Core.Entities.DailyStatistics", b =>
                 {
                     b.Property<int>("Id")
@@ -812,6 +987,10 @@ namespace Lingarr.Migrations.SQLite.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("created_at");
 
+                    b.Property<int?>("CustomMediaItemId")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("custom_media_item_id");
+
                     b.Property<DateTime?>("FailedAt")
                         .HasColumnType("TEXT")
                         .HasColumnName("failed_at");
@@ -945,6 +1124,22 @@ namespace Lingarr.Migrations.SQLite.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("updated_at");
 
+                    b.Property<int?>("UploadBatchFileId")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("upload_batch_file_id");
+
+                    b.Property<string>("WorkloadItemKey")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("workload_item_key");
+
+                    b.Property<int>("WorkloadKind")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(0)
+                        .HasColumnName("workload_kind");
+
                     b.HasKey("Id")
                         .HasName("pk_translation_requests");
 
@@ -966,11 +1161,11 @@ namespace Lingarr.Migrations.SQLite.Migrations
                     b.HasIndex("Status", "IsPriority", "CreatedAt")
                         .HasDatabaseName("IX_TranslationRequests_Status_Priority_Created");
 
-                    b.HasIndex("MediaId", "MediaType", "SourceLanguage", "TargetLanguage", "RequiredOutputFormats", "IsActive")
+                    b.HasIndex("WorkloadItemKey", "SourceLanguage", "TargetLanguage", "RequiredOutputFormats", "IsActive")
                         .IsUnique()
                         .HasDatabaseName("ux_translation_requests_active_dedupe");
 
-                    b.HasIndex("MediaId", "MediaType", "TargetLanguage", "RequiredOutputFormats", "Status", "CompletedAt")
+                    b.HasIndex("WorkloadItemKey", "TargetLanguage", "RequiredOutputFormats", "Status", "CompletedAt")
                         .HasDatabaseName("IX_TranslationRequests_FreshnessLookup");
 
                     b.ToTable("translation_requests", (string)null);
@@ -1019,6 +1214,362 @@ namespace Lingarr.Migrations.SQLite.Migrations
                         .HasDatabaseName("IX_TranslationRequestLog_TranslationRequestId");
 
                     b.ToTable("translation_request_logs", (string)null);
+                });
+
+            modelBuilder.Entity("Lingarr.Core.Entities.UploadArtifact", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ContentType")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("content_type");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("expires_at");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(260)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("file_name");
+
+                    b.Property<long>("FileSizeBytes")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("file_size_bytes");
+
+                    b.Property<bool>("IsDownloadable")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("is_downloadable");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("path");
+
+                    b.Property<string>("RelativePath")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("relative_path");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("updated_at");
+
+                    b.Property<int?>("UploadBatchFileId")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("upload_batch_file_id");
+
+                    b.Property<int>("UploadBatchId")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("upload_batch_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_upload_artifacts");
+
+                    b.HasIndex("UploadBatchFileId")
+                        .HasDatabaseName("IX_UploadArtifacts_UploadBatchFileId");
+
+                    b.HasIndex("UploadBatchId")
+                        .HasDatabaseName("IX_UploadArtifacts_UploadBatchId");
+
+                    b.HasIndex("UploadBatchFileId", "Kind")
+                        .HasDatabaseName("IX_UploadArtifacts_UploadBatchFileId_Kind");
+
+                    b.ToTable("upload_artifacts", (string)null);
+                });
+
+            modelBuilder.Entity("Lingarr.Core.Entities.UploadBatch", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("completed_at");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("created_at");
+
+                    b.Property<bool>("DefaultRemuxEnabled")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("default_remux_enabled");
+
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("expires_at");
+
+                    b.Property<string>("FailureReason")
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("failure_reason");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("name");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("started_at");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("status");
+
+                    b.Property<string>("StoragePath")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("storage_path");
+
+                    b.Property<string>("TargetLanguage")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("target_language");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_upload_batches");
+
+                    b.HasIndex("ExpiresAt")
+                        .HasDatabaseName("IX_UploadBatches_ExpiresAt");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("IX_UploadBatches_Status");
+
+                    b.ToTable("upload_batches", (string)null);
+                });
+
+            modelBuilder.Entity("Lingarr.Core.Entities.UploadBatchFile", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("completed_at");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("created_at");
+
+                    b.Property<int?>("CurrentTranslationRequestId")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("current_translation_request_id");
+
+                    b.Property<string>("DetectedSourceLanguage")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("detected_source_language");
+
+                    b.Property<bool>("EmbedTranslatedSubtitle")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("embed_translated_subtitle");
+
+                    b.Property<bool>("ExcludeFromTranslation")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("exclude_from_translation");
+
+                    b.Property<int>("FileKind")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("file_kind");
+
+                    b.Property<long>("FileSizeBytes")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("file_size_bytes");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("last_error");
+
+                    b.Property<string>("OriginalFileName")
+                        .IsRequired()
+                        .HasMaxLength(260)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("original_file_name");
+
+                    b.Property<DateTime?>("ProbeCompletedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("probe_completed_at");
+
+                    b.Property<string>("ProbeError")
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("probe_error");
+
+                    b.Property<string>("RelativeStoredPath")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("relative_stored_path");
+
+                    b.Property<string>("SelectedEmbeddedStreamCodec")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("selected_embedded_stream_codec");
+
+                    b.Property<int?>("SelectedEmbeddedStreamIndex")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("selected_embedded_stream_index");
+
+                    b.Property<string>("SelectedEmbeddedStreamLanguage")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("selected_embedded_stream_language");
+
+                    b.Property<string>("SelectedEmbeddedStreamTitle")
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("selected_embedded_stream_title");
+
+                    b.Property<string>("SelectedSourceLanguage")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("selected_source_language");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("started_at");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("status");
+
+                    b.Property<string>("StoredPath")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("stored_path");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("updated_at");
+
+                    b.Property<int>("UploadBatchId")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("upload_batch_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_upload_batch_files");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("IX_UploadBatchFiles_Status");
+
+                    b.HasIndex("UploadBatchId")
+                        .HasDatabaseName("IX_UploadBatchFiles_UploadBatchId");
+
+                    b.HasIndex("UploadBatchId", "OriginalFileName")
+                        .HasDatabaseName("IX_UploadBatchFiles_UploadBatchId_OriginalFileName");
+
+                    b.ToTable("upload_batch_files", (string)null);
+                });
+
+            modelBuilder.Entity("Lingarr.Core.Entities.UploadBatchFileSubtitleStream", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("id");
+
+                    b.Property<string>("CodecName")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("codec_name");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("created_at");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("is_default");
+
+                    b.Property<bool>("IsForced")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("is_forced");
+
+                    b.Property<bool>("IsTextBased")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("is_text_based");
+
+                    b.Property<string>("Language")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("language");
+
+                    b.Property<int>("StreamIndex")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("stream_index");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("updated_at");
+
+                    b.Property<int>("UploadBatchFileId")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("upload_batch_file_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_upload_batch_file_subtitle_streams");
+
+                    b.HasIndex("UploadBatchFileId")
+                        .HasDatabaseName("IX_UploadBatchFileSubtitleStreams_UploadBatchFileId");
+
+                    b.HasIndex("UploadBatchFileId", "StreamIndex")
+                        .IsUnique()
+                        .HasDatabaseName("IX_UploadBatchFileSubtitleStreams_UploadBatchFileId_StreamIndex");
+
+                    b.ToTable("upload_batch_file_subtitle_streams", (string)null);
+                });
+
+            modelBuilder.Entity("Lingarr.Core.Entities.CustomMediaItem", b =>
+                {
+                    b.HasOne("Lingarr.Core.Entities.CustomSource", "CustomSource")
+                        .WithMany("Items")
+                        .HasForeignKey("CustomSourceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_custom_media_items_custom_sources_custom_source_id");
+
+                    b.Navigation("CustomSource");
                 });
 
             modelBuilder.Entity("Lingarr.Core.Entities.EmbeddedSubtitle", b =>
@@ -1093,6 +1644,55 @@ namespace Lingarr.Migrations.SQLite.Migrations
                     b.Navigation("TranslationRequest");
                 });
 
+            modelBuilder.Entity("Lingarr.Core.Entities.UploadArtifact", b =>
+                {
+                    b.HasOne("Lingarr.Core.Entities.UploadBatchFile", "UploadBatchFile")
+                        .WithMany("Artifacts")
+                        .HasForeignKey("UploadBatchFileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_upload_artifacts_upload_batch_files_upload_batch_file_id");
+
+                    b.HasOne("Lingarr.Core.Entities.UploadBatch", "UploadBatch")
+                        .WithMany("Artifacts")
+                        .HasForeignKey("UploadBatchId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_upload_artifacts_upload_batches_upload_batch_id");
+
+                    b.Navigation("UploadBatch");
+
+                    b.Navigation("UploadBatchFile");
+                });
+
+            modelBuilder.Entity("Lingarr.Core.Entities.UploadBatchFile", b =>
+                {
+                    b.HasOne("Lingarr.Core.Entities.UploadBatch", "UploadBatch")
+                        .WithMany("Files")
+                        .HasForeignKey("UploadBatchId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_upload_batch_files_upload_batches_upload_batch_id");
+
+                    b.Navigation("UploadBatch");
+                });
+
+            modelBuilder.Entity("Lingarr.Core.Entities.UploadBatchFileSubtitleStream", b =>
+                {
+                    b.HasOne("Lingarr.Core.Entities.UploadBatchFile", "UploadBatchFile")
+                        .WithMany("SubtitleStreams")
+                        .HasForeignKey("UploadBatchFileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_upload_batch_file_subtitle_streams_upload_batch_files_upload_batch_file_id");
+
+                    b.Navigation("UploadBatchFile");
+                });
+
+            modelBuilder.Entity("Lingarr.Core.Entities.CustomSource", b =>
+                {
+                    b.Navigation("Items");
+                });
+
             modelBuilder.Entity("Lingarr.Core.Entities.Episode", b =>
                 {
                     b.Navigation("EmbeddedSubtitles");
@@ -1115,6 +1715,20 @@ namespace Lingarr.Migrations.SQLite.Migrations
                     b.Navigation("Images");
 
                     b.Navigation("Seasons");
+                });
+
+            modelBuilder.Entity("Lingarr.Core.Entities.UploadBatch", b =>
+                {
+                    b.Navigation("Artifacts");
+
+                    b.Navigation("Files");
+                });
+
+            modelBuilder.Entity("Lingarr.Core.Entities.UploadBatchFile", b =>
+                {
+                    b.Navigation("Artifacts");
+
+                    b.Navigation("SubtitleStreams");
                 });
 #pragma warning restore 612, 618
         }

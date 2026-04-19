@@ -56,6 +56,7 @@ public class SubtitleTranslationService
             throw new TranslationException("Subtitle translator could not be initialized, progress service is null.");
         }
 
+        var usePlaintextInput = stripSubtitleFormatting && !preserveAssFormatting;
         var iteration = 0;
         var totalSubtitles = subtitles.Count;
 
@@ -69,12 +70,12 @@ public class SubtitleTranslationService
                 break;
             }
 
-            var contextLinesBefore = BuildContext(subtitles, index, contextBefore, stripSubtitleFormatting, true);
-            var contextLinesAfter = BuildContext(subtitles, index, contextAfter, stripSubtitleFormatting, false);
+            var contextLinesBefore = BuildContext(subtitles, index, contextBefore, usePlaintextInput, true);
+            var contextLinesAfter = BuildContext(subtitles, index, contextAfter, usePlaintextInput, false);
 
             var subtitleLine = preserveAssFormatting
-                ? string.Join("\\N", stripSubtitleFormatting ? subtitle.PlaintextLines : subtitle.Lines)
-                : string.Join(" ", stripSubtitleFormatting ? subtitle.PlaintextLines : subtitle.Lines);
+                ? string.Join("\\N", usePlaintextInput ? subtitle.PlaintextLines : subtitle.Lines)
+                : string.Join(" ", usePlaintextInput ? subtitle.PlaintextLines : subtitle.Lines);
             var translated = "";
             if (subtitleLine != "" && !SubtitleFormatterService.IsMeaningless(string.Join(" ", subtitle.PlaintextLines)))
             {
@@ -170,6 +171,8 @@ public class SubtitleTranslationService
             throw new TranslationException("Subtitle translator could not be initialized, progress service is null.");
         }
 
+        var usePlaintextInput = stripSubtitleFormatting && !preserveAssFormatting;
+
         if (_translationService is not IBatchTranslationService batchTranslationService)
         {
             throw new TranslationException("The configured translation service does not support batch translation.");
@@ -217,14 +220,14 @@ public class SubtitleTranslationService
                 preContext = subtitles
                     .Take(firstItemIndex)
                     .TakeLast(batchContextBefore)
-                    .Select(s => string.Join(" ", stripSubtitleFormatting ? s.PlaintextLines : s.Lines))
+                    .Select(s => string.Join(" ", usePlaintextInput ? s.PlaintextLines : s.Lines))
                     .ToList();
                 
                 // Get N lines AFTER the last item in this batch  
                 postContext = subtitles
                     .Skip(lastItemIndex + 1)
                     .Take(batchContextAfter)
-                    .Select(s => string.Join(" ", stripSubtitleFormatting ? s.PlaintextLines : s.Lines))
+                    .Select(s => string.Join(" ", usePlaintextInput ? s.PlaintextLines : s.Lines))
                     .ToList();
             }
             
@@ -233,7 +236,7 @@ public class SubtitleTranslationService
                 batchTranslationService,
                 translationRequest.SourceLanguage,
                 translationRequest.TargetLanguage,
-                stripSubtitleFormatting,
+                usePlaintextInput,
                 useImmediateFallback,
                 maxSplitAttempts,
                 useDeferredRepair,  // collectFailures
@@ -279,7 +282,7 @@ public class SubtitleTranslationService
                 globalFailures,
                 subtitles,
                 repairContextRadius,
-                stripSubtitleFormatting);
+                usePlaintextInput);
             
             var repairResults = await _deferredRepairService.ExecuteRepairAsync(
                 repairBatch,
@@ -298,7 +301,7 @@ public class SubtitleTranslationService
                 var subtitle = subtitles.FirstOrDefault(s => s.Position == position);
                 if (subtitle != null)
                 {
-                    var cleaned = stripSubtitleFormatting && !preserveAssFormatting
+                    var cleaned = usePlaintextInput
                         ? SubtitleFormatterService.RemoveMarkup(translatedText)
                         : translatedText;
                     subtitle.TranslatedLines = preserveAssFormatting
@@ -369,12 +372,14 @@ public class SubtitleTranslationService
         bool preserveAssFormatting = false,
         CancellationToken cancellationToken = default)
     {
+        var usePlaintextInput = stripSubtitleFormatting && !preserveAssFormatting;
+
         var batchItems = currentBatch
             .Select(subtitle =>
             {
                 var line = preserveAssFormatting
-                    ? string.Join("\\N", stripSubtitleFormatting ? subtitle.PlaintextLines : subtitle.Lines)
-                    : string.Join(" ", stripSubtitleFormatting ? subtitle.PlaintextLines : subtitle.Lines);
+                    ? string.Join("\\N", usePlaintextInput ? subtitle.PlaintextLines : subtitle.Lines)
+                    : string.Join(" ", usePlaintextInput ? subtitle.PlaintextLines : subtitle.Lines);
                 var plaintextLine = string.Join(" ", subtitle.PlaintextLines);
                 
                 return new 
@@ -456,7 +461,7 @@ public class SubtitleTranslationService
                 // This removes actual newline characters while preserving ASS escape sequences
                 translated = SubtitleFormatterService.NormalizeLineBreaks(translated);
 
-                if (stripSubtitleFormatting && !preserveAssFormatting)
+                if (usePlaintextInput)
                 {
                     translated = SubtitleFormatterService.RemoveMarkup(translated);
                 }
@@ -477,7 +482,7 @@ public class SubtitleTranslationService
                     return false;
                 }
 
-                var originalText = string.Join(" ", stripSubtitleFormatting ? s.PlaintextLines : s.Lines);
+                var originalText = string.Join(" ", usePlaintextInput ? s.PlaintextLines : s.Lines);
 
                 // If there is no meaningful original text, we don't require a translation
                 if (string.IsNullOrWhiteSpace(originalText))
@@ -503,7 +508,7 @@ public class SubtitleTranslationService
                 return missingSubtitles.Select(s => new BatchSubtitleItem
                 {
                     Position = s.Position,
-                    Line = string.Join(" ", stripSubtitleFormatting ? s.PlaintextLines : s.Lines)
+                    Line = string.Join(" ", usePlaintextInput ? s.PlaintextLines : s.Lines)
                 }).ToList();
             }
             
@@ -514,7 +519,7 @@ public class SubtitleTranslationService
             
             foreach (var missing in missingSubtitles.Take(20)) // Limit to first 20 for readability
             {
-                var originalText = string.Join(" ", stripSubtitleFormatting ? missing.PlaintextLines : missing.Lines);
+                var originalText = string.Join(" ", usePlaintextInput ? missing.PlaintextLines : missing.Lines);
                 var truncatedText = originalText.Length > 80 ? originalText[..77] + "..." : originalText;
                 _logger.LogError("  [Pos {Position,4}] \"{OriginalText}\"", missing.Position, truncatedText);
             }
@@ -528,7 +533,7 @@ public class SubtitleTranslationService
             // Provide an explicit explanation and one concrete example
             var exampleSubtitle = missingSubtitles[0];
             var exampleOriginal = string.Join(" ",
-                stripSubtitleFormatting ? exampleSubtitle.PlaintextLines : exampleSubtitle.Lines);
+                usePlaintextInput ? exampleSubtitle.PlaintextLines : exampleSubtitle.Lines);
             string? exampleTruncated = null;
 
             if (!string.IsNullOrWhiteSpace(exampleOriginal))

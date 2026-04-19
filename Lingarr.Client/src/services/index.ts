@@ -8,7 +8,9 @@ import { versionService } from './versionService'
 import { scheduleService } from '@/services/scheduleService'
 import { translationRequestService } from '@/services/translationRequestService'
 import { mappingService } from '@/services/mappingService'
+import { customSourceService } from '@/services/customSourceService'
 import { directoryService } from '@/services/directoryService'
+import { uploadWorkspaceService } from '@/services/uploadWorkspaceService'
 import { statisticsService } from '@/services/statisticsService'
 import { logsService } from '@/services/logsService'
 import { chutesService } from '@/services/chutesService'
@@ -26,7 +28,9 @@ const services = (axios: AxiosStatic): Services => ({
     media: mediaService(axios),
     schedule: scheduleService(axios),
     mapping: mappingService(axios),
+    customSources: customSourceService(axios),
     directory: directoryService(axios),
+    uploadWorkspace: uploadWorkspaceService(axios),
     statistics: statisticsService(axios),
     logs: logsService(),
     dashboard: dashboardService(axios)

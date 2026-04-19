@@ -180,7 +180,11 @@ const menuItems = computed<MenuItem[]>(() => [
         children: [
             'integration-settings',
             'services-settings',
+            'subtitle-settings',
+            'integrity-settings',
             'automation-settings',
+            'custom-sources-settings',
+            'upload-workspace-settings',
             'tasks-settings',
             'logs-settings'
         ]

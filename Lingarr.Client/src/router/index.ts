@@ -62,6 +62,16 @@ const routes: RouteRecordRaw[] = [
                 component: () => import('@/pages/settings/MappingPage.vue')
             },
             {
+                name: 'custom-sources-settings',
+                path: 'custom-sources',
+                component: () => import('@/pages/settings/CustomSourcesPage.vue')
+            },
+            {
+                name: 'upload-workspace-settings',
+                path: 'upload-workspace',
+                component: () => import('@/pages/settings/UploadWorkspacePage.vue')
+            },
+            {
                 name: 'tasks-settings',
                 path: 'tasks',
                 component: () => import('@/pages/settings/SchedulePage.vue')

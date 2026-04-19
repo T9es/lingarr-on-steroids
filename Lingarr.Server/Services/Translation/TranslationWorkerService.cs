@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Linq;
 using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
@@ -24,9 +25,12 @@ public class TranslationWorkerService : BackgroundService, ITranslationWorkerSer
     private readonly ILogger<TranslationWorkerService> _logger;
     private readonly SemaphoreSlim _workSignal = new(0, int.MaxValue);
     private readonly ConcurrentDictionary<int, Task> _activeWorkerTasks = new();
+    private readonly ConcurrentDictionary<int, TranslationWorkloadKind> _activeWorkerKinds = new();
     
     private int _maxWorkers = 1;
+    private int _reservedUploadWorkerSlots;
     private volatile bool _isInitialized;
+    private TranslationWorkloadKind? _lastClaimedWorkloadKind;
 
     public TranslationWorkerService(
         IServiceProvider serviceProvider,
@@ -48,10 +52,11 @@ public class TranslationWorkerService : BackgroundService, ITranslationWorkerSer
         var newMax = Math.Clamp(maxWorkers, 1, MaxWorkersLimit);
         var oldMax = _maxWorkers;
         _maxWorkers = newMax;
+        _reservedUploadWorkerSlots = ClampReservedUploadSlots(_reservedUploadWorkerSlots);
         
         _logger.LogInformation(
-            "Translation worker count reconfigured from {Old} to {New} (active: {Active})",
-            oldMax, newMax, ActiveWorkers);
+            "Translation worker count reconfigured from {Old} to {New} (active: {Active}, reserved upload slots: {ReservedUploadSlots})",
+            oldMax, newMax, ActiveWorkers, _reservedUploadWorkerSlots);
         
         // Signal to potentially spawn more workers
         if (newMax > oldMax)
@@ -59,6 +64,34 @@ public class TranslationWorkerService : BackgroundService, ITranslationWorkerSer
             Signal();
         }
         
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    public Task ReconfigureReservedUploadSlotsAsync(int reservedUploadSlots)
+    {
+        var requested = Math.Max(0, reservedUploadSlots);
+        var clamped = ClampReservedUploadSlots(requested);
+        var oldReserved = _reservedUploadWorkerSlots;
+        _reservedUploadWorkerSlots = clamped;
+
+        if (requested != clamped)
+        {
+            _logger.LogWarning(
+                "Reserved upload worker slots value {RequestedSlots} was clamped to {ClampedSlots} for max worker count {MaxWorkers}.",
+                requested,
+                clamped,
+                _maxWorkers);
+        }
+
+        _logger.LogInformation(
+            "Reserved upload worker slots reconfigured from {Old} to {New} (max workers: {MaxWorkers}, active: {Active})",
+            oldReserved,
+            clamped,
+            _maxWorkers,
+            ActiveWorkers);
+
+        Signal();
         return Task.CompletedTask;
     }
 
@@ -158,11 +191,30 @@ public class TranslationWorkerService : BackgroundService, ITranslationWorkerSer
         var maxWorkers = int.TryParse(setting, out var value) && value > 0 
             ? Math.Clamp(value, 1, MaxWorkersLimit) 
             : 1;
+
+        var reservedUploadSetting = await settingService.GetSetting(SettingKeys.UploadWorkspace.ReservedWorkerSlots);
+        var requestedReservedUploadSlots = int.TryParse(reservedUploadSetting, out var reservedValue) && reservedValue >= 0
+            ? reservedValue
+            : 0;
         
         _maxWorkers = maxWorkers;
+        _reservedUploadWorkerSlots = ClampReservedUploadSlots(requestedReservedUploadSlots);
+
+        if (_reservedUploadWorkerSlots != requestedReservedUploadSlots)
+        {
+            _logger.LogWarning(
+                "Reserved upload worker slots value {RequestedSlots} was clamped to {ClampedSlots} for max worker count {MaxWorkers}.",
+                requestedReservedUploadSlots,
+                _reservedUploadWorkerSlots,
+                _maxWorkers);
+        }
+
         _isInitialized = true;
         
-        _logger.LogInformation("Initialized with max {MaxWorkers} workers", _maxWorkers);
+        _logger.LogInformation(
+            "Initialized with max {MaxWorkers} workers and {ReservedUploadSlots} reserved upload slot(s)",
+            _maxWorkers,
+            _reservedUploadWorkerSlots);
     }
 
     private async Task RecoverInterruptedJobsAsync(CancellationToken cancellationToken)
@@ -183,6 +235,22 @@ public class TranslationWorkerService : BackgroundService, ITranslationWorkerSer
                 "Recovered {Count} interrupted translation request(s) - reset to Pending",
                 interruptedCount);
         }
+    }
+
+    private int ClampReservedUploadSlots(int requestedSlots)
+    {
+        if (_maxWorkers <= 1)
+        {
+            return 0;
+        }
+
+        return Math.Clamp(requestedSlots, 0, _maxWorkers - 1);
+    }
+
+    private int GetMaxNonUploadWorkersWhenContended()
+    {
+        var maxNonUpload = _maxWorkers - _reservedUploadWorkerSlots;
+        return maxNonUpload <= 0 ? 1 : maxNonUpload;
     }
 
     private async Task RunWorkerLoopAsync(CancellationToken stoppingToken)
@@ -226,6 +294,8 @@ public class TranslationWorkerService : BackgroundService, ITranslationWorkerSer
         {
             if (_activeWorkerTasks.TryRemove(id, out var task))
             {
+                _activeWorkerKinds.TryRemove(id, out _);
+
                 // Log if task faulted
                 if (task.IsFaulted)
                 {
@@ -242,38 +312,100 @@ public class TranslationWorkerService : BackgroundService, ITranslationWorkerSer
     {
         using var scope = _serviceProvider.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<LingarrDbContext>();
-        
-        // Step 1: Find the next pending request (priority first, then oldest)
+
+        var activeUploadWorkers = _activeWorkerKinds.Values.Count(kind => kind == TranslationWorkloadKind.Upload);
+        var activeNonUploadWorkers = ActiveWorkers - activeUploadWorkers;
+
+        var hasPendingUpload = await dbContext.TranslationRequests
+            .AsNoTracking()
+            .AnyAsync(
+                request => request.Status == TranslationStatus.Pending &&
+                           request.WorkloadKind == TranslationWorkloadKind.Upload,
+                stoppingToken);
+        var hasPendingNonUpload = await dbContext.TranslationRequests
+            .AsNoTracking()
+            .AnyAsync(
+                request => request.Status == TranslationStatus.Pending &&
+                           request.WorkloadKind != TranslationWorkloadKind.Upload,
+                stoppingToken);
+
+        if (!hasPendingUpload && !hasPendingNonUpload)
+        {
+            return false;
+        }
+
+        var maxNonUploadWorkersWhenContended = GetMaxNonUploadWorkersWhenContended();
+        var maxUploadWorkersWhenContended = _maxWorkers - maxNonUploadWorkersWhenContended;
+
+        bool? claimUploadWork = false;
+        if (hasPendingUpload && hasPendingNonUpload)
+        {
+            if (_reservedUploadWorkerSlots == 0)
+            {
+                if (activeUploadWorkers == 0 && activeNonUploadWorkers > 0)
+                {
+                    claimUploadWork = true;
+                }
+                else if (activeNonUploadWorkers == 0 && activeUploadWorkers > 0)
+                {
+                    claimUploadWork = false;
+                }
+                else if (ActiveWorkers == 0)
+                {
+                    claimUploadWork = _lastClaimedWorkloadKind != TranslationWorkloadKind.Upload;
+                }
+                else
+                {
+                    claimUploadWork = null;
+                }
+            }
+            else if (activeNonUploadWorkers < maxNonUploadWorkersWhenContended)
+            {
+                claimUploadWork = false;
+            }
+            else if (activeUploadWorkers < maxUploadWorkersWhenContended)
+            {
+                claimUploadWork = true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+        else if (hasPendingUpload)
+        {
+            claimUploadWork = true;
+        }
+
         var candidate = await dbContext.TranslationRequests
             .AsNoTracking()
-            .Where(r => r.Status == TranslationStatus.Pending)
-            .OrderByDescending(r => r.IsPriority)
-            .ThenBy(r => r.CreatedAt)
-            .Select(r => r.Id)
+            .Where(request => request.Status == TranslationStatus.Pending)
+            .Where(request => !claimUploadWork.HasValue ||
+                (claimUploadWork.Value
+                    ? request.WorkloadKind == TranslationWorkloadKind.Upload
+                    : request.WorkloadKind != TranslationWorkloadKind.Upload))
+            .OrderByDescending(request => request.IsPriority)
+            .ThenBy(request => request.CreatedAt)
+            .Select(request => new { request.Id, request.WorkloadKind })
             .FirstOrDefaultAsync(stoppingToken);
-        
-        if (candidate == 0)
+
+        if (candidate == null)
         {
-            return false; // No pending work
+            return false;
         }
-        
-        // Step 2: Atomically claim it (optimistic lock pattern)
-        // Only update if status is still Pending (prevents race conditions)
+
         var claimed = await dbContext.TranslationRequests
-            .Where(r => r.Id == candidate && r.Status == TranslationStatus.Pending)
+            .Where(request => request.Id == candidate.Id && request.Status == TranslationStatus.Pending)
             .ExecuteUpdateAsync(
-                s => s.SetProperty(r => r.Status, TranslationStatus.InProgress),
+                setters => setters.SetProperty(request => request.Status, TranslationStatus.InProgress),
                 stoppingToken);
-        
+
         if (claimed == 0)
         {
-            // Another worker claimed it between our SELECT and UPDATE
-            _logger.LogDebug("Request {RequestId} was claimed by another worker", candidate);
-            return true; // Return true to try the next one
+            _logger.LogDebug("Request {RequestId} was claimed by another worker", candidate.Id);
+            return true;
         }
-        
-        // Step 3: Broadcast status change to frontend via SignalR
-        // This ensures the UI updates from Pending to InProgress
+
         try
         {
             var translationRequestService = scope.ServiceProvider.GetRequiredService<ITranslationRequestService>();
@@ -281,18 +413,23 @@ public class TranslationWorkerService : BackgroundService, ITranslationWorkerSer
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to broadcast status update for request {RequestId}", candidate);
-            // Continue anyway - the job should still run
+            _logger.LogWarning(ex, "Failed to broadcast status update for request {RequestId}", candidate.Id);
         }
-        
-        // Step 4: Start a worker task for this request
+
         _logger.LogInformation(
-            "Claimed translation request {RequestId} - starting worker (active: {Active}/{Max})",
-            candidate, ActiveWorkers + 1, _maxWorkers);
-        
-        var workerTask = ProcessRequestAsync(candidate, stoppingToken);
-        _activeWorkerTasks.TryAdd(candidate, workerTask);
-        
+            "Claimed translation request {RequestId} ({WorkloadKind}) - starting worker (active: {Active}/{Max}, upload active/reserved: {UploadActive}/{UploadReserved})",
+            candidate.Id,
+            candidate.WorkloadKind,
+            ActiveWorkers + 1,
+            _maxWorkers,
+            activeUploadWorkers + (candidate.WorkloadKind == TranslationWorkloadKind.Upload ? 1 : 0),
+            maxUploadWorkersWhenContended);
+
+        var workerTask = ProcessRequestAsync(candidate.Id, stoppingToken);
+        _lastClaimedWorkloadKind = candidate.WorkloadKind;
+        _activeWorkerTasks.TryAdd(candidate.Id, workerTask);
+        _activeWorkerKinds.TryAdd(candidate.Id, candidate.WorkloadKind);
+
         return true;
     }
 
@@ -328,6 +465,7 @@ public class TranslationWorkerService : BackgroundService, ITranslationWorkerSer
         finally
         {
             _activeWorkerTasks.TryRemove(requestId, out _);
+            _activeWorkerKinds.TryRemove(requestId, out _);
         }
     }
 

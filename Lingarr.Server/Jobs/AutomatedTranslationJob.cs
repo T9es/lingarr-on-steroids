@@ -19,19 +19,22 @@ public class AutomatedTranslationJob
     private readonly ISettingService _settingService;
     private readonly IScheduleService _scheduleService;
     private readonly IMediaStateService _mediaStateService;
+    private readonly ICustomMediaStateService _customMediaStateService;
 
     public AutomatedTranslationJob(
         IAutomationService automationService,
         ILogger<AutomatedTranslationJob> logger,
         IScheduleService scheduleService,
         ISettingService settingService,
-        IMediaStateService mediaStateService)
+        IMediaStateService mediaStateService,
+        ICustomMediaStateService customMediaStateService)
     {
         _automationService = automationService;
         _logger = logger;
         _settingService = settingService;
         _scheduleService = scheduleService;
         _mediaStateService = mediaStateService;
+        _customMediaStateService = customMediaStateService;
     }
 
     [DisableConcurrentExecution(timeoutInSeconds: 30 * 60)]
@@ -63,16 +66,22 @@ public class AutomatedTranslationJob
                 ? limit
                 : 10;
 
-            var mediaToProcess = await _mediaStateService.GetMediaNeedingTranslationAsync(maxPerRun * 2);
+            var mediaToProcess = await _mediaStateService.GetMediaNeedingTranslationAsync(maxPerRun * 2) ?? [];
+            var customItemsToProcess = await _customMediaStateService.GetItemsNeedingTranslationAsync(maxPerRun * 2) ?? [];
 
             _logger.LogInformation(
-                "AutomatedTranslationJob: found {Count} candidates needing translation",
-                mediaToProcess.Count);
+                "AutomatedTranslationJob: found {LibraryCount} library candidates and {CustomCount} custom-source candidates needing translation",
+                mediaToProcess.Count,
+                customItemsToProcess.Count);
 
             var translationsQueued = 0;
             var processedCount = 0;
 
-            foreach (var mediaItem in mediaToProcess)
+            var customWorkItems = customItemsToProcess.Select(item => (
+                Media: (Lingarr.Core.Interfaces.IMedia)item,
+                Type: item.ItemKind == CustomMediaItemKind.Movie ? MediaType.Movie : MediaType.Episode));
+
+            foreach (var mediaItem in mediaToProcess.Concat(customWorkItems))
             {
                 var media = mediaItem.Media;
                 var mediaType = mediaItem.Type;

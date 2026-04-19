@@ -12,21 +12,27 @@ public class AutomationService : IAutomationService
 {
     private readonly LingarrDbContext _dbContext;
     private readonly IMediaSubtitleProcessor _mediaSubtitleProcessor;
+    private readonly ICustomMediaSubtitleProcessor _customMediaSubtitleProcessor;
     private readonly ISettingService _settingService;
     private readonly IMediaStateService _mediaStateService;
+    private readonly ICustomMediaStateService _customMediaStateService;
     private readonly ILogger<AutomationService> _logger;
 
     public AutomationService(
         LingarrDbContext dbContext,
         IMediaSubtitleProcessor mediaSubtitleProcessor,
+        ICustomMediaSubtitleProcessor customMediaSubtitleProcessor,
         ISettingService settingService,
         IMediaStateService mediaStateService,
+        ICustomMediaStateService customMediaStateService,
         ILogger<AutomationService> logger)
     {
         _dbContext = dbContext;
         _mediaSubtitleProcessor = mediaSubtitleProcessor;
+        _customMediaSubtitleProcessor = customMediaSubtitleProcessor;
         _settingService = settingService;
         _mediaStateService = mediaStateService;
+        _customMediaStateService = customMediaStateService;
         _logger = logger;
     }
 
@@ -63,6 +69,16 @@ public class AutomationService : IAutomationService
         bool updateRotationTimestamp = false,
         bool forceStateRefresh = false)
     {
+        if (media is CustomMediaItem customMediaItem)
+        {
+            return await ProcessCustomMediaForAutomationAsync(
+                customMediaItem,
+                mediaType,
+                triggerSource,
+                updateRotationTimestamp,
+                forceStateRefresh);
+        }
+
         var settings = await _settingService.GetSettings([
             SettingKeys.Automation.AutomationEnabled,
             SettingKeys.Automation.MovieAgeThreshold,
@@ -171,6 +187,94 @@ public class AutomationService : IAutomationService
             media.Id,
             media.Title,
             reconciledState);
+        return 0;
+    }
+
+    private async Task<int> ProcessCustomMediaForAutomationAsync(
+        CustomMediaItem customMediaItem,
+        MediaType mediaType,
+        string triggerSource,
+        bool updateRotationTimestamp,
+        bool forceStateRefresh)
+    {
+        var item = await _dbContext.CustomMediaItems
+            .Include(customItem => customItem.CustomSource)
+            .FirstOrDefaultAsync(customItem => customItem.Id == customMediaItem.Id);
+
+        if (item == null)
+        {
+            return 0;
+        }
+
+        if (!item.CustomSource.Enabled || !item.CustomSource.IncludeInAutomation)
+        {
+            return 0;
+        }
+
+        var settings = await _settingService.GetSettings([
+            SettingKeys.Automation.AutomationEnabled,
+            SettingKeys.Automation.MovieAgeThreshold,
+            SettingKeys.Automation.ShowAgeThreshold
+        ]);
+
+        var automationEnabled =
+            settings.GetValueOrDefault(SettingKeys.Automation.AutomationEnabled) == "true";
+
+        var movieAgeThreshold = TimeSpan.FromHours(
+            int.TryParse(settings.GetValueOrDefault(SettingKeys.Automation.MovieAgeThreshold), out var mh)
+                ? mh
+                : 0);
+        var showAgeThreshold = TimeSpan.FromHours(
+            int.TryParse(settings.GetValueOrDefault(SettingKeys.Automation.ShowAgeThreshold), out var sh)
+                ? sh
+                : 0);
+
+        var currentVersion = await _customMediaStateService.GetSettingsVersionAsync();
+        var currentState = item.TranslationState;
+        var shouldRefreshState = forceStateRefresh
+            || currentState == TranslationState.Stale
+            || currentState == TranslationState.Unknown
+            || item.StateSettingsVersion < currentVersion;
+
+        if (shouldRefreshState)
+        {
+            currentState = await _customMediaStateService.UpdateStateAsync(item);
+        }
+
+        if (!automationEnabled)
+        {
+            return 0;
+        }
+
+        if (!CanAttemptAutomation(currentState, item.IndexedAt))
+        {
+            return 0;
+        }
+
+        var ageThreshold = mediaType == MediaType.Movie ? movieAgeThreshold : showAgeThreshold;
+        if (!MeetsAgeThreshold(item, ageThreshold))
+        {
+            return 0;
+        }
+
+        if (updateRotationTimestamp)
+        {
+            await _customMediaStateService.UpdateLastSubtitleCheckAt(item.Id);
+        }
+
+        var forceProcess = currentState == TranslationState.Pending || currentState == TranslationState.Stale;
+        var queuedCount = await _customMediaSubtitleProcessor.ProcessCustomItemForceAsync(
+            item,
+            forceProcess: forceProcess,
+            forceTranslation: false);
+
+        if (queuedCount > 0)
+        {
+            await _customMediaStateService.UpdateStateAsync(item);
+            return queuedCount;
+        }
+
+        await _customMediaStateService.UpdateStateAsync(item);
         return 0;
     }
 

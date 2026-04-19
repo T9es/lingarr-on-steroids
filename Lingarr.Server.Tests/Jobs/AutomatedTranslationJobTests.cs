@@ -23,6 +23,7 @@ public class AutomatedTranslationJobTests
     private readonly Mock<IScheduleService> _scheduleServiceMock;
     private readonly Mock<ISettingService> _settingServiceMock;
     private readonly Mock<IMediaStateService> _mediaStateServiceMock;
+    private readonly Mock<ICustomMediaStateService> _customMediaStateServiceMock;
     private readonly AutomatedTranslationJob _job;
 
     public AutomatedTranslationJobTests()
@@ -31,13 +32,15 @@ public class AutomatedTranslationJobTests
         _scheduleServiceMock = new Mock<IScheduleService>();
         _settingServiceMock = new Mock<ISettingService>();
         _mediaStateServiceMock = new Mock<IMediaStateService>();
+        _customMediaStateServiceMock = new Mock<ICustomMediaStateService>();
 
         _job = new AutomatedTranslationJob(
             _automationServiceMock.Object,
             NullLogger<AutomatedTranslationJob>.Instance,
             _scheduleServiceMock.Object,
             _settingServiceMock.Object,
-            _mediaStateServiceMock.Object);
+            _mediaStateServiceMock.Object,
+            _customMediaStateServiceMock.Object);
 
         _settingServiceMock
             .Setup(s => s.GetSetting(SettingKeys.Automation.AutomationEnabled))

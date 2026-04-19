@@ -161,12 +161,22 @@ public static class SettingKeys
     {
         public const string AutomationEnabled = "automation_enabled";
         public const string TranslationSchedule = "translation_schedule";
+        public const string CustomSourceScanSchedule = "custom_source_scan_schedule";
         public const string MaxTranslationsPerRun = "max_translations_per_run";
         public const string TranslationCycle = "translation_cycle";
         public const string MovieSchedule = "movie_schedule";
         public const string ShowSchedule = "show_schedule";
         public const string MovieAgeThreshold = "movie_age_threshold";
         public const string ShowAgeThreshold = "show_age_threshold";
+    }
+
+    public static class UploadWorkspace
+    {
+        public const string StorageRoot = "upload_workspace_storage_root";
+        public const string RetentionDays = "upload_workspace_retention_days";
+        public const string ReservedWorkerSlots = "upload_workspace_reserved_worker_slots";
+        public const string MaxBatchSize = "upload_workspace_max_batch_size";
+        public const string MaxFileSizeBytes = "upload_workspace_max_file_size_bytes";
     }
 
     public static class SubtitleValidation

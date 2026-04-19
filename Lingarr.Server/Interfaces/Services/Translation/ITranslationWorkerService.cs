@@ -24,6 +24,13 @@ public interface ITranslationWorkerService
     /// </summary>
     /// <param name="maxWorkers">New maximum worker count (will be clamped to 1-20)</param>
     Task ReconfigureWorkersAsync(int maxWorkers);
+
+    /// <summary>
+    /// Dynamically adjust the number of worker slots reserved for upload workload when contention exists.
+    /// Takes effect immediately - no restart required.
+    /// </summary>
+    /// <param name="reservedUploadSlots">Requested reserved upload slot count (will be clamped)</param>
+    Task ReconfigureReservedUploadSlotsAsync(int reservedUploadSlots);
     
     /// <summary>
     /// Signal that new work is available.

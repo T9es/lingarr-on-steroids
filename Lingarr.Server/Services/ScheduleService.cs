@@ -19,9 +19,11 @@ public class ScheduleService : IScheduleService
         new Dictionary<string, JobMetadata>(StringComparer.OrdinalIgnoreCase)
         {
             ["AutomatedTranslationJob"] = new("schedule.jobDisplay.automatedTranslation", SettingKeys.Automation.TranslationSchedule, true),
+            ["CustomSourceScanJob"] = new("schedule.jobDisplay.customSources", SettingKeys.Automation.CustomSourceScanSchedule, true),
             ["SyncMovieJob"] = new("schedule.jobDisplay.syncMovies", SettingKeys.Automation.MovieSchedule, true),
             ["SyncShowJob"] = new("schedule.jobDisplay.syncShows", SettingKeys.Automation.ShowSchedule, true),
             ["CleanupJob"] = new("schedule.jobDisplay.cleanup", null, false),
+            ["UploadWorkspaceCleanupJob"] = new("schedule.jobDisplay.cleanup", null, false),
             ["StatisticsJob"] = new("schedule.jobDisplay.statistics", null, false),
             ["RetryFailedRequestsJob"] = new("schedule.jobDisplay.retryFailed", null, false)
         };
@@ -50,11 +52,18 @@ public class ScheduleService : IScheduleService
         _logger.LogInformation("Configuring media indexers.");
         await SyncIndexerJobsAsync();
         await SyncAutomationJobAsync();
+        await SyncCustomSourceScanJobAsync();
 
         RecurringJob.AddOrUpdate<CleanupJob>(
             "CleanupJob",
             job => job.Execute(),
             Cron.Weekly,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+        
+        RecurringJob.AddOrUpdate<UploadWorkspaceCleanupJob>(
+            "UploadWorkspaceCleanupJob",
+            job => job.Execute(),
+            Cron.Hourly,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
         RecurringJob.AddOrUpdate<StatisticsJob>(
@@ -112,6 +121,26 @@ public class ScheduleService : IScheduleService
         }
 
         RecurringJob.RemoveIfExists("AutomatedTranslationJob");
+    }
+
+    /// <inheritdoc />
+    public async Task SyncCustomSourceScanJobAsync()
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var settingService = scope.ServiceProvider.GetRequiredService<ISettingService>();
+
+        var scanSchedule = await settingService.GetSetting(SettingKeys.Automation.CustomSourceScanSchedule);
+        if (!string.IsNullOrWhiteSpace(scanSchedule))
+        {
+            RecurringJob.AddOrUpdate<CustomSourceScanJob>(
+                "CustomSourceScanJob",
+                job => job.Execute(),
+                scanSchedule,
+                new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+            return;
+        }
+
+        RecurringJob.RemoveIfExists("CustomSourceScanJob");
     }
 
     /// <inheritdoc />

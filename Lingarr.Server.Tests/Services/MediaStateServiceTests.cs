@@ -72,6 +72,62 @@ public class MediaStateServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task HasActiveTranslationRequestAsync_IgnoresUploadRequestsWithCollidingMediaId()
+    {
+        _context.TranslationRequests.Add(new TranslationRequest
+        {
+            Id = 900,
+            MediaId = 77,
+            MediaType = MediaType.Movie,
+            WorkloadKind = TranslationWorkloadKind.Upload,
+            Title = "Upload active",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            Status = TranslationStatus.Pending
+        });
+        await _context.SaveChangesAsync();
+
+        var service = new MediaStateService(
+            _context,
+            _settingServiceMock.Object,
+            _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
+            NullLogger<MediaStateService>.Instance);
+
+        var hasActive = await service.HasActiveTranslationRequestAsync(77, MediaType.Movie);
+
+        Assert.False(hasActive);
+    }
+
+    [Fact]
+    public async Task HasFailedTranslationRequestAsync_IgnoresUploadRequestsWithCollidingMediaId()
+    {
+        _context.TranslationRequests.Add(new TranslationRequest
+        {
+            Id = 901,
+            MediaId = 78,
+            MediaType = MediaType.Movie,
+            WorkloadKind = TranslationWorkloadKind.Upload,
+            Title = "Upload failed",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            Status = TranslationStatus.Failed
+        });
+        await _context.SaveChangesAsync();
+
+        var service = new MediaStateService(
+            _context,
+            _settingServiceMock.Object,
+            _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
+            NullLogger<MediaStateService>.Instance);
+
+        var hasFailed = await service.HasFailedTranslationRequestAsync(78, MediaType.Movie);
+
+        Assert.False(hasFailed);
+    }
+
+    [Fact]
     public async Task ComputeStateAsync_ShouldDetectEmbeddedTargetLanguageSubtitles()
     {
         // Arrange - Movie with embedded English (source) and Dutch (target) subtitles

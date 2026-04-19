@@ -25,4 +25,33 @@ public class SubtitleOutputModeHelperTests
 
         Assert.Equal(expectedFormats, formats.ToArray());
     }
+
+    [Theory]
+    [InlineData("subrip", ".srt")]
+    [InlineData("mov_text", ".srt")]
+    [InlineData("webvtt", ".vtt")]
+    [InlineData("ass", ".ass")]
+    [InlineData("ssa", ".ssa")]
+    public void NormalizeFormat_WithEmbeddedCodecNames_ReturnsExpectedExtension(string input, string expectedFormat)
+    {
+        var normalized = SubtitleOutputModeHelper.NormalizeFormat(input);
+
+        Assert.Equal(expectedFormat, normalized);
+    }
+
+    [Theory]
+    [InlineData("subrip", SubtitleOutputMode.MatchSource, new[] { ".srt" })]
+    [InlineData("mov_text", SubtitleOutputMode.MatchSource, new[] { ".srt" })]
+    [InlineData("webvtt", SubtitleOutputMode.MatchSource, new[] { ".vtt" })]
+    [InlineData("ass", SubtitleOutputMode.Both, new[] { ".ass", ".srt" })]
+    [InlineData("ssa", SubtitleOutputMode.SrtOnly, new[] { ".srt" })]
+    public void GetRequiredOutputFormats_WithEmbeddedCodecNames_ReturnsExpectedFormats(
+        string sourceFormat,
+        SubtitleOutputMode outputMode,
+        string[] expectedFormats)
+    {
+        var formats = SubtitleOutputModeHelper.GetRequiredOutputFormats(sourceFormat, outputMode);
+
+        Assert.Equal(expectedFormats, formats.ToArray());
+    }
 }

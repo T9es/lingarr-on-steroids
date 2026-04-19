@@ -85,6 +85,15 @@
                                             {{ translate('translations.priority') }}
                                         </BadgeComponent>
                                         <BadgeComponent
+                                            classes="border-accent/30 bg-secondary text-xs text-primary-content/80">
+                                            {{ getWorkloadLabel(item.workloadKind) }}
+                                        </BadgeComponent>
+                                        <BadgeComponent
+                                            v-if="getWorkloadSourceLabel(item)"
+                                            classes="border-accent/20 bg-secondary text-xs text-primary-content/70">
+                                            {{ getWorkloadSourceLabel(item) }}
+                                        </BadgeComponent>
+                                        <BadgeComponent
                                             classes="text-primary-content border-accent bg-secondary text-xs">
                                             {{ item.sourceLanguage.toUpperCase() }} →
                                             {{ item.targetLanguage.toUpperCase() }}
@@ -153,6 +162,15 @@
                                             v-if="item.isPriority"
                                             classes="border-accent bg-accent text-xs text-primary-content">
                                             {{ translate('translations.priority') }}
+                                        </BadgeComponent>
+                                        <BadgeComponent
+                                            classes="border-accent/30 bg-secondary text-xs text-primary-content/80">
+                                            {{ getWorkloadLabel(item.workloadKind) }}
+                                        </BadgeComponent>
+                                        <BadgeComponent
+                                            v-if="getWorkloadSourceLabel(item)"
+                                            classes="border-accent/20 bg-secondary text-xs text-primary-content/70">
+                                            {{ getWorkloadSourceLabel(item) }}
                                         </BadgeComponent>
                                     </div>
                                     <div class="mt-1 flex flex-wrap items-center gap-2 text-xs">
@@ -302,6 +320,15 @@
                                             v-if="item.isPriority"
                                             classes="border-accent bg-accent text-xs text-primary-content">
                                             {{ translate('translations.priority') }}
+                                        </BadgeComponent>
+                                        <BadgeComponent
+                                            classes="border-accent/30 bg-secondary text-xs text-primary-content/80">
+                                            {{ getWorkloadLabel(item.workloadKind) }}
+                                        </BadgeComponent>
+                                        <BadgeComponent
+                                            v-if="getWorkloadSourceLabel(item)"
+                                            classes="border-accent/20 bg-secondary text-xs text-primary-content/70">
+                                            {{ getWorkloadSourceLabel(item) }}
                                         </BadgeComponent>
                                     </div>
                                 </div>
@@ -677,5 +704,60 @@ function getLogLevelClass(level: string): string {
         default:
             return 'text-blue-500'
     }
+}
+
+function getWorkloadLabel(workloadKind?: string): string {
+    switch (workloadKind) {
+        case 'CustomSource':
+            return 'Custom Source'
+        case 'Upload':
+            return 'Upload'
+        default:
+            return 'Library'
+    }
+}
+
+function normalizeWorkloadSourceValue(value?: string): string | null {
+    if (!value) {
+        return null
+    }
+
+    const trimmed = value.trim()
+    if (!trimmed) {
+        return null
+    }
+
+    const prefixedValue = /^(upload|custom):(.+)$/i.exec(trimmed)
+    if (!prefixedValue) {
+        return trimmed
+    }
+
+    const strippedValue = prefixedValue[2]?.trim()
+    return strippedValue || null
+}
+
+function getWorkloadSourceLabel(item: ITranslationRequest): string | null {
+    const sourceValue =
+        normalizeWorkloadSourceValue(item.workloadSourceLabel) ||
+        normalizeWorkloadSourceValue(item.workloadItemKey)
+
+    if (!sourceValue) {
+        return null
+    }
+
+    const isUploadSource =
+        item.workloadKind === 'Upload' || /^upload:/i.test(item.workloadItemKey || '')
+    const isCustomSource =
+        item.workloadKind === 'CustomSource' || /^custom:/i.test(item.workloadItemKey || '')
+
+    if (isUploadSource) {
+        return `Batch ${sourceValue}`
+    }
+
+    if (isCustomSource) {
+        return `Source ${sourceValue}`
+    }
+
+    return null
 }
 </script>

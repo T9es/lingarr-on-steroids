@@ -131,4 +131,62 @@ public class SubtitleTranslationServiceTests
         Assert.Equal("{\\an7\\pos(100,200)}To jest bardzo dlugi napis na znaku", currentBatch[0].TranslatedLines[0]);
         Assert.Equal("Wejscie wzbronione", currentBatch[0].TranslatedLines[1]);
     }
+
+    [Fact]
+    public async Task ProcessSubtitleBatch_WhenPreservingAssFormattingAndStripEnabled_UsesTaggedInput()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var loggerMock = new Mock<ILogger>();
+        var batchServiceMock = new Mock<IBatchTranslationService>();
+        List<BatchSubtitleItem>? capturedBatchItems = null;
+
+        batchServiceMock
+            .Setup(s => s.TranslateBatchAsync(
+                It.IsAny<List<BatchSubtitleItem>>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .Callback((List<BatchSubtitleItem> items, string _, string _, List<string>? _, List<string>? _, CancellationToken _) =>
+            {
+                capturedBatchItems = items;
+            })
+            .ReturnsAsync(new Dictionary<int, string>
+            {
+                [1] = "{\\an7\\pos(100,200)}Przetlumaczony tekst\\NWiersz drugi"
+            });
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            loggerMock.Object,
+            Mock.Of<IProgressService>());
+
+        var currentBatch = new List<SubtitleItem>
+        {
+            new()
+            {
+                Position = 1,
+                Lines = ["{\\an7\\pos(100,200)}A very long sign text\\NDo not enter"],
+                PlaintextLines = ["A very long sign text Do not enter"],
+                SsaFormat = new SsaFormat { WrapStyle = SsaWrapStyle.None },
+                SsaDialogue = new SsaDialogue { Style = "Signs" }
+            }
+        };
+
+        await service.ProcessSubtitleBatch(
+            currentBatch,
+            batchServiceMock.Object,
+            sourceLanguage: "en",
+            targetLanguage: "pl",
+            stripSubtitleFormatting: true,
+            preserveAssFormatting: true,
+            cancellationToken: CancellationToken.None);
+
+        Assert.NotNull(capturedBatchItems);
+        Assert.Single(capturedBatchItems!);
+        Assert.Equal("{\\an7\\pos(100,200)}A very long sign text\\NDo not enter", capturedBatchItems![0].Line);
+        Assert.Equal("{\\an7\\pos(100,200)}Przetlumaczony tekst", currentBatch[0].TranslatedLines[0]);
+        Assert.Equal("Wiersz drugi", currentBatch[0].TranslatedLines[1]);
+    }
 }

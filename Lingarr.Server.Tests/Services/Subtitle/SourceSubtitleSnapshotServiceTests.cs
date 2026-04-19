@@ -95,6 +95,59 @@ public class SourceSubtitleSnapshotServiceTests
     }
 
     [Fact]
+    public async Task GetStaleTargetLanguagesAsync_IgnoresCompletedUploadRequestsWithCollidingMediaId()
+    {
+        var dbContext = CreateDbContext();
+        dbContext.TranslationRequests.AddRange(
+            new TranslationRequest
+            {
+                Id = 10,
+                MediaId = 102,
+                Title = "Movie",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                MediaType = MediaType.Movie,
+                WorkloadKind = TranslationWorkloadKind.Library,
+                Status = TranslationStatus.Completed,
+                CompletedAt = DateTime.UtcNow.AddHours(-2),
+                SourceSnapshotVersion = SourceSubtitleSnapshot.CurrentVersion,
+                SourceSnapshotFingerprint = "SAME"
+            },
+            new TranslationRequest
+            {
+                Id = 11,
+                MediaId = 102,
+                Title = "Upload file",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                MediaType = MediaType.Movie,
+                WorkloadKind = TranslationWorkloadKind.Upload,
+                Status = TranslationStatus.Completed,
+                CompletedAt = DateTime.UtcNow.AddHours(-1),
+                SourceSnapshotVersion = SourceSubtitleSnapshot.CurrentVersion,
+                SourceSnapshotFingerprint = "STALE-UPLOAD"
+            });
+        await dbContext.SaveChangesAsync();
+
+        var service = CreateService(dbContext);
+        var currentSnapshot = new SourceSubtitleSnapshot
+        {
+            SourceType = SourceSubtitleSnapshot.ExternalType,
+            SourceLanguage = "en",
+            Identity = "external|en|/movies/movie.en.srt",
+            Fingerprint = "SAME"
+        };
+
+        var stale = await service.GetStaleTargetLanguagesAsync(
+            102,
+            MediaType.Movie,
+            ["pl"],
+            currentSnapshot);
+
+        Assert.Empty(stale);
+    }
+
+    [Fact]
     public async Task ResolveCurrentSnapshotAsync_ShouldIgnoreTemporaryExternalSourceAndUseEmbedded()
     {
         var dbContext = CreateDbContext();

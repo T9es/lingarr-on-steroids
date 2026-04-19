@@ -5,7 +5,11 @@ namespace Lingarr.Core.Entities;
 public class TranslationRequest : BaseEntity
 {
     public string? JobId  { get; set; }
+    public TranslationWorkloadKind WorkloadKind { get; set; } = TranslationWorkloadKind.Library;
+    public string WorkloadItemKey { get; set; } = string.Empty;
     public int? MediaId  { get; set; }
+    public int? CustomMediaItemId { get; set; }
+    public int? UploadBatchFileId { get; set; }
     public required string Title { get; set; }
     public required string SourceLanguage { get; set; }
     public required string TargetLanguage { get; set; }

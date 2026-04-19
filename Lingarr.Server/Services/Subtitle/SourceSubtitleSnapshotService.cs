@@ -244,7 +244,8 @@ public class SourceSubtitleSnapshotService : ISourceSubtitleSnapshotService
 
         var requests = await _dbContext.TranslationRequests
             .AsNoTracking()
-            .Where(tr => tr.MediaId == mediaId
+            .Where(tr => tr.WorkloadKind == TranslationWorkloadKind.Library
+                         && tr.MediaId == mediaId
                          && tr.MediaType == mediaType
                          && tr.Status == TranslationStatus.Completed)
             .OrderByDescending(tr => tr.CompletedAt)

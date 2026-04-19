@@ -43,6 +43,9 @@ interface RecentTranslation {
     targetLanguage: string
     completedAt: string | null
     mediaType: string
+    workloadKind?: string
+    workloadItemKey?: string
+    workloadSourceLabel?: string
 }
 
 interface RecentTranslationRaw {
@@ -58,6 +61,12 @@ interface RecentTranslationRaw {
     CompletedAt?: string | null
     mediaType?: string
     MediaType?: string
+    workloadKind?: string
+    WorkloadKind?: string
+    workloadItemKey?: string
+    WorkloadItemKey?: string
+    workloadSourceLabel?: string
+    WorkloadSourceLabel?: string
 }
 
 interface RecentTranslationsResponseRaw {
@@ -165,7 +174,10 @@ const fetchRecentTranslations = async (reset = false) => {
             sourceLanguage: item.sourceLanguage || item.SourceLanguage || '',
             targetLanguage: item.targetLanguage || item.TargetLanguage || '',
             completedAt: item.completedAt || item.CompletedAt || null,
-            mediaType: item.mediaType || item.MediaType || 'Movie'
+            mediaType: item.mediaType || item.MediaType || 'Movie',
+            workloadKind: item.workloadKind || item.WorkloadKind || 'Library',
+            workloadItemKey: item.workloadItemKey || item.WorkloadItemKey || undefined,
+            workloadSourceLabel: item.workloadSourceLabel || item.WorkloadSourceLabel || undefined
         }))
 
         recentTranslations.value = reset
@@ -548,6 +560,61 @@ const formatRelativeTime = (dateStr: string | null): string => {
     return new Date(dateStr).toLocaleDateString()
 }
 
+const getWorkloadLabel = (workloadKind?: string): string => {
+    switch (workloadKind) {
+        case 'CustomSource':
+            return 'Custom Source'
+        case 'Upload':
+            return 'Upload'
+        default:
+            return 'Library'
+    }
+}
+
+const normalizeWorkloadSourceValue = (value?: string): string | null => {
+    if (!value) {
+        return null
+    }
+
+    const trimmed = value.trim()
+    if (!trimmed) {
+        return null
+    }
+
+    const prefixedValue = /^(upload|custom):(.+)$/i.exec(trimmed)
+    if (!prefixedValue) {
+        return trimmed
+    }
+
+    const strippedValue = prefixedValue[2]?.trim()
+    return strippedValue || null
+}
+
+const getWorkloadSourceLabel = (item: RecentTranslation): string | null => {
+    const sourceValue =
+        normalizeWorkloadSourceValue(item.workloadSourceLabel) ||
+        normalizeWorkloadSourceValue(item.workloadItemKey)
+
+    if (!sourceValue) {
+        return null
+    }
+
+    const isUploadSource =
+        item.workloadKind === 'Upload' || /^upload:/i.test(item.workloadItemKey || '')
+    const isCustomSource =
+        item.workloadKind === 'CustomSource' || /^custom:/i.test(item.workloadItemKey || '')
+
+    if (isUploadSource) {
+        return `Batch ${sourceValue}`
+    }
+
+    if (isCustomSource) {
+        return `Source ${sourceValue}`
+    }
+
+    return null
+}
+
 const timeFilterOptions = [
     { value: '24h', label: '24h' },
     { value: '7d', label: '7 days' },
@@ -690,6 +757,17 @@ const timeFilterOptions = [
                         @click="openCompareModal(item.id)">
                         <div class="text-primary-content truncate text-xs font-medium">
                             {{ item.title }}
+                        </div>
+                        <div class="mt-1">
+                            <span
+                                class="bg-secondary text-primary-content/80 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide">
+                                {{ getWorkloadLabel(item.workloadKind) }}
+                            </span>
+                            <span
+                                v-if="getWorkloadSourceLabel(item)"
+                                class="bg-secondary text-primary-content/70 ml-1 rounded px-1.5 py-0.5 text-[10px] tracking-wide">
+                                {{ getWorkloadSourceLabel(item) }}
+                            </span>
                         </div>
                         <div class="text-primary-content/50 flex items-center gap-1 text-xs">
                             <span>{{ item.sourceLanguage }} → {{ item.targetLanguage }}</span>

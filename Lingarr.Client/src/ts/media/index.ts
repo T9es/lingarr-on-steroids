@@ -54,12 +54,17 @@ export interface ITranslationRequest {
     id: number
     jobId: string
     title: string
+    workloadKind?: TranslationWorkloadKind
+    workloadItemKey?: string
+    workloadSourceLabel?: string
     sourceLanguage: string
     targetLanguage: string
     subtitleToTranslate?: string
     translatedSubtitle?: string
     mediaType: MediaType
     mediaId?: number | null
+    customMediaItemId?: number | null
+    uploadBatchFileId?: number | null
     status: TranslationStatus
     progress: number
     completedAt?: string | null
@@ -129,6 +134,40 @@ export interface IPagedResult<T> {
     pageSize: number
 }
 
+export interface ICustomSource extends IBaseEntity {
+    name: string
+    sourceType: 'MovieRoot' | 'ShowRoot'
+    rootPath: string
+    recursive: boolean
+    enabled: boolean
+    includeInAutomation: boolean
+    lastScannedAt?: string | null
+    lastScanResult?: string | null
+    lastScanError?: string | null
+    items?: ICustomMediaItem[]
+}
+
+export interface ICustomMediaItem extends IBaseEntity {
+    customSourceId: number
+    itemKind: 'Movie' | 'Episode'
+    title: string
+    fileName: string
+    path: string
+    relativePath: string
+    mediaHash?: string | null
+    dateAdded?: string | null
+    translationState?: TranslationStateType
+    indexedAt?: string | null
+    stateSettingsVersion?: number
+    lastSubtitleCheckAt?: string | null
+    excludeFromTranslation: boolean
+    isPriority: boolean
+    priorityDate?: string | null
+    seriesTitle?: string | null
+    seasonNumber?: number | null
+    episodeNumber?: number | null
+}
+
 export const MEDIA_TYPE = {
     MOVIE: 'Movie',
     SHOW: 'Show',
@@ -137,6 +176,15 @@ export const MEDIA_TYPE = {
 } as const
 
 export type MediaType = (typeof MEDIA_TYPE)[keyof typeof MEDIA_TYPE]
+
+export const TRANSLATION_WORKLOAD_KIND = {
+    LIBRARY: 'Library',
+    CUSTOM_SOURCE: 'CustomSource',
+    UPLOAD: 'Upload'
+} as const
+
+export type TranslationWorkloadKind =
+    (typeof TRANSLATION_WORKLOAD_KIND)[keyof typeof TRANSLATION_WORKLOAD_KIND]
 
 export const TRANSLATION_STATUS = {
     PENDING: 'Pending',

@@ -32,6 +32,11 @@ public interface IScheduleService
     Task SyncAutomationJobAsync();
 
     /// <summary>
+    /// Synchronizes recurring custom-source scan job registration with current settings.
+    /// </summary>
+    Task SyncCustomSourceScanJobAsync();
+
+    /// <summary>
     /// Synchronizes recurring indexer job registrations with current settings.
     /// </summary>
     Task SyncIndexerJobsAsync();

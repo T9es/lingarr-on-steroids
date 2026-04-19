@@ -143,6 +143,13 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<IIntegrationService, IntegrationService>();
         builder.Services.AddScoped<IInstanceConfigService, InstanceConfigService>();
         builder.Services.AddScoped<IAutomationService, AutomationService>();
+        builder.Services.AddScoped<ICustomMediaStateService, CustomMediaStateService>();
+        builder.Services.AddScoped<ICustomMediaSubtitleProcessor, CustomMediaSubtitleProcessor>();
+        builder.Services.AddScoped<ICustomSourceScannerService, CustomSourceScannerService>();
+        builder.Services.AddScoped<ICustomSourceService, CustomSourceService>();
+        builder.Services.AddScoped<UploadWorkspaceService>();
+        builder.Services.AddScoped<IUploadWorkspaceService>(sp => sp.GetRequiredService<UploadWorkspaceService>());
+        builder.Services.AddScoped<IUploadWorkspaceCleanupService>(sp => sp.GetRequiredService<UploadWorkspaceService>());
         builder.Services.AddScoped<IMediaService, MediaService>();
         builder.Services.AddScoped<IProgressService, ProgressService>();
         builder.Services.AddScoped<IRadarrService, RadarrService>();

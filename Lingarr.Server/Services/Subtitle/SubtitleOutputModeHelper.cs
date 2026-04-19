@@ -11,6 +11,15 @@ public enum SubtitleOutputMode
 public static class SubtitleOutputModeHelper
 {
     private const string DefaultPlainTextFormat = ".srt";
+    private static readonly IReadOnlyDictionary<string, string> CodecToFormatMap =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["subrip"] = ".srt",
+            ["mov_text"] = ".srt",
+            ["webvtt"] = ".vtt",
+            ["ass"] = ".ass",
+            ["ssa"] = ".ssa"
+        };
 
     public static SubtitleOutputMode Parse(string? value)
     {
@@ -73,7 +82,14 @@ public static class SubtitleOutputModeHelper
         }
 
         var normalized = format.Trim().ToLowerInvariant();
-        return normalized.StartsWith('.') ? normalized : $".{normalized}";
+        if (normalized.StartsWith('.'))
+        {
+            normalized = normalized[1..];
+        }
+
+        return CodecToFormatMap.TryGetValue(normalized, out var mappedFormat)
+            ? mappedFormat
+            : $".{normalized}";
     }
 
     public static string SerializeFormats(IEnumerable<string> formats)

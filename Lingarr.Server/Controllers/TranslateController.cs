@@ -13,6 +13,7 @@ using Lingarr.Server.Models.Api;
 using Lingarr.Server.Models.Batch.Request;
 using Lingarr.Server.Models.Batch.Response;
 using Lingarr.Server.Services;
+using Lingarr.Server.Services.Subtitle;
 
 namespace Lingarr.Server.Controllers;
 
@@ -357,24 +358,51 @@ public class TranslateController : ControllerBase
             }
 
             var sourceLanguage = request.SourceLanguage.ToLowerInvariant();
+            var subtitleOutputMode = await _settings.GetSetting(SettingKeys.Translation.SubtitleOutputMode);
+            var requestedRequiredOutputFormats = NormalizeRequiredOutputFormats(
+                null,
+                selectedSubtitle.CodecName,
+                subtitleOutputMode);
             var translationsQueued = 0;
+            var workloadItemKey = $"library:{mediaType}:{request.MediaId}";
 
             // Queue translations for each target language
             foreach (var targetLanguage in targetLanguages)
             {
-                // Check for existing active request
-                var hasActiveRequest = await _dbContext.TranslationRequests.AnyAsync(tr =>
-                    tr.MediaId == request.MediaId &&
-                    tr.MediaType == mediaType &&
-                    tr.SourceLanguage == sourceLanguage &&
-                    tr.TargetLanguage == targetLanguage &&
-                    (tr.Status == TranslationStatus.Pending || tr.Status == TranslationStatus.InProgress));
+                var activeCandidates = await _dbContext.TranslationRequests
+                    .Where(tr =>
+                        (tr.WorkloadItemKey == workloadItemKey ||
+                         ((tr.WorkloadItemKey == string.Empty || tr.WorkloadItemKey == null) &&
+                          tr.WorkloadKind == TranslationWorkloadKind.Library &&
+                           tr.MediaId == request.MediaId &&
+                           tr.MediaType == mediaType)) &&
+                        tr.SourceLanguage == sourceLanguage &&
+                        tr.TargetLanguage == targetLanguage &&
+                        tr.IsActive == true)
+                    .Select(tr => new
+                    {
+                        tr.RequiredOutputFormats,
+                        tr.SourceSubtitleFormat,
+                        tr.SubtitleOutputMode
+                    })
+                    .ToListAsync();
+
+                var hasActiveRequest = activeCandidates.Any(tr =>
+                    string.Equals(
+                        NormalizeRequiredOutputFormats(
+                            tr.RequiredOutputFormats,
+                            tr.SourceSubtitleFormat,
+                            tr.SubtitleOutputMode),
+                        requestedRequiredOutputFormats,
+                        StringComparison.Ordinal));
 
                 if (hasActiveRequest)
                 {
                     _logger.LogInformation(
-                        "Skipping enqueue for MediaId={MediaId} {Source}->{Target}: translation request already active.",
-                        request.MediaId, sourceLanguage, targetLanguage);
+                        "Skipping enqueue for workload {WorkloadItemKey} {Source}->{Target}: translation request already active.",
+                        workloadItemKey,
+                        sourceLanguage,
+                        targetLanguage);
                     continue;
                 }
 
@@ -537,4 +565,26 @@ public class TranslateController : ControllerBase
 
         return deletedCount;
     }
+
+    private static string NormalizeRequiredOutputFormats(
+        string? requiredOutputFormats,
+        string? sourceSubtitleFormat,
+        string? subtitleOutputMode = null)
+    {
+        if (!string.IsNullOrWhiteSpace(requiredOutputFormats))
+        {
+            var normalized = SubtitleOutputModeHelper.SerializeFormats(
+                SubtitleOutputModeHelper.DeserializeFormats(requiredOutputFormats));
+            if (!string.IsNullOrWhiteSpace(normalized))
+            {
+                return normalized;
+            }
+        }
+
+        return SubtitleOutputModeHelper.SerializeFormats(
+            SubtitleOutputModeHelper.GetRequiredOutputFormats(
+                sourceSubtitleFormat,
+                SubtitleOutputModeHelper.Parse(subtitleOutputMode)));
+    }
+
 }

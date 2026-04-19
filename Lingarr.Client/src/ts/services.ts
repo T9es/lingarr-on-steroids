@@ -1,11 +1,20 @@
 import {
     DirectoryItem,
+    ICustomMediaItem,
+    ICustomSource,
+    ICreateUploadBatchRequest,
     ILanguage,
     ISettings,
     ISubtitle,
-    ITranslationRequestLog,
     ITranslationRequest,
-    MediaType
+    ITranslationRequestLog,
+    IUpdateUploadBatchFileRequest,
+    IUpdateUploadBatchRequest,
+    IUploadArtifact,
+    IUploadBatch,
+    IUploadBatchFile,
+    MediaType,
+    UploadProgressCallback
 } from '@/ts'
 import { IPathMapping } from '@/ts/index'
 
@@ -20,7 +29,9 @@ export interface Services {
     media: IMediaService
     schedule: IScheduleService
     mapping: IMappingService
+    customSources: ICustomSourceService
     directory: IDirectoryService
+    uploadWorkspace: IUploadWorkspaceService
     statistics: IStatisticsService
     logs: ILogsService
     dashboard: IDashboardService
@@ -137,6 +148,44 @@ export interface IMappingService {
 
 export interface IDirectoryService {
     get(path: string): Promise<DirectoryItem[]>
+}
+
+export interface ICustomSourceService {
+    getSources(): Promise<ICustomSource[]>
+    getSource<T>(id: number): Promise<T>
+    createSource<T>(source: Partial<ICustomSource>): Promise<T>
+    updateSource<T>(id: number, source: Partial<ICustomSource>): Promise<T>
+    deleteSource(id: number): Promise<void>
+    getItems(id: number): Promise<ICustomMediaItem[]>
+    rescan(id: number): Promise<void>
+    rescanAll(): Promise<void>
+    setExcluded(itemId: number, excluded: boolean): Promise<void>
+    setPriority(itemId: number, priority: boolean): Promise<void>
+    translate(itemId: number, forceRecreate?: boolean): Promise<{ translationsQueued: number; message: string }>
+}
+
+export interface IUploadWorkspaceService {
+    createBatch(request: ICreateUploadBatchRequest): Promise<IUploadBatch>
+    listBatches(): Promise<IUploadBatch[]>
+    getBatch(batchId: number): Promise<IUploadBatch>
+    updateBatch(batchId: number, request: IUpdateUploadBatchRequest): Promise<IUploadBatch>
+    deleteBatch(batchId: number): Promise<void>
+    uploadFiles(
+        batchId: number,
+        files: File[],
+        onProgress?: UploadProgressCallback
+    ): Promise<IUploadBatch>
+    reprobeFile(batchId: number, fileId: number): Promise<IUploadBatchFile>
+    updateFile(
+        batchId: number,
+        fileId: number,
+        request: IUpdateUploadBatchFileRequest
+    ): Promise<IUploadBatchFile>
+    startBatch<T = number>(batchId: number): Promise<T>
+    cancelBatch<T = boolean>(batchId: number): Promise<T>
+    listArtifacts(batchId: number, fileId?: number): Promise<IUploadArtifact[]>
+    downloadArtifact(artifactId: number): Promise<Blob>
+    deleteArtifact(artifactId: number): Promise<void>
 }
 
 export interface IStatisticsService {

@@ -373,6 +373,7 @@ public class MediaStateService : IMediaStateService
     public async Task<bool> HasActiveTranslationRequestAsync(int mediaId, MediaType mediaType)
     {
         return await _dbContext.TranslationRequests.AnyAsync(tr =>
+            tr.WorkloadKind == TranslationWorkloadKind.Library &&
             tr.MediaId == mediaId &&
             tr.MediaType == mediaType &&
             (tr.Status == TranslationStatus.Pending || tr.Status == TranslationStatus.InProgress));
@@ -382,6 +383,7 @@ public class MediaStateService : IMediaStateService
     public async Task<bool> HasFailedTranslationRequestAsync(int mediaId, MediaType mediaType)
     {
         return await _dbContext.TranslationRequests.AnyAsync(tr =>
+            tr.WorkloadKind == TranslationWorkloadKind.Library &&
             tr.MediaId == mediaId &&
             tr.MediaType == mediaType &&
             tr.Status == TranslationStatus.Failed);

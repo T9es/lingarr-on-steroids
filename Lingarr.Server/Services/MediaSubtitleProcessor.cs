@@ -263,9 +263,25 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                     }
                 }
 
+                var requestedRequiredOutputFormats = await GetRequestedRequiredOutputFormatsAsync(sourceSubtitle.Format);
                 foreach (var targetLanguage in languagesToTranslate)
                 {
-                    if (sourceLanguage == null || await HasActiveRequestAsync(_media.Id, _mediaType, sourceLanguage, targetLanguage))
+                    if (sourceLanguage == null)
+                    {
+                        _logger.LogInformation(
+                            "Skipping enqueue for {FileName} {Source}->{Target}: translation request already active.",
+                            _media.FileName,
+                            sourceLanguage,
+                            targetLanguage);
+                        continue;
+                    }
+
+                    if (await HasActiveRequestAsync(
+                            _media.Id,
+                            _mediaType,
+                            sourceLanguage,
+                            targetLanguage,
+                            requestedRequiredOutputFormats))
                     {
                         _logger.LogInformation(
                             "Skipping enqueue for {FileName} {Source}->{Target}: translation request already active.",
@@ -601,9 +617,15 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                     }
                 }
 
+                var requestedRequiredOutputFormats = await GetRequestedRequiredOutputFormatsAsync(sourceSubtitle.Format);
                 foreach (var targetLanguage in languagesToTranslate)
                 {
-                    if (await HasActiveRequestAsync(media.Id, mediaType, sourceLanguage, targetLanguage))
+                    if (await HasActiveRequestAsync(
+                            media.Id,
+                            mediaType,
+                            sourceLanguage,
+                            targetLanguage,
+                            requestedRequiredOutputFormats))
                     {
                         _logger.LogInformation(
                             "Skipping enqueue for {FileName} {Source}->{Target}: translation request already active.",
@@ -1052,9 +1074,15 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
 
             // Create translation requests for each target language (with empty subtitle path - TranslationJob will extract)
             var translationsQueued = 0;
+            var requestedRequiredOutputFormats = await GetRequestedRequiredOutputFormatsAsync(selectedSubtitle.CodecName);
             foreach (var targetLanguage in languagesToTranslate)
             {
-                if (await HasActiveRequestAsync(media.Id, mediaType, selectedSourceLanguage, targetLanguage))
+                if (await HasActiveRequestAsync(
+                        media.Id,
+                        mediaType,
+                        selectedSourceLanguage,
+                        targetLanguage,
+                        requestedRequiredOutputFormats))
                 {
                     _logger.LogInformation(
                         "Skipping embedded enqueue for {FileName} {Source}->{Target}: translation request already active.",
@@ -1155,13 +1183,62 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         int mediaId,
         MediaType mediaType,
         string sourceLanguage,
-        string targetLanguage)
+        string targetLanguage,
+        string requestedRequiredOutputFormats)
     {
-        return await _dbContext.TranslationRequests.AnyAsync(tr =>
-            tr.MediaId == mediaId &&
-            tr.MediaType == mediaType &&
-            tr.SourceLanguage == sourceLanguage &&
-            tr.TargetLanguage == targetLanguage &&
-            (tr.Status == TranslationStatus.Pending || tr.Status == TranslationStatus.InProgress));
+        var workloadItemKey = $"library:{mediaType}:{mediaId}";
+        var activeCandidates = await _dbContext.TranslationRequests
+            .Where(tr =>
+                (tr.WorkloadItemKey == workloadItemKey ||
+                 ((tr.WorkloadItemKey == string.Empty || tr.WorkloadItemKey == null) &&
+                  tr.WorkloadKind == TranslationWorkloadKind.Library &&
+                   tr.MediaId == mediaId &&
+                   tr.MediaType == mediaType)) &&
+                tr.SourceLanguage == sourceLanguage &&
+                tr.TargetLanguage == targetLanguage &&
+                tr.IsActive == true)
+            .Select(tr => new
+            {
+                tr.RequiredOutputFormats,
+                tr.SourceSubtitleFormat,
+                tr.SubtitleOutputMode
+            })
+            .ToListAsync();
+
+        return activeCandidates.Any(tr =>
+            string.Equals(
+                NormalizeRequiredOutputFormats(
+                    tr.RequiredOutputFormats,
+                    tr.SourceSubtitleFormat,
+                    tr.SubtitleOutputMode),
+                requestedRequiredOutputFormats,
+                StringComparison.Ordinal));
+    }
+
+    private async Task<string> GetRequestedRequiredOutputFormatsAsync(string? sourceSubtitleFormat)
+    {
+        var subtitleOutputMode = await _settingService.GetSetting(SettingKeys.Translation.SubtitleOutputMode);
+        return NormalizeRequiredOutputFormats(null, sourceSubtitleFormat, subtitleOutputMode);
+    }
+
+    private static string NormalizeRequiredOutputFormats(
+        string? requiredOutputFormats,
+        string? sourceSubtitleFormat,
+        string? subtitleOutputMode = null)
+    {
+        if (!string.IsNullOrWhiteSpace(requiredOutputFormats))
+        {
+            var normalized = SubtitleOutputModeHelper.SerializeFormats(
+                SubtitleOutputModeHelper.DeserializeFormats(requiredOutputFormats));
+            if (!string.IsNullOrWhiteSpace(normalized))
+            {
+                return normalized;
+            }
+        }
+
+        return SubtitleOutputModeHelper.SerializeFormats(
+            SubtitleOutputModeHelper.GetRequiredOutputFormats(
+                sourceSubtitleFormat,
+                SubtitleOutputModeHelper.Parse(subtitleOutputMode)));
     }
 }

@@ -40,6 +40,8 @@ import TaskIcon from '@/components/icons/TaskIcon.vue'
 import LanguageIcon from '@/components/icons/LanguageIcon.vue'
 import LogIcon from '@/components/icons/LogIcon.vue'
 import CheckMarkIcon from '@/components/icons/CheckMarkIcon.vue'
+import FoldersIcon from '@/components/icons/FoldersIcon.vue'
+import MediaEmojiIcon from '@/components/icons/MediaEmojiIcon.vue'
 
 const { translate } = useI18n()
 
@@ -72,6 +74,18 @@ const menuItems = computed<MenuItem[]>(() => [
         label: translate('navigation.automation'),
         icon: AutomationIcon,
         route: 'automation-settings',
+        children: []
+    },
+    {
+        label: 'Custom Sources',
+        icon: FoldersIcon,
+        route: 'custom-sources-settings',
+        children: []
+    },
+    {
+        label: 'Upload Workspace',
+        icon: MediaEmojiIcon,
+        route: 'upload-workspace-settings',
         children: []
     },
     { label: translate('navigation.tasks'), icon: TaskIcon, route: 'tasks-settings', children: [] },

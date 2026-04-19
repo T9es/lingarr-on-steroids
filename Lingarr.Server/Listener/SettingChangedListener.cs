@@ -52,6 +52,11 @@ public class SettingChangedListener
                 ])
             },
             {
+                "customSourceSchedule", ("Action", "CustomSourceSchedule", [
+                    SettingKeys.Automation.CustomSourceScanSchedule
+                ])
+            },
+            {
                 "clearHash", ("Action", "ClearHash", [
                     SettingKeys.Translation.SourceLanguages
                 ])
@@ -75,6 +80,11 @@ public class SettingChangedListener
             {
                 "parallelTranslations", ("Action", "ParallelTranslations", [
                     SettingKeys.Translation.MaxParallelTranslations
+                ])
+            },
+            {
+                "uploadReservedWorkerSlots", ("Action", "UploadReservedWorkerSlots", [
+                    SettingKeys.UploadWorkspace.ReservedWorkerSlots
                 ])
             },
             {
@@ -199,6 +209,10 @@ public class SettingChangedListener
                     await _scheduleService.SyncIndexerJobsAsync();
                     break;
 
+                case "CustomSourceSchedule":
+                    await _scheduleService.SyncCustomSourceScanJobAsync();
+                    break;
+
 
 
                 case "BatchTranslation":
@@ -222,6 +236,18 @@ public class SettingChangedListener
                     _logger.LogInformation(
                         "Settings changed for |Green|ParallelTranslations|/Green|. Reconfigured to |Orange|{MaxParallel}|/Orange| concurrent translations.",
                         maxParallel);
+                    break;
+
+                case "UploadReservedWorkerSlots":
+                    var workerServiceForReservedSlots = _serviceProvider.GetRequiredService<ITranslationWorkerService>();
+                    var reservedSlotsSetting = await settingService.GetSetting(SettingKeys.UploadWorkspace.ReservedWorkerSlots);
+                    var reservedSlots = int.TryParse(reservedSlotsSetting, out var reservedVal) && reservedVal >= 0
+                        ? reservedVal
+                        : 0;
+                    await workerServiceForReservedSlots.ReconfigureReservedUploadSlotsAsync(reservedSlots);
+                    _logger.LogInformation(
+                        "Settings changed for |Green|UploadReservedWorkerSlots|/Green|. Reconfigured to |Orange|{ReservedSlots}|/Orange| reserved upload slot(s).",
+                        reservedSlots);
                     break;
                     
                 case "InvalidateTranslationState":

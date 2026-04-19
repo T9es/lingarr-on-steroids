@@ -25,8 +25,10 @@ public class AutomationServiceTests
 
         await using var dbContext = new LingarrDbContext(options);
         var mediaSubtitleProcessorMock = new Mock<IMediaSubtitleProcessor>();
+        var customMediaSubtitleProcessorMock = new Mock<ICustomMediaSubtitleProcessor>();
         var settingServiceMock = new Mock<ISettingService>();
         var mediaStateServiceMock = new Mock<IMediaStateService>();
+        var customMediaStateServiceMock = new Mock<ICustomMediaStateService>();
 
         settingServiceMock
             .Setup(s => s.GetSettings(It.IsAny<IEnumerable<string>>()))
@@ -57,8 +59,10 @@ public class AutomationServiceTests
         var service = new AutomationService(
             dbContext,
             mediaSubtitleProcessorMock.Object,
+            customMediaSubtitleProcessorMock.Object,
             settingServiceMock.Object,
             mediaStateServiceMock.Object,
+            customMediaStateServiceMock.Object,
             NullLogger<AutomationService>.Instance);
 
         var movie = new Movie

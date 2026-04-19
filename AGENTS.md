@@ -272,6 +272,15 @@ Lingarr.sln
 
 ## Agent Instructions
 
+### Collaboration Mode (Orchestrator-First)
+
+When the user explicitly requests orchestrator mode, or when handling major feature work, use this workflow:
+
+1. Main Codex agent acts primarily as an orchestrator, not the primary implementer.
+2. Delegate deep investigation, substantial code changes, and skeptical review loops to **fresh** `gpt-5.3-codex` agents running in high-effort mode.
+3. Main agent remains accountable for coordination: define scope, assign subtasks, integrate results, accommodate concurrent edits from other workers, run required verification, and communicate status/risks clearly.
+4. If a skeptical reviewer reports no issues and the user requested skeptical review depth, spawn a **new independent fresh reviewer** for one more pass before final sign-off.
+
 ### Planning Rules
 
 #### The Rule
