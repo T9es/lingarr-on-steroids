@@ -48,6 +48,7 @@ public class SubtitleTranslationService
         bool stripSubtitleFormatting,
         int contextBefore,
         int contextAfter,
+        bool preserveAssFormatting,
         CancellationToken cancellationToken)
     {
         if (_progressService == null)
@@ -71,9 +72,11 @@ public class SubtitleTranslationService
             var contextLinesBefore = BuildContext(subtitles, index, contextBefore, stripSubtitleFormatting, true);
             var contextLinesAfter = BuildContext(subtitles, index, contextAfter, stripSubtitleFormatting, false);
 
-            var subtitleLine = string.Join(" ", stripSubtitleFormatting ? subtitle.PlaintextLines : subtitle.Lines);
+            var subtitleLine = preserveAssFormatting
+                ? string.Join("\\N", stripSubtitleFormatting ? subtitle.PlaintextLines : subtitle.Lines)
+                : string.Join(" ", stripSubtitleFormatting ? subtitle.PlaintextLines : subtitle.Lines);
             var translated = "";
-            if (subtitleLine != "")
+            if (subtitleLine != "" && !SubtitleFormatterService.IsMeaningless(string.Join(" ", subtitle.PlaintextLines)))
             {
                 translated = await TranslateSubtitleLine(new TranslateAbleSubtitleLine
                     {
@@ -85,8 +88,9 @@ public class SubtitleTranslationService
                     },
                     cancellationToken);
             }
-            // Rebuild lines based on max length
-            subtitle.TranslatedLines = translated.SplitIntoLines(MaxLineLength);
+            subtitle.TranslatedLines = preserveAssFormatting
+                ? SplitPreservedAssLines(translated)
+                : translated.SplitIntoLines(MaxLineLength);
 
             iteration++;
             await EmitProgress(translationRequest, iteration, totalSubtitles);
@@ -149,6 +153,7 @@ public class SubtitleTranslationService
         List<SubtitleItem> subtitles,
         TranslationRequest translationRequest,
         bool stripSubtitleFormatting,
+        bool preserveAssFormatting = false,
         int batchSize = 0,
         string batchRetryMode = "deferred",
         int maxSplitAttempts = 3,
@@ -237,6 +242,7 @@ public class SubtitleTranslationService
                 fileIdentifier,
                 batchIndex + 1,  // 1-indexed batch number
                 totalBatches,
+                preserveAssFormatting,
                 cancellationToken);
             
             // Collect failures for deferred repair
@@ -292,10 +298,12 @@ public class SubtitleTranslationService
                 var subtitle = subtitles.FirstOrDefault(s => s.Position == position);
                 if (subtitle != null)
                 {
-                    var cleaned = stripSubtitleFormatting 
+                    var cleaned = stripSubtitleFormatting && !preserveAssFormatting
                         ? SubtitleFormatterService.RemoveMarkup(translatedText)
                         : translatedText;
-                    subtitle.TranslatedLines = cleaned.SplitIntoLines(MaxLineLength);
+                    subtitle.TranslatedLines = preserveAssFormatting
+                        ? SplitPreservedAssLines(cleaned)
+                        : cleaned.SplitIntoLines(MaxLineLength);
                 }
             }
             
@@ -358,12 +366,15 @@ public class SubtitleTranslationService
         string fileIdentifier = "",
         int batchNumber = 1,
         int totalBatches = 1,
+        bool preserveAssFormatting = false,
         CancellationToken cancellationToken = default)
     {
         var batchItems = currentBatch
             .Select(subtitle =>
             {
-                var line = string.Join(" ", stripSubtitleFormatting ? subtitle.PlaintextLines : subtitle.Lines);
+                var line = preserveAssFormatting
+                    ? string.Join("\\N", stripSubtitleFormatting ? subtitle.PlaintextLines : subtitle.Lines)
+                    : string.Join(" ", stripSubtitleFormatting ? subtitle.PlaintextLines : subtitle.Lines);
                 var plaintextLine = string.Join(" ", subtitle.PlaintextLines);
                 
                 return new 
@@ -445,13 +456,14 @@ public class SubtitleTranslationService
                 // This removes actual newline characters while preserving ASS escape sequences
                 translated = SubtitleFormatterService.NormalizeLineBreaks(translated);
 
-                if (stripSubtitleFormatting)
+                if (stripSubtitleFormatting && !preserveAssFormatting)
                 {
                     translated = SubtitleFormatterService.RemoveMarkup(translated);
                 }
 
-                // Rebuild lines based on max length
-                subtitle.TranslatedLines = translated.SplitIntoLines(MaxLineLength);
+                subtitle.TranslatedLines = preserveAssFormatting
+                    ? SplitPreservedAssLines(translated)
+                    : translated.SplitIntoLines(MaxLineLength);
             }
         }
         
@@ -459,8 +471,13 @@ public class SubtitleTranslationService
         var missingSubtitles = currentBatch
             .Where(s =>
             {
-                var originalText = string.Join(" ",
-                    stripSubtitleFormatting ? s.PlaintextLines : s.Lines);
+                var originalPlaintext = string.Join(" ", s.PlaintextLines);
+                if (SubtitleFormatterService.IsMeaningless(originalPlaintext))
+                {
+                    return false;
+                }
+
+                var originalText = string.Join(" ", stripSubtitleFormatting ? s.PlaintextLines : s.Lines);
 
                 // If there is no meaningful original text, we don't require a translation
                 if (string.IsNullOrWhiteSpace(originalText))
@@ -544,6 +561,14 @@ public class SubtitleTranslationService
         }
         
         return new List<BatchSubtitleItem>(); // No failures
+    }
+
+    private static List<string> SplitPreservedAssLines(string translated)
+    {
+        var normalized = translated.Replace("\\n", "\\N", StringComparison.Ordinal);
+        return normalized
+            .Split("\\N", StringSplitOptions.None)
+            .ToList();
     }
     
     /// <summary>

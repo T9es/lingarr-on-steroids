@@ -42,6 +42,17 @@
 
                 <div class="flex flex-col space-x-2">
                     <span class="font-semibold">
+                        {{ translate('settings.subtitle.outputMode') }}
+                    </span>
+                    {{ translate('settings.subtitle.outputModeDescription') }}
+                </div>
+                <SelectComponent
+                    :selected="subtitleOutputMode"
+                    :options="subtitleOutputModeOptions"
+                    @update:selected="subtitleOutputMode = $event" />
+
+                <div class="flex flex-col space-x-2">
+                    <span class="font-semibold">
                         {{ translate('settings.subtitle.fixOverlappingSubtitles') }}
                     </span>
                     {{ translate('settings.subtitle.fixOverlappingSubtitlesDescription') }}
@@ -190,6 +201,21 @@
                         ⚠️ {{ translate('settings.subtitle.cleanupRequiresTagging') }}
                     </div>
                 </div>
+
+                <div class="border-accent mt-2 flex flex-col space-y-3 border-t pt-4">
+                    <div class="flex flex-col space-x-2">
+                        <span class="font-semibold">
+                            {{ translate('settings.subtitle.recreateAllOutputs') }}
+                        </span>
+                        {{ translate('settings.subtitle.recreateAllOutputsDescription') }}
+                    </div>
+                    <button
+                        class="border-accent bg-secondary hover:bg-accent/20 inline-flex w-fit items-center rounded-md border px-4 py-2 disabled:cursor-not-allowed disabled:opacity-60"
+                        :disabled="isRecreatingAll"
+                        @click="recreateAllOutputs">
+                        {{ translate('settings.subtitle.recreateAllOutputs') }}
+                    </button>
+                </div>
             </div>
         </template>
     </CardComponent>
@@ -200,18 +226,49 @@ import { ref, computed, reactive } from 'vue'
 import { SETTINGS } from '@/ts'
 import { useSettingStore } from '@/store/setting'
 import { useI18n } from '@/plugins/i18n'
+import services from '@/services'
 
 import CardComponent from '@/components/common/CardComponent.vue'
 import SaveNotification from '@/components/common/SaveNotification.vue'
 import ToggleButton from '@/components/common/ToggleButton.vue'
 import InputComponent from '@/components/common/InputComponent.vue'
+import SelectComponent, { ISelectOption } from '@/components/common/SelectComponent.vue'
 
 const { translate } = useI18n()
 const saveNotification = ref<InstanceType<typeof SaveNotification> | null>(null)
 const settingsStore = useSettingStore()
+const isRecreatingAll = ref(false)
 const isValid = reactive({
     subtitleTag: true,
     subtitleTagShort: true
+})
+
+const subtitleOutputModeOptions = computed<ISelectOption[]>(() => [
+    {
+        value: 'match-source',
+        label: translate('settings.subtitle.outputModeMatchSource')
+    },
+    {
+        value: 'ass-only',
+        label: translate('settings.subtitle.outputModeAssOnly')
+    },
+    {
+        value: 'srt-only',
+        label: translate('settings.subtitle.outputModeSrtOnly')
+    },
+    {
+        value: 'both',
+        label: translate('settings.subtitle.outputModeBoth')
+    }
+])
+
+const subtitleOutputMode = computed({
+    get: (): string =>
+        (settingsStore.getSetting(SETTINGS.SUBTITLE_OUTPUT_MODE) as string) ?? 'match-source',
+    set: (newValue: string): void => {
+        settingsStore.updateSetting(SETTINGS.SUBTITLE_OUTPUT_MODE, newValue, true)
+        saveNotification.value?.show()
+    }
 })
 
 const skipWhenTargetEmbedded = computed({
@@ -315,4 +372,19 @@ const cleanSourceAssDrawings = computed({
         saveNotification.value?.show()
     }
 })
+
+const recreateAllOutputs = async () => {
+    if (isRecreatingAll.value) {
+        return
+    }
+
+    isRecreatingAll.value = true
+    try {
+        await services.translate.recreateAllMedia()
+    } catch (error) {
+        console.error('Failed to recreate all outputs:', error)
+    } finally {
+        isRecreatingAll.value = false
+    }
+}
 </script>

@@ -197,6 +197,7 @@ public class TestTranslationService : ITestTranslationService
                     subtitles,
                     translationRequest,
                     stripFormatting,
+                    false,
                     maxSize,
                     batchRetryMode,
                     splitAttempts,
@@ -218,6 +219,7 @@ public class TestTranslationService : ITestTranslationService
                     stripFormatting,
                     0,
                     0,
+                    false,
                     _cancellationTokenSource.Token);
             }
             

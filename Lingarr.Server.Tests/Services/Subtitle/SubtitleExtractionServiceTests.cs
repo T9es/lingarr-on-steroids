@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
@@ -134,6 +135,29 @@ public class SubtitleExtractionServiceTests : IDisposable
         var dbSubtitle = await _dbContext.EmbeddedSubtitles.SingleAsync(es => es.EpisodeId == episode.Id);
         Assert.False(dbSubtitle.IsExtracted);
         Assert.Null(dbSubtitle.ExtractedPath);
+    }
+
+    [Theory]
+    [InlineData("ass", ".ass")]
+    [InlineData("ssa", ".ssa")]
+    [InlineData("subrip", ".srt")]
+    public void GetExtractedSubtitlePath_UsesNativeTextSubtitleExtension(string codecName, string expectedExtension)
+    {
+        var method = typeof(SubtitleExtractionService).GetMethod(
+            "GetExtractedSubtitlePath",
+            BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.NotNull(method);
+
+        var outputPath = Assert.IsType<string>(method!.Invoke(null, [
+            Path.GetTempPath(),
+            "movie.mkv",
+            codecName,
+            "eng",
+            0
+        ]));
+
+        Assert.EndsWith(expectedExtension, outputPath);
     }
 
     public void Dispose()

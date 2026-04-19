@@ -11,6 +11,10 @@ public class TranslationRequest : BaseEntity
     public required string TargetLanguage { get; set; }
     public string? SubtitleToTranslate { get; set; }
     public string? TranslatedSubtitle { get; set; }
+    public string? SourceSubtitleFormat { get; set; }
+    public string? SubtitleOutputMode { get; set; }
+    public string? RequiredOutputFormats { get; set; }
+    public string? GeneratedOutputFormats { get; set; }
     public required MediaType MediaType { get; set; }
     public required TranslationStatus Status { get; set; }
     public bool? IsActive { get; set; }

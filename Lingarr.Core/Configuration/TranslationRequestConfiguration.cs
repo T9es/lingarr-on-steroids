@@ -28,7 +28,7 @@ public class TranslationRequestConfiguration : IEntityTypeConfiguration<Translat
             .HasDatabaseName("IX_TranslationRequests_Status_Priority_Created");
 
         // Composite index for stale source freshness lookups by media + target language.
-        builder.HasIndex(tr => new { tr.MediaId, tr.MediaType, tr.TargetLanguage, tr.Status, tr.CompletedAt })
+        builder.HasIndex(tr => new { tr.MediaId, tr.MediaType, tr.TargetLanguage, tr.RequiredOutputFormats, tr.Status, tr.CompletedAt })
             .HasDatabaseName("IX_TranslationRequests_FreshnessLookup");
 
         builder.Property(tr => tr.SourceSnapshotVersion)

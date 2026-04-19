@@ -104,7 +104,7 @@
                                     " />
                             </div>
                             <div
-                                class="col-span-1 flex items-center justify-center px-4 py-2"
+                                class="col-span-1 flex items-center justify-center gap-2 px-4 py-2"
                                 @click.stop>
                                 <button
                                     class="border-accent hover:bg-accent cursor-pointer rounded border p-1 transition-colors"
@@ -115,6 +115,16 @@
                                         v-if="translatingShows[group.shows[0].id]"
                                         class="h-4 w-4 animate-spin" />
                                     <LanguageIcon v-else class="h-4 w-4" />
+                                </button>
+                                <button
+                                    class="border-accent hover:bg-accent cursor-pointer rounded border p-1 transition-colors"
+                                    :disabled="recreatingShows[group.shows[0].id]"
+                                    :title="translate('common.recreate')"
+                                    @click="recreateShow(group.shows[0])">
+                                    <LoaderCircleIcon
+                                        v-if="recreatingShows[group.shows[0].id]"
+                                        class="h-4 w-4 animate-spin" />
+                                    <ReloadIcon v-else class="h-4 w-4" />
                                 </button>
                             </div>
                             <div class="col-span-1"></div>
@@ -210,7 +220,7 @@
                                             " />
                                     </div>
                                     <div
-                                        class="col-span-1 flex items-center justify-center px-4 py-2"
+                                        class="col-span-1 flex items-center justify-center gap-2 px-4 py-2"
                                         @click.stop>
                                         <button
                                             class="border-accent hover:bg-accent cursor-pointer rounded border p-1 transition-colors"
@@ -221,6 +231,16 @@
                                                 v-if="translatingShows[item.id]"
                                                 class="h-4 w-4 animate-spin" />
                                             <LanguageIcon v-else class="h-4 w-4" />
+                                        </button>
+                                        <button
+                                            class="border-accent hover:bg-accent cursor-pointer rounded border p-1 transition-colors"
+                                            :disabled="recreatingShows[item.id]"
+                                            :title="translate('common.recreate')"
+                                            @click="recreateShow(item)">
+                                            <LoaderCircleIcon
+                                                v-if="recreatingShows[item.id]"
+                                                class="h-4 w-4 animate-spin" />
+                                            <ReloadIcon v-else class="h-4 w-4" />
                                         </button>
                                     </div>
                                     <div class="col-span-1"></div>
@@ -265,6 +285,7 @@ import SeasonTable from '@/components/features/show/SeasonTable.vue'
 import InputComponent from '@/components/common/InputComponent.vue'
 import LanguageIcon from '@/components/icons/LanguageIcon.vue'
 import LoaderCircleIcon from '@/components/icons/LoaderCircleIcon.vue'
+import ReloadIcon from '@/components/icons/ReloadIcon.vue'
 const { translate } = useI18n()
 const instanceStore = useInstanceStore()
 const showStore = useShowStore()
@@ -272,6 +293,7 @@ const settingStore = useSettingStore()
 const expandedShow: Ref<boolean | number | null> = ref(null)
 
 const translatingShows = reactive<Record<number, boolean>>({})
+const recreatingShows = reactive<Record<number, boolean>>({})
 
 // Group management for multi-instance duplicates
 const expandedGroups = ref<Set<string>>(new Set())
@@ -393,6 +415,22 @@ const translateShow = async (show: IShow) => {
         console.error('Failed to translate show:', error)
     } finally {
         translatingShows[show.id] = false
+    }
+}
+
+const recreateShow = async (show: IShow) => {
+    recreatingShows[show.id] = true
+    try {
+        const response = await services.translate.translateMedia<TranslateMediaResponse>(
+            show.id,
+            MEDIA_TYPE.SHOW,
+            true
+        )
+        console.log(response.message)
+    } catch (error) {
+        console.error('Failed to recreate show:', error)
+    } finally {
+        recreatingShows[show.id] = false
     }
 }
 

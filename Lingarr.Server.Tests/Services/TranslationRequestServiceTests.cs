@@ -166,6 +166,42 @@ public class TranslationRequestServiceTests
         mediaStateMock.Verify(m => m.UpdateStateAsync(It.IsAny<Movie>(), MediaType.Movie, true), Times.Once);
     }
 
+    [Fact]
+    public async Task CreateRequest_AllowsSeparateActiveRequestsForDifferentRequiredOutputFormats()
+    {
+        await using var context = BuildContext();
+
+        var movie = new Movie
+        {
+            Id = 60,
+            RadarrId = 60,
+            Title = "Format Aware Movie",
+            FileName = "format-aware.mkv",
+            Path = "/movies",
+            DateAdded = DateTime.UtcNow
+        };
+
+        context.Movies.Add(movie);
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+        var createdAt = DateTime.UtcNow;
+
+        var assRequest = CreateRequest(1, movie.Id, MediaType.Movie, "en", "pl", "/movies/movie.en.ass",
+            TranslationStatus.Pending, createdAt);
+        assRequest.RequiredOutputFormats = ".ass";
+
+        var srtRequest = CreateRequest(2, movie.Id, MediaType.Movie, "en", "pl", "/movies/movie.en.ass",
+            TranslationStatus.Pending, createdAt.AddSeconds(1));
+        srtRequest.RequiredOutputFormats = ".srt";
+
+        var assId = await service.CreateRequest(assRequest);
+        var srtId = await service.CreateRequest(srtRequest);
+
+        Assert.NotEqual(assId, srtId);
+        Assert.Equal(2, await context.TranslationRequests.CountAsync());
+    }
+
     private static LingarrDbContext BuildContext()
     {
         var options = new DbContextOptionsBuilder<LingarrDbContext>()

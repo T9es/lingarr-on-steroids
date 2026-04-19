@@ -78,6 +78,7 @@ public class LingarrDbContext : DbContext
                     tr.MediaType,
                     tr.SourceLanguage,
                     tr.TargetLanguage,
+                    tr.RequiredOutputFormats,
                     tr.IsActive
                 })
                 .IsUnique()

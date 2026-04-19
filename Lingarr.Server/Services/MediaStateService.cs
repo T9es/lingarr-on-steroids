@@ -113,6 +113,12 @@ public class MediaStateService : IMediaStateService
         // 2. Get configured languages
         var sourceLanguages = await GetConfiguredLanguages(SettingKeys.Translation.SourceLanguages);
         var targetLanguages = await GetConfiguredLanguages(SettingKeys.Translation.TargetLanguages);
+        var subtitleOutputMode = SubtitleOutputModeHelper.Parse(
+            await _settingService.GetSetting(SettingKeys.Translation.SubtitleOutputMode));
+        var ignoreCaptions = string.Equals(
+            await _settingService.GetSetting(SettingKeys.Translation.IgnoreCaptions),
+            "true",
+            StringComparison.OrdinalIgnoreCase);
 
         if (sourceLanguages.Count == 0 || targetLanguages.Count == 0)
         {
@@ -166,11 +172,39 @@ public class MediaStateService : IMediaStateService
         }
 
         // 6. Check which targets are satisfied
-        var existingTargetLanguages = externalSubtitles
-            .Select(s => s.Language.ToLowerInvariant())
-            .ToHashSet();
+        var requiredOutputFormats = ResolveRequiredOutputFormats(
+            externalSubtitles,
+            embeddedSubtitles,
+            sourceLanguages,
+            ignoreCaptions,
+            subtitleOutputMode);
 
-        // Also include embedded subtitle languages (same pattern as source check)
+        var existingTargetFormats = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var externalSubtitle in externalSubtitles)
+        {
+            var normalizedLanguage = SubtitleLanguageHelper.NormalizeLanguageCode(externalSubtitle.Language);
+            if (string.IsNullOrWhiteSpace(normalizedLanguage))
+            {
+                continue;
+            }
+
+            var normalizedFormat = SubtitleOutputModeHelper.NormalizeFormat(
+                ResolveSubtitleFormat(externalSubtitle));
+            if (string.IsNullOrWhiteSpace(normalizedFormat))
+            {
+                continue;
+            }
+
+            if (!existingTargetFormats.TryGetValue(normalizedLanguage, out var formats))
+            {
+                formats = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                existingTargetFormats[normalizedLanguage] = formats;
+            }
+
+            formats.Add(normalizedFormat);
+        }
+
         foreach (var embedded in embeddedSubtitles)
         {
             if (embedded.IsTextBased && !string.IsNullOrEmpty(embedded.Language))
@@ -178,13 +212,21 @@ public class MediaStateService : IMediaStateService
                 var normalizedLang = SubtitleLanguageHelper.NormalizeLanguageCode(embedded.Language);
                 if (!string.IsNullOrEmpty(normalizedLang))
                 {
-                    existingTargetLanguages.Add(normalizedLang);
+                    if (!existingTargetFormats.TryGetValue(normalizedLang, out var formats))
+                    {
+                        formats = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                        existingTargetFormats[normalizedLang] = formats;
+                    }
+
+                    formats.Add(MapEmbeddedSubtitleFormat(embedded.CodecName));
                 }
             }
         }
 
         var missingTargets = targetLanguages
-            .Where(t => !existingTargetLanguages.Contains(t))
+            .Where(targetLanguage =>
+                !existingTargetFormats.TryGetValue(targetLanguage, out var formats) ||
+                requiredOutputFormats.Any(requiredFormat => !formats.Contains(requiredFormat)))
             .ToList();
 
         var sourceSnapshot = await _sourceSubtitleSnapshotService.ResolveCurrentSnapshotAsync(
@@ -374,5 +416,68 @@ public class MediaStateService : IMediaStateService
                 .Where(e => e.Id == mediaId)
                 .ExecuteUpdateAsync(s => s.SetProperty(e => e.LastSubtitleCheckAt, now));
         }
+    }
+
+    private static IReadOnlyList<string> ResolveRequiredOutputFormats(
+        IReadOnlyCollection<Subtitles> externalSubtitles,
+        IReadOnlyCollection<EmbeddedSubtitle> embeddedSubtitles,
+        IReadOnlyCollection<string> sourceLanguages,
+        bool ignoreCaptions,
+        SubtitleOutputMode subtitleOutputMode)
+    {
+        var externalSource = externalSubtitles
+            .Where(subtitle => sourceLanguages.Any(sourceLanguage =>
+                SubtitleLanguageHelper.LanguageMatches(subtitle.Language, sourceLanguage)))
+            .OrderBy(subtitle => ignoreCaptions && !string.IsNullOrWhiteSpace(subtitle.Caption))
+            .FirstOrDefault();
+
+        if (externalSource != null)
+        {
+            return SubtitleOutputModeHelper.GetRequiredOutputFormats(
+                ResolveSubtitleFormat(externalSource),
+                subtitleOutputMode);
+        }
+
+        var embeddedSourceCandidates = embeddedSubtitles
+            .Where(subtitle => subtitle.IsTextBased)
+            .ToList();
+
+        var sourceLanguageList = sourceLanguages.ToList();
+        var bestEmbeddedMatch = SubtitleLanguageHelper.FindBestMatch(embeddedSourceCandidates, sourceLanguageList);
+        if (bestEmbeddedMatch.Subtitle != null)
+        {
+            return SubtitleOutputModeHelper.GetRequiredOutputFormats(
+                MapEmbeddedSubtitleFormat(bestEmbeddedMatch.Subtitle.CodecName),
+                subtitleOutputMode);
+        }
+
+        return SubtitleOutputModeHelper.GetRequiredOutputFormats(".srt", subtitleOutputMode);
+    }
+
+    private static string MapEmbeddedSubtitleFormat(string? codecName)
+    {
+        return SubtitleOutputModeHelper.NormalizeFormat(codecName) switch
+        {
+            ".ass" => ".ass",
+            ".ssa" => ".ssa",
+            ".vtt" or ".webvtt" => ".vtt",
+            _ => ".srt"
+        };
+    }
+
+    private static string ResolveSubtitleFormat(Subtitles subtitle)
+    {
+        if (!string.IsNullOrWhiteSpace(subtitle.Format))
+        {
+            return subtitle.Format;
+        }
+
+        var pathFormat = Path.GetExtension(subtitle.Path);
+        if (!string.IsNullOrWhiteSpace(pathFormat))
+        {
+            return pathFormat;
+        }
+
+        return Path.GetExtension(subtitle.FileName);
     }
 }

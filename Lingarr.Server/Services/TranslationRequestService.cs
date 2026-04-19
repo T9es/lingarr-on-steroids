@@ -10,6 +10,7 @@ using Lingarr.Server.Jobs;
 using Lingarr.Server.Models;
 using Lingarr.Server.Models.Batch.Response;
 using Lingarr.Server.Models.FileSystem;
+using Lingarr.Server.Services.Subtitle;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 
@@ -67,6 +68,13 @@ public class TranslationRequestService : ITranslationRequestService
     public async Task<int> CreateRequest(TranslateAbleSubtitle translateAbleSubtitle, bool forcePriority = false)
     {
         var mediaTitle = await FormatMediaTitle(translateAbleSubtitle);
+        var sourceSubtitleFormat = SubtitleOutputModeHelper.NormalizeFormat(
+            translateAbleSubtitle.SubtitleFormat ?? Path.GetExtension(translateAbleSubtitle.SubtitlePath));
+        var subtitleOutputMode = SubtitleOutputModeHelper.Parse(
+            await _settingService.GetSetting(SettingKeys.Translation.SubtitleOutputMode));
+        var requiredOutputFormats = SubtitleOutputModeHelper.SerializeFormats(
+            SubtitleOutputModeHelper.GetRequiredOutputFormats(sourceSubtitleFormat, subtitleOutputMode));
+
         var translationRequest = new TranslationRequest
         {
             MediaId = translateAbleSubtitle.MediaId,
@@ -74,6 +82,9 @@ public class TranslationRequestService : ITranslationRequestService
             SourceLanguage = translateAbleSubtitle.SourceLanguage,
             TargetLanguage = translateAbleSubtitle.TargetLanguage,
             SubtitleToTranslate = translateAbleSubtitle.SubtitlePath,
+            SourceSubtitleFormat = sourceSubtitleFormat,
+            SubtitleOutputMode = subtitleOutputMode.ToSettingValue(),
+            RequiredOutputFormats = requiredOutputFormats,
             MediaType = translateAbleSubtitle.MediaType,
             Status = TranslationStatus.Pending,
             IsActive = true
@@ -90,6 +101,8 @@ public class TranslationRequestService : ITranslationRequestService
 
     public async Task<int> CreateRequest(TranslationRequest translationRequest, bool forcePriority)
     {
+        await PopulateOutputMetadataAsync(translationRequest);
+
         if (!forcePriority)
         {
             var existingId = await _dbContext.TranslationRequests
@@ -98,6 +111,7 @@ public class TranslationRequestService : ITranslationRequestService
                     tr.MediaType == translationRequest.MediaType &&
                     tr.SourceLanguage == translationRequest.SourceLanguage &&
                     tr.TargetLanguage == translationRequest.TargetLanguage &&
+                    tr.RequiredOutputFormats == translationRequest.RequiredOutputFormats &&
                     (tr.Status == TranslationStatus.Pending || tr.Status == TranslationStatus.InProgress))
                 .Select(tr => tr.Id)
                 .FirstOrDefaultAsync();
@@ -126,6 +140,10 @@ public class TranslationRequestService : ITranslationRequestService
             SourceLanguage = translationRequest.SourceLanguage,
             TargetLanguage = translationRequest.TargetLanguage,
             SubtitleToTranslate = translationRequest.SubtitleToTranslate,
+            SourceSubtitleFormat = translationRequest.SourceSubtitleFormat,
+            SubtitleOutputMode = translationRequest.SubtitleOutputMode,
+            RequiredOutputFormats = translationRequest.RequiredOutputFormats,
+            GeneratedOutputFormats = translationRequest.GeneratedOutputFormats,
             MediaType = translationRequest.MediaType,
             Status = TranslationStatus.Pending,
             IsActive = true,
@@ -160,6 +178,7 @@ public class TranslationRequestService : ITranslationRequestService
                     tr.MediaType == translationRequest.MediaType &&
                     tr.SourceLanguage == translationRequest.SourceLanguage &&
                     tr.TargetLanguage == translationRequest.TargetLanguage &&
+                    tr.RequiredOutputFormats == translationRequest.RequiredOutputFormats &&
                     tr.IsActive == true)
                 .Select(tr => tr.Id)
                 .FirstOrDefaultAsync();
@@ -396,19 +415,26 @@ public class TranslationRequestService : ITranslationRequestService
                 .Distinct()
                 .ToList();
 
-            var activeRequestsKeys = new HashSet<(int?, MediaType, string, string)>();
+            var activeRequestsKeys = new HashSet<(int?, MediaType, string, string, string?)>();
             
             if (mediaIds.Any())
             {
                 var activeRequests = await _dbContext.TranslationRequests
                     .Where(tr => (tr.Status == TranslationStatus.Pending || tr.Status == TranslationStatus.InProgress)
                                  && tr.MediaId != null && mediaIds.Contains(tr.MediaId.Value))
-                    .Select(tr => new { tr.MediaId, tr.MediaType, tr.SourceLanguage, tr.TargetLanguage })
+                    .Select(tr => new
+                    {
+                        tr.MediaId,
+                        tr.MediaType,
+                        tr.SourceLanguage,
+                        tr.TargetLanguage,
+                        tr.RequiredOutputFormats
+                    })
                     .ToListAsync();
                 
                 foreach (var r in activeRequests)
                 {
-                    activeRequestsKeys.Add((r.MediaId, r.MediaType, r.SourceLanguage, r.TargetLanguage));
+                    activeRequestsKeys.Add((r.MediaId, r.MediaType, r.SourceLanguage, r.TargetLanguage, r.RequiredOutputFormats));
                 }
             }
 
@@ -418,14 +444,20 @@ public class TranslationRequestService : ITranslationRequestService
                 tr.MediaId,
                 tr.MediaType,
                 tr.SourceLanguage,
-                tr.TargetLanguage
+                tr.TargetLanguage,
+                tr.RequiredOutputFormats
             });
 
             var idsToRetry = new List<int>();
             
             foreach (var group in groups)
             {
-                var key = (group.Key.MediaId, group.Key.MediaType, group.Key.SourceLanguage, group.Key.TargetLanguage);
+                var key = (
+                    group.Key.MediaId,
+                    group.Key.MediaType,
+                    group.Key.SourceLanguage,
+                    group.Key.TargetLanguage,
+                    group.Key.RequiredOutputFormats);
                 
                 // Only retry if no active request exists for this key
                 if (!activeRequestsKeys.Contains(key))
@@ -581,6 +613,7 @@ return totalRetried;
                 tr.MediaType == translationRequest.MediaType &&
                 tr.SourceLanguage == translationRequest.SourceLanguage &&
                 tr.TargetLanguage == translationRequest.TargetLanguage &&
+                tr.RequiredOutputFormats == translationRequest.RequiredOutputFormats &&
                 (tr.Status == TranslationStatus.Pending || tr.Status == TranslationStatus.InProgress));
 
         if (hasActiveRequest)
@@ -727,7 +760,8 @@ return totalRetried;
                      tr.MediaId,
                      tr.MediaType,
                      tr.SourceLanguage,
-                     tr.TargetLanguage
+                     tr.TargetLanguage,
+                     tr.RequiredOutputFormats
                  }))
         {
             if (group.Count() <= 1)
@@ -1460,6 +1494,22 @@ return totalRetried;
             Position = subtitle.Position,
             Line = string.Join(" ", subtitle.TranslatedLines ?? subtitle.Lines)
         }));
+    }
+
+    private async Task PopulateOutputMetadataAsync(TranslationRequest translationRequest)
+    {
+        var sourceSubtitleFormat = SubtitleOutputModeHelper.NormalizeFormat(
+            translationRequest.SourceSubtitleFormat ?? Path.GetExtension(translationRequest.SubtitleToTranslate));
+        var subtitleOutputMode = !string.IsNullOrWhiteSpace(translationRequest.SubtitleOutputMode)
+            ? SubtitleOutputModeHelper.Parse(translationRequest.SubtitleOutputMode)
+            : SubtitleOutputModeHelper.Parse(await _settingService.GetSetting(SettingKeys.Translation.SubtitleOutputMode));
+
+        translationRequest.SourceSubtitleFormat = sourceSubtitleFormat;
+        translationRequest.SubtitleOutputMode = subtitleOutputMode.ToSettingValue();
+        translationRequest.RequiredOutputFormats = SubtitleOutputModeHelper.SerializeFormats(
+            !string.IsNullOrWhiteSpace(translationRequest.RequiredOutputFormats)
+                ? SubtitleOutputModeHelper.DeserializeFormats(translationRequest.RequiredOutputFormats)
+                : SubtitleOutputModeHelper.GetRequiredOutputFormats(sourceSubtitleFormat, subtitleOutputMode));
     }
     
     /// <summary>

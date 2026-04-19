@@ -42,7 +42,7 @@ public interface ISubtitleService
     /// <param name="targetLanguage">The target language code to be added to the file name.</param>
     /// <param name="subtitleTag">Subtitle tag to be added to the file path</param>
     /// <returns>A new file path with the target language code inserted before the .srt extension.</returns>
-    string CreateFilePath(string originalPath, string targetLanguage, string subtitleTag);
+    string CreateFilePath(string originalPath, string targetLanguage, string subtitleTag, string? outputFormat = null);
     
     /// <summary>
     /// Creates a list of potential file paths with fallback options (Full Tag -> Short Tag -> No Tag -> Truncated).
@@ -52,7 +52,12 @@ public interface ISubtitleService
     /// <param name="subtitleTag">The primary subtitle tag.</param>
     /// <param name="subtitleTagShort">The short subtitle tag for fallback.</param>
     /// <returns>A prioritized list of file paths.</returns>
-    System.Collections.Generic.IEnumerable<string> CreateFallbackPaths(string originalPath, string targetLanguage, string subtitleTag, string subtitleTagShort);
+    System.Collections.Generic.IEnumerable<string> CreateFallbackPaths(
+        string originalPath,
+        string targetLanguage,
+        string subtitleTag,
+        string subtitleTagShort,
+        string? outputFormat = null);
     
     /// <summary>
     /// Adjusts subtitle timings to prevent overlaps and ensure optimal duration based on content length.

@@ -816,6 +816,10 @@ namespace Lingarr.Migrations.SQLite.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("failed_at");
 
+                    b.Property<string>("GeneratedOutputFormats")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("generated_output_formats");
+
                     b.Property<bool?>("IsActive")
                         .HasColumnType("INTEGER")
                         .HasColumnName("is_active");
@@ -847,6 +851,10 @@ namespace Lingarr.Migrations.SQLite.Migrations
                     b.Property<int>("Progress")
                         .HasColumnType("INTEGER")
                         .HasColumnName("progress");
+
+                    b.Property<string>("RequiredOutputFormats")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("required_output_formats");
 
                     b.Property<int>("RetryCount")
                         .HasColumnType("INTEGER")
@@ -886,6 +894,7 @@ namespace Lingarr.Migrations.SQLite.Migrations
                         .HasColumnName("source_snapshot_type");
 
                     b.Property<int>("SourceSnapshotVersion")
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER")
                         .HasDefaultValue(1)
                         .HasColumnName("source_snapshot_version");
@@ -893,6 +902,10 @@ namespace Lingarr.Migrations.SQLite.Migrations
                     b.Property<int>("SourceSubtitleEntryCount")
                         .HasColumnType("INTEGER")
                         .HasColumnName("source_subtitle_entry_count");
+
+                    b.Property<string>("SourceSubtitleFormat")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("source_subtitle_format");
 
                     b.Property<string>("SourceSubtitleType")
                         .HasColumnType("TEXT")
@@ -905,6 +918,10 @@ namespace Lingarr.Migrations.SQLite.Migrations
                     b.Property<int>("Status")
                         .HasColumnType("INTEGER")
                         .HasColumnName("status");
+
+                    b.Property<string>("SubtitleOutputMode")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("subtitle_output_mode");
 
                     b.Property<string>("SubtitleToTranslate")
                         .HasColumnType("TEXT")
@@ -949,11 +966,11 @@ namespace Lingarr.Migrations.SQLite.Migrations
                     b.HasIndex("Status", "IsPriority", "CreatedAt")
                         .HasDatabaseName("IX_TranslationRequests_Status_Priority_Created");
 
-                    b.HasIndex("MediaId", "MediaType", "SourceLanguage", "TargetLanguage", "IsActive")
+                    b.HasIndex("MediaId", "MediaType", "SourceLanguage", "TargetLanguage", "RequiredOutputFormats", "IsActive")
                         .IsUnique()
                         .HasDatabaseName("ux_translation_requests_active_dedupe");
 
-                    b.HasIndex("MediaId", "MediaType", "TargetLanguage", "Status", "CompletedAt")
+                    b.HasIndex("MediaId", "MediaType", "TargetLanguage", "RequiredOutputFormats", "Status", "CompletedAt")
                         .HasDatabaseName("IX_TranslationRequests_FreshnessLookup");
 
                     b.ToTable("translation_requests", (string)null);

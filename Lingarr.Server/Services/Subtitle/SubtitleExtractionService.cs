@@ -40,8 +40,8 @@ public class SubtitleExtractionService : ISubtitleExtractionService
     // Map codec names to file extensions
     private static readonly Dictionary<string, string> CodecToExtension = new(StringComparer.OrdinalIgnoreCase)
     {
-        { "ass", ".srt" },
-        { "ssa", ".srt" },
+        { "ass", ".ass" },
+        { "ssa", ".ssa" },
         { "srt", ".srt" },
         { "subrip", ".srt" },
         { "webvtt", ".vtt" },

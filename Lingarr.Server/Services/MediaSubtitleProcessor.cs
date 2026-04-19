@@ -1071,7 +1071,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                     SubtitlePath = null, // Will trigger embedded extraction in TranslationJob
                     TargetLanguage = targetLanguage,
                     SourceLanguage = selectedSourceLanguage,
-                    SubtitleFormat = null
+                    SubtitleFormat = selectedSubtitle.CodecName
                 }, forcePriority);
                 translationsQueued++;
                 _logger.LogInformation(

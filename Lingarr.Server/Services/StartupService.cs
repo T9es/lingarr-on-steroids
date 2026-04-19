@@ -42,6 +42,7 @@ public class StartupService : IHostedService
             { SettingKeys.Translation.SourceLanguages, "[]" },
             { SettingKeys.Translation.TargetLanguages, "[]" },
             { SettingKeys.Translation.FixOverlappingSubtitles, "false" },
+            { SettingKeys.Translation.SubtitleOutputMode, "match-source" },
             { SettingKeys.Translation.StripSubtitleFormatting, "false" },
             { SettingKeys.Translation.AddTranslatorInfo, "false" },
             { SettingKeys.Translation.IgnoreCaptions, "false" },

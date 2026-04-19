@@ -39,17 +39,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, useTemplateRef } from 'vue'
 import InputComponent from '@/components/common/InputComponent.vue'
 import SelectComponent from '@/components/common/SelectComponent.vue'
 import { useSettingStore } from '@/store/setting'
-import { SETTINGS } from '@/ts'
+import { SETTINGS, type SelectComponentExpose } from '@/ts'
 import { useModelOptions } from '@/composables/useModelOptions'
 import { useI18n } from '@/plugins/i18n'
 
 const { translate } = useI18n()
 const settingsStore = useSettingStore()
-const { options, errorMessage, selectRef, loadOptions } = useModelOptions()
+const selectRef = useTemplateRef<SelectComponentExpose>('selectRef')
+const { options, errorMessage, loadOptions } = useModelOptions(selectRef)
 const emit = defineEmits(['save'])
 
 const apiKeyIsValid = ref(false)

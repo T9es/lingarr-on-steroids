@@ -118,6 +118,7 @@ public static class SettingKeys
         public const string MaxBatchSplitAttempts = "max_batch_split_attempts";
         public const string StripAssDrawingCommands = "strip_ass_drawing_commands";
         public const string CleanSourceAssDrawings = "clean_source_ass_drawings";
+        public const string SubtitleOutputMode = "subtitle_output_mode";
         
         /// <summary>
         /// Batch retry mode: "immediate" (split and retry now) or "deferred" (collect failures, repair at end)
