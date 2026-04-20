@@ -242,6 +242,12 @@ public class SourceSubtitleSnapshotService : ISourceSubtitleSnapshotService
             return staleTargets;
         }
 
+        var requiredOutputFormats = await ResolveRequiredOutputFormatsAsync(currentSnapshot, cancellationToken);
+        if (requiredOutputFormats.Count == 0)
+        {
+            return staleTargets;
+        }
+
         var requests = await _dbContext.TranslationRequests
             .AsNoTracking()
             .Where(tr => tr.WorkloadKind == TranslationWorkloadKind.Library
@@ -252,24 +258,35 @@ public class SourceSubtitleSnapshotService : ISourceSubtitleSnapshotService
             .ThenByDescending(tr => tr.Id)
             .ToListAsync(cancellationToken);
 
-        var processedTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var request in requests)
+        foreach (var normalizedTarget in normalizedTargets)
         {
-            var normalizedTarget = SubtitleLanguageHelper.NormalizeLanguageCode(request.TargetLanguage);
-            if (!normalizedTargets.Contains(normalizedTarget, StringComparer.OrdinalIgnoreCase))
+            var remainingFormats = new HashSet<string>(requiredOutputFormats, StringComparer.OrdinalIgnoreCase);
+            foreach (var request in requests)
             {
-                continue;
-            }
+                var requestTarget = SubtitleLanguageHelper.NormalizeLanguageCode(request.TargetLanguage);
+                if (!string.Equals(requestTarget, normalizedTarget, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
 
-            if (processedTargets.Contains(normalizedTarget))
-            {
-                continue;
-            }
+                var coveredFormats = GetRequestCoveredFormats(request);
+                coveredFormats.IntersectWith(remainingFormats);
+                if (coveredFormats.Count == 0)
+                {
+                    continue;
+                }
 
-            processedTargets.Add(normalizedTarget);
-            if (IsRequestStaleForSnapshot(request, currentSnapshot))
-            {
-                staleTargets.Add(normalizedTarget);
+                if (IsRequestStaleForSnapshot(request, currentSnapshot))
+                {
+                    staleTargets.Add(normalizedTarget);
+                    break;
+                }
+
+                remainingFormats.ExceptWith(coveredFormats);
+                if (remainingFormats.Count == 0)
+                {
+                    break;
+                }
             }
         }
 
@@ -344,7 +361,15 @@ public class SourceSubtitleSnapshotService : ISourceSubtitleSnapshotService
             return (null, null);
         }
 
-        var normalizedBySubtitle = subtitles.ToDictionary(
+        var validSubtitles = subtitles
+            .Where(s => !ShouldSkipExternalSourceCandidate(s))
+            .ToList();
+        if (validSubtitles.Count == 0)
+        {
+            return (null, null);
+        }
+
+        var normalizedBySubtitle = validSubtitles.ToDictionary(
             s => s,
             s => SubtitleLanguageHelper.NormalizeLanguageCode(s.Language));
 
@@ -355,7 +380,7 @@ public class SourceSubtitleSnapshotService : ISourceSubtitleSnapshotService
             return (null, null);
         }
 
-        var sourceCandidates = subtitles
+        var sourceCandidates = validSubtitles
             .Where(s => SubtitleLanguageHelper.LanguageMatches(normalizedBySubtitle[s], sourceLanguage))
             .ToList();
         if (sourceCandidates.Count == 0)
@@ -367,20 +392,23 @@ public class SourceSubtitleSnapshotService : ISourceSubtitleSnapshotService
             ? sourceCandidates.FirstOrDefault(s => string.IsNullOrWhiteSpace(s.Caption)) ?? sourceCandidates.First()
             : sourceCandidates.First();
 
-        // Skip temporary helper files used by validation/test paths.
+        return (candidate, sourceLanguage);
+    }
+
+    private static bool ShouldSkipExternalSourceCandidate(Subtitles candidate)
+    {
         var fileName = Path.GetFileName(candidate.Path);
         if (fileName.StartsWith("lingarr_temp_source_", StringComparison.OrdinalIgnoreCase))
         {
-            return (null, null);
+            return true;
         }
 
-        // Skip sparse Lingarr extracted files and prefer embedded fallback.
         try
         {
             var isExtracted = SubtitleExtractionService.IsLingarrExtracted(candidate.Path);
             if (isExtracted && SubtitleExtractionService.IsSparseSubtitle(candidate.Path))
             {
-                return (null, null);
+                return true;
             }
         }
         catch
@@ -388,7 +416,7 @@ public class SourceSubtitleSnapshotService : ISourceSubtitleSnapshotService
             // Non-fatal; if marker parsing fails we keep candidate selection resilient.
         }
 
-        return (candidate, sourceLanguage);
+        return false;
     }
 
     private static string NormalizePath(string path)
@@ -407,6 +435,67 @@ public class SourceSubtitleSnapshotService : ISourceSubtitleSnapshotService
     {
         var input = $"{identity}|{first?.ToString() ?? "null"}|{second?.ToString() ?? "null"}|v{SourceSubtitleSnapshot.CurrentVersion}";
         return ComputeStringFingerprint(input);
+    }
+
+    private async Task<HashSet<string>> ResolveRequiredOutputFormatsAsync(
+        SourceSubtitleSnapshot currentSnapshot,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var subtitleOutputMode = SubtitleOutputModeHelper.Parse(
+            await _settingService.GetSetting(SettingKeys.Translation.SubtitleOutputMode));
+        var sourceFormat = ResolveSourceFormat(currentSnapshot);
+        return SubtitleOutputModeHelper.GetRequiredOutputFormats(sourceFormat, subtitleOutputMode)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static HashSet<string> GetRequestCoveredFormats(TranslationRequest request)
+    {
+        if (!string.IsNullOrWhiteSpace(request.GeneratedOutputFormats))
+        {
+            return SubtitleOutputModeHelper.DeserializeFormats(request.GeneratedOutputFormats)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.RequiredOutputFormats))
+        {
+            return SubtitleOutputModeHelper.DeserializeFormats(request.RequiredOutputFormats)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.TranslatedSubtitle))
+        {
+            return [SubtitleOutputModeHelper.NormalizeFormat(Path.GetExtension(request.TranslatedSubtitle))];
+        }
+
+        var sourceFormat = SubtitleOutputModeHelper.NormalizeFormat(
+            request.SourceSubtitleFormat ?? Path.GetExtension(request.SubtitleToTranslate));
+        var subtitleOutputMode = SubtitleOutputModeHelper.Parse(request.SubtitleOutputMode);
+        return SubtitleOutputModeHelper.GetRequiredOutputFormats(sourceFormat, subtitleOutputMode)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string ResolveSourceFormat(SourceSubtitleSnapshot currentSnapshot)
+    {
+        if (currentSnapshot.SourceType == SourceSubtitleSnapshot.ExternalType)
+        {
+            return SubtitleOutputModeHelper.NormalizeFormat(Path.GetExtension(currentSnapshot.SourcePath));
+        }
+
+        var codecMarker = "|codec:";
+        var markerIndex = currentSnapshot.Identity.IndexOf(codecMarker, StringComparison.OrdinalIgnoreCase);
+        if (markerIndex >= 0)
+        {
+            var codecStart = markerIndex + codecMarker.Length;
+            var codecEnd = currentSnapshot.Identity.IndexOf('|', codecStart);
+            var codec = codecEnd >= 0
+                ? currentSnapshot.Identity[codecStart..codecEnd]
+                : currentSnapshot.Identity[codecStart..];
+            return SubtitleOutputModeHelper.NormalizeFormat(codec);
+        }
+
+        return SubtitleOutputModeHelper.NormalizeFormat(".srt");
     }
 
     private static string ComputeStringFingerprint(string input)

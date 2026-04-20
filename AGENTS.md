@@ -277,9 +277,10 @@ Lingarr.sln
 When the user explicitly requests orchestrator mode, or when handling major feature work, use this workflow:
 
 1. Main Codex agent acts primarily as an orchestrator, not the primary implementer.
-2. Delegate deep investigation, substantial code changes, and skeptical review loops to **fresh** `gpt-5.3-codex` agents running in high-effort mode.
-3. Main agent remains accountable for coordination: define scope, assign subtasks, integrate results, accommodate concurrent edits from other workers, run required verification, and communicate status/risks clearly.
-4. If a skeptical reviewer reports no issues and the user requested skeptical review depth, spawn a **new independent fresh reviewer** for one more pass before final sign-off.
+2. Delegate deep investigation, substantial code changes, and skeptical review loops to `gpt-5.3-codex` agents running in high-effort mode.
+3. Reuse the same skeptical reviewer through the review-fix-review loop until that reviewer explicitly reports the tree clean.
+4. Only after the primary skeptical reviewer reports no remaining issues should a **new independent fresh reviewer** be spawned for one final pass when the user asked for extra review depth.
+5. Main agent remains accountable for coordination: define scope, assign subtasks, integrate results, accommodate concurrent edits from other workers, run required verification, and communicate status/risks clearly.
 
 ### Planning Rules
 

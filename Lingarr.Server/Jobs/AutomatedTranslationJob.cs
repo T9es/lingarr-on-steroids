@@ -78,10 +78,17 @@ public class AutomatedTranslationJob
             var processedCount = 0;
 
             var customWorkItems = customItemsToProcess.Select(item => (
-                Media: (Lingarr.Core.Interfaces.IMedia)item,
-                Type: item.ItemKind == CustomMediaItemKind.Movie ? MediaType.Movie : MediaType.Episode));
+                    Media: (Lingarr.Core.Interfaces.IMedia)item,
+                    Type: item.ItemKind == CustomMediaItemKind.Movie ? MediaType.Movie : MediaType.Episode))
+                .ToList();
+            var preferCustomFirst = await ShouldPreferCustomFirstAsync(
+                mediaToProcess.Count,
+                customWorkItems.Count);
 
-            foreach (var mediaItem in mediaToProcess.Concat(customWorkItems))
+            foreach (var mediaItem in BuildAutomationCandidateSchedule(
+                mediaToProcess,
+                customWorkItems,
+                preferCustomFirst))
             {
                 var media = mediaItem.Media;
                 var mediaType = mediaItem.Type;
@@ -125,6 +132,70 @@ public class AutomatedTranslationJob
             _logger.LogError(ex, "AutomatedTranslationJob failed");
             await _scheduleService.UpdateJobState(jobName, JobStatus.Failed.GetDisplayName());
             throw;
+        }
+    }
+
+    private async Task<bool> ShouldPreferCustomFirstAsync(int libraryCount, int customCount)
+    {
+        if (libraryCount == 0 || customCount == 0)
+        {
+            return false;
+        }
+
+        var cycle = await _settingService.GetSetting(SettingKeys.Automation.TranslationCycle);
+        var preferCustomFirst = string.Equals(cycle, "custom", StringComparison.OrdinalIgnoreCase);
+        var nextCycle = preferCustomFirst ? "library" : "custom";
+        await _settingService.SetSetting(SettingKeys.Automation.TranslationCycle, nextCycle);
+        return preferCustomFirst;
+    }
+
+    private static IEnumerable<(Lingarr.Core.Interfaces.IMedia Media, MediaType Type)> BuildAutomationCandidateSchedule(
+        IReadOnlyList<(Lingarr.Core.Interfaces.IMedia Media, MediaType Type)> libraryItems,
+        IReadOnlyList<(Lingarr.Core.Interfaces.IMedia Media, MediaType Type)> customItems,
+        bool preferCustomFirst)
+    {
+        if (customItems.Count > 0 && libraryItems.Count > 0)
+        {
+            var maxCount = Math.Max(libraryItems.Count, customItems.Count);
+            for (var index = 0; index < maxCount; index++)
+            {
+                if (preferCustomFirst)
+                {
+                    if (index < customItems.Count)
+                    {
+                        yield return customItems[index];
+                    }
+
+                    if (index < libraryItems.Count)
+                    {
+                        yield return libraryItems[index];
+                    }
+                }
+                else
+                {
+                    if (index < libraryItems.Count)
+                    {
+                        yield return libraryItems[index];
+                    }
+
+                    if (index < customItems.Count)
+                    {
+                        yield return customItems[index];
+                    }
+                }
+            }
+
+            yield break;
+        }
+
+        foreach (var libraryItem in libraryItems)
+        {
+            yield return libraryItem;
+        }
+
+        foreach (var customItem in customItems)
+        {
+            yield return customItem;
         }
     }
 }

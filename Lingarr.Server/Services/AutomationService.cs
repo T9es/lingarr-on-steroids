@@ -231,14 +231,21 @@ public class AutomationService : IAutomationService
 
         var currentVersion = await _customMediaStateService.GetSettingsVersionAsync();
         var currentState = item.TranslationState;
+        var isCompleteRecheck = updateRotationTimestamp && currentState == TranslationState.Complete;
         var shouldRefreshState = forceStateRefresh
             || currentState == TranslationState.Stale
             || currentState == TranslationState.Unknown
+            || currentState == TranslationState.Complete
             || item.StateSettingsVersion < currentVersion;
 
         if (shouldRefreshState)
         {
             currentState = await _customMediaStateService.UpdateStateAsync(item);
+        }
+
+        if (isCompleteRecheck && currentState == TranslationState.Complete)
+        {
+            await _customMediaStateService.UpdateLastSubtitleCheckAt(item.Id);
         }
 
         if (!automationEnabled)

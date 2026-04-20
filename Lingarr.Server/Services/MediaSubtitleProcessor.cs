@@ -198,8 +198,15 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
 
             if (sourceSubtitle != null)
             {
-                // Get languages that don't yet exist to validate whether captions in those languages are available
-                var languagesToTranslate = targetLanguages.Except(existingLanguages).ToList();
+                var requestedRequiredOutputFormats =
+                    await GetRequestedRequiredOutputFormatsAsync(sourceSubtitle.Format);
+                var requiredOutputFormats =
+                    SubtitleOutputModeHelper.DeserializeFormats(requestedRequiredOutputFormats);
+                var languagesToTranslate = GetLanguagesMissingRequiredOutputFormats(
+                        subtitles,
+                        targetLanguages,
+                        requiredOutputFormats)
+                    .ToList();
                 
                 // Check integrity of existing target subtitles and add corrupt ones for re-translation
                 var corruptLanguages = new List<string>();
@@ -263,7 +270,6 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                     }
                 }
 
-                var requestedRequiredOutputFormats = await GetRequestedRequiredOutputFormatsAsync(sourceSubtitle.Format);
                 foreach (var targetLanguage in languagesToTranslate)
                 {
                     if (sourceLanguage == null)
@@ -540,10 +546,18 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
 
             if (sourceSubtitle != null)
             {
+                var requestedRequiredOutputFormats =
+                    await GetRequestedRequiredOutputFormatsAsync(sourceSubtitle.Format);
+                var requiredOutputFormats =
+                    SubtitleOutputModeHelper.DeserializeFormats(requestedRequiredOutputFormats);
                 // When forceTranslation is true, translate to all target languages even if they exist
                 var languagesToTranslate = forceTranslation 
                     ? targetLanguages.ToList()
-                    : targetLanguages.Except(existingLanguages).ToList();
+                    : GetLanguagesMissingRequiredOutputFormats(
+                            subtitles,
+                            targetLanguages,
+                            requiredOutputFormats)
+                        .ToList();
                 
                 // Check integrity of existing target subtitles and add corrupt ones for re-translation
                 var foundCorruption = false;
@@ -617,7 +631,6 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                     }
                 }
 
-                var requestedRequiredOutputFormats = await GetRequestedRequiredOutputFormatsAsync(sourceSubtitle.Format);
                 foreach (var targetLanguage in languagesToTranslate)
                 {
                     if (await HasActiveRequestAsync(
@@ -937,7 +950,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         // Check for embedded target language subtitles that should skip translation
         var skipWhenTargetEmbedded = await _settingService.GetSetting(
             SettingKeys.SubtitleValidation.SkipWhenTargetEmbedded) ?? "true";
-        var embeddedTargetLanguages = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var qualifyingEmbeddedTargets = new List<Subtitles>();
         
         if (skipWhenTargetEmbedded.Equals("true", StringComparison.OrdinalIgnoreCase) && !forceTranslation)
         {
@@ -958,9 +971,19 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                         var score = SubtitleLanguageHelper.ScoreSubtitleCandidate(subtitle, targetLanguage);
                         if (score >= 30)
                         {
-                            embeddedTargetLanguages.Add(targetLanguage.ToLowerInvariant());
+                            var embeddedFormat = SubtitleOutputModeHelper.NormalizeFormat(subtitle.CodecName);
+                            if (!string.IsNullOrWhiteSpace(embeddedFormat))
+                            {
+                                qualifyingEmbeddedTargets.Add(new Subtitles
+                                {
+                                    FileName = media.FileName ?? string.Empty,
+                                    Language = targetLanguage,
+                                    Format = embeddedFormat
+                                });
+                            }
+
                             _logger.LogInformation(
-                                "Found embedded target subtitle for {FileName}: Language={Language}, StreamIndex={StreamIndex}, Score={Score}. Skipping translation.",
+                                "Found embedded target subtitle for {FileName}: Language={Language}, StreamIndex={StreamIndex}, Score={Score}. Counting it toward existing target outputs.",
                                 media.FileName,
                                 targetLanguage,
                                 subtitle.StreamIndex,
@@ -980,14 +1003,26 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             }
         }
 
-        // Combine external and embedded target languages to skip
-        var languagesToSkip = new HashSet<string>(existingExternalLanguages, StringComparer.OrdinalIgnoreCase);
-        languagesToSkip.UnionWith(embeddedTargetLanguages);
+        var requestedRequiredOutputFormats =
+            await GetRequestedRequiredOutputFormatsAsync(selectedSubtitle.CodecName);
+        var requiredOutputFormats =
+            SubtitleOutputModeHelper.DeserializeFormats(requestedRequiredOutputFormats);
+        var existingTargetSubtitles = matchingExternalSubtitles
+            .Concat(qualifyingEmbeddedTargets)
+            .ToList();
+        var languagesMissingRequiredFormats = GetLanguagesMissingRequiredOutputFormats(
+            existingTargetSubtitles,
+            targetLanguages,
+            requiredOutputFormats);
 
-        // Determine which languages need translation (missing or corrupt)
+        // Determine which languages need translation (missing or corrupt).
         var languagesToTranslate = forceTranslation
             ? targetLanguages.ToList()
-            : targetLanguages.Except(languagesToSkip).ToList();
+            : targetLanguages
+                .Where(targetLanguage =>
+                    languagesMissingRequiredFormats.Contains(
+                        SubtitleLanguageHelper.NormalizeLanguageCode(targetLanguage)))
+                .ToList();
 
         // For integrity validation (forceTranslation=false), we need to extract temp source and check existing targets
         string? tempSourcePath = null;
@@ -1074,7 +1109,6 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
 
             // Create translation requests for each target language (with empty subtitle path - TranslationJob will extract)
             var translationsQueued = 0;
-            var requestedRequiredOutputFormats = await GetRequestedRequiredOutputFormatsAsync(selectedSubtitle.CodecName);
             foreach (var targetLanguage in languagesToTranslate)
             {
                 if (await HasActiveRequestAsync(
@@ -1219,6 +1253,51 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
     {
         var subtitleOutputMode = await _settingService.GetSetting(SettingKeys.Translation.SubtitleOutputMode);
         return NormalizeRequiredOutputFormats(null, sourceSubtitleFormat, subtitleOutputMode);
+    }
+
+    private static HashSet<string> GetLanguagesMissingRequiredOutputFormats(
+        IEnumerable<Subtitles> subtitles,
+        IEnumerable<string> targetLanguages,
+        IReadOnlyCollection<string> requiredOutputFormats)
+    {
+        var existingTargetFormats =
+            new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var subtitle in subtitles)
+        {
+            var language = SubtitleLanguageHelper.NormalizeLanguageCode(subtitle.Language);
+            if (string.IsNullOrWhiteSpace(language))
+            {
+                continue;
+            }
+
+            var format = SubtitleOutputModeHelper.NormalizeFormat(
+                !string.IsNullOrWhiteSpace(subtitle.Format)
+                    ? subtitle.Format
+                    : !string.IsNullOrWhiteSpace(Path.GetExtension(subtitle.Path))
+                        ? Path.GetExtension(subtitle.Path)
+                        : Path.GetExtension(subtitle.FileName));
+            if (string.IsNullOrWhiteSpace(format))
+            {
+                continue;
+            }
+
+            if (!existingTargetFormats.TryGetValue(language, out var formats))
+            {
+                formats = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                existingTargetFormats[language] = formats;
+            }
+
+            formats.Add(format);
+        }
+
+        return targetLanguages
+            .Select(SubtitleLanguageHelper.NormalizeLanguageCode)
+            .Where(targetLanguage => !string.IsNullOrWhiteSpace(targetLanguage))
+            .Where(targetLanguage =>
+                !existingTargetFormats.TryGetValue(targetLanguage, out var existingFormats) ||
+                requiredOutputFormats.Any(requiredFormat => !existingFormats.Contains(requiredFormat)))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
     private static string NormalizeRequiredOutputFormats(

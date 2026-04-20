@@ -148,6 +148,78 @@ public class SourceSubtitleSnapshotServiceTests
     }
 
     [Fact]
+    public async Task GetStaleTargetLanguagesAsync_ReturnsTarget_WhenRequiredAssOutputIsStaleButSrtIsFresh()
+    {
+        var dbContext = CreateDbContext();
+        dbContext.TranslationRequests.AddRange(
+            new TranslationRequest
+            {
+                Id = 20,
+                MediaId = 103,
+                Title = "Movie",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                MediaType = MediaType.Movie,
+                WorkloadKind = TranslationWorkloadKind.Library,
+                Status = TranslationStatus.Completed,
+                CompletedAt = DateTime.UtcNow.AddHours(-1),
+                SourceSubtitleFormat = ".ass",
+                SubtitleOutputMode = SubtitleOutputMode.SrtOnly.ToSettingValue(),
+                RequiredOutputFormats = ".srt",
+                GeneratedOutputFormats = ".srt",
+                SourceSnapshotVersion = SourceSubtitleSnapshot.CurrentVersion,
+                SourceSnapshotFingerprint = "CURRENT"
+            },
+            new TranslationRequest
+            {
+                Id = 21,
+                MediaId = 103,
+                Title = "Movie",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                MediaType = MediaType.Movie,
+                WorkloadKind = TranslationWorkloadKind.Library,
+                Status = TranslationStatus.Completed,
+                CompletedAt = DateTime.UtcNow.AddHours(-2),
+                SourceSubtitleFormat = ".ass",
+                SubtitleOutputMode = SubtitleOutputMode.AssOnly.ToSettingValue(),
+                RequiredOutputFormats = ".ass",
+                GeneratedOutputFormats = ".ass",
+                SourceSnapshotVersion = SourceSubtitleSnapshot.CurrentVersion,
+                SourceSnapshotFingerprint = "OLD"
+            });
+        await dbContext.SaveChangesAsync();
+
+        var settingServiceMock = new Mock<ISettingService>();
+        var subtitleServiceMock = new Mock<ISubtitleService>();
+        settingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.Translation.SubtitleOutputMode))
+            .ReturnsAsync(SubtitleOutputMode.Both.ToSettingValue());
+
+        var service = new SourceSubtitleSnapshotService(
+            dbContext,
+            settingServiceMock.Object,
+            subtitleServiceMock.Object,
+            NullLogger<SourceSubtitleSnapshotService>.Instance);
+        var currentSnapshot = new SourceSubtitleSnapshot
+        {
+            SourceType = SourceSubtitleSnapshot.ExternalType,
+            SourceLanguage = "en",
+            SourcePath = "/movies/movie.en.ass",
+            Identity = "external|en|/movies/movie.en.ass",
+            Fingerprint = "CURRENT"
+        };
+
+        var stale = await service.GetStaleTargetLanguagesAsync(
+            103,
+            MediaType.Movie,
+            ["pl"],
+            currentSnapshot);
+
+        Assert.Contains("pl", stale);
+    }
+
+    [Fact]
     public async Task ResolveCurrentSnapshotAsync_ShouldIgnoreTemporaryExternalSourceAndUseEmbedded()
     {
         var dbContext = CreateDbContext();
@@ -203,6 +275,65 @@ public class SourceSubtitleSnapshotServiceTests
         Assert.NotNull(snapshot);
         Assert.Equal(SourceSubtitleSnapshot.EmbeddedType, snapshot!.SourceType);
         Assert.Equal(0, snapshot.StreamIndex);
+    }
+
+    [Fact]
+    public async Task ResolveCurrentSnapshotAsync_ShouldSkipTemporaryExternalSourceAndUseNextValidExternalSource()
+    {
+        var dbContext = CreateDbContext();
+        var settingServiceMock = new Mock<ISettingService>();
+        var subtitleServiceMock = new Mock<ISubtitleService>();
+
+        settingServiceMock
+            .Setup(s => s.GetSettingAsJson<SourceLanguage>(SettingKeys.Translation.SourceLanguages))
+            .ReturnsAsync([new SourceLanguage { Name = "English", Code = "en" }]);
+
+        settingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.Translation.IgnoreCaptions))
+            .ReturnsAsync("false");
+
+        var service = new SourceSubtitleSnapshotService(
+            dbContext,
+            settingServiceMock.Object,
+            subtitleServiceMock.Object,
+            NullLogger<SourceSubtitleSnapshotService>.Instance);
+
+        var movie = new Movie
+        {
+            Id = 2,
+            RadarrId = 2,
+            Title = "Movie",
+            Path = "/movies",
+            FileName = "movie.mkv",
+            DateAdded = DateTime.UtcNow
+        };
+
+        var snapshot = await service.ResolveCurrentSnapshotAsync(
+            movie,
+            MediaType.Movie,
+            [],
+            [
+                new Subtitles
+                {
+                    Path = "/movies/lingarr_temp_source_123.en.ass",
+                    FileName = "movie.en",
+                    Language = "en",
+                    Format = ".ass"
+                },
+                new Subtitles
+                {
+                    Path = "/movies/movie.en.ass",
+                    FileName = "movie.en",
+                    Language = "en",
+                    Format = ".ass"
+                }
+            ]);
+
+        Assert.NotNull(snapshot);
+        Assert.Equal(SourceSubtitleSnapshot.ExternalType, snapshot!.SourceType);
+        Assert.EndsWith("movie.en.ass", snapshot.SourcePath, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("movie.en.ass", snapshot.Identity, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("lingarr_temp_source_", snapshot.Identity, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

@@ -6,6 +6,7 @@ using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Models;
 using Lingarr.Server.Models.FileSystem;
+using Lingarr.Server.Models.Subtitle;
 using Lingarr.Server.Services.Subtitle;
 using Microsoft.EntityFrameworkCore;
 
@@ -17,6 +18,7 @@ public class CustomMediaStateService : ICustomMediaStateService
     private readonly ISettingService _settingService;
     private readonly ISubtitleService _subtitleService;
     private readonly ISubtitleExtractionService _subtitleExtractionService;
+    private readonly ISourceSubtitleSnapshotService _sourceSubtitleSnapshotService;
     private readonly ILogger<CustomMediaStateService> _logger;
 
     public CustomMediaStateService(
@@ -24,12 +26,14 @@ public class CustomMediaStateService : ICustomMediaStateService
         ISettingService settingService,
         ISubtitleService subtitleService,
         ISubtitleExtractionService subtitleExtractionService,
+        ISourceSubtitleSnapshotService sourceSubtitleSnapshotService,
         ILogger<CustomMediaStateService> logger)
     {
         _dbContext = dbContext;
         _settingService = settingService;
         _subtitleService = subtitleService;
         _subtitleExtractionService = subtitleExtractionService;
+        _sourceSubtitleSnapshotService = sourceSubtitleSnapshotService;
         _logger = logger;
     }
 
@@ -60,33 +64,57 @@ public class CustomMediaStateService : ICustomMediaStateService
 
     public async Task<List<CustomMediaItem>> GetItemsNeedingTranslationAsync(int limit, bool priorityFirst = true)
     {
+        if (limit <= 0)
+        {
+            return [];
+        }
+
         var currentVersion = await GetSettingsVersionAsync();
-        var query = _dbContext.CustomMediaItems
+        var baseQuery = _dbContext.CustomMediaItems
             .Include(item => item.CustomSource)
             .Where(item => item.CustomSource.Enabled && item.CustomSource.IncludeInAutomation)
-            .Where(item => !item.ExcludeFromTranslation)
-            .Where(item => item.TranslationState == TranslationState.Pending
-                        || item.TranslationState == TranslationState.Stale
-                        || item.TranslationState == TranslationState.Unknown
-                        || item.StateSettingsVersion < currentVersion
-                        || (item.TranslationState == TranslationState.AwaitingSource && item.IndexedAt == null));
+            .Where(item => !item.ExcludeFromTranslation);
+        var actionableItemsQuery = baseQuery.Where(item => item.TranslationState == TranslationState.Pending
+                                                        || item.TranslationState == TranslationState.Stale
+                                                        || item.TranslationState == TranslationState.Unknown
+                                                        || (item.StateSettingsVersion < currentVersion
+                                                            && item.TranslationState != TranslationState.Complete)
+                                                        || (item.TranslationState == TranslationState.AwaitingSource
+                                                            && item.IndexedAt == null));
+        var completedItemsQuery = baseQuery.Where(item => item.TranslationState == TranslationState.Complete);
 
-        if (priorityFirst)
+        CustomMediaItem? reservedCompletedItem = null;
+        if (limit > 1)
         {
-            query = query
-                .OrderByDescending(item => item.IsPriority)
-                .ThenBy(item => item.PriorityDate)
-                .ThenBy(item => item.LastSubtitleCheckAt)
-                .ThenBy(item => item.DateAdded);
-        }
-        else
-        {
-            query = query
-                .OrderBy(item => item.LastSubtitleCheckAt)
-                .ThenBy(item => item.DateAdded);
+            reservedCompletedItem = await ApplyAutomationOrdering(
+                    completedItemsQuery,
+                    priorityFirst)
+                .FirstOrDefaultAsync();
         }
 
-        return await query.Take(limit).ToListAsync();
+        var workItemBudget = limit - (reservedCompletedItem == null ? 0 : 1);
+        var items = await ApplyAutomationOrdering(actionableItemsQuery, priorityFirst)
+            .Take(workItemBudget)
+            .ToListAsync();
+
+        if (reservedCompletedItem != null)
+        {
+            items.Add(reservedCompletedItem);
+        }
+
+        if (items.Count >= limit)
+        {
+            return items;
+        }
+
+        var additionalCompletedItems = await ApplyAutomationOrdering(
+                completedItemsQuery.Where(item => reservedCompletedItem == null || item.Id != reservedCompletedItem.Id),
+                priorityFirst)
+            .Take(limit - items.Count)
+            .ToListAsync();
+
+        items.AddRange(additionalCompletedItems);
+        return items;
     }
 
     public async Task<int> GetSettingsVersionAsync()
@@ -115,6 +143,10 @@ public class CustomMediaStateService : ICustomMediaStateService
             await _settingService.GetSetting(SettingKeys.Translation.SubtitleOutputMode));
         var ignoreCaptions = string.Equals(
             await _settingService.GetSetting(SettingKeys.Translation.IgnoreCaptions),
+            "true",
+            StringComparison.OrdinalIgnoreCase);
+        var skipWhenTargetEmbedded = string.Equals(
+            await _settingService.GetSetting(SettingKeys.SubtitleValidation.SkipWhenTargetEmbedded) ?? "true",
             "true",
             StringComparison.OrdinalIgnoreCase);
 
@@ -165,8 +197,11 @@ public class CustomMediaStateService : ICustomMediaStateService
             _logger.LogDebug(ex, "Failed to probe embedded subtitles for custom item {ItemId}", item.Id);
         }
 
-        var hasExternalSource = externalSubtitles.Any(subtitle =>
-            sourceLanguages.Any(sourceLanguage => SubtitleLanguageHelper.LanguageMatches(subtitle.Language, sourceLanguage)));
+        var hasExternalSource = externalSubtitles
+            .Where(subtitle => !ShouldSkipExternalSourceCandidate(subtitle))
+            .Any(subtitle =>
+                sourceLanguages.Any(sourceLanguage =>
+                    SubtitleLanguageHelper.LanguageMatches(subtitle.Language, sourceLanguage)));
         var hasEmbeddedSource = embeddedSubtitles.Any(subtitle =>
             subtitle.IsTextBased &&
             !string.IsNullOrWhiteSpace(subtitle.Language) &&
@@ -183,7 +218,16 @@ public class CustomMediaStateService : ICustomMediaStateService
             sourceLanguages,
             ignoreCaptions,
             subtitleOutputMode);
-        var existingTargetFormats = BuildExistingTargetFormats(externalSubtitles, embeddedSubtitles);
+        var sourceSnapshot = await _sourceSubtitleSnapshotService.ResolveCurrentSnapshotAsync(
+            item,
+            item.ItemKind == CustomMediaItemKind.Movie ? MediaType.Movie : MediaType.Episode,
+            embeddedSubtitles,
+            externalSubtitles);
+        var existingTargetFormats = BuildExistingTargetFormats(
+            externalSubtitles,
+            embeddedSubtitles,
+            targetLanguages,
+            skipWhenTargetEmbedded);
 
         var missingTargets = targetLanguages
             .Where(targetLanguage =>
@@ -193,6 +237,16 @@ public class CustomMediaStateService : ICustomMediaStateService
 
         if (missingTargets.Count == 0)
         {
+            var staleTargets = await GetStaleTargetLanguagesAsync(
+                item.Id,
+                targetLanguages,
+                sourceSnapshot,
+                requiredOutputFormats);
+            if (staleTargets.Count > 0)
+            {
+                return TranslationState.Stale;
+            }
+
             return TranslationState.Complete;
         }
 
@@ -230,9 +284,77 @@ public class CustomMediaStateService : ICustomMediaStateService
             request.Status == TranslationStatus.Failed);
     }
 
+    private async Task<HashSet<string>> GetStaleTargetLanguagesAsync(
+        int customMediaItemId,
+        IEnumerable<string> targetLanguages,
+        SourceSubtitleSnapshot? currentSnapshot,
+        IReadOnlyCollection<string> requiredOutputFormats)
+    {
+        var staleTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (currentSnapshot == null || requiredOutputFormats.Count == 0)
+        {
+            return staleTargets;
+        }
+
+        var normalizedTargets = targetLanguages
+            .Select(SubtitleLanguageHelper.NormalizeLanguageCode)
+            .Where(language => !string.IsNullOrWhiteSpace(language))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (normalizedTargets.Count == 0)
+        {
+            return staleTargets;
+        }
+
+        var requests = await _dbContext.TranslationRequests
+            .AsNoTracking()
+            .Where(request => request.WorkloadKind == TranslationWorkloadKind.CustomSource
+                              && request.CustomMediaItemId == customMediaItemId
+                              && request.Status == TranslationStatus.Completed)
+            .OrderByDescending(request => request.CompletedAt)
+            .ThenByDescending(request => request.Id)
+            .ToListAsync();
+
+        foreach (var normalizedTarget in normalizedTargets)
+        {
+            var remainingFormats = new HashSet<string>(requiredOutputFormats, StringComparer.OrdinalIgnoreCase);
+            foreach (var request in requests)
+            {
+                var requestTarget = SubtitleLanguageHelper.NormalizeLanguageCode(request.TargetLanguage);
+                if (!string.Equals(requestTarget, normalizedTarget, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var coveredFormats = GetRequestCoveredFormats(request);
+                coveredFormats.IntersectWith(remainingFormats);
+                if (coveredFormats.Count == 0)
+                {
+                    continue;
+                }
+
+                if (_sourceSubtitleSnapshotService.IsRequestStaleForSnapshot(request, currentSnapshot))
+                {
+                    staleTargets.Add(normalizedTarget);
+                    break;
+                }
+
+                remainingFormats.ExceptWith(coveredFormats);
+                if (remainingFormats.Count == 0)
+                {
+                    break;
+                }
+            }
+        }
+
+        return staleTargets;
+    }
+
     private static IReadOnlyDictionary<string, HashSet<string>> BuildExistingTargetFormats(
         IReadOnlyCollection<Subtitles> externalSubtitles,
-        IReadOnlyCollection<EmbeddedSubtitle> embeddedSubtitles)
+        IReadOnlyCollection<EmbeddedSubtitle> embeddedSubtitles,
+        IReadOnlyCollection<string> targetLanguages,
+        bool includeEmbeddedTargets)
     {
         var result = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
 
@@ -253,6 +375,11 @@ public class CustomMediaStateService : ICustomMediaStateService
             formats.Add(ResolveSubtitleFormat(externalSubtitle));
         }
 
+        if (!includeEmbeddedTargets)
+        {
+            return result;
+        }
+
         foreach (var embeddedSubtitle in embeddedSubtitles)
         {
             if (!embeddedSubtitle.IsTextBased || string.IsNullOrWhiteSpace(embeddedSubtitle.Language))
@@ -260,19 +387,33 @@ public class CustomMediaStateService : ICustomMediaStateService
                 continue;
             }
 
-            var normalizedLanguage = SubtitleLanguageHelper.NormalizeLanguageCode(embeddedSubtitle.Language);
-            if (string.IsNullOrWhiteSpace(normalizedLanguage))
+            foreach (var targetLanguage in targetLanguages)
             {
-                continue;
-            }
+                if (!SubtitleLanguageHelper.LanguageMatches(embeddedSubtitle.Language, targetLanguage))
+                {
+                    continue;
+                }
 
-            if (!result.TryGetValue(normalizedLanguage, out var formats))
-            {
-                formats = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                result[normalizedLanguage] = formats;
-            }
+                if (SubtitleLanguageHelper.ScoreSubtitleCandidate(embeddedSubtitle, targetLanguage) < 30)
+                {
+                    break;
+                }
 
-            formats.Add(MapEmbeddedSubtitleFormat(embeddedSubtitle.CodecName));
+                var normalizedLanguage = SubtitleLanguageHelper.NormalizeLanguageCode(targetLanguage);
+                if (string.IsNullOrWhiteSpace(normalizedLanguage))
+                {
+                    break;
+                }
+
+                if (!result.TryGetValue(normalizedLanguage, out var formats))
+                {
+                    formats = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    result[normalizedLanguage] = formats;
+                }
+
+                formats.Add(MapEmbeddedSubtitleFormat(embeddedSubtitle.CodecName));
+                break;
+            }
         }
 
         return result;
@@ -286,6 +427,7 @@ public class CustomMediaStateService : ICustomMediaStateService
         SubtitleOutputMode subtitleOutputMode)
     {
         var externalSource = externalSubtitles
+            .Where(subtitle => !ShouldSkipExternalSourceCandidate(subtitle))
             .Where(subtitle => sourceLanguages.Any(sourceLanguage =>
                 SubtitleLanguageHelper.LanguageMatches(subtitle.Language, sourceLanguage)))
             .OrderBy(subtitle => ignoreCaptions && !string.IsNullOrWhiteSpace(subtitle.Caption))
@@ -340,5 +482,68 @@ public class CustomMediaStateService : ICustomMediaStateService
             ".vtt" or ".webvtt" => ".vtt",
             _ => ".srt"
         };
+    }
+
+    private static HashSet<string> GetRequestCoveredFormats(TranslationRequest request)
+    {
+        if (!string.IsNullOrWhiteSpace(request.GeneratedOutputFormats))
+        {
+            return SubtitleOutputModeHelper.DeserializeFormats(request.GeneratedOutputFormats)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.RequiredOutputFormats))
+        {
+            return SubtitleOutputModeHelper.DeserializeFormats(request.RequiredOutputFormats)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.TranslatedSubtitle))
+        {
+            return [SubtitleOutputModeHelper.NormalizeFormat(Path.GetExtension(request.TranslatedSubtitle))];
+        }
+
+        var sourceFormat = SubtitleOutputModeHelper.NormalizeFormat(
+            request.SourceSubtitleFormat ?? Path.GetExtension(request.SubtitleToTranslate));
+        var subtitleOutputMode = SubtitleOutputModeHelper.Parse(request.SubtitleOutputMode);
+        return SubtitleOutputModeHelper.GetRequiredOutputFormats(sourceFormat, subtitleOutputMode)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static bool ShouldSkipExternalSourceCandidate(Subtitles candidate)
+    {
+        var fileName = Path.GetFileName(candidate.Path);
+        if (fileName.StartsWith("lingarr_temp_source_", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        try
+        {
+            return SubtitleExtractionService.IsLingarrExtracted(candidate.Path)
+                && SubtitleExtractionService.IsSparseSubtitle(candidate.Path);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static IOrderedQueryable<CustomMediaItem> ApplyAutomationOrdering(
+        IQueryable<CustomMediaItem> query,
+        bool priorityFirst)
+    {
+        if (priorityFirst)
+        {
+            return query
+                .OrderByDescending(item => item.IsPriority)
+                .ThenBy(item => item.PriorityDate)
+                .ThenBy(item => item.LastSubtitleCheckAt)
+                .ThenBy(item => item.DateAdded);
+        }
+
+        return query
+            .OrderBy(item => item.LastSubtitleCheckAt)
+            .ThenBy(item => item.DateAdded);
     }
 }

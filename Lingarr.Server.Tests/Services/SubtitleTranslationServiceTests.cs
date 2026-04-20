@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using Lingarr.Core.Entities;
 using Lingarr.Server.Exceptions;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Translation;
@@ -188,5 +189,55 @@ public class SubtitleTranslationServiceTests
         Assert.Equal("{\\an7\\pos(100,200)}A very long sign text\\NDo not enter", capturedBatchItems![0].Line);
         Assert.Equal("{\\an7\\pos(100,200)}Przetlumaczony tekst", currentBatch[0].TranslatedLines[0]);
         Assert.Equal("Wiersz drugi", currentBatch[0].TranslatedLines[1]);
+    }
+
+    [Fact]
+    public async Task TranslateSubtitles_WhenPreservingAssFormattingAndLineIsMeaningless_KeepsOriginalTaggedLine()
+    {
+        var translationServiceMock = new Mock<ITranslationService>(MockBehavior.Strict);
+        var loggerMock = new Mock<ILogger>();
+        var progressServiceMock = new Mock<IProgressService>();
+
+        progressServiceMock
+            .Setup(s => s.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            loggerMock.Object,
+            progressServiceMock.Object);
+
+        var translationRequest = new TranslationRequest
+        {
+            Id = 1,
+            Title = "Episode",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaType = Core.Enum.MediaType.Show,
+            Status = Core.Enum.TranslationStatus.Pending
+        };
+
+        var subtitles = new List<SubtitleItem>
+        {
+            new()
+            {
+                Position = 1,
+                Lines = ["{\\an7\\pos(100,200)}z"],
+                PlaintextLines = ["z"]
+            }
+        };
+
+        var result = await service.TranslateSubtitles(
+            subtitles,
+            translationRequest,
+            stripSubtitleFormatting: false,
+            contextBefore: 0,
+            contextAfter: 0,
+            preserveAssFormatting: true,
+            cancellationToken: CancellationToken.None);
+
+        Assert.Single(result[0].TranslatedLines);
+        Assert.Equal("{\\an7\\pos(100,200)}z", result[0].TranslatedLines[0]);
+        translationServiceMock.VerifyNoOtherCalls();
     }
 }

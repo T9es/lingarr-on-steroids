@@ -76,7 +76,7 @@ public class SubtitleTranslationService
             var subtitleLine = preserveAssFormatting
                 ? string.Join("\\N", usePlaintextInput ? subtitle.PlaintextLines : subtitle.Lines)
                 : string.Join(" ", usePlaintextInput ? subtitle.PlaintextLines : subtitle.Lines);
-            var translated = "";
+            var translated = subtitleLine;
             if (subtitleLine != "" && !SubtitleFormatterService.IsMeaningless(string.Join(" ", subtitle.PlaintextLines)))
             {
                 translated = await TranslateSubtitleLine(new TranslateAbleSubtitleLine

@@ -91,7 +91,9 @@ public class SettingChangedListener
                 "languageSettings", ("Action", "InvalidateTranslationState", [
                     SettingKeys.Translation.SourceLanguages,
                     SettingKeys.Translation.TargetLanguages,
-                    SettingKeys.Translation.IgnoreCaptions
+                    SettingKeys.Translation.IgnoreCaptions,
+                    SettingKeys.Translation.SubtitleOutputMode,
+                    SettingKeys.SubtitleValidation.SkipWhenTargetEmbedded
                 ])
             }
         };
