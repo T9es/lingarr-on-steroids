@@ -246,4 +246,40 @@ public class SubtitleLanguageHelperTests
         Assert.Equal("ja", result.MatchedLanguage);
         Assert.Equal(1, result.Subtitle?.StreamIndex);
     }
+
+    [Theory]
+    [InlineData("Movie.en.srt", "en")]
+    [InlineData("Movie.eng.ass", "en")]
+    [InlineData("Show.S01E01.[pl].vtt", "pl")]
+    [InlineData("Episode_ja.ssa", "ja")]
+    [InlineData("Film.pt-BR.srt", "pt")]
+    public void DetectLanguageFromFileName_ShouldRecognizeSupportedPatterns(string fileName, string expectedLanguage)
+    {
+        var detectedLanguage = SubtitleLanguageHelper.DetectLanguageFromFileName(fileName);
+
+        Assert.Equal(expectedLanguage, detectedLanguage);
+    }
+
+    [Theory]
+    [InlineData("queen.srt")]
+    [InlineData("plane.ass")]
+    [InlineData("Movie.ass.srt")]
+    [InlineData("Movie.sub.srt")]
+    [InlineData("railgun-e01-60s.embedded.ass")]
+    public void DetectLanguageFromFileName_ShouldAvoidFalsePositives(string fileName)
+    {
+        var detectedLanguage = SubtitleLanguageHelper.DetectLanguageFromFileName(fileName);
+
+        Assert.Null(detectedLanguage);
+    }
+
+    [Fact]
+    public void DetectLanguageFromFileName_ShouldRespectConfiguredLanguages()
+    {
+        var detectedLanguage = SubtitleLanguageHelper.DetectLanguageFromFileName(
+            "Movie.de.srt",
+            ["en", "pl"]);
+
+        Assert.Null(detectedLanguage);
+    }
 }

@@ -11,6 +11,7 @@ using Lingarr.Core.Enum;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Models.FileSystem;
+using Lingarr.Server.Models;
 using Lingarr.Server.Models.UploadWorkspace;
 using Lingarr.Server.Services;
 using Microsoft.AspNetCore.Http;
@@ -655,6 +656,392 @@ public class UploadWorkspaceServiceTests
             if (Directory.Exists(outsideRoot))
             {
                 Directory.Delete(outsideRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task UpdateBatchAsync_MarksSubtitleAsNeedsConfiguration_WhenTargetMatchesSourceLanguage()
+    {
+        await using var context = BuildContext();
+
+        var batch = new UploadBatch
+        {
+            Name = "Upload Batch",
+            TargetLanguage = "pl",
+            StoragePath = "/uploads/batch-7",
+            Status = UploadBatchStatus.Ready
+        };
+
+        var uploadFile = new UploadBatchFile
+        {
+            UploadBatch = batch,
+            UploadBatchId = batch.Id,
+            FileKind = UploadBatchFileKind.Subtitle,
+            Status = UploadBatchFileStatus.Ready,
+            Title = "Episode 01",
+            OriginalFileName = "Episode.01.en.srt",
+            StoredPath = "/uploads/batch-7/originals/Episode.01.en.srt",
+            RelativeStoredPath = "originals/Episode.01.en.srt",
+            FileSizeBytes = 1024,
+            SelectedSourceLanguage = "en"
+        };
+
+        batch.Files.Add(uploadFile);
+        context.UploadBatches.Add(batch);
+        await context.SaveChangesAsync();
+
+        var service = new UploadWorkspaceService(
+            context,
+            Mock.Of<ISettingService>(),
+            Mock.Of<ISubtitleService>(),
+            Mock.Of<ISubtitleExtractionService>(),
+            new Lazy<ITranslationRequestService>(() => Mock.Of<ITranslationRequestService>()),
+            NullLogger<UploadWorkspaceService>.Instance);
+
+        var updatedBatch = await service.UpdateBatchAsync(batch.Id, new UpdateUploadBatchRequest
+        {
+            Name = batch.Name,
+            TargetLanguage = "en",
+            DefaultRemuxEnabled = false
+        });
+
+        var updatedFile = Assert.Single(updatedBatch!.Files);
+        Assert.Equal(UploadBatchFileStatus.NeedsConfiguration, updatedFile.Status);
+        Assert.Equal(
+            "Source language cannot match the batch target language. Choose a different source language.",
+            updatedFile.ProbeError);
+    }
+
+    [Fact]
+    public async Task ReprobeFileAsync_UsesConfiguredSourceLanguagePriority_ForEmbeddedStreams()
+    {
+        await using var context = BuildContext();
+
+        var settingServiceMock = new Mock<ISettingService>();
+        settingServiceMock
+            .Setup(service => service.GetSettingAsJson<SourceLanguage>(SettingKeys.Translation.SourceLanguages))
+            .ReturnsAsync(
+            [
+                new SourceLanguage { Name = "English", Code = "en", Targets = [] },
+                new SourceLanguage { Name = "Japanese", Code = "ja", Targets = [] }
+            ]);
+
+        var extractionServiceMock = new Mock<ISubtitleExtractionService>();
+        extractionServiceMock
+            .Setup(service => service.ProbeEmbeddedSubtitles(It.IsAny<string>()))
+            .ReturnsAsync(
+            [
+                new EmbeddedSubtitle
+                {
+                    StreamIndex = 1,
+                    Language = "eng",
+                    Title = "Signs & Songs",
+                    CodecName = "ass",
+                    IsTextBased = true,
+                    IsForced = false,
+                    IsDefault = false
+                },
+                new EmbeddedSubtitle
+                {
+                    StreamIndex = 2,
+                    Language = "jpn",
+                    Title = "Full",
+                    CodecName = "ass",
+                    IsTextBased = true,
+                    IsForced = false,
+                    IsDefault = false
+                }
+            ]);
+
+        var batch = new UploadBatch
+        {
+            Name = "Upload Batch",
+            TargetLanguage = "pl",
+            StoragePath = "/uploads/batch-8",
+            Status = UploadBatchStatus.Ready
+        };
+
+        var uploadFile = new UploadBatchFile
+        {
+            UploadBatch = batch,
+            UploadBatchId = batch.Id,
+            FileKind = UploadBatchFileKind.Media,
+            Status = UploadBatchFileStatus.Uploaded,
+            Title = "Episode 01",
+            OriginalFileName = "Episode.01.mkv",
+            StoredPath = "/uploads/batch-8/originals/Episode.01.mkv",
+            RelativeStoredPath = "originals/Episode.01.mkv",
+            FileSizeBytes = 2048
+        };
+
+        batch.Files.Add(uploadFile);
+        context.UploadBatches.Add(batch);
+        await context.SaveChangesAsync();
+
+        var service = new UploadWorkspaceService(
+            context,
+            settingServiceMock.Object,
+            Mock.Of<ISubtitleService>(),
+            extractionServiceMock.Object,
+            new Lazy<ITranslationRequestService>(() => Mock.Of<ITranslationRequestService>()),
+            NullLogger<UploadWorkspaceService>.Instance);
+
+        var reprobedFile = await service.ReprobeFileAsync(batch.Id, uploadFile.Id);
+
+        Assert.NotNull(reprobedFile);
+        Assert.Equal("ja", reprobedFile!.SelectedSourceLanguage);
+        Assert.Equal(2, reprobedFile.SelectedEmbeddedStreamIndex);
+        Assert.Equal(UploadBatchFileStatus.Ready, reprobedFile.Status);
+    }
+
+    [Fact]
+    public async Task CreateChunkSessionAsync_CompleteChunkSessionAsync_UsesFilenameFallbackForAssUploads()
+    {
+        await using var context = BuildContext();
+
+        var workspaceRoot = Path.Combine(Path.GetTempPath(), $"lingarr-upload-root-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(workspaceRoot);
+
+        try
+        {
+            var settingServiceMock = new Mock<ISettingService>();
+            settingServiceMock
+                .Setup(service => service.GetSetting(SettingKeys.UploadWorkspace.StorageRoot))
+                .ReturnsAsync(workspaceRoot);
+            settingServiceMock
+                .Setup(service => service.GetSetting(SettingKeys.UploadWorkspace.RetentionDays))
+                .ReturnsAsync("7");
+            settingServiceMock
+                .Setup(service => service.GetSetting(SettingKeys.UploadWorkspace.MaxBatchSize))
+                .ReturnsAsync("100");
+            settingServiceMock
+                .Setup(service => service.GetSetting(SettingKeys.UploadWorkspace.MaxFileSizeBytes))
+                .ReturnsAsync((20L * 1024 * 1024).ToString());
+            settingServiceMock
+                .Setup(service => service.GetSettingAsJson<SourceLanguage>(SettingKeys.Translation.SourceLanguages))
+                .ReturnsAsync([new SourceLanguage { Name = "English", Code = "en", Targets = [] }]);
+
+            var subtitleServiceMock = new Mock<ISubtitleService>();
+            subtitleServiceMock
+                .Setup(service => service.GetAllSubtitles(It.IsAny<string>()))
+                .ReturnsAsync([]);
+
+            var service = new UploadWorkspaceService(
+                context,
+                settingServiceMock.Object,
+                subtitleServiceMock.Object,
+                Mock.Of<ISubtitleExtractionService>(),
+                new Lazy<ITranslationRequestService>(() => Mock.Of<ITranslationRequestService>()),
+                NullLogger<UploadWorkspaceService>.Instance);
+
+            var batch = await service.CreateBatchAsync(new CreateUploadBatchRequest
+            {
+                Name = "Chunked Batch",
+                TargetLanguage = "pl"
+            });
+
+            var payload = new byte[11 * 1024 * 1024];
+            new Random(1234).NextBytes(payload);
+
+            var session = await service.CreateChunkSessionAsync(batch.Id, new CreateUploadChunkSessionRequest
+            {
+                FileName = "Movie.en.ass",
+                FileSizeBytes = payload.Length,
+                ContentType = "text/x-ssa",
+                LastModifiedUtc = DateTime.UtcNow
+            });
+
+            Assert.NotNull(session);
+            Assert.Equal(8 * 1024 * 1024, session!.ChunkSizeBytes);
+            Assert.Equal(2, session.ExpectedChunks);
+
+            await using var firstChunk = new MemoryStream(payload, 0, session.ChunkSizeBytes, writable: false);
+            var secondChunkLength = payload.Length - session.ChunkSizeBytes;
+            await using var secondChunk = new MemoryStream(payload, session.ChunkSizeBytes, secondChunkLength, writable: false);
+
+            await service.UploadChunkAsync(batch.Id, session.UploadId, 0, firstChunk, firstChunk.Length);
+            await service.UploadChunkAsync(batch.Id, session.UploadId, 1, secondChunk, secondChunk.Length);
+
+            var completedBatch = await service.CompleteChunkSessionAsync(batch.Id, session.UploadId);
+            var uploadedFile = Assert.Single(completedBatch!.Files);
+
+            Assert.Equal(UploadBatchFileKind.Subtitle, uploadedFile.FileKind);
+            Assert.Equal("en", uploadedFile.DetectedSourceLanguage);
+            Assert.Equal("en", uploadedFile.SelectedSourceLanguage);
+            Assert.Equal(UploadBatchFileStatus.Ready, uploadedFile.Status);
+            Assert.True(File.Exists(uploadedFile.StoredPath));
+        }
+        finally
+        {
+            if (Directory.Exists(workspaceRoot))
+            {
+                Directory.Delete(workspaceRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task UploadChunkAsync_RejectsWhenCumulativeChunksExceedDeclaredFileSize()
+    {
+        await using var context = BuildContext();
+
+        var workspaceRoot = Path.Combine(Path.GetTempPath(), $"lingarr-upload-root-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(workspaceRoot);
+
+        try
+        {
+            var settingServiceMock = new Mock<ISettingService>();
+            settingServiceMock
+                .Setup(service => service.GetSetting(SettingKeys.UploadWorkspace.StorageRoot))
+                .ReturnsAsync(workspaceRoot);
+            settingServiceMock
+                .Setup(service => service.GetSetting(SettingKeys.UploadWorkspace.RetentionDays))
+                .ReturnsAsync("7");
+            settingServiceMock
+                .Setup(service => service.GetSetting(SettingKeys.UploadWorkspace.MaxBatchSize))
+                .ReturnsAsync("100");
+            settingServiceMock
+                .Setup(service => service.GetSetting(SettingKeys.UploadWorkspace.MaxFileSizeBytes))
+                .ReturnsAsync((20L * 1024 * 1024).ToString());
+            settingServiceMock
+                .Setup(service => service.GetSettingAsJson<SourceLanguage>(SettingKeys.Translation.SourceLanguages))
+                .ReturnsAsync([new SourceLanguage { Name = "English", Code = "en", Targets = [] }]);
+
+            var subtitleServiceMock = new Mock<ISubtitleService>();
+            subtitleServiceMock
+                .Setup(service => service.GetAllSubtitles(It.IsAny<string>()))
+                .ReturnsAsync([]);
+
+            var service = new UploadWorkspaceService(
+                context,
+                settingServiceMock.Object,
+                subtitleServiceMock.Object,
+                Mock.Of<ISubtitleExtractionService>(),
+                new Lazy<ITranslationRequestService>(() => Mock.Of<ITranslationRequestService>()),
+                NullLogger<UploadWorkspaceService>.Instance);
+
+            var batch = await service.CreateBatchAsync(new CreateUploadBatchRequest
+            {
+                Name = "Oversized Chunk Batch",
+                TargetLanguage = "pl"
+            });
+
+            var session = await service.CreateChunkSessionAsync(batch.Id, new CreateUploadChunkSessionRequest
+            {
+                FileName = "Movie.en.ass",
+                FileSizeBytes = 128,
+                ContentType = "text/x-ssa",
+                LastModifiedUtc = DateTime.UtcNow
+            });
+
+            await using var firstChunk = new MemoryStream(new byte[96], writable: false);
+            await service.UploadChunkAsync(batch.Id, session!.UploadId, 0, firstChunk, firstChunk.Length);
+
+            await using var oversizedChunk = new MemoryStream(new byte[64], writable: false);
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.UploadChunkAsync(batch.Id, session.UploadId, 1, oversizedChunk, oversizedChunk.Length));
+
+            Assert.Contains("expected file size", exception.Message, StringComparison.OrdinalIgnoreCase);
+
+            var rejectedChunkPath = Path.Combine(
+                batch.StoragePath,
+                "incoming",
+                session.UploadId.ToString("D"),
+                "chunk-000001.part");
+            Assert.False(File.Exists(rejectedChunkPath));
+        }
+        finally
+        {
+            if (Directory.Exists(workspaceRoot))
+            {
+                Directory.Delete(workspaceRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task CompleteChunkSessionAsync_RejectsWhenBatchAlreadyReachedMaxSize()
+    {
+        await using var context = BuildContext();
+
+        var workspaceRoot = Path.Combine(Path.GetTempPath(), $"lingarr-upload-root-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(workspaceRoot);
+
+        try
+        {
+            var settingServiceMock = new Mock<ISettingService>();
+            settingServiceMock
+                .Setup(service => service.GetSetting(SettingKeys.UploadWorkspace.StorageRoot))
+                .ReturnsAsync(workspaceRoot);
+            settingServiceMock
+                .Setup(service => service.GetSetting(SettingKeys.UploadWorkspace.RetentionDays))
+                .ReturnsAsync("7");
+            settingServiceMock
+                .Setup(service => service.GetSetting(SettingKeys.UploadWorkspace.MaxBatchSize))
+                .ReturnsAsync("1");
+            settingServiceMock
+                .Setup(service => service.GetSetting(SettingKeys.UploadWorkspace.MaxFileSizeBytes))
+                .ReturnsAsync((20L * 1024 * 1024).ToString());
+            settingServiceMock
+                .Setup(service => service.GetSettingAsJson<SourceLanguage>(SettingKeys.Translation.SourceLanguages))
+                .ReturnsAsync([new SourceLanguage { Name = "English", Code = "en", Targets = [] }]);
+
+            var subtitleServiceMock = new Mock<ISubtitleService>();
+            subtitleServiceMock
+                .Setup(service => service.GetAllSubtitles(It.IsAny<string>()))
+                .ReturnsAsync([]);
+
+            var service = new UploadWorkspaceService(
+                context,
+                settingServiceMock.Object,
+                subtitleServiceMock.Object,
+                Mock.Of<ISubtitleExtractionService>(),
+                new Lazy<ITranslationRequestService>(() => Mock.Of<ITranslationRequestService>()),
+                NullLogger<UploadWorkspaceService>.Instance);
+
+            var batch = await service.CreateBatchAsync(new CreateUploadBatchRequest
+            {
+                Name = "Chunk Limit Batch",
+                TargetLanguage = "pl"
+            });
+
+            var session = await service.CreateChunkSessionAsync(batch.Id, new CreateUploadChunkSessionRequest
+            {
+                FileName = "Movie.en.ass",
+                FileSizeBytes = 128,
+                ContentType = "text/x-ssa",
+                LastModifiedUtc = DateTime.UtcNow
+            });
+
+            context.UploadBatchFiles.Add(new UploadBatchFile
+            {
+                UploadBatchId = batch.Id,
+                UploadBatch = batch,
+                FileKind = UploadBatchFileKind.Subtitle,
+                Status = UploadBatchFileStatus.Uploaded,
+                Title = "Existing",
+                OriginalFileName = "Existing.en.srt",
+                StoredPath = Path.Combine(batch.StoragePath, "originals", "Existing.en.srt"),
+                RelativeStoredPath = Path.Combine("originals", "Existing.en.srt"),
+                FileSizeBytes = 64,
+                SelectedSourceLanguage = "en"
+            });
+            await context.SaveChangesAsync();
+
+            await using var chunk = new MemoryStream(new byte[128], writable: false);
+            await service.UploadChunkAsync(batch.Id, session!.UploadId, 0, chunk, chunk.Length);
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CompleteChunkSessionAsync(batch.Id, session.UploadId));
+
+            Assert.Contains("configured batch-size limit", exception.Message, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            if (Directory.Exists(workspaceRoot))
+            {
+                Directory.Delete(workspaceRoot, recursive: true);
             }
         }
     }

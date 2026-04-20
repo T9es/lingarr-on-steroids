@@ -77,13 +77,13 @@ const menuItems = computed<MenuItem[]>(() => [
         children: []
     },
     {
-        label: 'Custom Sources',
+        label: translate('navigation.customSources'),
         icon: FoldersIcon,
         route: 'custom-sources-settings',
         children: []
     },
     {
-        label: 'Upload Workspace',
+        label: translate('navigation.uploadWorkspace'),
         icon: MediaEmojiIcon,
         route: 'upload-workspace-settings',
         children: []

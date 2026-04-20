@@ -11,6 +11,8 @@
     "subtitle": "Untertitel",
     "integrity": "Integrität",
     "automation": "Automatisierung",
+    "customSources": "Benutzerdefinierte Quellen",
+    "uploadWorkspace": "Upload-Arbeitsbereich",
     "tasks": "Aufgaben",
     "logs": "Protokolle",
     "help": "Hilfe",

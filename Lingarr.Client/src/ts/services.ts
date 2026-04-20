@@ -3,11 +3,14 @@ import {
     ICustomMediaItem,
     ICustomSource,
     ICreateUploadBatchRequest,
+    ICreateUploadChunkSessionRequest,
+    ICreateUploadChunkSessionResponse,
     ILanguage,
     ISettings,
     ISubtitle,
     ITranslationRequest,
     ITranslationRequestLog,
+    IUploadChunkResponse,
     IUpdateUploadBatchFileRequest,
     IUpdateUploadBatchRequest,
     IUploadArtifact,
@@ -170,6 +173,19 @@ export interface IUploadWorkspaceService {
     getBatch(batchId: number): Promise<IUploadBatch>
     updateBatch(batchId: number, request: IUpdateUploadBatchRequest): Promise<IUploadBatch>
     deleteBatch(batchId: number): Promise<void>
+    createChunkSession(
+        batchId: number,
+        request: ICreateUploadChunkSessionRequest
+    ): Promise<ICreateUploadChunkSessionResponse>
+    uploadChunk(
+        batchId: number,
+        uploadId: string,
+        chunkIndex: number,
+        blob: Blob,
+        onProgress?: UploadProgressCallback
+    ): Promise<IUploadChunkResponse>
+    completeChunkSession(batchId: number, uploadId: string): Promise<IUploadBatch>
+    cancelChunkSession(batchId: number, uploadId: string): Promise<void>
     uploadFiles(
         batchId: number,
         files: File[],

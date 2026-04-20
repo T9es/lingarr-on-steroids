@@ -12,6 +12,8 @@ namespace Lingarr.Server.Controllers;
 [Route("api/[controller]")]
 public class UploadWorkspaceController : ControllerBase
 {
+    private const long MaxChunkUploadBytes = 16L * 1024 * 1024;
+
     private readonly IUploadWorkspaceService _uploadWorkspaceService;
 
     public UploadWorkspaceController(IUploadWorkspaceService uploadWorkspaceService)
@@ -81,6 +83,77 @@ public class UploadWorkspaceController : ControllerBase
         {
             return BadRequest(ex.Message);
         }
+    }
+
+    [HttpPost("batches/{batchId:int}/files/chunked")]
+    public async Task<ActionResult<UploadChunkSessionResponse>> CreateChunkSession(
+        int batchId,
+        [FromBody] CreateUploadChunkSessionRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var session = await _uploadWorkspaceService.CreateChunkSessionAsync(batchId, request, cancellationToken);
+            return session == null ? NotFound() : Ok(session);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    [HttpPut("batches/{batchId:int}/files/chunked/{uploadId:guid}/chunks/{chunkIndex:int}")]
+    [Consumes("application/octet-stream")]
+    [RequestSizeLimit(MaxChunkUploadBytes)]
+    public async Task<ActionResult<UploadChunkResponse>> UploadChunk(
+        int batchId,
+        Guid uploadId,
+        int chunkIndex,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _uploadWorkspaceService.UploadChunkAsync(
+                batchId,
+                uploadId,
+                chunkIndex,
+                Request.Body,
+                Request.ContentLength,
+                cancellationToken);
+            return response == null ? NotFound() : Ok(response);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    [HttpPost("batches/{batchId:int}/files/chunked/{uploadId:guid}/complete")]
+    public async Task<ActionResult<UploadBatchResponse>> CompleteChunkSession(
+        int batchId,
+        Guid uploadId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var batch = await _uploadWorkspaceService.CompleteChunkSessionAsync(batchId, uploadId, cancellationToken);
+            return batch == null ? NotFound() : Ok(ToResponse(batch));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    [HttpDelete("batches/{batchId:int}/files/chunked/{uploadId:guid}")]
+    public async Task<IActionResult> CancelChunkSession(
+        int batchId,
+        Guid uploadId,
+        CancellationToken cancellationToken)
+    {
+        return await _uploadWorkspaceService.CancelChunkSessionAsync(batchId, uploadId, cancellationToken)
+            ? Ok()
+            : NotFound();
     }
 
     [HttpPost("batches/{batchId:int}/files/{fileId:int}/reprobe")]

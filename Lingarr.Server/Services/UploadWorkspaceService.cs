@@ -1,4 +1,6 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Text.Json;
 using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
@@ -17,6 +19,19 @@ public class UploadWorkspaceService : IUploadWorkspaceService, IUploadWorkspaceC
 {
     private static readonly string[] SubtitleExtensions = [".srt", ".ass", ".ssa", ".vtt"];
     private static readonly string[] MediaExtensions = [".mkv", ".mp4", ".avi", ".m4v", ".webm", ".mov", ".wmv"];
+    private const int DefaultChunkSizeBytes = 8 * 1024 * 1024;
+    private const int MaxChunkSizeBytes = 16 * 1024 * 1024;
+    private const int ChunkFileBufferSize = 81920;
+    private const string SourceLanguageMatchesTargetMessage =
+        "Source language cannot match the batch target language. Choose a different source language.";
+    private static readonly JsonSerializerOptions ManifestSerializerOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = true
+    };
+    private static readonly ConcurrentDictionary<int, RefCountedSemaphore> BatchIngestionLocks = new();
+    private static readonly ConcurrentDictionary<Guid, RefCountedSemaphore> ChunkSessionLocks = new();
+    private static readonly object CachedLockGate = new();
     private static readonly StringComparison PathComparison =
         OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
@@ -96,9 +111,9 @@ public class UploadWorkspaceService : IUploadWorkspaceService, IUploadWorkspaceC
         UpdateUploadBatchRequest request,
         CancellationToken cancellationToken = default)
     {
-        var batch = await _dbContext.UploadBatches.FirstOrDefaultAsync(
-            item => item.Id == batchId,
-            cancellationToken);
+        var batch = await _dbContext.UploadBatches
+            .Include(item => item.Files)
+            .FirstOrDefaultAsync(item => item.Id == batchId, cancellationToken);
         if (batch == null)
         {
             return null;
@@ -109,14 +124,24 @@ public class UploadWorkspaceService : IUploadWorkspaceService, IUploadWorkspaceC
             ?? throw new InvalidOperationException("Target language is required.");
         batch.DefaultRemuxEnabled = request.DefaultRemuxEnabled;
 
-        foreach (var file in await _dbContext.UploadBatchFiles
-                     .Where(item => item.UploadBatchId == batchId && item.FileKind == UploadBatchFileKind.Media)
-                     .ToListAsync(cancellationToken))
+        foreach (var file in batch.Files)
         {
-            if (file.Status is UploadBatchFileStatus.Uploaded or UploadBatchFileStatus.NeedsConfiguration or UploadBatchFileStatus.Ready)
+            if (file.FileKind == UploadBatchFileKind.Media &&
+                file.Status is (UploadBatchFileStatus.Uploaded or
+                    UploadBatchFileStatus.NeedsConfiguration or
+                    UploadBatchFileStatus.Ready or
+                    UploadBatchFileStatus.Failed or
+                    UploadBatchFileStatus.Cancelled))
             {
                 file.EmbedTranslatedSubtitle = request.DefaultRemuxEnabled;
             }
+
+            if (file.Status is UploadBatchFileStatus.Queued or UploadBatchFileStatus.Processing or UploadBatchFileStatus.Completed)
+            {
+                continue;
+            }
+
+            UpdateFileStatusForConfiguration(file, batch.TargetLanguage);
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -133,6 +158,11 @@ public class UploadWorkspaceService : IUploadWorkspaceService, IUploadWorkspaceC
         {
             throw new InvalidOperationException("At least one file is required.");
         }
+
+        using var batchIngestionLock = await AcquireCachedLockAsync(
+            BatchIngestionLocks,
+            batchId,
+            cancellationToken);
 
         var batch = await _dbContext.UploadBatches
             .Include(item => item.Files)
@@ -151,14 +181,11 @@ public class UploadWorkspaceService : IUploadWorkspaceService, IUploadWorkspaceC
         EnsureBatchDirectories(batch.StoragePath);
 
         var originalsDirectory = GetOriginalsDirectory(batch.StoragePath);
-        var newFiles = new List<UploadBatchFile>();
 
         foreach (var formFile in files)
         {
             var sanitizedOriginalFileName = SanitizeFileName(formFile.FileName);
-            var extension = Path.GetExtension(sanitizedOriginalFileName).ToLowerInvariant();
             var reservedFile = ReserveUniqueFile(originalsDirectory, sanitizedOriginalFileName);
-            var safeName = reservedFile.FileName;
             var destinationPath = reservedFile.FullPath;
 
             await using (reservedFile.Stream)
@@ -166,49 +193,371 @@ public class UploadWorkspaceService : IUploadWorkspaceService, IUploadWorkspaceC
                 await formFile.CopyToAsync(reservedFile.Stream, cancellationToken);
             }
 
-            var uploadFile = new UploadBatchFile
-            {
-                UploadBatchId = batch.Id,
-                UploadBatch = batch,
-                FileKind = IsSubtitleExtension(extension) ? UploadBatchFileKind.Subtitle : UploadBatchFileKind.Media,
-                Status = UploadBatchFileStatus.Uploaded,
-                Title = Path.GetFileNameWithoutExtension(sanitizedOriginalFileName),
-                OriginalFileName = sanitizedOriginalFileName,
-                StoredPath = destinationPath,
-                RelativeStoredPath = Path.GetRelativePath(batch.StoragePath, destinationPath),
-                FileSizeBytes = formFile.Length,
-                EmbedTranslatedSubtitle = !IsSubtitleExtension(extension) && batch.DefaultRemuxEnabled
-            };
-
-            var originalArtifact = new UploadArtifact
-            {
-                UploadBatchId = batch.Id,
-                UploadBatch = batch,
-                UploadBatchFile = uploadFile,
-                Kind = UploadArtifactKind.OriginalUpload,
-                FileName = safeName,
-                Path = destinationPath,
-                RelativePath = Path.GetRelativePath(batch.StoragePath, destinationPath),
-                FileSizeBytes = formFile.Length,
-                ContentType = formFile.ContentType,
-                IsDownloadable = true,
-                ExpiresAt = batch.ExpiresAt
-            };
-
-            _dbContext.UploadBatchFiles.Add(uploadFile);
-            _dbContext.UploadArtifacts.Add(originalArtifact);
-            newFiles.Add(uploadFile);
-        }
-
-        await _dbContext.SaveChangesAsync(cancellationToken);
-
-        foreach (var file in newFiles)
-        {
-            await ProbeFileInternalAsync(file.Id, cancellationToken);
+            await IngestStoredFileAsync(
+                batch,
+                sanitizedOriginalFileName,
+                destinationPath,
+                formFile.Length,
+                formFile.ContentType,
+                cancellationToken);
         }
 
         await RefreshBatchStatusAsync(batch.Id, cancellationToken);
         return await LoadBatchAsync(batch.Id, cancellationToken);
+    }
+
+    public async Task<UploadChunkSessionResponse?> CreateChunkSessionAsync(
+        int batchId,
+        CreateUploadChunkSessionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        using var batchIngestionLock = await AcquireCachedLockAsync(
+            BatchIngestionLocks,
+            batchId,
+            cancellationToken);
+
+        var batch = await _dbContext.UploadBatches
+            .Include(item => item.Files)
+            .FirstOrDefaultAsync(item => item.Id == batchId, cancellationToken);
+        if (batch == null)
+        {
+            return null;
+        }
+
+        if (batch.Status == UploadBatchStatus.Processing)
+        {
+            throw new InvalidOperationException("Cannot upload new files while a batch is processing.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.FileName))
+        {
+            throw new InvalidOperationException("File name is required.");
+        }
+
+        var sanitizedFileName = SanitizeFileName(request.FileName);
+        var extension = Path.GetExtension(sanitizedFileName).ToLowerInvariant();
+        if (!IsAllowedUploadExtension(extension))
+        {
+            throw new InvalidOperationException($"Unsupported upload file type: {sanitizedFileName}");
+        }
+
+        if (request.FileSizeBytes <= 0)
+        {
+            throw new InvalidOperationException("File size must be greater than zero.");
+        }
+
+        await EnsureBatchHasCapacityAsync(batch.Files.Count, 1, cancellationToken);
+
+        var maxFileSizeBytes = await GetMaxFileSizeBytesAsync(cancellationToken);
+        if (request.FileSizeBytes > maxFileSizeBytes)
+        {
+            throw new InvalidOperationException(
+                $"{sanitizedFileName} exceeds the configured file-size limit of {maxFileSizeBytes} bytes.");
+        }
+
+        EnsureEnoughDiskSpace(batch.StoragePath, request.FileSizeBytes);
+        EnsureBatchDirectories(batch.StoragePath);
+
+        var uploadId = Guid.NewGuid();
+        var sessionDirectory = GetIncomingSessionDirectory(batch.StoragePath, uploadId);
+        EnsurePathWithinBatchStorageRoot(sessionDirectory, batch.StoragePath, "chunk upload session");
+        Directory.CreateDirectory(sessionDirectory);
+
+        var manifest = new UploadChunkManifest
+        {
+            UploadId = uploadId,
+            BatchId = batch.Id,
+            FileName = sanitizedFileName,
+            FileSizeBytes = request.FileSizeBytes,
+            ContentType = request.ContentType,
+            LastModifiedUtc = request.LastModifiedUtc,
+            CreatedAtUtc = DateTime.UtcNow,
+            UpdatedAtUtc = DateTime.UtcNow
+        };
+
+        var manifestPath = GetChunkManifestPath(sessionDirectory);
+        await WriteChunkManifestAsync(manifestPath, manifest, cancellationToken);
+
+        return ToChunkSessionResponse(manifest);
+    }
+
+    public async Task<UploadChunkResponse?> UploadChunkAsync(
+        int batchId,
+        Guid uploadId,
+        int chunkIndex,
+        Stream chunkStream,
+        long? contentLength,
+        CancellationToken cancellationToken = default)
+    {
+        if (chunkIndex < 0)
+        {
+            throw new InvalidOperationException("Chunk index must be zero or greater.");
+        }
+
+        if (contentLength.HasValue && contentLength.Value > MaxChunkSizeBytes)
+        {
+            throw new InvalidOperationException(
+                $"Chunk size exceeds the maximum allowed size of {MaxChunkSizeBytes} bytes.");
+        }
+
+        using var batchIngestionLock = await AcquireCachedLockAsync(
+            BatchIngestionLocks,
+            batchId,
+            cancellationToken);
+        using var chunkSessionLock = await AcquireCachedLockAsync(
+            ChunkSessionLocks,
+            uploadId,
+            cancellationToken);
+
+        var session = await LoadChunkSessionContextAsync(batchId, uploadId, cancellationToken);
+        if (session == null)
+        {
+            return null;
+        }
+
+        if (session.Batch.Status == UploadBatchStatus.Processing)
+        {
+            throw new InvalidOperationException("Cannot upload chunks while a batch is processing.");
+        }
+
+        var highestExistingChunkIndex = session.Manifest.ChunkSizes.Count == 0
+            ? -1
+            : session.Manifest.ChunkSizes.Keys.Max();
+        if (!session.Manifest.ChunkSizes.ContainsKey(chunkIndex) && chunkIndex > highestExistingChunkIndex + 1)
+        {
+            throw new InvalidOperationException("Chunk indices must be uploaded in contiguous order.");
+        }
+
+        var chunkPath = GetChunkPath(session.SessionDirectory, chunkIndex);
+        EnsurePathWithinBatchStorageRoot(chunkPath, session.Batch.StoragePath, "chunk file");
+        var temporaryChunkPath = $"{chunkPath}.{Guid.NewGuid():N}.tmp";
+        EnsurePathWithinBatchStorageRoot(temporaryChunkPath, session.Batch.StoragePath, "temporary chunk file");
+
+        long bytesWritten;
+        try
+        {
+            await using (var chunkFileStream = new FileStream(
+                             temporaryChunkPath,
+                             FileMode.CreateNew,
+                             FileAccess.Write,
+                             FileShare.None,
+                             ChunkFileBufferSize,
+                             FileOptions.Asynchronous))
+            {
+                bytesWritten = await CopyStreamWithLimitAsync(
+                    chunkStream,
+                    chunkFileStream,
+                    MaxChunkSizeBytes,
+                    cancellationToken);
+            }
+
+            if (bytesWritten <= 0)
+            {
+                throw new InvalidOperationException("Chunk payload is empty.");
+            }
+
+            var existingChunkSize = session.Manifest.ChunkSizes.GetValueOrDefault(chunkIndex);
+            var uploadedBytesAfterChunk = session.Manifest.ChunkSizes.Values.Sum() -
+                                          existingChunkSize +
+                                          bytesWritten;
+            if (uploadedBytesAfterChunk > session.Manifest.FileSizeBytes)
+            {
+                throw new InvalidOperationException(
+                    $"Uploaded chunk data exceeds the expected file size of {session.Manifest.FileSizeBytes} bytes.");
+            }
+
+            File.Move(temporaryChunkPath, chunkPath, overwrite: true);
+
+            session.Manifest.ChunkSizes[chunkIndex] = bytesWritten;
+            session.Manifest.UpdatedAtUtc = DateTime.UtcNow;
+            await WriteChunkManifestAsync(session.ManifestPath, session.Manifest, cancellationToken);
+        }
+        catch
+        {
+            try
+            {
+                if (File.Exists(temporaryChunkPath))
+                {
+                    File.Delete(temporaryChunkPath);
+                }
+            }
+            catch
+            {
+            }
+
+            throw;
+        }
+
+        var uploadedBytes = session.Manifest.ChunkSizes.Values.Sum();
+        var uploadedChunkCount = session.Manifest.ChunkSizes.Count;
+        var contiguousChunkCount = session.Manifest.ChunkSizes.Count == 0
+            ? 0
+            : session.Manifest.ChunkSizes.Keys.Max() + 1;
+        var isComplete = uploadedChunkCount == contiguousChunkCount &&
+                         uploadedBytes == session.Manifest.FileSizeBytes;
+
+        return new UploadChunkResponse
+        {
+            UploadId = uploadId,
+            ChunkIndex = chunkIndex,
+            ChunkSizeBytes = bytesWritten,
+            UploadedChunkCount = uploadedChunkCount,
+            UploadedBytes = uploadedBytes,
+            FileSizeBytes = session.Manifest.FileSizeBytes,
+            IsComplete = isComplete
+        };
+    }
+
+    public async Task<UploadBatch?> CompleteChunkSessionAsync(
+        int batchId,
+        Guid uploadId,
+        CancellationToken cancellationToken = default)
+    {
+        using var batchIngestionLock = await AcquireCachedLockAsync(
+            BatchIngestionLocks,
+            batchId,
+            cancellationToken);
+        using var chunkSessionLock = await AcquireCachedLockAsync(
+            ChunkSessionLocks,
+            uploadId,
+            cancellationToken);
+
+        var session = await LoadChunkSessionContextAsync(batchId, uploadId, cancellationToken);
+        if (session == null)
+        {
+            return null;
+        }
+
+        if (session.Batch.Status == UploadBatchStatus.Processing)
+        {
+            throw new InvalidOperationException("Cannot complete chunk upload while a batch is processing.");
+        }
+
+        var currentFileCount = await _dbContext.UploadBatchFiles
+            .CountAsync(item => item.UploadBatchId == batchId, cancellationToken);
+        await EnsureBatchHasCapacityAsync(currentFileCount, 1, cancellationToken);
+
+        if (session.Manifest.ChunkSizes.Count == 0)
+        {
+            throw new InvalidOperationException("No chunks were uploaded for this session.");
+        }
+
+        var maxChunkIndex = session.Manifest.ChunkSizes.Keys.Max();
+        var chunkPaths = new List<string>(maxChunkIndex + 1);
+        long totalBytes = 0;
+
+        for (var chunkIndex = 0; chunkIndex <= maxChunkIndex; chunkIndex++)
+        {
+            if (!session.Manifest.ChunkSizes.TryGetValue(chunkIndex, out var expectedChunkSize))
+            {
+                throw new InvalidOperationException($"Missing chunk {chunkIndex}.");
+            }
+
+            var chunkPath = GetChunkPath(session.SessionDirectory, chunkIndex);
+            if (!File.Exists(chunkPath))
+            {
+                throw new InvalidOperationException($"Missing chunk file for chunk {chunkIndex}.");
+            }
+
+            var chunkSize = new FileInfo(chunkPath).Length;
+            if (chunkSize != expectedChunkSize)
+            {
+                throw new InvalidOperationException(
+                    $"Chunk {chunkIndex} size mismatch. Expected {expectedChunkSize} bytes but found {chunkSize} bytes.");
+            }
+
+            chunkPaths.Add(chunkPath);
+            totalBytes += chunkSize;
+        }
+
+        if (totalBytes != session.Manifest.FileSizeBytes)
+        {
+            throw new InvalidOperationException(
+                $"Uploaded chunk data does not match the expected file size of {session.Manifest.FileSizeBytes} bytes.");
+        }
+
+        var originalsDirectory = GetOriginalsDirectory(session.Batch.StoragePath);
+        Directory.CreateDirectory(originalsDirectory);
+
+        var reservedFile = ReserveUniqueFile(originalsDirectory, session.Manifest.FileName);
+        var destinationPath = reservedFile.FullPath;
+        try
+        {
+            await using (reservedFile.Stream)
+            {
+                foreach (var chunkPath in chunkPaths)
+                {
+                    await using var chunkStream = new FileStream(
+                        chunkPath,
+                        FileMode.Open,
+                        FileAccess.Read,
+                        FileShare.Read,
+                        ChunkFileBufferSize,
+                        FileOptions.Asynchronous);
+                    await chunkStream.CopyToAsync(reservedFile.Stream, ChunkFileBufferSize, cancellationToken);
+                }
+
+                await reservedFile.Stream.FlushAsync(cancellationToken);
+            }
+        }
+        catch
+        {
+            try
+            {
+                if (File.Exists(destinationPath))
+                {
+                    File.Delete(destinationPath);
+                }
+            }
+            catch
+            {
+            }
+
+            throw;
+        }
+
+        await IngestStoredFileAsync(
+            session.Batch,
+            session.Manifest.FileName,
+            destinationPath,
+            session.Manifest.FileSizeBytes,
+            session.Manifest.ContentType,
+            cancellationToken);
+
+        DeleteDirectorySafe(session.SessionDirectory, session.Batch.StoragePath);
+        await RefreshBatchStatusAsync(batchId, cancellationToken);
+        return await LoadBatchAsync(batchId, cancellationToken);
+    }
+
+    public async Task<bool> CancelChunkSessionAsync(
+        int batchId,
+        Guid uploadId,
+        CancellationToken cancellationToken = default)
+    {
+        using var batchIngestionLock = await AcquireCachedLockAsync(
+            BatchIngestionLocks,
+            batchId,
+            cancellationToken);
+        using var chunkSessionLock = await AcquireCachedLockAsync(
+            ChunkSessionLocks,
+            uploadId,
+            cancellationToken);
+
+        var batch = await _dbContext.UploadBatches
+            .FirstOrDefaultAsync(item => item.Id == batchId, cancellationToken);
+        if (batch == null)
+        {
+            return false;
+        }
+
+        var sessionDirectory = GetIncomingSessionDirectory(batch.StoragePath, uploadId);
+        if (!Directory.Exists(sessionDirectory))
+        {
+            return false;
+        }
+
+        DeleteDirectorySafe(sessionDirectory, batch.StoragePath);
+        return true;
     }
 
     public async Task<UploadBatchFile?> ReprobeFileAsync(
@@ -240,6 +589,7 @@ public class UploadWorkspaceService : IUploadWorkspaceService, IUploadWorkspaceC
         CancellationToken cancellationToken = default)
     {
         var file = await _dbContext.UploadBatchFiles
+            .Include(item => item.UploadBatch)
             .Include(item => item.SubtitleStreams)
             .Include(item => item.Artifacts)
             .FirstOrDefaultAsync(item => item.Id == fileId && item.UploadBatchId == batchId, cancellationToken);
@@ -255,7 +605,11 @@ public class UploadWorkspaceService : IUploadWorkspaceService, IUploadWorkspaceC
 
         file.ExcludeFromTranslation = request.ExcludeFromTranslation;
         file.EmbedTranslatedSubtitle = file.FileKind == UploadBatchFileKind.Media && request.EmbedTranslatedSubtitle;
-        file.SelectedSourceLanguage = NormalizeLanguage(request.SelectedSourceLanguage);
+        file.SelectedSourceLanguage = SubtitleLanguageHelper.TryNormalizeKnownLanguageCode(
+            request.SelectedSourceLanguage,
+            out var normalizedRequestedLanguage)
+            ? normalizedRequestedLanguage
+            : NormalizeLanguage(request.SelectedSourceLanguage);
 
         if (file.FileKind == UploadBatchFileKind.Media)
         {
@@ -297,106 +651,111 @@ public class UploadWorkspaceService : IUploadWorkspaceService, IUploadWorkspaceC
 
     public async Task<int> StartBatchAsync(int batchId, CancellationToken cancellationToken = default)
     {
-        var batch = await _dbContext.UploadBatches
-            .Include(item => item.Files)
-            .ThenInclude(file => file.SubtitleStreams)
-            .Include(item => item.Files)
-            .ThenInclude(file => file.Artifacts)
-            .FirstOrDefaultAsync(item => item.Id == batchId, cancellationToken);
-        if (batch == null)
-        {
-            return 0;
-        }
+        using var batchIngestionLock = await AcquireCachedLockAsync(
+            BatchIngestionLocks,
+            batchId,
+            cancellationToken);
 
-        if (batch.Status == UploadBatchStatus.Processing)
+        var strategy = _dbContext.Database.CreateExecutionStrategy();
+        var queuedCount = await strategy.ExecuteAsync(async () =>
         {
-            throw new InvalidOperationException("Upload batch is already processing.");
-        }
+            var batch = await _dbContext.UploadBatches
+                .Include(item => item.Files)
+                .ThenInclude(file => file.SubtitleStreams)
+                .Include(item => item.Files)
+                .ThenInclude(file => file.Artifacts)
+                .FirstOrDefaultAsync(item => item.Id == batchId, cancellationToken);
+            if (batch == null)
+            {
+                return 0;
+            }
 
-        var filesToQueue = batch.Files
-            .Where(item => !item.ExcludeFromTranslation && CanQueueFile(item))
-            .ToList();
+            if (batch.Status == UploadBatchStatus.Processing)
+            {
+                throw new InvalidOperationException("Upload batch is already processing.");
+            }
 
-        foreach (var file in filesToQueue)
-        {
-            ValidateQueuePrerequisites(file);
-        }
-
-        var transaction = _dbContext.Database.IsRelational()
-            ? await _dbContext.Database.BeginTransactionAsync(cancellationToken)
-            : null;
-        try
-        {
-            var requestIdsByFileId = new Dictionary<int, int>(filesToQueue.Count);
+            var filesToQueue = batch.Files
+                .Where(item => !item.ExcludeFromTranslation && CanQueueFile(item))
+                .ToList();
 
             foreach (var file in filesToQueue)
             {
-                var translateRequest = new TranslateAbleSubtitle
-                {
-                    MediaId = file.Id,
-                    WorkloadKind = TranslationWorkloadKind.Upload,
-                    UploadBatchFileId = file.Id,
-                    SubtitlePath = file.FileKind == UploadBatchFileKind.Subtitle ? file.StoredPath : null,
-                    SourceLanguage = GetSourceLanguageForQueue(file),
-                    TargetLanguage = batch.TargetLanguage,
-                    MediaType = MediaType.Movie,
-                    SubtitleFormat = file.FileKind == UploadBatchFileKind.Subtitle
-                        ? Path.GetExtension(file.StoredPath)
-                        : file.SelectedEmbeddedStreamCodec
-                };
+                ValidateQueuePrerequisites(file);
+            }
 
-                var requestId = await _translationRequestServiceLazy.Value.CreateRequest(
-                    translateRequest,
-                    forcePriority: true);
+            await using var transaction = _dbContext.Database.IsRelational()
+                ? await _dbContext.Database.BeginTransactionAsync(cancellationToken)
+                : null;
+            try
+            {
+                var requestIdsByFileId = new Dictionary<int, int>(filesToQueue.Count);
 
-                if (requestId <= 0)
+                foreach (var file in filesToQueue)
                 {
-                    throw new InvalidOperationException(
-                        $"Failed to queue translation request for upload file {file.OriginalFileName}.");
+                    var translateRequest = new TranslateAbleSubtitle
+                    {
+                        MediaId = file.Id,
+                        WorkloadKind = TranslationWorkloadKind.Upload,
+                        UploadBatchFileId = file.Id,
+                        SubtitlePath = file.FileKind == UploadBatchFileKind.Subtitle ? file.StoredPath : null,
+                        SourceLanguage = GetSourceLanguageForQueue(file),
+                        TargetLanguage = batch.TargetLanguage,
+                        MediaType = MediaType.Movie,
+                        SubtitleFormat = file.FileKind == UploadBatchFileKind.Subtitle
+                            ? Path.GetExtension(file.StoredPath)
+                            : file.SelectedEmbeddedStreamCodec
+                    };
+
+                    var requestId = await _translationRequestServiceLazy.Value.CreateRequest(
+                        translateRequest,
+                        forcePriority: true);
+
+                    if (requestId <= 0)
+                    {
+                        throw new InvalidOperationException(
+                            $"Failed to queue translation request for upload file {file.OriginalFileName}.");
+                    }
+
+                    requestIdsByFileId[file.Id] = requestId;
                 }
 
-                requestIdsByFileId[file.Id] = requestId;
-            }
+                foreach (var file in filesToQueue)
+                {
+                    await DeleteGeneratedArtifactsForFileAsync(file, cancellationToken);
 
-            foreach (var file in filesToQueue)
+                    file.LastError = null;
+                    file.ProbeError = null;
+                    file.Status = UploadBatchFileStatus.Queued;
+                    file.StartedAt = null;
+                    file.CompletedAt = null;
+                    file.CurrentTranslationRequestId = requestIdsByFileId[file.Id];
+                }
+
+                batch.StartedAt ??= DateTime.UtcNow;
+                await _dbContext.SaveChangesAsync(cancellationToken);
+
+                if (transaction != null)
+                {
+                    await transaction.CommitAsync(cancellationToken);
+                }
+
+                return filesToQueue.Count;
+            }
+            catch
             {
-                await DeleteGeneratedArtifactsForFileAsync(file, cancellationToken);
+                if (transaction != null)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                }
 
-                file.LastError = null;
-                file.ProbeError = null;
-                file.Status = UploadBatchFileStatus.Queued;
-                file.StartedAt = null;
-                file.CompletedAt = null;
-                file.CurrentTranslationRequestId = requestIdsByFileId[file.Id];
+                _dbContext.ChangeTracker.Clear();
+                throw;
             }
+        });
 
-            batch.StartedAt ??= DateTime.UtcNow;
-            await _dbContext.SaveChangesAsync(cancellationToken);
-            if (transaction != null)
-            {
-                await transaction.CommitAsync(cancellationToken);
-            }
-
-            await RefreshBatchStatusAsync(batchId, cancellationToken);
-            return filesToQueue.Count;
-        }
-        catch
-        {
-            if (transaction != null)
-            {
-                await transaction.RollbackAsync(cancellationToken);
-            }
-
-            _dbContext.ChangeTracker.Clear();
-            throw;
-        }
-        finally
-        {
-            if (transaction != null)
-            {
-                await transaction.DisposeAsync();
-            }
-        }
+        await RefreshBatchStatusAsync(batchId, cancellationToken);
+        return queuedCount;
     }
 
     public async Task<bool> CancelBatchAsync(int batchId, CancellationToken cancellationToken = default)
@@ -410,9 +769,13 @@ public class UploadWorkspaceService : IUploadWorkspaceService, IUploadWorkspaceC
         }
 
         foreach (var file in batch.Files.Where(item =>
-                     item.CurrentTranslationRequestId.HasValue &&
-                     item.Status is UploadBatchFileStatus.Queued or UploadBatchFileStatus.Processing))
+                     item.Status is (UploadBatchFileStatus.Queued or UploadBatchFileStatus.Processing)))
         {
+            if (!file.CurrentTranslationRequestId.HasValue)
+            {
+                continue;
+            }
+
             await _translationRequestServiceLazy.Value.CancelTranslationRequest(new TranslationRequest
             {
                 Id = file.CurrentTranslationRequestId.Value,
@@ -435,6 +798,11 @@ public class UploadWorkspaceService : IUploadWorkspaceService, IUploadWorkspaceC
 
     public async Task<bool> DeleteBatchAsync(int batchId, CancellationToken cancellationToken = default)
     {
+        using var batchIngestionLock = await AcquireCachedLockAsync(
+            BatchIngestionLocks,
+            batchId,
+            cancellationToken);
+
         var batch = await _dbContext.UploadBatches
             .Include(item => item.Files)
             .FirstOrDefaultAsync(item => item.Id == batchId, cancellationToken);
@@ -761,14 +1129,14 @@ public class UploadWorkspaceService : IUploadWorkspaceService, IUploadWorkspaceC
     public async Task<int> CleanupStaleIntermediatesAsync(CancellationToken cancellationToken = default)
     {
         var cutoff = DateTime.UtcNow.AddHours(-6);
-        var artifacts = await _dbContext.UploadArtifacts
-            .Where(item => item.Kind == UploadArtifactKind.ExtractedSubtitle)
-            .Where(item => item.CreatedAt <= cutoff)
-            .Where(item => item.UploadBatchFileId.HasValue)
-            .Where(item => _dbContext.UploadBatchFiles
-                .Where(file => file.Id == item.UploadBatchFileId.Value)
-                .Select(file => file.Status)
-                .FirstOrDefault() != UploadBatchFileStatus.Processing)
+        var artifacts = await (
+            from artifact in _dbContext.UploadArtifacts
+            join file in _dbContext.UploadBatchFiles
+                on artifact.UploadBatchFileId equals (int?)file.Id
+            where artifact.Kind == UploadArtifactKind.ExtractedSubtitle
+            where artifact.CreatedAt <= cutoff
+            where file.Status != UploadBatchFileStatus.Processing
+            select artifact)
             .ToListAsync(cancellationToken);
         if (artifacts.Count == 0)
         {
@@ -808,13 +1176,26 @@ public class UploadWorkspaceService : IUploadWorkspaceService, IUploadWorkspaceC
         file.SelectedEmbeddedStreamTitle = null;
         file.SelectedEmbeddedStreamCodec = null;
         file.SubtitleStreams.Clear();
+        var configuredSourceLanguages = await GetConfiguredSourceLanguagesAsync();
 
         try
         {
             if (file.FileKind == UploadBatchFileKind.Subtitle)
             {
-                file.DetectedSourceLanguage = await DetectSubtitleLanguageAsync(file.StoredPath);
+                file.DetectedSourceLanguage = await DetectSubtitleLanguageAsync(
+                    file.StoredPath,
+                    configuredSourceLanguages);
+                file.DetectedSourceLanguage ??= SubtitleLanguageHelper.DetectLanguageFromFileName(
+                    file.OriginalFileName,
+                    configuredSourceLanguages);
                 file.SelectedSourceLanguage = file.DetectedSourceLanguage;
+
+                if (string.IsNullOrWhiteSpace(file.SelectedSourceLanguage))
+                {
+                    file.ProbeError = configuredSourceLanguages.Count > 0
+                        ? "Could not confidently detect a source language from this subtitle file that matches configured source languages."
+                        : "Could not confidently detect a source language from this subtitle file.";
+                }
             }
             else
             {
@@ -835,15 +1216,31 @@ public class UploadWorkspaceService : IUploadWorkspaceService, IUploadWorkspaceC
                     });
                 }
 
-                var bestStream = streams
+                var textBasedStreams = streams
                     .Where(stream => stream.IsTextBased)
-                    .OrderByDescending(stream => SubtitleLanguageHelper.ScoreSubtitleCandidate(stream, stream.Language))
-                    .ThenBy(stream => stream.StreamIndex)
-                    .FirstOrDefault();
+                    .ToList();
+                EmbeddedSubtitle? bestStream;
+                string? matchedLanguage = null;
+
+                if (configuredSourceLanguages.Count > 0)
+                {
+                    var bestMatch = SubtitleLanguageHelper.FindBestMatch(textBasedStreams, configuredSourceLanguages);
+                    bestStream = bestMatch.Subtitle;
+                    matchedLanguage = NormalizeLanguage(bestMatch.MatchedLanguage);
+                }
+                else
+                {
+                    bestStream = textBasedStreams
+                        .OrderByDescending(stream => SubtitleLanguageHelper.ScoreSubtitleCandidate(stream, stream.Language))
+                        .ThenBy(stream => stream.StreamIndex)
+                        .FirstOrDefault();
+                }
 
                 if (bestStream != null)
                 {
-                    file.DetectedSourceLanguage = NormalizeLanguage(bestStream.Language);
+                    file.DetectedSourceLanguage = !string.IsNullOrWhiteSpace(matchedLanguage)
+                        ? matchedLanguage
+                        : NormalizeLanguage(bestStream.Language);
                     file.SelectedSourceLanguage = file.DetectedSourceLanguage;
                     file.SelectedEmbeddedStreamIndex = bestStream.StreamIndex;
                     file.SelectedEmbeddedStreamLanguage = NormalizeLanguage(bestStream.Language);
@@ -852,7 +1249,9 @@ public class UploadWorkspaceService : IUploadWorkspaceService, IUploadWorkspaceC
                 }
                 else
                 {
-                    file.ProbeError = "No text-based subtitle streams were found in this media file.";
+                    file.ProbeError = textBasedStreams.Count == 0
+                        ? "No text-based subtitle streams were found in this media file."
+                        : "No text-based subtitle stream matches the configured source languages.";
                 }
             }
 
@@ -916,6 +1315,54 @@ public class UploadWorkspaceService : IUploadWorkspaceService, IUploadWorkspaceC
         EnsureEnoughDiskSpace(batch.StoragePath, incomingBytes);
     }
 
+    private async Task<UploadBatchFile> IngestStoredFileAsync(
+        UploadBatch batch,
+        string sanitizedOriginalFileName,
+        string storedPath,
+        long fileSizeBytes,
+        string? contentType,
+        CancellationToken cancellationToken)
+    {
+        var extension = Path.GetExtension(sanitizedOriginalFileName).ToLowerInvariant();
+        var fullStoredPath = Path.GetFullPath(storedPath);
+        EnsurePathWithinBatchStorageRoot(fullStoredPath, batch.StoragePath, "uploaded file");
+
+        var uploadFile = new UploadBatchFile
+        {
+            UploadBatchId = batch.Id,
+            UploadBatch = batch,
+            FileKind = IsSubtitleExtension(extension) ? UploadBatchFileKind.Subtitle : UploadBatchFileKind.Media,
+            Status = UploadBatchFileStatus.Uploaded,
+            Title = Path.GetFileNameWithoutExtension(sanitizedOriginalFileName),
+            OriginalFileName = sanitizedOriginalFileName,
+            StoredPath = fullStoredPath,
+            RelativeStoredPath = Path.GetRelativePath(batch.StoragePath, fullStoredPath),
+            FileSizeBytes = fileSizeBytes,
+            EmbedTranslatedSubtitle = !IsSubtitleExtension(extension) && batch.DefaultRemuxEnabled
+        };
+
+        var originalArtifact = new UploadArtifact
+        {
+            UploadBatchId = batch.Id,
+            UploadBatch = batch,
+            UploadBatchFile = uploadFile,
+            Kind = UploadArtifactKind.OriginalUpload,
+            FileName = Path.GetFileName(fullStoredPath),
+            Path = fullStoredPath,
+            RelativePath = Path.GetRelativePath(batch.StoragePath, fullStoredPath),
+            FileSizeBytes = fileSizeBytes,
+            ContentType = string.IsNullOrWhiteSpace(contentType) ? GetContentType(fullStoredPath) : contentType,
+            IsDownloadable = true,
+            ExpiresAt = batch.ExpiresAt
+        };
+
+        _dbContext.UploadBatchFiles.Add(uploadFile);
+        _dbContext.UploadArtifacts.Add(originalArtifact);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        await ProbeFileInternalAsync(uploadFile.Id, cancellationToken);
+        return uploadFile;
+    }
+
     private async Task<string> GetWorkspaceRootAsync(CancellationToken cancellationToken)
     {
         var configured = await _settingService.GetSetting(SettingKeys.UploadWorkspace.StorageRoot);
@@ -967,6 +1414,26 @@ public class UploadWorkspaceService : IUploadWorkspaceService, IUploadWorkspaceC
         return Path.Combine(batchStoragePath, "remuxed");
     }
 
+    private static string GetIncomingDirectory(string batchStoragePath)
+    {
+        return Path.Combine(batchStoragePath, "incoming");
+    }
+
+    private static string GetIncomingSessionDirectory(string batchStoragePath, Guid uploadId)
+    {
+        return Path.Combine(GetIncomingDirectory(batchStoragePath), uploadId.ToString("D"));
+    }
+
+    private static string GetChunkManifestPath(string sessionDirectory)
+    {
+        return Path.Combine(sessionDirectory, "manifest.json");
+    }
+
+    private static string GetChunkPath(string sessionDirectory, int chunkIndex)
+    {
+        return Path.Combine(sessionDirectory, $"chunk-{chunkIndex:D6}.part");
+    }
+
     private static void EnsureBatchDirectories(string batchStoragePath)
     {
         Directory.CreateDirectory(batchStoragePath);
@@ -974,9 +1441,12 @@ public class UploadWorkspaceService : IUploadWorkspaceService, IUploadWorkspaceC
         Directory.CreateDirectory(GetExtractedDirectory(batchStoragePath));
         Directory.CreateDirectory(GetTranslatedDirectory(batchStoragePath));
         Directory.CreateDirectory(GetRemuxedDirectory(batchStoragePath));
+        Directory.CreateDirectory(GetIncomingDirectory(batchStoragePath));
     }
 
-    private async Task<string?> DetectSubtitleLanguageAsync(string subtitlePath)
+    private async Task<string?> DetectSubtitleLanguageAsync(
+        string subtitlePath,
+        IReadOnlyCollection<string>? configuredLanguages)
     {
         var directory = Path.GetDirectoryName(subtitlePath);
         if (string.IsNullOrWhiteSpace(directory))
@@ -985,17 +1455,95 @@ public class UploadWorkspaceService : IUploadWorkspaceService, IUploadWorkspaceC
         }
 
         var matches = await _subtitleService.GetAllSubtitles(directory);
-        return matches
-            .Where(item => string.Equals(item.Path, subtitlePath, PathComparison))
-            .Select(item => NormalizeLanguage(item.Language))
-            .FirstOrDefault(language => !string.IsNullOrWhiteSpace(language));
+        var configuredSet = configuredLanguages == null
+            ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            : new HashSet<string>(configuredLanguages, StringComparer.OrdinalIgnoreCase);
+        var useConfiguredFilter = configuredSet.Count > 0;
+
+        foreach (var subtitle in matches.Where(item => string.Equals(item.Path, subtitlePath, PathComparison)))
+        {
+            if (!SubtitleLanguageHelper.TryNormalizeKnownLanguageCode(subtitle.Language, out var normalizedLanguage))
+            {
+                continue;
+            }
+
+            if (useConfiguredFilter && !configuredSet.Contains(normalizedLanguage))
+            {
+                continue;
+            }
+
+            return normalizedLanguage;
+        }
+
+        return null;
     }
 
-    private void UpdateFileStatusForConfiguration(UploadBatchFile file)
+    private async Task<List<string>> GetConfiguredSourceLanguagesAsync()
+    {
+        try
+        {
+            var sourceLanguages = await _settingService.GetSettingAsJson<Lingarr.Server.Models.SourceLanguage>(
+                SettingKeys.Translation.SourceLanguages);
+            return sourceLanguages
+                .Select(language => language.Code)
+                .Select(code => SubtitleLanguageHelper.TryNormalizeKnownLanguageCode(code, out var normalizedCode)
+                    ? normalizedCode
+                    : null)
+                .Where(code => !string.IsNullOrWhiteSpace(code))
+                .Select(code => code!)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private async Task EnsureBatchHasCapacityAsync(
+        int currentFileCount,
+        int additionalFiles,
+        CancellationToken cancellationToken)
+    {
+        var maxBatchSize = await GetMaxBatchSizeAsync(cancellationToken);
+        if (currentFileCount + additionalFiles > maxBatchSize)
+        {
+            throw new InvalidOperationException(
+                $"This batch would exceed the configured batch-size limit of {maxBatchSize} files.");
+        }
+    }
+
+    private void UpdateFileStatusForConfiguration(UploadBatchFile file, string? targetLanguageOverride = null)
     {
         if (file.ExcludeFromTranslation)
         {
             file.Status = UploadBatchFileStatus.Cancelled;
+            return;
+        }
+
+        if (string.Equals(file.ProbeError, SourceLanguageMatchesTargetMessage, StringComparison.Ordinal))
+        {
+            file.ProbeError = null;
+        }
+
+        if (string.Equals(file.LastError, SourceLanguageMatchesTargetMessage, StringComparison.Ordinal))
+        {
+            file.LastError = null;
+        }
+
+        if (IsSourceLanguageMatchingTarget(file, targetLanguageOverride))
+        {
+            file.Status = UploadBatchFileStatus.NeedsConfiguration;
+
+            if (file.FileKind == UploadBatchFileKind.Subtitle)
+            {
+                file.ProbeError = SourceLanguageMatchesTargetMessage;
+            }
+            else
+            {
+                file.LastError = SourceLanguageMatchesTargetMessage;
+            }
+
             return;
         }
 
@@ -1016,6 +1564,16 @@ public class UploadWorkspaceService : IUploadWorkspaceService, IUploadWorkspaceC
         }
 
         file.Status = UploadBatchFileStatus.Ready;
+    }
+
+    private static bool IsSourceLanguageMatchingTarget(UploadBatchFile file, string? targetLanguageOverride = null)
+    {
+        var sourceLanguage = NormalizeLanguage(file.SelectedSourceLanguage ?? file.DetectedSourceLanguage);
+        var targetLanguage = NormalizeLanguage(targetLanguageOverride ?? file.UploadBatch?.TargetLanguage);
+
+        return !string.IsNullOrWhiteSpace(sourceLanguage) &&
+               !string.IsNullOrWhiteSpace(targetLanguage) &&
+               string.Equals(sourceLanguage, targetLanguage, StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool CanQueueFile(UploadBatchFile file)
@@ -1159,7 +1717,122 @@ public class UploadWorkspaceService : IUploadWorkspaceService, IUploadWorkspaceC
         }
     }
 
+    private static async Task<CachedLockLease<TKey>> AcquireCachedLockAsync<TKey>(
+        ConcurrentDictionary<TKey, RefCountedSemaphore> locks,
+        TKey key,
+        CancellationToken cancellationToken)
+        where TKey : notnull
+    {
+        var cachedLock = RentCachedLock(locks, key);
+        var lockTaken = false;
+        try
+        {
+            await cachedLock.Semaphore.WaitAsync(cancellationToken);
+            lockTaken = true;
+            return new CachedLockLease<TKey>(locks, key, cachedLock);
+        }
+        catch
+        {
+            ReleaseCachedLock(locks, key, cachedLock, lockTaken);
+            throw;
+        }
+    }
+
+    private static RefCountedSemaphore RentCachedLock<TKey>(
+        ConcurrentDictionary<TKey, RefCountedSemaphore> locks,
+        TKey key)
+        where TKey : notnull
+    {
+        lock (CachedLockGate)
+        {
+            if (!locks.TryGetValue(key, out var cachedLock))
+            {
+                cachedLock = new RefCountedSemaphore();
+                locks[key] = cachedLock;
+            }
+
+            cachedLock.ReferenceCount++;
+            return cachedLock;
+        }
+    }
+
+    private static void ReleaseCachedLock<TKey>(
+        ConcurrentDictionary<TKey, RefCountedSemaphore> locks,
+        TKey key,
+        RefCountedSemaphore cachedLock,
+        bool releaseSemaphore)
+        where TKey : notnull
+    {
+        if (releaseSemaphore)
+        {
+            cachedLock.Semaphore.Release();
+        }
+
+        lock (CachedLockGate)
+        {
+            cachedLock.ReferenceCount--;
+            if (cachedLock.ReferenceCount == 0)
+            {
+                locks.TryRemove(new KeyValuePair<TKey, RefCountedSemaphore>(key, cachedLock));
+            }
+        }
+    }
+
+    private sealed class RefCountedSemaphore
+    {
+        public SemaphoreSlim Semaphore { get; } = new(1, 1);
+        public int ReferenceCount { get; set; }
+    }
+
+    private sealed class CachedLockLease<TKey> : IDisposable
+        where TKey : notnull
+    {
+        private readonly ConcurrentDictionary<TKey, RefCountedSemaphore> _locks;
+        private readonly TKey _key;
+        private readonly RefCountedSemaphore _cachedLock;
+        private bool _disposed;
+
+        public CachedLockLease(
+            ConcurrentDictionary<TKey, RefCountedSemaphore> locks,
+            TKey key,
+            RefCountedSemaphore cachedLock)
+        {
+            _locks = locks;
+            _key = key;
+            _cachedLock = cachedLock;
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            ReleaseCachedLock(_locks, _key, _cachedLock, releaseSemaphore: true);
+            _disposed = true;
+        }
+    }
+
     private sealed record ReservedUploadFile(string FileName, string FullPath, FileStream Stream);
+    private sealed record UploadChunkSessionContext(
+        UploadBatch Batch,
+        UploadChunkManifest Manifest,
+        string SessionDirectory,
+        string ManifestPath);
+
+    private sealed class UploadChunkManifest
+    {
+        public Guid UploadId { get; set; }
+        public int BatchId { get; set; }
+        public string FileName { get; set; } = string.Empty;
+        public long FileSizeBytes { get; set; }
+        public string? ContentType { get; set; }
+        public DateTime? LastModifiedUtc { get; set; }
+        public DateTime CreatedAtUtc { get; set; }
+        public DateTime UpdatedAtUtc { get; set; }
+        public Dictionary<int, long> ChunkSizes { get; set; } = [];
+    }
 
     private static bool IsSubtitleExtension(string extension)
     {
@@ -1342,6 +2015,139 @@ public class UploadWorkspaceService : IUploadWorkspaceService, IUploadWorkspaceC
         }
 
         return outputPath;
+    }
+
+    private async Task<UploadChunkSessionContext?> LoadChunkSessionContextAsync(
+        int batchId,
+        Guid uploadId,
+        CancellationToken cancellationToken)
+    {
+        var batch = await _dbContext.UploadBatches
+            .Include(item => item.Files)
+            .FirstOrDefaultAsync(item => item.Id == batchId, cancellationToken);
+        if (batch == null)
+        {
+            return null;
+        }
+
+        var sessionDirectory = GetIncomingSessionDirectory(batch.StoragePath, uploadId);
+        if (!Directory.Exists(sessionDirectory))
+        {
+            return null;
+        }
+
+        EnsurePathWithinBatchStorageRoot(sessionDirectory, batch.StoragePath, "chunk upload session");
+        var manifestPath = GetChunkManifestPath(sessionDirectory);
+        if (!File.Exists(manifestPath))
+        {
+            return null;
+        }
+
+        var manifest = await ReadChunkManifestAsync(manifestPath, cancellationToken);
+        if (manifest == null)
+        {
+            throw new InvalidOperationException("Chunk upload session manifest is missing or invalid.");
+        }
+
+        if (manifest.BatchId != batchId || manifest.UploadId != uploadId)
+        {
+            throw new InvalidOperationException("Chunk upload session does not belong to this batch.");
+        }
+
+        return new UploadChunkSessionContext(batch, manifest, sessionDirectory, manifestPath);
+    }
+
+    private static async Task<UploadChunkManifest?> ReadChunkManifestAsync(
+        string manifestPath,
+        CancellationToken cancellationToken)
+    {
+        await using var manifestStream = new FileStream(
+            manifestPath,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            ChunkFileBufferSize,
+            FileOptions.Asynchronous);
+        return await JsonSerializer.DeserializeAsync<UploadChunkManifest>(
+            manifestStream,
+            ManifestSerializerOptions,
+            cancellationToken);
+    }
+
+    private static async Task WriteChunkManifestAsync(
+        string manifestPath,
+        UploadChunkManifest manifest,
+        CancellationToken cancellationToken)
+    {
+        var temporaryManifestPath = $"{manifestPath}.tmp";
+
+        await using (var manifestStream = new FileStream(
+                         temporaryManifestPath,
+                         FileMode.Create,
+                         FileAccess.Write,
+                         FileShare.None,
+                         ChunkFileBufferSize,
+                         FileOptions.Asynchronous))
+        {
+            await JsonSerializer.SerializeAsync(
+                manifestStream,
+                manifest,
+                ManifestSerializerOptions,
+                cancellationToken);
+            await manifestStream.FlushAsync(cancellationToken);
+        }
+
+        File.Move(temporaryManifestPath, manifestPath, overwrite: true);
+    }
+
+    private static UploadChunkSessionResponse ToChunkSessionResponse(UploadChunkManifest manifest)
+    {
+        var chunkSizeBytes = Math.Min(DefaultChunkSizeBytes, MaxChunkSizeBytes);
+        return new UploadChunkSessionResponse
+        {
+            UploadId = manifest.UploadId,
+            FileName = manifest.FileName,
+            FileSizeBytes = manifest.FileSizeBytes,
+            ContentType = manifest.ContentType,
+            LastModifiedUtc = manifest.LastModifiedUtc,
+            ChunkSizeBytes = chunkSizeBytes,
+            MaxChunkSizeBytes = MaxChunkSizeBytes,
+            ExpectedChunks = Math.Max(1, (int)Math.Ceiling((double)manifest.FileSizeBytes / chunkSizeBytes)),
+            CreatedAtUtc = manifest.CreatedAtUtc,
+            UpdatedAtUtc = manifest.UpdatedAtUtc,
+            UploadedChunkCount = manifest.ChunkSizes.Count,
+            UploadedBytes = manifest.ChunkSizes.Values.Sum()
+        };
+    }
+
+    private static async Task<long> CopyStreamWithLimitAsync(
+        Stream source,
+        Stream destination,
+        long maxBytes,
+        CancellationToken cancellationToken)
+    {
+        var buffer = new byte[ChunkFileBufferSize];
+        long totalBytes = 0;
+
+        while (true)
+        {
+            var read = await source.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken);
+            if (read <= 0)
+            {
+                break;
+            }
+
+            totalBytes += read;
+            if (totalBytes > maxBytes)
+            {
+                throw new InvalidOperationException(
+                    $"Chunk size exceeds the maximum allowed size of {maxBytes} bytes.");
+            }
+
+            await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+        }
+
+        return totalBytes;
     }
 
     private static void EnsurePathWithinBatchStorageRoot(string path, string batchStoragePath, string pathKind)

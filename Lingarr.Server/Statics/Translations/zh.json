@@ -11,6 +11,8 @@
     "subtitle": "字幕",
     "integrity": "完整性",
     "automation": "自动化",
+    "customSources": "自定义来源",
+    "uploadWorkspace": "上传工作区",
     "tasks": "任务",
     "logs": "日志",
     "help": "帮助",

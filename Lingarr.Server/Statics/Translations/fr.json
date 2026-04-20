@@ -11,6 +11,8 @@
     "subtitle": "Sous-titres",
     "integrity": "Intégrité",
     "automation": "Automatisation",
+    "customSources": "Sources personnalisées",
+    "uploadWorkspace": "Espace de téléversement",
     "tasks": "Tâches",
     "logs": "Journaux",
     "help": "Aide",

@@ -1,3 +1,4 @@
+using System.IO;
 using Lingarr.Core.Entities;
 using Microsoft.AspNetCore.Http;
 
@@ -17,6 +18,25 @@ public interface IUploadWorkspaceService
     Task<UploadBatch?> UploadFilesAsync(
         int batchId,
         IReadOnlyCollection<IFormFile> files,
+        CancellationToken cancellationToken = default);
+    Task<Models.UploadWorkspace.UploadChunkSessionResponse?> CreateChunkSessionAsync(
+        int batchId,
+        Models.UploadWorkspace.CreateUploadChunkSessionRequest request,
+        CancellationToken cancellationToken = default);
+    Task<Models.UploadWorkspace.UploadChunkResponse?> UploadChunkAsync(
+        int batchId,
+        Guid uploadId,
+        int chunkIndex,
+        Stream chunkStream,
+        long? contentLength,
+        CancellationToken cancellationToken = default);
+    Task<UploadBatch?> CompleteChunkSessionAsync(
+        int batchId,
+        Guid uploadId,
+        CancellationToken cancellationToken = default);
+    Task<bool> CancelChunkSessionAsync(
+        int batchId,
+        Guid uploadId,
         CancellationToken cancellationToken = default);
     Task<UploadBatchFile?> ReprobeFileAsync(int batchId, int fileId, CancellationToken cancellationToken = default);
     Task<UploadBatchFile?> UpdateFileAsync(

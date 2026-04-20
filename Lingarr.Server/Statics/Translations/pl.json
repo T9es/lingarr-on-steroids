@@ -11,6 +11,8 @@
     "subtitle": "Napisy",
     "integrity": "Integralność",
     "automation": "Automatyzacja",
+    "customSources": "Źródła niestandardowe",
+    "uploadWorkspace": "Obszar przesyłania",
     "tasks": "Zadania",
     "logs": "Dzienniki",
     "help": "Pomoc",

@@ -11,6 +11,8 @@
     "subtitle": "Subtitle",
     "integrity": "Integrity",
     "automation": "Automation",
+    "customSources": "Custom Sources",
+    "uploadWorkspace": "Upload Workspace",
     "tasks": "Tasks",
     "logs": "Logs",
     "help": "Help",

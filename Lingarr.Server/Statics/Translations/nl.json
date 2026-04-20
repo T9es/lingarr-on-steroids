@@ -11,6 +11,8 @@
     "subtitle": "Ondertiteling",
     "integrity": "Integriteit",
     "automation": "Automatisering",
+    "customSources": "Aangepaste bronnen",
+    "uploadWorkspace": "Uploadwerkruimte",
     "tasks": "Taken",
     "logs": "Logboeken",
     "help": "Hulp",

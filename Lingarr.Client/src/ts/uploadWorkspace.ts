@@ -128,6 +128,38 @@ export interface IUpdateUploadBatchFileRequest {
     selectedEmbeddedStreamIndex: number | null
 }
 
+export interface ICreateUploadChunkSessionRequest {
+    fileName: string
+    fileSizeBytes: number
+    contentType: string | null
+    lastModifiedUtc?: string
+}
+
+export interface ICreateUploadChunkSessionResponse {
+    uploadId: string
+    fileName: string
+    fileSizeBytes: number
+    contentType: string | null
+    lastModifiedUtc: string | null
+    chunkSizeBytes: number
+    maxChunkSizeBytes: number
+    expectedChunks: number
+    createdAtUtc: string
+    updatedAtUtc: string
+    uploadedChunkCount: number
+    uploadedBytes?: number
+}
+
+export interface IUploadChunkResponse {
+    uploadId: string
+    chunkIndex: number
+    chunkSizeBytes: number
+    uploadedChunkCount: number
+    uploadedBytes: number
+    fileSizeBytes: number
+    isComplete: boolean
+}
+
 export interface IUploadProgressSnapshot {
     loadedBytes: number
     totalBytes: number

@@ -95,6 +95,7 @@
                         <select
                             v-if="languages.length > 0"
                             v-model="batchForm.targetLanguage"
+                            @change="markTargetLanguageTouched"
                             class="bg-secondary border-accent/20 text-primary-content w-full rounded-md border px-3 py-2">
                             <option value="">Select target language</option>
                             <option
@@ -107,9 +108,14 @@
                         <input
                             v-else
                             v-model="batchForm.targetLanguage"
+                            @input="markTargetLanguageTouched"
                             class="bg-secondary border-accent/20 text-primary-content w-full rounded-md border px-3 py-2"
                             type="text"
                             placeholder="en" />
+                        <p class="text-primary-content/60 mt-1 text-xs">
+                            Defaulted from global target language. Changing this batch does not
+                            change global settings.
+                        </p>
                     </div>
 
                     <label class="flex items-center gap-2 text-sm">
@@ -161,9 +167,18 @@
                             {{ uploading ? 'Uploading...' : 'Choose Files' }}
                         </button>
                         <span class="text-primary-content/60 text-xs">
-                            {{ selectedBatchId ? 'Uploads go to the selected batch.' : 'A batch is created if needed.' }}
+                            {{
+                                selectedBatchId
+                                    ? 'Uploads go to the selected batch.'
+                                    : uploadTargetLanguageBlocker
+                                      ? 'Choose files to queue them. Upload starts after selecting a target language.'
+                                      : 'A batch is created if needed.'
+                            }}
                         </span>
                     </div>
+                    <p v-if="uploadTargetLanguageBlocker" class="text-warning mt-2 text-xs">
+                        {{ uploadTargetLanguageBlocker }}
+                    </p>
                 </div>
 
                 <div v-if="uploadQueue.length" class="space-y-2">
@@ -195,8 +210,17 @@
                                 </BadgeComponent>
                             </div>
                             <div class="text-primary-content/60 mt-1 text-xs">
-                                {{ formatBytes(item.size) }}
+                                {{ formatBytes(item.loadedBytes) }} / {{ formatBytes(item.totalBytes) }}
+                                ({{ item.percent }}%)
                             </div>
+                            <div class="bg-primary/70 mt-2 h-1.5 rounded">
+                                <div
+                                    class="bg-accent h-1.5 rounded transition-all"
+                                    :style="{ width: `${item.percent}%` }"></div>
+                            </div>
+                            <p v-if="item.error" class="text-error mt-2 text-xs">
+                                {{ item.error }}
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -259,6 +283,7 @@
                             <select
                                 v-if="languages.length > 0"
                                 v-model="batchForm.targetLanguage"
+                                @change="markTargetLanguageTouched"
                                 class="bg-primary border-accent/20 text-primary-content w-full rounded-md border px-3 py-2">
                                 <option value="">Select target language</option>
                                 <option
@@ -271,8 +296,13 @@
                             <input
                                 v-else
                                 v-model="batchForm.targetLanguage"
+                                @input="markTargetLanguageTouched"
                                 class="bg-primary border-accent/20 text-primary-content w-full rounded-md border px-3 py-2"
                                 type="text" />
+                            <p class="text-primary-content/60 mt-1 text-xs">
+                                Defaulted from global target language. Changing this batch does not
+                                change global settings.
+                            </p>
                         </div>
 
                         <label class="flex items-center gap-2 pt-6 text-sm">
@@ -477,6 +507,7 @@
                                 </div>
                                 <div class="flex gap-2">
                                     <button
+                                        v-if="artifact.isDownloadable"
                                         class="bg-secondary border-accent/20 text-primary-content rounded-md border px-2 py-1 text-xs"
                                         @click="downloadArtifact(artifact)">
                                         Download
@@ -509,13 +540,17 @@
 </template>
 
 <script setup lang="ts">
+import axios from 'axios'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import services from '@/services'
 import CardComponent from '@/components/common/CardComponent.vue'
 import DirectoryModal from '@/components/features/settings/DirectoryModal.vue'
 import BadgeComponent from '@/components/common/BadgeComponent.vue'
+import { useSettingStore } from '@/store/setting'
 import {
+    ICreateUploadChunkSessionRequest,
     ILanguage,
+    SETTINGS,
     IUploadArtifact,
     IUploadBatch,
     IUploadBatchFile,
@@ -538,7 +573,11 @@ interface UploadQueueItem {
     id: string
     name: string
     size: number
-    status: 'Queued' | 'Uploading' | 'Uploaded' | 'Failed'
+    status: 'Queued' | 'Creating upload' | 'Uploading' | 'Finalizing' | 'Uploaded' | 'Failed'
+    loadedBytes: number
+    totalBytes: number
+    percent: number
+    error: string
 }
 
 interface UploadFileDraft {
@@ -556,10 +595,15 @@ const isDropActive = ref(false)
 const errorMessage = ref('')
 const successMessage = ref('')
 const selectedBatchId = ref<number | null>(null)
-const uploadProgressPercent = ref(0)
 const uploadSpeedBytesPerSecond = ref(0)
 const uploadQueue = ref<UploadQueueItem[]>([])
 const fileInputRef = ref<HTMLInputElement | null>(null)
+const targetLanguageTouched = ref(false)
+const settingStore = useSettingStore()
+
+const DEFAULT_CHUNK_SIZE_BYTES = 8 * 1024 * 1024
+let uploadSpeedLastLoadedBytes = 0
+let uploadSpeedLastMeasuredAt = Date.now()
 
 const settings = ref<UploadWorkspaceSettings>({
     upload_workspace_storage_root: '',
@@ -610,6 +654,28 @@ const selectedArtifacts = computed<IUploadArtifact[]>(() => {
     return [...map.values()].sort((left, right) => right.id - left.id)
 })
 
+const uploadProgressPercent = computed(() => {
+    const totalBytes = uploadQueue.value.reduce((sum, item) => sum + Math.max(item.totalBytes, 0), 0)
+    if (totalBytes <= 0) {
+        return 0
+    }
+
+    const loadedBytes = uploadQueue.value.reduce(
+        (sum, item) => sum + Math.max(Math.min(item.loadedBytes, item.totalBytes), 0),
+        0
+    )
+    return Math.min(100, Math.round((loadedBytes / totalBytes) * 100))
+})
+
+const uploadTargetLanguageBlocker = computed(() => {
+    const hasSelectedBatch = Boolean(selectedBatchId.value)
+    const hasTargetLanguage = Boolean(batchForm.value.targetLanguage.trim())
+    if (!hasSelectedBatch && !hasTargetLanguage) {
+        return 'Set a target language in Subtitle settings or choose one for this batch.'
+    }
+    return ''
+})
+
 const settingKeys = Object.keys(settings.value)
 
 const setMessage = (success: string, error = '') => {
@@ -625,28 +691,91 @@ const setError = (message: string) => {
 const normalizeLanguageValue = (value: string) => value.trim().toLowerCase()
 
 const toErrorMessage = (error: unknown, fallback: string): string => {
-    const response = error as {
-        data?: {
-            title?: string
-            message?: string
-            detail?: string
-            errors?: Record<string, string[]>
+    if (axios.isAxiosError(error)) {
+        const responseDataRaw = error.response?.data
+        if (typeof responseDataRaw === 'string' && responseDataRaw.trim()) {
+            return responseDataRaw
         }
-        statusText?: string
+
+        const responseData = responseDataRaw as
+            | {
+                  title?: string
+                  message?: string
+                  detail?: string
+                  errors?: Record<string, string[]>
+              }
+            | undefined
+
+        if (responseData?.message) {
+            return responseData.message
+        }
+        if (responseData?.title) {
+            return responseData.title
+        }
+        if (responseData?.detail) {
+            return responseData.detail
+        }
+        if (responseData?.errors) {
+            const firstKey = Object.keys(responseData.errors)[0]
+            const firstMessage = responseData.errors[firstKey]?.[0]
+            if (firstMessage) {
+                return firstMessage
+            }
+        }
+        if (error.response?.statusText) {
+            return error.response.statusText
+        }
+        if (error.code === 'ERR_NETWORK') {
+            return 'Network error. Check your connection and try again.'
+        }
+        if (error.code === 'ECONNABORTED') {
+            return 'The upload timed out before the server responded.'
+        }
+        if (typeof error.message === 'string' && error.message.trim()) {
+            return error.message
+        }
     }
 
-    if (response?.data?.message) {
-        return response.data.message
+    const response = error as
+        | {
+              data?:
+                  | string
+                  | {
+                        title?: string
+                        message?: string
+                        detail?: string
+                        errors?: Record<string, string[]>
+                    }
+              message?: string
+              statusText?: string
+          }
+        | undefined
+
+    if (typeof response?.data === 'string' && response.data.trim()) {
+        return response.data
     }
-    if (response?.data?.title) {
-        return response.data.title
+
+    const responseData = response?.data as
+        | {
+                  title?: string
+                  message?: string
+                  detail?: string
+                  errors?: Record<string, string[]>
+              }
+        | undefined
+
+    if (responseData?.message) {
+        return responseData.message
     }
-    if (response?.data?.detail) {
-        return response.data.detail
+    if (responseData?.title) {
+        return responseData.title
     }
-    if (response?.data?.errors) {
-        const firstKey = Object.keys(response.data.errors)[0]
-        const firstMessage = response.data.errors[firstKey]?.[0]
+    if (responseData?.detail) {
+        return responseData.detail
+    }
+    if (responseData?.errors) {
+        const firstKey = Object.keys(responseData.errors)[0]
+        const firstMessage = responseData.errors[firstKey]?.[0]
         if (firstMessage) {
             return firstMessage
         }
@@ -654,7 +783,192 @@ const toErrorMessage = (error: unknown, fallback: string): string => {
     if (response?.statusText) {
         return response.statusText
     }
+    if (response?.message?.trim()) {
+        return response.message
+    }
+    if (error instanceof Error && error.message.trim()) {
+        return error.message
+    }
+    if (typeof error === 'string' && error.trim()) {
+        return error
+    }
     return fallback
+}
+
+const getGlobalTargetLanguageDefault = (): string => {
+    const rawTargetLanguages = settingStore.getSetting(SETTINGS.TARGET_LANGUAGES) as
+        | ILanguage[]
+        | string
+        | null
+        | undefined
+
+    if (Array.isArray(rawTargetLanguages)) {
+        return normalizeLanguageValue(rawTargetLanguages[0]?.code || '')
+    }
+
+    if (typeof rawTargetLanguages === 'string' && rawTargetLanguages.trim().length > 0) {
+        try {
+            const parsed = JSON.parse(rawTargetLanguages) as ILanguage[]
+            if (Array.isArray(parsed)) {
+                return normalizeLanguageValue(parsed[0]?.code || '')
+            }
+        } catch {
+            return ''
+        }
+    }
+
+    return ''
+}
+
+const applyDefaultTargetLanguage = (force: boolean) => {
+    if (selectedBatchId.value) {
+        return
+    }
+
+    if (!force && targetLanguageTouched.value) {
+        return
+    }
+
+    const defaultTargetLanguage = getGlobalTargetLanguageDefault()
+    if (!defaultTargetLanguage) {
+        if (force) {
+            batchForm.value.targetLanguage = ''
+        }
+        return
+    }
+
+    batchForm.value.targetLanguage = defaultTargetLanguage
+}
+
+const markTargetLanguageTouched = () => {
+    targetLanguageTouched.value = true
+}
+
+const getTotalLoadedBytes = (): number => {
+    return uploadQueue.value.reduce(
+        (sum, item) => sum + Math.max(Math.min(item.loadedBytes, item.totalBytes), 0),
+        0
+    )
+}
+
+const resetUploadSpeedTracking = () => {
+    uploadSpeedBytesPerSecond.value = 0
+    uploadSpeedLastLoadedBytes = getTotalLoadedBytes()
+    uploadSpeedLastMeasuredAt = Date.now()
+}
+
+const refreshUploadSpeed = () => {
+    const now = Date.now()
+    const totalLoadedBytes = getTotalLoadedBytes()
+    const elapsedSeconds = Math.max((now - uploadSpeedLastMeasuredAt) / 1000, 0.001)
+    const loadedDelta = Math.max(totalLoadedBytes - uploadSpeedLastLoadedBytes, 0)
+
+    uploadSpeedBytesPerSecond.value = loadedDelta / elapsedSeconds
+    uploadSpeedLastLoadedBytes = totalLoadedBytes
+    uploadSpeedLastMeasuredAt = now
+}
+
+const createUploadQueue = (files: File[]): UploadQueueItem[] => {
+    return files.map((file) => ({
+        id: `${file.name}-${file.lastModified}-${crypto.randomUUID()}`,
+        name: file.name,
+        size: file.size,
+        status: 'Queued',
+        loadedBytes: 0,
+        totalBytes: file.size,
+        percent: 0,
+        error: ''
+    }))
+}
+
+const setQueueItemProgress = (queueItem: UploadQueueItem, loadedBytes: number, totalBytes?: number) => {
+    const normalizedTotal = Math.max(totalBytes ?? queueItem.totalBytes ?? queueItem.size, queueItem.size, 1)
+    const normalizedLoaded = Math.min(Math.max(loadedBytes, 0), normalizedTotal)
+
+    queueItem.totalBytes = normalizedTotal
+    queueItem.loadedBytes = normalizedLoaded
+    queueItem.percent = Math.min(100, Math.round((normalizedLoaded / normalizedTotal) * 100))
+    refreshUploadSpeed()
+}
+
+const setQueueItemStatus = (
+    queueItem: UploadQueueItem,
+    status: UploadQueueItem['status'],
+    error = ''
+) => {
+    queueItem.status = status
+    queueItem.error = error
+}
+
+const getChunkSizeBytes = (chunkSizeBytes: number | undefined): number => {
+    if (!chunkSizeBytes || !Number.isFinite(chunkSizeBytes) || chunkSizeBytes <= 0) {
+        return DEFAULT_CHUNK_SIZE_BYTES
+    }
+
+    return Math.floor(chunkSizeBytes)
+}
+
+const uploadSingleFile = async (file: File, queueItem: UploadQueueItem, batchId: number): Promise<void> => {
+    let uploadId: string | null = null
+
+    try {
+        setQueueItemStatus(queueItem, 'Creating upload')
+        setQueueItemProgress(queueItem, 0, file.size)
+
+        const request: ICreateUploadChunkSessionRequest = {
+            fileName: file.name,
+            fileSizeBytes: file.size,
+            contentType: file.type || null,
+            lastModifiedUtc: new Date(file.lastModified).toISOString()
+        }
+        const chunkSession = await services.uploadWorkspace.createChunkSession(batchId, request)
+        uploadId = chunkSession.uploadId
+
+        const chunkSize = getChunkSizeBytes(chunkSession.chunkSizeBytes)
+        const totalBytes = file.size
+        const chunkCount = Math.max(1, Math.ceil(totalBytes / chunkSize))
+        let committedBytes = 0
+
+        for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex++) {
+            const chunkStart = chunkIndex * chunkSize
+            const chunkEnd = Math.min(chunkStart + chunkSize, totalBytes)
+            const chunk = file.slice(chunkStart, chunkEnd)
+
+            setQueueItemStatus(queueItem, 'Uploading')
+            await services.uploadWorkspace.uploadChunk(
+                batchId,
+                uploadId,
+                chunkIndex,
+                chunk,
+                (snapshot) => {
+                    setQueueItemProgress(
+                        queueItem,
+                        committedBytes + Math.min(snapshot.loadedBytes, chunk.size),
+                        totalBytes
+                    )
+                }
+            )
+
+            committedBytes += chunk.size
+            setQueueItemProgress(queueItem, committedBytes, totalBytes)
+        }
+
+        setQueueItemStatus(queueItem, 'Finalizing')
+        await services.uploadWorkspace.completeChunkSession(batchId, uploadId)
+
+        setQueueItemProgress(queueItem, file.size, file.size)
+        setQueueItemStatus(queueItem, 'Uploaded')
+    } catch (error) {
+        setQueueItemStatus(queueItem, 'Failed', toErrorMessage(error, `Upload failed for ${file.name}.`))
+
+        if (uploadId) {
+            try {
+                await services.uploadWorkspace.cancelChunkSession(batchId, uploadId)
+            } catch {
+                // Best-effort cancellation only
+            }
+        }
+    }
 }
 
 const formatBytes = (value: number): string => {
@@ -778,7 +1092,9 @@ const getQueueBadgeVariant = (
     switch (status) {
         case 'Uploaded':
             return 'success'
+        case 'Creating upload':
         case 'Uploading':
+        case 'Finalizing':
             return 'info'
         case 'Failed':
             return 'error'
@@ -793,10 +1109,14 @@ const openFilePicker = () => {
 
 const resetBatchForm = () => {
     batchForm.value = defaultBatchForm()
+    targetLanguageTouched.value = false
+    applyDefaultTargetLanguage(true)
 }
 
 const syncBatchFormWithSelection = (batch: IUploadBatch | null) => {
     if (!batch) {
+        targetLanguageTouched.value = false
+        applyDefaultTargetLanguage(true)
         return
     }
 
@@ -805,6 +1125,7 @@ const syncBatchFormWithSelection = (batch: IUploadBatch | null) => {
         targetLanguage: batch.targetLanguage,
         defaultRemuxEnabled: batch.defaultRemuxEnabled
     }
+    targetLanguageTouched.value = false
 }
 
 const syncFileDrafts = (files: IUploadBatchFile[]) => {
@@ -1030,53 +1351,61 @@ const ensureBatchForUpload = async (): Promise<number | null> => {
     return await createBatch()
 }
 
-const setQueueStatus = (status: UploadQueueItem['status']) => {
-    uploadQueue.value = uploadQueue.value.map((item) => {
-        return {
-            ...item,
-            status
-        }
-    })
-}
-
 const uploadFiles = async (files: File[]) => {
     if (files.length === 0) {
         return
     }
 
-    const batchId = await ensureBatchForUpload()
-    if (!batchId) {
-        return
-    }
-
-    uploadQueue.value = files.map((file) => ({
-        id: `${file.name}-${file.lastModified}`,
-        name: file.name,
-        size: file.size,
-        status: 'Queued'
-    }))
-
-    uploadProgressPercent.value = 0
-    uploadSpeedBytesPerSecond.value = 0
+    uploadQueue.value = createUploadQueue(files)
+    resetUploadSpeedTracking()
     uploading.value = true
     isDropActive.value = false
 
     try {
-        await services.uploadWorkspace.uploadFiles(batchId, files, (snapshot) => {
-            uploadProgressPercent.value = snapshot.percent
-            uploadSpeedBytesPerSecond.value = snapshot.speedBytesPerSecond
-            setQueueStatus('Uploading')
-        })
+        if (uploadTargetLanguageBlocker.value) {
+            const blockerMessage = uploadTargetLanguageBlocker.value
+            uploadQueue.value.forEach((item) => {
+                setQueueItemStatus(item, 'Failed', blockerMessage)
+            })
+            setError(blockerMessage)
+            return
+        }
 
-        setQueueStatus('Uploaded')
-        uploadProgressPercent.value = 100
+        const batchId = await ensureBatchForUpload()
+        if (!batchId) {
+            const batchError = errorMessage.value || 'Failed to create or select an upload batch.'
+            uploadQueue.value.forEach((item) => {
+                setQueueItemStatus(item, 'Failed', batchError)
+            })
+            return
+        }
+
+        let failedCount = 0
+        for (let index = 0; index < files.length; index++) {
+            const queueItem = uploadQueue.value[index]
+            if (!queueItem) {
+                continue
+            }
+
+            await uploadSingleFile(files[index], queueItem, batchId)
+            if (queueItem.status === 'Failed') {
+                failedCount++
+            }
+        }
 
         await loadBatches()
         selectedBatchId.value = batchId
         await refreshSelectedBatch()
-        setMessage('Upload finished.')
+
+        if (failedCount > 0) {
+            const uploadedCount = files.length - failedCount
+            setMessage(
+                `${uploadedCount} file${uploadedCount === 1 ? '' : 's'} uploaded, ${failedCount} failed.`
+            )
+        } else {
+            setMessage('Upload finished.')
+        }
     } catch (error) {
-        setQueueStatus('Failed')
         setError(toErrorMessage(error, 'Upload failed.'))
     } finally {
         uploadSpeedBytesPerSecond.value = 0
@@ -1234,10 +1563,23 @@ watch(
     { immediate: true }
 )
 
+watch(
+    () => settingStore.getSetting(SETTINGS.TARGET_LANGUAGES),
+    () => {
+        applyDefaultTargetLanguage(false)
+    },
+    { deep: true }
+)
+
 let refreshTimer: number | null = null
 
 onMounted(async () => {
+    if (!settingStore.getSetting(SETTINGS.TARGET_LANGUAGES)) {
+        await settingStore.applySettingsOnLoad()
+    }
+
     await Promise.all([loadSettings(), loadLanguages(), loadBatches()])
+    applyDefaultTargetLanguage(true)
 
     if (selectedBatchId.value) {
         await refreshSelectedBatch()

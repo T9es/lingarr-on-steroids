@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
 using Lingarr.Core.Entities;
 
 namespace Lingarr.Server.Services.Subtitle;
@@ -9,6 +11,10 @@ namespace Lingarr.Server.Services.Subtitle;
 /// </summary>
 public static class SubtitleLanguageHelper
 {
+    private static readonly Regex FileNameLanguageTokenRegex = new(
+        @"(?<=^|[.\s_\-\[\]\(\)])([a-z]{2,3}(?:-[a-z]{2,4})?)(?=$|[.\s_\-\[\]\(\)])",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     private static readonly Dictionary<string, string> Iso639Map = new(StringComparer.OrdinalIgnoreCase)
     {
         // English
@@ -85,31 +91,32 @@ public static class SubtitleLanguageHelper
         ["tur"] = "tr"
     };
 
+    private static readonly Dictionary<string, string> CultureLanguageMap = BuildCultureLanguageMap();
+
     /// <summary>
     /// Normalizes a language code to a comparable form, collapsing common
     /// 3-letter ISO codes and regional variants to their 2-letter base code.
     /// </summary>
     public static string NormalizeLanguageCode(string? code)
     {
+        if (TryNormalizeKnownLanguageCode(code, out var knownCode))
+        {
+            return knownCode;
+        }
+
         if (string.IsNullOrWhiteSpace(code))
         {
             return string.Empty;
         }
 
-        var normalized = code.Trim().ToLowerInvariant();
-
-        // Try exact map first (handles 2-letter, 3-letter and known regional variants)
-        if (Iso639Map.TryGetValue(normalized, out var mapped))
-        {
-            return mapped;
-        }
+        var normalized = NormalizeLanguageToken(code);
 
         // Handle region codes like "en-us" or "pt-br" by looking at the base code
         var dashIndex = normalized.IndexOf('-');
         if (dashIndex > 0)
         {
             var baseCode = normalized[..dashIndex];
-            if (Iso639Map.TryGetValue(baseCode, out var baseMapped))
+            if (TryNormalizeKnownLanguageCode(baseCode, out var baseMapped))
             {
                 return baseMapped;
             }
@@ -130,6 +137,81 @@ public static class SubtitleLanguageHelper
         }
 
         return normalized;
+    }
+
+    public static bool TryNormalizeKnownLanguageCode(string? value, out string code)
+    {
+        code = string.Empty;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var normalized = NormalizeLanguageToken(value);
+        if (TryNormalizeKnownLanguageCodeCore(normalized, out code))
+        {
+            return true;
+        }
+
+        var dashIndex = normalized.IndexOf('-');
+        if (dashIndex > 0)
+        {
+            var baseCode = normalized[..dashIndex];
+            if (TryNormalizeKnownLanguageCodeCore(baseCode, out code))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static string? DetectLanguageFromFileName(
+        string fileName,
+        IReadOnlyCollection<string>? configuredLanguages = null)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            return null;
+        }
+
+        var normalizedConfiguredLanguages = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (configuredLanguages != null)
+        {
+            foreach (var configuredLanguage in configuredLanguages)
+            {
+                if (TryNormalizeKnownLanguageCode(configuredLanguage, out var normalizedConfiguredLanguage))
+                {
+                    normalizedConfiguredLanguages.Add(normalizedConfiguredLanguage);
+                }
+            }
+        }
+
+        var useConfiguredFilter = normalizedConfiguredLanguages.Count > 0;
+        var baseName = Path.GetFileNameWithoutExtension(fileName);
+        if (string.IsNullOrWhiteSpace(baseName))
+        {
+            return null;
+        }
+
+        var matches = FileNameLanguageTokenRegex.Matches(baseName);
+        for (var index = matches.Count - 1; index >= 0; index--)
+        {
+            var token = matches[index].Groups[1].Value;
+            if (!TryNormalizeKnownLanguageCode(token, out var normalizedCode))
+            {
+                continue;
+            }
+
+            if (useConfiguredFilter && !normalizedConfiguredLanguages.Contains(normalizedCode))
+            {
+                continue;
+            }
+
+            return normalizedCode;
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -289,6 +371,64 @@ public static class SubtitleLanguageHelper
         }
 
         return (bestSubtitle, bestLanguage);
+    }
+
+    private static bool TryNormalizeKnownLanguageCodeCore(string normalized, out string code)
+    {
+        code = string.Empty;
+
+        if (Iso639Map.TryGetValue(normalized, out var isoMappedCode))
+        {
+            code = isoMappedCode;
+            return true;
+        }
+
+        if (CultureLanguageMap.TryGetValue(normalized, out var cultureMappedCode))
+        {
+            code = cultureMappedCode;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static string NormalizeLanguageToken(string value)
+    {
+        return value
+            .Trim()
+            .Trim('[', ']', '(', ')', '{', '}')
+            .Replace('_', '-')
+            .ToLowerInvariant();
+    }
+
+    private static Dictionary<string, string> BuildCultureLanguageMap()
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var culture in CultureInfo.GetCultures(CultureTypes.AllCultures))
+        {
+            var twoLetterCode = culture.TwoLetterISOLanguageName?.ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(twoLetterCode) ||
+                twoLetterCode == "iv" ||
+                twoLetterCode.Length != 2)
+            {
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(culture.Name))
+            {
+                map[NormalizeLanguageToken(culture.Name)] = twoLetterCode;
+            }
+
+            if (!string.IsNullOrWhiteSpace(culture.ThreeLetterISOLanguageName))
+            {
+                map[NormalizeLanguageToken(culture.ThreeLetterISOLanguageName)] = twoLetterCode;
+            }
+
+            map[NormalizeLanguageToken(twoLetterCode)] = twoLetterCode;
+        }
+
+        return map;
     }
 }
 

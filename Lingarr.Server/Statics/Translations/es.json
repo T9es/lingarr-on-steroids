@@ -11,6 +11,8 @@
     "subtitle": "Subtítulos",
     "integrity": "Integridad",
     "automation": "Automatización",
+    "customSources": "Fuentes personalizadas",
+    "uploadWorkspace": "Espacio de carga",
     "tasks": "Tareas",
     "logs": "Registros",
     "help": "Ayuda",
