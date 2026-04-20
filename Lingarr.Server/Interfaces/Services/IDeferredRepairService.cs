@@ -17,13 +17,13 @@ public interface IDeferredRepairService
     /// <param name="failedItems">List of items that failed translation</param>
     /// <param name="allSubtitles">All subtitle items from the file (for context)</param>
     /// <param name="contextRadius">Number of lines before/after each failed item to include</param>
-    /// <param name="stripSubtitleFormatting">Whether to use plaintext lines</param>
+    /// <param name="providerVisibleTextByPosition">Provider-visible subtitle text keyed by subtitle position</param>
     /// <returns>A contextual repair batch with merged ranges</returns>
     ContextualRepairBatch BuildContextualRepairBatch(
         List<RepairItem> failedItems,
         List<SubtitleItem> allSubtitles,
         int contextRadius,
-        bool stripSubtitleFormatting);
+        IReadOnlyDictionary<int, string> providerVisibleTextByPosition);
     
     /// <summary>
     /// Executes the repair batch translation with retry logic.

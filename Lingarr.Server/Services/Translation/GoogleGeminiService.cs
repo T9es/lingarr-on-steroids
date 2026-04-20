@@ -36,6 +36,8 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
     private TimeSpan _retryDelay;
     private int _retryDelayMultiplier;
     private TimeSpan? _apiSuggestedRetryDelay;
+    private static readonly TimeSpan MinQuotaRetryDelay = TimeSpan.FromSeconds(1);
+    private const int MaxQuotaRetries = 8;
 
     public GoogleGeminiService(
         ISettingService settings,
@@ -153,19 +155,20 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
             {
-                if (attempt == _maxRetries)
+                var quotaRetryLimit = GetQuotaRetryLimit();
+                if (attempt >= quotaRetryLimit)
                 {
                     _logger.LogError(ex, "Too many requests. Max retries exhausted for text: {Text}", text);
                     throw new TranslationException("Too many requests. Retry limit reached.", ex);
                 }
-                
-                var effectiveDelay = _apiSuggestedRetryDelay ?? delay;
+
+                var effectiveDelay = BuildQuotaRetryDelay(delay);
                 var suggestedSeconds = _apiSuggestedRetryDelay?.TotalSeconds ?? 0;
                 _apiSuggestedRetryDelay = null;
 
                 _logger.LogWarning(
                     "429 Too Many Requests. API suggests retry in {SuggestedDelay}s. Retrying in {Delay}s... (Attempt {Attempt}/{MaxRetries})",
-                    suggestedSeconds, effectiveDelay.TotalSeconds, attempt, _maxRetries);
+                    suggestedSeconds, effectiveDelay.TotalSeconds, attempt, quotaRetryLimit);
 
                 await Task.Delay(effectiveDelay, linked.Token).ConfigureAwait(false);
                 
@@ -429,19 +432,20 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
             {
-                if (attempt == _maxRetries)
+                var quotaRetryLimit = GetQuotaRetryLimit();
+                if (attempt >= quotaRetryLimit)
                 {
                     _logger.LogError(ex, "Too many requests. Max retries exhausted for batch translation");
                     throw new TranslationException("Too many requests. Retry limit reached.", ex);
                 }
 
-                var effectiveDelay = _apiSuggestedRetryDelay ?? delay;
+                var effectiveDelay = BuildQuotaRetryDelay(delay);
                 var suggestedSeconds = _apiSuggestedRetryDelay?.TotalSeconds ?? 0;
                 _apiSuggestedRetryDelay = null;
 
                 _logger.LogWarning(
                     "429 Too Many Requests. API suggests retry in {SuggestedDelay}s. Retrying in {Delay}s... (Attempt {Attempt}/{MaxRetries})",
-                    suggestedSeconds, effectiveDelay.TotalSeconds, attempt, _maxRetries);
+                    suggestedSeconds, effectiveDelay.TotalSeconds, attempt, quotaRetryLimit);
 
                 await Task.Delay(effectiveDelay, linked.Token).ConfigureAwait(false);
                 
@@ -712,6 +716,23 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
         }
         
         return null;
+    }
+
+    private int GetQuotaRetryLimit()
+    {
+        return Math.Min(Math.Max(_maxRetries, 1), MaxQuotaRetries);
+    }
+
+    private TimeSpan BuildQuotaRetryDelay(TimeSpan fallbackDelay)
+    {
+        var delay = _apiSuggestedRetryDelay ?? fallbackDelay;
+        if (delay < MinQuotaRetryDelay)
+        {
+            delay = MinQuotaRetryDelay;
+        }
+
+        var jitter = TimeSpan.FromMilliseconds(Random.Shared.Next(0, 500));
+        return delay + jitter;
     }
 
     private static bool IsRetryableStatus(HttpStatusCode statusCode)

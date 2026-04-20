@@ -1,6 +1,5 @@
-﻿using Lingarr.Core.Entities;
+using Lingarr.Core.Entities;
 using Lingarr.Server.Exceptions;
-using Lingarr.Server.Extensions;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models.Batch;
@@ -11,7 +10,7 @@ namespace Lingarr.Server.Services;
 
 public class SubtitleTranslationService
 {
-    private const int MaxLineLength = 42;
+    private const int ProviderVisibleCharBudgetPerBatch = 20_000;
     private int _lastProgression = -1;
     private readonly ITranslationService _translationService;
     private readonly IProgressService? _progressService;
@@ -33,15 +32,6 @@ public class SubtitleTranslationService
         _logger = logger;
     }
 
-    /// <summary>
-    /// Translates a list of subtitle items from the source language to the target language.
-    /// </summary>
-    /// <param name="subtitles">The list of subtitle items to translate.</param>
-    /// <param name="translationRequest">Contains the source and target language specifications.</param>
-    /// <param name="stripSubtitleFormatting">Boolean used for indicating that styles need to be stripped from the subtitle</param>
-    /// <param name="contextBefore">Amount of context before the subtitle line</param>
-    /// <param name="contextAfter">Amount of context after the subtitle line</param>
-    /// <param name="cancellationToken">Token to support cancellation of the translation operation.</param>
     public async Task<List<SubtitleItem>> TranslateSubtitles(
         List<SubtitleItem> subtitles,
         TranslationRequest translationRequest,
@@ -56,32 +46,29 @@ public class SubtitleTranslationService
             throw new TranslationException("Subtitle translator could not be initialized, progress service is null.");
         }
 
-        var usePlaintextInput = stripSubtitleFormatting && !preserveAssFormatting;
+        var structureEntries = BuildStructureEntries(subtitles, stripSubtitleFormatting, preserveAssFormatting);
         var iteration = 0;
         var totalSubtitles = subtitles.Count;
 
-        for (var index = 0; index < subtitles.Count; index++)
+        for (var index = 0; index < structureEntries.Count; index++)
         {
-            var subtitle = subtitles[index];
-
             if (cancellationToken.IsCancellationRequested)
             {
                 _lastProgression = -1;
                 break;
             }
 
-            var contextLinesBefore = BuildContext(subtitles, index, contextBefore, usePlaintextInput, true);
-            var contextLinesAfter = BuildContext(subtitles, index, contextAfter, usePlaintextInput, false);
+            var entry = structureEntries[index];
+            var contextLinesBefore = BuildContext(structureEntries, index, contextBefore, true);
+            var contextLinesAfter = BuildContext(structureEntries, index, contextAfter, false);
 
-            var subtitleLine = preserveAssFormatting
-                ? string.Join("\\N", usePlaintextInput ? subtitle.PlaintextLines : subtitle.Lines)
-                : string.Join(" ", usePlaintextInput ? subtitle.PlaintextLines : subtitle.Lines);
-            var translated = subtitleLine;
-            if (subtitleLine != "" && !SubtitleFormatterService.IsMeaningless(string.Join(" ", subtitle.PlaintextLines)))
+            var translated = entry.ProviderText;
+            if (entry.IsTranslatable)
             {
-                translated = await TranslateSubtitleLine(new TranslateAbleSubtitleLine
+                translated = await TranslateSubtitleLine(
+                    new TranslateAbleSubtitleLine
                     {
-                        SubtitleLine = subtitleLine,
+                        SubtitleLine = entry.ProviderText,
                         SourceLanguage = translationRequest.SourceLanguage,
                         TargetLanguage = translationRequest.TargetLanguage,
                         ContextLinesBefore = contextLinesBefore.Count > 0 ? contextLinesBefore : null,
@@ -89,9 +76,18 @@ public class SubtitleTranslationService
                     },
                     cancellationToken);
             }
-            subtitle.TranslatedLines = preserveAssFormatting
-                ? SplitPreservedAssLines(translated)
-                : translated.SplitIntoLines(MaxLineLength);
+
+            translated = SubtitleTextStructure.NormalizeProviderTranslationText(translated);
+            if (entry.Structure.VisibleLineCount > 1 &&
+                !entry.Structure.IsProviderTranslationCompatible(translated))
+            {
+                _logger.LogWarning(
+                    "Single-line translation output line mismatch at position {Position}. Expected {Expected} visible lines.",
+                    entry.Subtitle.Position,
+                    entry.Structure.VisibleLineCount);
+            }
+
+            entry.Subtitle.TranslatedLines = entry.Structure.ApplyProviderTranslation(translated);
 
             iteration++;
             await EmitProgress(translationRequest, iteration, totalSubtitles);
@@ -101,14 +97,6 @@ public class SubtitleTranslationService
         return subtitles;
     }
 
-    /// <summary>
-    /// Translates a single subtitle line using the configured translation service.
-    /// </summary>
-    /// <param name="translateAbleSubtitle">
-    /// Contains the subtitle line to translate along with source and target language specifications.
-    /// </param>
-    /// <param name="cancellationToken">Token to cancel the translation operation</param>
-    /// <returns>The translated subtitle line.</returns>
     public async Task<string> TranslateSubtitleLine(
         TranslateAbleSubtitleLine translateAbleSubtitle,
         CancellationToken cancellationToken)
@@ -125,7 +113,8 @@ public class SubtitleTranslationService
         }
         catch (TranslationException ex)
         {
-            _logger.LogError(ex,
+            _logger.LogError(
+                ex,
                 "Translation failed for subtitle line: {SubtitleLine} from {SourceLang} to {TargetLang}",
                 translateAbleSubtitle.SubtitleLine,
                 translateAbleSubtitle.SourceLanguage,
@@ -133,23 +122,7 @@ public class SubtitleTranslationService
             throw new TranslationException("Translation failed for subtitle line", ex);
         }
     }
-    
-    /// <summary>
-    /// Translates subtitles in batch mode 
-    /// </summary>
-    /// <param name="subtitles">The list of subtitle items to translate.</param>
-    /// <param name="translationRequest">Contains the source and target language specifications.</param>
-    /// <param name="stripSubtitleFormatting">Boolean used for indicating that styles need to be stripped from the subtitle</param>
-    /// <param name="batchSize">Number of subtitles to process in each batch (0 for all)</param>
-    /// <param name="batchRetryMode">Retry mode: "immediate" for chunk splitting, "deferred" for end-of-job repair</param>
-    /// <param name="maxSplitAttempts">Maximum number of chunk split attempts (only used if batchRetryMode is "immediate")</param>
-    /// <param name="repairContextRadius">Context radius for deferred repair (only used if batchRetryMode is "deferred")</param>
-    /// <param name="repairMaxRetries">Max retries for repair batch (only used if batchRetryMode is "deferred")</param>
-    /// <param name="batchContextEnabled">Enable wrapper context for batch translations</param>
-    /// <param name="batchContextBefore">Number of context lines before the batch</param>
-    /// <param name="batchContextAfter">Number of context lines after the batch</param>
-    /// <param name="fileIdentifier">Short identifier for logging (e.g., episode name)</param>
-    /// <param name="cancellationToken">Token to support cancellation of the translation operation.</param>
+
     public async Task<List<SubtitleItem>> TranslateSubtitlesBatch(
         List<SubtitleItem> subtitles,
         TranslationRequest translationRequest,
@@ -171,31 +144,38 @@ public class SubtitleTranslationService
             throw new TranslationException("Subtitle translator could not be initialized, progress service is null.");
         }
 
-        var usePlaintextInput = stripSubtitleFormatting && !preserveAssFormatting;
-
         if (_translationService is not IBatchTranslationService batchTranslationService)
         {
             throw new TranslationException("The configured translation service does not support batch translation.");
         }
-        
-        // If batchSize is 0 or negative, we'll translate all subtitles at once
-        if (batchSize <= 0)
-        {
-            batchSize = subtitles.Count;
-        }
 
-        var totalBatches = (int)Math.Ceiling((double)subtitles.Count / batchSize);
+        var effectiveBatchSize = batchSize <= 0 ? subtitles.Count : batchSize;
+        var structureEntries = BuildStructureEntries(subtitles, stripSubtitleFormatting, preserveAssFormatting);
+        var structuresByPosition = structureEntries.ToDictionary(entry => entry.Subtitle.Position, entry => entry.Structure);
+        var providerTextByPosition = structureEntries.ToDictionary(entry => entry.Subtitle.Position, entry => entry.ProviderText);
+        var batches = BuildBatches(structureEntries, effectiveBatchSize, ProviderVisibleCharBudgetPerBatch);
+        var translatableCueCount = structureEntries.Count(entry => entry.IsTranslatable);
+        var skippedCueCount = structureEntries.Count - translatableCueCount;
+        var rawSourceChars = structureEntries.Sum(entry => entry.RawSourceCharCount);
+        var providerChars = structureEntries.Sum(entry => entry.Structure.ProviderVisibleCharCount);
+
+        _logger.LogInformation(
+            "[{FileId}] Batch translation prep: source subtitles={SourceCount}, translatable cues={TranslatableCount}, skipped cues={SkippedCount}, raw source chars={RawChars}, provider chars={ProviderChars}, final batch count={BatchCount}",
+            fileIdentifier,
+            subtitles.Count,
+            translatableCueCount,
+            skippedCueCount,
+            rawSourceChars,
+            providerChars,
+            batches.Count);
+
         var processedSubtitles = 0;
-        
-        // Determine if we're using deferred repair mode
-        var useDeferredRepair = batchRetryMode.Equals("deferred", StringComparison.OrdinalIgnoreCase) 
-                                && _deferredRepairService != null;
+        var useDeferredRepair = batchRetryMode.Equals("deferred", StringComparison.OrdinalIgnoreCase) &&
+                                _deferredRepairService != null;
         var useImmediateFallback = batchRetryMode.Equals("immediate", StringComparison.OrdinalIgnoreCase);
-        
-        // Collect failures for deferred repair
         var globalFailures = new List<RepairItem>();
 
-        for (int batchIndex = 0; batchIndex < totalBatches; batchIndex++)
+        for (var batchIndex = 0; batchIndex < batches.Count; batchIndex++)
         {
             if (cancellationToken.IsCancellationRequested)
             {
@@ -203,158 +183,148 @@ public class SubtitleTranslationService
                 break;
             }
 
-            var currentBatch = subtitles
-                .Skip(batchIndex * batchSize)
-                .Take(batchSize)
-                .ToList();
+            var batch = batches[batchIndex];
+            var currentBatch = batch.Entries.Select(entry => entry.Subtitle).ToList();
+            var structureLookup = batch.Entries.ToDictionary(entry => entry.Subtitle.Position, entry => entry.Structure);
 
-            // Build batch context wrapper if enabled
             List<string>? preContext = null;
             List<string>? postContext = null;
             if (batchContextEnabled)
             {
-                var firstItemIndex = batchIndex * batchSize;
-                var lastItemIndex = Math.Min((batchIndex + 1) * batchSize - 1, subtitles.Count - 1);
-                
-                // Get N lines BEFORE the first item in this batch
-                preContext = subtitles
-                    .Take(firstItemIndex)
-                    .TakeLast(batchContextBefore)
-                    .Select(s => string.Join(" ", usePlaintextInput ? s.PlaintextLines : s.Lines))
-                    .ToList();
-                
-                // Get N lines AFTER the last item in this batch  
-                postContext = subtitles
-                    .Skip(lastItemIndex + 1)
-                    .Take(batchContextAfter)
-                    .Select(s => string.Join(" ", usePlaintextInput ? s.PlaintextLines : s.Lines))
-                    .ToList();
+                preContext = BuildBatchContext(structureEntries, batch.StartIndex, batchContextBefore, true);
+                postContext = BuildBatchContext(structureEntries, batch.EndIndex, batchContextAfter, false);
             }
-            
-            var batchFailures = await ProcessSubtitleBatch(
+
+            var batchFailures = await ProcessSubtitleBatchInternal(
                 currentBatch,
                 batchTranslationService,
                 translationRequest.SourceLanguage,
                 translationRequest.TargetLanguage,
-                usePlaintextInput,
+                stripSubtitleFormatting,
                 useImmediateFallback,
                 maxSplitAttempts,
-                useDeferredRepair,  // collectFailures
+                useDeferredRepair,
                 preContext,
                 postContext,
                 fileIdentifier,
-                batchIndex + 1,  // 1-indexed batch number
-                totalBatches,
+                batchIndex + 1,
+                batches.Count,
                 preserveAssFormatting,
-                cancellationToken);
-            
-            // Collect failures for deferred repair
+                cancellationToken,
+                structureLookup);
+
             if (useDeferredRepair && batchFailures.Count > 0)
             {
                 foreach (var failure in batchFailures)
                 {
-                    globalFailures.Add(new RepairItem
-                    {
-                        Position = failure.Position,
-                        OriginalLine = failure.Line,
-                        OriginalBatchIndex = batchIndex + 1
-                    });
+                    globalFailures.Add(
+                        new RepairItem
+                        {
+                            Position = failure.Position,
+                            OriginalLine = failure.Line,
+                            OriginalBatchIndex = batchIndex + 1
+                        });
                 }
             }
 
             processedSubtitles += currentBatch.Count;
-            
-            // Progress: 0-95% for batches, 95-100% for repair phase
-            var progressPercent = useDeferredRepair 
+            var progressPercent = useDeferredRepair
                 ? (double)processedSubtitles / subtitles.Count * 0.95
                 : (double)processedSubtitles / subtitles.Count;
             await EmitProgressDirect(translationRequest, progressPercent);
         }
-        
-        // Deferred repair phase
+
         if (useDeferredRepair && globalFailures.Count > 0 && _deferredRepairService != null)
         {
             _logger.LogInformation(
                 "[{FileId}] Deferred repair: {FailedCount} items collected from {BatchCount} batches. Starting repair with context radius {Radius}.",
-                fileIdentifier, globalFailures.Count, totalBatches, repairContextRadius);
-            
+                fileIdentifier,
+                globalFailures.Count,
+                batches.Count,
+                repairContextRadius);
+
             var repairBatch = _deferredRepairService.BuildContextualRepairBatch(
                 globalFailures,
                 subtitles,
                 repairContextRadius,
-                usePlaintextInput);
-            
+                providerTextByPosition);
+
             var repairResults = await _deferredRepairService.ExecuteRepairAsync(
                 repairBatch,
                 batchTranslationService,
                 _batchFallbackService ?? throw new TranslationException("Batch fallback service is required for repair."),
                 translationRequest.SourceLanguage,
                 translationRequest.TargetLanguage,
-                batchSize,
+                effectiveBatchSize,
                 repairMaxRetries,
                 fileIdentifier,
                 cancellationToken);
-            
-            // Apply repaired translations back to subtitles
-            foreach (var (position, translatedText) in repairResults)
+
+            var unresolvedFailures = new List<BatchSubtitleItem>();
+            foreach (var failedItem in globalFailures)
             {
-                var subtitle = subtitles.FirstOrDefault(s => s.Position == position);
-                if (subtitle != null)
+                if (!structuresByPosition.TryGetValue(failedItem.Position, out var structure))
                 {
-                    var cleaned = usePlaintextInput
-                        ? SubtitleFormatterService.RemoveMarkup(translatedText)
-                        : translatedText;
-                    subtitle.TranslatedLines = preserveAssFormatting
-                        ? SplitPreservedAssLines(cleaned)
-                        : cleaned.SplitIntoLines(MaxLineLength);
+                    unresolvedFailures.Add(new BatchSubtitleItem
+                    {
+                        Position = failedItem.Position,
+                        Line = failedItem.OriginalLine
+                    });
+                    continue;
                 }
+
+                if (!repairResults.TryGetValue(failedItem.Position, out var translated))
+                {
+                    unresolvedFailures.Add(new BatchSubtitleItem
+                    {
+                        Position = failedItem.Position,
+                        Line = structure.ProviderVisibleText
+                    });
+                    continue;
+                }
+
+                translated = SubtitleTextStructure.NormalizeProviderTranslationText(translated);
+                if (structure.VisibleLineCount > 1 && !structure.IsProviderTranslationCompatible(translated))
+                {
+                    unresolvedFailures.Add(new BatchSubtitleItem
+                    {
+                        Position = failedItem.Position,
+                        Line = structure.ProviderVisibleText
+                    });
+                    continue;
+                }
+
+                var subtitle = subtitles.FirstOrDefault(item => item.Position == failedItem.Position);
+                if (subtitle == null)
+                {
+                    unresolvedFailures.Add(new BatchSubtitleItem
+                    {
+                        Position = failedItem.Position,
+                        Line = structure.ProviderVisibleText
+                    });
+                    continue;
+                }
+
+                subtitle.TranslatedLines = structure.ApplyProviderTranslation(translated);
             }
-            
+
+            if (unresolvedFailures.Count > 0)
+            {
+                ThrowMissingTranslationException(unresolvedFailures);
+            }
+
             _logger.LogInformation(
                 "[{FileId}] Deferred repair completed: {RepairedCount} items repaired.",
-                fileIdentifier, repairResults.Count);
-            
-            // Progress: 100% after repair
+                fileIdentifier,
+                repairResults.Count);
+
             await EmitProgressDirect(translationRequest, 1.0);
         }
 
         _lastProgression = -1;
         return subtitles;
     }
-    
-    /// <summary>
-    /// Emits progress directly as a percentage (0.0 to 1.0)
-    /// </summary>
-    private async Task EmitProgressDirect(TranslationRequest translationRequest, double progressPercent)
-    {
-        if (_progressService == null) return;
-        
-        var percentage = (int)(progressPercent * 100);
-        if (percentage != _lastProgression)
-        {
-            _lastProgression = percentage;
-            await _progressService.Emit(translationRequest, percentage);
-        }
-    }
 
-    /// <summary>
-    /// Processes a batch of subtitles by translating them and updating their TranslatedLines property.
-    /// </summary>
-    /// <param name="currentBatch">The batch of subtitles to process</param>
-    /// <param name="batchTranslationService">The batch translation service to use</param>
-    /// <param name="sourceLanguage">Source language code</param>
-    /// <param name="targetLanguage">Target language code</param>
-    /// <param name="stripSubtitleFormatting">Boolean used for indicating that styles need to be stripped from the subtitle</param>
-    /// <param name="enableFallback">Whether to use graduated chunk splitting on failure</param>
-    /// <param name="maxSplitAttempts">Maximum number of chunk split attempts (only used if enableFallback is true)</param>
-    /// <param name="collectFailures">If true, collect failures instead of throwing; returns failed items for deferred repair</param>
-    /// <param name="preContext">Optional context lines before the batch</param>
-    /// <param name="postContext">Optional context lines after the batch</param>
-    /// <param name="fileIdentifier">Short identifier for the file being translated (for logging)</param>
-    /// <param name="batchNumber">Current batch number (1-indexed)</param>
-    /// <param name="totalBatches">Total number of batches for this file</param>
-    /// <param name="cancellationToken">Token to support cancellation of the translation operation</param>
-    /// <returns>List of failed BatchSubtitleItems (empty if all succeeded or collectFailures is false)</returns>
     public async Task<List<BatchSubtitleItem>> ProcessSubtitleBatch(
         List<SubtitleItem> currentBatch,
         IBatchTranslationService batchTranslationService,
@@ -372,42 +342,80 @@ public class SubtitleTranslationService
         bool preserveAssFormatting = false,
         CancellationToken cancellationToken = default)
     {
-        var usePlaintextInput = stripSubtitleFormatting && !preserveAssFormatting;
+        return await ProcessSubtitleBatchInternal(
+            currentBatch,
+            batchTranslationService,
+            sourceLanguage,
+            targetLanguage,
+            stripSubtitleFormatting,
+            enableFallback,
+            maxSplitAttempts,
+            collectFailures,
+            preContext,
+            postContext,
+            fileIdentifier,
+            batchNumber,
+            totalBatches,
+            preserveAssFormatting,
+            cancellationToken,
+            null);
+    }
 
-        var batchItems = currentBatch
+    private async Task<List<BatchSubtitleItem>> ProcessSubtitleBatchInternal(
+        List<SubtitleItem> currentBatch,
+        IBatchTranslationService batchTranslationService,
+        string sourceLanguage,
+        string targetLanguage,
+        bool stripSubtitleFormatting,
+        bool enableFallback,
+        int maxSplitAttempts,
+        bool collectFailures,
+        List<string>? preContext,
+        List<string>? postContext,
+        string fileIdentifier,
+        int batchNumber,
+        int totalBatches,
+        bool preserveAssFormatting,
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<int, SubtitleTextStructure>? subtitleStructures)
+    {
+        var structureEntries = currentBatch
             .Select(subtitle =>
             {
-                var line = preserveAssFormatting
-                    ? string.Join("\\N", usePlaintextInput ? subtitle.PlaintextLines : subtitle.Lines)
-                    : string.Join(" ", usePlaintextInput ? subtitle.PlaintextLines : subtitle.Lines);
-                var plaintextLine = string.Join(" ", subtitle.PlaintextLines);
-                
-                return new 
-                { 
-                    Original = subtitle, 
-                    Line = line, 
-                    Plaintext = plaintextLine 
-                };
+                var structure = subtitleStructures != null && subtitleStructures.TryGetValue(subtitle.Position, out var preBuilt)
+                    ? preBuilt
+                    : BuildSubtitleTextStructure(subtitle, stripSubtitleFormatting, preserveAssFormatting);
+                var providerText = structure.ProviderVisibleText;
+                return new SubtitleStructureEntry(
+                    subtitle,
+                    structure,
+                    providerText,
+                    IsMeaningfullyTranslatable(providerText),
+                    0);
             })
-            // Skip items that have no meaningful plaintext content even if we are preserving formatting
-            // This prevents graphical flares (like 'z' with 50 tags) from being sent to the AI
-            .Where(x => !SubtitleFormatterService.IsMeaningless(x.Plaintext))
-            .Select(x => new BatchSubtitleItem
+            .ToList();
+
+        var batchItems = structureEntries
+            .Where(entry => entry.IsTranslatable)
+            .Select(entry => new BatchSubtitleItem
             {
-                Position = x.Original.Position,
-                Line = x.Line
-            }).ToList();
+                Position = entry.Subtitle.Position,
+                Line = entry.ProviderText
+            })
+            .ToList();
 
         if (batchItems.Count == 0)
         {
-            return new List<BatchSubtitleItem>();
+            return [];
         }
 
         Dictionary<int, string> batchResults;
-        
         if (enableFallback && _batchFallbackService != null)
         {
-            _logger.LogDebug("[{FileId}] Using batch fallback service with max {MaxSplitAttempts} split attempts", fileIdentifier, maxSplitAttempts);
+            _logger.LogDebug(
+                "[{FileId}] Using batch fallback service with max {MaxSplitAttempts} split attempts",
+                fileIdentifier,
+                maxSplitAttempts);
             batchResults = await _batchFallbackService.TranslateWithFallbackAsync(
                 batchItems,
                 batchTranslationService,
@@ -440,211 +448,363 @@ public class SubtitleTranslationService
                         : "batch translation/parsing failure";
                     var failureSummary = TranslationFailureClassifier.GetFailureSummary(ex);
 
-                    _logger.LogError(ex, 
-                        "[{FileId}] Batch {BatchNum} failed completely due to {FailureType}. Marking all {Count} items for deferred repair. Summary: {FailureSummary}", 
-                        fileIdentifier, batchNumber, failureType, batchItems.Count, failureSummary);
-                    
-                    // Return all items as failures
+                    _logger.LogError(
+                        ex,
+                        "[{FileId}] Batch {BatchNum} failed completely due to {FailureType}. Marking all {Count} items for deferred repair. Summary: {FailureSummary}",
+                        fileIdentifier,
+                        batchNumber,
+                        failureType,
+                        batchItems.Count,
+                        failureSummary);
+
                     return batchItems;
                 }
-                
-                // If we're not collecting failures (i.e. not using deferred mode), rethrow
+
                 throw;
             }
         }
-        
-        foreach (var subtitle in currentBatch)
+
+        var failedByCompatibility = new HashSet<int>();
+        foreach (var entry in structureEntries.Where(entry => entry.IsTranslatable))
         {
-            if (batchResults.TryGetValue(subtitle.Position, out var translated))
+            if (!batchResults.TryGetValue(entry.Subtitle.Position, out var translated) ||
+                string.IsNullOrWhiteSpace(translated))
             {
-                // Always normalize line breaks to fix LLM issues (e.g., Gemini random newlines)
-                // This removes actual newline characters while preserving ASS escape sequences
-                translated = SubtitleFormatterService.NormalizeLineBreaks(translated);
-
-                if (usePlaintextInput)
-                {
-                    translated = SubtitleFormatterService.RemoveMarkup(translated);
-                }
-
-                subtitle.TranslatedLines = preserveAssFormatting
-                    ? SplitPreservedAssLines(translated)
-                    : translated.SplitIntoLines(MaxLineLength);
+                continue;
             }
-        }
-        
-        // Check for missing translations (only for entries that had meaningful source text)
-        var missingSubtitles = currentBatch
-            .Where(s =>
+
+            translated = SubtitleTextStructure.NormalizeProviderTranslationText(translated);
+            if (entry.Structure.VisibleLineCount > 1 && !entry.Structure.IsProviderTranslationCompatible(translated))
             {
-                var originalPlaintext = string.Join(" ", s.PlaintextLines);
-                if (SubtitleFormatterService.IsMeaningless(originalPlaintext))
+                failedByCompatibility.Add(entry.Subtitle.Position);
+                _logger.LogWarning(
+                    "[{FileId}] Batch {BatchNum}/{TotalBatches}: translated line mismatch for subtitle {Position}. Expected {Expected} visible lines.",
+                    fileIdentifier,
+                    batchNumber,
+                    totalBatches,
+                    entry.Subtitle.Position,
+                    entry.Structure.VisibleLineCount);
+                continue;
+            }
+
+            entry.Subtitle.TranslatedLines = entry.Structure.ApplyProviderTranslation(translated);
+        }
+
+        var missingEntries = structureEntries
+            .Where(entry =>
+            {
+                if (!entry.IsTranslatable)
                 {
                     return false;
                 }
 
-                var originalText = string.Join(" ", usePlaintextInput ? s.PlaintextLines : s.Lines);
-
-                // If there is no meaningful original text, we don't require a translation
-                if (string.IsNullOrWhiteSpace(originalText))
+                if (!batchResults.TryGetValue(entry.Subtitle.Position, out var translated) ||
+                    string.IsNullOrWhiteSpace(translated))
                 {
-                    return false;
+                    return true;
                 }
 
-                return s.TranslatedLines == null ||
-                       s.TranslatedLines.Count == 0 ||
-                       s.TranslatedLines.All(string.IsNullOrWhiteSpace);
+                if (failedByCompatibility.Contains(entry.Subtitle.Position))
+                {
+                    return true;
+                }
+
+                return entry.Subtitle.TranslatedLines == null ||
+                       entry.Subtitle.TranslatedLines.Count == 0 ||
+                       entry.Subtitle.TranslatedLines.All(string.IsNullOrWhiteSpace);
+            })
+            .Select(entry => new BatchSubtitleItem
+            {
+                Position = entry.Subtitle.Position,
+                Line = entry.ProviderText
             })
             .ToList();
-            
-        if (missingSubtitles.Count > 0)
+
+        if (missingEntries.Count == 0)
         {
-            // If collecting failures for deferred repair, return them instead of throwing
-            if (collectFailures)
-            {
-                _logger.LogWarning(
-                    "[{FileId}] Batch {BatchNum}/{TotalBatches}: {Count} item(s) failed, collecting for deferred repair",
-                    fileIdentifier, batchNumber, totalBatches, missingSubtitles.Count);
-                
-                return missingSubtitles.Select(s => new BatchSubtitleItem
-                {
-                    Position = s.Position,
-                    Line = string.Join(" ", usePlaintextInput ? s.PlaintextLines : s.Lines)
-                }).ToList();
-            }
-            
-            // Log detailed info about each missing translation
-            _logger.LogError("═══════════════════════════════════════════════════════════════");
-            _logger.LogError("MISSING TRANSLATIONS DETECTED: {Count} subtitle(s) failed", missingSubtitles.Count);
-            _logger.LogError("───────────────────────────────────────────────────────────────");
-            
-            foreach (var missing in missingSubtitles.Take(20)) // Limit to first 20 for readability
-            {
-                var originalText = string.Join(" ", usePlaintextInput ? missing.PlaintextLines : missing.Lines);
-                var truncatedText = originalText.Length > 80 ? originalText[..77] + "..." : originalText;
-                _logger.LogError("  [Pos {Position,4}] \"{OriginalText}\"", missing.Position, truncatedText);
-            }
-            
-            if (missingSubtitles.Count > 20)
-            {
-                _logger.LogError("  ... and {More} more missing translations", missingSubtitles.Count - 20);
-            }
-            _logger.LogError("═══════════════════════════════════════════════════════════════");
-
-            // Provide an explicit explanation and one concrete example
-            var exampleSubtitle = missingSubtitles[0];
-            var exampleOriginal = string.Join(" ",
-                usePlaintextInput ? exampleSubtitle.PlaintextLines : exampleSubtitle.Lines);
-            string? exampleTruncated = null;
-
-            if (!string.IsNullOrWhiteSpace(exampleOriginal))
-            {
-                exampleTruncated = exampleOriginal.Length > 80
-                    ? exampleOriginal[..77] + "..."
-                    : exampleOriginal;
-                
-                _logger.LogError(
-                    "Example missing subtitle at position {Position}: \"{OriginalText}\". " +
-                    "No translated text was returned for this entry by the batch translation service.",
-                    exampleSubtitle.Position,
-                    exampleTruncated);
-            }
-            
-            var positionRange = missingSubtitles.Count <= 5 
-                ? string.Join(", ", missingSubtitles.Select(s => s.Position))
-                : $"{string.Join(", ", missingSubtitles.Take(5).Select(s => s.Position))}... (+{missingSubtitles.Count - 5} more)";
-
-            var message =
-                $"Translation failed: {missingSubtitles.Count} subtitle(s) missing at positions: {positionRange}";
-
-            if (!string.IsNullOrEmpty(exampleTruncated))
-            {
-                message +=
-                    $". Example original text at position {exampleSubtitle.Position}: \"{exampleTruncated}\"";
-            }
-                
-            throw new TranslationException(message);
+            return [];
         }
-        
-        return new List<BatchSubtitleItem>(); // No failures
+
+        if (collectFailures)
+        {
+            _logger.LogWarning(
+                "[{FileId}] Batch {BatchNum}/{TotalBatches}: {Count} item(s) failed, collecting for deferred repair",
+                fileIdentifier,
+                batchNumber,
+                totalBatches,
+                missingEntries.Count);
+            return missingEntries;
+        }
+
+        ThrowMissingTranslationException(missingEntries);
+        return [];
     }
 
-    private static List<string> SplitPreservedAssLines(string translated)
+    private async Task EmitProgressDirect(TranslationRequest translationRequest, double progressPercent)
     {
-        var normalized = translated.Replace("\\n", "\\N", StringComparison.Ordinal);
-        return normalized
-            .Split("\\N", StringSplitOptions.None)
-            .ToList();
-    }
-    
-    /// <summary>
-    /// Builds a list of subtitle text strings as context around a given subtitle index.
-    /// </summary>
-    /// <param name="subtitles">The list of subtitle items.</param>
-    /// <param name="startIndex">The index around which to build context.</param>
-    /// <param name="count">The number of subtitles to include before or after the index.</param>
-    /// <param name="stripSubtitleFormatting">Whether to strip formatting from subtitles.</param>
-    /// <param name="isBeforeContext">If true, builds context before the index; otherwise, builds after.</param>
-    private static List<string> BuildContext(List<SubtitleItem> subtitles, int startIndex, int count,
-        bool stripSubtitleFormatting, bool isBeforeContext)
-    {
-        List<string> context = [];
+        if (_progressService == null)
+        {
+            return;
+        }
 
+        var percentage = (int)(progressPercent * 100);
+        if (percentage != _lastProgression)
+        {
+            _lastProgression = percentage;
+            await _progressService.Emit(translationRequest, percentage);
+        }
+    }
+
+    private static void ThrowMissingTranslationException(List<BatchSubtitleItem> missingItems)
+    {
+        var positionRange = missingItems.Count <= 5
+            ? string.Join(", ", missingItems.Select(item => item.Position))
+            : $"{string.Join(", ", missingItems.Take(5).Select(item => item.Position))}... (+{missingItems.Count - 5} more)";
+
+        var example = missingItems[0];
+        var exampleText = example.Line.Length > 80 ? example.Line[..77] + "..." : example.Line;
+        var message =
+            $"Translation failed: {missingItems.Count} subtitle(s) missing at positions: {positionRange}. Example original text at position {example.Position}: \"{exampleText}\"";
+        throw new TranslationException(message);
+    }
+
+    private static List<string> BuildBatchContext(
+        IReadOnlyList<SubtitleStructureEntry> entries,
+        int edgeIndex,
+        int count,
+        bool before)
+    {
+        if (count <= 0)
+        {
+            return [];
+        }
+
+        var context = new List<string>(count);
+        if (before)
+        {
+            var start = Math.Max(0, edgeIndex - count);
+            for (var index = start; index < edgeIndex; index++)
+            {
+                var providerText = entries[index].ProviderText;
+                if (!string.IsNullOrWhiteSpace(providerText))
+                {
+                    context.Add(providerText);
+                }
+            }
+        }
+        else
+        {
+            var end = Math.Min(entries.Count - 1, edgeIndex + count);
+            for (var index = edgeIndex + 1; index <= end; index++)
+            {
+                var providerText = entries[index].ProviderText;
+                if (!string.IsNullOrWhiteSpace(providerText))
+                {
+                    context.Add(providerText);
+                }
+            }
+        }
+
+        return context;
+    }
+
+    private static List<string> BuildContext(
+        IReadOnlyList<SubtitleStructureEntry> subtitles,
+        int startIndex,
+        int count,
+        bool isBeforeContext)
+    {
+        if (count <= 0)
+        {
+            return [];
+        }
+
+        var context = new List<string>();
         var start = isBeforeContext
             ? Math.Max(0, startIndex - count)
             : startIndex + 1;
-
         var end = isBeforeContext
             ? startIndex
             : Math.Min(subtitles.Count, startIndex + 1 + count);
 
-        for (var i = start; i < end; i++)
+        for (var index = start; index < end; index++)
         {
-            var contextSubtitle = subtitles[i];
-            context.Add(string.Join(" ",
-                stripSubtitleFormatting ? contextSubtitle.PlaintextLines : contextSubtitle.Lines));
+            var providerText = subtitles[index].ProviderText;
+            if (!string.IsNullOrWhiteSpace(providerText))
+            {
+                context.Add(providerText);
+            }
         }
 
-        return context.Count > 0 ? context : [];
+        return context;
     }
 
-    /// <summary>
-    /// Emits translation progress updates if progress has changed since the last emission.
-    /// Includes a visual ASCII progress bar in the console logs.
-    /// </summary>
-    /// <param name="request">The translation request being processed.</param>
-    /// <param name="iteration">The current subtitle index being processed.</param>
-    /// <param name="total">The total number of subtitles in the request.</param>
+    private static bool IsMeaningfullyTranslatable(string providerText)
+    {
+        return !string.IsNullOrWhiteSpace(providerText) &&
+               !SubtitleFormatterService.IsMeaningless(providerText.Trim());
+    }
+
+    private List<SubtitleStructureEntry> BuildStructureEntries(
+        List<SubtitleItem> subtitles,
+        bool stripSubtitleFormatting,
+        bool preserveAssFormatting)
+    {
+        var entries = new List<SubtitleStructureEntry>(subtitles.Count);
+        foreach (var subtitle in subtitles)
+        {
+            var structure = BuildSubtitleTextStructure(subtitle, stripSubtitleFormatting, preserveAssFormatting);
+            var providerText = structure.ProviderVisibleText;
+            var rawSourceLines = GetSourceLines(subtitle, stripSubtitleFormatting, preserveAssFormatting);
+            var rawSourceChars = string.Join(" ", rawSourceLines).Length;
+
+            entries.Add(
+                new SubtitleStructureEntry(
+                    subtitle,
+                    structure,
+                    providerText,
+                    IsMeaningfullyTranslatable(providerText),
+                    rawSourceChars));
+        }
+
+        return entries;
+    }
+
+    private static SubtitleTextStructure BuildSubtitleTextStructure(
+        SubtitleItem subtitle,
+        bool stripSubtitleFormatting,
+        bool preserveAssFormatting)
+    {
+        var sourceLines = GetSourceLines(subtitle, stripSubtitleFormatting, preserveAssFormatting);
+        if (sourceLines.Count == 0)
+        {
+            return new SubtitleTextStructure(SubtitleStructureMode.PlainText, [string.Empty], [
+                new SubtitleTextLine(
+                    0,
+                    0,
+                    [new SubtitleTextPart(SubtitleTextPartKind.Text, string.Empty, true, string.Empty)],
+                    string.Empty)
+            ]);
+        }
+
+        if (stripSubtitleFormatting && !preserveAssFormatting)
+        {
+            var plainLines = sourceLines
+                .Select((line, index) => new SubtitleTextLine(
+                    index,
+                    0,
+                    [new SubtitleTextPart(SubtitleTextPartKind.Text, line, true, line)],
+                    string.Empty))
+                .ToList();
+            return new SubtitleTextStructure(SubtitleStructureMode.PlainText, sourceLines, plainLines);
+        }
+
+        if (IsAssSubtitle(subtitle))
+        {
+            var assLines = new AssTextStructureParser().Parse(sourceLines);
+            return new SubtitleTextStructure(SubtitleStructureMode.Ass, sourceLines, assLines);
+        }
+
+        var inlineLines = new InlineMarkupStructureParser().Parse(sourceLines);
+        return new SubtitleTextStructure(SubtitleStructureMode.InlineMarkup, sourceLines, inlineLines);
+    }
+
+    private static bool IsAssSubtitle(SubtitleItem subtitle)
+    {
+        return subtitle.SsaDialogue != null || subtitle.SsaFormat != null;
+    }
+
+    private static List<string> GetSourceLines(
+        SubtitleItem subtitle,
+        bool stripSubtitleFormatting,
+        bool preserveAssFormatting)
+    {
+        var usePlaintextInput = stripSubtitleFormatting && !preserveAssFormatting;
+        return usePlaintextInput
+            ? subtitle.PlaintextLines
+            : subtitle.Lines;
+    }
+
+    private static List<SubtitleBatchSlice> BuildBatches(
+        IReadOnlyList<SubtitleStructureEntry> entries,
+        int maxCueCount,
+        int maxProviderChars)
+    {
+        if (entries.Count == 0)
+        {
+            return [];
+        }
+
+        var batches = new List<SubtitleBatchSlice>();
+        var currentEntries = new List<SubtitleStructureEntry>();
+        var currentProviderChars = 0;
+        var batchStart = 0;
+
+        for (var index = 0; index < entries.Count; index++)
+        {
+            var entry = entries[index];
+            var entryProviderChars = entry.IsTranslatable ? entry.Structure.ProviderVisibleCharCount : 0;
+            var exceedsCueLimit = currentEntries.Count >= maxCueCount;
+            var exceedsCharLimit = currentProviderChars > 0 &&
+                                   currentProviderChars + entryProviderChars > maxProviderChars;
+
+            if (currentEntries.Count > 0 && (exceedsCueLimit || exceedsCharLimit))
+            {
+                batches.Add(new SubtitleBatchSlice(batchStart, index - 1, currentEntries, currentProviderChars));
+                currentEntries = [];
+                currentProviderChars = 0;
+                batchStart = index;
+            }
+
+            currentEntries.Add(entry);
+            currentProviderChars += entryProviderChars;
+        }
+
+        if (currentEntries.Count > 0)
+        {
+            batches.Add(new SubtitleBatchSlice(batchStart, entries.Count - 1, currentEntries, currentProviderChars));
+        }
+
+        return batches;
+    }
+
     private async Task EmitProgress(TranslationRequest request, int iteration, int total)
     {
-        int progress = (int)Math.Round((double)iteration * 100 / total);
-
-        if (progress != _lastProgression)
+        var progress = (int)Math.Round((double)iteration * 100 / total);
+        if (progress == _lastProgression)
         {
-            // Create ASCII progress bar (filename is already logged in batch processing)
-            var progressBar = BuildProgressBar(progress);
-            _logger.LogInformation(
-                "{ProgressBar} {Progress}% ({Current}/{Total})",
-                progressBar,
-                progress,
-                iteration,
-                total);
-            
-            await _progressService!.Emit(request, progress);
-            _lastProgression = progress;
+            return;
         }
+
+        var progressBar = BuildProgressBar(progress);
+        _logger.LogInformation(
+            "{ProgressBar} {Progress}% ({Current}/{Total})",
+            progressBar,
+            progress,
+            iteration,
+            total);
+
+        await _progressService!.Emit(request, progress);
+        _lastProgression = progress;
     }
-    
-    /// <summary>
-    /// Builds a visual ASCII progress bar string.
-    /// </summary>
-    /// <param name="percentage">The progress percentage (0-100)</param>
-    /// <param name="width">The total width of the progress bar in characters</param>
-    /// <returns>A string representation of the progress bar</returns>
+
     private static string BuildProgressBar(int percentage, int width = 30)
     {
-        int filled = (int)Math.Round((double)percentage * width / 100);
-        int empty = width - filled;
-        
+        var filled = (int)Math.Round((double)percentage * width / 100);
+        var empty = width - filled;
         return $"[|Green|{new string('█', filled)}|/Green||Orange|{new string('░', empty)}|/Orange|]";
     }
+
+    private sealed record SubtitleStructureEntry(
+        SubtitleItem Subtitle,
+        SubtitleTextStructure Structure,
+        string ProviderText,
+        bool IsTranslatable,
+        int RawSourceCharCount);
+
+    private sealed record SubtitleBatchSlice(
+        int StartIndex,
+        int EndIndex,
+        List<SubtitleStructureEntry> Entries,
+        int ProviderCharCount);
 }

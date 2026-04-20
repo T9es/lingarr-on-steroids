@@ -11,7 +11,6 @@ using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models.Batch;
 using Lingarr.Server.Models.FileSystem;
 using Lingarr.Server.Services;
-using Lingarr.Server.Services.Subtitle;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;
@@ -28,7 +27,7 @@ public class SubtitleTranslationServiceTests
         var batchServiceMock = new Mock<IBatchTranslationService>();
 
         batchServiceMock
-            .Setup(s => s.TranslateBatchAsync(
+            .Setup(service => service.TranslateBatchAsync(
                 It.IsAny<List<BatchSubtitleItem>>(),
                 It.IsAny<string>(),
                 It.IsAny<string>(),
@@ -73,33 +72,38 @@ public class SubtitleTranslationServiceTests
         Assert.Equal(1, result[0].Position);
 
         loggerMock.Verify(
-            x => x.Log(
+            logger => logger.Log(
                 LogLevel.Error,
                 It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((v, _) => v.ToString()!.Contains("translation provider unavailability")),
+                It.Is<It.IsAnyType>((state, _) => state.ToString()!.Contains("translation provider unavailability")),
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.Once);
     }
 
     [Fact]
-    public async Task ProcessSubtitleBatch_WhenPreservingAssFormatting_KeepsAssLineStructure()
+    public async Task ProcessSubtitleBatch_WhenPreservingAssFormatting_ReconstructsFromVisibleProviderText()
     {
         var translationServiceMock = new Mock<ITranslationService>();
         var loggerMock = new Mock<ILogger>();
         var batchServiceMock = new Mock<IBatchTranslationService>();
+        List<BatchSubtitleItem>? capturedBatchItems = null;
 
         batchServiceMock
-            .Setup(s => s.TranslateBatchAsync(
+            .Setup(service => service.TranslateBatchAsync(
                 It.IsAny<List<BatchSubtitleItem>>(),
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<List<string>?>(),
                 It.IsAny<List<string>?>(),
                 It.IsAny<CancellationToken>()))
+            .Callback((List<BatchSubtitleItem> batch, string _, string _, List<string>? _, List<string>? _, CancellationToken _) =>
+            {
+                capturedBatchItems = batch;
+            })
             .ReturnsAsync(new Dictionary<int, string>
             {
-                [1] = "{\\an7\\pos(100,200)}To jest bardzo dlugi napis na znaku\\NWejscie wzbronione"
+                [1] = "To jest bardzo dlugi napis na znaku\nWejscie wzbronione"
             });
 
         var service = new SubtitleTranslationService(
@@ -128,13 +132,17 @@ public class SubtitleTranslationServiceTests
             preserveAssFormatting: true,
             cancellationToken: CancellationToken.None);
 
-        Assert.Equal(2, currentBatch[0].TranslatedLines.Count);
-        Assert.Equal("{\\an7\\pos(100,200)}To jest bardzo dlugi napis na znaku", currentBatch[0].TranslatedLines[0]);
-        Assert.Equal("Wejscie wzbronione", currentBatch[0].TranslatedLines[1]);
+        Assert.NotNull(capturedBatchItems);
+        Assert.Single(capturedBatchItems!);
+        Assert.Equal("A very long sign text\nDo not enter", capturedBatchItems![0].Line);
+        Assert.DoesNotContain("{", capturedBatchItems[0].Line, StringComparison.Ordinal);
+
+        Assert.Single(currentBatch[0].TranslatedLines);
+        Assert.Equal("{\\an7\\pos(100,200)}To jest bardzo dlugi napis na znaku\\NWejscie wzbronione", currentBatch[0].TranslatedLines[0]);
     }
 
     [Fact]
-    public async Task ProcessSubtitleBatch_WhenPreservingAssFormattingAndStripEnabled_UsesTaggedInput()
+    public async Task ProcessSubtitleBatch_WhenPreservingAssFormattingAndStripEnabled_UsesVisibleInputOnly()
     {
         var translationServiceMock = new Mock<ITranslationService>();
         var loggerMock = new Mock<ILogger>();
@@ -142,7 +150,7 @@ public class SubtitleTranslationServiceTests
         List<BatchSubtitleItem>? capturedBatchItems = null;
 
         batchServiceMock
-            .Setup(s => s.TranslateBatchAsync(
+            .Setup(service => service.TranslateBatchAsync(
                 It.IsAny<List<BatchSubtitleItem>>(),
                 It.IsAny<string>(),
                 It.IsAny<string>(),
@@ -155,7 +163,7 @@ public class SubtitleTranslationServiceTests
             })
             .ReturnsAsync(new Dictionary<int, string>
             {
-                [1] = "{\\an7\\pos(100,200)}Przetlumaczony tekst\\NWiersz drugi"
+                [1] = "Przetlumaczony napis"
             });
 
         var service = new SubtitleTranslationService(
@@ -168,8 +176,8 @@ public class SubtitleTranslationServiceTests
             new()
             {
                 Position = 1,
-                Lines = ["{\\an7\\pos(100,200)}A very long sign text\\NDo not enter"],
-                PlaintextLines = ["A very long sign text Do not enter"],
+                Lines = ["{\\p1}m 0 0 l 12 12{\\p0}{\\an8}A sign"],
+                PlaintextLines = ["A sign"],
                 SsaFormat = new SsaFormat { WrapStyle = SsaWrapStyle.None },
                 SsaDialogue = new SsaDialogue { Style = "Signs" }
             }
@@ -186,9 +194,11 @@ public class SubtitleTranslationServiceTests
 
         Assert.NotNull(capturedBatchItems);
         Assert.Single(capturedBatchItems!);
-        Assert.Equal("{\\an7\\pos(100,200)}A very long sign text\\NDo not enter", capturedBatchItems![0].Line);
-        Assert.Equal("{\\an7\\pos(100,200)}Przetlumaczony tekst", currentBatch[0].TranslatedLines[0]);
-        Assert.Equal("Wiersz drugi", currentBatch[0].TranslatedLines[1]);
+        Assert.Equal("A sign", capturedBatchItems![0].Line);
+        Assert.DoesNotContain("{", capturedBatchItems[0].Line, StringComparison.Ordinal);
+        Assert.DoesNotContain("m 0 0", capturedBatchItems[0].Line, StringComparison.Ordinal);
+        Assert.Single(currentBatch[0].TranslatedLines);
+        Assert.Equal("{\\p1}m 0 0 l 12 12{\\p0}{\\an8}Przetlumaczony napis", currentBatch[0].TranslatedLines[0]);
     }
 
     [Fact]
@@ -199,7 +209,7 @@ public class SubtitleTranslationServiceTests
         var progressServiceMock = new Mock<IProgressService>();
 
         progressServiceMock
-            .Setup(s => s.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
             .Returns(Task.CompletedTask);
 
         var service = new SubtitleTranslationService(
@@ -213,8 +223,8 @@ public class SubtitleTranslationServiceTests
             Title = "Episode",
             SourceLanguage = "en",
             TargetLanguage = "pl",
-            MediaType = Core.Enum.MediaType.Show,
-            Status = Core.Enum.TranslationStatus.Pending
+            MediaType = Lingarr.Core.Enum.MediaType.Show,
+            Status = Lingarr.Core.Enum.TranslationStatus.Pending
         };
 
         var subtitles = new List<SubtitleItem>
@@ -223,7 +233,9 @@ public class SubtitleTranslationServiceTests
             {
                 Position = 1,
                 Lines = ["{\\an7\\pos(100,200)}z"],
-                PlaintextLines = ["z"]
+                PlaintextLines = ["z"],
+                SsaFormat = new SsaFormat { WrapStyle = SsaWrapStyle.None },
+                SsaDialogue = new SsaDialogue { Style = "Signs" }
             }
         };
 

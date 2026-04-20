@@ -3,6 +3,7 @@ using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models.Batch;
 using Lingarr.Server.Models.FileSystem;
+using Lingarr.Server.Services.Subtitle;
 
 namespace Lingarr.Server.Services.Translation;
 
@@ -24,7 +25,7 @@ public class DeferredRepairService : IDeferredRepairService
         List<RepairItem> failedItems,
         List<SubtitleItem> allSubtitles,
         int contextRadius,
-        bool stripSubtitleFormatting)
+        IReadOnlyDictionary<int, string> providerVisibleTextByPosition)
     {
         if (failedItems.Count == 0)
         {
@@ -64,10 +65,10 @@ public class DeferredRepairService : IDeferredRepairService
                 {
                     continue; // Position doesn't exist (sparse positions)
                 }
-                
-                var line = string.Join(" ", stripSubtitleFormatting 
-                    ? subtitle.PlaintextLines 
-                    : subtitle.Lines);
+
+                var line = providerVisibleTextByPosition.TryGetValue(pos, out var providerVisibleText)
+                    ? providerVisibleText
+                    : FallbackToVisibleText(subtitle);
                 
                 batchItems.Add(new BatchSubtitleItem
                 {
@@ -92,6 +93,22 @@ public class DeferredRepairService : IDeferredRepairService
             FailedPositions = failedSet,
             Ranges = ranges
         };
+    }
+
+    private static string FallbackToVisibleText(SubtitleItem subtitle)
+    {
+        if (subtitle.PlaintextLines.Count > 0)
+        {
+            return string.Join('\n', subtitle.PlaintextLines);
+        }
+
+        if (subtitle.Lines.Count > 0)
+        {
+            var cleaned = subtitle.Lines.Select(SubtitleFormatterService.RemoveMarkup).ToList();
+            return string.Join('\n', cleaned);
+        }
+
+        return string.Empty;
     }
 
     /// <inheritdoc />
