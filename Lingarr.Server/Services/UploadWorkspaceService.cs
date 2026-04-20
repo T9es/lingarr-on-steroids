@@ -1100,7 +1100,7 @@ public class UploadWorkspaceService : IUploadWorkspaceService, IUploadWorkspaceC
 
     private static string SanitizeFileName(string fileName)
     {
-        var normalizedFileName = Path.GetFileName(fileName);
+        var normalizedFileName = PathStringHelper.GetFileName(fileName);
         if (string.IsNullOrWhiteSpace(normalizedFileName))
         {
             normalizedFileName = "upload";

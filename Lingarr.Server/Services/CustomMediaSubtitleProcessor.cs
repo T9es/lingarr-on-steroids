@@ -57,7 +57,7 @@ public class CustomMediaSubtitleProcessor : ICustomMediaSubtitleProcessor
             return 0;
         }
 
-        var mediaDirectory = Path.GetDirectoryName(trackedItem.Path);
+        var mediaDirectory = PathStringHelper.GetDirectoryName(trackedItem.Path);
         if (string.IsNullOrWhiteSpace(mediaDirectory))
         {
             return 0;
@@ -185,7 +185,7 @@ public class CustomMediaSubtitleProcessor : ICustomMediaSubtitleProcessor
     private async Task<List<Subtitles>> LoadMatchingExternalSubtitlesAsync(string mediaDirectory, string mediaFileName)
     {
         var allSubtitles = await _subtitleService.GetAllSubtitles(mediaDirectory);
-        var mediaNameNoExtension = Path.GetFileNameWithoutExtension(mediaFileName);
+        var mediaNameNoExtension = PathStringHelper.GetFileNameWithoutExtension(mediaFileName);
 
         return allSubtitles
             .Where(subtitle =>
@@ -231,7 +231,7 @@ public class CustomMediaSubtitleProcessor : ICustomMediaSubtitleProcessor
 
     private static bool ShouldSkipExternalSourceCandidate(Subtitles candidate)
     {
-        var fileName = Path.GetFileName(candidate.Path);
+        var fileName = PathStringHelper.GetFileName(candidate.Path);
         if (fileName.StartsWith("lingarr_temp_source_", StringComparison.OrdinalIgnoreCase))
         {
             return true;

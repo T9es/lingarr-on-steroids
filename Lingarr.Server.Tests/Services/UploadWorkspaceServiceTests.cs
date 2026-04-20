@@ -507,11 +507,14 @@ public class UploadWorkspaceServiceTests
     {
         await using var context = BuildContext();
 
+        var workspaceRoot = Path.Combine(AppContext.BaseDirectory, "testdata", $"lingarr-upload-root-{Guid.NewGuid():N}");
+        var outsideRoot = workspaceRoot + "-outside";
+
         var batch = new UploadBatch
         {
             Name = "Upload Batch",
             TargetLanguage = "pl",
-            StoragePath = "/uploads/batch-6",
+            StoragePath = Path.Combine(workspaceRoot, "batch-6"),
             Status = UploadBatchStatus.Ready
         };
 
@@ -523,7 +526,7 @@ public class UploadWorkspaceServiceTests
             Status = UploadBatchFileStatus.Ready,
             Title = "Episode 01",
             OriginalFileName = "Episode.01.en.srt",
-            StoredPath = "/uploads/batch-6/originals/Episode.01.en.srt",
+            StoredPath = Path.Combine(batch.StoragePath, "originals", "Episode.01.en.srt"),
             RelativeStoredPath = "originals/Episode.01.en.srt",
             FileSizeBytes = 1024,
             SelectedSourceLanguage = "en"
@@ -543,8 +546,8 @@ public class UploadWorkspaceServiceTests
                 It.IsAny<string>()))
             .Returns(new List<string>
             {
-                "/uploads/batch-6/translated/Episode.01.pl.srt",
-                "/outside/escape.pl.srt"
+                Path.Combine(batch.StoragePath, "translated", "Episode.01.pl.srt"),
+                Path.Combine(outsideRoot, "escape.pl.srt")
             });
 
         var service = new UploadWorkspaceService(
@@ -555,20 +558,35 @@ public class UploadWorkspaceServiceTests
             new Lazy<ITranslationRequestService>(() => Mock.Of<ITranslationRequestService>()),
             NullLogger<UploadWorkspaceService>.Instance);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => service.GetOutputPathsAsync(
-            new TranslationRequest
+        try
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(() => service.GetOutputPathsAsync(
+                new TranslationRequest
+                {
+                    UploadBatchFileId = uploadFile.Id,
+                    Title = "Episode 01",
+                    SourceLanguage = "en",
+                    TargetLanguage = "pl",
+                    MediaType = MediaType.Movie,
+                    Status = TranslationStatus.Pending
+                },
+                "pl",
+                "lingarr",
+                "lnr",
+                ".srt"));
+        }
+        finally
+        {
+            if (Directory.Exists(workspaceRoot))
             {
-                UploadBatchFileId = uploadFile.Id,
-                Title = "Episode 01",
-                SourceLanguage = "en",
-                TargetLanguage = "pl",
-                MediaType = MediaType.Movie,
-                Status = TranslationStatus.Pending
-            },
-            "pl",
-            "lingarr",
-            "lnr",
-            ".srt"));
+                Directory.Delete(workspaceRoot, recursive: true);
+            }
+
+            if (Directory.Exists(outsideRoot))
+            {
+                Directory.Delete(outsideRoot, recursive: true);
+            }
+        }
     }
 
     [Fact]

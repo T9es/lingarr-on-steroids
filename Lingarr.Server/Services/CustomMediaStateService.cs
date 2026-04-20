@@ -165,7 +165,7 @@ public class CustomMediaStateService : ICustomMediaStateService
             return TranslationState.Failed;
         }
 
-        var mediaDirectory = Path.GetDirectoryName(item.Path);
+        var mediaDirectory = PathStringHelper.GetDirectoryName(item.Path);
         var externalSubtitles = new List<Subtitles>();
         if (!string.IsNullOrWhiteSpace(mediaDirectory))
         {
@@ -173,7 +173,7 @@ public class CustomMediaStateService : ICustomMediaStateService
             {
                 var allSubtitles = await _subtitleService.GetAllSubtitles(mediaDirectory);
                 var mediaFileName = item.FileName;
-                var mediaNameNoExtension = Path.GetFileNameWithoutExtension(mediaFileName);
+                var mediaNameNoExtension = PathStringHelper.GetFileNameWithoutExtension(mediaFileName);
                 externalSubtitles = allSubtitles
                     .Where(subtitle =>
                         subtitle.FileName.StartsWith(mediaFileName + ".", StringComparison.OrdinalIgnoreCase) ||
@@ -512,7 +512,7 @@ public class CustomMediaStateService : ICustomMediaStateService
 
     private static bool ShouldSkipExternalSourceCandidate(Subtitles candidate)
     {
-        var fileName = Path.GetFileName(candidate.Path);
+        var fileName = PathStringHelper.GetFileName(candidate.Path);
         if (fileName.StartsWith("lingarr_temp_source_", StringComparison.OrdinalIgnoreCase))
         {
             return true;

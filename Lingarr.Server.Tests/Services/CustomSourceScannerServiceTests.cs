@@ -16,7 +16,10 @@ namespace Lingarr.Server.Tests.Services;
 
 public class CustomSourceScannerServiceTests : IDisposable
 {
-    private readonly string _rootDirectory = Path.Combine(Path.GetTempPath(), $"lingarr-custom-{Guid.NewGuid():N}");
+    private readonly string _rootDirectory = Path.Combine(
+        AppContext.BaseDirectory,
+        "testdata",
+        $"lingarr-custom-{Guid.NewGuid():N}");
 
     [Fact]
     public async Task ScanSourceAsync_IndexesMovieFilesAndRemovesMissingItemsWithoutTouchingLibraryMedia()
