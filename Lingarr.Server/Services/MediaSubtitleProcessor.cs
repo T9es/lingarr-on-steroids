@@ -1221,32 +1221,17 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         string requestedRequiredOutputFormats)
     {
         var workloadItemKey = $"library:{mediaType}:{mediaId}";
-        var activeCandidates = await _dbContext.TranslationRequests
+        return await _dbContext.TranslationRequests
             .Where(tr =>
                 (tr.WorkloadItemKey == workloadItemKey ||
                  ((tr.WorkloadItemKey == string.Empty || tr.WorkloadItemKey == null) &&
                   tr.WorkloadKind == TranslationWorkloadKind.Library &&
-                   tr.MediaId == mediaId &&
-                   tr.MediaType == mediaType)) &&
+                    tr.MediaId == mediaId &&
+                    tr.MediaType == mediaType)) &&
                 tr.SourceLanguage == sourceLanguage &&
                 tr.TargetLanguage == targetLanguage &&
                 tr.IsActive == true)
-            .Select(tr => new
-            {
-                tr.RequiredOutputFormats,
-                tr.SourceSubtitleFormat,
-                tr.SubtitleOutputMode
-            })
-            .ToListAsync();
-
-        return activeCandidates.Any(tr =>
-            string.Equals(
-                NormalizeRequiredOutputFormats(
-                    tr.RequiredOutputFormats,
-                    tr.SourceSubtitleFormat,
-                    tr.SubtitleOutputMode),
-                requestedRequiredOutputFormats,
-                StringComparison.Ordinal));
+            .AnyAsync();
     }
 
     private async Task<string> GetRequestedRequiredOutputFormatsAsync(string? sourceSubtitleFormat)

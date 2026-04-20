@@ -57,7 +57,7 @@ public class TranslationRequestServiceTests
     }
 
     [Fact]
-    public async Task DedupeQueuedRequests_KeepsDistinctRequiredOutputFormats()
+    public async Task DedupeQueuedRequests_RemovesQueuedRequestsWithDifferentRequiredOutputFormats()
     {
         await using var context = BuildContext();
 
@@ -88,7 +88,7 @@ public class TranslationRequestServiceTests
         var service = CreateService(context);
         var (removed, skipped) = await service.DedupeQueuedRequests();
 
-        Assert.Equal(1, removed);
+        Assert.Equal(2, removed);
         Assert.Equal(0, skipped);
 
         var remaining = await context.TranslationRequests
@@ -96,9 +96,8 @@ public class TranslationRequestServiceTests
             .OrderBy(tr => tr.Id)
             .ToListAsync();
 
-        Assert.Equal(2, remaining.Count);
+        Assert.Single(remaining);
         Assert.Equal(".ass", remaining[0].RequiredOutputFormats);
-        Assert.Equal(".srt", remaining[1].RequiredOutputFormats);
     }
 
     [Fact]
@@ -266,7 +265,7 @@ public class TranslationRequestServiceTests
     }
 
     [Fact]
-    public async Task CreateRequest_KeepsActiveRequestsSeparateAcrossDifferentRequiredOutputFormats()
+    public async Task CreateRequest_DedupesActiveRequestsAcrossDifferentRequiredOutputFormats()
     {
         await using var context = BuildContext();
 
@@ -297,8 +296,8 @@ public class TranslationRequestServiceTests
         var assId = await service.CreateRequest(assRequest);
         var srtId = await service.CreateRequest(srtRequest);
 
-        Assert.NotEqual(assId, srtId);
-        Assert.Equal(2, await context.TranslationRequests.CountAsync());
+        Assert.Equal(assId, srtId);
+        Assert.Equal(1, await context.TranslationRequests.CountAsync());
     }
 
     [Theory]
@@ -511,7 +510,7 @@ public class TranslationRequestServiceTests
     }
 
     [Fact]
-    public async Task RetryAllFailedRequests_RetriesOnlyRequestsWithoutMatchingRequiredOutputFormats()
+    public async Task RetryAllFailedRequests_BlocksRetryWhenAnyActiveRequestExistsForWorkload()
     {
         await using var context = BuildContext();
 
@@ -546,19 +545,19 @@ public class TranslationRequestServiceTests
         var service = CreateService(context);
         var retried = await service.RetryAllFailedRequests();
 
-        Assert.Equal(1, retried);
+        Assert.Equal(0, retried);
 
         var updatedFailedAss = await context.TranslationRequests.SingleAsync(tr => tr.Id == failedAss.Id);
         var updatedFailedSrt = await context.TranslationRequests.SingleAsync(tr => tr.Id == failedSrt.Id);
 
         Assert.Equal(TranslationStatus.Failed, updatedFailedAss.Status);
-        Assert.Equal(TranslationStatus.Pending, updatedFailedSrt.Status);
-        Assert.True(updatedFailedSrt.IsActive);
-        Assert.True(updatedFailedSrt.IsPriority);
+        Assert.Equal(TranslationStatus.Failed, updatedFailedSrt.Status);
+        Assert.Null(updatedFailedSrt.IsActive);
+        Assert.False(updatedFailedSrt.IsPriority);
     }
 
     [Fact]
-    public async Task RetryAllFailedRequests_BlocksRetryWhenLegacyKeylessActiveRequestMatchesFormat()
+    public async Task RetryAllFailedRequests_BlocksRetryWhenLegacyKeylessActiveRequestMatchesWorkload()
     {
         await using var context = BuildContext();
 
@@ -593,7 +592,7 @@ public class TranslationRequestServiceTests
     }
 
     [Fact]
-    public async Task RetryTranslationRequest_AllowsRetryWhenOnlyDifferentOutputFormatIsActive()
+    public async Task RetryTranslationRequest_BlocksRetryWhenDifferentOutputFormatIsAlreadyActive()
     {
         await using var context = BuildContext();
 
@@ -628,12 +627,12 @@ public class TranslationRequestServiceTests
         });
 
         Assert.NotNull(message);
-        Assert.Contains("restarted", message!, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("already active or pending", message!, StringComparison.OrdinalIgnoreCase);
 
         var updatedRequest = await context.TranslationRequests.SingleAsync(tr => tr.Id == failedSrt.Id);
-        Assert.Equal(TranslationStatus.Pending, updatedRequest.Status);
-        Assert.True(updatedRequest.IsActive);
-        Assert.True(updatedRequest.IsPriority);
+        Assert.Equal(TranslationStatus.Failed, updatedRequest.Status);
+        Assert.Null(updatedRequest.IsActive);
+        Assert.False(updatedRequest.IsPriority);
     }
 
     [Theory]

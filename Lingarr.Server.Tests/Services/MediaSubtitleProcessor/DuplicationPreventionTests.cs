@@ -199,7 +199,7 @@ public class DuplicationPreventionTests : MediaSubtitleProcessorTestBase
     }
 
     [Fact]
-    public async Task ProcessMediaForceAsync_WithActiveRequestForDifferentOutputFormat_EnqueuesExternalTranslation()
+    public async Task ProcessMediaForceAsync_WithActiveRequestForDifferentOutputFormat_DoesNotEnqueueExternalTranslation()
     {
         var movie = await CreateTestMovie();
         SetupStandardSettings();
@@ -242,10 +242,10 @@ public class DuplicationPreventionTests : MediaSubtitleProcessorTestBase
 
         var queued = await Processor.ProcessMediaForceAsync(movie, MediaType.Movie, forceProcess: true);
 
-        Assert.Equal(1, queued);
+        Assert.Equal(0, queued);
         TranslationRequestServiceMock.Verify(
             s => s.CreateRequest(It.IsAny<TranslateAbleSubtitle>(), It.IsAny<bool>()),
-            Times.Once);
+            Times.Never);
     }
 
     [Fact]
@@ -302,7 +302,7 @@ public class DuplicationPreventionTests : MediaSubtitleProcessorTestBase
     }
 
     [Fact]
-    public async Task ProcessMediaForceAsync_WithActiveRequestForDifferentOutputFormat_EnqueuesEmbeddedTranslation()
+    public async Task ProcessMediaForceAsync_WithActiveRequestForDifferentOutputFormat_DoesNotEnqueueEmbeddedTranslation()
     {
         var movie = await CreateTestMovie();
 
@@ -377,10 +377,10 @@ public class DuplicationPreventionTests : MediaSubtitleProcessorTestBase
 
         var queued = await Processor.ProcessMediaForceAsync(movie, MediaType.Movie, forceProcess: true);
 
-        Assert.Equal(1, queued);
+        Assert.Equal(0, queued);
         TranslationRequestServiceMock.Verify(
             s => s.CreateRequest(It.IsAny<TranslateAbleSubtitle>(), It.IsAny<bool>()),
-            Times.Once);
+            Times.Never);
     }
 
     [Fact]

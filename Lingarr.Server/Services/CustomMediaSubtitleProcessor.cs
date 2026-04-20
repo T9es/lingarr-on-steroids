@@ -327,30 +327,15 @@ public class CustomMediaSubtitleProcessor : ICustomMediaSubtitleProcessor
         string requestedRequiredOutputFormats)
     {
         var workloadItemKey = $"custom:{customMediaItemId}";
-        var activeCandidates = await _dbContext.TranslationRequests
+        return await _dbContext.TranslationRequests
             .Where(request =>
                 (request.WorkloadItemKey == workloadItemKey ||
                  (request.WorkloadKind == TranslationWorkloadKind.CustomSource &&
-                   request.CustomMediaItemId == customMediaItemId)) &&
+                    request.CustomMediaItemId == customMediaItemId)) &&
                 request.SourceLanguage == sourceLanguage &&
                 request.TargetLanguage == targetLanguage &&
                 request.IsActive == true)
-            .Select(request => new
-            {
-                request.RequiredOutputFormats,
-                request.SourceSubtitleFormat,
-                request.SubtitleOutputMode
-            })
-            .ToListAsync();
-
-        return activeCandidates.Any(request =>
-            string.Equals(
-                NormalizeRequiredOutputFormats(
-                    request.RequiredOutputFormats,
-                    request.SourceSubtitleFormat,
-                    request.SubtitleOutputMode),
-                requestedRequiredOutputFormats,
-                StringComparison.Ordinal));
+            .AnyAsync();
     }
 
     private async Task<HashSet<string>> GetStaleTargetLanguagesAsync(

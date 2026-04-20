@@ -42,7 +42,7 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                 WITH ranked_active AS (
                     SELECT id,
                        ROW_NUMBER() OVER (
-                      PARTITION BY workload_item_key, source_language, target_language, required_output_formats
+                PARTITION BY workload_item_key, source_language, target_language
                                ORDER BY created_at ASC, id ASC
                            ) AS rn
                     FROM translation_requests
@@ -195,7 +195,7 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
             migrationBuilder.CreateIndex(
                 name: "ux_translation_requests_active_dedupe",
                 table: "translation_requests",
-                columns: new[] { "workload_item_key", "source_language", "target_language", "required_output_formats", "is_active" },
+                columns: new[] { "workload_item_key", "source_language", "target_language", "is_active" },
                 unique: true);
 
             migrationBuilder.CreateIndex(
@@ -272,7 +272,7 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
             migrationBuilder.CreateIndex(
                 name: "ux_translation_requests_active_dedupe",
                 table: "translation_requests",
-                columns: new[] { "workload_item_key", "source_language", "target_language", "required_output_formats", "is_active" },
+                columns: new[] { "workload_item_key", "source_language", "target_language", "is_active" },
                 unique: true);
         }
     }

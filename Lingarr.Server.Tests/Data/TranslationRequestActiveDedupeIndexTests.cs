@@ -12,7 +12,7 @@ namespace Lingarr.Server.Tests.Data;
 public class TranslationRequestActiveDedupeIndexTests
 {
     [Fact]
-    public void LingarrDbContext_ActiveDedupeIndex_IncludesRequiredOutputFormats()
+    public void LingarrDbContext_ActiveDedupeIndex_DoesNotIncludeRequiredOutputFormats()
     {
         using var connection = new SqliteConnection("Filename=:memory:");
         connection.Open();
@@ -30,12 +30,12 @@ public class TranslationRequestActiveDedupeIndexTests
             index => index.GetDatabaseName() == "ux_translation_requests_active_dedupe");
 
         Assert.Equal(
-            new[] { "WorkloadItemKey", "SourceLanguage", "TargetLanguage", "RequiredOutputFormats", "IsActive" },
+            new[] { "WorkloadItemKey", "SourceLanguage", "TargetLanguage", "IsActive" },
             dedupeIndex.Properties.Select(property => property.Name).ToArray());
     }
 
     [Fact]
-    public void PostgreSqlUploadWorkspaceMigration_UsesFormatAwareActiveDedupeAndBackfill()
+    public void PostgreSqlUploadWorkspaceMigration_UsesFormatAgnosticActiveDedupeAndBackfill()
     {
         var source = ReadRepositoryFile(
             "Lingarr.Migrations.PostgreSQL",
@@ -43,10 +43,10 @@ public class TranslationRequestActiveDedupeIndexTests
             "20260419164931_AddUploadWorkspaceTablesAndActiveRequestDedupe.cs");
 
         Assert.Contains(
-            "columns: new[] { \"workload_item_key\", \"source_language\", \"target_language\", \"required_output_formats\", \"is_active\" }",
+            "columns: new[] { \"workload_item_key\", \"source_language\", \"target_language\", \"is_active\" }",
             source);
         Assert.Contains(
-            "PARTITION BY workload_item_key, source_language, target_language, required_output_formats",
+            "PARTITION BY workload_item_key, source_language, target_language",
             source);
         Assert.Contains("SET required_output_formats = CASE", source);
         Assert.Contains("WHEN source_subtitle_format IS NULL", source);
@@ -54,7 +54,7 @@ public class TranslationRequestActiveDedupeIndexTests
     }
 
     [Fact]
-    public void SqliteUploadWorkspaceMigration_UsesFormatAwareActiveDedupeAndBackfill()
+    public void SqliteUploadWorkspaceMigration_UsesFormatAgnosticActiveDedupeAndBackfill()
     {
         var source = ReadRepositoryFile(
             "Lingarr.Migrations.SQLite",
@@ -62,10 +62,10 @@ public class TranslationRequestActiveDedupeIndexTests
             "20260419164916_AddUploadWorkspaceTablesAndActiveRequestDedupe.cs");
 
         Assert.Contains(
-            "columns: new[] { \"workload_item_key\", \"source_language\", \"target_language\", \"required_output_formats\", \"is_active\" }",
+            "columns: new[] { \"workload_item_key\", \"source_language\", \"target_language\", \"is_active\" }",
             source);
         Assert.Contains(
-            "PARTITION BY workload_item_key, source_language, target_language, required_output_formats",
+            "PARTITION BY workload_item_key, source_language, target_language",
             source);
         Assert.Contains("SET required_output_formats = CASE", source);
         Assert.Contains("WHEN source_subtitle_format IS NULL", source);

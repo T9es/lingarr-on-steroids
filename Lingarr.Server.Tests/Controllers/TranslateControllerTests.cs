@@ -23,7 +23,7 @@ namespace Lingarr.Server.Tests.Controllers;
 public class TranslateControllerTests
 {
     [Fact]
-    public async Task QueueWithSubtitle_EnqueuesWhenActiveRequestUsesDifferentRequiredOutputFormats()
+    public async Task QueueWithSubtitle_SkipsWhenActiveRequestUsesDifferentRequiredOutputFormats()
     {
         await using var context = BuildContext();
         context.TranslationRequests.Add(new TranslationRequest
@@ -93,11 +93,11 @@ public class TranslateControllerTests
         var okResult = Assert.IsType<OkObjectResult>(response.Result);
         var payload = Assert.IsType<QueueWithSubtitleResponse>(okResult.Value);
         Assert.True(payload.Success);
-        Assert.Equal(1, payload.TranslationsQueued);
+        Assert.Equal(0, payload.TranslationsQueued);
 
         translationRequestServiceMock.Verify(
             service => service.CreateRequest(It.IsAny<TranslateAbleSubtitle>(), true),
-            Times.Once);
+            Times.Never);
     }
 
     private static LingarrDbContext BuildContext()

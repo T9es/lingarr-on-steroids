@@ -22,7 +22,7 @@ namespace Lingarr.Server.Tests.Services;
 public class CustomMediaSubtitleProcessorTests
 {
     [Fact]
-    public async Task ProcessCustomItemForceAsync_WithActiveRequestForDifferentOutputFormat_EnqueuesTranslation()
+    public async Task ProcessCustomItemForceAsync_WithActiveRequestForDifferentOutputFormat_DoesNotEnqueueTranslation()
     {
         await using var context = BuildContext();
 
@@ -136,10 +136,10 @@ public class CustomMediaSubtitleProcessorTests
 
         var queued = await processor.ProcessCustomItemForceAsync(item, forceProcess: true);
 
-        Assert.Equal(1, queued);
+        Assert.Equal(0, queued);
         translationRequestServiceMock.Verify(
             service => service.CreateRequest(It.IsAny<TranslateAbleSubtitle>(), It.IsAny<bool>()),
-            Times.Once);
+            Times.Never);
     }
 
     [Fact]

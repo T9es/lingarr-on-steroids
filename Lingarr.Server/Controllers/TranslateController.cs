@@ -358,43 +358,23 @@ public class TranslateController : ControllerBase
             }
 
             var sourceLanguage = request.SourceLanguage.ToLowerInvariant();
-            var subtitleOutputMode = await _settings.GetSetting(SettingKeys.Translation.SubtitleOutputMode);
-            var requestedRequiredOutputFormats = NormalizeRequiredOutputFormats(
-                null,
-                selectedSubtitle.CodecName,
-                subtitleOutputMode);
             var translationsQueued = 0;
             var workloadItemKey = $"library:{mediaType}:{request.MediaId}";
 
             // Queue translations for each target language
             foreach (var targetLanguage in targetLanguages)
             {
-                var activeCandidates = await _dbContext.TranslationRequests
+                var hasActiveRequest = await _dbContext.TranslationRequests
                     .Where(tr =>
                         (tr.WorkloadItemKey == workloadItemKey ||
                          ((tr.WorkloadItemKey == string.Empty || tr.WorkloadItemKey == null) &&
-                          tr.WorkloadKind == TranslationWorkloadKind.Library &&
-                           tr.MediaId == request.MediaId &&
-                           tr.MediaType == mediaType)) &&
+                           tr.WorkloadKind == TranslationWorkloadKind.Library &&
+                            tr.MediaId == request.MediaId &&
+                            tr.MediaType == mediaType)) &&
                         tr.SourceLanguage == sourceLanguage &&
                         tr.TargetLanguage == targetLanguage &&
                         tr.IsActive == true)
-                    .Select(tr => new
-                    {
-                        tr.RequiredOutputFormats,
-                        tr.SourceSubtitleFormat,
-                        tr.SubtitleOutputMode
-                    })
-                    .ToListAsync();
-
-                var hasActiveRequest = activeCandidates.Any(tr =>
-                    string.Equals(
-                        NormalizeRequiredOutputFormats(
-                            tr.RequiredOutputFormats,
-                            tr.SourceSubtitleFormat,
-                            tr.SubtitleOutputMode),
-                        requestedRequiredOutputFormats,
-                        StringComparison.Ordinal));
+                    .AnyAsync();
 
                 if (hasActiveRequest)
                 {

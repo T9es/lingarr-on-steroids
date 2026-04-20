@@ -89,7 +89,6 @@ public class LingarrDbContext : DbContext
                     tr.WorkloadItemKey,
                     tr.SourceLanguage,
                     tr.TargetLanguage,
-                    tr.RequiredOutputFormats,
                     tr.IsActive
                 })
                 .IsUnique()

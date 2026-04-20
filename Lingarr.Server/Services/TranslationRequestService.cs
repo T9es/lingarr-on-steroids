@@ -109,13 +109,10 @@ public class TranslationRequestService : ITranslationRequestService
     {
         NormalizeWorkloadIdentity(translationRequest);
         await PopulateOutputMetadataAsync(translationRequest);
-        var requiredOutputFormats = GetEffectiveRequiredOutputFormats(translationRequest);
 
         if (!forcePriority)
         {
-            var existingId = await FindMatchingActiveRequestIdAsync(
-                translationRequest,
-                requiredOutputFormats);
+            var existingId = await FindMatchingActiveRequestIdAsync(translationRequest);
 
             if (existingId != 0)
             {
@@ -176,9 +173,7 @@ public class TranslationRequestService : ITranslationRequestService
             _dbContext.Entry(translationRequestCopy).State = EntityState.Detached;
             
             // Find and return the existing request
-            var existingRequest = await FindMatchingActiveRequestIdAsync(
-                translationRequest,
-                requiredOutputFormats);
+            var existingRequest = await FindMatchingActiveRequestIdAsync(translationRequest);
             
             return existingRequest;
         }
@@ -439,7 +434,7 @@ public class TranslationRequestService : ITranslationRequestService
                 .Distinct()
                 .ToList();
 
-            var activeRequestsKeys = new HashSet<(string, string, string, string)>();
+            var activeRequestsKeys = new HashSet<(string, string, string)>();
             
             if (workloadItemKeys.Any())
             {
@@ -461,11 +456,7 @@ public class TranslationRequestService : ITranslationRequestService
                     activeRequestsKeys.Add((
                         r.WorkloadItemKey,
                         r.SourceLanguage,
-                        r.TargetLanguage,
-                        NormalizeRequiredOutputFormats(
-                            r.RequiredOutputFormats,
-                            r.SourceSubtitleFormat,
-                            r.SubtitleOutputMode)));
+                        r.TargetLanguage));
                 }
             }
 
@@ -474,8 +465,7 @@ public class TranslationRequestService : ITranslationRequestService
             {
                 WorkloadItemKey = GetEffectiveWorkloadItemKey(tr),
                 tr.SourceLanguage,
-                tr.TargetLanguage,
-                RequiredOutputFormats = GetEffectiveRequiredOutputFormats(tr)
+                tr.TargetLanguage
             });
 
             var idsToRetry = new List<int>();
@@ -486,12 +476,11 @@ public class TranslationRequestService : ITranslationRequestService
                 var key = (
                     group.Key.WorkloadItemKey,
                     group.Key.SourceLanguage,
-                    group.Key.TargetLanguage,
-                    group.Key.RequiredOutputFormats);
+                    group.Key.TargetLanguage);
 
                 var matchingActiveRequestId = activeRequestsKeys.Contains(key)
                     ? -1
-                    : await FindMatchingActiveRequestIdAsync(requestToRetry, group.Key.RequiredOutputFormats);
+                    : await FindMatchingActiveRequestIdAsync(requestToRetry);
 
                 // Only retry if no active request exists for this key
                 if (!activeRequestsKeys.Contains(key) && matchingActiveRequestId == 0)
@@ -662,7 +651,7 @@ return totalRetried;
 
         var workloadItemKey = GetEffectiveWorkloadItemKey(translationRequest);
         var requiredOutputFormats = GetEffectiveRequiredOutputFormats(translationRequest);
-        var activeCandidates = await _dbContext.TranslationRequests
+        var activeRequestExists = await _dbContext.TranslationRequests
             .Where(tr =>
                 (tr.WorkloadItemKey == workloadItemKey ||
                  ((tr.WorkloadItemKey == string.Empty || tr.WorkloadItemKey == null) &&
@@ -681,22 +670,7 @@ return totalRetried;
                  tr.TargetLanguage == translationRequest.TargetLanguage &&
                  tr.IsActive == true &&
                  tr.Id != translationRequest.Id)
-            .Select(tr => new
-            {
-                tr.RequiredOutputFormats,
-                tr.SourceSubtitleFormat,
-                tr.SubtitleOutputMode
-            })
-            .ToListAsync();
-
-        var activeRequestExists = activeCandidates.Any(tr =>
-            string.Equals(
-                NormalizeRequiredOutputFormats(
-                    tr.RequiredOutputFormats,
-                    tr.SourceSubtitleFormat,
-                    tr.SubtitleOutputMode),
-                requiredOutputFormats,
-                StringComparison.Ordinal));
+            .AnyAsync();
 
         if (activeRequestExists)
         {
@@ -729,11 +703,9 @@ return totalRetried;
         return $"Translation request with id {retryRequest.Id} has been restarted";
     }
 
-    private async Task<int> FindMatchingActiveRequestIdAsync(
-        TranslationRequest translationRequest,
-        string requiredOutputFormats)
+    private async Task<int> FindMatchingActiveRequestIdAsync(TranslationRequest translationRequest)
     {
-        var activeRequests = await _dbContext.TranslationRequests
+        var activeRequestIds = await _dbContext.TranslationRequests
             .Where(tr =>
                 (tr.WorkloadItemKey == translationRequest.WorkloadItemKey ||
                  ((tr.WorkloadItemKey == string.Empty || tr.WorkloadItemKey == null) &&
@@ -751,26 +723,10 @@ return totalRetried;
                 tr.SourceLanguage == translationRequest.SourceLanguage &&
                 tr.TargetLanguage == translationRequest.TargetLanguage &&
                 tr.IsActive == true)
-            .Select(tr => new
-            {
-                tr.Id,
-                tr.RequiredOutputFormats,
-                tr.SourceSubtitleFormat,
-                tr.SubtitleOutputMode
-            })
+            .Select(tr => tr.Id)
             .ToListAsync();
 
-        return activeRequests
-            .Where(tr =>
-                string.Equals(
-                    NormalizeRequiredOutputFormats(
-                        tr.RequiredOutputFormats,
-                        tr.SourceSubtitleFormat,
-                        tr.SubtitleOutputMode),
-                    requiredOutputFormats,
-                    StringComparison.Ordinal))
-            .Select(tr => tr.Id)
-            .FirstOrDefault();
+        return activeRequestIds.FirstOrDefault();
     }
     
     /// <inheritdoc />
@@ -910,8 +866,7 @@ return totalRetried;
                  {
                      WorkloadItemKey = GetEffectiveWorkloadItemKey(tr),
                      tr.SourceLanguage,
-                     tr.TargetLanguage,
-                     RequiredOutputFormats = GetEffectiveRequiredOutputFormats(tr)
+                     tr.TargetLanguage
                  }))
         {
             if (group.Count() <= 1)

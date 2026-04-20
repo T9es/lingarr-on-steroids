@@ -274,4 +274,91 @@ public class AutomationServiceTests
                 It.IsAny<bool>()),
             Times.Never);
     }
+
+    [Fact]
+    public async Task ProcessLoadedMediaForAutomationAsync_WithPendingCustomItemThatRefreshesToComplete_UpdatesRotationTimestamp()
+    {
+        var options = new DbContextOptionsBuilder<LingarrDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
+            .Options;
+
+        await using var dbContext = new LingarrDbContext(options);
+        var customSource = new CustomSource
+        {
+            Id = 3,
+            Name = "Custom Source",
+            SourceType = CustomSourceType.MovieRoot,
+            RootPath = @"C:\media\custom",
+            Recursive = true,
+            Enabled = true,
+            IncludeInAutomation = true
+        };
+        var item = new CustomMediaItem
+        {
+            Id = 30,
+            CustomSourceId = customSource.Id,
+            CustomSource = customSource,
+            ItemKind = CustomMediaItemKind.Movie,
+            Title = "Freshly Rechecked Custom Movie",
+            FileName = "fresh.mkv",
+            Path = @"C:\media\custom\fresh.mkv",
+            RelativePath = "fresh.mkv",
+            DateAdded = DateTime.UtcNow.AddDays(-2),
+            TranslationState = TranslationState.Pending,
+            StateSettingsVersion = 1
+        };
+        dbContext.CustomSources.Add(customSource);
+        dbContext.CustomMediaItems.Add(item);
+        await dbContext.SaveChangesAsync();
+
+        var mediaSubtitleProcessorMock = new Mock<IMediaSubtitleProcessor>();
+        var customMediaSubtitleProcessorMock = new Mock<ICustomMediaSubtitleProcessor>();
+        var settingServiceMock = new Mock<ISettingService>();
+        var mediaStateServiceMock = new Mock<IMediaStateService>();
+        var customMediaStateServiceMock = new Mock<ICustomMediaStateService>();
+
+        settingServiceMock
+            .Setup(s => s.GetSettings(It.IsAny<IEnumerable<string>>()))
+            .ReturnsAsync(new Dictionary<string, string>
+            {
+                [SettingKeys.Automation.AutomationEnabled] = "true",
+                [SettingKeys.Automation.MovieAgeThreshold] = "0",
+                [SettingKeys.Automation.ShowAgeThreshold] = "0"
+            });
+
+        customMediaStateServiceMock
+            .Setup(s => s.GetSettingsVersionAsync())
+            .ReturnsAsync(2);
+        customMediaStateServiceMock
+            .Setup(s => s.UpdateStateAsync(It.IsAny<CustomMediaItem>(), true))
+            .ReturnsAsync(TranslationState.Complete);
+
+        var service = new AutomationService(
+            dbContext,
+            mediaSubtitleProcessorMock.Object,
+            customMediaSubtitleProcessorMock.Object,
+            settingServiceMock.Object,
+            mediaStateServiceMock.Object,
+            customMediaStateServiceMock.Object,
+            NullLogger<AutomationService>.Instance);
+
+        var queued = await service.ProcessLoadedMediaForAutomationAsync(
+            item,
+            MediaType.Movie,
+            "unit_test",
+            updateRotationTimestamp: true,
+            forceStateRefresh: false);
+
+        Assert.Equal(0, queued);
+        customMediaStateServiceMock.Verify(
+            s => s.UpdateLastSubtitleCheckAt(item.Id),
+            Times.Once);
+        customMediaSubtitleProcessorMock.Verify(
+            s => s.ProcessCustomItemForceAsync(
+                It.IsAny<CustomMediaItem>(),
+                It.IsAny<bool>(),
+                It.IsAny<bool>(),
+                It.IsAny<bool>()),
+            Times.Never);
+    }
 }

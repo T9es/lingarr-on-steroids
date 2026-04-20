@@ -98,7 +98,9 @@ public class SettingChangedListener
             }
         };
 
-        // Find and execute the appropriate action for the changed setting
+        // Some settings intentionally participate in more than one group.
+        // For example, source language changes should clear cached hashes and
+        // invalidate translation state in the same pass.
         foreach (var group in settingGroups)
         {
             // Check if the changed setting belongs to this configuration group based on it's *keys*
@@ -113,8 +115,6 @@ public class SettingChangedListener
                         await RunAction(group.Value.actionName, group.Value.keys);
                         break;
                 }
-
-                break;
             }
         }
     }
