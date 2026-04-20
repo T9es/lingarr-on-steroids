@@ -272,7 +272,7 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
             migrationBuilder.CreateIndex(
                 name: "ux_translation_requests_active_dedupe",
                 table: "translation_requests",
-                columns: new[] { "workload_item_key", "source_language", "target_language", "is_active" },
+                columns: new[] { "workload_item_key", "source_language", "target_language", "required_output_formats", "is_active" },
                 unique: true);
         }
     }

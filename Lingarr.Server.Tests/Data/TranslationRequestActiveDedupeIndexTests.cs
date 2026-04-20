@@ -46,6 +46,9 @@ public class TranslationRequestActiveDedupeIndexTests
             "columns: new[] { \"workload_item_key\", \"source_language\", \"target_language\", \"is_active\" }",
             source);
         Assert.Contains(
+            "columns: new[] { \"workload_item_key\", \"source_language\", \"target_language\", \"required_output_formats\", \"is_active\" }",
+            source);
+        Assert.Contains(
             "PARTITION BY workload_item_key, source_language, target_language",
             source);
         Assert.Contains("SET required_output_formats = CASE", source);
@@ -63,6 +66,9 @@ public class TranslationRequestActiveDedupeIndexTests
 
         Assert.Contains(
             "columns: new[] { \"workload_item_key\", \"source_language\", \"target_language\", \"is_active\" }",
+            source);
+        Assert.Contains(
+            "columns: new[] { \"workload_item_key\", \"source_language\", \"target_language\", \"required_output_formats\", \"is_active\" }",
             source);
         Assert.Contains(
             "PARTITION BY workload_item_key, source_language, target_language",

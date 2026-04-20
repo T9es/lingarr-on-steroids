@@ -157,12 +157,13 @@ public class UploadWorkspaceService : IUploadWorkspaceService, IUploadWorkspaceC
         {
             var sanitizedOriginalFileName = SanitizeFileName(formFile.FileName);
             var extension = Path.GetExtension(sanitizedOriginalFileName).ToLowerInvariant();
-            var safeName = GetUniqueFileName(originalsDirectory, sanitizedOriginalFileName);
-            var destinationPath = Path.Combine(originalsDirectory, safeName);
+            var reservedFile = ReserveUniqueFile(originalsDirectory, sanitizedOriginalFileName);
+            var safeName = reservedFile.FileName;
+            var destinationPath = reservedFile.FullPath;
 
-            await using (var stream = File.Create(destinationPath))
+            await using (reservedFile.Stream)
             {
-                await formFile.CopyToAsync(stream, cancellationToken);
+                await formFile.CopyToAsync(reservedFile.Stream, cancellationToken);
             }
 
             var uploadFile = new UploadBatchFile
@@ -1128,21 +1129,37 @@ public class UploadWorkspaceService : IUploadWorkspaceService, IUploadWorkspaceC
         return string.IsNullOrWhiteSpace(extension) ? baseName : $"{baseName}{extension}";
     }
 
-    private static string GetUniqueFileName(string directory, string fileName)
+    private static ReservedUploadFile ReserveUniqueFile(string directory, string fileName)
     {
         var baseName = Path.GetFileNameWithoutExtension(fileName);
         var extension = Path.GetExtension(fileName);
         var candidate = fileName;
         var index = 1;
 
-        while (File.Exists(Path.Combine(directory, candidate)))
+        while (true)
         {
-            candidate = $"{baseName}_{index}{extension}";
-            index++;
-        }
+            var fullPath = Path.Combine(directory, candidate);
 
-        return candidate;
+            try
+            {
+                var stream = new FileStream(
+                    fullPath,
+                    FileMode.CreateNew,
+                    FileAccess.Write,
+                    FileShare.None,
+                    bufferSize: 81920,
+                    options: FileOptions.Asynchronous);
+                return new ReservedUploadFile(candidate, fullPath, stream);
+            }
+            catch (IOException) when (File.Exists(fullPath))
+            {
+                candidate = $"{baseName}_{index}{extension}";
+                index++;
+            }
+        }
     }
+
+    private sealed record ReservedUploadFile(string FileName, string FullPath, FileStream Stream);
 
     private static bool IsSubtitleExtension(string extension)
     {

@@ -299,6 +299,77 @@ public class UploadWorkspaceServiceTests
     }
 
     [Fact]
+    public async Task UploadFilesAsync_AssignsUniqueStoredPathsForDuplicateSanitizedNames()
+    {
+        await using var context = BuildContext();
+
+        var workspaceRoot = Path.Combine(Path.GetTempPath(), $"lingarr-upload-root-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(workspaceRoot);
+
+        try
+        {
+            var settingServiceMock = new Mock<ISettingService>();
+            settingServiceMock
+                .Setup(service => service.GetSetting(SettingKeys.UploadWorkspace.StorageRoot))
+                .ReturnsAsync(workspaceRoot);
+            settingServiceMock
+                .Setup(service => service.GetSetting(SettingKeys.UploadWorkspace.RetentionDays))
+                .ReturnsAsync("7");
+            settingServiceMock
+                .Setup(service => service.GetSetting(SettingKeys.UploadWorkspace.MaxBatchSize))
+                .ReturnsAsync("100");
+            settingServiceMock
+                .Setup(service => service.GetSetting(SettingKeys.UploadWorkspace.MaxFileSizeBytes))
+                .ReturnsAsync((2L * 1024 * 1024).ToString());
+
+            var subtitleServiceMock = new Mock<ISubtitleService>();
+            subtitleServiceMock
+                .Setup(service => service.GetAllSubtitles(It.IsAny<string>()))
+                .ReturnsAsync(new List<Subtitles>());
+
+            var service = new UploadWorkspaceService(
+                context,
+                settingServiceMock.Object,
+                subtitleServiceMock.Object,
+                Mock.Of<ISubtitleExtractionService>(),
+                new Lazy<ITranslationRequestService>(() => Mock.Of<ITranslationRequestService>()),
+                NullLogger<UploadWorkspaceService>.Instance);
+
+            var batch = await service.CreateBatchAsync(new CreateUploadBatchRequest
+            {
+                Name = "Batch",
+                TargetLanguage = "pl"
+            });
+
+            await using var firstStream = new MemoryStream(new byte[] { 1, 2, 3, 4 });
+            await using var secondStream = new MemoryStream(new byte[] { 5, 6, 7, 8 });
+            var firstUpload = new FormFile(firstStream, 0, firstStream.Length, "files", "..\\nested\\episode.en.srt");
+            var secondUpload = new FormFile(secondStream, 0, secondStream.Length, "files", "episode.en.srt");
+            firstUpload.Headers = new HeaderDictionary();
+            secondUpload.Headers = new HeaderDictionary();
+            firstUpload.ContentType = "application/x-subrip";
+            secondUpload.ContentType = "application/x-subrip";
+
+            var updatedBatch = await service.UploadFilesAsync(batch.Id, new List<IFormFile> { firstUpload, secondUpload });
+
+            Assert.NotNull(updatedBatch);
+            Assert.Equal(2, updatedBatch.Files.Count);
+            Assert.All(updatedBatch.Files, file => Assert.Equal("episode.en.srt", file.OriginalFileName));
+            Assert.Equal(2, updatedBatch.Files.Select(file => file.StoredPath).Distinct(StringComparer.OrdinalIgnoreCase).Count());
+            Assert.Contains(updatedBatch.Files, file => Path.GetFileName(file.StoredPath) == "episode.en.srt");
+            Assert.Contains(updatedBatch.Files, file => Path.GetFileName(file.StoredPath) == "episode.en_1.srt");
+            Assert.All(updatedBatch.Files, file => Assert.True(File.Exists(file.StoredPath)));
+        }
+        finally
+        {
+            if (Directory.Exists(workspaceRoot))
+            {
+                Directory.Delete(workspaceRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task UpdateFileAsync_ClearsSelectedEmbeddedStream_WhenNullProvided()
     {
         await using var context = BuildContext();

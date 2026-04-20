@@ -1164,7 +1164,7 @@ namespace Lingarr.Migrations.SQLite.Migrations
                     b.HasIndex("Status", "IsPriority", "CreatedAt")
                         .HasDatabaseName("IX_TranslationRequests_Status_Priority_Created");
 
-                    b.HasIndex("WorkloadItemKey", "SourceLanguage", "TargetLanguage", "RequiredOutputFormats", "IsActive")
+                    b.HasIndex("WorkloadItemKey", "SourceLanguage", "TargetLanguage", "IsActive")
                         .IsUnique()
                         .HasDatabaseName("ux_translation_requests_active_dedupe");
 
