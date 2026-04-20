@@ -277,6 +277,10 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             {
                 await CleanupSubtitleFile(outputPath);
             }
+            else if (extension is ".ass" or ".ssa")
+            {
+                await EnsureExtractionMarkerAsync(outputPath);
+            }
 
             return outputPath;
         }
@@ -698,16 +702,47 @@ public class SubtitleExtractionService : ISubtitleExtractionService
         try
         {
             if (!File.Exists(filePath)) return -1;
-            
-            var content = File.ReadAllText(filePath);
-            // SRT: Count lines that are just numbers (entry markers)
-            var lines = content.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-            return lines.Count(line => int.TryParse(line.Trim(), out _) && line.Trim().All(char.IsDigit));
+
+            var extension = Path.GetExtension(filePath).ToLowerInvariant();
+            return extension switch
+            {
+                ".ass" or ".ssa" => File.ReadLines(filePath)
+                    .Count(line => line.TrimStart().StartsWith("Dialogue:", StringComparison.OrdinalIgnoreCase)),
+                ".vtt" => File.ReadLines(filePath)
+                    .Count(line => line.Contains("-->", StringComparison.Ordinal)),
+                _ => File.ReadLines(filePath)
+                    .Count(line =>
+                    {
+                        var trimmed = line.Trim();
+                        return int.TryParse(trimmed, out _) && trimmed.All(char.IsDigit);
+                    })
+            };
         }
         catch
         {
             return -1;
         }
+    }
+
+    internal static async Task EnsureExtractionMarkerAsync(string filePath)
+    {
+        if (!File.Exists(filePath) || IsLingarrExtracted(filePath))
+        {
+            return;
+        }
+
+        var content = await File.ReadAllTextAsync(filePath);
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return;
+        }
+
+        var builder = new System.Text.StringBuilder();
+        builder.AppendLine($"{ExtractionMarkerPrefix} StreamIndex=0, Entries={CountSubtitleEntries(filePath)}");
+        builder.AppendLine();
+        builder.Append(content);
+
+        await File.WriteAllTextAsync(filePath, builder.ToString());
     }
 
     /// <summary>

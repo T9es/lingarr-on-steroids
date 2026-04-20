@@ -547,6 +547,7 @@ import CardComponent from '@/components/common/CardComponent.vue'
 import DirectoryModal from '@/components/features/settings/DirectoryModal.vue'
 import BadgeComponent from '@/components/common/BadgeComponent.vue'
 import { useSettingStore } from '@/store/setting'
+import { createUploadQueueItemId } from '@/utils/uploadQueue'
 import {
     ICreateUploadChunkSessionRequest,
     ILanguage,
@@ -870,7 +871,7 @@ const refreshUploadSpeed = () => {
 
 const createUploadQueue = (files: File[]): UploadQueueItem[] => {
     return files.map((file) => ({
-        id: `${file.name}-${file.lastModified}-${crypto.randomUUID()}`,
+        id: createUploadQueueItemId(file),
         name: file.name,
         size: file.size,
         status: 'Queued',
@@ -1356,12 +1357,12 @@ const uploadFiles = async (files: File[]) => {
         return
     }
 
-    uploadQueue.value = createUploadQueue(files)
-    resetUploadSpeedTracking()
-    uploading.value = true
-    isDropActive.value = false
-
     try {
+        uploadQueue.value = createUploadQueue(files)
+        resetUploadSpeedTracking()
+        uploading.value = true
+        isDropActive.value = false
+
         if (uploadTargetLanguageBlocker.value) {
             const blockerMessage = uploadTargetLanguageBlocker.value
             uploadQueue.value.forEach((item) => {

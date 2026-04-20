@@ -160,6 +160,29 @@ public class SubtitleExtractionServiceTests : IDisposable
         Assert.EndsWith(expectedExtension, outputPath);
     }
 
+    [Fact]
+    public async Task EnsureExtractionMarkerAsync_PrependsMarkerToAssFiles()
+    {
+        var filePath = Path.Combine(CreateMediaDirectory(), "movie.eng.ass");
+        await File.WriteAllTextAsync(
+            filePath,
+            """
+            [Script Info]
+            Title: Example
+
+            [Events]
+            Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+            Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,Hello
+            """);
+
+        await SubtitleExtractionService.EnsureExtractionMarkerAsync(filePath);
+
+        var lines = await File.ReadAllLinesAsync(filePath);
+        Assert.StartsWith(SubtitleExtractionService.ExtractionMarkerPrefix, lines[0]);
+        Assert.Contains("[Script Info]", lines);
+        Assert.Contains("Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,Hello", lines);
+    }
+
     public void Dispose()
     {
         var mediaDirectories = _dbContext.Movies
