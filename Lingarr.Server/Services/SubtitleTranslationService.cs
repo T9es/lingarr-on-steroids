@@ -284,7 +284,7 @@ public class SubtitleTranslationService
                 }
 
                 translated = SubtitleTextStructure.NormalizeProviderTranslationText(translated);
-                if (structure.VisibleLineCount > 1 && !structure.IsProviderTranslationCompatible(translated))
+                if (string.IsNullOrWhiteSpace(translated))
                 {
                     unresolvedFailures.Add(new BatchSubtitleItem
                     {
@@ -292,6 +292,15 @@ public class SubtitleTranslationService
                         Line = structure.ProviderVisibleText
                     });
                     continue;
+                }
+
+                if (structure.VisibleLineCount > 1 && !structure.IsProviderTranslationCompatible(translated))
+                {
+                    _logger.LogInformation(
+                        "[{FileId}] Deferred repair returned rewrapped subtitle {Position}. Reflowing into {Expected} visible lines locally.",
+                        fileIdentifier,
+                        failedItem.Position,
+                        structure.VisibleLineCount);
                 }
 
                 var subtitle = subtitles.FirstOrDefault(item => item.Position == failedItem.Position);
@@ -316,7 +325,7 @@ public class SubtitleTranslationService
             _logger.LogInformation(
                 "[{FileId}] Deferred repair completed: {RepairedCount} items repaired.",
                 fileIdentifier,
-                repairResults.Count);
+                globalFailures.Count);
 
             await EmitProgressDirect(translationRequest, 1.0);
         }
@@ -441,6 +450,20 @@ public class SubtitleTranslationService
             }
             catch (Exception ex)
             {
+                if (TranslationFailureClassifier.IsNonRepairableProviderConfigurationFailure(ex))
+                {
+                    var failureSummary = TranslationFailureClassifier.GetFailureSummary(ex);
+
+                    _logger.LogError(
+                        ex,
+                        "[{FileId}] Batch {BatchNum} failed due to non-repairable provider configuration failure. Summary: {FailureSummary}",
+                        fileIdentifier,
+                        batchNumber,
+                        failureSummary);
+
+                    throw;
+                }
+
                 if (collectFailures)
                 {
                     var failureType = TranslationFailureClassifier.IsProviderUnavailable(ex)
@@ -464,7 +487,6 @@ public class SubtitleTranslationService
             }
         }
 
-        var failedByCompatibility = new HashSet<int>();
         foreach (var entry in structureEntries.Where(entry => entry.IsTranslatable))
         {
             if (!batchResults.TryGetValue(entry.Subtitle.Position, out var translated) ||
@@ -476,15 +498,13 @@ public class SubtitleTranslationService
             translated = SubtitleTextStructure.NormalizeProviderTranslationText(translated);
             if (entry.Structure.VisibleLineCount > 1 && !entry.Structure.IsProviderTranslationCompatible(translated))
             {
-                failedByCompatibility.Add(entry.Subtitle.Position);
-                _logger.LogWarning(
-                    "[{FileId}] Batch {BatchNum}/{TotalBatches}: translated line mismatch for subtitle {Position}. Expected {Expected} visible lines.",
+                _logger.LogInformation(
+                    "[{FileId}] Batch {BatchNum}/{TotalBatches}: translated subtitle {Position} was rewrapped by provider. Reflowing into {Expected} visible lines locally.",
                     fileIdentifier,
                     batchNumber,
                     totalBatches,
                     entry.Subtitle.Position,
                     entry.Structure.VisibleLineCount);
-                continue;
             }
 
             entry.Subtitle.TranslatedLines = entry.Structure.ApplyProviderTranslation(translated);
@@ -500,11 +520,6 @@ public class SubtitleTranslationService
 
                 if (!batchResults.TryGetValue(entry.Subtitle.Position, out var translated) ||
                     string.IsNullOrWhiteSpace(translated))
-                {
-                    return true;
-                }
-
-                if (failedByCompatibility.Contains(entry.Subtitle.Position))
                 {
                     return true;
                 }

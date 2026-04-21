@@ -117,6 +117,17 @@ public class BatchFallbackService : IBatchFallbackService
                 }
                 catch (TranslationException ex)
                 {
+                    if (TranslationFailureClassifier.IsNonRepairableProviderConfigurationFailure(ex))
+                    {
+                        _logger.LogError(
+                            ex,
+                            "{BatchProgress}[{FileId}] Non-repairable provider configuration failure at split level {Level}. Failing fast.",
+                            batchProgress,
+                            fileIdentifier,
+                            splitLevel);
+                        throw;
+                    }
+
                     lastFailureSummary = TranslationFailureClassifier.GetFailureSummary(ex);
                     if (TranslationFailureClassifier.IsProviderUnavailable(ex))
                     {
@@ -134,6 +145,17 @@ public class BatchFallbackService : IBatchFallbackService
                 }
                 catch (Exception ex)
                 {
+                    if (TranslationFailureClassifier.IsNonRepairableProviderConfigurationFailure(ex))
+                    {
+                        _logger.LogError(
+                            ex,
+                            "{BatchProgress}[{FileId}] Non-repairable provider configuration failure at split level {Level}. Failing fast.",
+                            batchProgress,
+                            fileIdentifier,
+                            splitLevel);
+                        throw;
+                    }
+
                     lastFailureSummary = TranslationFailureClassifier.GetFailureSummary(ex);
                     sawNonProviderFailure = true;
 

@@ -204,7 +204,7 @@ public class DeferredRepairService : IDeferredRepairService
                 if (finalMissing.Count == 0)
                 {
                     _logger.LogInformation(
-                        "[{FileId}] Deferred repair succeeded: all {Count} items translated on attempt {Attempt}",
+                        "[{FileId}] Deferred repair returned candidates for all {Count} failed items on attempt {Attempt}",
                         fileIdentifier, repairBatch.FailedPositions.Count, attempt);
                     return results;
                 }
@@ -236,6 +236,16 @@ public class DeferredRepairService : IDeferredRepairService
             }
             catch (Exception ex)
             {
+                if (TranslationFailureClassifier.IsNonRepairableProviderConfigurationFailure(ex))
+                {
+                    _logger.LogError(
+                        ex,
+                        "[{FileId}] Deferred repair hit a non-repairable provider configuration failure on attempt {Attempt}. Failing fast.",
+                        fileIdentifier,
+                        attempt);
+                    throw;
+                }
+
                 if (attempt <= maxRetries)
                 {
                     _logger.LogWarning(ex,

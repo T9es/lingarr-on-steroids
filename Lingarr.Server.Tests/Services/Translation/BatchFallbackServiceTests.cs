@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -163,6 +164,50 @@ public class BatchFallbackServiceTests
                 It.IsAny<List<string>?>(),
                 It.IsAny<CancellationToken>()),
             Times.AtLeastOnce);
+    }
+
+    [Fact]
+    public async Task TranslateWithFallbackAsync_WhenProviderConfigurationFails_ShouldFailFast()
+    {
+        var batch = new List<BatchSubtitleItem>
+        {
+            new() { Position = 1, Line = "Line 1" },
+            new() { Position = 2, Line = "Line 2" }
+        };
+
+        var batchServiceMock = new Mock<IBatchTranslationService>();
+        batchServiceMock
+            .Setup(s => s.TranslateBatchAsync(
+                It.IsAny<List<BatchSubtitleItem>>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new TranslationException("Anthropic API key, model or version is not configured."));
+
+        var service = new BatchFallbackService(_loggerMock.Object);
+
+        var exception = await Assert.ThrowsAsync<TranslationException>(() => service.TranslateWithFallbackAsync(
+            batch,
+            batchServiceMock.Object,
+            sourceLanguage: "en",
+            targetLanguage: "es",
+            maxSplitAttempts: 3,
+            fileIdentifier: "TestFile",
+            batchNumber: 1,
+            totalBatches: 1,
+            cancellationToken: CancellationToken.None));
+
+        Assert.Contains("not configured", exception.Message, StringComparison.OrdinalIgnoreCase);
+        batchServiceMock.Verify(s => s.TranslateBatchAsync(
+                It.IsAny<List<BatchSubtitleItem>>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]

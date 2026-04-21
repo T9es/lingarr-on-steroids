@@ -11,6 +11,7 @@ using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models.Batch;
 using Lingarr.Server.Models.FileSystem;
 using Lingarr.Server.Services;
+using Lingarr.Server.Services.Translation;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;
@@ -79,6 +80,67 @@ public class SubtitleTranslationServiceTests
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task TranslateSubtitlesBatch_WhenProviderConfigurationFailure_ShouldFailFastWithoutDeferredRepair()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var batchServiceMock = translationServiceMock.As<IBatchTranslationService>();
+        var batchFallbackMock = new Mock<IBatchFallbackService>(MockBehavior.Strict);
+        var loggerMock = new Mock<ILogger>();
+        var progressServiceMock = new Mock<IProgressService>();
+        var deferredRepairService = new DeferredRepairService(Mock.Of<ILogger<DeferredRepairService>>());
+
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+
+        batchServiceMock
+            .Setup(service => service.TranslateBatchAsync(
+                It.IsAny<List<BatchSubtitleItem>>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new TranslationException("API key not valid. Please pass a valid API key."));
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            loggerMock.Object,
+            progressServiceMock.Object,
+            batchFallbackMock.Object,
+            deferredRepairService);
+
+        var subtitles = new List<SubtitleItem>
+        {
+            new()
+            {
+                Position = 1,
+                Lines = ["Hello there"],
+                PlaintextLines = ["Hello there"]
+            }
+        };
+
+        var exception = await Assert.ThrowsAsync<TranslationException>(() => service.TranslateSubtitlesBatch(
+            subtitles,
+            new TranslationRequest
+            {
+                Id = 10,
+                Title = "Episode",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                MediaType = Lingarr.Core.Enum.MediaType.Show,
+                Status = Lingarr.Core.Enum.TranslationStatus.Pending
+            },
+            stripSubtitleFormatting: false,
+            batchSize: 100,
+            batchRetryMode: "deferred",
+            cancellationToken: CancellationToken.None));
+
+        Assert.Contains("API key not valid", exception.Message, StringComparison.OrdinalIgnoreCase);
+        batchFallbackMock.VerifyNoOtherCalls();
     }
 
     [Fact]

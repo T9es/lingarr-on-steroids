@@ -48,6 +48,47 @@ public class SubtitleTextStructureTests
     }
 
     [Fact]
+    public void AssHardBreak_WhenProviderCollapsesLines_ShouldReflowIntoOriginalBreaks()
+    {
+        var sourceLines = new List<string> { "Line one\\NLine two" };
+        var structure = BuildAssStructure(sourceLines);
+
+        var translated = structure.ApplyProviderTranslation("Pierwsza linia Druga linia");
+
+        Assert.Single(translated);
+        Assert.Equal("Pierwsza linia\\NDruga linia", translated[0]);
+    }
+
+    [Fact]
+    public void InlineMarkup_WhenProviderCollapsesSrtLines_ShouldReflowIntoOriginalLineCount()
+    {
+        var sourceLines = new List<string>
+        {
+            "<i>Line one</i>",
+            "Line two"
+        };
+        var structure = BuildInlineStructure(sourceLines);
+
+        var translated = structure.ApplyProviderTranslation("Pierwsza linia Druga linia");
+
+        Assert.Equal(2, translated.Count);
+        Assert.Equal("<i>Pierwsza linia</i>", translated[0]);
+        Assert.Equal("Druga linia", translated[1]);
+    }
+
+    [Fact]
+    public void AssHardBreak_WhenProviderReturnsTooManyLines_ShouldReflowIntoOriginalBreaks()
+    {
+        var sourceLines = new List<string> { "Line one\\NLine two" };
+        var structure = BuildAssStructure(sourceLines);
+
+        var translated = structure.ApplyProviderTranslation("Pierwsza\nlinia\nDruga linia");
+
+        Assert.Single(translated);
+        Assert.Equal("Pierwsza linia\\NDruga linia", translated[0]);
+    }
+
+    [Fact]
     public void AssDrawingOnly_ShouldNotExposeProviderText()
     {
         var sourceLines = new List<string> { "{\\p1}m 0 0 l 10 10{\\p0}" };
@@ -276,7 +317,75 @@ public class SubtitleTextStructureTests
     }
 
     [Fact]
-    public async Task DeferredRepair_ShouldRecoverLineMismatchWhenRepairReturnsCompatibleLineCount()
+    public async Task BatchFlow_WhenProviderCollapsesMultilineCue_ShouldReflowWithoutDeferredRepair()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var batchServiceMock = translationServiceMock.As<IBatchTranslationService>();
+        var batchFallbackMock = new Mock<IBatchFallbackService>(MockBehavior.Strict);
+        var loggerMock = new Mock<ILogger>();
+        var progressServiceMock = new Mock<IProgressService>();
+        var deferredRepairService = new DeferredRepairService(Mock.Of<ILogger<DeferredRepairService>>());
+
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+
+        batchServiceMock
+            .Setup(service => service.TranslateBatchAsync(
+                It.IsAny<List<BatchSubtitleItem>>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<int, string>
+            {
+                [1] = "Pierwsza linia Druga linia"
+            });
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            loggerMock.Object,
+            progressServiceMock.Object,
+            batchFallbackMock.Object,
+            deferredRepairService);
+
+        var subtitles = new List<SubtitleItem>
+        {
+            new()
+            {
+                Position = 1,
+                Lines = ["{\\an8}Line one\\NLine two"],
+                PlaintextLines = ["Line one Line two"],
+                SsaFormat = new SsaFormat { WrapStyle = SsaWrapStyle.None },
+                SsaDialogue = new SsaDialogue { Style = "Signs" }
+            }
+        };
+
+        var result = await service.TranslateSubtitlesBatch(
+            subtitles,
+            new TranslationRequest
+            {
+                Id = 2,
+                Title = "Episode",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                MediaType = Lingarr.Core.Enum.MediaType.Show,
+                Status = Lingarr.Core.Enum.TranslationStatus.Pending
+            },
+            stripSubtitleFormatting: false,
+            preserveAssFormatting: true,
+            batchSize: 10,
+            batchRetryMode: "deferred",
+            cancellationToken: CancellationToken.None);
+
+        Assert.Single(result[0].TranslatedLines);
+        Assert.Equal("{\\an8}Pierwsza linia\\NDruga linia", result[0].TranslatedLines[0]);
+        batchFallbackMock.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task DeferredRepair_ShouldRecoverLineMismatchWhenRepairReturnsCollapsedTranslation()
     {
         var translationServiceMock = new Mock<ITranslationService>();
         var batchServiceMock = translationServiceMock.As<IBatchTranslationService>();
@@ -298,10 +407,7 @@ public class SubtitleTextStructureTests
                 It.IsAny<List<string>?>(),
                 It.IsAny<List<string>?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Dictionary<int, string>
-            {
-                [1] = "Tylko jedna linia"
-            });
+            .ReturnsAsync(new Dictionary<int, string>());
 
         batchFallbackMock
             .Setup(service => service.TranslateWithFallbackAsync(
@@ -320,7 +426,7 @@ public class SubtitleTextStructureTests
             })
             .ReturnsAsync(new Dictionary<int, string>
             {
-                [1] = "Pierwsza linia\nDruga linia"
+                [1] = "Pierwsza linia Druga linia"
             });
 
         var service = new SubtitleTranslationService(
@@ -360,14 +466,14 @@ public class SubtitleTextStructureTests
             cancellationToken: CancellationToken.None);
 
         Assert.NotNull(capturedRepairBatchItems);
-        var failedRepairItem = Assert.Single(capturedRepairBatchItems!.Where(item => item.Position == 1));
+        var failedRepairItem = Assert.Single(capturedRepairBatchItems!, item => item.Position == 1);
         Assert.Equal("Line one\nLine two", failedRepairItem.Line);
         Assert.Single(result[0].TranslatedLines);
         Assert.Equal("{\\an8}Pierwsza linia\\NDruga linia", result[0].TranslatedLines[0]);
     }
 
     [Fact]
-    public async Task DeferredRepair_ShouldFailWhenRepairOutputStillHasIncompatibleLineCount()
+    public async Task DeferredRepair_WhenRepairReturnsCollapsedTranslation_ShouldNotLogServiceSuccessBeforeCallerAppliesIt()
     {
         var translationServiceMock = new Mock<ITranslationService>();
         var batchServiceMock = translationServiceMock.As<IBatchTranslationService>();
@@ -389,10 +495,7 @@ public class SubtitleTextStructureTests
                 It.IsAny<List<string>?>(),
                 It.IsAny<List<string>?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Dictionary<int, string>
-            {
-                [1] = "Jedna linia"
-            });
+            .ReturnsAsync(new Dictionary<int, string>());
 
         batchFallbackMock
             .Setup(service => service.TranslateWithFallbackAsync(
@@ -411,7 +514,7 @@ public class SubtitleTextStructureTests
             })
             .ReturnsAsync(new Dictionary<int, string>
             {
-                [1] = "Nadal jedna linia"
+                [1] = "Pierwsza linia Druga linia"
             });
 
         var service = new SubtitleTranslationService(
@@ -433,7 +536,7 @@ public class SubtitleTextStructureTests
             }
         };
 
-        await Assert.ThrowsAsync<TranslationException>(() => service.TranslateSubtitlesBatch(
+        await service.TranslateSubtitlesBatch(
             subtitles,
             new TranslationRequest
             {
@@ -448,11 +551,19 @@ public class SubtitleTextStructureTests
             preserveAssFormatting: true,
             batchSize: 10,
             batchRetryMode: "deferred",
-            cancellationToken: CancellationToken.None));
+            cancellationToken: CancellationToken.None);
 
         Assert.NotNull(capturedRepairBatchItems);
-        var failedRepairItem = Assert.Single(capturedRepairBatchItems!.Where(item => item.Position == 1));
+        var failedRepairItem = Assert.Single(capturedRepairBatchItems!, item => item.Position == 1);
         Assert.Equal("Line one\nLine two", failedRepairItem.Line);
+        loggerMock.Verify(
+            logger => logger.Log(
+                LogLevel.Information,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((state, _) => state.ToString()!.Contains("Deferred repair succeeded")),
+                It.IsAny<Exception>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Never);
     }
 
     private static SubtitleTextStructure BuildAssStructure(IReadOnlyList<string> sourceLines)
