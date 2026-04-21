@@ -48,6 +48,7 @@ msbuild.wrn
 # local
 /SQL
 deployment/
+/tmp/
 
 # Logs
 nas_logs.txt
