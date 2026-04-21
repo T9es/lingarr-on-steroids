@@ -258,79 +258,9 @@ internal sealed class SubtitleTextStructure
             return translatedLines.ToList();
         }
 
-        return ReflowProviderTranslationText(translatedProviderText);
-    }
-
-    private List<string> ReflowProviderTranslationText(string translatedProviderText)
-    {
-        var normalized = string.Join(
-            ' ',
-            SplitProviderTranslationLines(translatedProviderText)
-                .Select(line => line.Trim())
-                .Where(line => !string.IsNullOrWhiteSpace(line)));
-
-        if (string.IsNullOrWhiteSpace(normalized))
-        {
-            return Enumerable.Repeat(string.Empty, VisibleLineCount).ToList();
-        }
-
-        var weights = _providerVisibleLines
-            .Select(line => Math.Max(1, line.ProviderVisibleText.Trim().Length))
-            .ToArray();
-        var totalWeight = weights.Sum();
-        var assignments = new List<string>(VisibleLineCount);
-
-        var previousBoundary = 0;
-        var cumulativeWeight = 0;
-        for (var index = 0; index < VisibleLineCount - 1; index++)
-        {
-            cumulativeWeight += weights[index];
-            var idealBoundary = (int)Math.Round((double)normalized.Length * cumulativeWeight / totalWeight);
-            idealBoundary = Math.Clamp(
-                idealBoundary,
-                previousBoundary + 1,
-                normalized.Length - (VisibleLineCount - index - 1));
-
-            var boundary = FindReflowBoundary(normalized, idealBoundary, previousBoundary + 1);
-            assignments.Add(normalized[previousBoundary..boundary].Trim());
-            previousBoundary = boundary;
-        }
-
-        assignments.Add(normalized[previousBoundary..].Trim());
-        return assignments;
-    }
-
-    private static int FindReflowBoundary(string text, int idealBoundary, int minimumBoundary)
-    {
-        if (idealBoundary <= minimumBoundary)
-        {
-            return minimumBoundary;
-        }
-
-        var bestWhitespace = -1;
-        for (var offset = 0; offset < text.Length; offset++)
-        {
-            var right = idealBoundary + offset;
-            if (right >= minimumBoundary && right < text.Length && char.IsWhiteSpace(text[right]))
-            {
-                bestWhitespace = right + 1;
-                break;
-            }
-
-            var left = idealBoundary - offset;
-            if (left >= minimumBoundary && left < text.Length && char.IsWhiteSpace(text[left]))
-            {
-                bestWhitespace = left + 1;
-                break;
-            }
-        }
-
-        if (bestWhitespace > -1)
-        {
-            return bestWhitespace;
-        }
-
-        return idealBoundary;
+        return SubtitleTextReflowEngine.Reflow(
+            translatedLines,
+            _providerVisibleLines.Select(line => line.ProviderVisibleText).ToList());
     }
 
     internal static List<string> SplitProviderTranslationLines(string translatedProviderText)

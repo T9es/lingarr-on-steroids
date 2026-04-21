@@ -89,6 +89,84 @@ public class SubtitleTextStructureTests
     }
 
     [Fact]
+    public void AssHardBreak_WhenTargetLanguageIsLonger_ShouldPreferPunctuationAndWordBoundaries()
+    {
+        var sourceLines = new List<string> { "Stop here\\NDo not enter" };
+        var structure = BuildAssStructure(sourceLines);
+
+        var translated = structure.ApplyProviderTranslation("Zatrzymaj sie tutaj, prosze nie wchodzic dalej");
+
+        Assert.Single(translated);
+        Assert.Equal("Zatrzymaj sie tutaj,\\Nprosze nie wchodzic dalej", translated[0]);
+    }
+
+    [Fact]
+    public void AssHardBreak_WhenProviderReturnsNoSpaceCjkText_ShouldSplitOnTextElementBoundary()
+    {
+        var sourceLines = new List<string> { "First line\\NSecond line" };
+        var structure = BuildAssStructure(sourceLines);
+
+        var translated = structure.ApplyProviderTranslation("这是一个很长的中文字幕需要分成两行");
+
+        Assert.Single(translated);
+        Assert.Contains("\\N", translated[0], StringComparison.Ordinal);
+        var lines = translated[0].Split("\\N", StringSplitOptions.None);
+        Assert.Equal(2, lines.Length);
+        Assert.All(lines, line => Assert.False(string.IsNullOrWhiteSpace(line)));
+        Assert.Equal("这是一个很长的中文字幕需要分成两行", string.Concat(lines));
+    }
+
+    [Fact]
+    public void AssHardBreak_WhenProviderReturnsEmojiText_ShouldNotSplitInsideGraphemeCluster()
+    {
+        var sourceLines = new List<string> { "First line\\NSecond line" };
+        var structure = BuildAssStructure(sourceLines);
+
+        var translated = structure.ApplyProviderTranslation("Alert 👨‍👩‍👧‍👦 family sign ahead");
+
+        Assert.Single(translated);
+        Assert.Contains("\\N", translated[0], StringComparison.Ordinal);
+        Assert.Contains("👨‍👩‍👧‍👦", translated[0], StringComparison.Ordinal);
+        Assert.DoesNotContain("👨\\N", translated[0], StringComparison.Ordinal);
+        Assert.DoesNotContain("\\N‍", translated[0], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void InlineMarkup_WhenProviderReturnsLongToken_ShouldKeepTokenIntactWhenBoundaryExists()
+    {
+        var sourceLines = new List<string>
+        {
+            "<i>Visit now</i>",
+            "Then continue"
+        };
+        var structure = BuildInlineStructure(sourceLines);
+
+        var translated = structure.ApplyProviderTranslation("Odwiedz https://example.com/very/long/path teraz kontynuuj dalej");
+
+        Assert.Equal(2, translated.Count);
+        Assert.Contains(translated, line => line.Contains("https://example.com/very/long/path", StringComparison.Ordinal));
+        Assert.DoesNotContain(translated, line => line.Contains("https://example.", StringComparison.Ordinal) &&
+            !line.Contains("https://example.com/very/long/path", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void InlineMarkup_WhenProviderLineCountMatches_ShouldKeepProviderLinesUnchanged()
+    {
+        var sourceLines = new List<string>
+        {
+            "<i>Line one</i>",
+            "Line two"
+        };
+        var structure = BuildInlineStructure(sourceLines);
+
+        var translated = structure.ApplyProviderTranslation("Short\nA much longer translated second line");
+
+        Assert.Equal(2, translated.Count);
+        Assert.Equal("<i>Short</i>", translated[0]);
+        Assert.Equal("A much longer translated second line", translated[1]);
+    }
+
+    [Fact]
     public void AssDrawingOnly_ShouldNotExposeProviderText()
     {
         var sourceLines = new List<string> { "{\\p1}m 0 0 l 10 10{\\p0}" };
