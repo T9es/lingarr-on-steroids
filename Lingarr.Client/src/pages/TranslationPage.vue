@@ -10,8 +10,18 @@
                             ? 'border-accent text-accent border-b-2'
                             : 'text-secondary-content hover:text-primary-content'
                     "
-                    @click="activeTab = 'list'">
+                    @click="setActiveTab('list')">
                     {{ translate('translations.tabList') }}
+                </button>
+                <button
+                    class="px-6 py-3 font-medium transition-colors"
+                    :class="
+                        activeTab === 'uploadWorkspace'
+                            ? 'border-accent text-accent border-b-2'
+                            : 'text-secondary-content hover:text-primary-content'
+                    "
+                    @click="setActiveTab('uploadWorkspace')">
+                    {{ translate('navigation.uploadWorkspace') }}
                 </button>
             </div>
 
@@ -416,6 +426,10 @@
                     :page-size="translationRequests.pageSize" />
             </div>
 
+            <div v-if="hasOpenedUploadWorkspaceTab" v-show="activeTab === 'uploadWorkspace'">
+                <UploadWorkspaceTab />
+            </div>
+
             <!-- Logs Modal -->
             <div
                 v-if="logsModalOpen"
@@ -507,6 +521,7 @@ import BadgeComponent from '@/components/common/BadgeComponent.vue'
 import PageLayout from '@/components/layout/PageLayout.vue'
 import CheckboxComponent from '@/components/common/CheckboxComponent.vue'
 import TestIcon from '@/components/icons/TestIcon.vue'
+import UploadWorkspaceTab from '@/components/features/upload-workspace/UploadWorkspaceTab.vue'
 import { useRouter } from 'vue-router'
 
 const { translate } = useI18n()
@@ -526,7 +541,10 @@ const showRemoveConfirm = ref(false)
 const reenqueuingQueued = ref(false)
 const cancellingQueued = ref(false)
 
-const activeTab = ref<'list' | 'test'>('list')
+type TranslationTab = 'list' | 'uploadWorkspace'
+
+const activeTab = ref<TranslationTab>('list')
+const hasOpenedUploadWorkspaceTab = ref(false)
 
 const translationRequests: ComputedRef<IPagedResult<ITranslationRequest>> = computed(
     () => translationRequestStore.getTranslationRequests
@@ -548,6 +566,13 @@ const filter: ComputedRef<IFilter> = computed({
         translationRequestStore.setFilter(value)
     }, 300)
 })
+
+function setActiveTab(tab: TranslationTab) {
+    activeTab.value = tab
+    if (tab === 'uploadWorkspace') {
+        hasOpenedUploadWorkspaceTab.value = true
+    }
+}
 
 async function handleAction(translationRequest: ITranslationRequest, action: TRANSLATION_ACTIONS) {
     switch (action) {
