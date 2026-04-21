@@ -81,6 +81,21 @@ export interface ITranslationRequestLog {
     createdAt: string
 }
 
+export interface IRetryFailedRequestsResponse {
+    totalFailed: number
+    retried: number
+    blockedByActiveRequest: number
+    remainingFailed: number
+    message: string
+}
+
+export interface IRetryTranslationRequestResponse {
+    requestId: number
+    retried: boolean
+    blockedByActiveRequest: boolean
+    message: string
+}
+
 export interface IRequestProgress {
     id: number
     jobId: string

@@ -268,7 +268,8 @@
     "reenqueueQueue": "Reencolar",
     "cancelAll": "Cancelar todo",
     "removeAllFailed": "Eliminar todos los fallidos",
-    "removeAllFailedConfirm": "¿Estás seguro de que quieres eliminar todas las solicitudes de traducción fallidas? Esto no se puede deshacer."
+    "removeAllFailedConfirm": "¿Estás seguro de que quieres eliminar todas las solicitudes de traducción fallidas? Esto no se puede deshacer.",
+    "retryResultSummary": "Resultado del reintento: {retried} reintentadas, {blocked} bloqueadas."
   },
   "schedule": {
     "jobName": "Nombre de tarea",

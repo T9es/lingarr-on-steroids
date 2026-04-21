@@ -2,6 +2,7 @@
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Models;
+using Lingarr.Server.Models.Api;
 using Lingarr.Server.Models.Batch.Response;
 using Lingarr.Server.Models.FileSystem;
 
@@ -125,11 +126,17 @@ public interface ITranslationRequestService
         TranslationRequest cancelRequest
     );
 
-/// <summary>
-    /// Retries all translation requests with Failed status
+    /// <summary>
+    /// Retries all translation requests with Failed status.
     /// </summary>
-    /// <returns>Int representing number of retried requests</returns>
-    Task<int> RetryAllFailedRequests();
+    /// <returns>Structured retry result with retried and blocked counters.</returns>
+    Task<RetryFailedRequestsResponse> RetryAllFailedRequests();
+
+    /// <summary>
+    /// Retries failed translation requests that are currently eligible by retry backoff policy.
+    /// </summary>
+    /// <returns>Structured retry result with retried and blocked counters.</returns>
+    Task<RetryFailedRequestsResponse> RetryEligibleFailedRequests();
 
     /// <summary>
     /// Removes all translation requests with Failed status
@@ -138,15 +145,12 @@ public interface ITranslationRequestService
     Task<int> RemoveAllFailedRequests();
     
     /// <summary>
-    /// Retries an existing translation request
+    /// Retries an existing translation request.
     /// </summary>
     /// <param name="retryRequest">The translation request to retry</param>
-    /// <returns>
-    /// A message indicating the result of the new transaltion request, or null if the request wasn't found
-    /// </returns>
-    Task<string?> RetryTranslationRequest(
-        TranslationRequest retryRequest
-    );
+    /// <returns>Structured retry result, or null if the request wasn't found.</returns>
+    Task<RetryTranslationRequestResponse?> RetryTranslationRequest(
+        TranslationRequest retryRequest);
 
     /// <summary>
     /// Cancels an existing translation request and its associated background job.

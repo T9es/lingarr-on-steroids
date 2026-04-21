@@ -268,7 +268,8 @@
     "reenqueueQueue": "Ponownie dodaj do kolejki",
     "cancelAll": "Anuluj wszystko",
     "removeAllFailed": "Usuń wszystkie nieudane",
-    "removeAllFailedConfirm": "Czy na pewno chcesz usunąć wszystkie nieudane żądania tłumaczenia? Tej operacji nie można cofnąć."
+    "removeAllFailedConfirm": "Czy na pewno chcesz usunąć wszystkie nieudane żądania tłumaczenia? Tej operacji nie można cofnąć.",
+    "retryResultSummary": "Wynik ponowienia: wznowiono {retried}, zablokowano {blocked}."
   },
   "schedule": {
     "jobName": "Nazwa zadania",

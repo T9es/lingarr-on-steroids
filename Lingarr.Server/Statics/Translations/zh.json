@@ -268,7 +268,8 @@
     "reenqueueQueue": "重新排队",
     "cancelAll": "全部取消",
     "removeAllFailed": "删除所有失败",
-    "removeAllFailedConfirm": "确定要删除所有失败的翻译请求吗？此操作无法撤销。"
+    "removeAllFailedConfirm": "确定要删除所有失败的翻译请求吗？此操作无法撤销。",
+    "retryResultSummary": "重试结果：已重试 {retried} 条，阻塞 {blocked} 条。"
   },
   "schedule": {
     "jobName": "任务名称",

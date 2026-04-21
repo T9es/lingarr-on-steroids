@@ -510,6 +510,471 @@ public class TranslationRequestServiceTests
     }
 
     [Fact]
+    public async Task RetryAllFailedRequests_IgnoresFutureNextRetryAt()
+    {
+        await using var context = BuildContext();
+
+        var now = DateTime.UtcNow;
+        var failedRequest = CreateRequest(
+            1,
+            300,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/movie.en.srt",
+            TranslationStatus.Failed,
+            now.AddMinutes(-2));
+        failedRequest.WorkloadItemKey = $"library:{MediaType.Movie}:300";
+        failedRequest.IsActive = null;
+        failedRequest.NextRetryAt = now.AddHours(2);
+
+        context.TranslationRequests.Add(failedRequest);
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+        var result = await service.RetryAllFailedRequests();
+
+        Assert.Equal(1, result.TotalFailed);
+        Assert.Equal(1, result.Retried);
+        Assert.Equal(0, result.BlockedByActiveRequest);
+        Assert.Equal(0, result.RemainingFailed);
+
+        var updatedRequest = await context.TranslationRequests.SingleAsync(tr => tr.Id == failedRequest.Id);
+        Assert.Equal(TranslationStatus.Pending, updatedRequest.Status);
+        Assert.True(updatedRequest.IsActive);
+        Assert.Null(updatedRequest.NextRetryAt);
+    }
+
+    [Fact]
+    public async Task RetryEligibleFailedRequests_RespectsFutureNextRetryAt()
+    {
+        await using var context = BuildContext();
+
+        var now = DateTime.UtcNow;
+        var failedRequest = CreateRequest(
+            1,
+            305,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/movie.en.srt",
+            TranslationStatus.Failed,
+            now.AddMinutes(-2));
+        failedRequest.WorkloadItemKey = $"library:{MediaType.Movie}:305";
+        failedRequest.IsActive = null;
+        failedRequest.NextRetryAt = now.AddHours(2);
+
+        context.TranslationRequests.Add(failedRequest);
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+        var result = await service.RetryEligibleFailedRequests();
+
+        Assert.Equal(0, result.TotalFailed);
+        Assert.Equal(0, result.Retried);
+        Assert.Equal(0, result.BlockedByActiveRequest);
+        Assert.Equal(1, result.RemainingFailed);
+
+        var updatedRequest = await context.TranslationRequests.SingleAsync(tr => tr.Id == failedRequest.Id);
+        Assert.Equal(TranslationStatus.Failed, updatedRequest.Status);
+        Assert.Null(updatedRequest.IsActive);
+        Assert.Equal(failedRequest.NextRetryAt, updatedRequest.NextRetryAt);
+    }
+
+    [Fact]
+    public async Task RetryAllFailedRequests_RetriesOnlyOneFromDuplicateFailedRowsWithinSameRun()
+    {
+        await using var context = BuildContext();
+
+        var now = DateTime.UtcNow;
+        var workloadKey = $"library:{MediaType.Movie}:306";
+
+        var failedFirst = CreateRequest(
+            1,
+            306,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/movie.en.srt",
+            TranslationStatus.Failed,
+            now.AddMinutes(-3));
+        failedFirst.WorkloadItemKey = workloadKey;
+        failedFirst.IsActive = null;
+        failedFirst.NextRetryAt = now.AddHours(2);
+
+        var failedSecond = CreateRequest(
+            2,
+            306,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/movie.en.srt",
+            TranslationStatus.Failed,
+            now.AddMinutes(-2));
+        failedSecond.WorkloadItemKey = workloadKey;
+        failedSecond.IsActive = null;
+        failedSecond.NextRetryAt = null;
+
+        context.TranslationRequests.AddRange(failedFirst, failedSecond);
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+        var result = await service.RetryAllFailedRequests();
+
+        Assert.Equal(2, result.TotalFailed);
+        Assert.Equal(1, result.Retried);
+        Assert.Equal(1, result.BlockedByActiveRequest);
+        Assert.Equal(1, result.RemainingFailed);
+
+        var requests = await context.TranslationRequests
+            .Where(tr => tr.WorkloadItemKey == workloadKey)
+            .OrderBy(tr => tr.Id)
+            .ToListAsync();
+
+        Assert.Single(requests, tr => tr.Status == TranslationStatus.Pending);
+        Assert.Single(requests, tr => tr.Status == TranslationStatus.Failed);
+    }
+
+    [Fact]
+    public async Task RetryAllFailedRequests_RetriesOnlyOneFromLegacyKeylessDuplicateFailedRowsWithinSameRun()
+    {
+        await using var context = BuildContext();
+
+        var now = DateTime.UtcNow;
+        var failedFirst = CreateRequest(
+            1,
+            307,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/movie.en.srt",
+            TranslationStatus.Failed,
+            now.AddMinutes(-3));
+        failedFirst.WorkloadItemKey = string.Empty;
+        failedFirst.IsActive = null;
+
+        var failedSecond = CreateRequest(
+            2,
+            307,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/movie.en.srt",
+            TranslationStatus.Failed,
+            now.AddMinutes(-2));
+        failedSecond.WorkloadItemKey = string.Empty;
+        failedSecond.IsActive = null;
+
+        context.TranslationRequests.AddRange(failedFirst, failedSecond);
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+        var result = await service.RetryAllFailedRequests();
+
+        Assert.Equal(2, result.TotalFailed);
+        Assert.Equal(1, result.Retried);
+        Assert.Equal(1, result.BlockedByActiveRequest);
+        Assert.Equal(1, result.RemainingFailed);
+
+        var requests = await context.TranslationRequests
+            .Where(tr => tr.MediaId == 307 && tr.MediaType == MediaType.Movie)
+            .ToListAsync();
+
+        Assert.Single(requests, tr => tr.Status == TranslationStatus.Pending);
+        Assert.Single(requests, tr => tr.Status == TranslationStatus.Failed);
+    }
+
+    [Fact]
+    public async Task RetryAllFailedRequests_RetriesLegacyKeylessCustomSourceMappedFromLibraryWithoutMediaId()
+    {
+        await using var context = BuildContext();
+
+        var now = DateTime.UtcNow;
+        var failedLegacyCustom = new TranslationRequest
+        {
+            Id = 1,
+            WorkloadKind = TranslationWorkloadKind.Library,
+            WorkloadItemKey = string.Empty,
+            MediaId = null,
+            CustomMediaItemId = 901,
+            MediaType = MediaType.Movie,
+            Title = "Legacy custom request",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = "/custom/item.en.srt",
+            SourceSubtitleFormat = ".srt",
+            RequiredOutputFormats = ".srt",
+            Status = TranslationStatus.Failed,
+            IsActive = null,
+            CreatedAt = now.AddMinutes(-2),
+            UpdatedAt = now.AddMinutes(-2),
+            NextRetryAt = now.AddHours(2)
+        };
+
+        context.TranslationRequests.Add(failedLegacyCustom);
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+        var result = await service.RetryAllFailedRequests();
+
+        Assert.Equal(1, result.TotalFailed);
+        Assert.Equal(1, result.Retried);
+        Assert.Equal(0, result.BlockedByActiveRequest);
+        Assert.Equal(0, result.RemainingFailed);
+
+        var updatedRequest = await context.TranslationRequests.SingleAsync(tr => tr.Id == failedLegacyCustom.Id);
+        Assert.Equal(TranslationStatus.Pending, updatedRequest.Status);
+        Assert.True(updatedRequest.IsActive);
+        Assert.Equal(TranslationWorkloadKind.CustomSource, updatedRequest.WorkloadKind);
+        Assert.Equal("custom:901", updatedRequest.WorkloadItemKey);
+    }
+
+    [Fact]
+    public async Task RetryAllFailedRequests_RetriesLegacyCustomSourceWithStaleNonEmptyWorkloadKey()
+    {
+        await using var context = BuildContext();
+
+        var now = DateTime.UtcNow;
+        var failedLegacyCustom = new TranslationRequest
+        {
+            Id = 1,
+            WorkloadKind = TranslationWorkloadKind.Library,
+            WorkloadItemKey = "library:Movie:0",
+            MediaId = null,
+            CustomMediaItemId = 902,
+            MediaType = MediaType.Movie,
+            Title = "Legacy custom stale key",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = "/custom/stale.en.srt",
+            SourceSubtitleFormat = ".srt",
+            RequiredOutputFormats = ".srt",
+            Status = TranslationStatus.Failed,
+            IsActive = null,
+            CreatedAt = now.AddMinutes(-2),
+            UpdatedAt = now.AddMinutes(-2),
+            NextRetryAt = now.AddHours(1)
+        };
+
+        context.TranslationRequests.Add(failedLegacyCustom);
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+        var result = await service.RetryAllFailedRequests();
+
+        Assert.Equal(1, result.TotalFailed);
+        Assert.Equal(1, result.Retried);
+        Assert.Equal(0, result.BlockedByActiveRequest);
+        Assert.Equal(0, result.RemainingFailed);
+
+        var updatedRequest = await context.TranslationRequests.SingleAsync(tr => tr.Id == failedLegacyCustom.Id);
+        Assert.Equal(TranslationStatus.Pending, updatedRequest.Status);
+        Assert.True(updatedRequest.IsActive);
+        Assert.Equal(TranslationWorkloadKind.CustomSource, updatedRequest.WorkloadKind);
+        Assert.Equal("custom:902", updatedRequest.WorkloadItemKey);
+    }
+
+    [Fact]
+    public async Task RetryAllFailedRequests_BlocksLegacyKeylessUploadWhenMatchingActiveExists()
+    {
+        await using var context = BuildContext();
+
+        var now = DateTime.UtcNow;
+        var activeLegacyUpload = new TranslationRequest
+        {
+            Id = 1,
+            WorkloadKind = TranslationWorkloadKind.Library,
+            WorkloadItemKey = string.Empty,
+            MediaId = null,
+            UploadBatchFileId = 777,
+            MediaType = MediaType.Movie,
+            Title = "Legacy upload active",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = "/uploads/episode.en.srt",
+            SourceSubtitleFormat = ".srt",
+            RequiredOutputFormats = ".srt",
+            Status = TranslationStatus.Pending,
+            IsActive = true,
+            CreatedAt = now.AddMinutes(-3),
+            UpdatedAt = now.AddMinutes(-3)
+        };
+
+        var failedLegacyUpload = new TranslationRequest
+        {
+            Id = 2,
+            WorkloadKind = TranslationWorkloadKind.Library,
+            WorkloadItemKey = string.Empty,
+            MediaId = null,
+            UploadBatchFileId = 777,
+            MediaType = MediaType.Movie,
+            Title = "Legacy upload failed",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = "/uploads/episode.en.srt",
+            SourceSubtitleFormat = ".srt",
+            RequiredOutputFormats = ".srt",
+            Status = TranslationStatus.Failed,
+            IsActive = null,
+            CreatedAt = now.AddMinutes(-2),
+            UpdatedAt = now.AddMinutes(-2),
+            NextRetryAt = null
+        };
+
+        context.TranslationRequests.AddRange(activeLegacyUpload, failedLegacyUpload);
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+        var result = await service.RetryAllFailedRequests();
+
+        Assert.Equal(1, result.TotalFailed);
+        Assert.Equal(0, result.Retried);
+        Assert.Equal(1, result.BlockedByActiveRequest);
+        Assert.Equal(1, result.RemainingFailed);
+
+        var updatedRequest = await context.TranslationRequests.SingleAsync(tr => tr.Id == failedLegacyUpload.Id);
+        Assert.Equal(TranslationStatus.Failed, updatedRequest.Status);
+        Assert.Null(updatedRequest.IsActive);
+    }
+
+    [Fact]
+    public async Task RetryAllFailedRequests_BlocksLegacyUploadWithStaleNonEmptyWorkloadKeyWhenCanonicalActiveExists()
+    {
+        await using var context = BuildContext();
+
+        var now = DateTime.UtcNow;
+        var activeUpload = new TranslationRequest
+        {
+            Id = 1,
+            WorkloadKind = TranslationWorkloadKind.Upload,
+            WorkloadItemKey = "upload:778",
+            MediaId = null,
+            UploadBatchFileId = 778,
+            MediaType = MediaType.Movie,
+            Title = "Active upload canonical",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = "/uploads/canonical.en.srt",
+            SourceSubtitleFormat = ".srt",
+            RequiredOutputFormats = ".srt",
+            Status = TranslationStatus.Pending,
+            IsActive = true,
+            CreatedAt = now.AddMinutes(-3),
+            UpdatedAt = now.AddMinutes(-3)
+        };
+
+        var failedLegacyUpload = new TranslationRequest
+        {
+            Id = 2,
+            WorkloadKind = TranslationWorkloadKind.Library,
+            WorkloadItemKey = "library:Movie:0",
+            MediaId = null,
+            UploadBatchFileId = 778,
+            MediaType = MediaType.Movie,
+            Title = "Failed upload stale key",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = "/uploads/canonical.en.srt",
+            SourceSubtitleFormat = ".srt",
+            RequiredOutputFormats = ".srt",
+            Status = TranslationStatus.Failed,
+            IsActive = null,
+            CreatedAt = now.AddMinutes(-2),
+            UpdatedAt = now.AddMinutes(-2),
+            NextRetryAt = null
+        };
+
+        context.TranslationRequests.AddRange(activeUpload, failedLegacyUpload);
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+        var result = await service.RetryAllFailedRequests();
+
+        Assert.Equal(1, result.TotalFailed);
+        Assert.Equal(0, result.Retried);
+        Assert.Equal(1, result.BlockedByActiveRequest);
+        Assert.Equal(1, result.RemainingFailed);
+
+        var updatedRequest = await context.TranslationRequests.SingleAsync(tr => tr.Id == failedLegacyUpload.Id);
+        Assert.Equal(TranslationStatus.Failed, updatedRequest.Status);
+        Assert.Null(updatedRequest.IsActive);
+    }
+
+    [Fact]
+    public async Task RetryAllFailedRequests_RetriesOnlyOneDuplicateWhenRowsSpanMultipleBatches()
+    {
+        await using var context = BuildContext();
+
+        var now = DateTime.UtcNow;
+        var duplicateMediaId = 340;
+        var duplicateWorkloadKey = $"library:{MediaType.Movie}:{duplicateMediaId}";
+        var requests = new List<TranslationRequest>();
+
+        var firstDuplicate = CreateRequest(
+            1,
+            duplicateMediaId,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/movie.en.srt",
+            TranslationStatus.Failed,
+            now.AddMinutes(-4));
+        firstDuplicate.WorkloadItemKey = duplicateWorkloadKey;
+        firstDuplicate.IsActive = null;
+        requests.Add(firstDuplicate);
+
+        for (var id = 2; id <= 220; id++)
+        {
+            var mediaId = 1000 + id;
+            var request = CreateRequest(
+                id,
+                mediaId,
+                MediaType.Movie,
+                "en",
+                "pl",
+                $"/movies/movie-{mediaId}.en.srt",
+                TranslationStatus.Failed,
+                now.AddMinutes(-(220 - id)));
+            request.WorkloadItemKey = $"library:{MediaType.Movie}:{mediaId}";
+            request.IsActive = null;
+            requests.Add(request);
+        }
+
+        var secondDuplicate = CreateRequest(
+            221,
+            duplicateMediaId,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/movie.en.srt",
+            TranslationStatus.Failed,
+            now.AddMinutes(-1));
+        secondDuplicate.WorkloadItemKey = duplicateWorkloadKey;
+        secondDuplicate.IsActive = null;
+        requests.Add(secondDuplicate);
+
+        context.TranslationRequests.AddRange(requests);
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+        var result = await service.RetryAllFailedRequests();
+
+        Assert.Equal(requests.Count, result.TotalFailed);
+        Assert.Equal(requests.Count - 1, result.Retried);
+        Assert.Equal(1, result.BlockedByActiveRequest);
+        Assert.Equal(1, result.RemainingFailed);
+
+        var duplicateRequests = await context.TranslationRequests
+            .Where(tr => tr.MediaId == duplicateMediaId && tr.MediaType == MediaType.Movie)
+            .OrderBy(tr => tr.Id)
+            .ToListAsync();
+
+        Assert.Equal(2, duplicateRequests.Count);
+        Assert.Single(duplicateRequests, tr => tr.Status == TranslationStatus.Pending);
+        Assert.Single(duplicateRequests, tr => tr.Status == TranslationStatus.Failed);
+    }
+
+    [Fact]
     public async Task RetryAllFailedRequests_BlocksRetryWhenAnyActiveRequestExistsForWorkload()
     {
         await using var context = BuildContext();
@@ -543,9 +1008,12 @@ public class TranslationRequestServiceTests
         await context.SaveChangesAsync();
 
         var service = CreateService(context);
-        var retried = await service.RetryAllFailedRequests();
+        var result = await service.RetryAllFailedRequests();
 
-        Assert.Equal(0, retried);
+        Assert.Equal(2, result.TotalFailed);
+        Assert.Equal(0, result.Retried);
+        Assert.Equal(2, result.BlockedByActiveRequest);
+        Assert.Equal(2, result.RemainingFailed);
 
         var updatedFailedAss = await context.TranslationRequests.SingleAsync(tr => tr.Id == failedAss.Id);
         var updatedFailedSrt = await context.TranslationRequests.SingleAsync(tr => tr.Id == failedSrt.Id);
@@ -582,13 +1050,141 @@ public class TranslationRequestServiceTests
         await context.SaveChangesAsync();
 
         var service = CreateService(context);
-        var retried = await service.RetryAllFailedRequests();
+        var result = await service.RetryAllFailedRequests();
 
-        Assert.Equal(0, retried);
+        Assert.Equal(1, result.TotalFailed);
+        Assert.Equal(0, result.Retried);
+        Assert.Equal(1, result.BlockedByActiveRequest);
+        Assert.Equal(1, result.RemainingFailed);
 
         var updatedFailedAss = await context.TranslationRequests.SingleAsync(tr => tr.Id == failedAss.Id);
         Assert.Equal(TranslationStatus.Failed, updatedFailedAss.Status);
         Assert.Null(updatedFailedAss.IsActive);
+    }
+
+    [Fact]
+    public async Task RetryTranslationRequest_BlocksLegacyCustomSourceWithStaleKeyWhenCanonicalActiveExists()
+    {
+        await using var context = BuildContext();
+
+        var now = DateTime.UtcNow;
+        var activeCustom = new TranslationRequest
+        {
+            Id = 1,
+            WorkloadKind = TranslationWorkloadKind.CustomSource,
+            WorkloadItemKey = "custom:990",
+            MediaId = null,
+            CustomMediaItemId = 990,
+            MediaType = MediaType.Movie,
+            Title = "Active custom canonical",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = "/custom/item.en.srt",
+            SourceSubtitleFormat = ".srt",
+            RequiredOutputFormats = ".srt",
+            Status = TranslationStatus.Pending,
+            IsActive = true,
+            CreatedAt = now.AddMinutes(-3),
+            UpdatedAt = now.AddMinutes(-3)
+        };
+
+        var failedLegacyCustom = new TranslationRequest
+        {
+            Id = 2,
+            WorkloadKind = TranslationWorkloadKind.Library,
+            WorkloadItemKey = "library:Movie:0",
+            MediaId = null,
+            CustomMediaItemId = 990,
+            MediaType = MediaType.Movie,
+            Title = "Failed custom stale key",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = "/custom/item.en.srt",
+            SourceSubtitleFormat = ".srt",
+            RequiredOutputFormats = ".srt",
+            Status = TranslationStatus.Failed,
+            IsActive = null,
+            CreatedAt = now.AddMinutes(-2),
+            UpdatedAt = now.AddMinutes(-2),
+            NextRetryAt = null
+        };
+
+        context.TranslationRequests.AddRange(activeCustom, failedLegacyCustom);
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+        var result = await service.RetryTranslationRequest(new TranslationRequest
+        {
+            Id = failedLegacyCustom.Id,
+            Title = failedLegacyCustom.Title,
+            SourceLanguage = failedLegacyCustom.SourceLanguage,
+            TargetLanguage = failedLegacyCustom.TargetLanguage,
+            MediaType = failedLegacyCustom.MediaType,
+            Status = failedLegacyCustom.Status
+        });
+
+        Assert.NotNull(result);
+        Assert.False(result!.Retried);
+        Assert.True(result.BlockedByActiveRequest);
+
+        var updatedRequest = await context.TranslationRequests.SingleAsync(tr => tr.Id == failedLegacyCustom.Id);
+        Assert.Equal(TranslationStatus.Failed, updatedRequest.Status);
+        Assert.Null(updatedRequest.IsActive);
+        Assert.Equal(TranslationWorkloadKind.Library, updatedRequest.WorkloadKind);
+        Assert.Equal("library:Movie:0", updatedRequest.WorkloadItemKey);
+    }
+
+    [Fact]
+    public async Task RetryTranslationRequest_RetriesLegacyUploadWithStaleKeyAndNormalizesCanonicalKey()
+    {
+        await using var context = BuildContext();
+
+        var now = DateTime.UtcNow;
+        var failedLegacyUpload = new TranslationRequest
+        {
+            Id = 1,
+            WorkloadKind = TranslationWorkloadKind.Library,
+            WorkloadItemKey = "library:Movie:0",
+            MediaId = null,
+            UploadBatchFileId = 991,
+            MediaType = MediaType.Movie,
+            Title = "Failed upload stale key",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = "/uploads/item.en.srt",
+            SourceSubtitleFormat = ".srt",
+            RequiredOutputFormats = ".srt",
+            Status = TranslationStatus.Failed,
+            IsActive = null,
+            CreatedAt = now.AddMinutes(-2),
+            UpdatedAt = now.AddMinutes(-2),
+            NextRetryAt = now.AddHours(2)
+        };
+
+        context.TranslationRequests.Add(failedLegacyUpload);
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+        var result = await service.RetryTranslationRequest(new TranslationRequest
+        {
+            Id = failedLegacyUpload.Id,
+            Title = failedLegacyUpload.Title,
+            SourceLanguage = failedLegacyUpload.SourceLanguage,
+            TargetLanguage = failedLegacyUpload.TargetLanguage,
+            MediaType = failedLegacyUpload.MediaType,
+            Status = failedLegacyUpload.Status
+        });
+
+        Assert.NotNull(result);
+        Assert.True(result!.Retried);
+        Assert.False(result.BlockedByActiveRequest);
+
+        var updatedRequest = await context.TranslationRequests.SingleAsync(tr => tr.Id == failedLegacyUpload.Id);
+        Assert.Equal(TranslationStatus.Pending, updatedRequest.Status);
+        Assert.True(updatedRequest.IsActive);
+        Assert.Null(updatedRequest.NextRetryAt);
+        Assert.Equal(TranslationWorkloadKind.Upload, updatedRequest.WorkloadKind);
+        Assert.Equal("upload:991", updatedRequest.WorkloadItemKey);
     }
 
     [Fact]
@@ -616,7 +1212,7 @@ public class TranslationRequestServiceTests
         await context.SaveChangesAsync();
 
         var service = CreateService(context);
-        var message = await service.RetryTranslationRequest(new TranslationRequest
+        var result = await service.RetryTranslationRequest(new TranslationRequest
         {
             Id = failedSrt.Id,
             Title = failedSrt.Title,
@@ -626,8 +1222,10 @@ public class TranslationRequestServiceTests
             Status = failedSrt.Status
         });
 
-        Assert.NotNull(message);
-        Assert.Contains("already active or pending", message!, StringComparison.OrdinalIgnoreCase);
+        Assert.NotNull(result);
+        Assert.False(result!.Retried);
+        Assert.True(result.BlockedByActiveRequest);
+        Assert.Contains("already active or pending", result.Message, StringComparison.OrdinalIgnoreCase);
 
         var updatedRequest = await context.TranslationRequests.SingleAsync(tr => tr.Id == failedSrt.Id);
         Assert.Equal(TranslationStatus.Failed, updatedRequest.Status);
@@ -638,7 +1236,7 @@ public class TranslationRequestServiceTests
     [Theory]
     [InlineData("srt-only", ".srt")]
     [InlineData("both", ".ass,.srt")]
-    public async Task RetryTranslationRequest_NormalizesLegacyRequiredOutputFormatsBeforeActivating(
+    public async Task RetryTranslationRequest_SuccessResponseClearsNextRetryAtAndNormalizesMetadata(
         string subtitleOutputMode,
         string expectedRequiredOutputFormats)
     {
@@ -662,12 +1260,13 @@ public class TranslationRequestServiceTests
         failedRequest.RequiredOutputFormats = null;
         failedRequest.IsActive = null;
         failedRequest.FailedAt = now.AddMinutes(-2);
+        failedRequest.NextRetryAt = now.AddHours(1);
 
         context.TranslationRequests.Add(failedRequest);
         await context.SaveChangesAsync();
 
         var service = CreateService(context);
-        var message = await service.RetryTranslationRequest(new TranslationRequest
+        var result = await service.RetryTranslationRequest(new TranslationRequest
         {
             Id = failedRequest.Id,
             Title = failedRequest.Title,
@@ -677,13 +1276,16 @@ public class TranslationRequestServiceTests
             Status = failedRequest.Status
         });
 
-        Assert.NotNull(message);
-        Assert.Contains("restarted", message!, StringComparison.OrdinalIgnoreCase);
+        Assert.NotNull(result);
+        Assert.True(result!.Retried);
+        Assert.False(result.BlockedByActiveRequest);
+        Assert.Contains("restarted", result.Message, StringComparison.OrdinalIgnoreCase);
 
         var updatedRequest = await context.TranslationRequests.SingleAsync(tr => tr.Id == failedRequest.Id);
         Assert.Equal(expectedRequiredOutputFormats, updatedRequest.RequiredOutputFormats);
         Assert.Equal(TranslationStatus.Pending, updatedRequest.Status);
         Assert.True(updatedRequest.IsActive);
+        Assert.Null(updatedRequest.NextRetryAt);
     }
 
     [Fact]

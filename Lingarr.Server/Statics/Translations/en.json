@@ -268,7 +268,8 @@
     "reenqueueQueue": "Re-enqueue queue",
     "cancelAll": "Cancel All",
     "removeAllFailed": "Remove All Failed",
-    "removeAllFailedConfirm": "Are you sure you want to remove all failed translation requests? This cannot be undone."
+    "removeAllFailedConfirm": "Are you sure you want to remove all failed translation requests? This cannot be undone.",
+    "retryResultSummary": "Retry result: retried {retried}, blocked {blocked}."
   },
   "schedule": {
     "jobName": "Job Name",

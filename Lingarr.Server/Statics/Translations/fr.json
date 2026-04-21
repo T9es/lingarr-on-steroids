@@ -268,7 +268,8 @@
     "reenqueueQueue": "Remettre en file",
     "cancelAll": "Tout annuler",
     "removeAllFailed": "Supprimer tous les échecs",
-    "removeAllFailedConfirm": "Êtes-vous sûr de vouloir supprimer toutes les demandes de traduction échouées ? Cette action est irréversible."
+    "removeAllFailedConfirm": "Êtes-vous sûr de vouloir supprimer toutes les demandes de traduction échouées ? Cette action est irréversible.",
+    "retryResultSummary": "Résultat de la relance : {retried} relancées, {blocked} bloquées."
   },
   "schedule": {
     "jobName": "Nom de la tâche",

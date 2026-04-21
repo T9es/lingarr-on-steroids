@@ -268,7 +268,8 @@
     "reenqueueQueue": "Wachtrij opnieuw inplannen",
     "cancelAll": "Alles annuleren",
     "removeAllFailed": "Verwijder alle mislukte",
-    "removeAllFailedConfirm": "Weet u zeker dat u alle mislukte vertaalaanvragen wilt verwijderen? Dit kan niet ongedaan worden gemaakt."
+    "removeAllFailedConfirm": "Weet u zeker dat u alle mislukte vertaalaanvragen wilt verwijderen? Dit kan niet ongedaan worden gemaakt.",
+    "retryResultSummary": "Resultaat opnieuw proberen: {retried} opnieuw gestart, {blocked} geblokkeerd."
   },
   "schedule": {
     "jobName": "Taaknaam",

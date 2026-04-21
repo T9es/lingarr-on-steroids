@@ -50,16 +50,18 @@ public class RetryFailedRequestsJob
 
             _logger.LogInformation("Starting scheduled retry of failed translation requests...");
             
-            // This service method processes in batches
-            var count = await _translationRequestService.RetryAllFailedRequests();
-            
-            if (count > 0)
+            var result = await _translationRequestService.RetryEligibleFailedRequests();
+
+            if (result.Retried > 0)
             {
-                _logger.LogInformation("Successfully requeued {Count} failed requests", count);
+                _logger.LogInformation(
+                    "Successfully requeued {Retried} failed requests ({Blocked} blocked by active duplicates)",
+                    result.Retried,
+                    result.BlockedByActiveRequest);
             }
             else
             {
-                _logger.LogInformation("No failed requests found to retry");
+                _logger.LogInformation(result.Message);
             }
 
             await _scheduleService.UpdateJobState(jobName, JobStatus.Succeeded.GetDisplayName());

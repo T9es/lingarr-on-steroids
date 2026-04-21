@@ -24,7 +24,12 @@ namespace Lingarr.Server.Controllers
             }
             await Response.Body.FlushAsync(cancellationToken);
             
-            var channel = Channel.CreateUnbounded<LogEntry>();
+            var channel = Channel.CreateBounded<LogEntry>(new BoundedChannelOptions(1000)
+            {
+                FullMode = BoundedChannelFullMode.DropOldest,
+                SingleReader = true,
+                SingleWriter = false
+            });
             
             void Handler(object? sender, LogEntry log) 
             {

@@ -268,7 +268,8 @@
     "reenqueueQueue": "Warteschlange neu einreihen",
     "cancelAll": "Alle abbrechen",
     "removeAllFailed": "Alle fehlgeschlagenen entfernen",
-    "removeAllFailedConfirm": "Sind Sie sicher, dass Sie alle fehlgeschlagenen Übersetzungsanfragen entfernen möchten? Dies kann nicht rückgängig gemacht werden."
+    "removeAllFailedConfirm": "Sind Sie sicher, dass Sie alle fehlgeschlagenen Übersetzungsanfragen entfernen möchten? Dies kann nicht rückgängig gemacht werden.",
+    "retryResultSummary": "Ergebnis des erneuten Versuchs: {retried} erneut gestartet, {blocked} blockiert."
   },
   "schedule": {
     "jobName": "Aufgabenname",

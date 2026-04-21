@@ -8,6 +8,7 @@ using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Jobs;
 using Lingarr.Server.Models;
+using Lingarr.Server.Models.Api;
 using Lingarr.Server.Models.Batch.Response;
 using Lingarr.Server.Models.FileSystem;
 using Lingarr.Server.Services.Subtitle;
@@ -18,6 +19,7 @@ namespace Lingarr.Server.Services;
 
 public class TranslationRequestService : ITranslationRequestService
 {
+    private const int RetryFailedRequestsBatchSize = 100;
 
     private static bool IsActiveStatus(TranslationStatus status) =>
         status == TranslationStatus.Pending || status == TranslationStatus.InProgress;
@@ -375,201 +377,135 @@ public class TranslationRequestService : ITranslationRequestService
     }
 
     /// <inheritdoc />
-    public async Task<int> RetryAllFailedRequests()
+    public async Task<RetryFailedRequestsResponse> RetryAllFailedRequests()
     {
-        var batchSize = 50;
-        var totalRetried = 0;
+        return await RetryFailedRequests(ignoreBackoff: true);
+    }
+
+    /// <inheritdoc />
+    public async Task<RetryFailedRequestsResponse> RetryEligibleFailedRequests()
+    {
+        return await RetryFailedRequests(ignoreBackoff: false);
+    }
+
+    private async Task<RetryFailedRequestsResponse> RetryFailedRequests(bool ignoreBackoff)
+    {
         var now = DateTime.UtcNow;
-        var retriedIds = new List<int>();
-        var blockedRequestIds = new HashSet<int>();
+        var failedQuery = _dbContext.TranslationRequests
+            .Where(tr => tr.Status == TranslationStatus.Failed);
 
-        _logger.LogInformation("Starting batch retry of failed requests with exponential backoff...");
+        if (!ignoreBackoff)
+        {
+            failedQuery = failedQuery.Where(tr => tr.NextRetryAt == null || tr.NextRetryAt <= now);
+        }
 
-        // Loop until we have processed all eligible failed requests
+        var totalFailed = await failedQuery.CountAsync();
+        if (totalFailed == 0)
+        {
+            return new RetryFailedRequestsResponse
+            {
+                TotalFailed = 0,
+                Retried = 0,
+                BlockedByActiveRequest = 0,
+                RemainingFailed = await _dbContext.TranslationRequests.CountAsync(
+                    tr => tr.Status == TranslationStatus.Failed),
+                Message = ignoreBackoff
+                    ? "No failed translation requests were found."
+                    : "No failed translation requests were eligible for retry."
+            };
+        }
+
+        var activeDuplicateKeys = await GetActiveDuplicateKeysAsync();
+        var retriedCount = 0;
+        var blockedByActiveRequest = 0;
+        var lastProcessedId = 0;
+        var retriedBatch = new List<TranslationRequest>(RetryFailedRequestsBatchSize);
+
         while (true)
         {
-            // 1. Fetch a small batch of failed requests that are ready for retry
-            // (NextRetryAt is null or <= current time)
-            var batch = await _dbContext.TranslationRequests
-                .Where(tr => tr.Status == TranslationStatus.Failed)
-                .Where(tr => tr.NextRetryAt == null || tr.NextRetryAt <= now)
-                .Where(tr => !blockedRequestIds.Contains(tr.Id))
-                .OrderBy(tr => tr.NextRetryAt ?? tr.FailedAt ?? tr.CreatedAt)
-                .Take(batchSize)
+            var failedBatch = await failedQuery
+                .Where(tr => tr.Id > lastProcessedId)
+                .OrderBy(tr => tr.Id)
+                .Take(RetryFailedRequestsBatchSize)
                 .ToListAsync();
 
-            if (!batch.Any())
+            if (failedBatch.Count == 0)
             {
                 break;
             }
 
-            // 2. Normalize legacy fields and identify potentially conflicting active requests
-            var keysNormalized = false;
-            foreach (var request in batch)
+            retriedBatch.Clear();
+            foreach (var failedRequest in failedBatch)
             {
-                var originalKey = request.WorkloadItemKey;
-                NormalizeWorkloadIdentity(request);
-                if (!string.Equals(originalKey, request.WorkloadItemKey, StringComparison.Ordinal))
+                lastProcessedId = failedRequest.Id;
+                NormalizeWorkloadIdentity(failedRequest);
+                var duplicateKey = BuildRetryDuplicateKey(failedRequest);
+                if (string.IsNullOrWhiteSpace(duplicateKey))
                 {
-                    keysNormalized = true;
+                    blockedByActiveRequest++;
+                    continue;
                 }
 
-                var originalFormats = request.RequiredOutputFormats;
-                var normalizedFormats = GetEffectiveRequiredOutputFormats(request);
-                if (!string.Equals(originalFormats, normalizedFormats, StringComparison.Ordinal))
+                if (activeDuplicateKeys.Contains(duplicateKey))
                 {
-                    request.RequiredOutputFormats = normalizedFormats;
-                    keysNormalized = true;
+                    blockedByActiveRequest++;
+                    continue;
                 }
+
+                await PopulateOutputMetadataAsync(failedRequest);
+
+                failedRequest.Status = TranslationStatus.Pending;
+                failedRequest.IsActive = true;
+                failedRequest.IsPriority = true;
+                failedRequest.JobId = null;
+                failedRequest.CompletedAt = null;
+                failedRequest.NextRetryAt = null;
+
+                retriedBatch.Add(failedRequest);
+                activeDuplicateKeys.Add(duplicateKey);
             }
 
-            if (keysNormalized)
+            if (retriedBatch.Count == 0)
             {
-                await _dbContext.SaveChangesAsync();
-            }
-
-            var workloadItemKeys = batch
-                .Select(GetEffectiveWorkloadItemKey)
-                .Where(x => !string.IsNullOrWhiteSpace(x))
-                .Distinct()
-                .ToList();
-
-            var activeRequestsKeys = new HashSet<(string, string, string)>();
-            
-            if (workloadItemKeys.Any())
-            {
-                var activeRequests = await _dbContext.TranslationRequests
-                    .Where(tr => tr.IsActive == true && workloadItemKeys.Contains(tr.WorkloadItemKey))
-                    .Select(tr => new
-                    {
-                        tr.WorkloadItemKey,
-                        tr.SourceLanguage,
-                        tr.TargetLanguage,
-                        tr.RequiredOutputFormats,
-                        tr.SourceSubtitleFormat,
-                        tr.SubtitleOutputMode
-                    })
-                    .ToListAsync();
-                
-                foreach (var r in activeRequests)
-                {
-                    activeRequestsKeys.Add((
-                        r.WorkloadItemKey,
-                        r.SourceLanguage,
-                        r.TargetLanguage));
-                }
-            }
-
-            // 3. Group and filter to prevent duplicates
-            var groups = batch.GroupBy(tr => new
-            {
-                WorkloadItemKey = GetEffectiveWorkloadItemKey(tr),
-                tr.SourceLanguage,
-                tr.TargetLanguage
-            });
-
-            var idsToRetry = new List<int>();
-            
-            foreach (var group in groups)
-            {
-                var requestToRetry = group.OrderByDescending(x => x.FailedAt ?? x.CreatedAt).First();
-                var key = (
-                    group.Key.WorkloadItemKey,
-                    group.Key.SourceLanguage,
-                    group.Key.TargetLanguage);
-
-                var matchingActiveRequestId = activeRequestsKeys.Contains(key)
-                    ? -1
-                    : await FindMatchingActiveRequestIdAsync(requestToRetry);
-
-                // Only retry if no active request exists for this key
-                if (!activeRequestsKeys.Contains(key) && matchingActiveRequestId == 0)
-                {
-                    idsToRetry.Add(requestToRetry.Id);
-                     
-                    // Prevent duplicates within the same batch
-                    activeRequestsKeys.Add(key);
-                }
-            }
-
-            if (!idsToRetry.Any())
-            {
-                _logger.LogDebug(
-                    "No failed requests in the current batch can be retried because matching active requests already exist.");
-                foreach (var request in batch)
-                {
-                    blockedRequestIds.Add(request.Id);
-                }
-
                 continue;
             }
 
-            // 4. Process the batch using UPDATE instead of DELETE/INSERT
-            // This is much more efficient and reduces database churn
-            var requestsToRetry = await _dbContext.TranslationRequests
-                .Where(tr => idsToRetry.Contains(tr.Id))
-                .ToListAsync();
-
-            foreach (var request in requestsToRetry)
-            {
-                request.RequiredOutputFormats = GetEffectiveRequiredOutputFormats(request);
-                request.Status = TranslationStatus.Pending;
-                request.IsActive = true;
-                request.IsPriority = true;
-                request.JobId = null;
-                request.CompletedAt = null;
-                request.NextRetryAt = null;
-            }
-
             await _dbContext.SaveChangesAsync();
-            
-            retriedIds.AddRange(requestsToRetry.Select(request => request.Id));
-            totalRetried += requestsToRetry.Count;
-            
-            _logger.LogDebug("Updated {Count} failed requests to Pending status", requestsToRetry.Count);
-            
-            // Small delay to prevent overwhelming the database
-            await Task.Delay(50);
-        }
-
-        // 5. Enqueue jobs for all retried requests
-        if (retriedIds.Any())
-        {
-            // Fetch the updated requests to enqueue them
-            var updatedRequests = await _dbContext.TranslationRequests
-                .Where(tr => retriedIds.Contains(tr.Id))
-                .ToListAsync();
-            
-            foreach (var request in updatedRequests)
+            retriedCount += retriedBatch.Count;
+            foreach (var retriedRequest in retriedBatch)
             {
-                try
-                {
-                    await EnqueueTranslationJobAsync(request, true);
-                    await UpdateMediaState(request);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to enqueue job for request {RequestId}", request.Id);
-                }
+                await UpdateMediaState(retriedRequest);
             }
         }
+
+        if (retriedCount > 0)
+        {
+            _workerService.Signal();
+            await UpdateActiveCount();
+        }
+
+        var remainingFailed = await _dbContext.TranslationRequests.CountAsync(
+            tr => tr.Status == TranslationStatus.Failed);
+
+        var response = new RetryFailedRequestsResponse
+        {
+            TotalFailed = totalFailed,
+            Retried = retriedCount,
+            BlockedByActiveRequest = blockedByActiveRequest,
+            RemainingFailed = remainingFailed,
+            Message =
+                $"Retried {retriedCount} failed request(s). Blocked {blockedByActiveRequest} due to active duplicates."
+        };
 
         _logger.LogInformation(
-            "Successfully retried {TotalRetried} failed requests using UPDATE strategy", 
-            totalRetried);
+            "Failed retry completed. IgnoreBackoff={IgnoreBackoff}, TotalFailed={TotalFailed}, Retried={Retried}, Blocked={BlockedByActiveRequest}, RemainingFailed={RemainingFailed}",
+            ignoreBackoff,
+            response.TotalFailed,
+            response.Retried,
+            response.BlockedByActiveRequest,
+            response.RemainingFailed);
 
-        // 6. Send batched SignalR notification instead of per-item
-        if (totalRetried > 0)
-        {
-            var count = await GetActiveCount();
-            await _hubContext.Clients.Group("TranslationRequests").SendAsync("RequestActive", new
-            {
-                count,
-                retriedCount = totalRetried
-            });
-        }
-
-return totalRetried;
+        return response;
     }
 
     /// <inheritdoc />
@@ -640,7 +576,7 @@ return totalRetried;
     }
 
     /// <inheritdoc />
-    public async Task<string?> RetryTranslationRequest(TranslationRequest retryRequest)
+    public async Task<RetryTranslationRequestResponse?> RetryTranslationRequest(TranslationRequest retryRequest)
     {
         var translationRequest = await _dbContext.TranslationRequests.FirstOrDefaultAsync(
             translationRequest => translationRequest.Id == retryRequest.Id);
@@ -649,37 +585,25 @@ return totalRetried;
             return null;
         }
 
-        var workloadItemKey = GetEffectiveWorkloadItemKey(translationRequest);
-        var requiredOutputFormats = GetEffectiveRequiredOutputFormats(translationRequest);
-        var activeRequestExists = await _dbContext.TranslationRequests
-            .Where(tr =>
-                (tr.WorkloadItemKey == workloadItemKey ||
-                 ((tr.WorkloadItemKey == string.Empty || tr.WorkloadItemKey == null) &&
-                    (
-                        (translationRequest.WorkloadKind == TranslationWorkloadKind.Library &&
-                         tr.WorkloadKind == TranslationWorkloadKind.Library &&
-                         tr.MediaId == translationRequest.MediaId &&
-                         tr.MediaType == translationRequest.MediaType) ||
-                        (translationRequest.WorkloadKind == TranslationWorkloadKind.CustomSource &&
-                         tr.WorkloadKind == TranslationWorkloadKind.CustomSource &&
-                         tr.CustomMediaItemId == translationRequest.CustomMediaItemId) ||
-                        (translationRequest.WorkloadKind == TranslationWorkloadKind.Upload &&
-                         tr.WorkloadKind == TranslationWorkloadKind.Upload &&
-                         tr.UploadBatchFileId == translationRequest.UploadBatchFileId)))) &&
-                 tr.SourceLanguage == translationRequest.SourceLanguage &&
-                 tr.TargetLanguage == translationRequest.TargetLanguage &&
-                 tr.IsActive == true &&
-                 tr.Id != translationRequest.Id)
-            .AnyAsync();
-
-        if (activeRequestExists)
+        var duplicateKey = BuildRetryDuplicateKey(translationRequest);
+        if (!string.IsNullOrWhiteSpace(duplicateKey))
         {
-            return $"Translation request for {translationRequest.Title} is already active or pending.";
+            var activeDuplicateKeys = await GetActiveDuplicateKeysAsync(translationRequest.Id);
+            if (activeDuplicateKeys.Contains(duplicateKey))
+            {
+                return new RetryTranslationRequestResponse
+                {
+                    RequestId = translationRequest.Id,
+                    Retried = false,
+                    BlockedByActiveRequest = true,
+                    Message = $"Translation request for {translationRequest.Title} is already active or pending."
+                };
+            }
         }
 
-        // Use UPDATE instead of DELETE/INSERT for efficiency
-        // Reset retry tracking fields and set status to Pending
-        translationRequest.RequiredOutputFormats = requiredOutputFormats;
+        NormalizeWorkloadIdentity(translationRequest);
+        await PopulateOutputMetadataAsync(translationRequest);
+
         translationRequest.Status = TranslationStatus.Pending;
         translationRequest.IsActive = true;
         translationRequest.IsPriority = true;
@@ -689,18 +613,74 @@ return totalRetried;
         translationRequest.NextRetryAt = null;
         
         await _dbContext.SaveChangesAsync();
-        
-        // Enqueue the job
-        await EnqueueTranslationJobAsync(translationRequest, true);
-        await UpdateMediaState(translationRequest);
-        
-        var count = await GetActiveCount();
-        await _hubContext.Clients.Group("TranslationRequests").SendAsync("RequestActive", new
-        {
-            count
-        });
 
-        return $"Translation request with id {retryRequest.Id} has been restarted";
+        _workerService.Signal();
+        await UpdateMediaState(translationRequest);
+        await UpdateActiveCount();
+
+        return new RetryTranslationRequestResponse
+        {
+            RequestId = retryRequest.Id,
+            Retried = true,
+            BlockedByActiveRequest = false,
+            Message = $"Translation request with id {retryRequest.Id} has been restarted"
+        };
+    }
+
+    private async Task<HashSet<string>> GetActiveDuplicateKeysAsync(int? excludedRequestId = null)
+    {
+        var activeRequestsQuery = _dbContext.TranslationRequests
+            .Where(tr => tr.Status == TranslationStatus.Pending || tr.Status == TranslationStatus.InProgress);
+
+        if (excludedRequestId.HasValue)
+        {
+            activeRequestsQuery = activeRequestsQuery.Where(tr => tr.Id != excludedRequestId.Value);
+        }
+
+        var activeRequests = await activeRequestsQuery
+            .ToListAsync();
+
+        var activeKeys = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var activeRequest in activeRequests)
+        {
+            var key = BuildRetryDuplicateKey(activeRequest);
+            if (!string.IsNullOrWhiteSpace(key))
+            {
+                activeKeys.Add(key);
+            }
+        }
+
+        return activeKeys;
+    }
+
+    private string? BuildRetryDuplicateKey(TranslationRequest request)
+    {
+        var effectiveWorkloadKind = GetEffectiveWorkloadKind(request);
+        var remappedFromLegacyLibrary =
+            request.WorkloadKind == TranslationWorkloadKind.Library &&
+            effectiveWorkloadKind != TranslationWorkloadKind.Library;
+
+        string? workloadItemKey = !string.IsNullOrWhiteSpace(request.WorkloadItemKey) && !remappedFromLegacyLibrary
+            ? request.WorkloadItemKey
+            : effectiveWorkloadKind switch
+            {
+                TranslationWorkloadKind.CustomSource when request.CustomMediaItemId.HasValue =>
+                    $"custom:{request.CustomMediaItemId.Value}",
+                TranslationWorkloadKind.Upload when request.UploadBatchFileId.HasValue =>
+                    $"upload:{request.UploadBatchFileId.Value}",
+                _ => request.MediaId.HasValue
+                    ? $"library:{request.MediaType}:{request.MediaId.Value}"
+                    : null
+            };
+
+        if (string.IsNullOrWhiteSpace(workloadItemKey) ||
+            string.IsNullOrWhiteSpace(request.SourceLanguage) ||
+            string.IsNullOrWhiteSpace(request.TargetLanguage))
+        {
+            return null;
+        }
+
+        return $"{workloadItemKey}|{request.SourceLanguage}|{request.TargetLanguage}";
     }
 
     private async Task<int> FindMatchingActiveRequestIdAsync(TranslationRequest translationRequest)
@@ -1811,22 +1791,34 @@ return totalRetried;
 
     private void NormalizeWorkloadIdentity(TranslationRequest translationRequest)
     {
+        var originalWorkloadKind = translationRequest.WorkloadKind;
+        var effectiveWorkloadKind = GetEffectiveWorkloadKind(translationRequest);
+        translationRequest.WorkloadKind = effectiveWorkloadKind;
+
+        if (string.IsNullOrWhiteSpace(translationRequest.WorkloadItemKey) ||
+            (originalWorkloadKind == TranslationWorkloadKind.Library &&
+             effectiveWorkloadKind != TranslationWorkloadKind.Library))
+        {
+            translationRequest.WorkloadItemKey = BuildWorkloadItemKey(translationRequest);
+        }
+    }
+
+    private static TranslationWorkloadKind GetEffectiveWorkloadKind(TranslationRequest translationRequest)
+    {
         if (translationRequest.WorkloadKind == TranslationWorkloadKind.Library && !translationRequest.MediaId.HasValue)
         {
             if (translationRequest.CustomMediaItemId.HasValue)
             {
-                translationRequest.WorkloadKind = TranslationWorkloadKind.CustomSource;
+                return TranslationWorkloadKind.CustomSource;
             }
-            else if (translationRequest.UploadBatchFileId.HasValue)
+
+            if (translationRequest.UploadBatchFileId.HasValue)
             {
-                translationRequest.WorkloadKind = TranslationWorkloadKind.Upload;
+                return TranslationWorkloadKind.Upload;
             }
         }
 
-        if (string.IsNullOrWhiteSpace(translationRequest.WorkloadItemKey))
-        {
-            translationRequest.WorkloadItemKey = BuildWorkloadItemKey(translationRequest);
-        }
+        return translationRequest.WorkloadKind;
     }
 
     private static string BuildWorkloadItemKey(TranslationRequest translationRequest)

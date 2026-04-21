@@ -178,16 +178,15 @@ public class TranslationRequestController : ControllerBase
     }
 
     /// <summary>
-    /// Retries all translation requests with Failed status
+    /// Retries all translation requests with Failed status.
     /// </summary>
-    /// <response code="200">Returns the count of retried requests</response>
+    /// <response code="200">Returns structured retry counters</response>
     /// <response code="500">If there was an error processing the retries</response>
-    /// <returns>ActionResult containing the number of retried requests</returns>
-[HttpPost("retry-all-failed")]
-    public async Task<ActionResult<int>> RetryAllFailedRequests()
+    [HttpPost("retry-all-failed")]
+    public async Task<ActionResult<RetryFailedRequestsResponse>> RetryAllFailedRequests()
     {
-        var count = await _translationRequestService.RetryAllFailedRequests();
-        return Ok(count);
+        var response = await _translationRequestService.RetryAllFailedRequests();
+        return Ok(response);
     }
 
     /// <summary>
@@ -204,25 +203,23 @@ public class TranslationRequestController : ControllerBase
     }
     
     /// <summary>
-    /// Retries an existing translation request
-    /// Does not delete the current one, just reques
-    /// The request with the same information
+    /// Retries an existing translation request.
     /// </summary>
     /// <param name="retryRequest">The translation request to retry</param>
-    /// <response code="200">Returns the new translation request</response>
+    /// <response code="200">Returns structured retry result</response>
     /// <response code="404">If the translation request was not found</response>
     /// <response code="500">If there was an error checking for updates</response>
-    /// <returns>ActionResult containing the new translation request if found, or NotFound if the request doesn't exist</returns>
     [HttpPost("retry")]
-    public async Task<ActionResult<string>> RetryTranslationRequest([FromBody] TranslationRequest retryRequest)
+    public async Task<ActionResult<RetryTranslationRequestResponse>> RetryTranslationRequest(
+        [FromBody] TranslationRequest retryRequest)
     {
-        var newTranslationRequest = await _translationRequestService.RetryTranslationRequest(retryRequest);
-        if (newTranslationRequest != null)
+        var response = await _translationRequestService.RetryTranslationRequest(retryRequest);
+        if (response != null)
         {
-            return Ok(newTranslationRequest);
+            return Ok(response);
         }
 
-        return NotFound(newTranslationRequest);
+        return NotFound(response);
     }
 
     /// <summary>

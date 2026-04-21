@@ -157,6 +157,16 @@
                             </span>
                         </div>
                         <div
+                            v-if="retryResultBanner"
+                            class="border-accent/40 bg-tertiary text-secondary-content mb-3 rounded-md border px-3 py-2 text-xs">
+                            {{
+                                translate('translations.retryResultSummary', {
+                                    retried: retryResultBanner.retried,
+                                    blocked: retryResultBanner.blocked
+                                })
+                            }}
+                        </div>
+                        <div
                             v-if="failedRequests.length"
                             class="max-h-64 space-y-3 overflow-y-auto pr-1">
                             <div
@@ -499,6 +509,7 @@ import {
     Hub,
     IFilter,
     IPagedResult,
+    IRequestProgress,
     ITranslationRequest,
     ITranslationRequestLog,
     MEDIA_TYPE,
@@ -540,6 +551,7 @@ const removingFailed = ref(false)
 const showRemoveConfirm = ref(false)
 const reenqueuingQueued = ref(false)
 const cancellingQueued = ref(false)
+const retryResultBanner = ref<{ retried: number; blocked: number } | null>(null)
 
 type TranslationTab = 'list' | 'uploadWorkspace'
 
@@ -567,6 +579,21 @@ const filter: ComputedRef<IFilter> = computed({
     }, 300)
 })
 
+const handleRequestProgress = (requestProgress: IRequestProgress) => {
+    translationRequestStore.queueProgressUpdate(requestProgress)
+}
+
+const handleRequestActive = ({ count }: { count: number }) => {
+    translationRequestStore.handleRequestActive({ count })
+}
+
+const setRetryResultBanner = (retried: number, blocked: number) => {
+    retryResultBanner.value = {
+        retried,
+        blocked
+    }
+}
+
 function setActiveTab(tab: TranslationTab) {
     activeTab.value = tab
     if (tab === 'uploadWorkspace') {
@@ -577,11 +604,19 @@ function setActiveTab(tab: TranslationTab) {
 async function handleAction(translationRequest: ITranslationRequest, action: TRANSLATION_ACTIONS) {
     switch (action) {
         case TRANSLATION_ACTIONS.CANCEL:
-            return await translationRequestStore.cancel(translationRequest)
+            await translationRequestStore.cancel(translationRequest)
+            await translationRequestStore.forceRefreshSections()
+            return
         case TRANSLATION_ACTIONS.REMOVE:
-            return await translationRequestStore.remove(translationRequest)
-        case TRANSLATION_ACTIONS.RETRY:
-            return await translationRequestStore.retry(translationRequest)
+            await translationRequestStore.remove(translationRequest)
+            await translationRequestStore.forceRefreshSections()
+            return
+        case TRANSLATION_ACTIONS.RETRY: {
+            const result = await translationRequestStore.retry(translationRequest)
+            setRetryResultBanner(result.retried ? 1 : 0, result.blockedByActiveRequest ? 1 : 0)
+            await translationRequestStore.forceRefreshSections()
+            return
+        }
         default:
             console.error('unknown translation request action: ' + action)
     }
@@ -620,8 +655,9 @@ const retryAllFailed = async () => {
 
     retryingFailed.value = true
     try {
-        await translationRequestStore.retryAllFailed()
-        await translationRequestStore.fetch()
+        const result = await translationRequestStore.retryAllFailed()
+        setRetryResultBanner(result.retried, result.blockedByActiveRequest)
+        await translationRequestStore.forceRefreshSections()
     } finally {
         retryingFailed.value = false
     }
@@ -634,7 +670,7 @@ const removeAllFailed = async () => {
     removingFailed.value = true
     try {
         await translationRequestStore.removeAllFailed()
-        await translationRequestStore.fetch()
+        await translationRequestStore.forceRefreshSections()
     } finally {
         removingFailed.value = false
     }
@@ -692,13 +728,13 @@ onMounted(async () => {
     )
 
     await hubConnection.value.joinGroup({ group: 'TranslationRequests' })
-    hubConnection.value.on('RequestProgress', translationRequestStore.updateProgress)
-    hubConnection.value.on('RequestActive', translationRequestStore.handleRequestActive)
+    hubConnection.value.on('RequestProgress', handleRequestProgress)
+    hubConnection.value.on('RequestActive', handleRequestActive)
 })
 
 onUnmounted(async () => {
-    hubConnection.value?.off('RequestProgress', translationRequestStore.updateProgress)
-    hubConnection.value?.off('RequestActive', translationRequestStore.handleRequestActive)
+    hubConnection.value?.off('RequestProgress', handleRequestProgress)
+    hubConnection.value?.off('RequestActive', handleRequestActive)
 })
 
 const isSelectMode = ref(false)
@@ -715,7 +751,7 @@ const handleDelete = async () => {
         await translationRequestStore.remove(request)
     }
     translationRequestStore.clearSelection()
-    translationRequestStore.fetch()
+    await translationRequestStore.forceRefreshSections()
 }
 
 function getLogLevelClass(level: string): string {

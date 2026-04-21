@@ -10,6 +10,8 @@ import {
     ISubtitle,
     ITranslationRequest,
     ITranslationRequestLog,
+    IRetryFailedRequestsResponse,
+    IRetryTranslationRequestResponse,
     IUploadChunkResponse,
     IUpdateUploadBatchFileRequest,
     IUpdateUploadBatchRequest,
@@ -128,8 +130,8 @@ export interface ITranslationRequestService {
     ): Promise<T>
     cancel<T>(translationRequest: ITranslationRequest): Promise<T>
     remove<T>(translationRequest: ITranslationRequest): Promise<T>
-    retry<T>(translationRequest: ITranslationRequest): Promise<T>
-    retryAllFailed<T>(): Promise<T>
+    retry(translationRequest: ITranslationRequest): Promise<IRetryTranslationRequestResponse>
+    retryAllFailed(): Promise<IRetryFailedRequestsResponse>
     removeAllFailed<T>(): Promise<T>
     reenqueueQueued<T>(includeInProgress?: boolean): Promise<T>
     cancelAll<T>(includeInProgress?: boolean): Promise<T>

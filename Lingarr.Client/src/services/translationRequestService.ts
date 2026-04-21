@@ -1,5 +1,11 @@
 import { AxiosError, AxiosResponse, AxiosStatic } from 'axios'
-import { ITranslationRequest, ITranslationRequestLog, ITranslationRequestService } from '@/ts'
+import {
+    IRetryFailedRequestsResponse,
+    IRetryTranslationRequestResponse,
+    ITranslationRequest,
+    ITranslationRequestLog,
+    ITranslationRequestService
+} from '@/ts'
 
 const service = (
     http: AxiosStatic,
@@ -94,10 +100,10 @@ const service = (
                 })
         })
     },
-    retry<T>(translationRequest: ITranslationRequest): Promise<T> {
+    retry(translationRequest: ITranslationRequest): Promise<IRetryTranslationRequestResponse> {
         return new Promise((resolve, reject) => {
             http.post(`${resource}/retry`, translationRequest)
-                .then((response: AxiosResponse<T>) => {
+                .then((response: AxiosResponse<IRetryTranslationRequestResponse>) => {
                     resolve(response.data)
                 })
                 .catch((error: AxiosError) => {
@@ -105,10 +111,10 @@ const service = (
                 })
         })
     },
-    retryAllFailed<T>(): Promise<T> {
+    retryAllFailed(): Promise<IRetryFailedRequestsResponse> {
         return new Promise((resolve, reject) => {
             http.post(`${resource}/retry-all-failed`)
-                .then((response: AxiosResponse<T>) => {
+                .then((response: AxiosResponse<IRetryFailedRequestsResponse>) => {
                     resolve(response.data)
                 })
                 .catch((error: AxiosError) => {

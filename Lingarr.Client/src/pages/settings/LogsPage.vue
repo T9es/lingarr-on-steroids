@@ -4,7 +4,6 @@
             <div class="flex items-center justify-between px-4 py-3">
                 <h1 class="text-xl">{{ translate('settings.logs.systemLogs') }}</h1>
                 <div class="flex items-center space-x-3">
-                    <!-- Filters -->
                     <div class="flex items-center space-x-4">
                         <select
                             v-model="filterOptions.logLevel"
@@ -21,7 +20,6 @@
                             <option value="error">{{ translate('settings.logs.error') }}</option>
                         </select>
 
-                        <!-- Text Search -->
                         <input
                             v-model="searchQuery"
                             type="text"
@@ -85,12 +83,8 @@
                 </div>
             </div>
 
-            <!-- Log Entries -->
             <div class="log-list">
-                <div
-                    v-for="(log, index) in filteredLogs"
-                    :key="log.uniqueId || index"
-                    class="log-entry">
+                <div v-for="log in displayedLogs" :key="log.uniqueId" class="log-entry">
                     <div
                         class="hover:bg-secondary/20 border-secondary/30 grid grid-cols-12 border-b py-2 transition-colors">
                         <div class="text-secondary-content/70 col-span-1 px-4">
@@ -108,7 +102,7 @@
                         </div>
                         <div
                             class="col-span-5 px-4 md:col-span-7"
-                            v-html="formatLogMessage(log.message)"></div>
+                            v-html="log.formattedMessageHtml"></div>
                     </div>
 
                     <div
@@ -120,7 +114,6 @@
             </div>
         </div>
 
-        <!-- Footer Stats -->
         <div
             class="border-secondary bg-primary text-secondary-content mt-4 flex justify-between border-t-2 px-4 py-2 text-sm">
             <div class="flex items-center gap-4">
@@ -150,49 +143,60 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick, computed, watch } from 'vue'
-import { ILogEntry, IFilterOptions } from '@/ts'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { IFilterOptions, ILogEntry } from '@/ts'
 import services from '@/services'
 
-// Add unique ID to logs for transition key
-interface ILogEntryWithId extends ILogEntry {
-    uniqueId?: string
+interface ILogEntryNormalized extends ILogEntry {
+    uniqueId: string
+    searchText: string
+    formattedMessageHtml: string
+    logLevelNormalized: string
 }
 
-const logs = ref<ILogEntryWithId[]>([])
+const DISPLAY_WINDOW_SIZE = 300
+const FLUSH_TIMEOUT_MS = 33
+const RECONNECT_DELAY_MS = 5000
+
+const logs = ref<ILogEntryNormalized[]>([])
+const pendingLogs = ref<ILogEntryNormalized[]>([])
 const autoScroll = ref(true)
 const isPaused = ref(false)
 const maxLogs = ref(1000)
 const searchQuery = ref('')
-const pendingLogs = ref<ILogEntryWithId[]>([])
 const logContainer = ref<HTMLElement | null>(null)
 const filterOptions = ref<IFilterOptions>({
     logLevel: 'all'
 })
+
 let eventSource: EventSource | null = null
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+let rafFlushId: number | null = null
+let fallbackFlushTimer: ReturnType<typeof setTimeout> | null = null
+let logIdCounter = 0
+let incomingLogs: ILogEntryNormalized[] = []
+
+const normalizedSearchQuery = computed(() => searchQuery.value.trim().toLowerCase())
 
 const filteredLogs = computed(() => {
     return logs.value.filter((log) => {
-        // Filter by Level
         if (filterOptions.value.logLevel !== 'all') {
-            const logLevel = log.logLevel.toLowerCase()
-            if (logLevel !== filterOptions.value.logLevel.toLowerCase()) {
+            if (log.logLevelNormalized !== filterOptions.value.logLevel.toLowerCase()) {
                 return false
             }
         }
 
-        // Filter by Search Query
-        if (searchQuery.value) {
-            const query = searchQuery.value.toLowerCase()
-            const matchesMessage = log.message.toLowerCase().includes(query)
-            const matchesSource = log.formattedSource.toLowerCase().includes(query)
-            if (!matchesMessage && !matchesSource) {
-                return false
-            }
+        if (normalizedSearchQuery.value && !log.searchText.includes(normalizedSearchQuery.value)) {
+            return false
         }
 
         return true
     })
+})
+
+const displayedLogs = computed(() => {
+    const startIndex = Math.max(0, filteredLogs.value.length - DISPLAY_WINDOW_SIZE)
+    return filteredLogs.value.slice(startIndex)
 })
 
 const escapeHtml = (unsafe: string): string => {
@@ -205,22 +209,35 @@ const escapeHtml = (unsafe: string): string => {
 }
 
 const formatLogMessage = (message: string): string => {
-    // Escape HTML first to prevent XSS
     let formattedMessage = escapeHtml(message)
 
-    // Replace color tags
     formattedMessage = formattedMessage
         .replace(/\|Green\|([^|]*)\|\/Green\|/g, '<span class="text-green-500">$1</span>')
         .replace(/\|Red\|([^|]*)\|\/Red\|/g, '<span class="text-red-500">$1</span>')
         .replace(/\|Orange\|([^|]*)\|\/Orange\|/g, '<span class="text-orange-500">$1</span>')
 
-    // Highlight environment variables
     formattedMessage = formattedMessage.replace(
         /&#039;([A-Z_]+)&#039;/g,
         '<span class="text-accent">\'$1\'</span>'
     )
 
     return formattedMessage
+}
+
+const buildNormalizedLogEntry = (log: ILogEntry): ILogEntryNormalized => {
+    const message = log.message || ''
+    const source = log.formattedSource || ''
+    const category = log.category || ''
+    const level = log.logLevel || 'Information'
+
+    return {
+        ...log,
+        logLevel: level,
+        uniqueId: `${Date.now()}-${logIdCounter++}`,
+        searchText: `${message} ${source} ${category} ${level}`.toLowerCase(),
+        formattedMessageHtml: formatLogMessage(message),
+        logLevelNormalized: level.toLowerCase()
+    }
 }
 
 const getLogLevelBadgeClass = (level: string): string => {
@@ -238,33 +255,135 @@ const scrollToBottom = async () => {
     }
 }
 
+const appendLogs = (currentLogs: ILogEntryNormalized[], newLogs: ILogEntryNormalized[]) => {
+    const merged = [...currentLogs, ...newLogs]
+    if (merged.length > maxLogs.value) {
+        return merged.slice(merged.length - maxLogs.value)
+    }
+
+    return merged
+}
+
+const flushIncomingLogs = () => {
+    if (incomingLogs.length === 0) {
+        return
+    }
+
+    const batch = incomingLogs
+    incomingLogs = []
+
+    if (isPaused.value) {
+        pendingLogs.value = appendLogs(pendingLogs.value, batch)
+        return
+    }
+
+    logs.value = appendLogs(logs.value, batch)
+    void scrollToBottom()
+}
+
+const clearScheduledFlush = () => {
+    if (rafFlushId !== null) {
+        window.cancelAnimationFrame(rafFlushId)
+        rafFlushId = null
+    }
+
+    if (fallbackFlushTimer !== null) {
+        clearTimeout(fallbackFlushTimer)
+        fallbackFlushTimer = null
+    }
+}
+
+const scheduleFlush = () => {
+    if (rafFlushId !== null || fallbackFlushTimer !== null) {
+        return
+    }
+
+    rafFlushId = window.requestAnimationFrame(() => {
+        clearScheduledFlush()
+        flushIncomingLogs()
+    })
+
+    fallbackFlushTimer = setTimeout(() => {
+        clearScheduledFlush()
+        flushIncomingLogs()
+    }, FLUSH_TIMEOUT_MS)
+}
+
+const enqueueLog = (log: ILogEntryNormalized) => {
+    incomingLogs.push(log)
+    scheduleFlush()
+}
+
+const connectStream = () => {
+    eventSource = services.logs.getStream()
+
+    eventSource.onmessage = (event) => {
+        try {
+            const logData = JSON.parse(event.data) as ILogEntry
+            enqueueLog(buildNormalizedLogEntry(logData))
+        } catch (error) {
+            const fallbackEntry = buildNormalizedLogEntry({
+                logLevel: 'Error',
+                message: `Failed to process log data: ${typeof event.data === 'string' ? `${event.data.substring(0, 100)}...` : 'Invalid format'}`,
+                formattedTime: new Date().toTimeString().split(' ')[0],
+                formattedDate: new Date().toDateString(),
+                formattedSource: 'System',
+                category: 'System',
+                stackTrace: error instanceof Error ? error.stack : undefined
+            })
+
+            enqueueLog(fallbackEntry)
+        }
+    }
+
+    eventSource.onerror = () => {
+        enqueueLog(
+            buildNormalizedLogEntry({
+                logLevel: 'Error',
+                message: 'Log stream connection error. Attempting to reconnect in 5 seconds...',
+                formattedTime: new Date().toTimeString().split(' ')[0],
+                formattedDate: new Date().toLocaleDateString(),
+                formattedSource: 'System',
+                category: 'System'
+            })
+        )
+
+        if (eventSource) {
+            eventSource.close()
+            eventSource = null
+        }
+
+        if (reconnectTimer) {
+            clearTimeout(reconnectTimer)
+        }
+
+        reconnectTimer = setTimeout(() => {
+            reconnectTimer = null
+            connectStream()
+        }, RECONNECT_DELAY_MS)
+    }
+}
+
 const togglePause = () => {
     isPaused.value = !isPaused.value
-    if (!isPaused.value) {
-        // Resume: flush pending logs
-        if (pendingLogs.value.length > 0) {
-            logs.value.push(...pendingLogs.value)
-            pendingLogs.value = []
-
-            // Trim if needed
-            if (logs.value.length > maxLogs.value) {
-                logs.value = logs.value.slice(logs.value.length - maxLogs.value)
-            }
-            scrollToBottom()
-        }
+    if (!isPaused.value && pendingLogs.value.length > 0) {
+        logs.value = appendLogs(logs.value, pendingLogs.value)
+        pendingLogs.value = []
+        void scrollToBottom()
     }
 }
 
 const clearLogs = () => {
     logs.value = []
     pendingLogs.value = []
+    incomingLogs = []
 }
 
 const exportLogs = () => {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
     const filename = `system-logs-${timestamp}.txt`
 
-    let exportContent = `System Logs Export\n`
+    let exportContent = 'System Logs Export\n'
     exportContent += `Generated: ${new Date().toLocaleString()}\n`
     exportContent += `Total Entries: ${filteredLogs.value.length}\n`
     exportContent += `${'='.repeat(80)}\n\n`
@@ -272,12 +391,11 @@ const exportLogs = () => {
     filteredLogs.value.forEach((log) => {
         exportContent += `[${log.formattedDate} ${log.formattedTime}] [${log.logLevel}] [${log.category}] ${log.message}\n`
 
-        // Include stack trace
         if (log.stackTrace) {
             exportContent += `Stack Trace:\n${log.stackTrace}\n`
         }
 
-        exportContent += `\n`
+        exportContent += '\n'
     })
 
     const blob = new Blob([exportContent], { type: 'text/plain' })
@@ -294,7 +412,7 @@ const exportLogs = () => {
 watch(
     filterOptions,
     () => {
-        scrollToBottom()
+        void scrollToBottom()
     },
     { deep: true }
 )
@@ -303,94 +421,27 @@ watch(maxLogs, (newValue) => {
     if (logs.value.length > newValue) {
         logs.value = logs.value.slice(logs.value.length - newValue)
     }
+
+    if (pendingLogs.value.length > newValue) {
+        pendingLogs.value = pendingLogs.value.slice(pendingLogs.value.length - newValue)
+    }
 })
 
 onMounted(() => {
-    eventSource = services.logs.getStream()
-
-    eventSource.onmessage = (event) => {
-        try {
-            const logData = JSON.parse(event.data) as ILogEntryWithId
-            logData.uniqueId = Math.random().toString(36).substring(7)
-
-            if (isPaused.value) {
-                pendingLogs.value.push(logData)
-                // Limit pending logs too to avoid memory issues
-                if (pendingLogs.value.length > maxLogs.value) {
-                    pendingLogs.value.shift()
-                }
-            } else {
-                logs.value.push(logData)
-                if (logs.value.length > maxLogs.value) {
-                    logs.value.shift()
-                }
-                scrollToBottom()
-            }
-        } catch (error) {
-            console.error('Error processing log entry:', error)
-            console.error('Problematic data:', event.data)
-
-            const fallbackEntry: ILogEntryWithId = {
-                logLevel: 'Error',
-                message: `Failed to process log data: ${typeof event.data === 'string' ? event.data.substring(0, 100) + '...' : 'Invalid format'}`,
-                formattedTime: new Date().toTimeString().split(' ')[0],
-                formattedDate: new Date().toDateString(),
-                formattedSource: 'System',
-                category: 'System',
-                stackTrace: error instanceof Error ? error.stack : undefined,
-                uniqueId: Math.random().toString(36).substring(7)
-            }
-
-            if (!isPaused.value) {
-                logs.value.push(fallbackEntry)
-                scrollToBottom()
-            }
-        }
-    }
-
-    eventSource.onerror = (error) => {
-        console.error('EventSource error:', error)
-        const errorLog: ILogEntryWithId = {
-            logLevel: 'error',
-            message: `Log stream connection error. Attempting to reconnect in 5 seconds...`,
-            formattedTime: new Date().toTimeString().split(' ')[0],
-            formattedDate: new Date().toLocaleDateString(),
-            formattedSource: 'System',
-            category: 'System',
-            uniqueId: Math.random().toString(36).substring(7)
-        }
-
-        logs.value.push(errorLog)
-
-        // reconnect
-        if (eventSource) {
-            eventSource.close()
-            setTimeout(() => {
-                eventSource = services.logs.getStream()
-            }, 5000)
-        }
-    }
+    connectStream()
 })
 
 onUnmounted(() => {
+    clearScheduledFlush()
+
     if (eventSource) {
         eventSource.close()
         eventSource = null
     }
+
+    if (reconnectTimer) {
+        clearTimeout(reconnectTimer)
+        reconnectTimer = null
+    }
 })
 </script>
-
-<style scoped>
-.log-list-enter-active,
-.log-list-leave-active {
-    transition: all 0.3s ease;
-}
-.log-list-enter-from {
-    opacity: 0;
-    transform: translateY(20px);
-}
-.log-list-leave-to {
-    opacity: 0;
-    transform: translateY(-20px);
-}
-</style>
