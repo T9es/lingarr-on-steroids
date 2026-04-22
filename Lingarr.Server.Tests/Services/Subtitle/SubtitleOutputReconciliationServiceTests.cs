@@ -239,6 +239,78 @@ public class SubtitleOutputReconciliationServiceTests
     }
 
     [Fact]
+    public async Task ReconcileLibraryOutputsAsync_BackfilledAssKeepsSrtTextIntactAroundInlineOverrideTags()
+    {
+        await using var context = BuildContext();
+        using var tempDirectory = new TemporaryDirectory();
+        var movie = AddMovie(context, tempDirectory.Path);
+        var sourceAssPath = Path.Combine(tempDirectory.Path, "movie.en.ass");
+        var translatedSrtPath = Path.Combine(tempDirectory.Path, "movie.pl.lingarr.srt");
+        await File.WriteAllTextAsync(sourceAssPath, BuildAssContent(@"Je dis au revoir, {\i0}say goodbye{\i1}"));
+        await File.WriteAllTextAsync(translatedSrtPath, BuildSrtContent("Mowie do widzenia,say goodbye"));
+        AddCompletedRequest(
+            context,
+            movie.Id,
+            ".ass",
+            ".srt",
+            translatedSrtPath,
+            JsonSerializer.Serialize(new[] { translatedSrtPath }),
+            sourceAssPath);
+        await context.SaveChangesAsync();
+
+        var service = BuildServiceWithRealSubtitleService(
+            context,
+            subtitleOutputMode: "both",
+            queuedTranslations: 0);
+
+        var result = await service.ReconcileLibraryOutputsAsync();
+        var assPath = Path.Combine(tempDirectory.Path, "movie.pl.lingarr.ass");
+        var ass = await File.ReadAllTextAsync(assPath);
+
+        Assert.Equal(1, result.BackfilledFiles);
+        Assert.Equal(0, result.QueuedTranslations);
+        Assert.Contains("Mowie do widzenia,say goodbye", ass);
+        Assert.Contains(@"{\i0}", ass);
+        Assert.Contains(@"{\i1}", ass);
+        Assert.DoesNotContain(@"say{\i0}goodbye", ass);
+    }
+
+    [Fact]
+    public async Task ReconcileLibraryOutputsAsync_BackfilledAssConvertsSrtLineBreaksToAssBreaks()
+    {
+        await using var context = BuildContext();
+        using var tempDirectory = new TemporaryDirectory();
+        var movie = AddMovie(context, tempDirectory.Path);
+        var sourceAssPath = Path.Combine(tempDirectory.Path, "movie.en.ass");
+        var translatedSrtPath = Path.Combine(tempDirectory.Path, "movie.pl.lingarr.srt");
+        await File.WriteAllTextAsync(sourceAssPath, BuildAssContent("Jusqu'a reussir, ce sera pas assez"));
+        await File.WriteAllTextAsync(translatedSrtPath, BuildSrtContent($"Nawet gdy odniesiemy sukces, to nie{Environment.NewLine}wystarczy"));
+        AddCompletedRequest(
+            context,
+            movie.Id,
+            ".ass",
+            ".srt",
+            translatedSrtPath,
+            JsonSerializer.Serialize(new[] { translatedSrtPath }),
+            sourceAssPath);
+        await context.SaveChangesAsync();
+
+        var service = BuildServiceWithRealSubtitleService(
+            context,
+            subtitleOutputMode: "both",
+            queuedTranslations: 0);
+
+        var result = await service.ReconcileLibraryOutputsAsync();
+        var assPath = Path.Combine(tempDirectory.Path, "movie.pl.lingarr.ass");
+        var ass = await File.ReadAllTextAsync(assPath);
+
+        Assert.Equal(1, result.BackfilledFiles);
+        Assert.Equal(0, result.QueuedTranslations);
+        Assert.Contains(@"Nawet gdy odniesiemy sukces, to nie\Nwystarczy", ass);
+        Assert.DoesNotContain($"Nawet gdy odniesiemy sukces, to nie{Environment.NewLine}wystarczy", ass);
+    }
+
+    [Fact]
     public async Task ReconcileLibraryOutputsAsync_QueuesWhenBackfillAlignmentIsAmbiguous()
     {
         await using var context = BuildContext();

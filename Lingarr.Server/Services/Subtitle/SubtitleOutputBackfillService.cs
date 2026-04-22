@@ -252,7 +252,7 @@ public class SubtitleOutputBackfillService : ISubtitleOutputBackfillService
                 sourceAss[index].Lines,
                 assParser.Parse(sourceAss[index].Lines));
 
-            sourceAss[index].TranslatedLines = structure.ApplyProviderTranslation(translatedText);
+            sourceAss[index].TranslatedLines = structure.ApplyProviderTranslationAsSingleVisibleText(translatedText);
         }
 
         SetSequentialPositions(sourceAss);

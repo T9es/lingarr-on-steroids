@@ -246,6 +246,56 @@ internal sealed class SubtitleTextStructure
         return output;
     }
 
+    public List<string> ApplyProviderTranslationAsSingleVisibleText(string translatedProviderText)
+    {
+        if (VisibleLineCount == 0)
+        {
+            return SourceLines.ToList();
+        }
+
+        var translatedText = NormalizeProviderTranslationText(translatedProviderText)
+            .Replace("\\N", "\n", StringComparison.Ordinal)
+            .Replace("\\n", "\n", StringComparison.Ordinal)
+            .Replace("\n", "\\N", StringComparison.Ordinal);
+        var insertedTranslation = false;
+        var builder = new StringBuilder();
+
+        foreach (var sourceLineIndex in Enumerable.Range(0, SourceLines.Count))
+        {
+            if (!_segmentsBySourceLineIndex.TryGetValue(sourceLineIndex, out var segments))
+            {
+                builder.Append(SourceLines[sourceLineIndex]);
+                continue;
+            }
+
+            foreach (var segment in segments)
+            {
+                foreach (var part in segment.Parts)
+                {
+                    if (part.IsTranslatable)
+                    {
+                        if (!insertedTranslation)
+                        {
+                            builder.Append(translatedText);
+                            insertedTranslation = true;
+                        }
+
+                        continue;
+                    }
+
+                    if (part.Kind == SubtitleTextPartKind.AssNonBreakingSpace)
+                    {
+                        continue;
+                    }
+
+                    builder.Append(part.SourceText);
+                }
+            }
+        }
+
+        return insertedTranslation ? [builder.ToString()] : SourceLines.ToList();
+    }
+
     private List<string> BuildLineAssignments(string translatedProviderText, IReadOnlyList<string> translatedLines)
     {
         if (VisibleLineCount == 1)
