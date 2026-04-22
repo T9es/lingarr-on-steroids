@@ -48,7 +48,7 @@ jobs:
               steps.metadata.outputs.dependency-group != 'nuget-security'
             )
           )
-        run: gh pr merge --auto "$PR_URL"
+        run: gh pr merge --auto --merge "$PR_URL"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}
