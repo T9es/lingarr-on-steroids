@@ -288,9 +288,10 @@ public class TranslationJob
                 AddRequestLog("Information", $"Using extracted embedded subtitle: {subtitlePath}");
             }
 
-            var subtitleOutputMode = !string.IsNullOrWhiteSpace(request.SubtitleOutputMode)
-                ? SubtitleOutputModeHelper.Parse(request.SubtitleOutputMode)
-                : SubtitleOutputModeHelper.Parse(settings.GetValueOrDefault(SettingKeys.Translation.SubtitleOutputMode));
+            var configuredSubtitleOutputMode = settings.GetValueOrDefault(SettingKeys.Translation.SubtitleOutputMode);
+            var subtitleOutputMode = !string.IsNullOrWhiteSpace(configuredSubtitleOutputMode)
+                ? SubtitleOutputModeHelper.Parse(configuredSubtitleOutputMode)
+                : SubtitleOutputModeHelper.Parse(request.SubtitleOutputMode);
             var actualSourceFormat = string.Empty;
             IReadOnlyList<string> requiredOutputFormats = [];
             var writesPreservedAssOutput = false;

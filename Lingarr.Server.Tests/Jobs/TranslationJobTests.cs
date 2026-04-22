@@ -656,7 +656,7 @@ public class TranslationJobTests : IDisposable
     }
 
     [Fact]
-    public async Task ExecuteAsync_DualAssOutput_StoresAllGeneratedSubtitlePaths()
+    public async Task ExecuteAsync_DualAssOutput_RefreshesStaleQueuedOutputModeAndStoresAllGeneratedSubtitlePaths()
     {
         var sourceSubtitlePath = Path.Combine(_tempDirectory, "movie-6.en.ass");
         await File.WriteAllTextAsync(
@@ -686,6 +686,9 @@ public class TranslationJobTests : IDisposable
             WorkloadItemKey = "library:Movie:6",
             Status = TranslationStatus.Pending,
             SubtitleToTranslate = sourceSubtitlePath,
+            SourceSubtitleFormat = ".ass",
+            SubtitleOutputMode = "match-source",
+            RequiredOutputFormats = ".ass",
             IsActive = true
         };
 
@@ -811,6 +814,8 @@ public class TranslationJobTests : IDisposable
         var generatedPaths = JsonSerializer.Deserialize<List<string>>(updatedRequest.GeneratedSubtitlePaths!);
 
         Assert.Equal(".ass,.srt", updatedRequest.GeneratedOutputFormats);
+        Assert.Equal(".ass,.srt", updatedRequest.RequiredOutputFormats);
+        Assert.Equal("both", updatedRequest.SubtitleOutputMode);
         Assert.NotNull(generatedPaths);
         Assert.Equal(2, generatedPaths.Count);
         Assert.Contains(generatedPaths, path => Path.GetExtension(path) == ".ass" && File.Exists(path));
