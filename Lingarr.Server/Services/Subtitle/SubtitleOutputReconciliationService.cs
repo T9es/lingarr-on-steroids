@@ -17,6 +17,7 @@ public class SubtitleOutputReconciliationService : ISubtitleOutputReconciliation
     private readonly LingarrDbContext _dbContext;
     private readonly ISettingService _settingService;
     private readonly ISubtitleService _subtitleService;
+    private readonly ISubtitleOutputBackfillService _subtitleOutputBackfillService;
     private readonly IMediaSubtitleProcessor _mediaSubtitleProcessor;
     private readonly ILogger<SubtitleOutputReconciliationService> _logger;
 
@@ -24,12 +25,14 @@ public class SubtitleOutputReconciliationService : ISubtitleOutputReconciliation
         LingarrDbContext dbContext,
         ISettingService settingService,
         ISubtitleService subtitleService,
+        ISubtitleOutputBackfillService subtitleOutputBackfillService,
         IMediaSubtitleProcessor mediaSubtitleProcessor,
         ILogger<SubtitleOutputReconciliationService> logger)
     {
         _dbContext = dbContext;
         _settingService = settingService;
         _subtitleService = subtitleService;
+        _subtitleOutputBackfillService = subtitleOutputBackfillService;
         _mediaSubtitleProcessor = mediaSubtitleProcessor;
         _logger = logger;
     }
@@ -38,12 +41,8 @@ public class SubtitleOutputReconciliationService : ISubtitleOutputReconciliation
         CancellationToken cancellationToken = default)
     {
         var response = new SubtitleOutputReconciliationResponse();
-        var subtitleOutputMode = SubtitleOutputModeHelper.Parse(
-            await _settingService.GetSetting(SettingKeys.Translation.SubtitleOutputMode));
-        var subtitleTag = await _settingService.GetSetting(SettingKeys.Translation.SubtitleTag) ?? string.Empty;
-        var subtitleTagShort = await _settingService.GetSetting(SettingKeys.Translation.SubtitleTagShort) ?? string.Empty;
-        var deletedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var skippedUnsafePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var (subtitleOutputMode, subtitleTag, subtitleTagShort, deletedPaths, skippedUnsafePaths) =
+            await CreateReconciliationContextAsync();
 
         var movies = await _dbContext.Movies
             .Where(movie => !movie.ExcludeFromTranslation)
@@ -88,6 +87,91 @@ public class SubtitleOutputReconciliationService : ISubtitleOutputReconciliation
         return response;
     }
 
+    public async Task<SubtitleOutputReconciliationResponse> ReconcileMediaOutputsAsync(
+        int mediaId,
+        MediaType mediaType,
+        CancellationToken cancellationToken = default)
+    {
+        var response = new SubtitleOutputReconciliationResponse();
+        var (subtitleOutputMode, subtitleTag, subtitleTagShort, deletedPaths, skippedUnsafePaths) =
+            await CreateReconciliationContextAsync();
+
+        switch (mediaType)
+        {
+            case MediaType.Movie:
+            {
+                var movie = await _dbContext.Movies
+                    .Where(item => item.Id == mediaId)
+                    .Where(item => !item.ExcludeFromTranslation)
+                    .FirstOrDefaultAsync(cancellationToken);
+                if (movie != null)
+                {
+                    await ReconcileMediaAsync(
+                        movie,
+                        MediaType.Movie,
+                        subtitleOutputMode,
+                        subtitleTag,
+                        subtitleTagShort,
+                        deletedPaths,
+                        skippedUnsafePaths,
+                        response,
+                        cancellationToken);
+                }
+
+                break;
+            }
+            case MediaType.Episode:
+            {
+                var episode = await _dbContext.Episodes
+                    .Include(item => item.Season)
+                    .ThenInclude(item => item.Show)
+                    .Where(item => item.Id == mediaId)
+                    .Where(item => !item.ExcludeFromTranslation)
+                    .Where(item => !item.Season.ExcludeFromTranslation)
+                    .Where(item => !item.Season.Show.ExcludeFromTranslation)
+                    .FirstOrDefaultAsync(cancellationToken);
+                if (episode != null)
+                {
+                    await ReconcileMediaAsync(
+                        episode,
+                        MediaType.Episode,
+                        subtitleOutputMode,
+                        subtitleTag,
+                        subtitleTagShort,
+                        deletedPaths,
+                        skippedUnsafePaths,
+                        response,
+                        cancellationToken);
+                }
+
+                break;
+            }
+            default:
+                break;
+        }
+
+        return response;
+    }
+
+    private async Task<(
+        SubtitleOutputMode OutputMode,
+        string SubtitleTag,
+        string SubtitleTagShort,
+        HashSet<string> DeletedPaths,
+        HashSet<string> SkippedUnsafePaths)> CreateReconciliationContextAsync()
+    {
+        var subtitleOutputMode = SubtitleOutputModeHelper.Parse(
+            await _settingService.GetSetting(SettingKeys.Translation.SubtitleOutputMode));
+        var subtitleTag = await _settingService.GetSetting(SettingKeys.Translation.SubtitleTag) ?? string.Empty;
+        var subtitleTagShort = await _settingService.GetSetting(SettingKeys.Translation.SubtitleTagShort) ?? string.Empty;
+        return (
+            subtitleOutputMode,
+            subtitleTag,
+            subtitleTagShort,
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+    }
+
     private async Task ReconcileMediaAsync(
         IMedia media,
         MediaType mediaType,
@@ -123,6 +207,21 @@ public class SubtitleOutputReconciliationService : ISubtitleOutputReconciliation
                 response,
                 cancellationToken);
 
+            var backfillResult = await _subtitleOutputBackfillService.BackfillMissingOutputsAsync(
+                media,
+                mediaType,
+                matchingSubtitles,
+                subtitleOutputMode,
+                subtitleTag,
+                subtitleTagShort,
+                cancellationToken);
+            response.BackfilledFiles += backfillResult.BackfilledFiles;
+            response.BackfilledFromExternalSourceFiles += backfillResult.BackfilledFromExternalSourceFiles;
+            response.BackfilledFromEmbeddedSourceFiles += backfillResult.BackfilledFromEmbeddedSourceFiles;
+            response.BackfillSkippedFiles += backfillResult.BackfillSkippedFiles;
+            response.SkippedUnsafeFiles += backfillResult.BackfillSkippedFiles;
+            response.Errors.AddRange(backfillResult.Errors);
+
             var hasActiveRequests = await HasActiveRequestsAsync(media.Id, mediaType, cancellationToken);
             var queued = await _mediaSubtitleProcessor.ProcessMediaForceAsync(
                 media,
@@ -132,6 +231,7 @@ public class SubtitleOutputReconciliationService : ISubtitleOutputReconciliation
                 forcePriority: true);
 
             response.QueuedTranslations += queued;
+            response.QueuedForRetranslation += queued;
             if (queued == 0 && hasActiveRequests)
             {
                 response.SkippedActiveRequests++;

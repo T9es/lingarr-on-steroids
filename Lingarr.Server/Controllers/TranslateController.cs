@@ -508,6 +508,145 @@ public class TranslateController : ControllerBase
         }
     }
 
+    [HttpPost("reconcile-outputs/media")]
+    public async Task<ActionResult<SubtitleOutputReconciliationResponse>> ReconcileSubtitleOutputsForMedia(
+        [FromBody] TranslateMediaRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            switch (request.MediaType)
+            {
+                case MediaType.Movie:
+                {
+                    var movie = await _dbContext.Movies
+                        .FirstOrDefaultAsync(item => item.Id == request.MediaId, cancellationToken);
+                    if (movie == null)
+                    {
+                        return NotFound(new SubtitleOutputReconciliationResponse
+                        {
+                            Errors = ["Movie not found"]
+                        });
+                    }
+
+                    return Ok(await _subtitleOutputReconciliationService.ReconcileMediaOutputsAsync(
+                        request.MediaId,
+                        MediaType.Movie,
+                        cancellationToken));
+                }
+                case MediaType.Episode:
+                {
+                    var episode = await _dbContext.Episodes
+                        .FirstOrDefaultAsync(item => item.Id == request.MediaId, cancellationToken);
+                    if (episode == null)
+                    {
+                        return NotFound(new SubtitleOutputReconciliationResponse
+                        {
+                            Errors = ["Episode not found"]
+                        });
+                    }
+
+                    return Ok(await _subtitleOutputReconciliationService.ReconcileMediaOutputsAsync(
+                        request.MediaId,
+                        MediaType.Episode,
+                        cancellationToken));
+                }
+                case MediaType.Season:
+                {
+                    var season = await _dbContext.Seasons
+                        .Include(item => item.Episodes)
+                        .FirstOrDefaultAsync(item => item.Id == request.MediaId, cancellationToken);
+                    if (season == null)
+                    {
+                        return NotFound(new SubtitleOutputReconciliationResponse
+                        {
+                            Errors = ["Season not found"]
+                        });
+                    }
+
+                    var response = new SubtitleOutputReconciliationResponse();
+                    foreach (var episode in season.Episodes.Where(item => !item.ExcludeFromTranslation))
+                    {
+                        MergeReconciliationResponse(
+                            response,
+                            await _subtitleOutputReconciliationService.ReconcileMediaOutputsAsync(
+                                episode.Id,
+                                MediaType.Episode,
+                                cancellationToken));
+                    }
+
+                    return Ok(response);
+                }
+                case MediaType.Show:
+                {
+                    var show = await _dbContext.Shows
+                        .Include(item => item.Seasons)
+                        .ThenInclude(item => item.Episodes)
+                        .FirstOrDefaultAsync(item => item.Id == request.MediaId, cancellationToken);
+                    if (show == null)
+                    {
+                        return NotFound(new SubtitleOutputReconciliationResponse
+                        {
+                            Errors = ["Show not found"]
+                        });
+                    }
+
+                    var response = new SubtitleOutputReconciliationResponse();
+                    foreach (var episode in show.Seasons
+                                 .Where(item => !item.ExcludeFromTranslation)
+                                 .SelectMany(item => item.Episodes)
+                                 .Where(item => !item.ExcludeFromTranslation))
+                    {
+                        MergeReconciliationResponse(
+                            response,
+                            await _subtitleOutputReconciliationService.ReconcileMediaOutputsAsync(
+                                episode.Id,
+                                MediaType.Episode,
+                                cancellationToken));
+                    }
+
+                    return Ok(response);
+                }
+                default:
+                    return BadRequest(new SubtitleOutputReconciliationResponse
+                    {
+                        Errors = ["Unsupported media type for single-item reconciliation"]
+                    });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Error reconciling subtitle outputs for media {MediaId} of type {MediaType}",
+                request.MediaId,
+                request.MediaType);
+            return StatusCode(
+                500,
+                new SubtitleOutputReconciliationResponse
+                {
+                    Errors = ["Failed to reconcile subtitle outputs for the requested media"]
+                });
+        }
+    }
+
+    private static void MergeReconciliationResponse(
+        SubtitleOutputReconciliationResponse target,
+        SubtitleOutputReconciliationResponse source)
+    {
+        target.MediaItemsScanned += source.MediaItemsScanned;
+        target.DeletedFiles += source.DeletedFiles;
+        target.BackfilledFiles += source.BackfilledFiles;
+        target.BackfilledFromExternalSourceFiles += source.BackfilledFromExternalSourceFiles;
+        target.BackfilledFromEmbeddedSourceFiles += source.BackfilledFromEmbeddedSourceFiles;
+        target.BackfillSkippedFiles += source.BackfillSkippedFiles;
+        target.QueuedTranslations += source.QueuedTranslations;
+        target.QueuedForRetranslation += source.QueuedForRetranslation;
+        target.SkippedUnsafeFiles += source.SkippedUnsafeFiles;
+        target.SkippedActiveRequests += source.SkippedActiveRequests;
+        target.Errors.AddRange(source.Errors);
+    }
+
     private async Task<int> CleanupLingarrOutputsForMediaAsync(string? directoryPath, string? mediaFileName)
     {
         if (string.IsNullOrWhiteSpace(directoryPath) || string.IsNullOrWhiteSpace(mediaFileName))

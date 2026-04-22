@@ -512,9 +512,9 @@
       "cleanupOrphanedSubtitlesDescription": "Automatisch AI-vertaalde ondertitels verwijderen wanneer mediabestanden worden geüpgradeerd en de bestandsnaam verandert. Verwijdert alleen bestanden met je geconfigureerde ondertitel tag.",
       "cleanupRequiresTagging": "Ondertitel tagging moet ingeschakeld zijn voor automatische opschoning om Lingarr-gemaakte bestanden te identificeren.",
       "reconcileOutputs": "Ondertiteluitvoer reconciliëren",
-      "reconcileOutputsDescription": "Verwijder verouderde door Lingarr beheerde sidecars en zet ontbrekende uitvoer in de wachtrij zodat ondertitels overeenkomen met de huidige instelling.",
+      "reconcileOutputsDescription": "Maak ontbrekende compatibele sidecars lokaal aan waar mogelijk, ruim verouderde door Lingarr beheerde uitvoer op en zet vertalingen alleen in de wachtrij wanneer dat nodig is.",
       "recreateAllOutputs": "Alle uitvoer opnieuw maken",
-      "recreateAllOutputsDescription": "Voer vertalingen voor je hele bibliotheek opnieuw uit met de huidige uitvoermodus. Alleen door Lingarr beheerde ondertitels worden vervangen en handmatige ondertitels blijven onaangetast.",
+      "recreateAllOutputsDescription": "Voer vertalingen voor je hele bibliotheek opnieuw uit met de huidige uitvoermodus. Dit gebruikt vertaalproviders opnieuw, vervangt alleen door Lingarr beheerde ondertitels en laat handmatige ondertitels ongemoeid.",
       "subtitleIntegrityValidationEnabled": "Ondertitelintegriteit valideren",
       "subtitleIntegrityValidationEnabledDescription": "Controleer of de vertaalde ondertitel ongeveer hetzelfde aantal regels heeft als het origineel om gedeeltelijke vertalingen te detecteren."
     },

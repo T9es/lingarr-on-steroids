@@ -512,9 +512,9 @@
       "cleanupOrphanedSubtitlesDescription": "当媒体文件升级且文件名更改时自动删除AI翻译的字幕。仅删除带有您配置的字幕标签的文件。",
       "cleanupRequiresTagging": "必须启用字幕标记，自动清理才能识别Lingarr创建的文件。",
       "reconcileOutputs": "协调字幕输出",
-      "reconcileOutputsDescription": "清理过时的 Lingarr 托管 sidecar，并排队生成缺失的输出，使字幕符合当前设置。",
+      "reconcileOutputsDescription": "尽可能在本地创建缺失的兼容 sidecar，清理过时的 Lingarr 托管输出，并且只在必要时排队重新翻译。",
       "recreateAllOutputs": "重新生成所有输出",
-      "recreateAllOutputsDescription": "按当前输出模式重新运行整个媒体库的翻译。只会替换由 Lingarr 管理的字幕，手动字幕不会受到影响。",
+      "recreateAllOutputsDescription": "按当前输出模式重新运行整个媒体库的翻译。这会再次使用翻译提供商，只替换由 Lingarr 管理的字幕，手动字幕不会受到影响。",
       "subtitleIntegrityValidationEnabled": "验证字幕完整性",
       "subtitleIntegrityValidationEnabledDescription": "检查翻译后的字幕是否具有与原始字幕大致相同的行数，以检测部分翻译。"
     },

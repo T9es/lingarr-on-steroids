@@ -512,9 +512,9 @@
       "cleanupOrphanedSubtitlesDescription": "Eliminar automáticamente subtítulos traducidos por IA cuando los archivos multimedia se actualizan y el nombre del archivo cambia. Solo elimina archivos con tu etiqueta de subtítulo configurada.",
       "cleanupRequiresTagging": "El etiquetado de subtítulos debe estar habilitado para que la limpieza automática identifique los archivos creados por Lingarr.",
       "reconcileOutputs": "Conciliar salidas de subtítulos",
-      "reconcileOutputsDescription": "Elimina auxiliares obsoletos administrados por Lingarr y pone en cola las salidas faltantes para que los subtítulos coincidan con la configuración actual.",
+      "reconcileOutputsDescription": "Crea localmente archivos auxiliares compatibles cuando sea posible, limpia salidas obsoletas administradas por Lingarr y solo pone traducciones en cola cuando sea necesario.",
       "recreateAllOutputs": "Recrear todas las salidas",
-      "recreateAllOutputsDescription": "Vuelve a ejecutar las traducciones de toda la biblioteca usando el modo de salida actual. Solo se reemplazan los subtítulos administrados por Lingarr y los subtítulos manuales no se tocan.",
+      "recreateAllOutputsDescription": "Vuelve a ejecutar las traducciones de toda la biblioteca usando el modo de salida actual. Usa de nuevo los proveedores de traducción, solo reemplaza subtítulos administrados por Lingarr y no toca subtítulos manuales.",
       "subtitleIntegrityValidationEnabled": "Validar integridad de subtítulos",
       "subtitleIntegrityValidationEnabledDescription": "Verificar si el subtítulo traducido tiene aproximadamente el mismo número de líneas que el original para detectar traducciones parciales."
     },

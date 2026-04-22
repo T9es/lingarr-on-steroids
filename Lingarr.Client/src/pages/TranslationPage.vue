@@ -349,7 +349,8 @@
                                         :status="item.status"
                                         :on-action="(action) => handleAction(item, action)" />
                                 </div>
-                                <div class="mb-2 md:col-span-5 md:mb-0 md:px-4 md:py-2">
+                                <div
+                                    class="mb-2 overflow-hidden md:col-span-5 md:mb-0 md:px-4 md:py-2">
                                     <span :id="`deletable-${item.id}`" class="font-bold md:hidden">
                                         {{ translate('translations.title') }}:&nbsp;
                                     </span>

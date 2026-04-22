@@ -512,9 +512,9 @@
       "cleanupOrphanedSubtitlesDescription": "Automatycznie usuń napisy przetłumaczone przez AI, gdy pliki multimedialne są aktualizowane i nazwa pliku się zmienia. Usuwa tylko pliki ze skonfigurowanym tagiem napisów.",
       "cleanupRequiresTagging": "Tagowanie napisów musi być włączone, aby automatyczne czyszczenie identyfikowało pliki utworzone przez Lingarr.",
       "reconcileOutputs": "Uzgodnij wyjścia napisów",
-      "reconcileOutputsDescription": "Usuwa przestarzałe pliki boczne zarządzane przez Lingarr i kolejkowuje brakujące wyjścia, aby napisy odpowiadały bieżącemu ustawieniu.",
+      "reconcileOutputsDescription": "Lokalnie tworzy brakujące zgodne pliki boczne, gdy to możliwe, usuwa przestarzałe wyjścia zarządzane przez Lingarr i kolejkowuje tłumaczenia tylko wtedy, gdy jest to konieczne.",
       "recreateAllOutputs": "Odtwórz wszystkie wyjścia",
-      "recreateAllOutputsDescription": "Uruchom ponownie tłumaczenia dla całej biblioteki z użyciem bieżącego trybu wyjścia. Zastępowane są tylko napisy zarządzane przez Lingarr, a napisy dodane ręcznie pozostają bez zmian.",
+      "recreateAllOutputsDescription": "Uruchom ponownie tłumaczenia dla całej biblioteki z użyciem bieżącego trybu wyjścia. Ponownie używa dostawców tłumaczeń, zastępuje tylko napisy zarządzane przez Lingarr, a napisy dodane ręcznie pozostają bez zmian.",
       "subtitleIntegrityValidationEnabled": "Waliduj integralność napisów",
       "subtitleIntegrityValidationEnabledDescription": "Sprawdź, czy przetłumaczone napisy mają z grubsza taką samą liczbę linii jak oryginał, aby wykryć częściowe tłumaczenia."
     },

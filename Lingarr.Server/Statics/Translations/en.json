@@ -512,9 +512,9 @@
       "cleanupOrphanedSubtitlesDescription": "Automatically delete AI-translated subtitles when media files are upgraded and the filename changes. Only removes files with your configured subtitle tag.",
       "cleanupRequiresTagging": "Subtitle tagging must be enabled for automatic cleanup to identify Lingarr-created files.",
       "reconcileOutputs": "Reconcile subtitle outputs",
-      "reconcileOutputsDescription": "Clean obsolete Lingarr-managed sidecars and queue missing outputs so subtitles match the current setting.",
+      "reconcileOutputsDescription": "Locally create missing compatible sidecars where possible, clean obsolete Lingarr-managed outputs, and only queue translations when necessary.",
       "recreateAllOutputs": "Recreate all outputs",
-      "recreateAllOutputsDescription": "Re-run translations for your whole library using the current output mode. This only replaces Lingarr-managed subtitle files and leaves manual subtitles untouched.",
+      "recreateAllOutputsDescription": "Re-run translations for your whole library using the current output mode. This uses translation providers again, only replaces Lingarr-managed subtitle files, and leaves manual subtitles untouched.",
       "subtitleIntegrityValidationEnabled": "Validate Subtitle Integrity",
       "subtitleIntegrityValidationEnabledDescription": "Check if the translated subtitle has roughly the same number of lines as the original to detect partial translations."
     },

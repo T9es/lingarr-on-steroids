@@ -512,9 +512,9 @@
       "cleanupOrphanedSubtitlesDescription": "Automatisch KI-übersetzte Untertitel löschen, wenn Mediendateien aktualisiert werden und der Dateiname sich ändert. Entfernt nur Dateien mit Ihrem konfigurierten Untertitel-Tag.",
       "cleanupRequiresTagging": "Untertitel-Tagging muss für die automatische Bereinigung aktiviert sein, um Lingarr-erstellte Dateien zu identifizieren.",
       "reconcileOutputs": "Untertitelausgaben abgleichen",
-      "reconcileOutputsDescription": "Entfernt veraltete von Lingarr verwaltete Sidecars und stellt fehlende Ausgaben in die Warteschlange, damit die Untertitel der aktuellen Einstellung entsprechen.",
+      "reconcileOutputsDescription": "Erstellt fehlende kompatible Sidecars nach Möglichkeit lokal, entfernt veraltete von Lingarr verwaltete Ausgaben und stellt Übersetzungen nur bei Bedarf in die Warteschlange.",
       "recreateAllOutputs": "Alle Ausgaben neu erstellen",
-      "recreateAllOutputsDescription": "Führe Übersetzungen für die gesamte Bibliothek mit dem aktuellen Ausgabemodus erneut aus. Es werden nur von Lingarr verwaltete Untertitel ersetzt, manuelle Untertitel bleiben unberührt.",
+      "recreateAllOutputsDescription": "Führe Übersetzungen für die gesamte Bibliothek mit dem aktuellen Ausgabemodus erneut aus. Dabei werden Übersetzungsanbieter erneut verwendet, nur von Lingarr verwaltete Untertitel ersetzt und manuelle Untertitel nicht berührt.",
       "subtitleIntegrityValidationEnabled": "Untertitel-Integrität validieren",
       "subtitleIntegrityValidationEnabledDescription": "Überprüfen, ob der übersetzte Untertitel ungefähr die gleiche Anzahl von Zeilen hat wie das Original, um Teilübersetzungen zu erkennen."
     },

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
@@ -100,6 +101,83 @@ public class TranslateControllerTests
             Times.Never);
     }
 
+    [Fact]
+    public async Task ReconcileSubtitleOutputsForMedia_ReconcilesOnlyRequestedMovie()
+    {
+        await using var context = BuildContext();
+        context.Movies.Add(new Movie
+        {
+            RadarrId = 7,
+            Title = "Movie",
+            FileName = "movie.mkv",
+            Path = "C:\\media",
+            DateAdded = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        var reconciliationService = new Mock<ISubtitleOutputReconciliationService>();
+        reconciliationService
+            .Setup(service => service.ReconcileMediaOutputsAsync(1, MediaType.Movie, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SubtitleOutputReconciliationResponse
+            {
+                MediaItemsScanned = 1,
+                BackfilledFiles = 1
+            });
+
+        var controller = CreateController(
+            context,
+            new Mock<ITranslationRequestService>().Object,
+            new Mock<ISubtitleExtractionService>().Object,
+            new Mock<ISettingService>().Object,
+            reconciliationService.Object);
+
+        var response = await controller.ReconcileSubtitleOutputsForMedia(
+            new TranslateMediaRequest
+            {
+                MediaId = 1,
+                MediaType = MediaType.Movie
+            },
+            CancellationToken.None);
+
+        var okResult = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<SubtitleOutputReconciliationResponse>(okResult.Value);
+        Assert.Equal(1, payload.MediaItemsScanned);
+        Assert.Equal(1, payload.BackfilledFiles);
+
+        reconciliationService.Verify(
+            service => service.ReconcileMediaOutputsAsync(1, MediaType.Movie, It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task ReconcileSubtitleOutputsForMedia_ReturnsNotFoundForMissingMovie()
+    {
+        await using var context = BuildContext();
+        var reconciliationService = new Mock<ISubtitleOutputReconciliationService>();
+
+        var controller = CreateController(
+            context,
+            new Mock<ITranslationRequestService>().Object,
+            new Mock<ISubtitleExtractionService>().Object,
+            new Mock<ISettingService>().Object,
+            reconciliationService.Object);
+
+        var response = await controller.ReconcileSubtitleOutputsForMedia(
+            new TranslateMediaRequest
+            {
+                MediaId = 999,
+                MediaType = MediaType.Movie
+            },
+            CancellationToken.None);
+
+        var notFound = Assert.IsType<NotFoundObjectResult>(response.Result);
+        var payload = Assert.IsType<SubtitleOutputReconciliationResponse>(notFound.Value);
+        Assert.Contains("Movie not found", payload.Errors);
+        reconciliationService.Verify(
+            service => service.ReconcileMediaOutputsAsync(It.IsAny<int>(), It.IsAny<MediaType>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
     private static LingarrDbContext BuildContext()
     {
         var options = new DbContextOptionsBuilder<LingarrDbContext>()
@@ -112,7 +190,8 @@ public class TranslateControllerTests
         LingarrDbContext context,
         ITranslationRequestService translationRequestService,
         ISubtitleExtractionService extractionService,
-        ISettingService settingService)
+        ISettingService settingService,
+        ISubtitleOutputReconciliationService? subtitleOutputReconciliationService = null)
     {
         return new TranslateController(
             new Mock<ITranslationServiceFactory>().Object,
@@ -120,7 +199,7 @@ public class TranslateControllerTests
             new Mock<IMediaSubtitleProcessor>().Object,
             extractionService,
             new Mock<ISubtitleService>().Object,
-            new Mock<ISubtitleOutputReconciliationService>().Object,
+            subtitleOutputReconciliationService ?? new Mock<ISubtitleOutputReconciliationService>().Object,
             context,
             settingService,
             NullLogger<TranslateController>.Instance);
