@@ -572,17 +572,15 @@ public class TranslationJob
                     ? batchSize
                     : 10000;
                 
-                // Calculate effective batch size and total batches for upfront logging
                 var effectiveBatchSize = maxSize <= 0 ? subtitles.Count : maxSize;
-                var totalBatches = (int)Math.Ceiling((double)subtitles.Count / effectiveBatchSize);
 
                 _logger.LogInformation(
-                    "[{FileId}] Starting batch translation: {SubtitleCount} subtitles, {TotalBatches} batch(es) of {BatchSize}, retryMode: {RetryMode}",
-                    fileIdentifier, subtitles.Count, totalBatches, effectiveBatchSize, batchRetryMode);
+                    "[{FileId}] Starting batch translation prep: source subtitles={SubtitleCount}, configured batchSize={BatchSize}, retryMode={RetryMode}. Optimized provider batch count is logged after structure analysis.",
+                    fileIdentifier, subtitles.Count, effectiveBatchSize, batchRetryMode);
 
                 AddRequestLog(
                     "Information",
-                    $"[{fileIdentifier}] Starting batch translation: subtitles={subtitles.Count}, totalBatches={totalBatches}, batchSize={effectiveBatchSize}, retryMode={batchRetryMode}");
+                    $"[{fileIdentifier}] Starting batch translation prep: sourceSubtitles={subtitles.Count}, configuredBatchSize={effectiveBatchSize}, retryMode={batchRetryMode}");
 
                 // Parse batch context settings
                 var batchContextEnabled = settings.TryGetValue(SettingKeys.Translation.BatchContextEnabled, out var ctxEnabled) && ctxEnabled == "true";
