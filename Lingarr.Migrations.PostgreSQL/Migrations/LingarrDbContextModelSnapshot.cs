@@ -1036,6 +1036,10 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                         .HasColumnType("text")
                         .HasColumnName("generated_output_formats");
 
+                    b.Property<string>("GeneratedSubtitlePaths")
+                        .HasColumnType("text")
+                        .HasColumnName("generated_subtitle_paths");
+
                     b.Property<bool?>("IsActive")
                         .HasColumnType("boolean")
                         .HasColumnName("is_active");

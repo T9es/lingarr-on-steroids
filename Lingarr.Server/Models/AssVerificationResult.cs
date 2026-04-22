@@ -1,7 +1,7 @@
 namespace Lingarr.Server.Models;
 
 /// <summary>
-/// Result of ASS drawing verification scan.
+/// Result of ASS/SSA artifact verification scan.
 /// </summary>
 public class AssVerificationResult
 {
@@ -21,6 +21,8 @@ public class AssVerificationItem
     public string SubtitlePath { get; set; } = string.Empty;
     public int SuspiciousLineCount { get; set; }
     public List<string> SuspiciousLines { get; set; } = new();
+    public List<string> IssueTypes { get; set; } = new();
+    public string IssueSummary { get; set; } = string.Empty;
     public bool Dismissed { get; set; }
     
     /// <summary>

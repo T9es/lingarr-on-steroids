@@ -53,6 +53,17 @@ const service = (http: AxiosStatic, resource = '/api/translate'): ITranslateServ
                 })
         })
     },
+    reconcileOutputs<T>(): Promise<T> {
+        return new Promise((resolve, reject) => {
+            http.post(`${resource}/reconcile-outputs`)
+                .then((response: AxiosResponse<T>) => {
+                    resolve(response.data)
+                })
+                .catch((error: AxiosError) => {
+                    reject(error.response)
+                })
+        })
+    },
     getLanguages<T>(): Promise<T> {
         return new Promise((resolve, reject) => {
             http.get(`${resource}/languages`)

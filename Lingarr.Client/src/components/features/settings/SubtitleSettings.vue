@@ -42,14 +42,19 @@
 
                 <div class="flex flex-col space-x-2">
                     <span class="font-semibold">
-                        {{ translate('settings.subtitle.outputMode') }}
+                        {{ translate('settings.subtitle.keepAssSsaWithSrt') }}
                     </span>
-                    {{ translate('settings.subtitle.outputModeDescription') }}
+                    {{ translate('settings.subtitle.keepAssSsaWithSrtDescription') }}
                 </div>
-                <SelectComponent
-                    :selected="subtitleOutputMode"
-                    :options="subtitleOutputModeOptions"
-                    @update:selected="subtitleOutputMode = $event" />
+                <ToggleButton v-model="keepAssSsaWithSrt">
+                    <span class="text-primary-content text-sm font-medium">
+                        {{
+                            keepAssSsaWithSrt == 'true'
+                                ? translate('common.enabled')
+                                : translate('common.disabled')
+                        }}
+                    </span>
+                </ToggleButton>
 
                 <div class="flex flex-col space-x-2">
                     <span class="font-semibold">
@@ -205,6 +210,19 @@
                 <div class="border-accent mt-2 flex flex-col space-y-3 border-t pt-4">
                     <div class="flex flex-col space-x-2">
                         <span class="font-semibold">
+                            {{ translate('settings.subtitle.reconcileOutputs') }}
+                        </span>
+                        {{ translate('settings.subtitle.reconcileOutputsDescription') }}
+                    </div>
+                    <button
+                        class="border-accent bg-secondary hover:bg-accent/20 inline-flex w-fit items-center rounded-md border px-4 py-2 disabled:cursor-not-allowed disabled:opacity-60"
+                        :disabled="isReconcilingOutputs"
+                        @click="reconcileOutputs">
+                        {{ translate('settings.subtitle.reconcileOutputs') }}
+                    </button>
+
+                    <div class="flex flex-col space-x-2">
+                        <span class="font-semibold">
                             {{ translate('settings.subtitle.recreateAllOutputs') }}
                         </span>
                         {{ translate('settings.subtitle.recreateAllOutputsDescription') }}
@@ -232,41 +250,26 @@ import CardComponent from '@/components/common/CardComponent.vue'
 import SaveNotification from '@/components/common/SaveNotification.vue'
 import ToggleButton from '@/components/common/ToggleButton.vue'
 import InputComponent from '@/components/common/InputComponent.vue'
-import SelectComponent, { ISelectOption } from '@/components/common/SelectComponent.vue'
 
 const { translate } = useI18n()
 const saveNotification = ref<InstanceType<typeof SaveNotification> | null>(null)
 const settingsStore = useSettingStore()
 const isRecreatingAll = ref(false)
+const isReconcilingOutputs = ref(false)
 const isValid = reactive({
     subtitleTag: true,
     subtitleTagShort: true
 })
 
-const subtitleOutputModeOptions = computed<ISelectOption[]>(() => [
-    {
-        value: 'match-source',
-        label: translate('settings.subtitle.outputModeMatchSource')
-    },
-    {
-        value: 'ass-only',
-        label: translate('settings.subtitle.outputModeAssOnly')
-    },
-    {
-        value: 'srt-only',
-        label: translate('settings.subtitle.outputModeSrtOnly')
-    },
-    {
-        value: 'both',
-        label: translate('settings.subtitle.outputModeBoth')
-    }
-])
-
-const subtitleOutputMode = computed({
+const keepAssSsaWithSrt = computed({
     get: (): string =>
-        (settingsStore.getSetting(SETTINGS.SUBTITLE_OUTPUT_MODE) as string) ?? 'match-source',
+        settingsStore.getSetting(SETTINGS.SUBTITLE_OUTPUT_MODE) === 'both' ? 'true' : 'false',
     set: (newValue: string): void => {
-        settingsStore.updateSetting(SETTINGS.SUBTITLE_OUTPUT_MODE, newValue, true)
+        settingsStore.updateSetting(
+            SETTINGS.SUBTITLE_OUTPUT_MODE,
+            newValue === 'true' ? 'both' : 'match-source',
+            true
+        )
         saveNotification.value?.show()
     }
 })
@@ -372,6 +375,21 @@ const cleanSourceAssDrawings = computed({
         saveNotification.value?.show()
     }
 })
+
+const reconcileOutputs = async () => {
+    if (isReconcilingOutputs.value) {
+        return
+    }
+
+    isReconcilingOutputs.value = true
+    try {
+        await services.translate.reconcileOutputs()
+    } catch (error) {
+        console.error('Failed to reconcile subtitle outputs:', error)
+    } finally {
+        isReconcilingOutputs.value = false
+    }
+}
 
 const recreateAllOutputs = async () => {
     if (isRecreatingAll.value) {

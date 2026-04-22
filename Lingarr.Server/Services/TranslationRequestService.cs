@@ -148,6 +148,7 @@ public class TranslationRequestService : ITranslationRequestService
             SubtitleOutputMode = translationRequest.SubtitleOutputMode,
             RequiredOutputFormats = translationRequest.RequiredOutputFormats,
             GeneratedOutputFormats = translationRequest.GeneratedOutputFormats,
+            GeneratedSubtitlePaths = translationRequest.GeneratedSubtitlePaths,
             MediaType = translationRequest.MediaType,
             Status = TranslationStatus.Pending,
             IsActive = true,

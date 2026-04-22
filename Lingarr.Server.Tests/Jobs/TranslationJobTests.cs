@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Lingarr.Core.Configuration;
@@ -650,6 +652,168 @@ public class TranslationJobTests : IDisposable
             request.MediaId!.Value,
             request.MediaType,
             extractedAssPath), Times.Once);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_DualAssOutput_StoresAllGeneratedSubtitlePaths()
+    {
+        var sourceSubtitlePath = Path.Combine(_tempDirectory, "movie-6.en.ass");
+        await File.WriteAllTextAsync(
+            sourceSubtitlePath,
+            """
+            [Script Info]
+            Title: Example
+
+            [V4+ Styles]
+            Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+            Style: Default,Arial,28,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1
+
+            [Events]
+            Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+            Dialogue: 0,0:00:01.00,0:00:03.00,Default,,0,0,0,,Hello
+            """);
+
+        var movie = CreateMovie(6);
+        movie.Path = _tempDirectory;
+        var request = new TranslationRequest
+        {
+            MediaId = movie.Id,
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaType = MediaType.Movie,
+            WorkloadItemKey = "library:Movie:6",
+            Status = TranslationStatus.Pending,
+            SubtitleToTranslate = sourceSubtitlePath,
+            IsActive = true
+        };
+
+        _dbContext.Movies.Add(movie);
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var settingServiceMock = new Mock<ISettingService>();
+        settingServiceMock
+            .Setup(service => service.GetSettings(It.IsAny<IEnumerable<string>>()))
+            .ReturnsAsync((IEnumerable<string> keys) =>
+            {
+                var settings = keys.ToDictionary(key => key, _ => string.Empty);
+                settings[SettingKeys.Translation.ServiceType] = "mock";
+                settings[SettingKeys.Translation.FixOverlappingSubtitles] = "false";
+                settings[SettingKeys.Translation.StripSubtitleFormatting] = "false";
+                settings[SettingKeys.Translation.AddTranslatorInfo] = "false";
+                settings[SettingKeys.SubtitleValidation.ValidateSubtitles] = "false";
+                settings[SettingKeys.Translation.AiContextPromptEnabled] = "false";
+                settings[SettingKeys.Translation.UseBatchTranslation] = "false";
+                settings[SettingKeys.Translation.RemoveLanguageTag] = "true";
+                settings[SettingKeys.Translation.UseSubtitleTagging] = "true";
+                settings[SettingKeys.Translation.SubtitleTag] = "lingarr";
+                settings[SettingKeys.Translation.SubtitleTagShort] = "-ai-";
+                settings[SettingKeys.Translation.SubtitleOutputMode] = "both";
+                settings[SettingKeys.Translation.MaxBatchSplitAttempts] = "3";
+                settings[SettingKeys.Translation.BatchRetryMode] = "deferred";
+                settings[SettingKeys.Translation.RepairContextRadius] = "10";
+                settings[SettingKeys.Translation.RepairMaxRetries] = "1";
+                settings[SettingKeys.Translation.StripAssDrawingCommands] = "false";
+                settings[SettingKeys.Translation.CleanSourceAssDrawings] = "false";
+                settings[SettingKeys.Translation.BatchContextEnabled] = "false";
+                return settings;
+            });
+
+        var subtitleService = new SubtitleService(NullLogger<SubtitleService>.Instance);
+        var translationServiceMock = new Mock<ITranslationService>();
+        translationServiceMock
+            .Setup(service => service.TranslateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync("Czesc");
+
+        var translationServiceFactoryMock = new Mock<ITranslationServiceFactory>();
+        translationServiceFactoryMock
+            .Setup(factory => factory.CreateTranslationService("mock"))
+            .Returns(translationServiceMock.Object);
+
+        var translationRequestServiceMock = new Mock<ITranslationRequestService>();
+        translationRequestServiceMock
+            .Setup(service => service.UpdateTranslationRequest(
+                It.IsAny<TranslationRequest>(),
+                It.IsAny<TranslationStatus>(),
+                It.IsAny<string?>()))
+            .ReturnsAsync((TranslationRequest value, TranslationStatus _, string? _) => value);
+        translationRequestServiceMock
+            .Setup(service => service.UpdateActiveCount())
+            .ReturnsAsync(0);
+
+        var cancellationServiceMock = new Mock<ITranslationCancellationService>();
+        cancellationServiceMock
+            .Setup(service => service.RegisterJob(It.IsAny<int>()))
+            .Returns(CancellationToken.None);
+
+        var progressServiceMock = new Mock<IProgressService>();
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+
+        var mediaStateServiceMock = new Mock<IMediaStateService>();
+        mediaStateServiceMock
+            .Setup(service => service.UpdateStateAsync(It.IsAny<Lingarr.Core.Interfaces.IMedia>(), It.IsAny<MediaType>(), It.IsAny<bool>()))
+            .ReturnsAsync(TranslationState.Complete);
+
+        var statisticsServiceMock = new Mock<IStatisticsService>();
+        statisticsServiceMock
+            .Setup(service => service.UpdateTranslationStatisticsFromSubtitles(
+                It.IsAny<TranslationRequest>(),
+                It.IsAny<string>(),
+                It.IsAny<List<SubtitleItem>>()))
+            .ReturnsAsync(0);
+
+        var sourceSnapshotServiceMock = new Mock<ISourceSubtitleSnapshotService>();
+        sourceSnapshotServiceMock
+            .Setup(service => service.CreateExternalSnapshot(It.IsAny<string>(), It.IsAny<string>()))
+            .Returns(new SourceSubtitleSnapshot
+            {
+                Version = SourceSubtitleSnapshot.CurrentVersion,
+                SourceType = SourceSubtitleSnapshot.ExternalType,
+                SourceLanguage = "en",
+                Identity = "external",
+                Fingerprint = "fingerprint-external",
+                FileSizeBytes = 1
+            });
+
+        var job = new TranslationJob(
+            NullLogger<TranslationJob>.Instance,
+            settingServiceMock.Object,
+            _dbContext,
+            progressServiceMock.Object,
+            subtitleService,
+            Mock.Of<IScheduleService>(),
+            statisticsServiceMock.Object,
+            translationServiceFactoryMock.Object,
+            translationRequestServiceMock.Object,
+            Mock.Of<IBatchFallbackService>(),
+            Mock.Of<ISubtitleExtractionService>(),
+            cancellationServiceMock.Object,
+            mediaStateServiceMock.Object,
+            Mock.Of<ICustomMediaStateService>(),
+            Mock.Of<IDeferredRepairService>(),
+            Mock.Of<IDashboardService>(),
+            sourceSnapshotServiceMock.Object,
+            Mock.Of<IUploadWorkspaceService>());
+
+        await job.ExecuteAsync(request.Id, CancellationToken.None);
+
+        var updatedRequest = await _dbContext.TranslationRequests.SingleAsync(item => item.Id == request.Id);
+        var generatedPaths = JsonSerializer.Deserialize<List<string>>(updatedRequest.GeneratedSubtitlePaths!);
+
+        Assert.Equal(".ass,.srt", updatedRequest.GeneratedOutputFormats);
+        Assert.NotNull(generatedPaths);
+        Assert.Equal(2, generatedPaths.Count);
+        Assert.Contains(generatedPaths, path => Path.GetExtension(path) == ".ass" && File.Exists(path));
+        Assert.Contains(generatedPaths, path => Path.GetExtension(path) == ".srt" && File.Exists(path));
     }
 
     public void Dispose()

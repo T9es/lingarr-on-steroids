@@ -26,6 +26,7 @@ public class TranslateController : ControllerBase
     private readonly IMediaSubtitleProcessor _mediaSubtitleProcessor;
     private readonly ISubtitleExtractionService _extractionService;
     private readonly ISubtitleService _subtitleService;
+    private readonly ISubtitleOutputReconciliationService _subtitleOutputReconciliationService;
     private readonly LingarrDbContext _dbContext;
     private readonly ISettingService _settings;
     private readonly ILogger<TranslateController> _logger;
@@ -36,6 +37,7 @@ public class TranslateController : ControllerBase
         IMediaSubtitleProcessor mediaSubtitleProcessor,
         ISubtitleExtractionService extractionService,
         ISubtitleService subtitleService,
+        ISubtitleOutputReconciliationService subtitleOutputReconciliationService,
         LingarrDbContext dbContext,
         ISettingService settings,
         ILogger<TranslateController> logger)
@@ -45,6 +47,7 @@ public class TranslateController : ControllerBase
         _mediaSubtitleProcessor = mediaSubtitleProcessor;
         _extractionService = extractionService;
         _subtitleService = subtitleService;
+        _subtitleOutputReconciliationService = subtitleOutputReconciliationService;
         _dbContext = dbContext;
         _settings = settings;
         _logger = logger;
@@ -481,6 +484,27 @@ public class TranslateController : ControllerBase
         {
             _logger.LogError(ex, "Error recreating all translations");
             return StatusCode(500, new TranslateMediaResponse { Message = "Failed to recreate translations" });
+        }
+    }
+
+    [HttpPost("reconcile-outputs")]
+    public async Task<ActionResult<SubtitleOutputReconciliationResponse>> ReconcileSubtitleOutputs(
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _subtitleOutputReconciliationService.ReconcileLibraryOutputsAsync(cancellationToken);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error reconciling subtitle outputs");
+            return StatusCode(
+                500,
+                new SubtitleOutputReconciliationResponse
+                {
+                    Errors = ["Failed to reconcile subtitle outputs"]
+                });
         }
     }
 

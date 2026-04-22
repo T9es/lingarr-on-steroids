@@ -999,6 +999,10 @@ namespace Lingarr.Migrations.SQLite.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("generated_output_formats");
 
+                    b.Property<string>("GeneratedSubtitlePaths")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("generated_subtitle_paths");
+
                     b.Property<bool?>("IsActive")
                         .HasColumnType("INTEGER")
                         .HasColumnName("is_active");

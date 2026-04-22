@@ -5,6 +5,7 @@ using Lingarr.Server.Hubs;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Models;
+using Lingarr.Server.Services.Subtitle;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 
@@ -45,12 +46,8 @@ public class VerifyAssIntegrityJob
         try
         {
             var result = new AssVerificationResult();
-
-            var drawingPattern = new System.Text.RegularExpressions.Regex(
-                @"^\s*m\s+-?\d+(\.\d+)?\s+-?\d+(\.\d+)?",
-                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-
-            const int suspiciousThreshold = 2;
+            var flaggedByPath = new Dictionary<string, AssVerificationItem>(StringComparer.OrdinalIgnoreCase);
+            var scannedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             var queuedRequests = await _dbContext.Set<Core.Entities.TranslationRequest>()
                 .Where(tr => tr.Status == TranslationStatus.Pending ||
@@ -68,6 +65,20 @@ public class VerifyAssIntegrityJob
                 .Where(r => r.MediaType == MediaType.Episode)
                 .Select(r => r.MediaId!.Value)
                 .ToHashSet();
+
+            var completedTranslations = await _dbContext.Set<Core.Entities.TranslationRequest>()
+                .Where(tr => tr.Status == TranslationStatus.Completed)
+                .Where(tr => tr.MediaId != null)
+                .Where(tr => tr.SubtitleToTranslate != null && tr.TranslatedSubtitle != null)
+                .Select(tr => new
+                {
+                    tr.MediaId,
+                    tr.MediaType,
+                    tr.Title,
+                    tr.SubtitleToTranslate,
+                    tr.TranslatedSubtitle
+                })
+                .ToListAsync();
 
             var movies = await _dbContext.Movies
                 .Where(m => m.Path != null)
@@ -101,23 +112,22 @@ public class VerifyAssIntegrityJob
                     var subtitleFiles = await GetTranslatedSubtitlesForMedia(movie.Path!, movie.FileName!);
                     foreach (var subPath in subtitleFiles)
                     {
-                        result.TotalFilesScanned++;
-                        var (count, lines) = await GetSuspiciousLines(subPath, drawingPattern);
-
-                        if (count >= suspiciousThreshold)
+                        if (scannedPaths.Add(subPath))
                         {
-                            result.FilesWithDrawings++;
-                            result.FlaggedItems.Add(new AssVerificationItem
-                            {
-                                MediaId = movie.Id,
-                                MediaType = "Movie",
-                                MediaTitle = movie.Title ?? "Unknown",
-                                SubtitlePath = subPath,
-                                SuspiciousLineCount = count,
-                                SuspiciousLines = lines,
-                                Dismissed = false,
-                                IsQueued = queuedMovieIds.Contains(movie.Id)
-                            });
+                            result.TotalFilesScanned++;
+                        }
+
+                        var scan = await GetSuspiciousLines(subPath);
+                        if (scan.HasIssues)
+                        {
+                            AddOrMergeFinding(
+                                flaggedByPath,
+                                movie.Id,
+                                "Movie",
+                                movie.Title ?? "Unknown",
+                                subPath,
+                                queuedMovieIds.Contains(movie.Id),
+                                scan);
                         }
                     }
                 }
@@ -142,23 +152,22 @@ public class VerifyAssIntegrityJob
                     var subtitleFiles = await GetTranslatedSubtitlesForMedia(episode.Path!, episode.FileName!);
                     foreach (var subPath in subtitleFiles)
                     {
-                        result.TotalFilesScanned++;
-                        var (count, lines) = await GetSuspiciousLines(subPath, drawingPattern);
-
-                        if (count >= suspiciousThreshold)
+                        if (scannedPaths.Add(subPath))
                         {
-                            result.FilesWithDrawings++;
-                            result.FlaggedItems.Add(new AssVerificationItem
-                            {
-                                MediaId = episode.Id,
-                                MediaType = "Episode",
-                                MediaTitle = episode.Title,
-                                SubtitlePath = subPath,
-                                SuspiciousLineCount = count,
-                                SuspiciousLines = lines,
-                                Dismissed = false,
-                                IsQueued = queuedEpisodeIds.Contains(episode.Id)
-                            });
+                            result.TotalFilesScanned++;
+                        }
+
+                        var scan = await GetSuspiciousLines(subPath);
+                        if (scan.HasIssues)
+                        {
+                            AddOrMergeFinding(
+                                flaggedByPath,
+                                episode.Id,
+                                "Episode",
+                                episode.Title,
+                                subPath,
+                                queuedEpisodeIds.Contains(episode.Id),
+                                scan);
                         }
                     }
                 }
@@ -175,6 +184,64 @@ public class VerifyAssIntegrityJob
                     await SendProgress(stats);
                 }
             }
+
+            foreach (var translation in completedTranslations)
+            {
+                try
+                {
+                    if (translation.MediaId == null ||
+                        string.IsNullOrWhiteSpace(translation.SubtitleToTranslate) ||
+                        string.IsNullOrWhiteSpace(translation.TranslatedSubtitle) ||
+                        !File.Exists(translation.SubtitleToTranslate) ||
+                        !File.Exists(translation.TranslatedSubtitle))
+                    {
+                        continue;
+                    }
+
+                    if (scannedPaths.Add(translation.TranslatedSubtitle))
+                    {
+                        result.TotalFilesScanned++;
+                    }
+
+                    var sourceSubtitles = await _subtitleService.ReadSubtitles(translation.SubtitleToTranslate);
+                    var targetSubtitles = await _subtitleService.ReadSubtitles(translation.TranslatedSubtitle);
+                    var scan = AssSubtitleArtifactDetector.CompareTagStructure(
+                        sourceSubtitles,
+                        targetSubtitles,
+                        translation.TranslatedSubtitle);
+
+                    if (!scan.HasIssues)
+                    {
+                        continue;
+                    }
+
+                    var isQueued = translation.MediaType == MediaType.Movie
+                        ? queuedMovieIds.Contains(translation.MediaId.Value)
+                        : queuedEpisodeIds.Contains(translation.MediaId.Value);
+
+                    AddOrMergeFinding(
+                        flaggedByPath,
+                        translation.MediaId.Value,
+                        translation.MediaType.ToString(),
+                        translation.Title,
+                        translation.TranslatedSubtitle,
+                        isQueued,
+                        scan);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(
+                        ex,
+                        "Error comparing ASS tag structure for translation target {Path}",
+                        translation.TranslatedSubtitle);
+                }
+            }
+
+            result.FlaggedItems = flaggedByPath.Values
+                .OrderBy(item => item.MediaTitle)
+                .ThenBy(item => item.SubtitlePath)
+                .ToList();
+            result.FilesWithDrawings = result.FlaggedItems.Count;
 
             stats.IsComplete = true;
             stats.IsRunning = false;
@@ -217,23 +284,67 @@ public class VerifyAssIntegrityJob
         return subtitleFiles;
     }
 
-    private async Task<(int count, List<string> lines)> GetSuspiciousLines(string subtitlePath, System.Text.RegularExpressions.Regex pattern)
+    private async Task<AssArtifactScanResult> GetSuspiciousLines(string subtitlePath)
     {
         try
         {
             var lines = await File.ReadAllLinesAsync(subtitlePath);
-            var suspiciousLines = lines
-                .Where(line => pattern.IsMatch(line.Trim()))
-                .Take(10)
-                .Select(line => line.Trim().Length > 80 ? line.Trim()[..80] + "..." : line.Trim())
-                .ToList();
-            return (suspiciousLines.Count, suspiciousLines);
+            return AssSubtitleArtifactDetector.DetectDrawingArtifacts(lines);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Error reading subtitle file {Path}", subtitlePath);
-            return (0, new List<string>());
+            return new AssArtifactScanResult();
         }
+    }
+
+    private static void AddOrMergeFinding(
+        Dictionary<string, AssVerificationItem> flaggedByPath,
+        int mediaId,
+        string mediaType,
+        string mediaTitle,
+        string subtitlePath,
+        bool isQueued,
+        AssArtifactScanResult scan)
+    {
+        if (!flaggedByPath.TryGetValue(subtitlePath, out var item))
+        {
+            item = new AssVerificationItem
+            {
+                MediaId = mediaId,
+                MediaType = mediaType,
+                MediaTitle = mediaTitle,
+                SubtitlePath = subtitlePath,
+                Dismissed = false,
+                IsQueued = isQueued
+            };
+            flaggedByPath[subtitlePath] = item;
+        }
+
+        item.SuspiciousLineCount += scan.SuspiciousLineCount;
+        item.SuspiciousLines.AddRange(scan.SuspiciousLines);
+        item.SuspiciousLines = item.SuspiciousLines
+            .Distinct(StringComparer.Ordinal)
+            .Take(10)
+            .ToList();
+
+        foreach (var issueType in scan.IssueTypes)
+        {
+            if (!item.IssueTypes.Contains(issueType, StringComparer.Ordinal))
+            {
+                item.IssueTypes.Add(issueType);
+            }
+        }
+
+        var issueSummaries = new List<string>();
+        if (!string.IsNullOrWhiteSpace(item.IssueSummary))
+        {
+            issueSummaries.Add(item.IssueSummary);
+        }
+
+        issueSummaries.AddRange(scan.IssueSummaries);
+        item.IssueSummary = string.Join(" ", issueSummaries.Distinct(StringComparer.Ordinal));
+        item.IsQueued = item.IsQueued || isQueued;
     }
 
     private async Task SendProgress(AssVerificationStats stats)

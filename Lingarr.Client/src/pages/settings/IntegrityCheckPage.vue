@@ -287,7 +287,8 @@
         <!-- Verify ASS Integrity Section -->
         <CardComponent title="Verify ASS Integrity">
             <template #description>
-                Scans translated subtitles for vector drawing artifacts. Run after major updates.
+                Scans translated subtitles for ASS/SSA artifacts, including drawing residue and
+                damaged leaked tags. Run after major updates.
             </template>
             <template #content>
                 <div class="flex flex-col space-y-6">
@@ -374,9 +375,22 @@
                                             <div class="truncate text-xs opacity-50">
                                                 {{ item.subtitlePath }}
                                             </div>
+                                            <div class="mt-1 flex flex-wrap gap-1">
+                                                <span
+                                                    v-for="issueLabel in getAssIssueLabels(
+                                                        item.issueTypes
+                                                    )"
+                                                    :key="issueLabel"
+                                                    class="rounded bg-yellow-500/15 px-2 py-0.5 text-xs text-yellow-400">
+                                                    {{ issueLabel }}
+                                                </span>
+                                            </div>
+                                            <div class="mt-1 truncate text-xs opacity-70">
+                                                {{ getAssIssueSummary(item) }}
+                                            </div>
                                             <div class="flex items-center gap-2">
                                                 <span class="text-xs text-yellow-500">
-                                                    {{ item.suspiciousLineCount }} suspicious lines
+                                                    {{ item.suspiciousLineCount }} suspicious entries
                                                     (click to view)
                                                 </span>
                                                 <span
@@ -401,7 +415,7 @@
                                         "
                                         class="bg-tertiary/50 border-secondary/50 border-t p-3 text-xs">
                                         <div class="mb-2 font-semibold opacity-70">
-                                            Suspicious lines:
+                                            Suspicious entries:
                                         </div>
                                         <div
                                             v-for="(line, idx) in item.suspiciousLines"
@@ -818,6 +832,8 @@ interface AssVerificationItem {
     subtitlePath: string
     suspiciousLineCount: number
     suspiciousLines: string[]
+    issueTypes?: string[]
+    issueSummary?: string
     dismissed: boolean
     isQueued: boolean
 }
@@ -849,6 +865,24 @@ const assValidationStats = reactive<AssVerificationStats>({
 const assHasStarted = ref(false)
 const assResult = ref<AssVerificationResult | null>(null)
 const expandedItems = ref<string[]>([])
+
+const assIssueLabels: Record<string, string> = {
+    drawing_artifact: 'Drawing residue',
+    unexpected_ass_tags: 'Unexpected ASS/SSA tags',
+    ass_tag_mismatch: 'ASS/SSA tag mismatch'
+}
+
+const getAssIssueLabels = (issueTypes?: string[]) => {
+    if (!issueTypes || issueTypes.length === 0) {
+        return ['ASS/SSA artifact']
+    }
+
+    return issueTypes.map((issueType) => assIssueLabels[issueType] ?? issueType)
+}
+
+const getAssIssueSummary = (item: AssVerificationItem) => {
+    return item.issueSummary || getAssIssueLabels(item.issueTypes).join(', ')
+}
 
 const toggleExpand = (path: string) => {
     if (expandedItems.value.includes(path)) {

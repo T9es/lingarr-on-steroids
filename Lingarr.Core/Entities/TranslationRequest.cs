@@ -19,6 +19,7 @@ public class TranslationRequest : BaseEntity
     public string? SubtitleOutputMode { get; set; }
     public string? RequiredOutputFormats { get; set; }
     public string? GeneratedOutputFormats { get; set; }
+    public string? GeneratedSubtitlePaths { get; set; }
     public required MediaType MediaType { get; set; }
     public required TranslationStatus Status { get; set; }
     public bool? IsActive { get; set; }

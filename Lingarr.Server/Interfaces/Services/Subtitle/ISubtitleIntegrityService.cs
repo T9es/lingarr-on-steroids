@@ -16,8 +16,8 @@ public interface ISubtitleIntegrityService
     Task<bool> ValidateIntegrityAsync(string sourceSubtitlePath, string targetSubtitlePath);
 
     /// <summary>
-    /// Scans all translated subtitle files for ASS drawing command artifacts.
-    /// Used to detect files that contain hallucinated vector drawing garbage.
+    /// Scans translated subtitle files for ASS/SSA artifacts.
+    /// Used to detect hallucinated vector drawing garbage and damaged leaked ASS/SSA tags.
     /// </summary>
     /// <param name="ct">Cancellation token</param>
     /// <returns>Result containing list of flagged files</returns>

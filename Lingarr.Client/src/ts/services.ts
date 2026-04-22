@@ -103,6 +103,7 @@ export interface ITranslateService {
     ): Promise<T>
     translateMedia<T>(mediaId: number, mediaType: MediaType, forceRecreate?: boolean): Promise<T>
     recreateAllMedia<T>(): Promise<T>
+    reconcileOutputs<T>(): Promise<T>
     getLanguages<T>(): Promise<T>
     getModels<T>(): Promise<T>
 }

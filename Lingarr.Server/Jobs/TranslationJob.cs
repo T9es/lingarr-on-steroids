@@ -10,6 +10,7 @@ using Lingarr.Server.Models.FileSystem;
 using Lingarr.Server.Services;
 using Lingarr.Server.Extensions;
 using Lingarr.Server.Services.Subtitle;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Extensions;
 using SubtitleValidationOptions = Lingarr.Server.Models.SubtitleValidationOptions;
@@ -674,6 +675,7 @@ public class TranslationJob
                 effectiveCancellationToken);
             request.TranslatedSubtitle = writtenOutput.PrimaryPath;
             request.GeneratedOutputFormats = writtenOutput.GeneratedFormats;
+            request.GeneratedSubtitlePaths = JsonSerializer.Serialize(writtenOutput.OutputPaths);
             AddRequestLog(
                 "Information",
                 $"Translation completed successfully and subtitle file was written to: {writtenOutput.PrimaryPath}");

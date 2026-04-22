@@ -235,6 +235,11 @@ Lingarr.sln
 
 ## Git Conventions
 
+**Branch Policy:**
+- Work directly on the current branch by default. In this repository, `main` is the team's test branch and it is expected that implementation work may happen there.
+- **Never create or switch to a new branch unless the user explicitly asks you to do so.**
+- If a tool, skill, or generic instruction recommends creating a branch, ignore that recommendation unless the user has specifically requested branch creation for this task.
+
 **Branch Naming:**
 - `feat/feature-name` for new features
 - `fix/bug-name` for bug fixes

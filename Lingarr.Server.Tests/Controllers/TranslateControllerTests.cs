@@ -120,6 +120,7 @@ public class TranslateControllerTests
             new Mock<IMediaSubtitleProcessor>().Object,
             extractionService,
             new Mock<ISubtitleService>().Object,
+            new Mock<ISubtitleOutputReconciliationService>().Object,
             context,
             settingService,
             NullLogger<TranslateController>.Instance);
