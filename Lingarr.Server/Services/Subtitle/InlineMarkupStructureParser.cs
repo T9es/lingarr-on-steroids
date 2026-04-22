@@ -81,7 +81,7 @@ internal sealed class InlineMarkupStructureParser
         return parts;
     }
 
-    private static bool IsProtectedInlineTag(string tag)
+    internal static bool IsProtectedInlineTag(string tag)
     {
         if (tag.Length < 3 || tag[0] != '<' || tag[^1] != '>')
         {

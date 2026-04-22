@@ -7,6 +7,17 @@ internal sealed class AssTextStructureParser
 {
     private static readonly Regex DrawingModeRegex = new(@"\\p(-?\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex KaraokeRegex = new(@"\\k[fo]?\d+|\\K\d+|\\kt\d+", RegexOptions.Compiled);
+    private static readonly Regex OverrideBlockRegex = new(@"\{\\[^}]*\}", RegexOptions.Compiled);
+    private static readonly Regex AssEscapeRegex = new(@"\\[Nnh]", RegexOptions.Compiled);
+
+    internal static bool ContainsAssSyntax(IReadOnlyList<string> lines)
+    {
+        return lines.Any(line =>
+            OverrideBlockRegex.IsMatch(line) ||
+            AssEscapeRegex.IsMatch(line) ||
+            DrawingModeRegex.IsMatch(line) ||
+            KaraokeRegex.IsMatch(line));
+    }
 
     public List<SubtitleTextLine> Parse(IReadOnlyList<string> lines)
     {
@@ -118,6 +129,34 @@ internal sealed class AssTextStructureParser
                     index++;
                     continue;
                 }
+            }
+
+            if (current == '<')
+            {
+                var closing = line.IndexOf('>', index + 1);
+                if (closing < 0)
+                {
+                    builder.Append(current);
+                    continue;
+                }
+
+                var tag = line[index..(closing + 1)];
+                if (InlineMarkupStructureParser.IsProtectedInlineTag(tag))
+                {
+                    FlushText();
+                    segmentParts.Add(new SubtitleTextPart(
+                        SubtitleTextPartKind.InlineMarkupTag,
+                        tag,
+                        false,
+                        string.Empty));
+                }
+                else
+                {
+                    builder.Append(tag);
+                }
+
+                index = closing;
+                continue;
             }
 
             builder.Append(current);

@@ -314,4 +314,63 @@ public class SubtitleTranslationServiceTests
         Assert.Equal("{\\an7\\pos(100,200)}z", result[0].TranslatedLines[0]);
         translationServiceMock.VerifyNoOtherCalls();
     }
+
+    [Fact]
+    public async Task ProcessSubtitleBatch_WhenPlainSubtitleContainsAssSyntax_UsesVisibleInputOnly()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var loggerMock = new Mock<ILogger>();
+        var batchServiceMock = new Mock<IBatchTranslationService>();
+        List<BatchSubtitleItem>? capturedBatchItems = null;
+
+        batchServiceMock
+            .Setup(service => service.TranslateBatchAsync(
+                It.IsAny<List<BatchSubtitleItem>>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .Callback((List<BatchSubtitleItem> batch, string _, string _, List<string>? _, List<string>? _, CancellationToken _) =>
+            {
+                capturedBatchItems = batch;
+            })
+            .ReturnsAsync(new Dictionary<int, string>
+            {
+                [1] = "Przetlumaczony napis"
+            });
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            loggerMock.Object,
+            Mock.Of<IProgressService>());
+
+        var currentBatch = new List<SubtitleItem>
+        {
+            new()
+            {
+                Position = 1,
+                Lines = ["{\\an7\\pos(100,200)}A sign"],
+                PlaintextLines = ["A sign"]
+            }
+        };
+
+        await service.ProcessSubtitleBatch(
+            currentBatch,
+            batchServiceMock.Object,
+            sourceLanguage: "en",
+            targetLanguage: "pl",
+            stripSubtitleFormatting: false,
+            preserveAssFormatting: false,
+            cancellationToken: CancellationToken.None);
+
+        Assert.NotNull(capturedBatchItems);
+        Assert.Single(capturedBatchItems!);
+        Assert.Equal("A sign", capturedBatchItems![0].Line);
+        Assert.DoesNotContain("{", capturedBatchItems[0].Line, StringComparison.Ordinal);
+        Assert.DoesNotContain("\\an", capturedBatchItems[0].Line, StringComparison.Ordinal);
+        Assert.DoesNotContain("\\pos", capturedBatchItems[0].Line, StringComparison.Ordinal);
+        Assert.Single(currentBatch[0].TranslatedLines);
+        Assert.Equal("{\\an7\\pos(100,200)}Przetlumaczony napis", currentBatch[0].TranslatedLines[0]);
+    }
 }

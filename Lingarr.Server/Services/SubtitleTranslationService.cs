@@ -714,7 +714,7 @@ public class SubtitleTranslationService
             return new SubtitleTextStructure(SubtitleStructureMode.PlainText, sourceLines, plainLines);
         }
 
-        if (IsAssSubtitle(subtitle))
+        if (IsAssSubtitle(subtitle) || AssTextStructureParser.ContainsAssSyntax(sourceLines))
         {
             var assLines = new AssTextStructureParser().Parse(sourceLines);
             return new SubtitleTextStructure(SubtitleStructureMode.Ass, sourceLines, assLines);

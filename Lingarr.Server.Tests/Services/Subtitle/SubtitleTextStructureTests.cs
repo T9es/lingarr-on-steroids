@@ -250,6 +250,33 @@ public class SubtitleTextStructureTests
     }
 
     [Fact]
+    public void AssInlineMarkup_ShouldProtectInlineAndAssTagsFromProvider()
+    {
+        var sourceLines = new List<string> { "<font color=\"#fff\">{\\an7}Hello</font>" };
+        var structure = BuildAssStructure(sourceLines);
+
+        Assert.Equal("Hello", structure.ProviderVisibleText);
+        Assert.DoesNotContain("<font", structure.ProviderVisibleText, StringComparison.Ordinal);
+        Assert.DoesNotContain("{\\an7}", structure.ProviderVisibleText, StringComparison.Ordinal);
+
+        var translated = structure.ApplyProviderTranslation("Czesc");
+        Assert.Single(translated);
+        Assert.Equal("<font color=\"#fff\">{\\an7}Czesc</font>", translated[0]);
+    }
+
+    [Fact]
+    public void AssInlineMarkup_ShouldKeepUnknownAngleBracketTextVisible()
+    {
+        var sourceLines = new List<string> { "{\\an8}Math says <foo>2 < 3</foo>" };
+        var structure = BuildAssStructure(sourceLines);
+
+        Assert.Contains("<foo>", structure.ProviderVisibleText, StringComparison.Ordinal);
+        Assert.Contains("</foo>", structure.ProviderVisibleText, StringComparison.Ordinal);
+        Assert.Contains("< 3", structure.ProviderVisibleText, StringComparison.Ordinal);
+        Assert.DoesNotContain("{\\an8}", structure.ProviderVisibleText, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void VttTimestampTag_ShouldBeProtected()
     {
         var sourceLines = new List<string> { "Go <00:01:02.300> now" };
@@ -392,6 +419,69 @@ public class SubtitleTextStructureTests
         Assert.Equal("A sign", capturedInput);
         Assert.Single(subtitles[0].TranslatedLines);
         Assert.Equal("{\\an8}Przetlumaczony napis", subtitles[0].TranslatedLines[0]);
+    }
+
+    [Fact]
+    public async Task SingleFlow_WhenPlainSubtitleContainsAssSyntax_ShouldUseVisibleTextAndReconstructTags()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var loggerMock = new Mock<ILogger>();
+        var progressServiceMock = new Mock<IProgressService>();
+        string? capturedInput = null;
+
+        translationServiceMock
+            .Setup(service => service.TranslateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .Callback((string input, string _, string _, List<string>? _, List<string>? _, CancellationToken _) =>
+            {
+                capturedInput = input;
+            })
+            .ReturnsAsync("Czesc");
+
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            loggerMock.Object,
+            progressServiceMock.Object);
+
+        var subtitles = new List<SubtitleItem>
+        {
+            new()
+            {
+                Position = 1,
+                Lines = ["{\\an8}Hello"],
+                PlaintextLines = ["Hello"]
+            }
+        };
+
+        await service.TranslateSubtitles(
+            subtitles,
+            new TranslationRequest
+            {
+                Id = 1,
+                Title = "Episode",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                MediaType = Lingarr.Core.Enum.MediaType.Show,
+                Status = Lingarr.Core.Enum.TranslationStatus.Pending
+            },
+            stripSubtitleFormatting: false,
+            contextBefore: 0,
+            contextAfter: 0,
+            preserveAssFormatting: false,
+            cancellationToken: CancellationToken.None);
+
+        Assert.Equal("Hello", capturedInput);
+        Assert.Single(subtitles[0].TranslatedLines);
+        Assert.Equal("{\\an8}Czesc", subtitles[0].TranslatedLines[0]);
     }
 
     [Fact]
