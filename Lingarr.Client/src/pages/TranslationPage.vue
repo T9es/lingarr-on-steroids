@@ -84,30 +84,44 @@
                                 v-for="item in inProgressRequests"
                                 :key="`active-${item.id}`"
                                 class="border-secondary/40 bg-tertiary flex flex-col gap-2 rounded-md border px-3 py-2 md:flex-row md:items-center md:justify-between">
-                                <div class="space-y-1">
-                                    <div class="flex items-center gap-2">
-                                        <span class="font-semibold">
-                                            {{ item.title }}
-                                        </span>
-                                        <BadgeComponent
-                                            v-if="item.isPriority"
-                                            classes="border-accent bg-accent text-xs text-primary-content">
-                                            {{ translate('translations.priority') }}
-                                        </BadgeComponent>
-                                        <BadgeComponent
-                                            classes="border-accent/30 bg-secondary text-xs text-primary-content/80">
-                                            {{ getWorkloadLabel(item.workloadKind) }}
-                                        </BadgeComponent>
-                                        <BadgeComponent
-                                            v-if="getWorkloadSourceLabel(item)"
-                                            classes="border-accent/20 bg-secondary text-xs text-primary-content/70">
-                                            {{ getWorkloadSourceLabel(item) }}
-                                        </BadgeComponent>
-                                        <BadgeComponent
-                                            classes="text-primary-content border-accent bg-secondary text-xs">
-                                            {{ item.sourceLanguage.toUpperCase() }} →
-                                            {{ item.targetLanguage.toUpperCase() }}
-                                        </BadgeComponent>
+                                <div class="min-w-0 space-y-1">
+                                    <div class="flex min-w-0 flex-wrap items-center gap-2 md:flex-nowrap">
+                                        <div class="min-w-0 flex-1 overflow-hidden">
+                                            <span
+                                                v-if="item.mediaType === MEDIA_TYPE.EPISODE"
+                                                v-show-title
+                                                class="block min-w-0 flex-1 cursor-help font-semibold"
+                                                :title="item.title">
+                                                {{ item.title }}
+                                            </span>
+                                            <span
+                                                v-else
+                                                class="block min-w-0 truncate font-semibold"
+                                                :title="item.title">
+                                                {{ item.title }}
+                                            </span>
+                                        </div>
+                                        <div class="flex shrink-0 flex-wrap items-center gap-2">
+                                            <BadgeComponent
+                                                v-if="item.isPriority"
+                                                classes="border-accent bg-accent text-xs text-primary-content">
+                                                {{ translate('translations.priority') }}
+                                            </BadgeComponent>
+                                            <BadgeComponent
+                                                classes="border-accent/30 bg-secondary text-xs text-primary-content/80">
+                                                {{ getWorkloadLabel(item.workloadKind) }}
+                                            </BadgeComponent>
+                                            <BadgeComponent
+                                                v-if="getWorkloadSourceLabel(item)"
+                                                classes="border-accent/20 bg-secondary text-xs text-primary-content/70">
+                                                {{ getWorkloadSourceLabel(item) }}
+                                            </BadgeComponent>
+                                            <BadgeComponent
+                                                classes="text-primary-content border-accent bg-secondary text-xs">
+                                                {{ item.sourceLanguage.toUpperCase() }} →
+                                                {{ item.targetLanguage.toUpperCase() }}
+                                            </BadgeComponent>
+                                        </div>
                                     </div>
                                     <div class="text-secondary-content text-xs">
                                         <TranslationStatus :translation-status="item.status" />
@@ -173,25 +187,39 @@
                                 v-for="item in failedRequests"
                                 :key="`failed-${item.id}`"
                                 class="border-secondary/40 bg-tertiary flex flex-col gap-2 rounded-md border px-3 py-2 md:flex-row md:items-center md:justify-between">
-                                <div>
-                                    <div class="flex items-center gap-2">
-                                        <span class="font-semibold">
-                                            {{ item.title }}
-                                        </span>
-                                        <BadgeComponent
-                                            v-if="item.isPriority"
-                                            classes="border-accent bg-accent text-xs text-primary-content">
-                                            {{ translate('translations.priority') }}
-                                        </BadgeComponent>
-                                        <BadgeComponent
-                                            classes="border-accent/30 bg-secondary text-xs text-primary-content/80">
-                                            {{ getWorkloadLabel(item.workloadKind) }}
-                                        </BadgeComponent>
-                                        <BadgeComponent
-                                            v-if="getWorkloadSourceLabel(item)"
-                                            classes="border-accent/20 bg-secondary text-xs text-primary-content/70">
-                                            {{ getWorkloadSourceLabel(item) }}
-                                        </BadgeComponent>
+                                <div class="min-w-0">
+                                    <div class="flex min-w-0 flex-wrap items-center gap-2 md:flex-nowrap">
+                                        <div class="min-w-0 flex-1 overflow-hidden">
+                                            <span
+                                                v-if="item.mediaType === MEDIA_TYPE.EPISODE"
+                                                v-show-title
+                                                class="block min-w-0 flex-1 cursor-help font-semibold"
+                                                :title="item.title">
+                                                {{ item.title }}
+                                            </span>
+                                            <span
+                                                v-else
+                                                class="block min-w-0 truncate font-semibold"
+                                                :title="item.title">
+                                                {{ item.title }}
+                                            </span>
+                                        </div>
+                                        <div class="flex shrink-0 flex-wrap items-center gap-2">
+                                            <BadgeComponent
+                                                v-if="item.isPriority"
+                                                classes="border-accent bg-accent text-xs text-primary-content">
+                                                {{ translate('translations.priority') }}
+                                            </BadgeComponent>
+                                            <BadgeComponent
+                                                classes="border-accent/30 bg-secondary text-xs text-primary-content/80">
+                                                {{ getWorkloadLabel(item.workloadKind) }}
+                                            </BadgeComponent>
+                                            <BadgeComponent
+                                                v-if="getWorkloadSourceLabel(item)"
+                                                classes="border-accent/20 bg-secondary text-xs text-primary-content/70">
+                                                {{ getWorkloadSourceLabel(item) }}
+                                            </BadgeComponent>
+                                        </div>
                                     </div>
                                     <div class="mt-1 flex flex-wrap items-center gap-2 text-xs">
                                         <BadgeComponent
@@ -325,31 +353,38 @@
                                     <span :id="`deletable-${item.id}`" class="font-bold md:hidden">
                                         {{ translate('translations.title') }}:&nbsp;
                                     </span>
-                                    <div class="flex items-center gap-2">
-                                        <span
-                                            v-if="item.mediaType === MEDIA_TYPE.EPISODE"
-                                            v-show-title
-                                            class="block cursor-help"
-                                            :title="item.title">
-                                            {{ item.title }}
-                                        </span>
-                                        <span v-else>
-                                            {{ item.title }}
-                                        </span>
-                                        <BadgeComponent
-                                            v-if="item.isPriority"
-                                            classes="border-accent bg-accent text-xs text-primary-content">
-                                            {{ translate('translations.priority') }}
-                                        </BadgeComponent>
-                                        <BadgeComponent
-                                            classes="border-accent/30 bg-secondary text-xs text-primary-content/80">
-                                            {{ getWorkloadLabel(item.workloadKind) }}
-                                        </BadgeComponent>
-                                        <BadgeComponent
-                                            v-if="getWorkloadSourceLabel(item)"
-                                            classes="border-accent/20 bg-secondary text-xs text-primary-content/70">
-                                            {{ getWorkloadSourceLabel(item) }}
-                                        </BadgeComponent>
+                                    <div class="flex min-w-0 flex-wrap items-center gap-2 md:flex-nowrap">
+                                        <div class="min-w-0 flex-1 overflow-hidden">
+                                            <span
+                                                v-if="item.mediaType === MEDIA_TYPE.EPISODE"
+                                                v-show-title
+                                                class="block min-w-0 flex-1 cursor-help"
+                                                :title="item.title">
+                                                {{ item.title }}
+                                            </span>
+                                            <span
+                                                v-else
+                                                class="block min-w-0 truncate"
+                                                :title="item.title">
+                                                {{ item.title }}
+                                            </span>
+                                        </div>
+                                        <div class="flex shrink-0 flex-wrap items-center gap-2">
+                                            <BadgeComponent
+                                                v-if="item.isPriority"
+                                                classes="border-accent bg-accent text-xs text-primary-content">
+                                                {{ translate('translations.priority') }}
+                                            </BadgeComponent>
+                                            <BadgeComponent
+                                                classes="border-accent/30 bg-secondary text-xs text-primary-content/80">
+                                                {{ getWorkloadLabel(item.workloadKind) }}
+                                            </BadgeComponent>
+                                            <BadgeComponent
+                                                v-if="getWorkloadSourceLabel(item)"
+                                                classes="border-accent/20 bg-secondary text-xs text-primary-content/70">
+                                                {{ getWorkloadSourceLabel(item) }}
+                                            </BadgeComponent>
+                                        </div>
                                     </div>
                                 </div>
                                 <div class="mb-2 md:col-span-1 md:mb-0 md:px-4 md:py-2">
