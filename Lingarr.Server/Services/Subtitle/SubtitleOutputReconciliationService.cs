@@ -222,6 +222,22 @@ public class SubtitleOutputReconciliationService : ISubtitleOutputReconciliation
             response.SkippedUnsafeFiles += backfillResult.BackfillSkippedFiles;
             response.Errors.AddRange(backfillResult.Errors);
 
+            var refreshedSubtitles = await _subtitleService.GetAllSubtitles(media.Path);
+            var refreshedMatchingSubtitles = FilterMatchingSubtitles(media.FileName, refreshedSubtitles);
+            var shouldQueueRetranslation = backfillResult.RequiresRetranslation
+                                          || await HasMissingManagedOutputsAsync(
+                                              media.Id,
+                                              mediaType,
+                                              refreshedMatchingSubtitles,
+                                              subtitleOutputMode,
+                                              subtitleTag,
+                                              subtitleTagShort,
+                                              cancellationToken);
+            if (!shouldQueueRetranslation)
+            {
+                return;
+            }
+
             var hasActiveRequests = await HasActiveRequestsAsync(media.Id, mediaType, cancellationToken);
             var queued = await _mediaSubtitleProcessor.ProcessMediaForceAsync(
                 media,
@@ -448,6 +464,102 @@ public class SubtitleOutputReconciliationService : ISubtitleOutputReconciliation
                            && request.MediaType == mediaType
                            && request.IsActive == true,
                 cancellationToken);
+    }
+
+    private async Task<bool> HasMissingManagedOutputsAsync(
+        int mediaId,
+        MediaType mediaType,
+        IReadOnlyCollection<Subtitles> matchingSubtitles,
+        SubtitleOutputMode subtitleOutputMode,
+        string subtitleTag,
+        string subtitleTagShort,
+        CancellationToken cancellationToken)
+    {
+        var completedRequests = await _dbContext.TranslationRequests
+            .Where(request => request.WorkloadKind == TranslationWorkloadKind.Library)
+            .Where(request => request.MediaId == mediaId && request.MediaType == mediaType)
+            .Where(request => request.Status == TranslationStatus.Completed)
+            .ToListAsync(cancellationToken);
+
+        if (completedRequests.Count == 0)
+        {
+            return true;
+        }
+
+        foreach (var request in completedRequests)
+        {
+            var targetLanguage = SubtitleLanguageHelper.NormalizeLanguageCode(request.TargetLanguage);
+            if (string.IsNullOrWhiteSpace(targetLanguage))
+            {
+                continue;
+            }
+
+            var sourceFormat = SubtitleOutputModeHelper.NormalizeFormat(
+                !string.IsNullOrWhiteSpace(request.SourceSubtitleFormat)
+                    ? request.SourceSubtitleFormat
+                    : Path.GetExtension(request.SubtitleToTranslate));
+            var desiredFormats = SubtitleOutputModeHelper.GetRequiredOutputFormats(sourceFormat, subtitleOutputMode);
+
+            foreach (var desiredFormat in desiredFormats)
+            {
+                if (!HasManagedOutputForRequest(
+                        request,
+                        targetLanguage,
+                        desiredFormat,
+                        matchingSubtitles,
+                        subtitleTag,
+                        subtitleTagShort))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasManagedOutputForRequest(
+        TranslationRequest request,
+        string targetLanguage,
+        string desiredFormat,
+        IReadOnlyCollection<Subtitles> matchingSubtitles,
+        string subtitleTag,
+        string subtitleTagShort)
+    {
+        var normalizedDesiredFormat = SubtitleOutputModeHelper.NormalizeFormat(desiredFormat);
+
+        foreach (var path in GetKnownGeneratedPaths(request))
+        {
+            var pathFormat = SubtitleOutputModeHelper.NormalizeFormat(Path.GetExtension(path));
+            if (!string.Equals(pathFormat, normalizedDesiredFormat, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (File.Exists(path))
+            {
+                return true;
+            }
+        }
+
+        return matchingSubtitles.Any(subtitle =>
+        {
+            var subtitleLanguage = SubtitleLanguageHelper.NormalizeLanguageCode(subtitle.Language);
+            if (!SubtitleLanguageHelper.LanguageMatches(subtitleLanguage, targetLanguage))
+            {
+                return false;
+            }
+
+            var subtitleFormat = SubtitleOutputModeHelper.NormalizeFormat(
+                !string.IsNullOrWhiteSpace(subtitle.Format) ? subtitle.Format : Path.GetExtension(subtitle.Path));
+            if (!string.Equals(subtitleFormat, normalizedDesiredFormat, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return string.Equals(subtitle.Path, request.TranslatedSubtitle, StringComparison.OrdinalIgnoreCase)
+                   || HasLingarrTag(subtitle.Path, subtitleTag, subtitleTagShort);
+        });
     }
 
     private static List<Subtitles> FilterMatchingSubtitles(string mediaFileName, IEnumerable<Subtitles> subtitles)

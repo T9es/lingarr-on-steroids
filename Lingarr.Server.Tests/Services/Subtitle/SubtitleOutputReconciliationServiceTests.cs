@@ -156,7 +156,7 @@ public class SubtitleOutputReconciliationServiceTests
         var service = BuildServiceWithRealSubtitleService(
             context,
             subtitleOutputMode: "both",
-            queuedTranslations: 0);
+            queuedTranslations: 1);
 
         var result = await service.ReconcileLibraryOutputsAsync();
         var srtPath = Path.Combine(tempDirectory.Path, "movie.pl.lingarr.srt");
@@ -369,7 +369,7 @@ public class SubtitleOutputReconciliationServiceTests
         var service = BuildServiceWithRealSubtitleService(
             context,
             subtitleOutputMode: "both",
-            queuedTranslations: 0,
+            queuedTranslations: 1,
             sourceSnapshotService: sourceSnapshotService.Object,
             extractionService: extractionService.Object);
 
@@ -379,6 +379,7 @@ public class SubtitleOutputReconciliationServiceTests
 
         Assert.Equal(1, result.BackfilledFiles);
         Assert.Equal(1, result.BackfilledFromEmbeddedSourceFiles);
+        Assert.Equal(0, result.QueuedTranslations);
         Assert.Equal(0, result.QueuedForRetranslation);
         Assert.Contains(@"{\an7}Czesc", ass);
         extractionService.Verify(
