@@ -170,6 +170,45 @@ public class SubtitleOutputReconciliationServiceTests
     }
 
     [Fact]
+    public async Task ReconcileLibraryOutputsAsync_BackfillsMissingKnownSrtEvenWhenLegacyManagedSrtExists()
+    {
+        await using var context = BuildContext();
+        using var tempDirectory = new TemporaryDirectory();
+        var movie = AddMovie(context, tempDirectory.Path);
+        var sourceAssPath = Path.Combine(tempDirectory.Path, "movie.en.ass");
+        var translatedAssPath = Path.Combine(tempDirectory.Path, "movie.pl.lingarr.ass");
+        var expectedSrtPath = Path.Combine(tempDirectory.Path, "movie.pl.lingarr.srt");
+        var legacySrtPath = Path.Combine(tempDirectory.Path, "movie.en.pl.lingarr.srt");
+        await File.WriteAllTextAsync(sourceAssPath, BuildAssContent("{\\an7}Hello"));
+        await File.WriteAllTextAsync(translatedAssPath, BuildAssContent("{\\an7}Czesc"));
+        await File.WriteAllTextAsync(legacySrtPath, BuildSrtContent("Legacy text"));
+        AddCompletedRequest(
+            context,
+            movie.Id,
+            ".ass",
+            ".ass,.srt",
+            translatedAssPath,
+            JsonSerializer.Serialize(new[] { translatedAssPath, expectedSrtPath }),
+            sourceAssPath);
+        await context.SaveChangesAsync();
+
+        var service = BuildServiceWithRealSubtitleService(
+            context,
+            subtitleOutputMode: "both",
+            queuedTranslations: 0);
+
+        var result = await service.ReconcileLibraryOutputsAsync();
+        var expectedSrt = await File.ReadAllTextAsync(expectedSrtPath);
+        var legacySrt = await File.ReadAllTextAsync(legacySrtPath);
+
+        Assert.Equal(1, result.BackfilledFiles);
+        Assert.Equal(0, result.QueuedTranslations);
+        Assert.True(File.Exists(expectedSrtPath));
+        Assert.Contains("Czesc", expectedSrt);
+        Assert.Contains("Legacy text", legacySrt);
+    }
+
+    [Fact]
     public async Task ReconcileLibraryOutputsAsync_BackfillsMissingAssFromSourceAssAndTranslatedSrtWhenCountsMatch()
     {
         await using var context = BuildContext();
@@ -202,6 +241,45 @@ public class SubtitleOutputReconciliationServiceTests
         Assert.Equal(0, result.QueuedTranslations);
         Assert.Contains("Dialogue: Marked=0,0:00:01.00,0:00:03.00,Sign", ass);
         Assert.Contains(@"{\an7}Czesc", ass);
+    }
+
+    [Fact]
+    public async Task ReconcileLibraryOutputsAsync_BackfillsMissingKnownAssEvenWhenLegacyManagedAssExists()
+    {
+        await using var context = BuildContext();
+        using var tempDirectory = new TemporaryDirectory();
+        var movie = AddMovie(context, tempDirectory.Path);
+        var sourceAssPath = Path.Combine(tempDirectory.Path, "movie.en.ass");
+        var translatedSrtPath = Path.Combine(tempDirectory.Path, "movie.pl.lingarr.srt");
+        var expectedAssPath = Path.Combine(tempDirectory.Path, "movie.pl.lingarr.ass");
+        var legacyAssPath = Path.Combine(tempDirectory.Path, "movie.en.pl.lingarr.ass");
+        await File.WriteAllTextAsync(sourceAssPath, BuildAssContent("{\\an7}Hello"));
+        await File.WriteAllTextAsync(translatedSrtPath, BuildSrtContent("Czesc"));
+        await File.WriteAllTextAsync(legacyAssPath, BuildAssContent("Legacy text"));
+        AddCompletedRequest(
+            context,
+            movie.Id,
+            ".ass",
+            ".ass,.srt",
+            translatedSrtPath,
+            JsonSerializer.Serialize(new[] { expectedAssPath, translatedSrtPath }),
+            sourceAssPath);
+        await context.SaveChangesAsync();
+
+        var service = BuildServiceWithRealSubtitleService(
+            context,
+            subtitleOutputMode: "both",
+            queuedTranslations: 0);
+
+        var result = await service.ReconcileLibraryOutputsAsync();
+        var expectedAss = await File.ReadAllTextAsync(expectedAssPath);
+        var legacyAss = await File.ReadAllTextAsync(legacyAssPath);
+
+        Assert.Equal(1, result.BackfilledFiles);
+        Assert.Equal(0, result.QueuedTranslations);
+        Assert.True(File.Exists(expectedAssPath));
+        Assert.Contains(@"{\an7}Czesc", expectedAss);
+        Assert.Contains("Legacy text", legacyAss);
     }
 
     [Fact]

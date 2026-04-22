@@ -557,6 +557,23 @@ public class SubtitleOutputBackfillService : ISubtitleOutputBackfillService
             return false;
         }
 
+        var normalizedOutputFormat = SubtitleOutputModeHelper.NormalizeFormat(outputFormat);
+        foreach (var knownPath in GetKnownGeneratedPaths(request)
+                     .Where(path => SubtitleOutputModeHelper.NormalizeFormat(Path.GetExtension(path))
+                         .Equals(normalizedOutputFormat, StringComparison.OrdinalIgnoreCase)))
+        {
+            if (IsSourcePath(knownPath, request.SubtitleToTranslate))
+            {
+                continue;
+            }
+
+            if (!File.Exists(knownPath) || IsLingarrManagedPath(knownPath, request, subtitleTag, subtitleTagShort))
+            {
+                outputPath = knownPath;
+                return true;
+            }
+        }
+
         foreach (var candidate in _subtitleService.CreateFallbackPaths(
                      sourcePath,
                      request.TargetLanguage,
@@ -582,14 +599,19 @@ public class SubtitleOutputBackfillService : ISubtitleOutputBackfillService
         string subtitleTagShort)
     {
         var normalizedFormat = SubtitleOutputModeHelper.NormalizeFormat(format);
-        var knownPath = GetKnownGeneratedPaths(request)
-            .FirstOrDefault(path =>
-                File.Exists(path) &&
-                SubtitleOutputModeHelper.NormalizeFormat(Path.GetExtension(path))
-                    .Equals(normalizedFormat, StringComparison.OrdinalIgnoreCase));
+        var knownPaths = GetKnownGeneratedPaths(request)
+            .Where(path => SubtitleOutputModeHelper.NormalizeFormat(Path.GetExtension(path))
+                .Equals(normalizedFormat, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        var knownPath = knownPaths.FirstOrDefault(File.Exists);
         if (!string.IsNullOrWhiteSpace(knownPath))
         {
             return knownPath;
+        }
+
+        if (knownPaths.Count > 0)
+        {
+            return null;
         }
 
         var targetLanguage = SubtitleLanguageHelper.NormalizeLanguageCode(request.TargetLanguage);
@@ -622,6 +644,15 @@ public class SubtitleOutputBackfillService : ISubtitleOutputBackfillService
                 && fileName.Contains(subtitleTag, StringComparison.OrdinalIgnoreCase))
                || (!string.IsNullOrWhiteSpace(subtitleTagShort)
                    && fileName.Contains(subtitleTagShort, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsSourcePath(string path, string? sourcePath)
+    {
+        return !string.IsNullOrWhiteSpace(sourcePath) &&
+               string.Equals(
+                   Path.GetFullPath(path),
+                   Path.GetFullPath(sourcePath),
+                   StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool SourceRequiresBothOutputs(TranslationRequest request)
