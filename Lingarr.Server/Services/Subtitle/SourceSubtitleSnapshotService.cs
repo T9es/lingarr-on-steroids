@@ -65,7 +65,13 @@ public class SourceSubtitleSnapshotService : ISourceSubtitleSnapshotService
             return null;
         }
 
-        var bestEmbeddedMatch = SubtitleLanguageHelper.FindBestMatch(textBasedEmbedded, configuredSourceLanguages);
+        var contentScoreAdjustments = await BuildEmbeddedContentScoreAdjustmentsAsync(
+            textBasedEmbedded,
+            cancellationToken);
+        var bestEmbeddedMatch = SubtitleLanguageHelper.FindBestMatch(
+            textBasedEmbedded,
+            configuredSourceLanguages,
+            subtitle => contentScoreAdjustments.GetValueOrDefault(subtitle.StreamIndex));
         if (bestEmbeddedMatch.Subtitle == null || string.IsNullOrWhiteSpace(bestEmbeddedMatch.MatchedLanguage))
         {
             return null;
@@ -448,6 +454,60 @@ public class SourceSubtitleSnapshotService : ISourceSubtitleSnapshotService
         var sourceFormat = ResolveSourceFormat(currentSnapshot);
         return SubtitleOutputModeHelper.GetRequiredOutputFormats(sourceFormat, subtitleOutputMode)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private async Task<Dictionary<int, int>> BuildEmbeddedContentScoreAdjustmentsAsync(
+        IReadOnlyCollection<EmbeddedSubtitle> subtitles,
+        CancellationToken cancellationToken)
+    {
+        var adjustments = new Dictionary<int, int>();
+
+        foreach (var subtitle in subtitles)
+        {
+            if (string.IsNullOrWhiteSpace(subtitle.ExtractedPath) || !File.Exists(subtitle.ExtractedPath))
+            {
+                continue;
+            }
+
+            try
+            {
+                var analysis = await AssSubtitleSourceAnalyzer.AnalyzeExtractedSubtitleAsync(
+                    subtitle,
+                    _subtitleService,
+                    cancellationToken);
+                if (analysis == null)
+                {
+                    continue;
+                }
+
+                adjustments[subtitle.StreamIndex] = analysis.ContentScoreAdjustment;
+                if (analysis.IsPathological)
+                {
+                    _logger.LogWarning(
+                        "Embedded subtitle stream {StreamIndex} ({Title}) looks pathological: drawingEvents={DrawingEvents}, translatableEvents={TranslatableEvents}, duplicateRatio={DuplicateRatio:F2}, avgProviderChars={AverageChars:F2}",
+                        subtitle.StreamIndex,
+                        subtitle.Title ?? subtitle.CodecName,
+                        analysis.DrawingEvents,
+                        analysis.TranslatableEvents,
+                        analysis.DuplicateRatio,
+                        analysis.AverageProviderCharsPerTranslatableCue);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(
+                    ex,
+                    "Failed to analyze embedded subtitle stream {StreamIndex} at {ExtractedPath}. Falling back to title-based scoring only.",
+                    subtitle.StreamIndex,
+                    subtitle.ExtractedPath);
+            }
+        }
+
+        return adjustments;
     }
 
     private static HashSet<string> GetRequestCoveredFormats(TranslationRequest request)

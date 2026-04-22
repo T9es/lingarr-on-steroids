@@ -52,7 +52,8 @@ public class TranslationJobTests : IDisposable
         var extractionService = new SubtitleExtractionService(
             NullLogger<SubtitleExtractionService>.Instance,
             _dbContext,
-            _settingServiceMock.Object);
+            _settingServiceMock.Object,
+            subtitleService);
 
         _job = new TranslationJob(
             NullLogger<TranslationJob>.Instance,

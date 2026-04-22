@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
@@ -363,6 +364,105 @@ public class SourceSubtitleSnapshotServiceTests
             if (File.Exists(tempPath))
             {
                 File.Delete(tempPath);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ResolveCurrentSnapshotAsync_ShouldPreferLessPathologicalExtractedEmbeddedTrack()
+    {
+        var dbContext = CreateDbContext();
+        var settingServiceMock = new Mock<ISettingService>();
+        var subtitleServiceMock = new Mock<ISubtitleService>();
+        var firstPath = Path.GetTempFileName();
+        var secondPath = Path.GetTempFileName();
+
+        try
+        {
+            settingServiceMock
+                .Setup(s => s.GetSettingAsJson<SourceLanguage>(SettingKeys.Translation.SourceLanguages))
+                .ReturnsAsync([new SourceLanguage { Name = "English", Code = "en" }]);
+
+            settingServiceMock
+                .Setup(s => s.GetSetting(SettingKeys.Translation.IgnoreCaptions))
+                .ReturnsAsync("false");
+
+            subtitleServiceMock
+                .Setup(service => service.ReadSubtitles(firstPath))
+                .ReturnsAsync(Enumerable.Range(1, 300)
+                    .Select(index => new SubtitleItem
+                    {
+                        Position = index,
+                        Lines = ["{\\an7}Fran"],
+                        PlaintextLines = ["Fran"]
+                    })
+                    .ToList());
+
+            subtitleServiceMock
+                .Setup(service => service.ReadSubtitles(secondPath))
+                .ReturnsAsync(Enumerable.Range(1, 300)
+                    .Select(index => new SubtitleItem
+                    {
+                        Position = index,
+                        Lines = [$"Meaningful line {index}"],
+                        PlaintextLines = [$"Meaningful line {index}"]
+                    })
+                    .ToList());
+
+            var service = new SourceSubtitleSnapshotService(
+                dbContext,
+                settingServiceMock.Object,
+                subtitleServiceMock.Object,
+                NullLogger<SourceSubtitleSnapshotService>.Instance);
+
+            var movie = new Movie
+            {
+                Id = 3,
+                RadarrId = 3,
+                Title = "Movie",
+                Path = "/movies",
+                FileName = "movie.mkv",
+                DateAdded = DateTime.UtcNow
+            };
+
+            var snapshot = await service.ResolveCurrentSnapshotAsync(
+                movie,
+                MediaType.Movie,
+                [
+                    new EmbeddedSubtitle
+                    {
+                        StreamIndex = 0,
+                        Language = "eng",
+                        Title = "Full Subtitles",
+                        CodecName = "ass",
+                        IsTextBased = true,
+                        ExtractedPath = firstPath
+                    },
+                    new EmbeddedSubtitle
+                    {
+                        StreamIndex = 1,
+                        Language = "eng",
+                        Title = "Full Subtitles",
+                        CodecName = "ass",
+                        IsTextBased = true,
+                        ExtractedPath = secondPath
+                    }
+                ]);
+
+            Assert.NotNull(snapshot);
+            Assert.Equal(SourceSubtitleSnapshot.EmbeddedType, snapshot!.SourceType);
+            Assert.Equal(1, snapshot.StreamIndex);
+        }
+        finally
+        {
+            if (File.Exists(firstPath))
+            {
+                File.Delete(firstPath);
+            }
+
+            if (File.Exists(secondPath))
+            {
+                File.Delete(secondPath);
             }
         }
     }

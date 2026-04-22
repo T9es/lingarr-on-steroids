@@ -37,7 +37,8 @@ public class SubtitleExtractionServiceTests : IDisposable
         _service = new SubtitleExtractionService(
             NullLogger<SubtitleExtractionService>.Instance,
             _dbContext,
-            Mock.Of<ISettingService>());
+            Mock.Of<ISettingService>(),
+            Mock.Of<ISubtitleService>());
     }
 
     [Fact]

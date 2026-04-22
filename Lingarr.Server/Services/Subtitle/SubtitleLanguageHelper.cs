@@ -240,7 +240,10 @@ public static class SubtitleLanguageHelper
     /// Scores an embedded subtitle candidate based on language match, title heuristics and flags.
     /// Higher scores indicate better candidates for full dialogue translation.
     /// </summary>
-    public static int ScoreSubtitleCandidate(EmbeddedSubtitle subtitle, string? preferredLanguage)
+    public static int ScoreSubtitleCandidate(
+        EmbeddedSubtitle subtitle,
+        string? preferredLanguage,
+        int contentScoreAdjustment = 0)
     {
         var score = 0;
 
@@ -303,6 +306,7 @@ public static class SubtitleLanguageHelper
             score += 5;
         }
 
+        score += contentScoreAdjustment;
         return score;
     }
     /// <summary>
@@ -323,7 +327,8 @@ public static class SubtitleLanguageHelper
     /// </summary>
     public static (EmbeddedSubtitle? Subtitle, string MatchedLanguage) FindBestMatch(
         List<EmbeddedSubtitle> candidates, 
-        List<string> configuredLanguages)
+        List<string> configuredLanguages,
+        Func<EmbeddedSubtitle, int>? contentScoreAdjustmentSelector = null)
     {
         if (candidates == null || !candidates.Any() || configuredLanguages == null || !configuredLanguages.Any())
         {
@@ -348,7 +353,8 @@ public static class SubtitleLanguageHelper
                 var configuredLanguage = configuredLanguages[i];
                 if (LanguageMatches(candidate.Language, configuredLanguage))
                 {
-                    var baseScore = ScoreSubtitleCandidate(candidate, configuredLanguage);
+                    var contentScoreAdjustment = contentScoreAdjustmentSelector?.Invoke(candidate) ?? 0;
+                    var baseScore = ScoreSubtitleCandidate(candidate, configuredLanguage, contentScoreAdjustment);
                     var totalScore = baseScore;
                     
                     // Apply language priority bonus ONLY if track meets quality threshold

@@ -24,6 +24,7 @@ public class SubtitleExtractionService : ISubtitleExtractionService
     private readonly ILogger<SubtitleExtractionService> _logger;
     private readonly LingarrDbContext _dbContext;
     private readonly ISettingService _settingService;
+    private readonly ISubtitleService _subtitleService;
 
     // Codecs that are text-based and can be extracted/translated
     private static readonly HashSet<string> TextBasedCodecs = new(StringComparer.OrdinalIgnoreCase)
@@ -67,11 +68,13 @@ public class SubtitleExtractionService : ISubtitleExtractionService
     public SubtitleExtractionService(
         ILogger<SubtitleExtractionService> logger,
         LingarrDbContext dbContext,
-        ISettingService settingService)
+        ISettingService settingService,
+        ISubtitleService subtitleService)
     {
         _logger = logger;
         _dbContext = dbContext;
         _settingService = settingService;
+        _subtitleService = subtitleService;
     }
 
     /// <inheritdoc />
@@ -988,7 +991,9 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 return null;
             }
 
-            // Iterate through candidates to find a valid one
+            var viableCandidates = new List<ExtractedSubtitleCandidate>();
+
+            // Extract readable candidates first, then use content analysis as a second-stage tie-break.
             foreach (var candidate in candidates)
             {
                 // Skip streams that have already been tried
@@ -1006,6 +1011,14 @@ public class SubtitleExtractionService : ISubtitleExtractionService
 
                 try
                 {
+                    var candidateOutputPath = GetExtractedSubtitlePath(
+                        outputDir!,
+                        mediaPath!,
+                        candidate.CodecName,
+                        candidate.Language,
+                        candidate.StreamIndex);
+                    var existedBeforeExtraction = File.Exists(candidateOutputPath);
+
                     // Extract the subtitle
                     var extractedPath = await ExtractSubtitle(
                         mediaPath!,
@@ -1054,16 +1067,28 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                             continue; // Try next candidate
                         }
                         
-                        // Valid subtitle with sufficient entries
-                        candidate.IsExtracted = true;
-                        candidate.ExtractedPath = extractedPath;
-                        await _dbContext.SaveChangesAsync();
+                        var analysis = await AnalyzeExtractedCandidateAsync(candidate, extractedPath);
+                        var score = SubtitleLanguageHelper.ScoreSubtitleCandidate(
+                            candidate,
+                            sourceLanguage,
+                            analysis?.ContentScoreAdjustment ?? 0);
+
+                        viableCandidates.Add(
+                            new ExtractedSubtitleCandidate(
+                                candidate,
+                                extractedPath,
+                                entryCount,
+                                score,
+                                analysis,
+                                existedBeforeExtraction));
 
                         _logger.LogInformation(
-                            "Successfully extracted Stream {StreamIndex} with {Entries} entries to: {Path}",
-                            candidate.StreamIndex, entryCount, extractedPath);
-                        
-                        return extractedPath;
+                            "Successfully extracted Stream {StreamIndex} with {Entries} entries to: {Path}. Content score={Score}, pathological={Pathological}",
+                            candidate.StreamIndex,
+                            entryCount,
+                            extractedPath,
+                            score,
+                            analysis?.IsPathological ?? false);
                     }
                 }
                 catch (Exception ex)
@@ -1071,6 +1096,41 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                     _logger.LogWarning(ex, "Failed to extract candidate Stream {StreamIndex}", candidate.StreamIndex);
                     // Continue to next candidate
                 }
+            }
+
+            if (viableCandidates.Count > 0)
+            {
+                var selectedCandidate = viableCandidates
+                    .OrderByDescending(candidate => candidate.Score)
+                    .ThenBy(candidate => candidate.Subtitle.StreamIndex)
+                    .First();
+                foreach (var discardedCandidate in viableCandidates.Where(candidate => !ReferenceEquals(candidate, selectedCandidate)))
+                {
+                    DeleteDiscardedExtraction(discardedCandidate);
+                }
+
+                selectedCandidate.Subtitle.IsExtracted = true;
+                selectedCandidate.Subtitle.ExtractedPath = selectedCandidate.ExtractedPath;
+                await _dbContext.SaveChangesAsync();
+
+                if (selectedCandidate.Analysis?.IsPathological == true)
+                {
+                    _logger.LogWarning(
+                        "Selected embedded Stream {StreamIndex}, but its ASS content still looks pathological: drawingEvents={DrawingEvents}, duplicateRatio={DuplicateRatio:F2}, avgProviderChars={AverageChars:F2}. Translation batching/dedupe will protect provider calls.",
+                        selectedCandidate.Subtitle.StreamIndex,
+                        selectedCandidate.Analysis.DrawingEvents,
+                        selectedCandidate.Analysis.DuplicateRatio,
+                        selectedCandidate.Analysis.AverageProviderCharsPerTranslatableCue);
+                }
+
+                _logger.LogInformation(
+                    "Selected extracted embedded Stream {StreamIndex} with content-aware score {Score} and {Entries} entries: {Path}",
+                    selectedCandidate.Subtitle.StreamIndex,
+                    selectedCandidate.Score,
+                    selectedCandidate.EntryCount,
+                    selectedCandidate.ExtractedPath);
+
+                return selectedCandidate.ExtractedPath;
             }
             
             _logger.LogWarning("All suitable embedded subtitle candidates failed extraction or were excluded");
@@ -1115,6 +1175,54 @@ public class SubtitleExtractionService : ISubtitleExtractionService
         await _dbContext.SaveChangesAsync();
     }
 
+    private async Task<AssSubtitleSourceAnalysis?> AnalyzeExtractedCandidateAsync(
+        EmbeddedSubtitle candidate,
+        string extractedPath)
+    {
+        var previousExtractedPath = candidate.ExtractedPath;
+        candidate.ExtractedPath = extractedPath;
+
+        try
+        {
+            return await AssSubtitleSourceAnalyzer.AnalyzeExtractedSubtitleAsync(
+                candidate,
+                _subtitleService);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(
+                ex,
+                "Failed to analyze extracted subtitle stream {StreamIndex} at {ExtractedPath}. Falling back to metadata score.",
+                candidate.StreamIndex,
+                extractedPath);
+            return null;
+        }
+        finally
+        {
+            candidate.ExtractedPath = previousExtractedPath;
+        }
+    }
+
+    private void DeleteDiscardedExtraction(ExtractedSubtitleCandidate candidate)
+    {
+        if (candidate.ExistedBeforeExtraction)
+        {
+            return;
+        }
+
+        try
+        {
+            File.Delete(candidate.ExtractedPath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(
+                ex,
+                "Failed to delete discarded extracted subtitle candidate at {ExtractedPath}",
+                candidate.ExtractedPath);
+        }
+    }
+
     /// <summary>
     /// Returns a list of embedded subtitle candidates sorted by suitability for translation.
     /// Prioritizes: text-based > matching source language > full/dialogue tracks > defaults.
@@ -1149,6 +1257,14 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             .Select(x => x.Subtitle)
             .ToList();
     }
+
+    private sealed record ExtractedSubtitleCandidate(
+        EmbeddedSubtitle Subtitle,
+        string ExtractedPath,
+        int EntryCount,
+        int Score,
+        AssSubtitleSourceAnalysis? Analysis,
+        bool ExistedBeforeExtraction);
 
     /// <inheritdoc />
     public async Task<List<AvailableSubtitleResponse>> ListAvailableSubtitlesAsync(int mediaId, MediaType mediaType)

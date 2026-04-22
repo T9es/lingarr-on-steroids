@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Threading;
@@ -372,5 +373,445 @@ public class SubtitleTranslationServiceTests
         Assert.DoesNotContain("\\pos", capturedBatchItems[0].Line, StringComparison.Ordinal);
         Assert.Single(currentBatch[0].TranslatedLines);
         Assert.Equal("{\\an7\\pos(100,200)}Przetlumaczony napis", currentBatch[0].TranslatedLines[0]);
+    }
+
+    [Fact]
+    public async Task TranslateSubtitlesBatch_WhenProviderVisibleTextIsDuplicatedAcrossBatches_SendsOnlyRepresentative()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var batchServiceMock = translationServiceMock.As<IBatchTranslationService>();
+        var loggerMock = new Mock<ILogger>();
+        var progressServiceMock = new Mock<IProgressService>();
+        var capturedBatches = new List<List<BatchSubtitleItem>>();
+
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+
+        batchServiceMock
+            .Setup(service => service.TranslateBatchAsync(
+                It.IsAny<List<BatchSubtitleItem>>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .Callback((List<BatchSubtitleItem> batch, string _, string _, List<string>? _, List<string>? _, CancellationToken _) =>
+            {
+                capturedBatches.Add(batch.Select(item => new BatchSubtitleItem
+                {
+                    Position = item.Position,
+                    Line = item.Line
+                }).ToList());
+            })
+            .ReturnsAsync(new Dictionary<int, string>
+            {
+                [1] = "Franszczu"
+            });
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            loggerMock.Object,
+            progressServiceMock.Object);
+
+        var subtitles = new List<SubtitleItem>
+        {
+            new()
+            {
+                Position = 1,
+                Lines = ["{\\an7}Fran"],
+                PlaintextLines = ["Fran"]
+            },
+            new()
+            {
+                Position = 2,
+                Lines = ["{\\an8}Fran"],
+                PlaintextLines = ["Fran"]
+            }
+        };
+
+        var result = await service.TranslateSubtitlesBatch(
+            subtitles,
+            new TranslationRequest
+            {
+                Id = 100,
+                Title = "Episode",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                MediaType = Lingarr.Core.Enum.MediaType.Show,
+                Status = Lingarr.Core.Enum.TranslationStatus.Pending
+            },
+            stripSubtitleFormatting: false,
+            preserveAssFormatting: false,
+            batchSize: 1,
+            batchRetryMode: "immediate",
+            cancellationToken: CancellationToken.None);
+
+        Assert.Single(capturedBatches);
+        var sentBatch = Assert.Single(capturedBatches[0]);
+        Assert.Equal(1, sentBatch.Position);
+        Assert.Equal("Fran", sentBatch.Line);
+        Assert.Equal("{\\an7}Franszczu", result[0].TranslatedLines[0]);
+        Assert.Equal("{\\an8}Franszczu", result[1].TranslatedLines[0]);
+    }
+
+    [Fact]
+    public async Task TranslateSubtitlesBatch_WhenDedupedBatchContextIsEnabled_UsesOriginalSubtitleIndexes()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var batchServiceMock = translationServiceMock.As<IBatchTranslationService>();
+        var loggerMock = new Mock<ILogger>();
+        var progressServiceMock = new Mock<IProgressService>();
+        var capturedPreContexts = new List<List<string>?>();
+
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+
+        batchServiceMock
+            .Setup(service => service.TranslateBatchAsync(
+                It.IsAny<List<BatchSubtitleItem>>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .Callback((List<BatchSubtitleItem> _, string _, string _, List<string>? preContext, List<string>? _, CancellationToken _) =>
+            {
+                capturedPreContexts.Add(preContext?.ToList());
+            })
+            .ReturnsAsync((List<BatchSubtitleItem> batch, string _, string _, List<string>? _, List<string>? _, CancellationToken _) =>
+                batch.ToDictionary(
+                    item => item.Position,
+                    item => item.Line == "Before" ? "Przed" : "Franszczu"));
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            loggerMock.Object,
+            progressServiceMock.Object);
+
+        var subtitles = new List<SubtitleItem>
+        {
+            new()
+            {
+                Position = 1,
+                Lines = ["{\\p1}m 0 0 l 10 10{\\p0}"],
+                PlaintextLines = [string.Empty],
+                SsaFormat = new SsaFormat { WrapStyle = SsaWrapStyle.None },
+                SsaDialogue = new SsaDialogue { Style = "Draw" }
+            },
+            new()
+            {
+                Position = 2,
+                Lines = ["Before"],
+                PlaintextLines = ["Before"]
+            },
+            new()
+            {
+                Position = 3,
+                Lines = ["{\\an7}Fran"],
+                PlaintextLines = ["Fran"]
+            },
+            new()
+            {
+                Position = 4,
+                Lines = ["{\\an8}Fran"],
+                PlaintextLines = ["Fran"]
+            }
+        };
+
+        await service.TranslateSubtitlesBatch(
+            subtitles,
+            new TranslationRequest
+            {
+                Id = 103,
+                Title = "Episode",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                MediaType = Lingarr.Core.Enum.MediaType.Show,
+                Status = Lingarr.Core.Enum.TranslationStatus.Pending
+            },
+            stripSubtitleFormatting: false,
+            preserveAssFormatting: true,
+            batchSize: 1,
+            batchRetryMode: "immediate",
+            batchContextEnabled: true,
+            batchContextBefore: 1,
+            batchContextAfter: 0,
+            cancellationToken: CancellationToken.None);
+
+        Assert.Equal(2, capturedPreContexts.Count);
+        Assert.Empty(capturedPreContexts[0]!);
+        Assert.Equal(["Before"], capturedPreContexts[1]);
+    }
+
+    [Fact]
+    public async Task TranslateSubtitlesBatch_WhenMostEntriesAreSkippedDrawingEvents_DoesNotSplitProgressIntoEmptyBatches()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var batchServiceMock = translationServiceMock.As<IBatchTranslationService>();
+        var loggerMock = new Mock<ILogger>();
+        var progressServiceMock = new Mock<IProgressService>();
+        var emittedProgress = new List<int>();
+
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Callback((TranslationRequest _, int progress) => emittedProgress.Add(progress))
+            .Returns(Task.CompletedTask);
+
+        batchServiceMock
+            .Setup(service => service.TranslateBatchAsync(
+                It.IsAny<List<BatchSubtitleItem>>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<int, string>
+            {
+                [1] = "Przetlumaczony napis"
+            });
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            loggerMock.Object,
+            progressServiceMock.Object);
+
+        var subtitles = new List<SubtitleItem>
+        {
+            new()
+            {
+                Position = 1,
+                Lines = ["{\\an7}A sign"],
+                PlaintextLines = ["A sign"],
+                SsaFormat = new SsaFormat { WrapStyle = SsaWrapStyle.None },
+                SsaDialogue = new SsaDialogue { Style = "Signs" }
+            },
+            new()
+            {
+                Position = 2,
+                Lines = ["{\\p1}m 0 0 l 10 10{\\p0}"],
+                PlaintextLines = [string.Empty],
+                SsaFormat = new SsaFormat { WrapStyle = SsaWrapStyle.None },
+                SsaDialogue = new SsaDialogue { Style = "Draw" }
+            },
+            new()
+            {
+                Position = 3,
+                Lines = ["{\\p1}m 1 1 l 11 11{\\p0}"],
+                PlaintextLines = [string.Empty],
+                SsaFormat = new SsaFormat { WrapStyle = SsaWrapStyle.None },
+                SsaDialogue = new SsaDialogue { Style = "Draw" }
+            },
+            new()
+            {
+                Position = 4,
+                Lines = ["{\\p1}m 2 2 l 12 12{\\p0}"],
+                PlaintextLines = [string.Empty],
+                SsaFormat = new SsaFormat { WrapStyle = SsaWrapStyle.None },
+                SsaDialogue = new SsaDialogue { Style = "Draw" }
+            }
+        };
+
+        await service.TranslateSubtitlesBatch(
+            subtitles,
+            new TranslationRequest
+            {
+                Id = 101,
+                Title = "Episode",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                MediaType = Lingarr.Core.Enum.MediaType.Show,
+                Status = Lingarr.Core.Enum.TranslationStatus.Pending
+            },
+            stripSubtitleFormatting: false,
+            preserveAssFormatting: true,
+            batchSize: 1,
+            batchRetryMode: "immediate",
+            cancellationToken: CancellationToken.None);
+
+        progressServiceMock.Verify(
+            service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()),
+            Times.Once);
+        Assert.Single(emittedProgress);
+        Assert.Equal(100, emittedProgress[0]);
+    }
+
+    [Fact]
+    public async Task TranslateSubtitlesBatch_WhenDeferredModeHasNoFailures_EmitsFinalProgress()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var batchServiceMock = translationServiceMock.As<IBatchTranslationService>();
+        var loggerMock = new Mock<ILogger>();
+        var progressServiceMock = new Mock<IProgressService>();
+        var deferredRepairServiceMock = new Mock<IDeferredRepairService>();
+        var emittedProgress = new List<int>();
+
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Callback((TranslationRequest _, int progress) => emittedProgress.Add(progress))
+            .Returns(Task.CompletedTask);
+
+        batchServiceMock
+            .Setup(service => service.TranslateBatchAsync(
+                It.IsAny<List<BatchSubtitleItem>>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<int, string>
+            {
+                [1] = "Przetlumaczony napis"
+            });
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            loggerMock.Object,
+            progressServiceMock.Object,
+            Mock.Of<IBatchFallbackService>(),
+            deferredRepairServiceMock.Object);
+
+        await service.TranslateSubtitlesBatch(
+            [
+                new SubtitleItem
+                {
+                    Position = 1,
+                    Lines = ["A sign"],
+                    PlaintextLines = ["A sign"]
+                }
+            ],
+            new TranslationRequest
+            {
+                Id = 104,
+                Title = "Episode",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                MediaType = Lingarr.Core.Enum.MediaType.Show,
+                Status = Lingarr.Core.Enum.TranslationStatus.Pending
+            },
+            stripSubtitleFormatting: false,
+            preserveAssFormatting: false,
+            batchSize: 1,
+            batchRetryMode: "deferred",
+            cancellationToken: CancellationToken.None);
+
+        Assert.Contains(95, emittedProgress);
+        Assert.Equal(100, emittedProgress[^1]);
+    }
+
+    [Fact]
+    public async Task TranslateSubtitlesBatch_WhenDeferredRepairHasDuplicateFailures_RepairsRepresentativeAndFansOut()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var batchServiceMock = translationServiceMock.As<IBatchTranslationService>();
+        var loggerMock = new Mock<ILogger>();
+        var progressServiceMock = new Mock<IProgressService>();
+        var deferredRepairServiceMock = new Mock<IDeferredRepairService>();
+        List<RepairItem>? capturedRepairItems = null;
+
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+
+        batchServiceMock
+            .Setup(service => service.TranslateBatchAsync(
+                It.IsAny<List<BatchSubtitleItem>>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<int, string>());
+
+        deferredRepairServiceMock
+            .Setup(service => service.BuildContextualRepairBatch(
+                It.IsAny<List<RepairItem>>(),
+                It.IsAny<List<SubtitleItem>>(),
+                It.IsAny<int>(),
+                It.IsAny<IReadOnlyDictionary<int, string>>()))
+            .Callback((List<RepairItem> failedItems, List<SubtitleItem> _, int _, IReadOnlyDictionary<int, string> _) =>
+            {
+                capturedRepairItems = failedItems
+                    .Select(item => new RepairItem
+                    {
+                        Position = item.Position,
+                        OriginalLine = item.OriginalLine,
+                        OriginalBatchIndex = item.OriginalBatchIndex
+                    })
+                    .ToList();
+            })
+            .Returns(new ContextualRepairBatch
+            {
+                Items =
+                [
+                    new BatchSubtitleItem { Position = 1, Line = "Fran" }
+                ],
+                FailedPositions = [1],
+                Ranges = [new ContextRange(1, 1)]
+            });
+
+        deferredRepairServiceMock
+            .Setup(service => service.ExecuteRepairAsync(
+                It.IsAny<ContextualRepairBatch>(),
+                It.IsAny<IBatchTranslationService>(),
+                It.IsAny<IBatchFallbackService>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<int, string>
+            {
+                [1] = "Franszczu"
+            });
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            loggerMock.Object,
+            progressServiceMock.Object,
+            Mock.Of<IBatchFallbackService>(),
+            deferredRepairServiceMock.Object);
+
+        var subtitles = new List<SubtitleItem>
+        {
+            new()
+            {
+                Position = 1,
+                Lines = ["{\\an7}Fran"],
+                PlaintextLines = ["Fran"]
+            },
+            new()
+            {
+                Position = 2,
+                Lines = ["{\\an8}Fran"],
+                PlaintextLines = ["Fran"]
+            }
+        };
+
+        var result = await service.TranslateSubtitlesBatch(
+            subtitles,
+            new TranslationRequest
+            {
+                Id = 102,
+                Title = "Episode",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                MediaType = Lingarr.Core.Enum.MediaType.Show,
+                Status = Lingarr.Core.Enum.TranslationStatus.Pending
+            },
+            stripSubtitleFormatting: false,
+            preserveAssFormatting: false,
+            batchSize: 1,
+            batchRetryMode: "deferred",
+            cancellationToken: CancellationToken.None);
+
+        Assert.NotNull(capturedRepairItems);
+        var repairItem = Assert.Single(capturedRepairItems!);
+        Assert.Equal(1, repairItem.Position);
+        Assert.Equal("Fran", repairItem.OriginalLine);
+        Assert.Equal("{\\an7}Franszczu", result[0].TranslatedLines[0]);
+        Assert.Equal("{\\an8}Franszczu", result[1].TranslatedLines[0]);
     }
 }
