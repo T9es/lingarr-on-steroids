@@ -249,6 +249,7 @@ export interface IFilterOptions {
 export interface ILogEntry {
     logLevel: string
     message: string
+    timestamp?: string
     formattedTime: string
     formattedDate: string
     formattedSource: string

@@ -215,6 +215,7 @@ export interface IStatisticsService {
 
 export interface ILogsService {
     getStream(): EventSource
+    getRecent<T>(take?: number): Promise<T>
 }
 
 export interface IDashboardService {

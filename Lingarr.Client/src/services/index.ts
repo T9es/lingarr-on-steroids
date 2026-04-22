@@ -32,7 +32,7 @@ const services = (axios: AxiosStatic): Services => ({
     directory: directoryService(axios),
     uploadWorkspace: uploadWorkspaceService(axios),
     statistics: statisticsService(axios),
-    logs: logsService(),
+    logs: logsService(axios),
     dashboard: dashboardService(axios)
 })
 

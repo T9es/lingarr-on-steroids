@@ -9,6 +9,24 @@ namespace Lingarr.Server.Controllers
     [ApiController]
     public class LogsController : ControllerBase
     {
+        [HttpGet("recent")]
+        public ActionResult GetRecentLogs([FromQuery] int take = 1000)
+        {
+            int clampedTake = Math.Clamp(take, 1, 1000);
+            var logs = InMemoryLogSink.GetRecentLogs(clampedTake).Select(log => new
+            {
+                logLevel = log.LogLevelString,
+                message = log.Message,
+                timestamp = log.Timestamp,
+                category = log.Category,
+                formattedTime = log.FormattedTime,
+                formattedDate = log.FormattedDate,
+                formattedSource = log.FormattedSource
+            });
+
+            return Ok(logs);
+        }
+
         [HttpGet("stream")]
         public async Task GetLogStreamAsync(CancellationToken cancellationToken)
         {

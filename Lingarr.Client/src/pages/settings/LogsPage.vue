@@ -155,8 +155,7 @@ interface ILogEntryNormalized extends ILogEntry {
 }
 
 const DISPLAY_WINDOW_SIZE = 300
-const FLUSH_TIMEOUT_MS = 33
-const RECONNECT_DELAY_MS = 5000
+const POLL_INTERVAL_MS = 500
 
 const logs = ref<ILogEntryNormalized[]>([])
 const pendingLogs = ref<ILogEntryNormalized[]>([])
@@ -169,12 +168,11 @@ const filterOptions = ref<IFilterOptions>({
     logLevel: 'all'
 })
 
-let eventSource: EventSource | null = null
-let reconnectTimer: ReturnType<typeof setTimeout> | null = null
-let rafFlushId: number | null = null
-let fallbackFlushTimer: ReturnType<typeof setTimeout> | null = null
-let logIdCounter = 0
-let incomingLogs: ILogEntryNormalized[] = []
+let pollTimer: ReturnType<typeof setInterval> | null = null
+let isPolling = false
+let lastSnapshotSignature = ''
+let lastPollErrorAt = 0
+const clearedLogKeys = new Set<string>()
 
 const normalizedSearchQuery = computed(() => searchQuery.value.trim().toLowerCase())
 
@@ -224,7 +222,25 @@ const formatLogMessage = (message: string): string => {
     return formattedMessage
 }
 
-const buildNormalizedLogEntry = (log: ILogEntry): ILogEntryNormalized => {
+const buildLogFingerprint = (log: ILogEntry): string => {
+    return [
+        log.timestamp ?? '',
+        log.formattedDate ?? '',
+        log.formattedTime ?? '',
+        log.logLevel ?? '',
+        log.category ?? '',
+        log.message ?? ''
+    ].join('|')
+}
+
+const buildSnapshotLogKey = (log: ILogEntry, occurrences: Map<string, number>): string => {
+    const fingerprint = buildLogFingerprint(log)
+    const occurrence = (occurrences.get(fingerprint) ?? 0) + 1
+    occurrences.set(fingerprint, occurrence)
+    return `${fingerprint}|${occurrence}`
+}
+
+const buildNormalizedLogEntry = (log: ILogEntry, uniqueId: string): ILogEntryNormalized => {
     const message = log.message || ''
     const source = log.formattedSource || ''
     const category = log.category || ''
@@ -233,11 +249,16 @@ const buildNormalizedLogEntry = (log: ILogEntry): ILogEntryNormalized => {
     return {
         ...log,
         logLevel: level,
-        uniqueId: `${Date.now()}-${logIdCounter++}`,
+        uniqueId,
         searchText: `${message} ${source} ${category} ${level}`.toLowerCase(),
         formattedMessageHtml: formatLogMessage(message),
         logLevelNormalized: level.toLowerCase()
     }
+}
+
+const buildNormalizedSnapshot = (recentLogs: ILogEntry[]): ILogEntryNormalized[] => {
+    const occurrences = new Map<string, number>()
+    return recentLogs.map((log) => buildNormalizedLogEntry(log, buildSnapshotLogKey(log, occurrences)))
 }
 
 const getLogLevelBadgeClass = (level: string): string => {
@@ -264,119 +285,105 @@ const appendLogs = (currentLogs: ILogEntryNormalized[], newLogs: ILogEntryNormal
     return merged
 }
 
-const flushIncomingLogs = () => {
-    if (incomingLogs.length === 0) {
+const pruneClearedLogKeys = (snapshotLogs: ILogEntryNormalized[]) => {
+    const snapshotKeys = new Set(snapshotLogs.map((log) => log.uniqueId))
+    for (const key of clearedLogKeys) {
+        if (!snapshotKeys.has(key)) {
+            clearedLogKeys.delete(key)
+        }
+    }
+}
+
+const applyPolledLogs = (snapshotLogs: ILogEntryNormalized[]) => {
+    pruneClearedLogKeys(snapshotLogs)
+
+    const visibleLogs = snapshotLogs.filter((log) => !clearedLogKeys.has(log.uniqueId))
+    const snapshotSignature = visibleLogs.map((log) => log.uniqueId).join('\n')
+    if (snapshotSignature === lastSnapshotSignature) {
         return
     }
 
-    const batch = incomingLogs
-    incomingLogs = []
+    lastSnapshotSignature = snapshotSignature
 
     if (isPaused.value) {
-        pendingLogs.value = appendLogs(pendingLogs.value, batch)
+        pendingLogs.value = visibleLogs
         return
     }
 
-    logs.value = appendLogs(logs.value, batch)
+    logs.value = visibleLogs
     void scrollToBottom()
 }
 
-const clearScheduledFlush = () => {
-    if (rafFlushId !== null) {
-        window.cancelAnimationFrame(rafFlushId)
-        rafFlushId = null
-    }
-
-    if (fallbackFlushTimer !== null) {
-        clearTimeout(fallbackFlushTimer)
-        fallbackFlushTimer = null
-    }
-}
-
-const scheduleFlush = () => {
-    if (rafFlushId !== null || fallbackFlushTimer !== null) {
+const appendPollError = (error: unknown) => {
+    const now = Date.now()
+    if (now - lastPollErrorAt < 5000) {
         return
     }
 
-    rafFlushId = window.requestAnimationFrame(() => {
-        clearScheduledFlush()
-        flushIncomingLogs()
-    })
+    lastPollErrorAt = now
+    const currentDate = new Date()
+    const fallbackEntry = buildNormalizedLogEntry(
+        {
+            logLevel: 'Error',
+            message: `Failed to poll logs: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            formattedTime: currentDate.toTimeString().split(' ')[0],
+            formattedDate: currentDate.toLocaleDateString(),
+            formattedSource: 'System',
+            category: 'System'
+        },
+        `poll-error-${now}`
+    )
 
-    fallbackFlushTimer = setTimeout(() => {
-        clearScheduledFlush()
-        flushIncomingLogs()
-    }, FLUSH_TIMEOUT_MS)
-}
-
-const enqueueLog = (log: ILogEntryNormalized) => {
-    incomingLogs.push(log)
-    scheduleFlush()
-}
-
-const connectStream = () => {
-    eventSource = services.logs.getStream()
-
-    eventSource.onmessage = (event) => {
-        try {
-            const logData = JSON.parse(event.data) as ILogEntry
-            enqueueLog(buildNormalizedLogEntry(logData))
-        } catch (error) {
-            const fallbackEntry = buildNormalizedLogEntry({
-                logLevel: 'Error',
-                message: `Failed to process log data: ${typeof event.data === 'string' ? `${event.data.substring(0, 100)}...` : 'Invalid format'}`,
-                formattedTime: new Date().toTimeString().split(' ')[0],
-                formattedDate: new Date().toDateString(),
-                formattedSource: 'System',
-                category: 'System',
-                stackTrace: error instanceof Error ? error.stack : undefined
-            })
-
-            enqueueLog(fallbackEntry)
-        }
+    if (isPaused.value) {
+        pendingLogs.value = appendLogs(pendingLogs.value, [fallbackEntry])
+        lastSnapshotSignature = ''
+        return
     }
 
-    eventSource.onerror = () => {
-        enqueueLog(
-            buildNormalizedLogEntry({
-                logLevel: 'Error',
-                message: 'Log stream connection error. Attempting to reconnect in 5 seconds...',
-                formattedTime: new Date().toTimeString().split(' ')[0],
-                formattedDate: new Date().toLocaleDateString(),
-                formattedSource: 'System',
-                category: 'System'
-            })
-        )
+    logs.value = appendLogs(logs.value, [fallbackEntry])
+    lastSnapshotSignature = ''
+}
 
-        if (eventSource) {
-            eventSource.close()
-            eventSource = null
-        }
-
-        if (reconnectTimer) {
-            clearTimeout(reconnectTimer)
-        }
-
-        reconnectTimer = setTimeout(() => {
-            reconnectTimer = null
-            connectStream()
-        }, RECONNECT_DELAY_MS)
+const pollLogs = async () => {
+    if (isPolling) {
+        return
     }
+
+    isPolling = true
+    try {
+        const recentLogs = await services.logs.getRecent<ILogEntry[]>(maxLogs.value)
+        applyPolledLogs(buildNormalizedSnapshot(recentLogs))
+    } catch (error) {
+        appendPollError(error)
+    } finally {
+        isPolling = false
+    }
+}
+
+const startPolling = () => {
+    void pollLogs()
+    pollTimer = setInterval(() => {
+        void pollLogs()
+    }, POLL_INTERVAL_MS)
 }
 
 const togglePause = () => {
     isPaused.value = !isPaused.value
     if (!isPaused.value && pendingLogs.value.length > 0) {
-        logs.value = appendLogs(logs.value, pendingLogs.value)
+        logs.value = pendingLogs.value
+        lastSnapshotSignature = logs.value.map((log) => log.uniqueId).join('\n')
         pendingLogs.value = []
         void scrollToBottom()
     }
 }
 
 const clearLogs = () => {
+    for (const log of [...logs.value, ...pendingLogs.value]) {
+        clearedLogKeys.add(log.uniqueId)
+    }
     logs.value = []
     pendingLogs.value = []
-    incomingLogs = []
+    lastSnapshotSignature = ''
 }
 
 const exportLogs = () => {
@@ -425,23 +432,18 @@ watch(maxLogs, (newValue) => {
     if (pendingLogs.value.length > newValue) {
         pendingLogs.value = pendingLogs.value.slice(pendingLogs.value.length - newValue)
     }
+
+    void pollLogs()
 })
 
 onMounted(() => {
-    connectStream()
+    startPolling()
 })
 
 onUnmounted(() => {
-    clearScheduledFlush()
-
-    if (eventSource) {
-        eventSource.close()
-        eventSource = null
-    }
-
-    if (reconnectTimer) {
-        clearTimeout(reconnectTimer)
-        reconnectTimer = null
+    if (pollTimer) {
+        clearInterval(pollTimer)
+        pollTimer = null
     }
 })
 </script>
