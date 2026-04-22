@@ -39,6 +39,12 @@ dotnet test Lingarr.Server.Tests/Lingarr.Server.Tests.csproj --configuration Rel
 ./create-migrations.ps1 -MigrationName "YourMigrationName"
 ```
 
+**Migration Rule:**
+- Always create new EF migrations by running `./create-migrations.ps1 -MigrationName "YourMigrationName"` from the repo root.
+- Do not hand-create migration `.cs` files or `.Designer.cs` files.
+- Do not run `dotnet ef migrations add` separately for only one provider unless the user explicitly asks for a provider-specific migration workflow.
+- If a migration is broken or incomplete, first inspect whether it was created outside `create-migrations.ps1` before attempting manual repair.
+
 ### Frontend (Vue/TypeScript)
 
 ```bash
