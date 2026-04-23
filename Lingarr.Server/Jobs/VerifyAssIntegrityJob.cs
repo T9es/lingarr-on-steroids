@@ -1,10 +1,14 @@
 using Hangfire;
+using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
+using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
+using Lingarr.Core.Interfaces;
 using Lingarr.Server.Hubs;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Models;
+using Lingarr.Server.Models.FileSystem;
 using Lingarr.Server.Services.Subtitle;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
@@ -17,6 +21,7 @@ public class VerifyAssIntegrityJob
     private readonly ISettingService _settingService;
     private readonly LingarrDbContext _dbContext;
     private readonly IHubContext<JobProgressHub> _hubContext;
+    private readonly ISubtitleOutputBackfillService _subtitleOutputBackfillService;
     private readonly ILogger<VerifyAssIntegrityJob> _logger;
 
     public VerifyAssIntegrityJob(
@@ -24,12 +29,14 @@ public class VerifyAssIntegrityJob
         ISettingService settingService,
         LingarrDbContext dbContext,
         IHubContext<JobProgressHub> hubContext,
+        ISubtitleOutputBackfillService subtitleOutputBackfillService,
         ILogger<VerifyAssIntegrityJob> logger)
     {
         _subtitleService = subtitleService;
         _settingService = settingService;
         _dbContext = dbContext;
         _hubContext = hubContext;
+        _subtitleOutputBackfillService = subtitleOutputBackfillService;
         _logger = logger;
     }
 
@@ -48,6 +55,8 @@ public class VerifyAssIntegrityJob
             var result = new AssVerificationResult();
             var flaggedByPath = new Dictionary<string, AssVerificationItem>(StringComparer.OrdinalIgnoreCase);
             var scannedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var subtitleTag = await _settingService.GetSetting(SettingKeys.Translation.SubtitleTag) ?? string.Empty;
+            var subtitleTagShort = await _settingService.GetSetting(SettingKeys.Translation.SubtitleTagShort) ?? string.Empty;
 
             var queuedRequests = await _dbContext.Set<Core.Entities.TranslationRequest>()
                 .Where(tr => tr.Status == TranslationStatus.Pending ||
@@ -70,14 +79,6 @@ public class VerifyAssIntegrityJob
                 .Where(tr => tr.Status == TranslationStatus.Completed)
                 .Where(tr => tr.MediaId != null)
                 .Where(tr => tr.SubtitleToTranslate != null && tr.TranslatedSubtitle != null)
-                .Select(tr => new
-                {
-                    tr.MediaId,
-                    tr.MediaType,
-                    tr.Title,
-                    tr.SubtitleToTranslate,
-                    tr.TranslatedSubtitle
-                })
                 .ToListAsync();
 
             var movies = await _dbContext.Movies
@@ -192,7 +193,6 @@ public class VerifyAssIntegrityJob
                     if (translation.MediaId == null ||
                         string.IsNullOrWhiteSpace(translation.SubtitleToTranslate) ||
                         string.IsNullOrWhiteSpace(translation.TranslatedSubtitle) ||
-                        !File.Exists(translation.SubtitleToTranslate) ||
                         !File.Exists(translation.TranslatedSubtitle))
                     {
                         continue;
@@ -203,16 +203,53 @@ public class VerifyAssIntegrityJob
                         result.TotalFilesScanned++;
                     }
 
-                    var sourceSubtitles = await _subtitleService.ReadSubtitles(translation.SubtitleToTranslate);
+                    var sourceSubtitles = File.Exists(translation.SubtitleToTranslate)
+                        ? await _subtitleService.ReadSubtitles(translation.SubtitleToTranslate)
+                        : [];
                     var targetSubtitles = await _subtitleService.ReadSubtitles(translation.TranslatedSubtitle);
-                    var scan = AssSubtitleArtifactDetector.CompareTagStructure(
-                        sourceSubtitles,
-                        targetSubtitles,
-                        translation.TranslatedSubtitle);
+                    var scan = sourceSubtitles.Count > 0
+                        ? AssSubtitleArtifactDetector.CompareTagStructure(
+                            sourceSubtitles,
+                            targetSubtitles,
+                            translation.TranslatedSubtitle)
+                        : new AssArtifactScanResult();
+                    scan.Merge(AssSubtitleArtifactDetector.DetectInlineTagPlacementArtifacts(
+                        targetSubtitles.SelectMany(item => item.Lines)));
 
                     if (!scan.HasIssues)
                     {
                         continue;
+                    }
+
+                    if (scan.IssueTypes.Contains(AssVerificationIssueTypes.InlineAssTagPlacement, StringComparer.Ordinal))
+                    {
+                        var repairResult = await TryRepairInlineTagPlacementAsync(
+                            translation,
+                            subtitleTag,
+                            subtitleTagShort);
+                        result.LocallyRepairedFiles += repairResult.RepairedFiles;
+                        result.LocalRepairSkippedFiles += repairResult.BackfillSkippedFiles;
+
+                        if (repairResult.RepairedFiles > 0)
+                        {
+                            sourceSubtitles = File.Exists(translation.SubtitleToTranslate)
+                                ? await _subtitleService.ReadSubtitles(translation.SubtitleToTranslate)
+                                : [];
+                            targetSubtitles = await _subtitleService.ReadSubtitles(translation.TranslatedSubtitle);
+                            scan = sourceSubtitles.Count > 0
+                                ? AssSubtitleArtifactDetector.CompareTagStructure(
+                                    sourceSubtitles,
+                                    targetSubtitles,
+                                    translation.TranslatedSubtitle)
+                                : new AssArtifactScanResult();
+                            scan.Merge(AssSubtitleArtifactDetector.DetectInlineTagPlacementArtifacts(
+                                targetSubtitles.SelectMany(item => item.Lines)));
+
+                            if (!scan.HasIssues)
+                            {
+                                continue;
+                            }
+                        }
                     }
 
                     var isQueued = translation.MediaType == MediaType.Movie
@@ -282,6 +319,68 @@ public class VerifyAssIntegrityJob
             _logger.LogWarning(ex, "Error getting subtitles for {Path}", mediaPath);
         }
         return subtitleFiles;
+    }
+
+    private async Task<SubtitleOutputBackfillResult> TryRepairInlineTagPlacementAsync(
+        TranslationRequest translation,
+        string subtitleTag,
+        string subtitleTagShort)
+    {
+        if (!translation.MediaId.HasValue)
+        {
+            return new SubtitleOutputBackfillResult();
+        }
+
+        var repairContext = await LoadRepairContextAsync(translation);
+        if (repairContext == null)
+        {
+            return new SubtitleOutputBackfillResult { BackfillSkippedFiles = 1, RequiresRetranslation = true };
+        }
+
+        return await _subtitleOutputBackfillService.RepairExistingAssOutputsAsync(
+            repairContext.Value.Media,
+            translation.MediaType,
+            translation,
+            repairContext.Value.MatchingSubtitles,
+            subtitleTag,
+            subtitleTagShort);
+    }
+
+    private async Task<(IMedia Media, List<Subtitles> MatchingSubtitles)?> LoadRepairContextAsync(
+        TranslationRequest translation)
+    {
+        IMedia? media = translation.MediaType switch
+        {
+            MediaType.Movie => await _dbContext.Movies.FirstOrDefaultAsync(movie => movie.Id == translation.MediaId!.Value),
+            MediaType.Episode => await _dbContext.Episodes
+                .Include(episode => episode.Season)
+                .ThenInclude(season => season.Show)
+                .FirstOrDefaultAsync(episode => episode.Id == translation.MediaId!.Value),
+            _ => null
+        };
+
+        if (media == null ||
+            string.IsNullOrWhiteSpace(media.Path) ||
+            string.IsNullOrWhiteSpace(media.FileName))
+        {
+            return null;
+        }
+
+        var subtitles = await _subtitleService.GetAllSubtitles(media.Path);
+        var matchingSubtitles = FilterMatchingSubtitles(media.FileName, subtitles);
+        return (media, matchingSubtitles);
+    }
+
+    private static List<Subtitles> FilterMatchingSubtitles(string mediaFileName, IEnumerable<Subtitles> subtitles)
+    {
+        var mediaNameNoExt = Path.GetFileNameWithoutExtension(mediaFileName);
+        return subtitles
+            .Where(subtitle =>
+                subtitle.FileName.StartsWith(mediaFileName + ".", StringComparison.OrdinalIgnoreCase)
+                || subtitle.FileName.Equals(mediaFileName, StringComparison.OrdinalIgnoreCase)
+                || (!string.IsNullOrWhiteSpace(mediaNameNoExt)
+                    && subtitle.FileName.StartsWith(mediaNameNoExt + ".", StringComparison.OrdinalIgnoreCase)))
+            .ToList();
     }
 
     private async Task<AssArtifactScanResult> GetSuspiciousLines(string subtitlePath)

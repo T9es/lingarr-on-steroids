@@ -71,6 +71,30 @@ public class AssSubtitleArtifactDetectorTests
         Assert.Contains(AssVerificationIssueTypes.DrawingArtifact, result.IssueTypes);
     }
 
+    [Fact]
+    public void DetectInlineTagPlacementArtifacts_WithItalicTagInsideWords_FlagsInlinePlacement()
+    {
+        var result = AssSubtitleArtifactDetector.DetectInlineTagPlacementArtifacts(
+        [
+            @"Moge wpasc pograc w{\i1}Brave{\i0}Star?"
+        ]);
+
+        Assert.True(result.HasIssues);
+        Assert.Equal(1, result.SuspiciousLineCount);
+        Assert.Contains(AssVerificationIssueTypes.InlineAssTagPlacement, result.IssueTypes);
+    }
+
+    [Fact]
+    public void DetectInlineTagPlacementArtifacts_WithPositionTagsBeforeText_DoesNotFlag()
+    {
+        var result = AssSubtitleArtifactDetector.DetectInlineTagPlacementArtifacts(
+        [
+            @"{\an7}{\pos(115,228)}JAK SIĘ WYMAWIA"
+        ]);
+
+        Assert.False(result.HasIssues);
+    }
+
     private static SubtitleItem Item(int position, string line)
     {
         return new SubtitleItem

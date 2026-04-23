@@ -7,6 +7,8 @@ public class AssVerificationResult
 {
     public int TotalFilesScanned { get; set; }
     public int FilesWithDrawings { get; set; }
+    public int LocallyRepairedFiles { get; set; }
+    public int LocalRepairSkippedFiles { get; set; }
     public List<AssVerificationItem> FlaggedItems { get; set; } = new();
 }
 
@@ -23,6 +25,7 @@ public class AssVerificationItem
     public List<string> SuspiciousLines { get; set; } = new();
     public List<string> IssueTypes { get; set; } = new();
     public string IssueSummary { get; set; } = string.Empty;
+    public bool LocallyRepaired { get; set; }
     public bool Dismissed { get; set; }
     
     /// <summary>

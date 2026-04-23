@@ -8,6 +8,7 @@ internal static class AssVerificationIssueTypes
     public const string DrawingArtifact = "drawing_artifact";
     public const string UnexpectedAssTags = "unexpected_ass_tags";
     public const string AssTagMismatch = "ass_tag_mismatch";
+    public const string InlineAssTagPlacement = "inline_ass_tag_placement";
 }
 
 internal sealed class AssArtifactScanResult
@@ -55,6 +56,10 @@ internal static class AssSubtitleArtifactDetector
         @"\{\\[^}]*\}|\\[Nnh]",
         RegexOptions.Compiled);
 
+    private static readonly Regex InlineStyleTagBetweenWordCharactersPattern = new(
+        @"(?<=[\p{L}\p{N}])\{\\(?:i[01]?|b[01]?|u[01]?|s[01]?|bord|shad|fs|fn)[^}]*\}(?=[\p{L}\p{N}])",
+        RegexOptions.Compiled);
+
     public static AssArtifactScanResult DetectDrawingArtifacts(IEnumerable<string> lines)
     {
         var suspiciousLines = lines
@@ -72,6 +77,28 @@ internal static class AssSubtitleArtifactDetector
         {
             result.IssueTypes.Add(AssVerificationIssueTypes.DrawingArtifact);
             result.IssueSummaries.Add($"Found {suspiciousLines.Count} ASS drawing artifact lines.");
+        }
+
+        return result;
+    }
+
+    public static AssArtifactScanResult DetectInlineTagPlacementArtifacts(IEnumerable<string> lines)
+    {
+        var suspiciousLines = lines
+            .Where(line => InlineStyleTagBetweenWordCharactersPattern.IsMatch(line))
+            .Select(Truncate)
+            .ToList();
+
+        var result = new AssArtifactScanResult
+        {
+            SuspiciousLineCount = suspiciousLines.Count,
+            SuspiciousLines = suspiciousLines.Take(SuspiciousLinePreviewLimit).ToList()
+        };
+
+        if (suspiciousLines.Count > 0)
+        {
+            result.IssueTypes.Add(AssVerificationIssueTypes.InlineAssTagPlacement);
+            result.IssueSummaries.Add($"Found {suspiciousLines.Count} ASS/SSA inline style tags placed inside words.");
         }
 
         return result;

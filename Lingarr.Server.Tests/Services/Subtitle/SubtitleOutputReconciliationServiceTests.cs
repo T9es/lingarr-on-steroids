@@ -352,6 +352,52 @@ public class SubtitleOutputReconciliationServiceTests
     }
 
     [Fact]
+    public async Task RepairExistingAssOutputsAsync_RebuildsInlineTagSpacingFromTranslatedAss()
+    {
+        await using var context = BuildContext();
+        using var tempDirectory = new TemporaryDirectory();
+        var movie = AddMovie(context, tempDirectory.Path);
+        var sourceAssPath = Path.Combine(tempDirectory.Path, "movie.en.ass");
+        var translatedAssPath = Path.Combine(tempDirectory.Path, "movie.pl.lingarr.ass");
+        var translatedSrtPath = Path.Combine(tempDirectory.Path, "movie.pl.lingarr.srt");
+        await File.WriteAllTextAsync(sourceAssPath, BuildAssContent(@"Play {\i1}Brave Star{\i0}?"));
+        await File.WriteAllTextAsync(translatedAssPath, BuildAssContent(@"Gram w{\i1}Brave{\i0}Star?"));
+        await File.WriteAllTextAsync(translatedSrtPath, BuildSrtContent("Gram wBraveStar?"));
+        AddCompletedRequest(
+            context,
+            movie.Id,
+            ".ass",
+            ".ass,.srt",
+            translatedAssPath,
+            JsonSerializer.Serialize(new[] { translatedAssPath, translatedSrtPath }),
+            sourceAssPath);
+        await context.SaveChangesAsync();
+        var request = await context.TranslationRequests.SingleAsync();
+        var subtitleService = new SubtitleService(NullLogger<SubtitleService>.Instance);
+        var backfillService = new SubtitleOutputBackfillService(
+            context,
+            subtitleService,
+            Mock.Of<ISourceSubtitleSnapshotService>(),
+            Mock.Of<ISubtitleExtractionService>(),
+            NullLogger<SubtitleOutputBackfillService>.Instance);
+
+        var result = await backfillService.RepairExistingAssOutputsAsync(
+            movie,
+            MediaType.Movie,
+            request,
+            [],
+            "lingarr",
+            "-ai-");
+        var repairedAss = await File.ReadAllTextAsync(translatedAssPath);
+        var repairedSrt = await File.ReadAllTextAsync(translatedSrtPath);
+
+        Assert.Equal(1, result.RepairedFiles);
+        Assert.Contains(@"Gram w {\i1}Brave Star{\i0}?", repairedAss);
+        Assert.Contains("Gram w Brave Star?", repairedSrt);
+        Assert.DoesNotContain("wBraveStar", repairedSrt);
+    }
+
+    [Fact]
     public async Task ReconcileLibraryOutputsAsync_BackfilledAssConvertsSrtLineBreaksToAssBreaks()
     {
         await using var context = BuildContext();

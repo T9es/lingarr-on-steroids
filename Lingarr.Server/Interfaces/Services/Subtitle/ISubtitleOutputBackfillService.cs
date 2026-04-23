@@ -16,4 +16,13 @@ public interface ISubtitleOutputBackfillService
         string subtitleTag,
         string subtitleTagShort,
         CancellationToken cancellationToken = default);
+
+    Task<SubtitleOutputBackfillResult> RepairExistingAssOutputsAsync(
+        IMedia media,
+        MediaType mediaType,
+        Lingarr.Core.Entities.TranslationRequest request,
+        IReadOnlyCollection<Subtitles> matchingSubtitles,
+        string subtitleTag,
+        string subtitleTagShort,
+        CancellationToken cancellationToken = default);
 }

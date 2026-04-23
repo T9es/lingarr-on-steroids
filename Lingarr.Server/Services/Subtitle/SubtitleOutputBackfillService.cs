@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Lingarr.Core.Data;
@@ -106,6 +107,52 @@ public class SubtitleOutputBackfillService : ISubtitleOutputBackfillService
         return result;
     }
 
+    public async Task<SubtitleOutputBackfillResult> RepairExistingAssOutputsAsync(
+        IMedia media,
+        MediaType mediaType,
+        TranslationRequest request,
+        IReadOnlyCollection<Subtitles> matchingSubtitles,
+        string subtitleTag,
+        string subtitleTagShort,
+        CancellationToken cancellationToken = default)
+    {
+        var result = new SubtitleOutputBackfillResult();
+        if (!SourceRequiresBothOutputs(request))
+        {
+            return result;
+        }
+
+        try
+        {
+            await RepairRequestOutputsAsync(
+                media,
+                mediaType,
+                request,
+                matchingSubtitles,
+                subtitleTag,
+                subtitleTagShort,
+                result,
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Failed to locally repair subtitle outputs for translation request {RequestId}",
+                request.Id);
+            result.BackfillSkippedFiles++;
+            result.RequiresRetranslation = true;
+            result.Errors.Add($"Translation request {request.Id}: {ex.Message}");
+        }
+
+        if (result.RepairedFiles > 0)
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        return result;
+    }
+
     private async Task BackfillRequestOutputsAsync(
         IMedia media,
         MediaType mediaType,
@@ -144,6 +191,95 @@ public class SubtitleOutputBackfillService : ISubtitleOutputBackfillService
                 subtitleTagShort,
                 result,
                 cancellationToken);
+        }
+    }
+
+    private async Task RepairRequestOutputsAsync(
+        IMedia media,
+        MediaType mediaType,
+        TranslationRequest request,
+        IReadOnlyCollection<Subtitles> matchingSubtitles,
+        string subtitleTag,
+        string subtitleTagShort,
+        SubtitleOutputBackfillResult result,
+        CancellationToken cancellationToken)
+    {
+        var sourceFormat = GetSourceFormat(request);
+        var assPath = FindExistingOutputPath(request, matchingSubtitles, sourceFormat, subtitleTag, subtitleTagShort);
+        if (string.IsNullOrWhiteSpace(assPath) || !File.Exists(assPath))
+        {
+            MarkRequiresRetranslation(result);
+            return;
+        }
+
+        var sourceResolution = await ResolveSourceAssForBackfillAsync(
+            media,
+            mediaType,
+            request,
+            matchingSubtitles,
+            sourceFormat,
+            cancellationToken);
+        if (sourceResolution == null)
+        {
+            MarkRequiresRetranslation(result);
+            return;
+        }
+
+        var translatedAss = await _subtitleService.ReadSubtitles(assPath);
+        if (!TranslatedAssNeedsInlineRepair(translatedAss))
+        {
+            return;
+        }
+
+        var sourceAss = await _subtitleService.ReadSubtitles(sourceResolution.Path);
+        if (!TryAlignTranslatedCues(sourceAss, translatedAss, out var translatedBySourceIndex))
+        {
+            MarkRequiresRetranslation(result);
+            return;
+        }
+
+        var assParser = new AssTextStructureParser();
+        for (var index = 0; index < sourceAss.Count; index++)
+        {
+            var translatedCue = translatedBySourceIndex[index];
+            var translatedText = BuildRepairVisibleText(translatedCue);
+            var structure = new SubtitleTextStructure(
+                SubtitleStructureMode.Ass,
+                sourceAss[index].Lines,
+                assParser.Parse(sourceAss[index].Lines));
+
+            sourceAss[index].TranslatedLines = structure.ApplyProviderTranslationAsSingleVisibleText(translatedText);
+        }
+
+        SetSequentialPositions(sourceAss);
+        await _subtitleService.WriteSubtitles(assPath, sourceAss, stripSubtitleFormatting: false);
+        AddGeneratedOutput(request, assPath, sourceFormat, preferAsPrimary: true);
+
+        if (TrySelectWritableOutputPath(
+                request,
+                sourceResolution.Path,
+                ".srt",
+                subtitleTag,
+                subtitleTagShort,
+                out var srtPath))
+        {
+            var plainSrtItems = BuildPlainTextSrtItems(sourceAss);
+            if (plainSrtItems.Count > 0)
+            {
+                SetSequentialPositions(plainSrtItems);
+                await _subtitleService.WriteSubtitles(srtPath, plainSrtItems, stripSubtitleFormatting: true);
+                AddGeneratedOutput(request, srtPath, ".srt", preferAsPrimary: false);
+            }
+        }
+
+        result.RepairedFiles++;
+        if (sourceResolution.SourceKind == BackfillSourceKind.Embedded)
+        {
+            result.BackfilledFromEmbeddedSourceFiles++;
+        }
+        else
+        {
+            result.BackfilledFromExternalSourceFiles++;
         }
     }
 
@@ -448,6 +584,120 @@ public class SubtitleOutputBackfillService : ISubtitleOutputBackfillService
         var lines = subtitles.SelectMany(item => item.Lines);
         var drawingScan = AssSubtitleArtifactDetector.DetectDrawingArtifacts(lines);
         return drawingScan.HasIssues || subtitles.Any(item => item.Lines.Any(line => AssLeakPattern.IsMatch(line)));
+    }
+
+    private static bool TranslatedAssNeedsInlineRepair(IReadOnlyList<SubtitleItem> subtitles)
+    {
+        return AssSubtitleArtifactDetector
+            .DetectInlineTagPlacementArtifacts(subtitles.SelectMany(item => item.Lines))
+            .HasIssues;
+    }
+
+    private static string BuildRepairVisibleText(SubtitleItem translatedCue)
+    {
+        var lines = translatedCue.Lines.Count > 0
+            ? translatedCue.Lines
+            : translatedCue.PlaintextLines;
+
+        return string.Join('\n', lines.Select(ConvertAssLineToRepairVisibleText));
+    }
+
+    private static string ConvertAssLineToRepairVisibleText(string line)
+    {
+        var builder = new StringBuilder();
+        for (var index = 0; index < line.Length; index++)
+        {
+            var current = line[index];
+            if (current == '{')
+            {
+                var endIndex = line.IndexOf('}', index + 1);
+                if (endIndex < 0)
+                {
+                    break;
+                }
+
+                var previousVisible = LastVisibleCharacter(builder);
+                var nextVisible = FindNextVisibleCharacter(line, endIndex + 1);
+                if (char.IsLetterOrDigit(previousVisible) &&
+                    char.IsLetterOrDigit(nextVisible) &&
+                    (builder.Length == 0 || !char.IsWhiteSpace(builder[^1])))
+                {
+                    builder.Append(' ');
+                }
+
+                index = endIndex;
+                continue;
+            }
+
+            if (current == '\\' && index + 1 < line.Length)
+            {
+                var escaped = line[index + 1];
+                if (escaped == 'N' || escaped == 'n')
+                {
+                    builder.Append('\n');
+                    index++;
+                    continue;
+                }
+
+                if (escaped == 'h')
+                {
+                    builder.Append(' ');
+                    index++;
+                    continue;
+                }
+            }
+
+            builder.Append(current);
+        }
+
+        return builder.ToString();
+    }
+
+    private static char LastVisibleCharacter(StringBuilder builder)
+    {
+        for (var index = builder.Length - 1; index >= 0; index--)
+        {
+            if (!char.IsWhiteSpace(builder[index]))
+            {
+                return builder[index];
+            }
+        }
+
+        return '\0';
+    }
+
+    private static char FindNextVisibleCharacter(string line, int startIndex)
+    {
+        for (var index = startIndex; index < line.Length; index++)
+        {
+            if (line[index] == '{')
+            {
+                var endIndex = line.IndexOf('}', index + 1);
+                if (endIndex < 0)
+                {
+                    return '\0';
+                }
+
+                index = endIndex;
+                continue;
+            }
+
+            if (line[index] == '\\' && index + 1 < line.Length)
+            {
+                var escaped = line[index + 1];
+                if (escaped == 'N' || escaped == 'n' || escaped == 'h')
+                {
+                    return ' ';
+                }
+            }
+
+            if (!char.IsWhiteSpace(line[index]))
+            {
+                return line[index];
+            }
+        }
+
+        return '\0';
     }
 
     private static List<SubtitleItem> BuildPlainTextSrtItems(IReadOnlyList<SubtitleItem> subtitles)
