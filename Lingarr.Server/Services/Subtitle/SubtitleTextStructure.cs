@@ -63,6 +63,12 @@ internal sealed class SubtitleTextLine
         var originalTranslatableTexts = translatableIndexes
             .Select(index => Parts[index].SourceText)
             .ToList();
+
+        if (ShouldRenderAsSingleVisibleText(translatableIndexes.Count))
+        {
+            return SubtitleTextStructure.RenderLocalMarkupAroundTranslatedText(Parts, translatedText);
+        }
+
         var translatedSegments = DistributeTranslation(translatedText, originalTranslatableTexts);
 
         var translatedIndex = 0;
@@ -81,6 +87,15 @@ internal sealed class SubtitleTextLine
         }
 
         return builder.ToString();
+    }
+
+    private bool ShouldRenderAsSingleVisibleText(int translatablePartCount)
+    {
+        return translatablePartCount > 1 &&
+            Parts.Any(part => part.Kind == SubtitleTextPartKind.AssOverrideBlock) &&
+            !Parts.Any(part =>
+                part.Kind == SubtitleTextPartKind.AssKaraokeTag ||
+                part.Kind == SubtitleTextPartKind.InlineMarkupTag);
     }
 
     private static List<string> DistributeTranslation(string translatedText, IReadOnlyList<string> originalSegments)
@@ -262,19 +277,37 @@ internal sealed class SubtitleTextStructure
             .ThenBy(line => line.SegmentIndex)
             .SelectMany(line => line.Parts)
             .ToList();
-        var firstTextIndex = parts.FindIndex(part => part.IsTranslatable);
+
+        return [RenderLocalMarkupAroundTranslatedText(parts, translatedText)];
+    }
+
+    internal static string RenderLocalMarkupAroundTranslatedText(
+        IReadOnlyList<SubtitleTextPart> parts,
+        string translatedText)
+    {
+        var firstTextIndex = parts
+            .Select((part, index) => (part, index))
+            .Where(item => item.part.IsTranslatable)
+            .Select(item => item.index)
+            .DefaultIfEmpty(-1)
+            .First();
         if (firstTextIndex < 0)
         {
-            return SourceLines.ToList();
+            return string.Concat(parts.Select(part => part.SourceText));
         }
 
         var prefix = string.Concat(parts
             .Take(firstTextIndex)
             .Where(ShouldPreserveLocalPart)
             .Select(part => part.SourceText));
-        var lastTextIndex = parts.FindLastIndex(part => part.IsTranslatable);
-        var hasWholeCueWrapper = firstTextIndex > 0;
-        var suffix = hasWholeCueWrapper && lastTextIndex >= 0
+        var lastTextIndex = parts
+            .Select((part, index) => (part, index))
+            .Where(item => item.part.IsTranslatable)
+            .Select(item => item.index)
+            .DefaultIfEmpty(-1)
+            .Last();
+        var preserveTrailingWrapper = ShouldPreserveTrailingWrapper(parts, firstTextIndex, lastTextIndex);
+        var suffix = preserveTrailingWrapper
             ? string.Concat(parts
                 .Skip(lastTextIndex + 1)
                 .Where(ShouldPreserveLocalPart)
@@ -289,7 +322,7 @@ internal sealed class SubtitleTextStructure
                 continue;
             }
 
-            if (hasWholeCueWrapper && index > lastTextIndex)
+            if (preserveTrailingWrapper && index > lastTextIndex)
             {
                 continue;
             }
@@ -306,12 +339,28 @@ internal sealed class SubtitleTextStructure
             }
         }
 
-        return [prefix + ApplyInsertions(translatedText, insertions) + suffix];
+        return prefix + ApplyInsertions(translatedText, insertions) + suffix;
     }
 
     private static bool ShouldPreserveLocalPart(SubtitleTextPart part)
     {
         return part.Kind != SubtitleTextPartKind.AssNonBreakingSpace;
+    }
+
+    private static bool ShouldPreserveTrailingWrapper(
+        IReadOnlyList<SubtitleTextPart> parts,
+        int firstTextIndex,
+        int lastTextIndex)
+    {
+        if (firstTextIndex <= 0 || lastTextIndex < firstTextIndex || lastTextIndex >= parts.Count - 1)
+        {
+            return false;
+        }
+
+        return !parts
+            .Skip(firstTextIndex + 1)
+            .Take(lastTextIndex - firstTextIndex - 1)
+            .Any(ShouldPreserveLocalPart);
     }
 
     private static bool TryFindNearestTextMatch(
@@ -331,6 +380,11 @@ internal sealed class SubtitleTextStructure
             }
 
             var sourceText = part.SourceText.Trim();
+            if (!sourceText.Any(char.IsLetterOrDigit))
+            {
+                continue;
+            }
+
             matchStart = translatedText.IndexOf(sourceText, StringComparison.Ordinal);
             if (matchStart < 0)
             {

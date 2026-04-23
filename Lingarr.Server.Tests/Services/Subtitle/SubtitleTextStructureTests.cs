@@ -246,6 +246,30 @@ public class SubtitleTextStructureTests
     }
 
     [Fact]
+    public void AssInlineFormatting_ShouldKeepProviderTextIntactAndAnchorTagsAroundMatchingPhrase()
+    {
+        var sourceLines = new List<string> { "Can I go to your house to play {\\i1}Brave Star{\\i0}?" };
+        var structure = BuildAssStructure(sourceLines);
+
+        var translated = structure.ApplyProviderTranslation("Moge wpasc do ciebie pograc w Brave Star?");
+
+        Assert.Single(translated);
+        Assert.Equal("Moge wpasc do ciebie pograc w {\\i1}Brave Star{\\i0}?", translated[0]);
+    }
+
+    [Fact]
+    public void AssInlineFormatting_ShouldDropUnmatchedPhraseTagsInsteadOfSplittingProviderText()
+    {
+        var sourceLines = new List<string> { "Can I go to your house to play {\\i1}Brave Star{\\i0}?" };
+        var structure = BuildAssStructure(sourceLines);
+
+        var translated = structure.ApplyProviderTranslation("Moge wpasc do ciebie pograc w Gwiezdna Odwage?");
+
+        Assert.Single(translated);
+        Assert.Equal("Moge wpasc do ciebie pograc w Gwiezdna Odwage?", translated[0]);
+    }
+
+    [Fact]
     public void SrtInlineHtml_ShouldProtectMarkupFromProviderAndRestoreAfterTranslation()
     {
         var sourceLines = new List<string> { "<i>Hello</i> <b>world</b>" };
