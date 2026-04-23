@@ -324,6 +324,12 @@
                         </button>
                     </div>
 
+                    <div
+                        v-if="assHasStarted && assValidationStats.statusMessage"
+                        class="rounded border border-blue-500/30 bg-blue-500/10 p-3 text-sm text-blue-300">
+                        {{ assValidationStats.statusMessage }}
+                    </div>
+
                     <!-- Persistent Results -->
                     <div v-if="assResult" class="w-full space-y-4">
                         <!-- Stats Grid -->
@@ -787,6 +793,7 @@ onMounted(async () => {
         if (assStatusResponse.data.isRunning) {
             Object.assign(assValidationStats, assStatusResponse.data)
             assHasStarted.value = true
+            startAssStatusPolling()
         } else {
             const assResultResponse = await axios.get(
                 '/api/setting/subtitle_ass_verification_last_result'
@@ -819,6 +826,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+    stopAssStatusPolling()
     hubConnection.value?.off('BulkIntegrityProgress', handleProgress)
     hubConnection.value?.off('AssVerificationProgress', handleAssVerificationProgress)
     hubConnection.value?.off('SubtitleTypeValidationProgress', handleSubtitleTypeValidationProgress)
@@ -850,6 +858,7 @@ interface AssVerificationStats {
     isComplete: boolean
     isRunning: boolean
     error: string | null
+    statusMessage?: string | null
     progressPercent: number
 }
 
@@ -859,17 +868,20 @@ const assValidationStats = reactive<AssVerificationStats>({
     isComplete: false,
     isRunning: false,
     error: null,
+    statusMessage: null,
     progressPercent: 0
 })
 
 const assHasStarted = ref(false)
 const assResult = ref<AssVerificationResult | null>(null)
 const expandedItems = ref<string[]>([])
+const assStatusPoll = ref<number | null>(null)
 
 const assIssueLabels: Record<string, string> = {
     drawing_artifact: 'Drawing residue',
     unexpected_ass_tags: 'Unexpected ASS/SSA tags',
-    ass_tag_mismatch: 'ASS/SSA tag mismatch'
+    ass_tag_mismatch: 'ASS/SSA tag mismatch',
+    inline_ass_tag_placement: 'Inline ASS/SSA tag placement'
 }
 
 const getAssIssueLabels = (issueTypes?: string[]) => {
@@ -896,7 +908,65 @@ const handleAssVerificationProgress = (newStats: AssVerificationStats) => {
     Object.assign(assValidationStats, newStats)
     if (newStats.isComplete) {
         assHasStarted.value = false
+        stopAssStatusPolling()
+        void loadAssVerificationResult()
     }
+}
+
+const loadAssVerificationResult = async () => {
+    try {
+        const assResultResponse = await axios.get('/api/setting/subtitle_ass_verification_last_result')
+        if (assResultResponse.data) {
+            assResult.value = JSON.parse(assResultResponse.data)
+        }
+    } catch (error) {
+        console.debug('No existing ASS verification result')
+    }
+}
+
+const refreshAssVerificationStatus = async () => {
+    try {
+        const response = await axios.get('/api/subtitle/verify-ass/status')
+        const status = response.data as AssVerificationStats
+
+        if (status.isRunning || status.isComplete) {
+            Object.assign(assValidationStats, status)
+        }
+
+        assHasStarted.value = !!status.isRunning
+
+        if (status.isRunning) {
+            startAssStatusPolling()
+            return
+        }
+
+        stopAssStatusPolling()
+
+        if (status.isComplete) {
+            await loadAssVerificationResult()
+        }
+    } catch (error) {
+        console.debug('Unable to refresh ASS verification status')
+    }
+}
+
+const startAssStatusPolling = () => {
+    if (assStatusPoll.value !== null) {
+        return
+    }
+
+    assStatusPoll.value = window.setInterval(() => {
+        void refreshAssVerificationStatus()
+    }, 5000)
+}
+
+const stopAssStatusPolling = () => {
+    if (assStatusPoll.value === null) {
+        return
+    }
+
+    window.clearInterval(assStatusPoll.value)
+    assStatusPoll.value = null
 }
 
 const startAssVerification = async () => {
@@ -908,10 +978,12 @@ const startAssVerification = async () => {
             isComplete: false,
             isRunning: true,
             error: null,
+            statusMessage: null,
             progressPercent: 0
         })
 
         await axios.post('/api/subtitle/verify-ass')
+        startAssStatusPolling()
     } catch (error) {
         console.error('Failed to start ASS verification:', error)
         assHasStarted.value = false

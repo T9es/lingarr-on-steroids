@@ -99,8 +99,12 @@ public class VerifyAssIntegrityJob
                 })
                 .ToListAsync();
 
-            stats.Total = movies.Count + episodes.Count;
-            _logger.LogInformation("ASS verification: {MovieCount} movies, {EpisodeCount} episodes", movies.Count, episodes.Count);
+            stats.Total = movies.Count + episodes.Count + completedTranslations.Count;
+            _logger.LogInformation(
+                "ASS verification: {MovieCount} movies, {EpisodeCount} episodes, {TranslationCount} completed translations",
+                movies.Count,
+                episodes.Count,
+                completedTranslations.Count);
 
             await SendProgress(stats);
 
@@ -271,6 +275,16 @@ public class VerifyAssIntegrityJob
                         ex,
                         "Error comparing ASS tag structure for translation target {Path}",
                         translation.TranslatedSubtitle);
+                }
+                finally
+                {
+                    processed++;
+                    stats.ProcessedCount = processed;
+
+                    if (processed % 10 == 0)
+                    {
+                        await SendProgress(stats);
+                    }
                 }
             }
 
@@ -469,6 +483,7 @@ public class AssVerificationStats
     public bool IsComplete { get; set; }
     public bool IsRunning { get; set; }
     public string? Error { get; set; }
+    public string? StatusMessage { get; set; }
 
     public double ProgressPercent => Total > 0 ? (double)ProcessedCount / Total * 100 : 0;
 }

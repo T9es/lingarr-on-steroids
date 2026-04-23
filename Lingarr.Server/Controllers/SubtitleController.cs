@@ -19,6 +19,8 @@ public class SubtitlePath
 [Route("api/[controller]")]
 public class SubtitleController : ControllerBase
 {
+    private static readonly string[] HangfireQueues = ["system", "default", "movies", "shows", "webhook"];
+
     private readonly ISubtitleService _subtitleService;
     private readonly ISubtitleIntegrityService _integrityService;
     private readonly ISubtitleExtractionService _extractionService;
@@ -67,9 +69,56 @@ public class SubtitleController : ControllerBase
         var current = Jobs.AssVerificationStats.Current;
         if (current == null)
         {
+            if (HasActiveAssVerificationJob())
+            {
+                return Ok(new Jobs.AssVerificationStats
+                {
+                    IsRunning = true,
+                    StatusMessage = "ASS integrity verification is queued or recovering after a restart. Progress will resume when the worker starts reporting."
+                });
+            }
+
             return Ok(new { isRunning = false });
         }
         return Ok(current);
+    }
+
+    private static bool HasActiveAssVerificationJob()
+    {
+        try
+        {
+            var storage = JobStorage.Current;
+            if (storage == null)
+            {
+                return false;
+            }
+
+            var monitoringApi = storage.GetMonitoringApi();
+            if (monitoringApi.ProcessingJobs(0, 1000).Any(job => IsAssVerificationJob(job.Value?.Job)))
+            {
+                return true;
+            }
+
+            foreach (var queue in HangfireQueues)
+            {
+                if (monitoringApi.EnqueuedJobs(queue, 0, 1000).Any(job => IsAssVerificationJob(job.Value?.Job)))
+                {
+                    return true;
+                }
+            }
+
+            return monitoringApi.ScheduledJobs(0, 1000).Any(job => IsAssVerificationJob(job.Value?.Job));
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool IsAssVerificationJob(Hangfire.Common.Job? job)
+    {
+        return job?.Type == typeof(VerifyAssIntegrityJob) &&
+               job.Method.Name == nameof(VerifyAssIntegrityJob.Execute);
     }
 
     /// <summary>
