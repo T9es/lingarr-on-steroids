@@ -64,7 +64,7 @@
 
 <script setup lang="ts">
 import type { AxiosError } from 'axios'
-import { computed, ref, watch } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
 import { useI18n } from '@/plugins/i18n'
 import ModalComponent from '@/components/common/ModalComponent.vue'
 import TranslationCompareTable from '@/components/features/translation-compare/TranslationCompareTable.vue'
@@ -82,7 +82,7 @@ defineEmits<{
 
 const { translate } = useI18n()
 
-const compareData = ref<CompletedTranslationCompareResponse | null>(null)
+const compareData = shallowRef<CompletedTranslationCompareResponse | null>(null)
 const isLoading = ref(false)
 const errorMessage = ref<string | null>(null)
 
