@@ -203,10 +203,11 @@ public class DashboardService : IDashboardService
     }
 
     /// <inheritdoc />
-    public async Task<List<ErrorLogEntry>> GetErrorLog(int limit = 50)
+    public async Task<List<ErrorLogEntry>> GetErrorLog(int limit = 50, int offset = 0)
     {
         var errors = await _dbContext.ErrorLogs
             .OrderByDescending(e => e.Timestamp)
+            .Skip(Math.Max(offset, 0))
             .Take(limit)
             .ToListAsync();
 
@@ -358,7 +359,7 @@ public interface IDashboardService
 {
     Task<JobQueueStatus> GetJobQueueStatus();
     Task<ApiUsageStatus> GetApiUsage();
-    Task<List<ErrorLogEntry>> GetErrorLog(int limit = 50);
+    Task<List<ErrorLogEntry>> GetErrorLog(int limit = 50, int offset = 0);
     Task LogApiUsage(string service, int? tokensUsed, long responseTimeMs, bool success, string? errorMessage = null, int? promptTokens = null, int? completionTokens = null);
     Task LogError(string source, string message, string? details = null, string? stackTrace = null);
     Task<string?> GetDashboardLayout();

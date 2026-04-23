@@ -2,8 +2,10 @@ import { AxiosError, AxiosResponse, AxiosStatic } from 'axios'
 import { ILogsService } from '@/ts'
 
 const service = (http: AxiosStatic, resource = '/api/logs'): ILogsService => ({
-    getStream(): EventSource {
-        return new EventSource(`${resource}/stream`)
+    getStream(includeRecent = true): EventSource {
+        const streamUrl = new URL(`${window.location.origin}${resource}/stream`)
+        streamUrl.searchParams.set('includeRecent', includeRecent ? 'true' : 'false')
+        return new EventSource(streamUrl)
     },
     getRecent<T>(take: number = 1000): Promise<T> {
         return new Promise((resolve, reject) => {

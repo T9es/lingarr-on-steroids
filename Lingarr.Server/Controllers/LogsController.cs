@@ -28,19 +28,23 @@ namespace Lingarr.Server.Controllers
         }
 
         [HttpGet("stream")]
-        public async Task GetLogStreamAsync(CancellationToken cancellationToken)
+        public async Task GetLogStreamAsync(
+            [FromQuery] bool includeRecent = true,
+            CancellationToken cancellationToken = default)
         {
             Response.Headers.Append("Content-Type", "text/event-stream");
             Response.Headers.Append("Cache-Control", "no-cache");
             Response.Headers.Append("Connection", "keep-alive");
             
-            // Send initial recent logs
-            foreach (var log in InMemoryLogSink.GetRecentLogs(400))
+            if (includeRecent)
             {
-                string json = JsonSerializer.Serialize(log);
-                await Response.WriteAsync($"data: {json}\n\n", cancellationToken);
+                foreach (var log in InMemoryLogSink.GetRecentLogs(400))
+                {
+                    string json = JsonSerializer.Serialize(log);
+                    await Response.WriteAsync($"data: {json}\n\n", cancellationToken);
+                }
+                await Response.Body.FlushAsync(cancellationToken);
             }
-            await Response.Body.FlushAsync(cancellationToken);
             
             var channel = Channel.CreateBounded<LogEntry>(new BoundedChannelOptions(1000)
             {
