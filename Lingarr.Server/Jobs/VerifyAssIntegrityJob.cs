@@ -1,4 +1,5 @@
 using Hangfire;
+using System.Text.Json;
 using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
@@ -219,15 +220,20 @@ public class VerifyAssIntegrityJob
                         : new AssArtifactScanResult();
                     scan.Merge(AssSubtitleArtifactDetector.DetectInlineTagPlacementArtifacts(
                         targetSubtitles.SelectMany(item => item.Lines)));
+                    var generatedOutputScans = await ScanGeneratedOutputArtifactsAsync(
+                        translation,
+                        scannedPaths,
+                        result);
 
-                    if (!scan.HasIssues)
+                    if (!scan.HasIssues && generatedOutputScans.Count == 0)
                     {
                         continue;
                     }
 
-                    if (scan.IssueTypes.Contains(AssVerificationIssueTypes.InlineAssTagPlacement, StringComparer.Ordinal))
+                    if (ShouldAttemptLocalRepair(scan) ||
+                        generatedOutputScans.Any(output => ShouldAttemptLocalRepair(output.Scan)))
                     {
-                        var repairResult = await TryRepairInlineTagPlacementAsync(
+                        var repairResult = await TryRepairExistingAssOutputsAsync(
                             translation,
                             subtitleTag,
                             subtitleTagShort);
@@ -236,6 +242,11 @@ public class VerifyAssIntegrityJob
 
                         if (repairResult.RepairedFiles > 0)
                         {
+                            foreach (var outputPath in GetGeneratedOutputPaths(translation))
+                            {
+                                flaggedByPath.Remove(outputPath);
+                            }
+
                             sourceSubtitles = File.Exists(translation.SubtitleToTranslate)
                                 ? await _subtitleService.ReadSubtitles(translation.SubtitleToTranslate)
                                 : [];
@@ -248,8 +259,12 @@ public class VerifyAssIntegrityJob
                                 : new AssArtifactScanResult();
                             scan.Merge(AssSubtitleArtifactDetector.DetectInlineTagPlacementArtifacts(
                                 targetSubtitles.SelectMany(item => item.Lines)));
+                            generatedOutputScans = await ScanGeneratedOutputArtifactsAsync(
+                                translation,
+                                scannedPaths,
+                                result);
 
-                            if (!scan.HasIssues)
+                            if (!scan.HasIssues && generatedOutputScans.Count == 0)
                             {
                                 continue;
                             }
@@ -260,14 +275,29 @@ public class VerifyAssIntegrityJob
                         ? queuedMovieIds.Contains(translation.MediaId.Value)
                         : queuedEpisodeIds.Contains(translation.MediaId.Value);
 
-                    AddOrMergeFinding(
-                        flaggedByPath,
-                        translation.MediaId.Value,
-                        translation.MediaType.ToString(),
-                        translation.Title,
-                        translation.TranslatedSubtitle,
-                        isQueued,
-                        scan);
+                    if (scan.HasIssues)
+                    {
+                        AddOrMergeFinding(
+                            flaggedByPath,
+                            translation.MediaId.Value,
+                            translation.MediaType.ToString(),
+                            translation.Title,
+                            translation.TranslatedSubtitle,
+                            isQueued,
+                            scan);
+                    }
+
+                    foreach (var outputScan in generatedOutputScans.Where(output => output.Scan.HasIssues))
+                    {
+                        AddOrMergeFinding(
+                            flaggedByPath,
+                            translation.MediaId.Value,
+                            translation.MediaType.ToString(),
+                            translation.Title,
+                            outputScan.Path,
+                            isQueued,
+                            outputScan.Scan);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -335,7 +365,68 @@ public class VerifyAssIntegrityJob
         return subtitleFiles;
     }
 
-    private async Task<SubtitleOutputBackfillResult> TryRepairInlineTagPlacementAsync(
+    private async Task<List<(string Path, AssArtifactScanResult Scan)>> ScanGeneratedOutputArtifactsAsync(
+        TranslationRequest translation,
+        HashSet<string> scannedPaths,
+        AssVerificationResult result)
+    {
+        var scans = new List<(string Path, AssArtifactScanResult Scan)>();
+        foreach (var path in GetGeneratedOutputPaths(translation))
+        {
+            if (string.Equals(path, translation.TranslatedSubtitle, StringComparison.OrdinalIgnoreCase) ||
+                !File.Exists(path))
+            {
+                continue;
+            }
+
+            if (scannedPaths.Add(path))
+            {
+                result.TotalFilesScanned++;
+            }
+
+            var scan = await GetSuspiciousLines(path);
+            if (scan.HasIssues)
+            {
+                scans.Add((path, scan));
+            }
+        }
+
+        return scans;
+    }
+
+    private static List<string> GetGeneratedOutputPaths(TranslationRequest translation)
+    {
+        var paths = new List<string>();
+        if (!string.IsNullOrWhiteSpace(translation.TranslatedSubtitle))
+        {
+            paths.Add(translation.TranslatedSubtitle);
+        }
+
+        if (!string.IsNullOrWhiteSpace(translation.GeneratedSubtitlePaths))
+        {
+            try
+            {
+                paths.AddRange(JsonSerializer.Deserialize<List<string>>(translation.GeneratedSubtitlePaths) ?? []);
+            }
+            catch (JsonException)
+            {
+                paths.Add(translation.GeneratedSubtitlePaths);
+            }
+        }
+
+        return paths
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static bool ShouldAttemptLocalRepair(AssArtifactScanResult scan)
+    {
+        return scan.IssueTypes.Contains(AssVerificationIssueTypes.InlineAssTagPlacement, StringComparer.Ordinal) ||
+               scan.IssueTypes.Contains(AssVerificationIssueTypes.DrawingArtifact, StringComparer.Ordinal);
+    }
+
+    private async Task<SubtitleOutputBackfillResult> TryRepairExistingAssOutputsAsync(
         TranslationRequest translation,
         string subtitleTag,
         string subtitleTagShort)

@@ -398,6 +398,52 @@ public class SubtitleOutputReconciliationServiceTests
     }
 
     [Fact]
+    public async Task RepairExistingAssOutputsAsync_RebuildsDamagedSrtSidecarFromTranslatedAss()
+    {
+        await using var context = BuildContext();
+        using var tempDirectory = new TemporaryDirectory();
+        var movie = AddMovie(context, tempDirectory.Path);
+        var sourceAssPath = Path.Combine(tempDirectory.Path, "movie.en.ass");
+        var translatedAssPath = Path.Combine(tempDirectory.Path, "movie.pl.lingarr.ass");
+        var translatedSrtPath = Path.Combine(tempDirectory.Path, "movie.pl.lingarr.srt");
+        await File.WriteAllTextAsync(sourceAssPath, BuildAssContent("Hello"));
+        await File.WriteAllTextAsync(
+            translatedAssPath,
+            BuildAssContent("Czesc", secondText: "m 0 0 l 1 0 1 1 0 1"));
+        await File.WriteAllTextAsync(translatedSrtPath, BuildDamagedSrtContent());
+        AddCompletedRequest(
+            context,
+            movie.Id,
+            ".ass",
+            ".ass,.srt",
+            translatedAssPath,
+            JsonSerializer.Serialize(new[] { translatedAssPath, translatedSrtPath }),
+            sourceAssPath);
+        await context.SaveChangesAsync();
+        var request = await context.TranslationRequests.SingleAsync();
+        var subtitleService = new SubtitleService(NullLogger<SubtitleService>.Instance);
+        var backfillService = new SubtitleOutputBackfillService(
+            context,
+            subtitleService,
+            Mock.Of<ISourceSubtitleSnapshotService>(),
+            Mock.Of<ISubtitleExtractionService>(),
+            NullLogger<SubtitleOutputBackfillService>.Instance);
+
+        var result = await backfillService.RepairExistingAssOutputsAsync(
+            movie,
+            MediaType.Movie,
+            request,
+            [],
+            "lingarr",
+            "-ai-");
+        var repairedSrt = await File.ReadAllTextAsync(translatedSrtPath);
+
+        Assert.Equal(1, result.RepairedFiles);
+        Assert.Contains("Czesc", repairedSrt);
+        Assert.DoesNotContain("m 0 0", repairedSrt);
+    }
+
+    [Fact]
     public async Task ReconcileLibraryOutputsAsync_BackfilledAssConvertsSrtLineBreaksToAssBreaks()
     {
         await using var context = BuildContext();
@@ -970,6 +1016,24 @@ public class SubtitleOutputReconciliationServiceTests
                1
                00:00:01,000 --> 00:00:03,000
                {text}
+
+               """;
+    }
+
+    private static string BuildDamagedSrtContent()
+    {
+        return """
+               1
+               00:00:01,000 --> 00:00:03,000
+               Czesc
+
+               2
+               00:00:04,000 --> 00:00:05,000
+               m 0 0 l 1 0 1 1 0 1
+
+               3
+               00:00:06,000 --> 00:00:07,000
+               m 0 0 l 1 0 1 1 0 1
 
                """;
     }

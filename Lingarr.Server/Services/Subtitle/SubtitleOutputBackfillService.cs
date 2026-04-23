@@ -212,6 +212,22 @@ public class SubtitleOutputBackfillService : ISubtitleOutputBackfillService
             return;
         }
 
+        var translatedAss = await _subtitleService.ReadSubtitles(assPath);
+        var srtPath = FindExistingOutputPath(request, matchingSubtitles, ".srt", subtitleTag, subtitleTagShort);
+        var assNeedsInlineRepair = TranslatedAssNeedsInlineRepair(translatedAss);
+        var srtNeedsRepair = await ExistingSrtNeedsRepairAsync(srtPath, cancellationToken);
+
+        if (!assNeedsInlineRepair && !srtNeedsRepair)
+        {
+            return;
+        }
+
+        if (!assNeedsInlineRepair)
+        {
+            await RewritePlainSrtFromTranslatedAssAsync(request, translatedAss, srtPath, result, cancellationToken);
+            return;
+        }
+
         var sourceResolution = await ResolveSourceAssForBackfillAsync(
             media,
             mediaType,
@@ -222,12 +238,6 @@ public class SubtitleOutputBackfillService : ISubtitleOutputBackfillService
         if (sourceResolution == null)
         {
             MarkRequiresRetranslation(result);
-            return;
-        }
-
-        var translatedAss = await _subtitleService.ReadSubtitles(assPath);
-        if (!TranslatedAssNeedsInlineRepair(translatedAss))
-        {
             return;
         }
 
@@ -261,14 +271,14 @@ public class SubtitleOutputBackfillService : ISubtitleOutputBackfillService
                 ".srt",
                 subtitleTag,
                 subtitleTagShort,
-                out var srtPath))
+                out var repairedSrtPath))
         {
             var plainSrtItems = BuildPlainTextSrtItems(sourceAss);
             if (plainSrtItems.Count > 0)
             {
                 SetSequentialPositions(plainSrtItems);
-                await _subtitleService.WriteSubtitles(srtPath, plainSrtItems, stripSubtitleFormatting: true);
-                AddGeneratedOutput(request, srtPath, ".srt", preferAsPrimary: false);
+                await _subtitleService.WriteSubtitles(repairedSrtPath, plainSrtItems, stripSubtitleFormatting: true);
+                AddGeneratedOutput(request, repairedSrtPath, ".srt", preferAsPrimary: false);
             }
         }
 
@@ -281,6 +291,32 @@ public class SubtitleOutputBackfillService : ISubtitleOutputBackfillService
         {
             result.BackfilledFromExternalSourceFiles++;
         }
+    }
+
+    private async Task RewritePlainSrtFromTranslatedAssAsync(
+        TranslationRequest request,
+        IReadOnlyList<SubtitleItem> translatedAss,
+        string? srtPath,
+        SubtitleOutputBackfillResult result,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(srtPath))
+        {
+            MarkSkipped(result);
+            return;
+        }
+
+        var plainSrtItems = BuildPlainTextSrtItems(translatedAss);
+        if (plainSrtItems.Count == 0)
+        {
+            MarkSkipped(result);
+            return;
+        }
+
+        SetSequentialPositions(plainSrtItems);
+        await _subtitleService.WriteSubtitles(srtPath, plainSrtItems, stripSubtitleFormatting: true);
+        AddGeneratedOutput(request, srtPath, ".srt", preferAsPrimary: false);
+        result.RepairedFiles++;
     }
 
     private async Task TryBackfillSrtFromAssAsync(
@@ -593,6 +629,19 @@ public class SubtitleOutputBackfillService : ISubtitleOutputBackfillService
             .HasIssues;
     }
 
+    private static async Task<bool> ExistingSrtNeedsRepairAsync(
+        string? srtPath,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(srtPath) || !File.Exists(srtPath))
+        {
+            return false;
+        }
+
+        var lines = await File.ReadAllLinesAsync(srtPath, cancellationToken);
+        return AssSubtitleArtifactDetector.DetectDrawingArtifacts(lines).HasIssues;
+    }
+
     private static string BuildRepairVisibleText(SubtitleItem translatedCue)
     {
         var lines = translatedCue.Lines.Count > 0
@@ -710,8 +759,8 @@ public class SubtitleOutputBackfillService : ISubtitleOutputBackfillService
                 ? string.Join("\\N", subtitle.TranslatedLines)
                 : string.Join("\\N", subtitle.Lines);
             var plainTextLines = ConvertToPlainTextLines(translatedText);
-            if (plainTextLines.Count == 0 &&
-                SubtitleFormatterService.IsMeaningless(string.Join(" ", subtitle.PlaintextLines)))
+            if (plainTextLines.Count == 0 ||
+                plainTextLines.All(SubtitleFormatterService.IsAssDrawingCommand))
             {
                 continue;
             }
