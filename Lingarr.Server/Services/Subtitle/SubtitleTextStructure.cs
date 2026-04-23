@@ -257,43 +257,114 @@ internal sealed class SubtitleTextStructure
             .Replace("\\N", "\n", StringComparison.Ordinal)
             .Replace("\\n", "\n", StringComparison.Ordinal)
             .Replace("\n", "\\N", StringComparison.Ordinal);
-        var insertedTranslation = false;
-        var builder = new StringBuilder();
-
-        foreach (var sourceLineIndex in Enumerable.Range(0, SourceLines.Count))
+        var parts = Lines
+            .OrderBy(line => line.SourceLineIndex)
+            .ThenBy(line => line.SegmentIndex)
+            .SelectMany(line => line.Parts)
+            .ToList();
+        var firstTextIndex = parts.FindIndex(part => part.IsTranslatable);
+        if (firstTextIndex < 0)
         {
-            if (!_segmentsBySourceLineIndex.TryGetValue(sourceLineIndex, out var segments))
+            return SourceLines.ToList();
+        }
+
+        var prefix = string.Concat(parts
+            .Take(firstTextIndex)
+            .Where(ShouldPreserveLocalPart)
+            .Select(part => part.SourceText));
+        var lastTextIndex = parts.FindLastIndex(part => part.IsTranslatable);
+        var hasWholeCueWrapper = firstTextIndex > 0;
+        var suffix = hasWholeCueWrapper && lastTextIndex >= 0
+            ? string.Concat(parts
+                .Skip(lastTextIndex + 1)
+                .Where(ShouldPreserveLocalPart)
+                .Select(part => part.SourceText))
+            : string.Empty;
+        var insertions = new List<TextInsertion>();
+        for (var index = firstTextIndex + 1; index < parts.Count; index++)
+        {
+            var part = parts[index];
+            if (part.IsTranslatable || !ShouldPreserveLocalPart(part))
             {
-                builder.Append(SourceLines[sourceLineIndex]);
                 continue;
             }
 
-            foreach (var segment in segments)
+            if (hasWholeCueWrapper && index > lastTextIndex)
             {
-                foreach (var part in segment.Parts)
-                {
-                    if (part.IsTranslatable)
-                    {
-                        if (!insertedTranslation)
-                        {
-                            builder.Append(translatedText);
-                            insertedTranslation = true;
-                        }
+                continue;
+            }
 
-                        continue;
-                    }
+            if (TryFindNearestTextMatch(translatedText, parts, index + 1, 1, out var nextStart, out _))
+            {
+                insertions.Add(new TextInsertion(nextStart, part.SourceText, insertions.Count));
+                continue;
+            }
 
-                    if (part.Kind == SubtitleTextPartKind.AssNonBreakingSpace)
-                    {
-                        continue;
-                    }
-
-                    builder.Append(part.SourceText);
-                }
+            if (TryFindNearestTextMatch(translatedText, parts, index - 1, -1, out var previousStart, out var previousLength))
+            {
+                insertions.Add(new TextInsertion(previousStart + previousLength, part.SourceText, insertions.Count));
             }
         }
 
-        return insertedTranslation ? [builder.ToString()] : SourceLines.ToList();
+        return [prefix + ApplyInsertions(translatedText, insertions) + suffix];
+    }
+
+    private static bool ShouldPreserveLocalPart(SubtitleTextPart part)
+    {
+        return part.Kind != SubtitleTextPartKind.AssNonBreakingSpace;
+    }
+
+    private static bool TryFindNearestTextMatch(
+        string translatedText,
+        IReadOnlyList<SubtitleTextPart> parts,
+        int startIndex,
+        int step,
+        out int matchStart,
+        out int matchLength)
+    {
+        for (var index = startIndex; index >= 0 && index < parts.Count; index += step)
+        {
+            var part = parts[index];
+            if (!part.IsTranslatable || string.IsNullOrWhiteSpace(part.SourceText))
+            {
+                continue;
+            }
+
+            var sourceText = part.SourceText.Trim();
+            matchStart = translatedText.IndexOf(sourceText, StringComparison.Ordinal);
+            if (matchStart < 0)
+            {
+                matchStart = translatedText.IndexOf(sourceText, StringComparison.OrdinalIgnoreCase);
+            }
+
+            if (matchStart >= 0)
+            {
+                matchLength = sourceText.Length;
+                return true;
+            }
+        }
+
+        matchStart = -1;
+        matchLength = 0;
+        return false;
+    }
+
+    private static string ApplyInsertions(string translatedText, List<TextInsertion> insertions)
+    {
+        if (insertions.Count == 0)
+        {
+            return translatedText;
+        }
+
+        var builder = new StringBuilder(translatedText);
+        foreach (var insertion in insertions
+                     .OrderByDescending(insertion => insertion.Position)
+                     .ThenByDescending(insertion => insertion.Order))
+        {
+            builder.Insert(insertion.Position, insertion.Text);
+        }
+
+        return builder.ToString();
     }
 
     private List<string> BuildLineAssignments(string translatedProviderText, IReadOnlyList<string> translatedLines)
@@ -333,4 +404,6 @@ internal sealed class SubtitleTextStructure
             .Replace("\r\n", "\n", StringComparison.Ordinal)
             .Replace('\r', '\n');
     }
+
+    private sealed record TextInsertion(int Position, string Text, int Order);
 }

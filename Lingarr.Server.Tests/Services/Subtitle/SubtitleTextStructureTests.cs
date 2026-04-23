@@ -210,6 +210,42 @@ public class SubtitleTextStructureTests
     }
 
     [Fact]
+    public void AssSingleVisibleTextOverlay_ShouldKeepExactTextAndPlaceInlineTagsAroundMatchingSourcePhrase()
+    {
+        var sourceLines = new List<string> { "Je dis au revoir, {\\i0}say goodbye{\\i1}" };
+        var structure = BuildAssStructure(sourceLines);
+
+        var translated = structure.ApplyProviderTranslationAsSingleVisibleText("Mowie do widzenia,say goodbye");
+
+        Assert.Single(translated);
+        Assert.Equal("Mowie do widzenia,{\\i0}say goodbye{\\i1}", translated[0]);
+    }
+
+    [Fact]
+    public void AssSingleVisibleTextOverlay_ShouldAvoidDanglingInlineTagsWhenSourcePhraseIsNotPresent()
+    {
+        var sourceLines = new List<string> { "Je dis au revoir, {\\i0}phrase introuvable{\\i1}" };
+        var structure = BuildAssStructure(sourceLines);
+
+        var translated = structure.ApplyProviderTranslationAsSingleVisibleText("Mowie do widzenia");
+
+        Assert.Single(translated);
+        Assert.Equal("Mowie do widzenia", translated[0]);
+    }
+
+    [Fact]
+    public void AssSingleVisibleTextOverlay_ShouldPreserveWholeCueWrapperTags()
+    {
+        var sourceLines = new List<string> { "{\\i1}Bonjour{\\i}" };
+        var structure = BuildAssStructure(sourceLines);
+
+        var translated = structure.ApplyProviderTranslationAsSingleVisibleText("Czesc");
+
+        Assert.Single(translated);
+        Assert.Equal("{\\i1}Czesc{\\i}", translated[0]);
+    }
+
+    [Fact]
     public void SrtInlineHtml_ShouldProtectMarkupFromProviderAndRestoreAfterTranslation()
     {
         var sourceLines = new List<string> { "<i>Hello</i> <b>world</b>" };

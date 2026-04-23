@@ -347,9 +347,7 @@ public class SubtitleOutputReconciliationServiceTests
 
         Assert.Equal(1, result.BackfilledFiles);
         Assert.Equal(0, result.QueuedTranslations);
-        Assert.Contains("Mowie do widzenia,say goodbye", ass);
-        Assert.Contains(@"{\i0}", ass);
-        Assert.Contains(@"{\i1}", ass);
+        Assert.Contains(@"Mowie do widzenia,{\i0}say goodbye{\i1}", ass);
         Assert.DoesNotContain(@"say{\i0}goodbye", ass);
     }
 
