@@ -47,6 +47,13 @@
 
         <template #footer>
             <button
+                v-if="translationRequestId"
+                :disabled="isLoading"
+                @click="loadCompareData(translationRequestId)"
+                class="text-primary-content/60 hover:text-primary-content disabled:text-primary-content/30 rounded px-4 py-2">
+                {{ translate('common.refresh') }}
+            </button>
+            <button
                 @click="$emit('close')"
                 class="text-primary-content/60 hover:text-primary-content rounded px-4 py-2">
                 {{ translate('common.close') }}
@@ -94,6 +101,8 @@ watch(
     }),
     async ({ isOpen, translationRequestId }) => {
         if (!isOpen) {
+            compareData.value = null
+            errorMessage.value = null
             return
         }
 

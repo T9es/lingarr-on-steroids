@@ -133,6 +133,13 @@ public class TranslationCompareController : ControllerBase
                 Lines = lines
             };
 
+            if (ControllerContext.HttpContext != null)
+            {
+                Response.Headers.CacheControl = "no-store, no-cache, max-age=0";
+                Response.Headers.Pragma = "no-cache";
+                Response.Headers.Expires = "0";
+            }
+
             return Ok(response);
         }
         catch (Exception ex)
