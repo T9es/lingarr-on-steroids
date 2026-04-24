@@ -43,8 +43,7 @@ public class MovieSync : IMovieSync
     {
         if (!movie.HasFile)
         {
-            _logger.LogDebug("Movie '{Title}' (ID: {Id}) has no file, skipping.", movie.Title, movie.Id);
-            return null;
+            return await SyncMovieWithoutFile(movie, instanceId);
         }
 
         // Match by RadarrId AND SourceInstanceId for multi-instance support
@@ -172,6 +171,43 @@ public class MovieSync : IMovieSync
         {
             _logger.LogWarning(ex, "Failed to update translation state for movie {Title}", movieEntity.Title);
         }
+
+        return movieEntity;
+    }
+
+    private async Task<Movie?> SyncMovieWithoutFile(RadarrMovie movie, string instanceId)
+    {
+        var movieEntity = await _dbContext.Movies
+            .Include(m => m.EmbeddedSubtitles)
+            .FirstOrDefaultAsync(m => m.RadarrId == movie.Id && m.SourceInstanceId == instanceId);
+
+        if (movieEntity == null)
+        {
+            _logger.LogDebug("Movie '{Title}' (ID: {Id}) has no file, skipping.", movie.Title, movie.Id);
+            return null;
+        }
+
+        movieEntity.Title = movie.Title;
+        movieEntity.DateAdded = DateTime.Parse(movie.Added).ToUniversalTime();
+        movieEntity.Path = _pathConversionService.ConvertAndMapPath(movie.Path, MediaType.Movie);
+        movieEntity.FileName = null;
+        movieEntity.MediaHash = string.Empty;
+        movieEntity.SourceInstanceId = instanceId;
+        movieEntity.TranslationState = TranslationState.AwaitingSource;
+        movieEntity.IndexedAt = DateTime.UtcNow;
+        movieEntity.LastSubtitleCheckAt = DateTime.UtcNow;
+        movieEntity.StateSettingsVersion = await _mediaStateService.GetSettingsVersionAsync();
+
+        if (movieEntity.EmbeddedSubtitles.Count != 0)
+        {
+            _dbContext.EmbeddedSubtitles.RemoveRange(movieEntity.EmbeddedSubtitles);
+            movieEntity.EmbeddedSubtitles.Clear();
+        }
+
+        _logger.LogInformation(
+            "Movie '{Title}' (ID: {Id}) has no file in Radarr. Marking existing Lingarr row as awaiting source.",
+            movie.Title,
+            movie.Id);
 
         return movieEntity;
     }
