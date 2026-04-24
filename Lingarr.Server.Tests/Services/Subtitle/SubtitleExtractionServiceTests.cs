@@ -162,6 +162,31 @@ public class SubtitleExtractionServiceTests : IDisposable
     }
 
     [Fact]
+    public void GetExtractedSubtitlePath_WithStreamSpecificLanguageTag_UsesUniqueSubtitlePath()
+    {
+        var tagMethod = typeof(SubtitleExtractionService).GetMethod(
+            "BuildStreamSpecificLanguageTag",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        var pathMethod = typeof(SubtitleExtractionService).GetMethod(
+            "GetExtractedSubtitlePath",
+            BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.NotNull(tagMethod);
+        Assert.NotNull(pathMethod);
+
+        var languageTag = Assert.IsType<string>(tagMethod!.Invoke(null, ["eng", 3]));
+        var outputPath = Assert.IsType<string>(pathMethod!.Invoke(null, [
+            Path.GetTempPath(),
+            "episode.mkv",
+            "ass",
+            languageTag,
+            3
+        ]));
+
+        Assert.EndsWith(".eng.s3.ass", outputPath);
+    }
+
+    [Fact]
     public async Task EnsureExtractionMarkerAsync_PrependsMarkerToAssFiles()
     {
         var filePath = Path.Combine(CreateMediaDirectory(), "movie.eng.ass");

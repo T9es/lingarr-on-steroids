@@ -898,7 +898,16 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 }
 
                 embeddedSubtitles = episode.EmbeddedSubtitles;
-                mediaPath = Path.Combine(episode.Path, episode.FileName);
+                mediaPath = FindMediaFile(episode.Path, episode.FileName);
+                if (mediaPath == null)
+                {
+                    _logger.LogWarning(
+                        "Could not find media file for episode: {FileName} in {Path}. Directory exists: {DirExists}",
+                        episode.FileName,
+                        episode.Path,
+                        Directory.Exists(episode.Path));
+                    return null;
+                }
                 outputDir = episode.Path;
             }
             else if (mediaType == MediaType.Movie)
@@ -927,7 +936,16 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 }
 
                 embeddedSubtitles = movie.EmbeddedSubtitles;
-                mediaPath = Path.Combine(movie.Path, movie.FileName);
+                mediaPath = FindMediaFile(movie.Path, movie.FileName);
+                if (mediaPath == null)
+                {
+                    _logger.LogWarning(
+                        "Could not find media file for movie: {FileName} in {Path}. Directory exists: {DirExists}",
+                        movie.FileName,
+                        movie.Path,
+                        Directory.Exists(movie.Path));
+                    return null;
+                }
                 outputDir = movie.Path;
             }
             else
@@ -993,6 +1011,8 @@ public class SubtitleExtractionService : ISubtitleExtractionService
 
             var viableCandidates = new List<ExtractedSubtitleCandidate>();
 
+            var extractionOutputPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
             // Extract readable candidates first, then use content analysis as a second-stage tie-break.
             foreach (var candidate in candidates)
             {
@@ -1011,12 +1031,27 @@ public class SubtitleExtractionService : ISubtitleExtractionService
 
                 try
                 {
+                    var extractionLanguageTag = candidate.Language;
                     var candidateOutputPath = GetExtractedSubtitlePath(
                         outputDir!,
                         mediaPath!,
                         candidate.CodecName,
-                        candidate.Language,
+                        extractionLanguageTag,
                         candidate.StreamIndex);
+                    if (!extractionOutputPaths.Add(candidateOutputPath))
+                    {
+                        extractionLanguageTag = BuildStreamSpecificLanguageTag(
+                            candidate.Language,
+                            candidate.StreamIndex);
+                        candidateOutputPath = GetExtractedSubtitlePath(
+                            outputDir!,
+                            mediaPath!,
+                            candidate.CodecName,
+                            extractionLanguageTag,
+                            candidate.StreamIndex);
+                        extractionOutputPaths.Add(candidateOutputPath);
+                    }
+
                     var existedBeforeExtraction = File.Exists(candidateOutputPath);
 
                     // Extract the subtitle
@@ -1025,7 +1060,7 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                         candidate.StreamIndex,
                         outputDir!,
                         candidate.CodecName,
-                        candidate.Language);
+                        extractionLanguageTag);
 
                     if (!string.IsNullOrEmpty(extractedPath))
                     {
@@ -1256,6 +1291,13 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             .ThenBy(x => x.Subtitle.StreamIndex) // Stability
             .Select(x => x.Subtitle)
             .ToList();
+    }
+
+    private static string? BuildStreamSpecificLanguageTag(string? language, int streamIndex)
+    {
+        return string.IsNullOrWhiteSpace(language)
+            ? $"stream{streamIndex}"
+            : $"{language}.s{streamIndex}";
     }
 
     private sealed record ExtractedSubtitleCandidate(
