@@ -60,7 +60,7 @@ It still inherits Lingarr's base workflow: index media through Radarr and Sonarr
 - Bulk integrity checks can validate translated subtitles across the library.
 - Ghost-job protection avoids overwriting terminal request states and cleans up interrupted work after restarts.
 - Exponential backoff and delayed requeue logic reduce pressure on unstable providers.
-- Chutes integration includes quota-aware usage handling and provider-specific controls in this fork.
+- Chutes and NanoGPT integrations include quota-aware usage handling and provider-specific controls in this fork.
 
 ---
 
@@ -74,6 +74,7 @@ This is what works in our fork today. Some of these are supported upstream as we
 - [Google Gemini](https://gemini.google.com/)
 - [DeepSeek](https://deepseek.com/)
 - [Chutes.ai](https://chutes.ai/) (with quota tracking & auto-pause)
+- [NanoGPT](https://nano-gpt.com/) (with subscription usage, reserves & auto-pause)
 - LocalAI / Ollama (self-hosted)
 
 **Cloud APIs:**
