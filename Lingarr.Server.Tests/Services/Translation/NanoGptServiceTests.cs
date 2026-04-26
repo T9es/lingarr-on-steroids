@@ -93,6 +93,54 @@ public class NanoGptServiceTests
     }
 
     [Fact]
+    public void ParseUsage_MapsCurrentNanoGptSubscriptionShape()
+    {
+        using var document = JsonDocument.Parse("""
+        {
+          "active": true,
+          "limits": {
+            "weeklyInputTokens": 60000000,
+            "dailyInputTokens": null,
+            "dailyImages": 100
+          },
+          "period": {
+            "currentPeriodEnd": "2026-05-12T22:05:54.000Z"
+          },
+          "dailyImages": {
+            "used": 0,
+            "remaining": 100,
+            "percentUsed": 0,
+            "resetAt": 1777248000000
+          },
+          "dailyInputTokens": null,
+          "weeklyInputTokens": {
+            "used": 505536,
+            "remaining": 59494464,
+            "percentUsed": 0.0084256,
+            "resetAt": 1777248000000
+          },
+          "state": "active"
+        }
+        """);
+
+        var usage = NanoGptUsageParser.Parse(document.RootElement);
+
+        Assert.True(usage.Active);
+        Assert.Equal("active", usage.State);
+        Assert.Equal(100, usage.DailyImages.Limit);
+        Assert.Equal(0, usage.DailyImages.Used);
+        Assert.Equal(100, usage.DailyImages.Remaining);
+        Assert.Equal(DateTimeOffset.FromUnixTimeMilliseconds(1777248000000).UtcDateTime, usage.DailyImages.ResetAt);
+        Assert.Equal(60000000, usage.WeeklyTokens.Limit);
+        Assert.Equal(505536, usage.WeeklyTokens.Used);
+        Assert.Equal(59494464, usage.WeeklyTokens.Remaining);
+        Assert.Equal(0.0084256, usage.WeeklyTokens.PercentUsed);
+        Assert.Equal(DateTimeOffset.Parse("2026-05-12T22:05:54.000Z").UtcDateTime, usage.CurrentPeriodEnd);
+        Assert.Null(usage.Daily.Limit);
+        Assert.Null(usage.Monthly.Limit);
+    }
+
+    [Fact]
     public void ReservePolicy_BlocksWhenAnyReserveWouldBeConsumed()
     {
         var usage = new NanoGptUsageSnapshot

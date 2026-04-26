@@ -418,6 +418,7 @@
       "chutesRequestBuffer": "Verzoekveiligheidsbuffer",
       "chutesRequestBufferDescription": "Stop vertalingen wanneer resterende dagelijkse verzoeken deze buffer bereiken. Helpt overschrijding van limieten te voorkomen bij parallelle vertalingen.",
       "chutesRequestBufferError": "Voer een geldig nummer in",
+      "nanoGptDailyImages": "Dagelijkse afbeeldingen",
       "nanoGptDailyReserve": "Dagelijkse eenhedenreserve",
       "nanoGptDailyUnits": "Dagelijkse eenheden",
       "nanoGptDescription": "NanoGPT gebruikt eerst abonnementsmodellen en betaalde modellen alleen wanneer je er expliciet een kiest.",

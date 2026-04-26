@@ -418,6 +418,7 @@
       "chutesRequestBuffer": "Anfragen-Sicherheitspuffer",
       "chutesRequestBufferDescription": "Übersetzungen stoppen, wenn verbleibende tägliche Anfragen diesen Puffer erreichen. Hilft, Limits bei parallelen Übersetzungen nicht zu überschreiten.",
       "chutesRequestBufferError": "Bitte geben Sie eine gültige Zahl ein",
+      "nanoGptDailyImages": "Tägliche Bilder",
       "nanoGptDailyReserve": "Tägliche Einheitenreserve",
       "nanoGptDailyUnits": "Tägliche Einheiten",
       "nanoGptDescription": "NanoGPT verwendet zuerst Abonnementmodelle und bezahlte Modelle nur, wenn Sie eines ausdrücklich auswählen.",

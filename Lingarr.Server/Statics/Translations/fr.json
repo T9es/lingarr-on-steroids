@@ -418,6 +418,7 @@
       "chutesRequestBuffer": "Tampon de sécurité des requêtes",
       "chutesRequestBufferDescription": "Arrêter les traductions lorsque les requêtes quotidiennes restantes atteignent ce tampon. Aide à éviter de dépasser les limites avec les traductions parallèles.",
       "chutesRequestBufferError": "Veuillez entrer un nombre valide",
+      "nanoGptDailyImages": "Images quotidiennes",
       "nanoGptDailyReserve": "Réserve d'unités quotidiennes",
       "nanoGptDailyUnits": "Unités quotidiennes",
       "nanoGptDescription": "NanoGPT utilise d'abord les modèles d'abonnement et les modèles payants uniquement lorsque vous en choisissez un explicitement.",

@@ -418,6 +418,7 @@
       "chutesRequestBuffer": "请求安全缓冲",
       "chutesRequestBufferDescription": "当剩余的每日请求达到此缓冲时停止翻译。有助于防止并行翻译时超过限制。",
       "chutesRequestBufferError": "请输入有效的数字",
+      "nanoGptDailyImages": "每日图片",
       "nanoGptDailyReserve": "每日单位预留",
       "nanoGptDailyUnits": "每日单位",
       "nanoGptDescription": "NanoGPT 会优先使用订阅模型，只有在你明确选择时才使用付费模型。",

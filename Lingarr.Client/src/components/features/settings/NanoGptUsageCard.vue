@@ -24,14 +24,21 @@
 
         <div class="mt-4 grid gap-3 lg:grid-cols-3">
             <UsageWindow
+                v-if="hasUsageData(usage?.dailyImages)"
+                :title="translate('settings.services.nanoGptDailyImages')"
+                :window="usage?.dailyImages" />
+            <UsageWindow
+                v-if="hasUsageData(usage?.daily)"
                 :title="translate('settings.services.nanoGptDailyUnits')"
                 :window="usage?.daily"
                 :reserve="dailyUnitReserve" />
             <UsageWindow
+                v-if="hasUsageData(usage?.monthly)"
                 :title="translate('settings.services.nanoGptMonthlyUnits')"
                 :window="usage?.monthly"
                 :reserve="monthlyUnitReserve" />
             <UsageWindow
+                v-if="hasUsageData(usage?.weeklyTokens)"
                 :title="translate('settings.services.nanoGptWeeklyTokens')"
                 :window="usage?.weeklyTokens"
                 :reserve="tokenReserve" />
@@ -227,6 +234,17 @@ const getPercent = (window?: NanoGptUsageWindow): number => {
     return 0
 }
 
+const hasUsageData = (window?: NanoGptUsageWindow): boolean => {
+    if (!window) return false
+
+    return (
+        window.used > 0 ||
+        (window.limit !== null && window.limit !== undefined) ||
+        (window.remaining !== null && window.remaining !== undefined) ||
+        Boolean(window.resetAt)
+    )
+}
+
 const UsageWindow = defineComponent({
     props: {
         title: {
@@ -239,7 +257,7 @@ const UsageWindow = defineComponent({
         },
         reserve: {
             type: String,
-            required: true
+            default: ''
         }
     },
     setup(props) {
@@ -278,10 +296,12 @@ const UsageWindow = defineComponent({
                         'p',
                         `${translate('settings.services.nanoGptRemaining')}: ${formatNumber(props.window?.remaining)}`
                     ),
-                    h(
-                        'p',
-                        `${translate('settings.services.nanoGptReserve')}: ${formatNumber(Number(props.reserve || 0))}`
-                    ),
+                    props.reserve
+                        ? h(
+                              'p',
+                              `${translate('settings.services.nanoGptReserve')}: ${formatNumber(Number(props.reserve || 0))}`
+                          )
+                        : null,
                     h(
                         'p',
                         `${translate('settings.services.nanoGptReset')}: ${formatDate(props.window?.resetAt)}`

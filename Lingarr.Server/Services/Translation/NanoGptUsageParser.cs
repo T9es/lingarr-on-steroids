@@ -13,7 +13,8 @@ internal static class NanoGptUsageParser
             State = TryGetString(root, "state")
         };
 
-        if (root.TryGetProperty("limits", out var limits))
+        var hasLimits = root.TryGetProperty("limits", out var limits);
+        if (hasLimits)
         {
             snapshot.Daily.Limit = TryGetLong(limits, "daily");
             snapshot.Monthly.Limit = TryGetLong(limits, "monthly");
@@ -22,6 +23,16 @@ internal static class NanoGptUsageParser
         if (root.TryGetProperty("daily", out var daily))
         {
             ApplyWindow(snapshot.Daily, daily);
+        }
+
+        if (TryApplyWindow(
+                root,
+                hasLimits ? limits : null,
+                "dailyImages",
+                "dailyImages",
+                snapshot.DailyImages))
+        {
+            // Display-only image quota. It is not used for translation reserve enforcement.
         }
 
         if (root.TryGetProperty("monthly", out var monthly))
@@ -34,13 +45,29 @@ internal static class NanoGptUsageParser
             snapshot.CurrentPeriodEnd = TryGetDateTime(period, "currentPeriodEnd");
         }
 
-        snapshot.WeeklyTokens = ExtractTokenWindow(root);
+        snapshot.WeeklyTokens = ExtractTokenWindow(root, hasLimits ? limits : null);
 
         return snapshot;
     }
 
-    private static NanoGptUsageWindow ExtractTokenWindow(JsonElement root)
+    private static NanoGptUsageWindow ExtractTokenWindow(JsonElement root, JsonElement? limits)
     {
+        var currentApiWindow = new NanoGptUsageWindow
+        {
+            Limit = limits.HasValue
+                ? TryGetLong(limits.Value, "weeklyInputTokens", "weekly_input_tokens")
+                : null
+        };
+        if (TryApplyWindow(
+                root,
+                limits,
+                "weeklyInputTokens",
+                "weeklyInputTokens",
+                currentApiWindow))
+        {
+            return currentApiWindow;
+        }
+
         foreach (var containerName in new[] { "tokenUsage", "tokens", "includedTokens", "included_token_usage" })
         {
             if (!root.TryGetProperty(containerName, out var container) || container.ValueKind != JsonValueKind.Object)
@@ -69,6 +96,28 @@ internal static class NanoGptUsageParser
         }
 
         return new NanoGptUsageWindow();
+    }
+
+    private static bool TryApplyWindow(
+        JsonElement root,
+        JsonElement? limits,
+        string windowName,
+        string limitName,
+        NanoGptUsageWindow target)
+    {
+        if (!root.TryGetProperty(windowName, out var window) || window.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        if (limits.HasValue)
+        {
+            target.Limit ??= TryGetLong(limits.Value, limitName);
+        }
+
+        ApplyWindow(target, window);
+        target.Limit ??= TryGetLong(window, "limit", "allowance", "total");
+        return true;
     }
 
     private static void ApplyWindow(NanoGptUsageWindow target, JsonElement source)

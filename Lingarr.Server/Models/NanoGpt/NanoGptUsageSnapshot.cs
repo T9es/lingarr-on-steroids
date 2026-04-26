@@ -6,6 +6,7 @@ public class NanoGptUsageSnapshot
     public string? State { get; set; }
     public NanoGptUsageWindow Daily { get; set; } = new();
     public NanoGptUsageWindow Monthly { get; set; } = new();
+    public NanoGptUsageWindow DailyImages { get; set; } = new();
     public NanoGptUsageWindow WeeklyTokens { get; set; } = new();
     public DateTime? CurrentPeriodEnd { get; set; }
     public DateTime LastSyncedUtc { get; set; } = DateTime.UtcNow;

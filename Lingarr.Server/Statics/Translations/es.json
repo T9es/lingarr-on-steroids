@@ -418,6 +418,7 @@
       "chutesRequestBuffer": "Búfer de seguridad de solicitudes",
       "chutesRequestBufferDescription": "Detener traducciones cuando las solicitudes diarias restantes alcancen este búfer. Ayuda a evitar exceder límites con traducciones paralelas.",
       "chutesRequestBufferError": "Por favor ingresa un número válido",
+      "nanoGptDailyImages": "Imágenes diarias",
       "nanoGptDailyReserve": "Reserva de unidades diarias",
       "nanoGptDailyUnits": "Unidades diarias",
       "nanoGptDescription": "NanoGPT usa primero modelos de suscripción y modelos de pago solo cuando seleccionas uno explícitamente.",

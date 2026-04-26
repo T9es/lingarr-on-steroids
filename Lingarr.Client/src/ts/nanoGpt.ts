@@ -11,6 +11,7 @@ export interface NanoGptUsageSnapshot {
     state?: string | null
     daily: NanoGptUsageWindow
     monthly: NanoGptUsageWindow
+    dailyImages: NanoGptUsageWindow
     weeklyTokens: NanoGptUsageWindow
     currentPeriodEnd?: string | null
     lastSyncedUtc: string

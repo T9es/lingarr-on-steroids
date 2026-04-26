@@ -418,6 +418,7 @@
       "chutesRequestBuffer": "Request safety buffer",
       "chutesRequestBufferDescription": "Stop translations when remaining daily requests reach this buffer. Helps prevent exceeding limits with parallel translations.",
       "chutesRequestBufferError": "Please enter a valid number",
+      "nanoGptDailyImages": "Daily images",
       "nanoGptDailyReserve": "Daily unit reserve",
       "nanoGptDailyUnits": "Daily units",
       "nanoGptDescription": "NanoGPT can use subscription models first and paid models only when you select one explicitly.",

@@ -418,6 +418,7 @@
       "chutesRequestBuffer": "Bufor bezpieczeństwa żądań",
       "chutesRequestBufferDescription": "Zatrzymaj tłumaczenia, gdy pozostałe dzienne żądania osiągną ten bufor. Pomaga uniknąć przekroczenia limitów przy równoległych tłumaczeniach.",
       "chutesRequestBufferError": "Proszę wprowadzić prawidłową liczbę",
+      "nanoGptDailyImages": "Dzienne obrazy",
       "nanoGptDailyReserve": "Dzienna rezerwa jednostek",
       "nanoGptDailyUnits": "Dzienne jednostki",
       "nanoGptDescription": "NanoGPT najpierw używa modeli subskrypcyjnych, a płatnych tylko wtedy, gdy wybierzesz je jawnie.",
