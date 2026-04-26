@@ -199,6 +199,8 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
 
                     if (response.StatusCode == HttpStatusCode.ServiceUnavailable)
                     {
+                        var responseBody = await response.Content.ReadAsStringAsync(linked.Token);
+                        _logger.LogWarning("503 Service Unavailable. Provider Message: {Content}", responseBody);
                         throw new HttpRequestException("OpenAI temporary unavailable", null, HttpStatusCode.ServiceUnavailable);
                     }
 
@@ -491,6 +493,7 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
 
             if (response.StatusCode == HttpStatusCode.ServiceUnavailable)
             {
+                _logger.LogWarning("503 Service Unavailable (Batch). Provider Message: {Content}", responseBody);
                 throw new HttpRequestException("OpenAI temporary unavailable", null, HttpStatusCode.ServiceUnavailable);
             }
             

@@ -40,6 +40,12 @@ internal static class NanoGptModelCatalog
 
     public static bool SupportsStructuredOutput(ModelData? model)
     {
+        if (model?.Id.Contains(":thinking", StringComparison.OrdinalIgnoreCase) == true ||
+            model?.Id.Contains(":reasoning", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            return false;
+        }
+
         return model?.Capabilities?.StructuredOutput == true;
     }
 

@@ -139,5 +139,10 @@ public class NanoGptServiceTests
         {
             Capabilities = new ModelCapabilities { StructuredOutput = false }
         }));
+        Assert.False(NanoGptModelCatalog.SupportsStructuredOutput(new ModelData
+        {
+            Id = "deepseek/deepseek-v4-pro-cheaper:thinking",
+            Capabilities = new ModelCapabilities { StructuredOutput = true }
+        }));
     }
 }
