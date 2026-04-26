@@ -37,6 +37,7 @@ public class TranslationJob
     private readonly IDashboardService _dashboardService;
     private readonly ISourceSubtitleSnapshotService _sourceSubtitleSnapshotService;
     private readonly IUploadWorkspaceService _uploadWorkspaceService;
+    private readonly ITranslationCheckpointService? _translationCheckpointService;
 
     public TranslationJob(
         ILogger<TranslationJob> logger,
@@ -56,7 +57,8 @@ public class TranslationJob
         IDeferredRepairService deferredRepairService,
         IDashboardService dashboardService,
         ISourceSubtitleSnapshotService sourceSubtitleSnapshotService,
-        IUploadWorkspaceService uploadWorkspaceService)
+        IUploadWorkspaceService uploadWorkspaceService,
+        ITranslationCheckpointService? translationCheckpointService = null)
     {
         _logger = logger;
         _settings = settings;
@@ -76,6 +78,7 @@ public class TranslationJob
         _dashboardService = dashboardService;
         _sourceSubtitleSnapshotService = sourceSubtitleSnapshotService;
         _uploadWorkspaceService = uploadWorkspaceService;
+        _translationCheckpointService = translationCheckpointService;
     }
 
     /// <summary>
@@ -382,7 +385,8 @@ public class TranslationJob
                 _logger,
                 _progressService,
                 _batchFallbackService,
-                _deferredRepairService);
+                _deferredRepairService,
+                _translationCheckpointService);
             List<SubtitleItem> subtitles;
             var attempt = 0;
             const int maxAttempts = 3;
@@ -679,6 +683,20 @@ public class TranslationJob
                 "Information",
                 $"Translation completed successfully and subtitle file was written to: {writtenOutput.PrimaryPath}");
             await HandleCompletion(request, writtenOutput.OutputPaths, effectiveCancellationToken);
+        }
+        catch (ProviderPauseException ex)
+        {
+            await HandleProviderPause(translationRequest, ex, requestLogs, effectiveCancellationToken);
+        }
+        catch (Exception ex) when (TranslationFailureClassifier.IsProviderUnavailable(ex))
+        {
+            var serviceType = await _settings.GetSetting(SettingKeys.Translation.ServiceType) ?? "unknown";
+            var reason = $"Translation provider is temporarily unavailable: {TranslationFailureClassifier.GetFailureSummary(ex)}";
+            await HandleProviderPause(
+                translationRequest,
+                new ProviderPauseException(serviceType, reason, DateTime.UtcNow.AddMinutes(15), ex),
+                requestLogs,
+                effectiveCancellationToken);
         }
         catch (TaskCanceledException)
         {
@@ -1009,6 +1027,74 @@ public class TranslationJob
         string GeneratedFormats,
         IReadOnlyCollection<string> OutputPaths);
 
+    private async Task HandleProviderPause(
+        TranslationRequest request,
+        ProviderPauseException exception,
+        List<TranslationRequestLog> requestLogs,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+        var resumeAt = exception.ResumeAt ?? now.AddMinutes(15);
+        var reason = string.IsNullOrWhiteSpace(exception.Reason)
+            ? "Translation provider paused the request."
+            : exception.Reason;
+
+        var translationRequest =
+            await _dbContext.TranslationRequests.FirstOrDefaultAsync(
+                translationRequest => translationRequest.Id == request.Id,
+                cancellationToken);
+
+        if (translationRequest == null)
+        {
+            _logger.LogWarning(
+                "Paused translation request {RequestId} was not found during pause handling",
+                request.Id);
+            return;
+        }
+
+        translationRequest.Status = TranslationStatus.Paused;
+        translationRequest.IsActive = true;
+        translationRequest.PausedAt = now;
+        translationRequest.PauseReason = reason;
+        translationRequest.PausedProvider = exception.Provider;
+        translationRequest.NextRetryAt = resumeAt;
+        translationRequest.CompletedAt = null;
+
+        if (requestLogs.Count > 0)
+        {
+            _dbContext.TranslationRequestLogs.AddRange(requestLogs);
+        }
+
+        _dbContext.TranslationRequestLogs.Add(new TranslationRequestLog
+        {
+            TranslationRequestId = translationRequest.Id,
+            Level = "Warning",
+            Message = $"Translation paused: {reason}",
+            Details = exception.ToString()
+        });
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        await _translationRequestService.UpdateActiveCount();
+        await _progressService.Emit(translationRequest, translationRequest.Progress);
+
+        try
+        {
+            await RefreshTranslationStateAsync(translationRequest, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to update translation state after pause");
+        }
+
+        _logger.LogWarning(
+            exception,
+            "Paused translation request {RequestId} for provider {Provider} until {ResumeAt:u}: {Reason}",
+            translationRequest.Id,
+            exception.Provider,
+            resumeAt,
+            reason);
+    }
+
     private async Task HandleCompletion(
         TranslationRequest translationRequest,
         IReadOnlyCollection<string> outputPaths,
@@ -1017,6 +1103,10 @@ public class TranslationJob
         translationRequest.CompletedAt = DateTime.UtcNow;
         translationRequest.Status = TranslationStatus.Completed;
         translationRequest.IsActive = null;
+        translationRequest.PausedAt = null;
+        translationRequest.PauseReason = null;
+        translationRequest.PausedProvider = null;
+        translationRequest.NextRetryAt = null;
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         if (translationRequest.WorkloadKind == TranslationWorkloadKind.Upload)
@@ -1029,6 +1119,10 @@ public class TranslationJob
 
         await _translationRequestService.UpdateActiveCount();
         await _progressService.Emit(translationRequest, 100);
+        if (_translationCheckpointService != null)
+        {
+            await _translationCheckpointService.DeleteAsync(translationRequest.Id, cancellationToken);
+        }
 
         try
         {
@@ -1055,6 +1149,9 @@ public class TranslationJob
             translationRequest.CompletedAt = DateTime.UtcNow;
             translationRequest.Status = TranslationStatus.Cancelled;
             translationRequest.IsActive = null;
+            translationRequest.PausedAt = null;
+            translationRequest.PauseReason = null;
+            translationRequest.PausedProvider = null;
 
             await _dbContext.SaveChangesAsync(cleanupToken);
             if (translationRequest.WorkloadKind == TranslationWorkloadKind.Upload)
@@ -1065,6 +1162,10 @@ public class TranslationJob
             await _translationRequestService.ClearMediaHash(translationRequest);
             await _translationRequestService.UpdateActiveCount();
             await _progressService.Emit(translationRequest, 0);
+            if (_translationCheckpointService != null)
+            {
+                await _translationCheckpointService.DeleteAsync(translationRequest.Id, cleanupToken);
+            }
             await RefreshTranslationStateAsync(translationRequest, cleanupToken);
         }
     }

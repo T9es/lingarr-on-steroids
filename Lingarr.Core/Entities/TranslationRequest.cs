@@ -109,4 +109,19 @@ public class TranslationRequest : BaseEntity
     /// Used for exponential backoff of failed requests
     /// </summary>
     public DateTime? NextRetryAt { get; set; }
+
+    /// <summary>
+    /// When the request was paused because the selected provider could not continue safely.
+    /// </summary>
+    public DateTime? PausedAt { get; set; }
+
+    /// <summary>
+    /// Human-readable reason for the current paused state.
+    /// </summary>
+    public string? PauseReason { get; set; }
+
+    /// <summary>
+    /// Provider that caused the pause.
+    /// </summary>
+    public string? PausedProvider { get; set; }
 }

@@ -16,6 +16,7 @@ public class SubtitleTranslationService
     private readonly IProgressService? _progressService;
     private readonly IBatchFallbackService? _batchFallbackService;
     private readonly IDeferredRepairService? _deferredRepairService;
+    private readonly ITranslationCheckpointService? _checkpointService;
     private readonly ILogger _logger;
 
     public SubtitleTranslationService(
@@ -23,12 +24,14 @@ public class SubtitleTranslationService
         ILogger logger,
         IProgressService? progressService = null,
         IBatchFallbackService? batchFallbackService = null,
-        IDeferredRepairService? deferredRepairService = null)
+        IDeferredRepairService? deferredRepairService = null,
+        ITranslationCheckpointService? checkpointService = null)
     {
         _translationService = translationService;
         _progressService = progressService;
         _batchFallbackService = batchFallbackService;
         _deferredRepairService = deferredRepairService;
+        _checkpointService = checkpointService;
         _logger = logger;
     }
 
@@ -47,6 +50,14 @@ public class SubtitleTranslationService
         }
 
         var structureEntries = BuildStructureEntries(subtitles, stripSubtitleFormatting, preserveAssFormatting);
+        var sourceFingerprint = GetCheckpointFingerprint(translationRequest);
+        var checkpoint = _checkpointService == null
+            ? null
+            : await _checkpointService.LoadAsync(
+                translationRequest.Id,
+                sourceFingerprint,
+                cancellationToken);
+        var checkpointTranslations = checkpoint?.Translations ?? new Dictionary<int, string>();
         var iteration = 0;
         var totalSubtitles = subtitles.Count;
 
@@ -63,7 +74,11 @@ public class SubtitleTranslationService
             var contextLinesAfter = BuildContext(structureEntries, index, contextAfter, false);
 
             var translated = entry.ProviderText;
-            if (entry.IsTranslatable)
+            if (checkpointTranslations.TryGetValue(entry.Subtitle.Position, out var checkpointTranslation))
+            {
+                translated = checkpointTranslation;
+            }
+            else if (entry.IsTranslatable)
             {
                 translated = await TranslateSubtitleLine(
                     new TranslateAbleSubtitleLine
@@ -75,6 +90,16 @@ public class SubtitleTranslationService
                         ContextLinesAfter = contextLinesAfter.Count > 0 ? contextLinesAfter : null
                     },
                     cancellationToken);
+
+                if (_checkpointService != null)
+                {
+                    await _checkpointService.SaveTranslationAsync(
+                        translationRequest.Id,
+                        sourceFingerprint,
+                        entry.Subtitle.Position,
+                        translated,
+                        cancellationToken);
+                }
             }
 
             translated = SubtitleTextStructure.NormalizeProviderTranslationText(translated);
@@ -113,6 +138,11 @@ public class SubtitleTranslationService
         }
         catch (TranslationException ex)
         {
+            if (ex is ProviderPauseException)
+            {
+                throw;
+            }
+
             _logger.LogError(
                 ex,
                 "Translation failed for subtitle line: {SubtitleLine} from {SourceLang} to {TargetLang}",
@@ -151,6 +181,14 @@ public class SubtitleTranslationService
 
         var effectiveBatchSize = batchSize <= 0 ? subtitles.Count : batchSize;
         var structureEntries = BuildStructureEntries(subtitles, stripSubtitleFormatting, preserveAssFormatting);
+        var sourceFingerprint = GetCheckpointFingerprint(translationRequest);
+        var checkpoint = _checkpointService == null
+            ? null
+            : await _checkpointService.LoadAsync(
+                translationRequest.Id,
+                sourceFingerprint,
+                cancellationToken);
+        var checkpointTranslations = checkpoint?.Translations ?? new Dictionary<int, string>();
         var providerTextByPosition = structureEntries.ToDictionary(entry => entry.Subtitle.Position, entry => entry.ProviderText);
         var analysisEntries = structureEntries
             .Select(entry => AssSubtitleSourceAnalyzer.CreateEntry(
@@ -166,8 +204,24 @@ public class SubtitleTranslationService
             .Select(entry => new ProviderTextItem(entry.Subtitle.Position, entry.ProviderText))
             .ToList();
         var globalDeduplication = ProviderTextDeduper.Deduplicate(translatableItems);
+        var representativeProviderTranslations = new Dictionary<int, string>();
+        foreach (var entry in structureEntries.Where(entry => entry.IsTranslatable))
+        {
+            if (!checkpointTranslations.TryGetValue(entry.Subtitle.Position, out var checkpointTranslation))
+            {
+                continue;
+            }
+
+            var representativePosition = globalDeduplication.GetRepresentativePosition(entry.Subtitle.Position);
+            representativeProviderTranslations[representativePosition] =
+                SubtitleTextStructure.NormalizeProviderTranslationText(checkpointTranslation);
+        }
+
         var representativeEntries = structureEntries
-            .Where(entry => entry.IsTranslatable && globalDeduplication.IsRepresentative(entry.Subtitle.Position))
+            .Where(entry =>
+                entry.IsTranslatable &&
+                globalDeduplication.IsRepresentative(entry.Subtitle.Position) &&
+                !representativeProviderTranslations.ContainsKey(entry.Subtitle.Position))
             .ToList();
         var representativeEntriesByPosition = representativeEntries.ToDictionary(
             entry => entry.Subtitle.Position,
@@ -178,7 +232,6 @@ public class SubtitleTranslationService
         var rawSourceChars = structureEntries.Sum(entry => entry.RawSourceCharCount);
         var providerChars = structureEntries.Sum(entry => entry.Structure.ProviderVisibleCharCount);
         var representativeProviderChars = representativeEntries.Sum(entry => entry.Structure.ProviderVisibleCharCount);
-        var representativeProviderTranslations = new Dictionary<int, string>();
 
         LogBatchPreparation(
             fileIdentifier,
@@ -239,6 +292,15 @@ public class SubtitleTranslationService
             foreach (var translation in batchResult.ProviderTranslations)
             {
                 representativeProviderTranslations[translation.Key] = translation.Value;
+                if (_checkpointService != null)
+                {
+                    await _checkpointService.SaveTranslationAsync(
+                        translationRequest.Id,
+                        sourceFingerprint,
+                        translation.Key,
+                        translation.Value,
+                        cancellationToken);
+                }
             }
 
             if (useDeferredRepair && batchResult.Failures.Count > 0)
@@ -314,6 +376,15 @@ public class SubtitleTranslationService
             {
                 representativeProviderTranslations[repairResult.Key] =
                     SubtitleTextStructure.NormalizeProviderTranslationText(repairResult.Value);
+                if (_checkpointService != null)
+                {
+                    await _checkpointService.SaveTranslationAsync(
+                        translationRequest.Id,
+                        sourceFingerprint,
+                        repairResult.Key,
+                        repairResult.Value,
+                        cancellationToken);
+                }
             }
 
             _logger.LogInformation(
@@ -471,6 +542,11 @@ public class SubtitleTranslationService
             }
             catch (Exception ex)
             {
+                if (ex is ProviderPauseException)
+                {
+                    throw;
+                }
+
                 if (TranslationFailureClassifier.IsNonRepairableProviderConfigurationFailure(ex))
                 {
                     var failureSummary = TranslationFailureClassifier.GetFailureSummary(ex);
@@ -929,6 +1005,21 @@ public class SubtitleTranslationService
         var filled = (int)Math.Round((double)percentage * width / 100);
         var empty = width - filled;
         return $"[|Green|{new string('█', filled)}|/Green||Orange|{new string('░', empty)}|/Orange|]";
+    }
+
+    private static string GetCheckpointFingerprint(TranslationRequest translationRequest)
+    {
+        if (!string.IsNullOrWhiteSpace(translationRequest.SourceSnapshotFingerprint))
+        {
+            return translationRequest.SourceSnapshotFingerprint;
+        }
+
+        return string.Join(
+            "|",
+            translationRequest.SubtitleToTranslate ?? string.Empty,
+            translationRequest.SourceLanguage,
+            translationRequest.TargetLanguage,
+            translationRequest.SourceSubtitleFormat ?? string.Empty);
     }
 
     private sealed record SubtitleStructureEntry(

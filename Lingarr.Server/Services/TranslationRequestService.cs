@@ -22,7 +22,9 @@ public class TranslationRequestService : ITranslationRequestService
     private const int RetryFailedRequestsBatchSize = 100;
 
     private static bool IsActiveStatus(TranslationStatus status) =>
-        status == TranslationStatus.Pending || status == TranslationStatus.InProgress;
+        status == TranslationStatus.Pending ||
+        status == TranslationStatus.InProgress ||
+        status == TranslationStatus.Paused;
     
     private readonly LingarrDbContext _dbContext;
     private readonly ITranslationWorkerService _workerService;
@@ -37,6 +39,7 @@ public class TranslationRequestService : ITranslationRequestService
     private readonly ITranslationCancellationService _cancellationService;
     private readonly IMediaStateService _mediaStateService;
     private readonly ICustomMediaStateService _customMediaStateService;
+    private readonly ITranslationCheckpointService? _translationCheckpointService;
     static private Dictionary<int, CancellationTokenSource> _asyncTranslationJobs = new Dictionary<int, CancellationTokenSource>();
 
     public TranslationRequestService(
@@ -52,7 +55,8 @@ public class TranslationRequestService : ITranslationRequestService
         ILogger<TranslationRequestService> logger,
         ITranslationCancellationService cancellationService,
         IMediaStateService mediaStateService,
-        ICustomMediaStateService customMediaStateService)
+        ICustomMediaStateService customMediaStateService,
+        ITranslationCheckpointService? translationCheckpointService = null)
     {
         _dbContext = dbContext;
         _hubContext = hubContext;
@@ -67,6 +71,7 @@ public class TranslationRequestService : ITranslationRequestService
         _cancellationService = cancellationService;
         _mediaStateService = mediaStateService;
         _customMediaStateService = customMediaStateService;
+        _translationCheckpointService = translationCheckpointService;
     }
 
     /// <inheritdoc />
@@ -228,7 +233,7 @@ public class TranslationRequestService : ITranslationRequestService
     public async Task<List<TranslationRequest>> GetInProgressRequests()
     {
         var requests = await _dbContext.TranslationRequests
-            .Where(tr => tr.Status == TranslationStatus.InProgress)
+            .Where(tr => tr.Status == TranslationStatus.InProgress || tr.Status == TranslationStatus.Paused)
             .OrderByDescending(tr => tr.CreatedAt)
             .ToListAsync();
 
@@ -277,7 +282,9 @@ public class TranslationRequestService : ITranslationRequestService
             .Where(tr => tr.MediaType == mediaType &&
                          tr.WorkloadKind == TranslationWorkloadKind.Library &&
                          tr.MediaId == mediaId &&
-                         (tr.Status == TranslationStatus.Pending || tr.Status == TranslationStatus.InProgress))
+                         (tr.Status == TranslationStatus.Pending ||
+                          tr.Status == TranslationStatus.InProgress ||
+                          tr.Status == TranslationStatus.Paused))
             .ToListAsync();
 
         if (activeRequests.Count == 0)
@@ -299,6 +306,9 @@ public class TranslationRequestService : ITranslationRequestService
             request.CompletedAt = now;
             request.Status = TranslationStatus.Interrupted;
             request.IsActive = null;
+            request.PausedAt = null;
+            request.PauseReason = null;
+            request.PausedProvider = null;
         }
 
         await _dbContext.SaveChangesAsync();
@@ -307,6 +317,10 @@ public class TranslationRequestService : ITranslationRequestService
         {
             await ClearMediaHash(request);
             await _progressService.Emit(request, 0);
+            if (_translationCheckpointService != null)
+            {
+                await _translationCheckpointService.DeleteAsync(request.Id, CancellationToken.None);
+            }
         }
 
         await UpdateActiveCount();
@@ -349,11 +363,18 @@ public class TranslationRequestService : ITranslationRequestService
             translationRequest.CompletedAt = DateTime.UtcNow;
             translationRequest.Status = TranslationStatus.Cancelled;
             translationRequest.IsActive = null;
+            translationRequest.PausedAt = null;
+            translationRequest.PauseReason = null;
+            translationRequest.PausedProvider = null;
             await _dbContext.SaveChangesAsync();
             await ClearMediaHash(translationRequest);
             await UpdateActiveCount();
             await UpdateMediaState(translationRequest);
             await _progressService.Emit(translationRequest, 0);
+            if (_translationCheckpointService != null)
+            {
+                await _translationCheckpointService.DeleteAsync(translationRequest.Id, CancellationToken.None);
+            }
         }
 
         return $"Translation request with id {cancelRequest.Id} has been cancelled";
@@ -371,6 +392,10 @@ public class TranslationRequestService : ITranslationRequestService
         
         _dbContext.TranslationRequests.Remove(translationRequest);
         await _dbContext.SaveChangesAsync();
+        if (_translationCheckpointService != null)
+        {
+            await _translationCheckpointService.DeleteAsync(translationRequest.Id, CancellationToken.None);
+        }
         await UpdateActiveCount();
         await UpdateMediaState(translationRequest);
         
@@ -540,6 +565,13 @@ public class TranslationRequestService : ITranslationRequestService
 
             _dbContext.TranslationRequests.RemoveRange(toDelete);
             await _dbContext.SaveChangesAsync();
+            if (_translationCheckpointService != null)
+            {
+                foreach (var requestId in ids)
+                {
+                    await _translationCheckpointService.DeleteAsync(requestId, CancellationToken.None);
+                }
+            }
 
             totalRemoved += toDelete.Count;
             workloadsToUpdate.AddRange(batch.Select(r => (
@@ -631,7 +663,10 @@ public class TranslationRequestService : ITranslationRequestService
     private async Task<HashSet<string>> GetActiveDuplicateKeysAsync(int? excludedRequestId = null)
     {
         var activeRequestsQuery = _dbContext.TranslationRequests
-            .Where(tr => tr.Status == TranslationStatus.Pending || tr.Status == TranslationStatus.InProgress);
+            .Where(tr =>
+                tr.Status == TranslationStatus.Pending ||
+                tr.Status == TranslationStatus.InProgress ||
+                tr.Status == TranslationStatus.Paused);
 
         if (excludedRequestId.HasValue)
         {
@@ -731,7 +766,8 @@ public class TranslationRequestService : ITranslationRequestService
         if (status == TranslationStatus.InProgress && 
             (request.Status == TranslationStatus.Cancelled || 
              request.Status == TranslationStatus.Completed ||
-             request.Status == TranslationStatus.Failed))
+             request.Status == TranslationStatus.Failed ||
+             request.Status == TranslationStatus.Paused))
         {
             // Throwing TaskCanceledException will cause the job to abort gracefully (mostly)
             // or at least stop processing
@@ -763,8 +799,8 @@ public class TranslationRequestService : ITranslationRequestService
     public async Task<(int Reenqueued, int SkippedProcessing)> ReenqueueQueuedRequests(bool includeInProgress = false)
     {
         var statuses = includeInProgress
-            ? new[] { TranslationStatus.Pending, TranslationStatus.InProgress }
-            : new[] { TranslationStatus.Pending };
+            ? new[] { TranslationStatus.Pending, TranslationStatus.InProgress, TranslationStatus.Paused }
+            : new[] { TranslationStatus.Pending, TranslationStatus.Paused };
 
         var requests = await _dbContext.TranslationRequests
             .Where(tr => statuses.Contains(tr.Status))
@@ -787,6 +823,10 @@ public class TranslationRequestService : ITranslationRequestService
             
             // Mark as Pending to be picked up by worker
             request.Status = TranslationStatus.Pending;
+            request.PausedAt = null;
+            request.PauseReason = null;
+            request.PausedProvider = null;
+            request.NextRetryAt = null;
             reenqueued++;
         }
 
@@ -807,8 +847,8 @@ public class TranslationRequestService : ITranslationRequestService
     public async Task<(int RemovedDuplicates, int SkippedProcessing)> DedupeQueuedRequests(bool includeInProgress = false)
     {
         var statuses = includeInProgress
-            ? new[] { TranslationStatus.Pending, TranslationStatus.InProgress }
-            : new[] { TranslationStatus.Pending };
+            ? new[] { TranslationStatus.Pending, TranslationStatus.InProgress, TranslationStatus.Paused }
+            : new[] { TranslationStatus.Pending, TranslationStatus.Paused };
 
         var requests = await _dbContext.TranslationRequests
             .Where(tr => statuses.Contains(tr.Status))
@@ -897,8 +937,16 @@ public class TranslationRequestService : ITranslationRequestService
 
         if (duplicatesToRemove.Count > 0)
         {
+            var duplicateIds = duplicatesToRemove.Select(request => request.Id).ToList();
             _dbContext.TranslationRequests.RemoveRange(duplicatesToRemove);
             await _dbContext.SaveChangesAsync();
+            if (_translationCheckpointService != null)
+            {
+                foreach (var requestId in duplicateIds)
+                {
+                    await _translationCheckpointService.DeleteAsync(requestId, CancellationToken.None);
+                }
+            }
             await UpdateActiveCount();
         }
 
@@ -916,8 +964,8 @@ public class TranslationRequestService : ITranslationRequestService
     public async Task<(int Cancelled, int SkippedProcessing)> CancelAllQueuedRequests(bool includeInProgress = false)
     {
         var statuses = includeInProgress
-            ? new[] { TranslationStatus.Pending, TranslationStatus.InProgress }
-            : new[] { TranslationStatus.Pending };
+            ? new[] { TranslationStatus.Pending, TranslationStatus.InProgress, TranslationStatus.Paused }
+            : new[] { TranslationStatus.Pending, TranslationStatus.Paused };
 
         var requests = await _dbContext.TranslationRequests
             .Where(tr => statuses.Contains(tr.Status))
@@ -953,7 +1001,11 @@ public class TranslationRequestService : ITranslationRequestService
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(r => r.Status, TranslationStatus.Cancelled)
                     .SetProperty(r => r.IsActive, (bool?)null) // Use explicit cast for ExecuteUpdate
-                    .SetProperty(r => r.CompletedAt, now));
+                    .SetProperty(r => r.CompletedAt, now)
+                    .SetProperty(r => r.PausedAt, (DateTime?)null)
+                    .SetProperty(r => r.PauseReason, (string?)null)
+                    .SetProperty(r => r.PausedProvider, (string?)null)
+                    .SetProperty(r => r.NextRetryAt, (DateTime?)null));
             
             // Bulk clear media hashes
             var movieIds = requests
@@ -996,6 +1048,13 @@ public class TranslationRequestService : ITranslationRequestService
             }
             
             await UpdateActiveCount();
+            if (_translationCheckpointService != null)
+            {
+                foreach (var requestId in requestIds)
+                {
+                    await _translationCheckpointService.DeleteAsync(requestId, CancellationToken.None);
+                }
+            }
 
             // Update in-memory objects to reflect the new state
             foreach (var req in requests)

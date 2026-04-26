@@ -73,6 +73,31 @@ public class SettingChangedListener
                 ])
             },
             {
+                "resumePausedTranslations", ("Action", "ResumePausedTranslations", [
+                    SettingKeys.Translation.ServiceType,
+                    SettingKeys.Translation.OpenAi.ApiKey,
+                    SettingKeys.Translation.OpenAi.Model,
+                    SettingKeys.Translation.Anthropic.ApiKey,
+                    SettingKeys.Translation.Anthropic.Model,
+                    SettingKeys.Translation.Gemini.ApiKey,
+                    SettingKeys.Translation.Gemini.Model,
+                    SettingKeys.Translation.DeepSeek.ApiKey,
+                    SettingKeys.Translation.DeepSeek.Model,
+                    SettingKeys.Translation.LocalAi.ApiKey,
+                    SettingKeys.Translation.LocalAi.Endpoint,
+                    SettingKeys.Translation.LocalAi.Model,
+                    SettingKeys.Translation.Chutes.ApiKey,
+                    SettingKeys.Translation.Chutes.Model,
+                    SettingKeys.Translation.NanoGpt.ApiKey,
+                    SettingKeys.Translation.NanoGpt.Model,
+                    SettingKeys.Translation.NanoGpt.SubscriptionModelsOnly,
+                    SettingKeys.Translation.NanoGpt.WeeklyTokenAllowance,
+                    SettingKeys.Translation.NanoGpt.TokenReserve,
+                    SettingKeys.Translation.NanoGpt.DailyUnitReserve,
+                    SettingKeys.Translation.NanoGpt.MonthlyUnitReserve
+                ])
+            },
+            {
                 "batchTranslation", ("Action", "BatchTranslation", [
                     SettingKeys.Translation.UseBatchTranslation
                 ])
@@ -198,7 +223,7 @@ public class SettingChangedListener
         bool allRequiredKeysHaveValues = requiredKeys.All(key =>
             settings.TryGetValue(key, out var value) && !string.IsNullOrEmpty(value));
 
-        if (allRequiredKeysHaveValues)
+        if (allRequiredKeysHaveValues || actionName == "ResumePausedTranslations")
         {
             switch (actionName)
             {
@@ -258,6 +283,17 @@ public class SettingChangedListener
                     await mediaStateService.MarkAllStaleAsync();
                     _logger.LogInformation(
                         "Language settings changed - incremented version and marked all media as stale");
+                    break;
+
+                case "ResumePausedTranslations":
+                    var pausedResumeService = scope.ServiceProvider.GetRequiredService<IPausedTranslationResumeService>();
+                    var resumed = await pausedResumeService.ResumePausedRequestsForProviderChangeAsync(CancellationToken.None);
+                    if (resumed > 0)
+                    {
+                        _logger.LogInformation(
+                            "Provider setting changed - resumed {Count} paused translation request(s)",
+                            resumed);
+                    }
                     break;
             }
         }

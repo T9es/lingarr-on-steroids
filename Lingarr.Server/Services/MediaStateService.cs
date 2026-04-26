@@ -343,7 +343,9 @@ public class MediaStateService : IMediaStateService
             tr.WorkloadKind == TranslationWorkloadKind.Library &&
             tr.MediaId == mediaId &&
             tr.MediaType == mediaType &&
-            (tr.Status == TranslationStatus.Pending || tr.Status == TranslationStatus.InProgress));
+            (tr.Status == TranslationStatus.Pending ||
+             tr.Status == TranslationStatus.InProgress ||
+             tr.Status == TranslationStatus.Paused));
     }
 
     /// <inheritdoc />

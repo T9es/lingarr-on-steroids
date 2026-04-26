@@ -197,10 +197,13 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<IChutesUsageService, ChutesUsageService>();
         builder.Services.AddScoped<INanoGptUsageService, NanoGptUsageService>();
         builder.Services.AddScoped<ITokenUsageService, TokenUsageService>();
+        builder.Services.AddScoped<ITranslationCheckpointService, TranslationCheckpointService>();
+        builder.Services.AddScoped<IPausedTranslationResumeService, PausedTranslationResumeService>();
         
         // Translation worker service (singleton BackgroundService that manages translation workers)
         builder.Services.AddSingleton<ITranslationWorkerService, TranslationWorkerService>();
         builder.Services.AddHostedService(sp => (TranslationWorkerService)sp.GetRequiredService<ITranslationWorkerService>());
+        builder.Services.AddHostedService<PausedTranslationMonitorService>();
         
         // Translation cancellation service (singleton to allow cancelling running jobs)
         builder.Services.AddSingleton<ITranslationCancellationService, TranslationCancellationService>();

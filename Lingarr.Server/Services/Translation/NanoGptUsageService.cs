@@ -67,7 +67,10 @@ public class NanoGptUsageService : INanoGptUsageService
         }
 
         var resetText = result.ResetAt.HasValue ? $" Reset at {result.ResetAt.Value:u}." : string.Empty;
-        throw new TranslationException($"NanoGPT subscription reserve reached: {result.Reason}.{resetText}");
+        throw new ProviderPauseException(
+            "nanogpt",
+            $"NanoGPT subscription reserve reached: {result.Reason}.{resetText}",
+            result.ResetAt);
     }
 
     private async Task<NanoGptUsageSnapshot> FetchSnapshotAsync(CancellationToken cancellationToken)

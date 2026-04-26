@@ -7,5 +7,6 @@ public enum TranslationStatus
     Completed,
     Failed,
     Cancelled,
-    Interrupted
+    Interrupted,
+    Paused
 }

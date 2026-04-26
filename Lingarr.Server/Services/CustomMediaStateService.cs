@@ -273,7 +273,9 @@ public class CustomMediaStateService : ICustomMediaStateService
         return _dbContext.TranslationRequests.AnyAsync(request =>
             request.WorkloadKind == TranslationWorkloadKind.CustomSource &&
             request.CustomMediaItemId == customMediaItemId &&
-            (request.Status == TranslationStatus.Pending || request.Status == TranslationStatus.InProgress));
+            (request.Status == TranslationStatus.Pending ||
+             request.Status == TranslationStatus.InProgress ||
+             request.Status == TranslationStatus.Paused));
     }
 
     private Task<bool> HasFailedTranslationRequestAsync(int customMediaItemId)

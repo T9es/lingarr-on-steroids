@@ -1031,6 +1031,18 @@ namespace Lingarr.Migrations.SQLite.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("next_retry_at");
 
+                    b.Property<string>("PauseReason")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("pause_reason");
+
+                    b.Property<DateTime?>("PausedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("paused_at");
+
+                    b.Property<string>("PausedProvider")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("paused_provider");
+
                     b.Property<int>("Progress")
                         .HasColumnType("INTEGER")
                         .HasColumnName("progress");
