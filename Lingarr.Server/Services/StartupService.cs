@@ -86,6 +86,11 @@ public class StartupService : IHostedService
 
             // Provider specific defaults
             { SettingKeys.Translation.Chutes.RequestBuffer, "50" },
+            { SettingKeys.Translation.NanoGpt.SubscriptionModelsOnly, "true" },
+            { SettingKeys.Translation.NanoGpt.WeeklyTokenAllowance, "60000000" },
+            { SettingKeys.Translation.NanoGpt.TokenReserve, "0" },
+            { SettingKeys.Translation.NanoGpt.DailyUnitReserve, "0" },
+            { SettingKeys.Translation.NanoGpt.MonthlyUnitReserve, "0" },
             { SettingKeys.Translation.Anthropic.Version, "2023-06-01" },
 
             // Automation
@@ -252,7 +257,15 @@ public class StartupService : IHostedService
 
             { "CHUTES_MODEL", SettingKeys.Translation.Chutes.Model },
             { "CHUTES_API_KEY", SettingKeys.Translation.Chutes.ApiKey },
-            { "CHUTES_USAGE_LIMIT_OVERRIDE", SettingKeys.Translation.Chutes.UsageLimitOverride }
+            { "CHUTES_USAGE_LIMIT_OVERRIDE", SettingKeys.Translation.Chutes.UsageLimitOverride },
+
+            { "NANOGPT_MODEL", SettingKeys.Translation.NanoGpt.Model },
+            { "NANOGPT_API_KEY", SettingKeys.Translation.NanoGpt.ApiKey },
+            { "NANOGPT_SUBSCRIPTION_MODELS_ONLY", SettingKeys.Translation.NanoGpt.SubscriptionModelsOnly },
+            { "NANOGPT_WEEKLY_TOKEN_ALLOWANCE", SettingKeys.Translation.NanoGpt.WeeklyTokenAllowance },
+            { "NANOGPT_TOKEN_RESERVE", SettingKeys.Translation.NanoGpt.TokenReserve },
+            { "NANOGPT_DAILY_UNIT_RESERVE", SettingKeys.Translation.NanoGpt.DailyUnitReserve },
+            { "NANOGPT_MONTHLY_UNIT_RESERVE", SettingKeys.Translation.NanoGpt.MonthlyUnitReserve }
         };
 
         foreach (var (envVar, settingKey) in environmentSettings)

@@ -15,6 +15,7 @@ const providerMap: Record<string, ProviderMeta> = {
     microsoft: { key: 'microsoft', label: 'Microsoft', color: '#2563eb' },
     yandex: { key: 'yandex', label: 'Yandex', color: '#ef4444' },
     chutes: { key: 'chutes', label: 'Chutes.ai', color: '#06b6d4' },
+    nanogpt: { key: 'nanogpt', label: 'NanoGPT', color: '#14b8a6' },
     localai: { key: 'localai', label: 'LocalAI', color: '#f97316' },
     libretranslate: { key: 'libretranslate', label: 'LibreTranslate', color: '#22c55e' }
 }
@@ -40,6 +41,8 @@ const aliasMap: Record<string, string> = {
     yandextranslate: 'yandex',
     chutes: 'chutes',
     chutesai: 'chutes',
+    nanogpt: 'nanogpt',
+    nanogptai: 'nanogpt',
     localai: 'localai',
     libretranslate: 'libretranslate'
 }

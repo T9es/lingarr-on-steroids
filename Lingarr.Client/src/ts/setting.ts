@@ -41,6 +41,13 @@ export const SETTINGS = {
     CHUTES_MODEL: 'chutes_model',
     CHUTES_API_KEY: 'chutes_api_key',
     CHUTES_USAGE_LIMIT_OVERRIDE: 'chutes_usage_limit_override',
+    NANOGPT_MODEL: 'nanogpt_model',
+    NANOGPT_API_KEY: 'nanogpt_api_key',
+    NANOGPT_SUBSCRIPTION_MODELS_ONLY: 'nanogpt_subscription_models_only',
+    NANOGPT_WEEKLY_TOKEN_ALLOWANCE: 'nanogpt_weekly_token_allowance',
+    NANOGPT_TOKEN_RESERVE: 'nanogpt_token_reserve',
+    NANOGPT_DAILY_UNIT_RESERVE: 'nanogpt_daily_unit_reserve',
+    NANOGPT_MONTHLY_UNIT_RESERVE: 'nanogpt_monthly_unit_reserve',
     AI_PROMPT: 'ai_prompt',
     THEME: 'theme',
     LOCALE: 'locale',
@@ -101,6 +108,7 @@ export const SETTINGS = {
     LOCALAI_TOKEN_LIMIT: 'localai_token_limit',
     LOCALAI_TOKEN_LIMIT_ENABLED: 'localai_token_limit_enabled',
     CHUTES_TOKEN_LIMIT: 'chutes_token_limit',
+    NANOGPT_TOKEN_LIMIT: 'nanogpt_token_limit',
     CHUTES_MODE: 'chutes_mode',
     TOKEN_LIMIT_RESET_TIME: 'token_limit_reset_time'
 } as const
@@ -116,6 +124,7 @@ export const ENCRYPTED_SETTING_KEYS = new Set<string>([
     SETTINGS.GEMINI_API_KEY,
     SETTINGS.DEEPSEEK_API_KEY,
     SETTINGS.CHUTES_API_KEY,
+    SETTINGS.NANOGPT_API_KEY,
     SETTINGS.RADARR_INSTANCES,
     SETTINGS.SONARR_INSTANCES
 ])
@@ -157,6 +166,13 @@ export interface ISettings {
     chutes_model: string
     chutes_api_key: string
     chutes_usage_limit_override: string
+    nanogpt_model: string
+    nanogpt_api_key: string
+    nanogpt_subscription_models_only: string
+    nanogpt_weekly_token_allowance: string
+    nanogpt_token_reserve: string
+    nanogpt_daily_unit_reserve: string
+    nanogpt_monthly_unit_reserve: string
     ai_prompt: string
     movie_age_threshold: string
     show_age_threshold: string
@@ -216,6 +232,7 @@ export interface ISettings {
     localai_token_limit: string
     localai_token_limit_enabled: string
     chutes_token_limit: string
+    nanogpt_token_limit: string
     chutes_mode: string
     token_limit_reset_time: string
 }
@@ -237,7 +254,8 @@ export const SERVICE_TYPE = {
     BING: 'bing',
     MICROSOFT: 'microsoft',
     YANDEX: 'yandex',
-    CHUTES: 'chutes'
+    CHUTES: 'chutes',
+    NANOGPT: 'nanogpt'
 } as const
 
 export type ServiceType = (typeof SERVICE_TYPE)[keyof typeof SERVICE_TYPE]

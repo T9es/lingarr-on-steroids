@@ -190,6 +190,7 @@ public static class ServiceCollectionExtensions
         builder.Services.AddTransient<MicrosoftTranslator>();
         builder.Services.AddTransient<YandexTranslator>();
         builder.Services.AddTransient<OpenAiService>();
+        builder.Services.AddTransient<NanoGptService>();
 
         builder.Services.AddTransient<PathConversionService>();
         builder.Services.AddScoped<IStatisticsService, StatisticsService>();

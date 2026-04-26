@@ -112,6 +112,14 @@ public class TranslationFactory : ITranslationServiceFactory
                 _tokenUsageService
             ),
 
+            "nanogpt" => new NanoGptService(
+                _serviceProvider.GetRequiredService<ISettingService>(),
+                _serviceProvider.GetRequiredService<ILogger<NanoGptService>>(),
+                _serviceProvider.GetRequiredService<IHttpClientFactory>(),
+                _serviceProvider.GetService<IDashboardService>(),
+                _tokenUsageService
+            ),
+
             _ => throw new ArgumentException("Unsupported translation service type", nameof(serviceType))
         };
     }

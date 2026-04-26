@@ -72,6 +72,17 @@ public static class SettingKeys
             public const string RequestBuffer = "chutes_request_buffer";
         }
 
+        public static class NanoGpt
+        {
+            public const string Model = "nanogpt_model";
+            public const string ApiKey = "nanogpt_api_key";
+            public const string SubscriptionModelsOnly = "nanogpt_subscription_models_only";
+            public const string WeeklyTokenAllowance = "nanogpt_weekly_token_allowance";
+            public const string TokenReserve = "nanogpt_token_reserve";
+            public const string DailyUnitReserve = "nanogpt_daily_unit_reserve";
+            public const string MonthlyUnitReserve = "nanogpt_monthly_unit_reserve";
+        }
+
         public static class TokenLimits
         {
             public const string OpenAiTokenLimit = "openai_token_limit";
@@ -80,6 +91,7 @@ public static class SettingKeys
             public const string DeepSeekTokenLimit = "deepseek_token_limit";
             public const string LocalAiTokenLimit = "localai_token_limit";
             public const string ChutesTokenLimit = "chutes_token_limit";
+            public const string NanoGptTokenLimit = "nanogpt_token_limit";
             public const string LocalAiTokenLimitEnabled = "localai_token_limit_enabled";
             public const string ChutesMode = "chutes_mode";
             public const string TokenLimitResetTime = "token_limit_reset_time";
