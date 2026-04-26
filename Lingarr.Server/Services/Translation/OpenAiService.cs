@@ -153,7 +153,7 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
         {
             try
             {
-                var requestUrl = $"{_endpoint}chat/completions";
+                var requestUrl = await GetChatCompletionsEndpointAsync(cancellationToken);
                 var requestBody = new Dictionary<string, object>
                 {
                     ["model"] = _model!,
@@ -386,7 +386,7 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
         List<string>? postContext,
         CancellationToken cancellationToken)
     {
-        var requestUrl = $"{_endpoint}chat/completions";
+        var requestUrl = await GetChatCompletionsEndpointAsync(cancellationToken);
         var responseFormat = new
         {
             type = "json_schema",
@@ -636,5 +636,10 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
                 Message = $"Error fetching models from OpenAI API: {ex.Message}"
             };
         }
+    }
+
+    protected virtual Task<string> GetChatCompletionsEndpointAsync(CancellationToken cancellationToken)
+    {
+        return Task.FromResult($"{_endpoint}chat/completions");
     }
 }

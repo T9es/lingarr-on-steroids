@@ -2,6 +2,7 @@ using System.Net.Http;
 using GTranslate.Translators;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Translation;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace Lingarr.Server.Services.Translation;
 
@@ -115,7 +116,9 @@ public class TranslationFactory : ITranslationServiceFactory
             "nanogpt" => new NanoGptService(
                 _serviceProvider.GetRequiredService<ISettingService>(),
                 _serviceProvider.GetRequiredService<ILogger<NanoGptService>>(),
+                _serviceProvider.GetRequiredService<INanoGptUsageService>(),
                 _serviceProvider.GetRequiredService<IHttpClientFactory>(),
+                _serviceProvider.GetRequiredService<IMemoryCache>(),
                 _serviceProvider.GetService<IDashboardService>(),
                 _tokenUsageService
             ),
