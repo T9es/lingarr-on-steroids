@@ -1,10 +1,17 @@
 using Lingarr.Core.Configuration;
+using System.Diagnostics;
+using System.IO;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+using System.Text.Json;
 using System.Net.Http.Json;
 using Lingarr.Server.Exceptions;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models;
 using Lingarr.Server.Models.Batch;
+using Lingarr.Server.Models.Batch.Response;
 using Microsoft.Extensions.Caching.Memory;
 
 namespace Lingarr.Server.Services.Translation;
@@ -69,6 +76,17 @@ public class NanoGptService : OpenAiService
         CancellationToken cancellationToken)
     {
         await _usageService.EnsureUsageAvailableAsync(cancellationToken);
+
+        if (await SelectedModelUsesJsonObjectBatchAsync(cancellationToken))
+        {
+            return await TranslateBatchWithNanoGptJsonObjectAsync(
+                subtitleBatch,
+                sourceLanguage,
+                targetLanguage,
+                preContext,
+                postContext,
+                cancellationToken);
+        }
 
         if (!await SelectedModelSupportsStructuredOutputAsync(cancellationToken))
         {
@@ -137,6 +155,270 @@ public class NanoGptService : OpenAiService
         }
     }
 
+    private async Task<Dictionary<int, string>> TranslateBatchWithNanoGptJsonObjectAsync(
+        List<BatchSubtitleItem> subtitleBatch,
+        string sourceLanguage,
+        string targetLanguage,
+        List<string>? preContext,
+        List<string>? postContext,
+        CancellationToken cancellationToken)
+    {
+        await InitializeAsync(sourceLanguage, targetLanguage);
+
+        using var retry = new CancellationTokenSource();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, retry.Token);
+
+        var delay = _retryDelay;
+        for (var attempt = 1; attempt <= _maxRetries; attempt++)
+        {
+            try
+            {
+                return await SendNanoGptJsonObjectBatchAsync(
+                    subtitleBatch,
+                    preContext,
+                    postContext,
+                    linked.Token);
+            }
+            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                if (attempt == _maxRetries)
+                {
+                    _logger.LogError(ex, "Too many requests. Max retries exhausted for NanoGPT batch translation");
+                    throw new TranslationException("Too many requests. Retry limit reached.", ex);
+                }
+
+                _logger.LogWarning(
+                    "429 Too Many Requests. Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})",
+                    delay,
+                    attempt,
+                    _maxRetries);
+
+                await Task.Delay(delay, linked.Token).ConfigureAwait(false);
+                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+            }
+            catch (HttpRequestException ex) when (
+                ex.StatusCode == HttpStatusCode.ServiceUnavailable ||
+                ex.StatusCode == HttpStatusCode.GatewayTimeout ||
+                ex.StatusCode == HttpStatusCode.BadGateway)
+            {
+                if (attempt == _maxRetries)
+                {
+                    _logger.LogError(ex, "Service unavailable. Max retries exhausted for NanoGPT batch translation");
+                    throw new TranslationException("NanoGPT is temporarily unavailable. Retry limit reached.", ex);
+                }
+
+                _logger.LogWarning(
+                    "{StatusCode} Service Unavailable. Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})",
+                    ex.StatusCode,
+                    delay,
+                    attempt,
+                    _maxRetries);
+
+                await Task.Delay(delay, linked.Token).ConfigureAwait(false);
+                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex) when (
+                ex is IOException ||
+                ex is SocketException ||
+                ex is TaskCanceledException ||
+                (ex is HttpRequestException && ex.InnerException is IOException))
+            {
+                if (attempt == _maxRetries)
+                {
+                    _logger.LogError(ex, "Network error during NanoGPT batch translation. Max retries exhausted");
+                    throw new TranslationException("Network error occurred during batch translation.", ex);
+                }
+
+                _logger.LogWarning(
+                    ex,
+                    "Network error (Transient). Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})",
+                    delay,
+                    attempt,
+                    _maxRetries);
+
+                await Task.Delay(delay, linked.Token).ConfigureAwait(false);
+                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unexpected error during NanoGPT json_object batch translation attempt {Attempt}", attempt);
+                throw new TranslationException("Unexpected error occurred during batch translation.", ex);
+            }
+        }
+
+        throw new TranslationException("Batch translation failed after maximum retry attempts.");
+    }
+
+    private async Task<Dictionary<int, string>> SendNanoGptJsonObjectBatchAsync(
+        List<BatchSubtitleItem> subtitleBatch,
+        List<string>? preContext,
+        List<string>? postContext,
+        CancellationToken cancellationToken)
+    {
+        var requestUrl = await GetChatCompletionsEndpointAsync(cancellationToken);
+        var userContent = BuildBatchUserContent(subtitleBatch, preContext, postContext);
+        var systemPrompt = _prompt + "\n\n" +
+                           "IMPORTANT: Return only one valid JSON object, with no markdown or explanation. " +
+                           "The JSON object must match this shape exactly: " +
+                           "{\"translations\":[{\"position\":1,\"line\":\"Translated text\"}]}. " +
+                           "Every input position must appear exactly once, and each line must contain only the translated subtitle text.";
+
+        var requestBody = new Dictionary<string, object>
+        {
+            ["model"] = _model!,
+            ["messages"] = new[]
+            {
+                new Dictionary<string, string>
+                {
+                    ["role"] = "system",
+                    ["content"] = systemPrompt
+                },
+                new Dictionary<string, string>
+                {
+                    ["role"] = "user",
+                    ["content"] = userContent
+                }
+            }
+        };
+
+        if (_customParameters is { Count: > 0 })
+        {
+            foreach (var param in _customParameters)
+            {
+                if (param.Key != "response_format")
+                {
+                    requestBody[param.Key] = param.Value;
+                }
+            }
+        }
+
+        requestBody["response_format"] = new { type = "json_object" };
+        requestBody["reasoning"] = new { exclude = true };
+
+        await EnrichChatCompletionRequestAsync(requestBody, cancellationToken);
+
+        var requestContent = new StringContent(
+            JsonSerializer.Serialize(requestBody),
+            Encoding.UTF8,
+            "application/json");
+
+        var stopwatch = Stopwatch.StartNew();
+        var response = await _httpClient.PostAsync(requestUrl, requestContent, cancellationToken);
+        stopwatch.Stop();
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                _logger.LogWarning("429 Rate Limit Exceeded (Batch). Provider Message: {Content}", responseBody);
+                throw new HttpRequestException("Rate limit exceeded", null, HttpStatusCode.TooManyRequests);
+            }
+
+            if (response.StatusCode == HttpStatusCode.PaymentRequired)
+            {
+                _logger.LogWarning("402 Payment Required (Batch). Provider Message: {Content}", responseBody);
+                throw new TranslationException($"Batch translation using NanoGPT API failed. Status: PaymentRequired. Response: {responseBody}");
+            }
+
+            if (response.StatusCode == HttpStatusCode.ServiceUnavailable)
+            {
+                _logger.LogWarning("503 Service Unavailable (Batch). Provider Message: {Content}", responseBody);
+                throw new HttpRequestException("NanoGPT temporary unavailable", null, HttpStatusCode.ServiceUnavailable);
+            }
+
+            _logger.LogError(
+                "NanoGPT json_object batch API failed. Status: {StatusCode}, BatchSize: {BatchSize}, Endpoint: {Endpoint}",
+                response.StatusCode,
+                subtitleBatch.Count,
+                requestUrl);
+            _logger.LogError("API Response Body: {ResponseContent}", responseBody);
+
+            throw new TranslationException($"Batch translation using NanoGPT API failed. Status: {response.StatusCode}");
+        }
+
+        var completionResponse = await response.Content.ReadFromJsonAsync<ChatCompletionResponse>(cancellationToken);
+        if (completionResponse?.Choices == null || completionResponse.Choices.Count == 0)
+        {
+            throw new TranslationException("No completion choices returned from NanoGPT");
+        }
+
+        if (_dashboardService != null)
+        {
+            await _dashboardService.LogApiUsage(
+                ServiceName,
+                completionResponse.Usage?.TotalTokens,
+                stopwatch.ElapsedMilliseconds,
+                success: true,
+                promptTokens: completionResponse.Usage?.PromptTokens,
+                completionTokens: completionResponse.Usage?.CompletionTokens);
+        }
+
+        var message = completionResponse.Choices[0].Message;
+        var translatedJson = FirstNonEmpty(message.Content, message.Reasoning, message.ReasoningContent);
+        if (string.IsNullOrWhiteSpace(translatedJson))
+        {
+            throw new TranslationException("NanoGPT returned an empty batch translation response");
+        }
+
+        try
+        {
+            translatedJson = ExtractJsonPayload(translatedJson);
+            var responseWrapper = JsonSerializer.Deserialize<JsonElement>(translatedJson);
+            JsonElement translationsElement;
+            if (responseWrapper.ValueKind == JsonValueKind.Array)
+            {
+                translationsElement = responseWrapper;
+            }
+            else if (!responseWrapper.TryGetProperty("translations", out translationsElement))
+            {
+                throw new TranslationException("Response does not contain 'translations' property");
+            }
+
+            var translatedItems =
+                JsonSerializer.Deserialize<List<StructuredBatchResponse>>(translationsElement.GetRawText());
+            if (translatedItems == null)
+            {
+                throw new TranslationException("Failed to deserialize translated subtitles");
+            }
+
+            _logger.LogDebug(
+                "NanoGPT json_object batch translation successful. Requested: {RequestedCount}, Received: {ReceivedCount}",
+                subtitleBatch.Count,
+                translatedItems.Count);
+
+            if (translatedItems.Count < subtitleBatch.Count)
+            {
+                var requestedPositions = subtitleBatch.Select(item => item.Position).ToHashSet();
+                var receivedPositions = translatedItems.Select(item => item.Position).ToHashSet();
+                var missingPositions = requestedPositions.Except(receivedPositions).ToList();
+
+                _logger.LogWarning(
+                    "Partial NanoGPT translation received. Missing {MissingCount} items at positions: {Positions}",
+                    missingPositions.Count,
+                    string.Join(", ", missingPositions.Take(10)));
+            }
+
+            return translatedItems
+                .GroupBy(item => item.Position)
+                .ToDictionary(group => group.Key, group => group.First().Line);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogError(
+                ex,
+                "Failed to parse NanoGPT json_object batch response. BatchSize: {BatchSize}, Response: {Json}",
+                subtitleBatch.Count,
+                translatedJson.Substring(0, Math.Min(500, translatedJson.Length)));
+            throw new TranslationException("Failed to parse translated subtitles", ex);
+        }
+    }
+
     protected override async Task<string> GetChatCompletionsEndpointAsync(CancellationToken cancellationToken)
     {
         var subscriptionIncluded = await IsSelectedModelSubscriptionIncludedAsync(cancellationToken);
@@ -169,6 +451,67 @@ public class NanoGptService : OpenAiService
 
         var model = await FindModelAsync(modelId, cancellationToken);
         return NanoGptModelCatalog.SupportsStructuredOutput(model);
+    }
+
+    private async Task<bool> SelectedModelUsesJsonObjectBatchAsync(CancellationToken cancellationToken)
+    {
+        var modelId = _model ?? await _settings.GetSetting(ModelSettingKey);
+        if (string.IsNullOrWhiteSpace(modelId))
+        {
+            return false;
+        }
+
+        if (NanoGptModelCatalog.UsesJsonObjectBatch(modelId))
+        {
+            return true;
+        }
+
+        var model = await FindModelAsync(modelId, cancellationToken);
+        return NanoGptModelCatalog.UsesJsonObjectBatch(model);
+    }
+
+    private static string FirstNonEmpty(params string?[] values)
+    {
+        return values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
+    }
+
+    private static string ExtractJsonPayload(string value)
+    {
+        var trimmed = value.Trim();
+        if (trimmed.StartsWith("```json", StringComparison.OrdinalIgnoreCase))
+        {
+            trimmed = trimmed[7..].Trim();
+        }
+        else if (trimmed.StartsWith("```", StringComparison.OrdinalIgnoreCase))
+        {
+            trimmed = trimmed[3..].Trim();
+        }
+
+        if (trimmed.EndsWith("```", StringComparison.OrdinalIgnoreCase))
+        {
+            trimmed = trimmed[..^3].Trim();
+        }
+
+        if (trimmed.StartsWith('{') || trimmed.StartsWith('['))
+        {
+            return trimmed;
+        }
+
+        var objectStart = trimmed.IndexOf('{');
+        var objectEnd = trimmed.LastIndexOf('}');
+        if (objectStart >= 0 && objectEnd > objectStart)
+        {
+            return trimmed[objectStart..(objectEnd + 1)];
+        }
+
+        var arrayStart = trimmed.IndexOf('[');
+        var arrayEnd = trimmed.LastIndexOf(']');
+        if (arrayStart >= 0 && arrayEnd > arrayStart)
+        {
+            return trimmed[arrayStart..(arrayEnd + 1)];
+        }
+
+        return trimmed;
     }
 
     private async Task<bool> IsSelectedModelSubscriptionIncludedAsync(CancellationToken cancellationToken)

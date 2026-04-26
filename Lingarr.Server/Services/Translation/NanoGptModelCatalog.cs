@@ -40,13 +40,18 @@ internal static class NanoGptModelCatalog
 
     public static bool SupportsStructuredOutput(ModelData? model)
     {
-        if (model?.Id.Contains(":thinking", StringComparison.OrdinalIgnoreCase) == true ||
-            model?.Id.Contains(":reasoning", StringComparison.OrdinalIgnoreCase) == true)
-        {
-            return false;
-        }
-
         return model?.Capabilities?.StructuredOutput == true;
+    }
+
+    public static bool UsesJsonObjectBatch(ModelData? model)
+    {
+        return UsesJsonObjectBatch(model?.Id);
+    }
+
+    public static bool UsesJsonObjectBatch(string? modelId)
+    {
+        return modelId?.Contains(":thinking", StringComparison.OrdinalIgnoreCase) == true ||
+               modelId?.Contains(":reasoning", StringComparison.OrdinalIgnoreCase) == true;
     }
 
     private static string FormatLabel(ModelData model, string billingLabel)
@@ -67,7 +72,14 @@ internal static class NanoGptModelCatalog
             parts.Add($"{FormatTokenCount(model.MaxOutputTokens.Value)} out");
         }
 
-        parts.Add(SupportsStructuredOutput(model) ? "structured" : "no structured output");
+        if (UsesJsonObjectBatch(model))
+        {
+            parts.Add("json object batch");
+        }
+        else
+        {
+            parts.Add(SupportsStructuredOutput(model) ? "structured" : "no structured output");
+        }
 
         if (model.Pricing?.Prompt is { } prompt && model.Pricing?.Completion is { } completion)
         {
