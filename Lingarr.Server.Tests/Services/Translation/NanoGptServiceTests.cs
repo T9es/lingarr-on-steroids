@@ -104,12 +104,16 @@ public class NanoGptServiceTests
         Assert.Contains("token", result.Reason, StringComparison.OrdinalIgnoreCase);
     }
 
-    [Fact]
-    public void GetChatCompletionsEndpoint_UsesCanonicalNanoGptChatApi()
+    [Theory]
+    [InlineData(true, "https://nano-gpt.com/api/subscription/v1/chat/completions")]
+    [InlineData(false, "https://nano-gpt.com/api/v1/chat/completions")]
+    public void GetChatCompletionsEndpoint_RoutesByNanoGptBillingCoverage(
+        bool subscriptionIncluded,
+        string expectedEndpoint)
     {
-        var endpoint = NanoGptEndpointSelector.GetChatCompletionsEndpoint();
+        var endpoint = NanoGptEndpointSelector.GetChatCompletionsEndpoint(subscriptionIncluded);
 
-        Assert.Equal("https://nano-gpt.com/api/v1/chat/completions", endpoint);
+        Assert.Equal(expectedEndpoint, endpoint);
     }
 
     [Theory]

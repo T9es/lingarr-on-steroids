@@ -137,9 +137,10 @@ public class NanoGptService : OpenAiService
         }
     }
 
-    protected override Task<string> GetChatCompletionsEndpointAsync(CancellationToken cancellationToken)
+    protected override async Task<string> GetChatCompletionsEndpointAsync(CancellationToken cancellationToken)
     {
-        return Task.FromResult(NanoGptEndpointSelector.GetChatCompletionsEndpoint());
+        var subscriptionIncluded = await IsSelectedModelSubscriptionIncludedAsync(cancellationToken);
+        return NanoGptEndpointSelector.GetChatCompletionsEndpoint(subscriptionIncluded);
     }
 
     protected override async Task EnrichChatCompletionRequestAsync(
