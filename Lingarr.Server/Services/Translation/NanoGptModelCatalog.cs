@@ -40,7 +40,7 @@ internal static class NanoGptModelCatalog
 
     public static bool SupportsStructuredOutput(ModelData? model)
     {
-        return model?.Capabilities?.StructuredOutput != false;
+        return model?.Capabilities?.StructuredOutput == true;
     }
 
     private static string FormatLabel(ModelData model, string billingLabel)
@@ -68,7 +68,7 @@ internal static class NanoGptModelCatalog
             parts.Add($"${prompt:0.####}/${completion:0.####} per MTok");
         }
 
-        return string.Join(" · ", parts);
+        return string.Join(" - ", parts);
     }
 
     private static string FormatTokenCount(int tokens)

@@ -137,10 +137,25 @@ public class NanoGptService : OpenAiService
         }
     }
 
-    protected override async Task<string> GetChatCompletionsEndpointAsync(CancellationToken cancellationToken)
+    protected override Task<string> GetChatCompletionsEndpointAsync(CancellationToken cancellationToken)
+    {
+        return Task.FromResult(NanoGptEndpointSelector.GetChatCompletionsEndpoint());
+    }
+
+    protected override async Task EnrichChatCompletionRequestAsync(
+        Dictionary<string, object> requestBody,
+        CancellationToken cancellationToken)
     {
         var subscriptionIncluded = await IsSelectedModelSubscriptionIncludedAsync(cancellationToken);
-        return NanoGptEndpointSelector.GetChatCompletionsEndpoint(subscriptionIncluded);
+        var billingMode = NanoGptEndpointSelector.GetBillingMode(subscriptionIncluded);
+
+        requestBody.Remove("billing_mode");
+        requestBody.Remove("billingMode");
+
+        if (!string.IsNullOrWhiteSpace(billingMode))
+        {
+            requestBody["billing_mode"] = billingMode;
+        }
     }
 
     private async Task<bool> SelectedModelSupportsStructuredOutputAsync(CancellationToken cancellationToken)
@@ -199,7 +214,7 @@ public class NanoGptService : OpenAiService
         return FetchModelsAsync(
             SubscriptionModelsCacheKey,
             apiKey,
-            "/api/subscription/v1/models",
+            "/api/subscription/v1/models?detailed=true",
             cancellationToken);
     }
 
@@ -208,7 +223,7 @@ public class NanoGptService : OpenAiService
         return FetchModelsAsync(
             PaidModelsCacheKey,
             apiKey,
-            "/api/paid/v1/models",
+            "/api/paid/v1/models?detailed=true",
             cancellationToken);
     }
 

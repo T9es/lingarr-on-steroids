@@ -173,6 +173,7 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
                 };
 
                 requestBody = AddCustomParameters(requestBody);
+                await EnrichChatCompletionRequestAsync(requestBody, cancellationToken);
                 var requestContent = new StringContent(
                     JsonSerializer.Serialize(requestBody),
                     Encoding.UTF8,
@@ -460,6 +461,8 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
             }
         }
 
+        await EnrichChatCompletionRequestAsync(requestBody, cancellationToken);
+
         var requestContent = new StringContent(
             JsonSerializer.Serialize(requestBody),
             Encoding.UTF8,
@@ -641,5 +644,12 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
     protected virtual Task<string> GetChatCompletionsEndpointAsync(CancellationToken cancellationToken)
     {
         return Task.FromResult($"{_endpoint}chat/completions");
+    }
+
+    protected virtual Task EnrichChatCompletionRequestAsync(
+        Dictionary<string, object> requestBody,
+        CancellationToken cancellationToken)
+    {
+        return Task.CompletedTask;
     }
 }

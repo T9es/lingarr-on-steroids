@@ -104,15 +104,36 @@ public class NanoGptServiceTests
         Assert.Contains("token", result.Reason, StringComparison.OrdinalIgnoreCase);
     }
 
-    [Theory]
-    [InlineData(true, "https://nano-gpt.com/api/subscription/v1/chat/completions")]
-    [InlineData(false, "https://nano-gpt.com/api/v1/chat/completions")]
-    public void GetChatCompletionsEndpoint_UsesSubscriptionEndpointOnlyForIncludedModels(
-        bool subscriptionIncluded,
-        string expectedEndpoint)
+    [Fact]
+    public void GetChatCompletionsEndpoint_UsesCanonicalNanoGptChatApi()
     {
-        var endpoint = NanoGptEndpointSelector.GetChatCompletionsEndpoint(subscriptionIncluded);
+        var endpoint = NanoGptEndpointSelector.GetChatCompletionsEndpoint();
 
-        Assert.Equal(expectedEndpoint, endpoint);
+        Assert.Equal("https://nano-gpt.com/api/v1/chat/completions", endpoint);
+    }
+
+    [Theory]
+    [InlineData(true, null)]
+    [InlineData(false, "paygo")]
+    public void GetBillingMode_ForcesPayGoOnlyForPaidModels(bool subscriptionIncluded, string? expectedBillingMode)
+    {
+        var billingMode = NanoGptEndpointSelector.GetBillingMode(subscriptionIncluded);
+
+        Assert.Equal(expectedBillingMode, billingMode);
+    }
+
+    [Fact]
+    public void SupportsStructuredOutput_RequiresExplicitNanoGptCapability()
+    {
+        Assert.True(NanoGptModelCatalog.SupportsStructuredOutput(new ModelData
+        {
+            Capabilities = new ModelCapabilities { StructuredOutput = true }
+        }));
+
+        Assert.False(NanoGptModelCatalog.SupportsStructuredOutput(new ModelData()));
+        Assert.False(NanoGptModelCatalog.SupportsStructuredOutput(new ModelData
+        {
+            Capabilities = new ModelCapabilities { StructuredOutput = false }
+        }));
     }
 }
