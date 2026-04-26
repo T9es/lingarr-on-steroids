@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Lingarr.Server.Models;
 using Lingarr.Core.Configuration;
+using Lingarr.Server.Exceptions;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models.Batch;
@@ -279,6 +280,77 @@ public class NanoGptServiceTests
         Assert.True(requestBody.RootElement.GetProperty("reasoning").GetProperty("exclude").GetBoolean());
     }
 
+    [Fact]
+    public async Task TranslateBatchAsync_RejectsThinkingModelResponseWithoutRequestedPositions()
+    {
+        const string modelId = "deepseek/deepseek-v4-pro-cheaper:thinking";
+        var settings = CreateNanoGptSettings(modelId);
+        var settingsMock = CreateSettingServiceMock(settings);
+        var usageServiceMock = new Mock<INanoGptUsageService>();
+        usageServiceMock
+            .Setup(service => service.EnsureUsageAvailableAsync(It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var handler = new CapturingNanoGptHandler(
+            modelId,
+            JsonSerializer.Serialize(new
+            {
+                translations = new[]
+                {
+                    new { position = 999, line = "Wrong position" }
+                }
+            }));
+        var service = new NanoGptService(
+            settingsMock.Object,
+            new Mock<ILogger<NanoGptService>>().Object,
+            usageServiceMock.Object,
+            new StaticHttpClientFactory(new HttpClient(handler)),
+            new MemoryCache(new MemoryCacheOptions()));
+
+        await Assert.ThrowsAsync<TranslationException>(() => service.TranslateBatchAsync(
+            [
+                new BatchSubtitleItem { Position = 1, Line = "Hello" },
+                new BatchSubtitleItem { Position = 2, Line = "World" }
+            ],
+            "en",
+            "es",
+            null,
+            null,
+            CancellationToken.None));
+    }
+
+    private static Dictionary<string, string> CreateNanoGptSettings(string modelId)
+    {
+        return new Dictionary<string, string>
+        {
+            { SettingKeys.Translation.NanoGpt.ApiKey, "test-api-key" },
+            { SettingKeys.Translation.NanoGpt.Model, modelId },
+            { SettingKeys.Translation.AiPrompt, "Translate from {sourceLanguage} to {targetLanguage}." },
+            { SettingKeys.Translation.AiContextPrompt, "Context." },
+            { SettingKeys.Translation.AiContextPromptEnabled, "false" },
+            { SettingKeys.Translation.CustomAiParameters, "[]" },
+            { SettingKeys.Translation.RequestTimeout, "30" },
+            { SettingKeys.Translation.MaxRetries, "1" },
+            { SettingKeys.Translation.RetryDelay, "1" },
+            { SettingKeys.Translation.RetryDelayMultiplier, "2" }
+        };
+    }
+
+    private static Mock<ISettingService> CreateSettingServiceMock(Dictionary<string, string> settings)
+    {
+        var settingsMock = new Mock<ISettingService>();
+        settingsMock
+            .Setup(service => service.GetSetting(It.IsAny<string>()))
+            .ReturnsAsync((string key) => settings.TryGetValue(key, out var value) ? value : null);
+        settingsMock
+            .Setup(service => service.GetSettings(It.IsAny<IEnumerable<string>>()))
+            .ReturnsAsync((IEnumerable<string> keys) => keys.ToDictionary(
+                key => key,
+                key => settings.TryGetValue(key, out var value) ? value : string.Empty));
+
+        return settingsMock;
+    }
+
     private sealed class StaticHttpClientFactory(HttpClient httpClient) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name)
@@ -287,7 +359,9 @@ public class NanoGptServiceTests
         }
     }
 
-    private sealed class CapturingNanoGptHandler(string modelId) : HttpMessageHandler
+    private sealed class CapturingNanoGptHandler(
+        string modelId,
+        string? translatedContentOverride = null) : HttpMessageHandler
     {
         public List<HttpRequestMessage> ChatRequests { get; } = [];
         public List<string> ChatBodies { get; } = [];
@@ -324,14 +398,15 @@ public class NanoGptServiceTests
                 ChatRequests.Add(request);
                 ChatBodies.Add(await request.Content!.ReadAsStringAsync(cancellationToken));
 
-                var translatedContent = JsonSerializer.Serialize(new
-                {
-                    translations = new[]
+                var translatedContent = translatedContentOverride ??
+                    JsonSerializer.Serialize(new
                     {
-                        new { position = 1, line = "Hola" },
-                        new { position = 2, line = "Mundo" }
-                    }
-                });
+                        translations = new[]
+                        {
+                            new { position = 1, line = "Hola" },
+                            new { position = 2, line = "Mundo" }
+                        }
+                    });
                 var chatResponse = JsonSerializer.Serialize(new
                 {
                     choices = new[]

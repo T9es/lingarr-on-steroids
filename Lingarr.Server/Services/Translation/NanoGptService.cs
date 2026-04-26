@@ -392,10 +392,33 @@ public class NanoGptService : OpenAiService
                 subtitleBatch.Count,
                 translatedItems.Count);
 
-            if (translatedItems.Count < subtitleBatch.Count)
+            var requestedPositions = subtitleBatch.Select(item => item.Position).ToHashSet();
+            var unexpectedPositions = translatedItems
+                .Select(item => item.Position)
+                .Where(position => !requestedPositions.Contains(position))
+                .Distinct()
+                .ToList();
+            if (unexpectedPositions.Count > 0)
             {
-                var requestedPositions = subtitleBatch.Select(item => item.Position).ToHashSet();
-                var receivedPositions = translatedItems.Select(item => item.Position).ToHashSet();
+                _logger.LogWarning(
+                    "NanoGPT json_object batch response included {UnexpectedCount} out-of-batch position(s): {Positions}",
+                    unexpectedPositions.Count,
+                    string.Join(", ", unexpectedPositions.Take(10)));
+            }
+
+            var validTranslations = translatedItems
+                .Where(item => requestedPositions.Contains(item.Position))
+                .GroupBy(item => item.Position)
+                .ToDictionary(group => group.Key, group => group.First().Line);
+
+            if (validTranslations.Count == 0 && subtitleBatch.Count > 0)
+            {
+                throw new TranslationException("NanoGPT response did not contain translations for the requested subtitle positions");
+            }
+
+            if (validTranslations.Count < subtitleBatch.Count)
+            {
+                var receivedPositions = validTranslations.Keys.ToHashSet();
                 var missingPositions = requestedPositions.Except(receivedPositions).ToList();
 
                 _logger.LogWarning(
@@ -404,9 +427,7 @@ public class NanoGptService : OpenAiService
                     string.Join(", ", missingPositions.Take(10)));
             }
 
-            return translatedItems
-                .GroupBy(item => item.Position)
-                .ToDictionary(group => group.Key, group => group.First().Line);
+            return validTranslations;
         }
         catch (JsonException ex)
         {
