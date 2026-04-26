@@ -9,6 +9,7 @@
                     SERVICE_TYPE.DEEPSEEK,
                     SERVICE_TYPE.GEMINI,
                     SERVICE_TYPE.LOCALAI,
+                    SERVICE_TYPE.NANOGPT,
                     SERVICE_TYPE.OPENAI,
                     SERVICE_TYPE.CHUTES
                 ].includes(
@@ -16,6 +17,7 @@
                         | 'openai'
                         | 'anthropic'
                         | 'localai'
+                        | 'nanogpt'
                         | 'gemini'
                         | 'deepseek'
                         | 'chutes'
@@ -28,6 +30,7 @@
                     SERVICE_TYPE.DEEPSEEK,
                     SERVICE_TYPE.GEMINI,
                     SERVICE_TYPE.LOCALAI,
+                    SERVICE_TYPE.NANOGPT,
                     SERVICE_TYPE.OPENAI,
                     SERVICE_TYPE.CHUTES
                 ].includes(
@@ -35,6 +38,7 @@
                         | 'openai'
                         | 'anthropic'
                         | 'localai'
+                        | 'nanogpt'
                         | 'gemini'
                         | 'deepseek'
                         | 'chutes'
@@ -47,6 +51,7 @@
                     SERVICE_TYPE.DEEPSEEK,
                     SERVICE_TYPE.GEMINI,
                     SERVICE_TYPE.LOCALAI,
+                    SERVICE_TYPE.NANOGPT,
                     SERVICE_TYPE.OPENAI,
                     SERVICE_TYPE.CHUTES
                 ].includes(
@@ -54,6 +59,7 @@
                         | 'openai'
                         | 'anthropic'
                         | 'localai'
+                        | 'nanogpt'
                         | 'gemini'
                         | 'deepseek'
                         | 'chutes'

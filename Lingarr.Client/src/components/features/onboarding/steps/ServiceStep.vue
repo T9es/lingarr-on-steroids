@@ -94,6 +94,11 @@ const aiServices: ServiceOption[] = [
         labelKey: 'services.serviceNames.localai',
         providerKey: 'localai'
     },
+    {
+        value: SERVICE_TYPE.NANOGPT,
+        labelKey: 'services.serviceNames.nanogpt',
+        providerKey: 'nanogpt'
+    },
     { value: SERVICE_TYPE.OPENAI, labelKey: 'services.serviceNames.openai', providerKey: 'openai' }
 ]
 

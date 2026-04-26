@@ -52,7 +52,8 @@ const loading = ref(false)
 const cancelable = computed(
     () =>
         props.status === TRANSLATION_STATUS.INPROGRESS ||
-        props.status === TRANSLATION_STATUS.PENDING
+        props.status === TRANSLATION_STATUS.PENDING ||
+        props.status === TRANSLATION_STATUS.PAUSED
 )
 
 const removable = computed(() => {

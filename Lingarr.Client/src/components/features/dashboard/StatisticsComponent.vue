@@ -367,7 +367,9 @@ const ActiveTranslationsContent = defineComponent({
                                                   ? 'bg-blue-500/20 text-blue-400'
                                                   : t.status === 'Pending'
                                                     ? 'bg-yellow-500/20 text-yellow-400'
-                                                    : 'bg-secondary/50 text-primary-content/60'
+                                                    : t.status === 'Paused'
+                                                      ? 'bg-orange-500/20 text-orange-300'
+                                                      : 'bg-secondary/50 text-primary-content/60'
                                           ]
                                       },
                                       t.status

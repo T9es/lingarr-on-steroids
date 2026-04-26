@@ -16,6 +16,7 @@
                     @save="saveNotification?.show()" />
 
                 <ChutesUsageCard v-if="serviceType === SERVICE_TYPE.CHUTES" />
+                <NanoGptUsageCard v-if="serviceType === SERVICE_TYPE.NANOGPT" />
 
                 <TokenUsageCard v-if="tokenUsageService" :service="tokenUsageService" />
             </div>
@@ -40,9 +41,11 @@ import OpenAiConfig from '@/components/features/settings/services/OpenAiConfig.v
 import LocalAiConfig from '@/components/features/settings/services/LocalAiConfig.vue'
 import GeminiConfig from '@/components/features/settings/services/GeminiConfig.vue'
 import DeepSeekConfig from '@/components/features/settings/services/DeepSeekConfig.vue'
+import NanoGptConfig from '@/components/features/settings/services/NanoGptConfig.vue'
 import SourceAndTarget from '@/components/features/settings/SourceAndTarget.vue'
 import ChutesConfig from '@/components/features/settings/services/ChutesConfig.vue'
 import ChutesUsageCard from '@/components/features/settings/ChutesUsageCard.vue'
+import NanoGptUsageCard from '@/components/features/settings/NanoGptUsageCard.vue'
 import TokenUsageCard from '@/components/features/settings/TokenUsageCard.vue'
 
 const saveNotification = ref<InstanceType<typeof SaveNotification> | null>(null)
@@ -66,6 +69,7 @@ const serviceOptions = [
     { value: SERVICE_TYPE.LIBRETRANSLATE, label: 'LibreTranslate' },
     { value: SERVICE_TYPE.LOCALAI, label: 'Local AI (Custom)' },
     { value: SERVICE_TYPE.MICROSOFT, label: 'Microsoft' },
+    { value: SERVICE_TYPE.NANOGPT, label: 'NanoGPT' },
     { value: SERVICE_TYPE.OPENAI, label: 'OpenAI' },
     { value: SERVICE_TYPE.CHUTES, label: 'Chutes.ai' },
     { value: SERVICE_TYPE.YANDEX, label: 'Yandex' }
@@ -89,6 +93,8 @@ const serviceConfigComponent = computed(() => {
             return DeepSeekConfig
         case SERVICE_TYPE.CHUTES:
             return ChutesConfig
+        case SERVICE_TYPE.NANOGPT:
+            return NanoGptConfig
         case SERVICE_TYPE.GOOGLE:
         case SERVICE_TYPE.BING:
         case SERVICE_TYPE.MICROSOFT:

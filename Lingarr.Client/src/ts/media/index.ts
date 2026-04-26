@@ -71,6 +71,10 @@ export interface ITranslationRequest {
     isPriority?: boolean
     isActive?: boolean
     startedAt?: string | null
+    pausedAt?: string | null
+    pauseReason?: string | null
+    pausedProvider?: string | null
+    nextRetryAt?: string | null
 }
 
 export interface ITranslationRequestLog {
@@ -207,7 +211,8 @@ export const TRANSLATION_STATUS = {
     COMPLETED: 'Completed',
     FAILED: 'Failed',
     CANCELLED: 'Cancelled',
-    INTERRUPTED: 'Interrupted'
+    INTERRUPTED: 'Interrupted',
+    PAUSED: 'Paused'
 } as const
 
 export type TranslationStatus = (typeof TRANSLATION_STATUS)[keyof typeof TRANSLATION_STATUS]

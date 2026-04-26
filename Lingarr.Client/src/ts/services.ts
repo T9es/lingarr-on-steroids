@@ -28,6 +28,7 @@ export interface Services {
     subtitle: ISubtitleService
     translate: ITranslateService
     chutes: IChutesService
+    nanoGpt: INanoGptService
     tokenUsage: ITokenUsageService
     translationRequest: ITranslationRequestService
     version: IVersionService
@@ -112,6 +113,10 @@ export interface IChutesService {
     getUsage<T>(forceRefresh?: boolean): Promise<T>
 }
 
+export interface INanoGptService {
+    getUsage<T>(forceRefresh?: boolean): Promise<T>
+}
+
 export interface ITokenUsageService {
     getUsage<T>(service: string): Promise<T>
     setChutesMode(mode: 'subscription' | 'payg'): Promise<void>
@@ -167,7 +172,10 @@ export interface ICustomSourceService {
     rescanAll(): Promise<void>
     setExcluded(itemId: number, excluded: boolean): Promise<void>
     setPriority(itemId: number, priority: boolean): Promise<void>
-    translate(itemId: number, forceRecreate?: boolean): Promise<{ translationsQueued: number; message: string }>
+    translate(
+        itemId: number,
+        forceRecreate?: boolean
+    ): Promise<{ translationsQueued: number; message: string }>
 }
 
 export interface IUploadWorkspaceService {

@@ -85,7 +85,8 @@
                                 :key="`active-${item.id}`"
                                 class="border-secondary/40 bg-tertiary flex flex-col gap-2 rounded-md border px-3 py-2 md:flex-row md:items-center md:justify-between">
                                 <div class="min-w-0 space-y-1">
-                                    <div class="flex min-w-0 flex-wrap items-center gap-2 md:flex-nowrap">
+                                    <div
+                                        class="flex min-w-0 flex-wrap items-center gap-2 md:flex-nowrap">
                                         <div class="min-w-0 flex-1 overflow-hidden">
                                             <span
                                                 v-if="item.mediaType === MEDIA_TYPE.EPISODE"
@@ -125,6 +126,21 @@
                                     </div>
                                     <div class="text-secondary-content text-xs">
                                         <TranslationStatus :translation-status="item.status" />
+                                        <span v-if="item.status === TRANSLATION_STATUS.PAUSED">
+                                            <template v-if="item.pauseReason">
+                                                - {{ item.pauseReason }}
+                                            </template>
+                                            <template v-if="item.nextRetryAt">
+                                                -
+                                                {{
+                                                    translate('translations.nextRetryAt', {
+                                                        time: new Date(
+                                                            item.nextRetryAt
+                                                        ).toLocaleString()
+                                                    })
+                                                }}
+                                            </template>
+                                        </span>
                                     </div>
                                 </div>
                                 <div class="flex w-full items-center gap-2 md:w-1/2">
@@ -188,7 +204,8 @@
                                 :key="`failed-${item.id}`"
                                 class="border-secondary/40 bg-tertiary flex flex-col gap-2 rounded-md border px-3 py-2 md:flex-row md:items-center md:justify-between">
                                 <div class="min-w-0">
-                                    <div class="flex min-w-0 flex-wrap items-center gap-2 md:flex-nowrap">
+                                    <div
+                                        class="flex min-w-0 flex-wrap items-center gap-2 md:flex-nowrap">
                                         <div class="min-w-0 flex-1 overflow-hidden">
                                             <span
                                                 v-if="item.mediaType === MEDIA_TYPE.EPISODE"
@@ -354,7 +371,8 @@
                                     <span :id="`deletable-${item.id}`" class="font-bold md:hidden">
                                         {{ translate('translations.title') }}:&nbsp;
                                     </span>
-                                    <div class="flex min-w-0 flex-wrap items-center gap-2 md:flex-nowrap">
+                                    <div
+                                        class="flex min-w-0 flex-wrap items-center gap-2 md:flex-nowrap">
                                         <div class="min-w-0 flex-1 overflow-hidden">
                                             <span
                                                 v-if="item.mediaType === MEDIA_TYPE.EPISODE"

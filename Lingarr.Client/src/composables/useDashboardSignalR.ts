@@ -35,7 +35,12 @@ export function useDashboardSignalR() {
     const handleRequestProgress = (progress: IRequestProgress) => {
         const existing = state.value.activeTranslations.get(progress.id)
 
-        if (progress.status === 'Completed' || progress.status === 'Failed') {
+        if (
+            progress.status === 'Completed' ||
+            progress.status === 'Failed' ||
+            progress.status === 'Cancelled' ||
+            progress.status === 'Interrupted'
+        ) {
             state.value.activeTranslations.delete(progress.id)
             state.value.activeCount = state.value.activeTranslations.size
         } else {
@@ -96,7 +101,7 @@ export function useDashboardSignalR() {
                     sourceLanguage: request.sourceLanguage ?? '',
                     targetLanguage: request.targetLanguage ?? '',
                     progress: request.progress ?? 0,
-                    status: 'InProgress',
+                    status: request.status ?? 'InProgress',
                     startedAt: request.startedAt ? new Date(request.startedAt) : new Date()
                 }
 
