@@ -6,6 +6,7 @@ using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Interfaces.Services;
+using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Models.FileSystem;
 using Lingarr.Server.Services.Subtitle;
 using Microsoft.EntityFrameworkCore;
@@ -54,11 +55,18 @@ public class SubtitleIntegrityServiceAssVerificationTests
         subtitleService
             .Setup(service => service.ReadSubtitles(targetPath))
             .ReturnsAsync([Item(1, "{\\an7}Czesc")]);
+        var sourceSubtitleResolver = new Mock<ISourceSubtitleResolver>();
+        sourceSubtitleResolver
+            .Setup(service => service.ResolveReadableSourcePathAsync(
+                It.IsAny<TranslationRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TranslationRequest value, CancellationToken _) => value.SubtitleToTranslate);
 
         var service = new SubtitleIntegrityService(
             new Mock<ISettingService>().Object,
             subtitleService.Object,
             context,
+            sourceSubtitleResolver.Object,
             NullLogger<SubtitleIntegrityService>.Instance);
 
         var result = await service.VerifyAssIntegrityAsync(CancellationToken.None);

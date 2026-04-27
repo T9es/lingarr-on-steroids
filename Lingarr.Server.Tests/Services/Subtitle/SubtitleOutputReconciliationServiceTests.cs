@@ -379,6 +379,7 @@ public class SubtitleOutputReconciliationServiceTests
             subtitleService,
             Mock.Of<ISourceSubtitleSnapshotService>(),
             Mock.Of<ISubtitleExtractionService>(),
+            Mock.Of<ISourceSubtitleResolver>(),
             NullLogger<SubtitleOutputBackfillService>.Instance);
 
         var result = await backfillService.RepairExistingAssOutputsAsync(
@@ -427,6 +428,7 @@ public class SubtitleOutputReconciliationServiceTests
             subtitleService,
             Mock.Of<ISourceSubtitleSnapshotService>(),
             Mock.Of<ISubtitleExtractionService>(),
+            Mock.Of<ISourceSubtitleResolver>(),
             NullLogger<SubtitleOutputBackfillService>.Instance);
 
         var result = await backfillService.RepairExistingAssOutputsAsync(
@@ -576,42 +578,18 @@ public class SubtitleOutputReconciliationServiceTests
             3);
         await context.SaveChangesAsync();
 
-        var snapshot = new SourceSubtitleSnapshot
-        {
-            SourceType = SourceSubtitleSnapshot.EmbeddedType,
-            SourceLanguage = "en",
-            Identity = "embedded|en|stream:3|codec:ass",
-            Fingerprint = "same-fingerprint",
-            StreamIndex = 3
-        };
-        var sourceSnapshotService = new Mock<ISourceSubtitleSnapshotService>();
-        sourceSnapshotService
-            .Setup(service => service.ResolveCurrentSnapshotAsync(
-                It.IsAny<IMedia>(),
-                MediaType.Movie,
-                It.IsAny<IReadOnlyCollection<EmbeddedSubtitle>>(),
-                It.IsAny<IReadOnlyCollection<Subtitles>>(),
+        var sourceSubtitleResolver = new Mock<ISourceSubtitleResolver>();
+        sourceSubtitleResolver
+            .Setup(service => service.ResolveReadableSourcePathAsync(
+                It.IsAny<TranslationRequest>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(snapshot);
-        sourceSnapshotService
-            .Setup(service => service.IsRequestStaleForSnapshot(It.IsAny<TranslationRequest>(), snapshot))
-            .Returns(false);
-        var extractionService = new Mock<ISubtitleExtractionService>();
-        extractionService
-            .Setup(service => service.ExtractSubtitle(
-                It.IsAny<string>(),
-                3,
-                tempDirectory.Path,
-                "ass",
-                "en"))
             .ReturnsAsync(recoveredSourcePath);
 
         var service = BuildServiceWithRealSubtitleService(
             context,
             subtitleOutputMode: "both",
             queuedTranslations: 1,
-            sourceSnapshotService: sourceSnapshotService.Object,
-            extractionService: extractionService.Object);
+            sourceSubtitleResolver: sourceSubtitleResolver.Object);
 
         var result = await service.ReconcileLibraryOutputsAsync();
         var assPath = Path.Combine(tempDirectory.Path, "movie.pl.lingarr.ass");
@@ -622,8 +600,8 @@ public class SubtitleOutputReconciliationServiceTests
         Assert.Equal(0, result.QueuedTranslations);
         Assert.Equal(0, result.QueuedForRetranslation);
         Assert.Contains(@"{\an7}Czesc", ass);
-        extractionService.Verify(
-            service => service.ExtractSubtitle(It.IsAny<string>(), 3, tempDirectory.Path, "ass", "en"),
+        sourceSubtitleResolver.Verify(
+            service => service.ResolveReadableSourcePathAsync(It.IsAny<TranslationRequest>(), It.IsAny<CancellationToken>()),
             Times.Once);
     }
 
@@ -657,48 +635,27 @@ public class SubtitleOutputReconciliationServiceTests
             3);
         await context.SaveChangesAsync();
 
-        var snapshot = new SourceSubtitleSnapshot
-        {
-            SourceType = SourceSubtitleSnapshot.EmbeddedType,
-            SourceLanguage = "en",
-            Identity = "embedded|en|stream:3|codec:ass",
-            Fingerprint = "new-fingerprint",
-            StreamIndex = 3
-        };
-        var sourceSnapshotService = new Mock<ISourceSubtitleSnapshotService>();
-        sourceSnapshotService
-            .Setup(service => service.ResolveCurrentSnapshotAsync(
-                It.IsAny<IMedia>(),
-                MediaType.Movie,
-                It.IsAny<IReadOnlyCollection<EmbeddedSubtitle>>(),
-                It.IsAny<IReadOnlyCollection<Subtitles>>(),
+        var sourceSubtitleResolver = new Mock<ISourceSubtitleResolver>();
+        sourceSubtitleResolver
+            .Setup(service => service.ResolveReadableSourcePathAsync(
+                It.IsAny<TranslationRequest>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(snapshot);
-        sourceSnapshotService
-            .Setup(service => service.IsRequestStaleForSnapshot(It.IsAny<TranslationRequest>(), snapshot))
-            .Returns(true);
-        var extractionService = new Mock<ISubtitleExtractionService>();
+            .ReturnsAsync((string?)null);
 
         var service = BuildServiceWithRealSubtitleService(
             context,
             subtitleOutputMode: "both",
             queuedTranslations: 1,
-            sourceSnapshotService: sourceSnapshotService.Object,
-            extractionService: extractionService.Object);
+            sourceSubtitleResolver: sourceSubtitleResolver.Object);
 
         var result = await service.ReconcileLibraryOutputsAsync();
 
         Assert.Equal(0, result.BackfilledFiles);
         Assert.Equal(1, result.BackfillSkippedFiles);
         Assert.Equal(1, result.QueuedForRetranslation);
-        extractionService.Verify(
-            service => service.ExtractSubtitle(
-                It.IsAny<string>(),
-                It.IsAny<int>(),
-                It.IsAny<string>(),
-                It.IsAny<string>(),
-                It.IsAny<string?>()),
-            Times.Never);
+        sourceSubtitleResolver.Verify(
+            service => service.ResolveReadableSourcePathAsync(It.IsAny<TranslationRequest>(), It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]
@@ -731,42 +688,18 @@ public class SubtitleOutputReconciliationServiceTests
             3);
         await context.SaveChangesAsync();
 
-        var snapshot = new SourceSubtitleSnapshot
-        {
-            SourceType = SourceSubtitleSnapshot.EmbeddedType,
-            SourceLanguage = "en",
-            Identity = "embedded|en|stream:3|codec:ass",
-            Fingerprint = "same-fingerprint",
-            StreamIndex = 3
-        };
-        var sourceSnapshotService = new Mock<ISourceSubtitleSnapshotService>();
-        sourceSnapshotService
-            .Setup(service => service.ResolveCurrentSnapshotAsync(
-                It.IsAny<IMedia>(),
-                MediaType.Movie,
-                It.IsAny<IReadOnlyCollection<EmbeddedSubtitle>>(),
-                It.IsAny<IReadOnlyCollection<Subtitles>>(),
+        var sourceSubtitleResolver = new Mock<ISourceSubtitleResolver>();
+        sourceSubtitleResolver
+            .Setup(service => service.ResolveReadableSourcePathAsync(
+                It.IsAny<TranslationRequest>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(snapshot);
-        sourceSnapshotService
-            .Setup(service => service.IsRequestStaleForSnapshot(It.IsAny<TranslationRequest>(), snapshot))
-            .Returns(false);
-        var extractionService = new Mock<ISubtitleExtractionService>();
-        extractionService
-            .Setup(service => service.ExtractSubtitle(
-                It.IsAny<string>(),
-                3,
-                tempDirectory.Path,
-                "ass",
-                "en"))
             .ReturnsAsync((string?)null);
 
         var service = BuildServiceWithRealSubtitleService(
             context,
             subtitleOutputMode: "both",
             queuedTranslations: 1,
-            sourceSnapshotService: sourceSnapshotService.Object,
-            extractionService: extractionService.Object);
+            sourceSubtitleResolver: sourceSubtitleResolver.Object);
 
         var result = await service.ReconcileLibraryOutputsAsync();
 
@@ -937,6 +870,7 @@ public class SubtitleOutputReconciliationServiceTests
                 subtitleService.Object,
                 sourceSnapshotService.Object,
                 extractionService.Object,
+                Mock.Of<ISourceSubtitleResolver>(),
                 NullLogger<SubtitleOutputBackfillService>.Instance),
             mediaSubtitleProcessor.Object,
             NullLogger<SubtitleOutputReconciliationService>.Instance);
@@ -947,7 +881,8 @@ public class SubtitleOutputReconciliationServiceTests
         string subtitleOutputMode,
         int queuedTranslations,
         ISourceSubtitleSnapshotService? sourceSnapshotService = null,
-        ISubtitleExtractionService? extractionService = null)
+        ISubtitleExtractionService? extractionService = null,
+        ISourceSubtitleResolver? sourceSubtitleResolver = null)
     {
         var settings = new Mock<ISettingService>();
         settings
@@ -980,6 +915,7 @@ public class SubtitleOutputReconciliationServiceTests
                 subtitleService,
                 sourceSnapshotService ?? Mock.Of<ISourceSubtitleSnapshotService>(),
                 extractionService ?? Mock.Of<ISubtitleExtractionService>(),
+                sourceSubtitleResolver ?? Mock.Of<ISourceSubtitleResolver>(),
                 NullLogger<SubtitleOutputBackfillService>.Instance),
             mediaSubtitleProcessor.Object,
             NullLogger<SubtitleOutputReconciliationService>.Instance);

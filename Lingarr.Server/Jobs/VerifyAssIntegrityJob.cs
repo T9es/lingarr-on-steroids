@@ -23,6 +23,7 @@ public class VerifyAssIntegrityJob
     private readonly LingarrDbContext _dbContext;
     private readonly IHubContext<JobProgressHub> _hubContext;
     private readonly ISubtitleOutputBackfillService _subtitleOutputBackfillService;
+    private readonly ISourceSubtitleResolver _sourceSubtitleResolver;
     private readonly ILogger<VerifyAssIntegrityJob> _logger;
 
     public VerifyAssIntegrityJob(
@@ -31,6 +32,7 @@ public class VerifyAssIntegrityJob
         LingarrDbContext dbContext,
         IHubContext<JobProgressHub> hubContext,
         ISubtitleOutputBackfillService subtitleOutputBackfillService,
+        ISourceSubtitleResolver sourceSubtitleResolver,
         ILogger<VerifyAssIntegrityJob> logger)
     {
         _subtitleService = subtitleService;
@@ -38,6 +40,7 @@ public class VerifyAssIntegrityJob
         _dbContext = dbContext;
         _hubContext = hubContext;
         _subtitleOutputBackfillService = subtitleOutputBackfillService;
+        _sourceSubtitleResolver = sourceSubtitleResolver;
         _logger = logger;
     }
 
@@ -208,8 +211,11 @@ public class VerifyAssIntegrityJob
                         result.TotalFilesScanned++;
                     }
 
-                    var sourceSubtitles = File.Exists(translation.SubtitleToTranslate)
-                        ? await _subtitleService.ReadSubtitles(translation.SubtitleToTranslate)
+                    var sourceSubtitlePath = await _sourceSubtitleResolver.ResolveReadableSourcePathAsync(
+                        translation,
+                        CancellationToken.None);
+                    var sourceSubtitles = !string.IsNullOrWhiteSpace(sourceSubtitlePath) && File.Exists(sourceSubtitlePath)
+                        ? await _subtitleService.ReadSubtitles(sourceSubtitlePath)
                         : [];
                     var targetSubtitles = await _subtitleService.ReadSubtitles(translation.TranslatedSubtitle);
                     var scan = sourceSubtitles.Count > 0
@@ -247,8 +253,11 @@ public class VerifyAssIntegrityJob
                                 flaggedByPath.Remove(outputPath);
                             }
 
-                            sourceSubtitles = File.Exists(translation.SubtitleToTranslate)
-                                ? await _subtitleService.ReadSubtitles(translation.SubtitleToTranslate)
+                            sourceSubtitlePath = await _sourceSubtitleResolver.ResolveReadableSourcePathAsync(
+                                translation,
+                                CancellationToken.None);
+                            sourceSubtitles = !string.IsNullOrWhiteSpace(sourceSubtitlePath) && File.Exists(sourceSubtitlePath)
+                                ? await _subtitleService.ReadSubtitles(sourceSubtitlePath)
                                 : [];
                             targetSubtitles = await _subtitleService.ReadSubtitles(translation.TranslatedSubtitle);
                             scan = sourceSubtitles.Count > 0

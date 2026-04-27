@@ -17,6 +17,7 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
     private readonly ISettingService _settingService;
     private readonly ISubtitleService _subtitleService;
     private readonly LingarrDbContext _dbContext;
+    private readonly ISourceSubtitleResolver _sourceSubtitleResolver;
     private readonly ILogger<SubtitleIntegrityService> _logger;
 
     /// <summary>
@@ -29,11 +30,13 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
         ISettingService settingService,
         ISubtitleService subtitleService,
         LingarrDbContext dbContext,
+        ISourceSubtitleResolver sourceSubtitleResolver,
         ILogger<SubtitleIntegrityService> logger)
     {
         _settingService = settingService;
         _subtitleService = subtitleService;
         _dbContext = dbContext;
+        _sourceSubtitleResolver = sourceSubtitleResolver;
         _logger = logger;
     }
 
@@ -131,14 +134,6 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
             .Where(tr => tr.Status == TranslationStatus.Completed)
             .Where(tr => tr.MediaId != null)
             .Where(tr => tr.SubtitleToTranslate != null && tr.TranslatedSubtitle != null)
-            .Select(tr => new
-            {
-                tr.MediaId,
-                tr.MediaType,
-                tr.Title,
-                tr.SubtitleToTranslate,
-                tr.TranslatedSubtitle
-            })
             .ToListAsync(ct);
 
         // Get all movies and episodes with their subtitle paths
@@ -226,8 +221,15 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
                 if (translation.MediaId == null ||
                     string.IsNullOrWhiteSpace(translation.SubtitleToTranslate) ||
                     string.IsNullOrWhiteSpace(translation.TranslatedSubtitle) ||
-                    !File.Exists(translation.SubtitleToTranslate) ||
                     !File.Exists(translation.TranslatedSubtitle))
+                {
+                    continue;
+                }
+
+                var sourceSubtitlePath = await _sourceSubtitleResolver.ResolveReadableSourcePathAsync(
+                    translation,
+                    ct);
+                if (string.IsNullOrWhiteSpace(sourceSubtitlePath) || !File.Exists(sourceSubtitlePath))
                 {
                     continue;
                 }
@@ -237,7 +239,7 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
                     result.TotalFilesScanned++;
                 }
 
-                var sourceSubtitles = await _subtitleService.ReadSubtitles(translation.SubtitleToTranslate);
+                var sourceSubtitles = await _subtitleService.ReadSubtitles(sourceSubtitlePath);
                 var targetSubtitles = await _subtitleService.ReadSubtitles(translation.TranslatedSubtitle);
                 var scan = AssSubtitleArtifactDetector.CompareTagStructure(
                     sourceSubtitles,
@@ -383,7 +385,9 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
         }
 
         // Get the source subtitle path
-        var sourceSubtitlePath = translationRequest.SubtitleToTranslate;
+        var sourceSubtitlePath = await _sourceSubtitleResolver.ResolveReadableSourcePathAsync(
+            translationRequest,
+            ct);
         if (string.IsNullOrEmpty(sourceSubtitlePath) || !File.Exists(sourceSubtitlePath))
         {
             _logger.LogWarning("Source subtitle not found for translation {TranslationId}: {Path}",

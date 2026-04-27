@@ -38,7 +38,8 @@ public class SubtitleExtractionServiceTests : IDisposable
             NullLogger<SubtitleExtractionService>.Instance,
             _dbContext,
             Mock.Of<ISettingService>(),
-            Mock.Of<ISubtitleService>());
+            Mock.Of<ISubtitleService>(),
+            new EmbeddedSubtitleCacheService(NullLogger<EmbeddedSubtitleCacheService>.Instance));
     }
 
     [Fact]

@@ -87,6 +87,7 @@ public class VerifyAssIntegrityJobTests
             subtitleService,
             Mock.Of<ISourceSubtitleSnapshotService>(),
             Mock.Of<ISubtitleExtractionService>(),
+            Mock.Of<ISourceSubtitleResolver>(),
             NullLogger<SubtitleOutputBackfillService>.Instance);
         var job = new VerifyAssIntegrityJob(
             subtitleService,
@@ -94,6 +95,7 @@ public class VerifyAssIntegrityJobTests
             context,
             Mock.Of<IHubContext<JobProgressHub>>(),
             backfillService,
+            Mock.Of<ISourceSubtitleResolver>(),
             NullLogger<VerifyAssIntegrityJob>.Instance);
 
         await job.Execute();

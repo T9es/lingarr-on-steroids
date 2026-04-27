@@ -31,6 +31,7 @@ public class TranslationJobTests : IDisposable
     private readonly SqliteConnection _connection;
     private readonly LingarrDbContext _dbContext;
     private readonly Mock<ISettingService> _settingServiceMock;
+    private readonly IEmbeddedSubtitleCacheService _embeddedSubtitleCacheService;
     private readonly TranslationJob _job;
     private readonly string _tempDirectory;
 
@@ -47,13 +48,16 @@ public class TranslationJobTests : IDisposable
         _dbContext.Database.EnsureCreated();
 
         _settingServiceMock = new Mock<ISettingService>();
+        _embeddedSubtitleCacheService = new EmbeddedSubtitleCacheService(
+            NullLogger<EmbeddedSubtitleCacheService>.Instance);
 
         var subtitleService = new SubtitleService(NullLogger<SubtitleService>.Instance);
         var extractionService = new SubtitleExtractionService(
             NullLogger<SubtitleExtractionService>.Instance,
             _dbContext,
             _settingServiceMock.Object,
-            subtitleService);
+            subtitleService,
+            _embeddedSubtitleCacheService);
 
         _job = new TranslationJob(
             NullLogger<TranslationJob>.Instance,
@@ -73,6 +77,8 @@ public class TranslationJobTests : IDisposable
             Mock.Of<IDeferredRepairService>(),
             Mock.Of<IDashboardService>(),
             Mock.Of<ISourceSubtitleSnapshotService>(),
+            Mock.Of<ISourceSubtitleResolver>(),
+            _embeddedSubtitleCacheService,
             Mock.Of<IUploadWorkspaceService>());
 
         _tempDirectory = Path.Combine(Path.GetTempPath(), "lingarr-tests", Guid.NewGuid().ToString("N"));
@@ -256,7 +262,7 @@ public class TranslationJobTests : IDisposable
     }
 
     [Fact]
-    public async Task ExecuteAsync_FallbackPreservesPreExistingExtractedAssFile_WhenInitialSourceIsEmpty()
+    public async Task ExecuteAsync_FallbackPreservesCachedEmbeddedAssFile_WhenInitialSourceIsEmpty()
     {
         var sourceSubtitlePath = Path.Combine(_tempDirectory, "movie-4.external.en.srt");
         await File.WriteAllTextAsync(sourceSubtitlePath, string.Empty);
@@ -330,7 +336,7 @@ public class TranslationJobTests : IDisposable
 
         var extractionServiceMock = new Mock<ISubtitleExtractionService>();
         extractionServiceMock
-            .Setup(service => service.TryExtractEmbeddedSubtitle(
+            .Setup(service => service.TryExtractEmbeddedSubtitleForRequestAsync(
                 request.MediaId!.Value,
                 request.MediaType,
                 request.SourceLanguage,
@@ -414,6 +420,12 @@ public class TranslationJobTests : IDisposable
                 Fingerprint = "fingerprint-external",
                 FileSizeBytes = 0
             });
+        var sourceSubtitleResolverMock = new Mock<ISourceSubtitleResolver>();
+        sourceSubtitleResolverMock
+            .Setup(service => service.ResolveReadableSourcePathAsync(
+                It.IsAny<TranslationRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TranslationRequest value, CancellationToken _) => value.SubtitleToTranslate);
 
         var job = new TranslationJob(
             NullLogger<TranslationJob>.Instance,
@@ -433,6 +445,8 @@ public class TranslationJobTests : IDisposable
             Mock.Of<IDeferredRepairService>(),
             dashboardServiceMock.Object,
             sourceSnapshotServiceMock.Object,
+            sourceSubtitleResolverMock.Object,
+            _embeddedSubtitleCacheService,
             Mock.Of<IUploadWorkspaceService>());
 
         await Assert.ThrowsAsync<TranslationException>(() => job.ExecuteAsync(request.Id, CancellationToken.None));
@@ -443,7 +457,7 @@ public class TranslationJobTests : IDisposable
         Assert.Equal(".ass", updatedRequest.SourceSubtitleFormat);
         Assert.Equal(".ass", updatedRequest.RequiredOutputFormats);
         Assert.Equal("match-source", updatedRequest.SubtitleOutputMode);
-        extractionServiceMock.Verify(service => service.TryExtractEmbeddedSubtitle(
+        extractionServiceMock.Verify(service => service.TryExtractEmbeddedSubtitleForRequestAsync(
             request.MediaId!.Value,
             request.MediaType,
             request.SourceLanguage,
@@ -456,7 +470,7 @@ public class TranslationJobTests : IDisposable
     }
 
     [Fact]
-    public async Task ExecuteAsync_FallbackMarksNewlyExtractedFileAsTemporary_WhenMetadataIsPersistedDuringExtraction()
+    public async Task ExecuteAsync_FallbackPreservesNewlyCachedEmbeddedAssFile_WhenMetadataIsPersistedDuringExtraction()
     {
         var sourceSubtitlePath = Path.Combine(_tempDirectory, "movie-5.external.en.srt");
         await File.WriteAllTextAsync(sourceSubtitlePath, string.Empty);
@@ -525,7 +539,7 @@ public class TranslationJobTests : IDisposable
 
         var extractionServiceMock = new Mock<ISubtitleExtractionService>();
         extractionServiceMock
-            .Setup(service => service.TryExtractEmbeddedSubtitle(
+            .Setup(service => service.TryExtractEmbeddedSubtitleForRequestAsync(
                 request.MediaId!.Value,
                 request.MediaType,
                 request.SourceLanguage,
@@ -620,6 +634,12 @@ public class TranslationJobTests : IDisposable
                 Fingerprint = "fingerprint-external",
                 FileSizeBytes = 0
             });
+        var sourceSubtitleResolverMock = new Mock<ISourceSubtitleResolver>();
+        sourceSubtitleResolverMock
+            .Setup(service => service.ResolveReadableSourcePathAsync(
+                It.IsAny<TranslationRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TranslationRequest value, CancellationToken _) => value.SubtitleToTranslate);
 
         var job = new TranslationJob(
             NullLogger<TranslationJob>.Instance,
@@ -639,11 +659,13 @@ public class TranslationJobTests : IDisposable
             Mock.Of<IDeferredRepairService>(),
             dashboardServiceMock.Object,
             sourceSnapshotServiceMock.Object,
+            sourceSubtitleResolverMock.Object,
+            _embeddedSubtitleCacheService,
             Mock.Of<IUploadWorkspaceService>());
 
         await Assert.ThrowsAsync<TranslationException>(() => job.ExecuteAsync(request.Id, CancellationToken.None));
 
-        Assert.False(File.Exists(extractedAssPath));
+        Assert.True(File.Exists(extractedAssPath));
         var updatedRequest = await _dbContext.TranslationRequests.SingleAsync(item => item.Id == request.Id);
         Assert.Equal(extractedAssPath, updatedRequest.SubtitleToTranslate);
         Assert.Equal(".ass", updatedRequest.SourceSubtitleFormat);
@@ -652,7 +674,7 @@ public class TranslationJobTests : IDisposable
         extractionServiceMock.Verify(service => service.ClearExtractionMetadataAsync(
             request.MediaId!.Value,
             request.MediaType,
-            extractedAssPath), Times.Once);
+            extractedAssPath), Times.Never);
     }
 
     [Fact]
@@ -787,6 +809,12 @@ public class TranslationJobTests : IDisposable
                 Fingerprint = "fingerprint-external",
                 FileSizeBytes = 1
             });
+        var sourceSubtitleResolverMock = new Mock<ISourceSubtitleResolver>();
+        sourceSubtitleResolverMock
+            .Setup(service => service.ResolveReadableSourcePathAsync(
+                It.IsAny<TranslationRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TranslationRequest value, CancellationToken _) => value.SubtitleToTranslate);
 
         var job = new TranslationJob(
             NullLogger<TranslationJob>.Instance,
@@ -806,6 +834,8 @@ public class TranslationJobTests : IDisposable
             Mock.Of<IDeferredRepairService>(),
             Mock.Of<IDashboardService>(),
             sourceSnapshotServiceMock.Object,
+            sourceSubtitleResolverMock.Object,
+            _embeddedSubtitleCacheService,
             Mock.Of<IUploadWorkspaceService>());
 
         await job.ExecuteAsync(request.Id, CancellationToken.None);

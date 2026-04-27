@@ -27,6 +27,7 @@ public class SubtitleOutputBackfillService : ISubtitleOutputBackfillService
     private readonly ISubtitleService _subtitleService;
     private readonly ISourceSubtitleSnapshotService _sourceSubtitleSnapshotService;
     private readonly ISubtitleExtractionService _subtitleExtractionService;
+    private readonly ISourceSubtitleResolver _sourceSubtitleResolver;
     private readonly ILogger<SubtitleOutputBackfillService> _logger;
 
     public SubtitleOutputBackfillService(
@@ -34,12 +35,14 @@ public class SubtitleOutputBackfillService : ISubtitleOutputBackfillService
         ISubtitleService subtitleService,
         ISourceSubtitleSnapshotService sourceSubtitleSnapshotService,
         ISubtitleExtractionService subtitleExtractionService,
+        ISourceSubtitleResolver sourceSubtitleResolver,
         ILogger<SubtitleOutputBackfillService> logger)
     {
         _dbContext = dbContext;
         _subtitleService = subtitleService;
         _sourceSubtitleSnapshotService = sourceSubtitleSnapshotService;
         _subtitleExtractionService = subtitleExtractionService;
+        _sourceSubtitleResolver = sourceSubtitleResolver;
         _logger = logger;
     }
 
@@ -464,58 +467,21 @@ public class SubtitleOutputBackfillService : ISubtitleOutputBackfillService
             return null;
         }
 
-        var embeddedSubtitles = await LoadCurrentEmbeddedSubtitlesAsync(media, mediaType, cancellationToken);
-        if (embeddedSubtitles.Count == 0)
+        var resolvedPath = await _sourceSubtitleResolver.ResolveReadableSourcePathAsync(request, cancellationToken);
+        if (string.IsNullOrWhiteSpace(resolvedPath) ||
+            !File.Exists(resolvedPath) ||
+            !SubtitleOutputModeHelper.IsAssFormat(Path.GetExtension(resolvedPath)))
         {
             return null;
         }
 
-        var currentSnapshot = await _sourceSubtitleSnapshotService.ResolveCurrentSnapshotAsync(
-            media,
-            mediaType,
-            embeddedSubtitles,
-            matchingSubtitles,
-            cancellationToken);
-        if (currentSnapshot == null ||
-            !string.Equals(currentSnapshot.SourceType, SourceSubtitleSnapshot.EmbeddedType, StringComparison.Ordinal) ||
-            _sourceSubtitleSnapshotService.IsRequestStaleForSnapshot(request, currentSnapshot) ||
-            !currentSnapshot.StreamIndex.HasValue)
-        {
-            return null;
-        }
-
-        var matchedEmbeddedSubtitle = embeddedSubtitles.FirstOrDefault(subtitle =>
-            subtitle.StreamIndex == currentSnapshot.StreamIndex.Value &&
-            subtitle.IsTextBased &&
-            SubtitleOutputModeHelper.IsAssFormat(subtitle.CodecName));
-        if (matchedEmbeddedSubtitle == null ||
-            string.IsNullOrWhiteSpace(media.Path) ||
-            string.IsNullOrWhiteSpace(media.FileName))
-        {
-            return null;
-        }
-
-        var extractedPath = await _subtitleExtractionService.ExtractSubtitle(
-            Path.Combine(media.Path, media.FileName),
-            matchedEmbeddedSubtitle.StreamIndex,
-            media.Path,
-            matchedEmbeddedSubtitle.CodecName,
-            matchedEmbeddedSubtitle.Language);
-        if (string.IsNullOrWhiteSpace(extractedPath) ||
-            !File.Exists(extractedPath) ||
-            !SubtitleOutputModeHelper.IsAssFormat(Path.GetExtension(extractedPath)))
-        {
-            return null;
-        }
-
-        request.SubtitleToTranslate = extractedPath;
-        request.SourceSubtitleFormat = SubtitleOutputModeHelper.NormalizeFormat(Path.GetExtension(extractedPath));
+        request.SubtitleToTranslate = resolvedPath;
+        request.SourceSubtitleFormat = SubtitleOutputModeHelper.NormalizeFormat(Path.GetExtension(resolvedPath));
         _logger.LogInformation(
-            "Resolved embedded source subtitle stream {StreamIndex} for local output backfill of request {RequestId}: {Path}",
-            matchedEmbeddedSubtitle.StreamIndex,
+            "Resolved embedded source subtitle for local output backfill of request {RequestId}: {Path}",
             request.Id,
-            extractedPath);
-        return new ResolvedBackfillSource(extractedPath, BackfillSourceKind.Embedded);
+            resolvedPath);
+        return new ResolvedBackfillSource(resolvedPath, BackfillSourceKind.Embedded);
     }
 
     private async Task<List<EmbeddedSubtitle>> LoadCurrentEmbeddedSubtitlesAsync(

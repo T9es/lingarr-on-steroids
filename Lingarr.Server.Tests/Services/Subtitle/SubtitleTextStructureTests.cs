@@ -210,6 +210,64 @@ public class SubtitleTextStructureTests
     }
 
     [Fact]
+    public void AssKaraoke_WhenTranslationIsShorterThanFragmentCount_ShouldNotThrow()
+    {
+        var sourceLines = new List<string> { "{\\k10}a{\\k10}b{\\k10}c{\\k10}d" };
+        var structure = BuildAssStructure(sourceLines);
+
+        var translated = structure.ApplyProviderTranslation("X");
+
+        Assert.Single(translated);
+        Assert.Equal("X", translated[0].Replace("{\\k10}", string.Empty, StringComparison.Ordinal));
+        Assert.Equal(4, translated[0].Split("{\\k10}", StringSplitOptions.None).Length - 1);
+    }
+
+    [Fact]
+    public void AssKaraoke_WhenFallbackPreviouslyProducedNegativeClampMaxima_ShouldNotThrow()
+    {
+        var sourceLines = new List<string> { "{\\k10}One{\\k10}Two{\\k10}Three{\\k10}Four" };
+        var structure = BuildAssStructure(sourceLines);
+
+        var translated = structure.ApplyProviderTranslation("Kr");
+
+        Assert.Single(translated);
+        Assert.Equal("Kr", translated[0].Replace("{\\k10}", string.Empty, StringComparison.Ordinal));
+        Assert.Equal(4, translated[0].Split("{\\k10}", StringSplitOptions.None).Length - 1);
+    }
+
+    [Fact]
+    public void AssKaraoke_WhenEvangelionStyleFragmentationReturnsTwentyOneChars_ShouldNotThrow()
+    {
+        var sourceLines = new List<string>
+        {
+            "{\\k10}He {\\k10}was {\\k10}aware {\\k10}that {\\k10}he {\\k10}was {\\k10}still {\\k10}a {\\k10}child"
+        };
+        var structure = BuildAssStructure(sourceLines);
+
+        var translated = structure.ApplyProviderTranslation("Wciaz byl dzieckiem");
+
+        Assert.Single(translated);
+        Assert.Contains("{\\k10}", translated[0], StringComparison.Ordinal);
+        Assert.Contains("Wciaz", translated[0], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AssKaraoke_WhenAkameStyleFragmentationReturnsSixteenChars_ShouldNotThrow()
+    {
+        var sourceLines = new List<string>
+        {
+            "{\\k10}Kill {\\k10}the {\\k10}dark {\\k10}ness {\\k10}right {\\k10}now"
+        };
+        var structure = BuildAssStructure(sourceLines);
+
+        var translated = structure.ApplyProviderTranslation("Zabij mrok teraz");
+
+        Assert.Single(translated);
+        Assert.Contains("{\\k10}", translated[0], StringComparison.Ordinal);
+        Assert.Contains("Zabij", translated[0], StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AssSingleVisibleTextOverlay_ShouldKeepExactTextAndPlaceInlineTagsAroundMatchingSourcePhrase()
     {
         var sourceLines = new List<string> { "Je dis au revoir, {\\i0}say goodbye{\\i1}" };

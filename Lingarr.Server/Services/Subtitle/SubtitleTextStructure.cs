@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 
 namespace Lingarr.Server.Services.Subtitle;
@@ -116,56 +117,114 @@ internal sealed class SubtitleTextLine
             return Enumerable.Repeat(string.Empty, originalSegments.Count).ToList();
         }
 
+        var textElementBoundaries = GetTextElementBoundaries(normalized);
+        var totalTextElements = textElementBoundaries.Count - 1;
         var weights = originalSegments
-            .Select(segment => Math.Max(1, segment.Length))
+            .Select(segment => Math.Max(1, new StringInfo(segment).LengthInTextElements))
             .ToArray();
         var totalWeight = weights.Sum();
         var segments = new List<string>(originalSegments.Count);
 
-        var previousBoundary = 0;
+        var previousElementBoundary = 0;
+        var previousCharBoundary = 0;
         var cumulativeWeight = 0;
 
         for (var index = 0; index < originalSegments.Count - 1; index++)
         {
             cumulativeWeight += weights[index];
-            var idealBoundary = (int)Math.Round((double)normalized.Length * cumulativeWeight / totalWeight);
-            idealBoundary = Math.Clamp(
-                idealBoundary,
-                previousBoundary + 1,
-                normalized.Length - (originalSegments.Count - index - 1));
+            var idealElementBoundary = (int)Math.Round((double)totalTextElements * cumulativeWeight / totalWeight);
+            idealElementBoundary = Math.Clamp(
+                idealElementBoundary,
+                previousElementBoundary,
+                totalTextElements);
 
-            var boundary = FindBoundary(normalized, idealBoundary, previousBoundary + 1);
-            segments.Add(normalized[previousBoundary..boundary].Trim());
-            previousBoundary = boundary;
+            var boundaryElement = FindBoundary(
+                normalized,
+                textElementBoundaries,
+                idealElementBoundary,
+                previousElementBoundary,
+                totalTextElements);
+            var boundaryChar = textElementBoundaries[boundaryElement];
+            segments.Add(normalized[previousCharBoundary..boundaryChar].Trim());
+            previousElementBoundary = boundaryElement;
+            previousCharBoundary = boundaryChar;
         }
 
-        segments.Add(normalized[previousBoundary..].Trim());
+        segments.Add(normalized[previousCharBoundary..].Trim());
         return segments;
     }
 
-    private static int FindBoundary(string text, int idealBoundary, int minimumBoundary)
+    private static int FindBoundary(
+        string text,
+        IReadOnlyList<int> textElementBoundaries,
+        int idealBoundary,
+        int minimumBoundary,
+        int maximumBoundary)
     {
         if (idealBoundary <= minimumBoundary)
         {
             return minimumBoundary;
         }
 
-        for (var offset = 0; offset < text.Length; offset++)
+        if (idealBoundary >= maximumBoundary)
+        {
+            return maximumBoundary;
+        }
+
+        for (var offset = 0; offset <= maximumBoundary; offset++)
         {
             var right = idealBoundary + offset;
-            if (right >= minimumBoundary && right < text.Length && char.IsWhiteSpace(text[right]))
+            if (IsWhitespaceBoundary(text, textElementBoundaries, right, minimumBoundary, maximumBoundary))
             {
-                return right + 1;
+                return right;
             }
 
             var left = idealBoundary - offset;
-            if (left >= minimumBoundary && left < text.Length && char.IsWhiteSpace(text[left]))
+            if (IsWhitespaceBoundary(text, textElementBoundaries, left, minimumBoundary, maximumBoundary))
             {
-                return left + 1;
+                return left;
             }
         }
 
         return idealBoundary;
+    }
+
+    private static bool IsWhitespaceBoundary(
+        string text,
+        IReadOnlyList<int> textElementBoundaries,
+        int boundaryElement,
+        int minimumBoundary,
+        int maximumBoundary)
+    {
+        if (boundaryElement <= minimumBoundary || boundaryElement >= maximumBoundary)
+        {
+            return false;
+        }
+
+        var charBoundary = textElementBoundaries[boundaryElement];
+        if (charBoundary <= 0 || charBoundary >= text.Length)
+        {
+            return false;
+        }
+
+        return char.IsWhiteSpace(text[charBoundary]) || char.IsWhiteSpace(text[charBoundary - 1]);
+    }
+
+    private static List<int> GetTextElementBoundaries(string text)
+    {
+        var boundaries = new List<int> { 0 };
+        var enumerator = StringInfo.GetTextElementEnumerator(text);
+        while (enumerator.MoveNext())
+        {
+            boundaries.Add(enumerator.ElementIndex + enumerator.GetTextElement().Length);
+        }
+
+        if (boundaries[^1] != text.Length)
+        {
+            boundaries.Add(text.Length);
+        }
+
+        return boundaries;
     }
 }
 

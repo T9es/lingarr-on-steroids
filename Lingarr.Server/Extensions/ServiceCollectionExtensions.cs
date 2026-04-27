@@ -165,9 +165,11 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<ISubtitleWriter, SrtWriter>();
         builder.Services.AddScoped<ISubtitleWriter, SsaWriter>();
         builder.Services.AddScoped<ISubtitleWriter, SsaWriter>();
+        builder.Services.AddSingleton<IEmbeddedSubtitleCacheService, EmbeddedSubtitleCacheService>();
         builder.Services.AddScoped<ISubtitleExtractionService, SubtitleExtractionService>();
         builder.Services.AddScoped<ISubtitleIntegrityService, SubtitleIntegrityService>();
         builder.Services.AddScoped<ISourceSubtitleSnapshotService, SourceSubtitleSnapshotService>();
+        builder.Services.AddScoped<ISourceSubtitleResolver, SourceSubtitleResolver>();
         builder.Services.AddScoped<IOrphanSubtitleCleanupService, OrphanSubtitleCleanupService>();
         builder.Services.AddScoped<ISubtitleOutputBackfillService, SubtitleOutputBackfillService>();
         builder.Services.AddScoped<ISubtitleOutputReconciliationService, SubtitleOutputReconciliationService>();
@@ -183,6 +185,7 @@ public static class ServiceCollectionExtensions
         
         // Add temp file cleanup service to remove orphaned subtitle files on startup
         builder.Services.AddHostedService<TempFileCleanupService>();
+        builder.Services.AddHostedService<EmbeddedSubtitleCacheCleanupService>();
 
         // Add translation services
         builder.Services.AddTransient<GoogleTranslator>();

@@ -88,6 +88,7 @@ public static class ApplicationBuilderExtensions
         catch (Exception ex)
         {
             Console.Error.WriteLine($"An error occurred while applying migrations. {ex}", ex);
+            throw;
         }
     }
 

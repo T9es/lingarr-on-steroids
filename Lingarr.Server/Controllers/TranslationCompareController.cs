@@ -21,6 +21,7 @@ public class TranslationCompareController : ControllerBase
     private readonly LingarrDbContext _dbContext;
     private readonly ISettingService _settingService;
     private readonly ISubtitleExtractionService _extractionService;
+    private readonly ISourceSubtitleResolver _sourceSubtitleResolver;
     private readonly ISubtitleService _subtitleService;
     private readonly ILogger<TranslationCompareController> _logger;
 
@@ -28,12 +29,14 @@ public class TranslationCompareController : ControllerBase
         LingarrDbContext dbContext,
         ISettingService settingService,
         ISubtitleExtractionService extractionService,
+        ISourceSubtitleResolver sourceSubtitleResolver,
         ISubtitleService subtitleService,
         ILogger<TranslationCompareController> logger)
     {
         _dbContext = dbContext;
         _settingService = settingService;
         _extractionService = extractionService;
+        _sourceSubtitleResolver = sourceSubtitleResolver;
         _subtitleService = subtitleService;
         _logger = logger;
     }
@@ -243,36 +246,13 @@ public class TranslationCompareController : ControllerBase
         TranslationRequest request,
         CancellationToken cancellationToken)
     {
-        if (!string.IsNullOrWhiteSpace(request.SubtitleToTranslate) &&
-            System.IO.File.Exists(request.SubtitleToTranslate))
-        {
-            return new ResolvedSubtitlePath(request.SubtitleToTranslate, false);
-        }
-
-        if (!request.MediaId.HasValue)
+        var sourcePath = await _sourceSubtitleResolver.ResolveReadableSourcePathAsync(request, cancellationToken);
+        if (string.IsNullOrWhiteSpace(sourcePath) || !System.IO.File.Exists(sourcePath))
         {
             return null;
         }
 
-        var extractionCandidate = await GetSourceExtractionCandidateAsync(request, cancellationToken);
-        if (extractionCandidate == null)
-        {
-            return null;
-        }
-
-        var extractedPath = await _extractionService.ExtractSubtitle(
-            extractionCandidate.MediaPath,
-            extractionCandidate.Subtitle.StreamIndex,
-            Path.GetTempPath(),
-            extractionCandidate.Subtitle.CodecName,
-            extractionCandidate.Subtitle.Language);
-
-        if (string.IsNullOrWhiteSpace(extractedPath) || !System.IO.File.Exists(extractedPath))
-        {
-            return null;
-        }
-
-        return new ResolvedSubtitlePath(extractedPath, true);
+        return new ResolvedSubtitlePath(sourcePath, false);
     }
 
     private async Task<SourceExtractionCandidate?> GetSourceExtractionCandidateAsync(
