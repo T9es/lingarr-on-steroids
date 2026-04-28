@@ -1080,30 +1080,52 @@ public class TranslationRequestService : ITranslationRequestService
     {
         // Update the persisted IsPriority column on pending translation requests for this media.
         // This ensures priority ordering is applied correctly when the worker picks up jobs.
-        bool isPriority = false;
-        
-        // Look up the media's current priority status
-        if (mediaType == MediaType.Movie)
-        {
-            isPriority = await _dbContext.Movies
-                .Where(m => m.Id == mediaId)
-                .Select(m => m.IsPriority)
-                .FirstOrDefaultAsync();
-        }
-        else if (mediaType == MediaType.Episode)
-        {
-            isPriority = await _dbContext.Episodes
-                .Where(e => e.Id == mediaId)
-                .Select(e => e.Season.Show.IsPriority)
-                .FirstOrDefaultAsync();
-        }
-        
-        // Update all pending requests for this media with the new priority
-        var updated = await _dbContext.TranslationRequests
+        bool isPriority;
+        IQueryable<TranslationRequest> requestsToUpdate = _dbContext.TranslationRequests
             .Where(tr => tr.WorkloadKind == TranslationWorkloadKind.Library &&
-                         tr.MediaId == mediaId && 
-                         tr.MediaType == mediaType && 
-                         tr.Status == TranslationStatus.Pending)
+                         tr.Status == TranslationStatus.Pending);
+
+        switch (mediaType)
+        {
+            case MediaType.Movie:
+                isPriority = await _dbContext.Movies
+                    .Where(m => m.Id == mediaId)
+                    .Select(m => m.IsPriority)
+                    .FirstOrDefaultAsync();
+                requestsToUpdate = requestsToUpdate
+                    .Where(tr => tr.MediaId == mediaId && tr.MediaType == MediaType.Movie);
+                break;
+
+            case MediaType.Show:
+                isPriority = await _dbContext.Shows
+                    .Where(s => s.Id == mediaId)
+                    .Select(s => s.IsPriority)
+                    .FirstOrDefaultAsync();
+                requestsToUpdate = requestsToUpdate
+                    .Where(tr => tr.MediaType == MediaType.Episode &&
+                                 tr.MediaId.HasValue &&
+                                 _dbContext.Episodes.Any(e =>
+                                     e.Id == tr.MediaId.Value &&
+                                     e.Season.ShowId == mediaId));
+                break;
+
+            case MediaType.Episode:
+                isPriority = await _dbContext.Episodes
+                    .Where(e => e.Id == mediaId)
+                    .Select(e => e.Season.Show.IsPriority)
+                    .FirstOrDefaultAsync();
+                requestsToUpdate = requestsToUpdate
+                    .Where(tr => tr.MediaId == mediaId && tr.MediaType == MediaType.Episode);
+                break;
+
+            default:
+                _logger.LogWarning(
+                    "Unsupported media type for priority refresh: {MediaType}",
+                    mediaType);
+                return 0;
+        }
+
+        var updated = await requestsToUpdate
             .ExecuteUpdateAsync(s => s.SetProperty(tr => tr.IsPriority, isPriority));
         
         _logger.LogInformation(

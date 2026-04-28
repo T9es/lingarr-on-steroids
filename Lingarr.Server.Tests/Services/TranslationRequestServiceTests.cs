@@ -13,6 +13,7 @@ using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models.FileSystem;
 using Lingarr.Server.Services;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -160,6 +161,155 @@ public class TranslationRequestServiceTests
         var pendingCount = await context.TranslationRequests
             .CountAsync(tr => tr.Status == TranslationStatus.Pending);
         Assert.Equal(2, pendingCount);
+    }
+
+    [Fact]
+    public async Task RefreshPriorityForMedia_Show_UpdatesPendingEpisodeRequestsForShow()
+    {
+        await using var connection = new SqliteConnection("Filename=:memory:");
+        await connection.OpenAsync();
+        await using var context = BuildSqliteContext(connection);
+
+        var now = DateTime.UtcNow;
+        var show = CreateShowWithEpisodes(100, "Target Show", false, now, 201, 202);
+        context.Shows.Add(show);
+
+        var firstRequest = CreateRequest(
+            1,
+            201,
+            MediaType.Episode,
+            "en",
+            "pl",
+            "/shows/target/s01e01.en.srt",
+            TranslationStatus.Pending,
+            now);
+        firstRequest.IsPriority = true;
+
+        var secondRequest = CreateRequest(
+            2,
+            202,
+            MediaType.Episode,
+            "en",
+            "pl",
+            "/shows/target/s01e02.en.srt",
+            TranslationStatus.Pending,
+            now.AddSeconds(1));
+        secondRequest.IsPriority = true;
+
+        context.TranslationRequests.AddRange(firstRequest, secondRequest);
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+        var updated = await service.RefreshPriorityForMedia(MediaType.Show, show.Id);
+
+        Assert.Equal(2, updated);
+        context.ChangeTracker.Clear();
+
+        var requests = await context.TranslationRequests
+            .Where(request => request.MediaType == MediaType.Episode)
+            .OrderBy(request => request.Id)
+            .ToListAsync();
+
+        Assert.All(requests, request => Assert.False(request.IsPriority));
+    }
+
+    [Fact]
+    public async Task RefreshPriorityForMedia_Show_DoesNotUpdateOtherShows()
+    {
+        await using var connection = new SqliteConnection("Filename=:memory:");
+        await connection.OpenAsync();
+        await using var context = BuildSqliteContext(connection);
+
+        var now = DateTime.UtcNow;
+        var targetShow = CreateShowWithEpisodes(110, "Target Show", false, now, 211);
+        var otherShow = CreateShowWithEpisodes(111, "Other Show", false, now, 212);
+        context.Shows.AddRange(targetShow, otherShow);
+
+        var targetRequest = CreateRequest(
+            1,
+            211,
+            MediaType.Episode,
+            "en",
+            "pl",
+            "/shows/target/s01e01.en.srt",
+            TranslationStatus.Pending,
+            now);
+        targetRequest.IsPriority = true;
+
+        var otherRequest = CreateRequest(
+            2,
+            212,
+            MediaType.Episode,
+            "en",
+            "pl",
+            "/shows/other/s01e01.en.srt",
+            TranslationStatus.Pending,
+            now);
+        otherRequest.IsPriority = true;
+
+        context.TranslationRequests.AddRange(targetRequest, otherRequest);
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+        var updated = await service.RefreshPriorityForMedia(MediaType.Show, targetShow.Id);
+
+        Assert.Equal(1, updated);
+        context.ChangeTracker.Clear();
+
+        var refreshedTarget = await context.TranslationRequests.SingleAsync(request => request.Id == targetRequest.Id);
+        var untouchedOther = await context.TranslationRequests.SingleAsync(request => request.Id == otherRequest.Id);
+
+        Assert.False(refreshedTarget.IsPriority);
+        Assert.True(untouchedOther.IsPriority);
+    }
+
+    [Fact]
+    public async Task RefreshPriorityForMedia_Show_LeavesInProgressRequestsUnchanged()
+    {
+        await using var connection = new SqliteConnection("Filename=:memory:");
+        await connection.OpenAsync();
+        await using var context = BuildSqliteContext(connection);
+
+        var now = DateTime.UtcNow;
+        var show = CreateShowWithEpisodes(120, "Target Show", false, now, 221, 222);
+        context.Shows.Add(show);
+
+        var pendingRequest = CreateRequest(
+            1,
+            221,
+            MediaType.Episode,
+            "en",
+            "pl",
+            "/shows/target/s01e01.en.srt",
+            TranslationStatus.Pending,
+            now);
+        pendingRequest.IsPriority = true;
+
+        var inProgressRequest = CreateRequest(
+            2,
+            222,
+            MediaType.Episode,
+            "en",
+            "pl",
+            "/shows/target/s01e02.en.srt",
+            TranslationStatus.InProgress,
+            now);
+        inProgressRequest.IsPriority = true;
+
+        context.TranslationRequests.AddRange(pendingRequest, inProgressRequest);
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+        var updated = await service.RefreshPriorityForMedia(MediaType.Show, show.Id);
+
+        Assert.Equal(1, updated);
+        context.ChangeTracker.Clear();
+
+        var refreshedPending = await context.TranslationRequests.SingleAsync(request => request.Id == pendingRequest.Id);
+        var untouchedInProgress = await context.TranslationRequests.SingleAsync(request => request.Id == inProgressRequest.Id);
+
+        Assert.False(refreshedPending.IsPriority);
+        Assert.True(untouchedInProgress.IsPriority);
     }
 
     [Fact]
@@ -1353,6 +1503,17 @@ public class TranslationRequestServiceTests
         return new LingarrDbContext(options);
     }
 
+    private static LingarrDbContext BuildSqliteContext(SqliteConnection connection)
+    {
+        var options = new DbContextOptionsBuilder<LingarrDbContext>()
+            .UseSqlite(connection)
+            .UseSnakeCaseNamingConvention()
+            .Options;
+        var context = new LingarrDbContext(options);
+        context.Database.EnsureCreated();
+        return context;
+    }
+
     private static TranslationRequest CreateRequest(
         int id,
         int mediaId,
@@ -1376,6 +1537,52 @@ public class TranslationRequestServiceTests
             CreatedAt = createdAt,
             UpdatedAt = createdAt
         };
+    }
+
+    private static Show CreateShowWithEpisodes(
+        int showId,
+        string title,
+        bool isPriority,
+        DateTime now,
+        params int[] episodeIds)
+    {
+        var show = new Show
+        {
+            Id = showId,
+            SonarrId = showId,
+            Title = title,
+            Path = $"/shows/{showId}",
+            DateAdded = now,
+            IsPriority = isPriority,
+            PriorityDate = isPriority ? now : null
+        };
+
+        var season = new Season
+        {
+            Id = showId,
+            SeasonNumber = 1,
+            Path = $"/shows/{showId}/season-1",
+            Show = show
+        };
+
+        show.Seasons.Add(season);
+
+        foreach (var episodeId in episodeIds)
+        {
+            season.Episodes.Add(new Episode
+            {
+                Id = episodeId,
+                SonarrId = episodeId,
+                EpisodeNumber = episodeId,
+                Title = $"Episode {episodeId}",
+                FileName = $"episode-{episodeId}.mkv",
+                Path = $"/shows/{showId}/season-1/episode-{episodeId}.mkv",
+                DateAdded = now,
+                Season = season
+            });
+        }
+
+        return show;
     }
 
     private static TranslationRequestService CreateService(
