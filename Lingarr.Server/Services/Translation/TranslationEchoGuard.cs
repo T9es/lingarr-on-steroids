@@ -10,12 +10,16 @@ internal sealed record TranslationEchoAnalysis(
     int ComparableCount,
     int EchoedCount,
     double EchoRatio,
+    int ClusterComparableCount,
+    int ClusterEchoedCount,
+    double ClusterEchoRatio,
     IReadOnlyList<int> EchoedPositions,
     IReadOnlyList<string> Samples)
 {
-    public static TranslationEchoAnalysis Empty { get; } = new(0, 0, 0, [], []);
+    public static TranslationEchoAnalysis Empty { get; } = new(0, 0, 0, 0, 0, 0, [], []);
 
-    public bool IsMostlyEchoed => ComparableCount >= 4 && EchoRatio >= 0.8;
+    public bool IsMostlyEchoed => ComparableCount >= 4 && EchoRatio >= 0.8 ||
+                                  ClusterComparableCount >= 8 && ClusterEchoRatio >= 0.8;
 }
 
 internal static class TranslationEchoGuard
@@ -80,7 +84,8 @@ internal static class TranslationEchoGuard
 
         throw new TranslationException(
             $"{providerName} response appears to echo the source text instead of translating it. " +
-            $"Unchanged comparable cues: {analysis.EchoedCount}/{analysis.ComparableCount} ({analysis.EchoRatio:P0}).");
+            $"Unchanged comparable cues: {analysis.EchoedCount}/{analysis.ComparableCount} ({analysis.EchoRatio:P0}). " +
+            $"Strongest unchanged cluster: {analysis.ClusterEchoedCount}/{analysis.ClusterComparableCount} ({analysis.ClusterEchoRatio:P0}).");
     }
 
     private static TranslationEchoAnalysis AnalyzePairs(IEnumerable<TranslationEchoPair> pairs)
@@ -88,6 +93,7 @@ internal static class TranslationEchoGuard
         var comparableCount = 0;
         var echoedPositions = new List<int>();
         var samples = new List<string>();
+        var comparableFlags = new List<bool>();
 
         foreach (var pair in pairs)
         {
@@ -99,7 +105,9 @@ internal static class TranslationEchoGuard
             }
 
             comparableCount++;
-            if (!string.Equals(sourceComparable, targetComparable, StringComparison.Ordinal))
+            var isEchoed = string.Equals(sourceComparable, targetComparable, StringComparison.Ordinal);
+            comparableFlags.Add(isEchoed);
+            if (!isEchoed)
             {
                 continue;
             }
@@ -114,13 +122,54 @@ internal static class TranslationEchoGuard
         var echoRatio = comparableCount == 0
             ? 0
             : (double)echoedPositions.Count / comparableCount;
+        var cluster = FindStrongestCluster(comparableFlags, 8);
 
         return new TranslationEchoAnalysis(
             comparableCount,
             echoedPositions.Count,
             echoRatio,
+            cluster.WindowSize,
+            cluster.MatchedCount,
+            cluster.Ratio,
             echoedPositions,
             samples);
+    }
+
+    private static (int WindowSize, int MatchedCount, double Ratio) FindStrongestCluster(
+        IReadOnlyList<bool> comparableFlags,
+        int windowSize)
+    {
+        if (comparableFlags.Count < windowSize)
+        {
+            return (0, 0, 0);
+        }
+
+        var current = 0;
+        for (var i = 0; i < windowSize; i++)
+        {
+            if (comparableFlags[i])
+            {
+                current++;
+            }
+        }
+
+        var best = current;
+        for (var i = windowSize; i < comparableFlags.Count; i++)
+        {
+            if (comparableFlags[i - windowSize])
+            {
+                current--;
+            }
+
+            if (comparableFlags[i])
+            {
+                current++;
+            }
+
+            best = Math.Max(best, current);
+        }
+
+        return (windowSize, best, (double)best / windowSize);
     }
 
     private static bool TryNormalizeComparable(string? text, out string comparable)

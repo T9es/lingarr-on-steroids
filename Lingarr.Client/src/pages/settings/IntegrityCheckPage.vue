@@ -882,7 +882,8 @@ const assIssueLabels: Record<string, string> = {
     unexpected_ass_tags: 'Unexpected ASS/SSA tags',
     ass_tag_mismatch: 'ASS/SSA tag mismatch',
     inline_ass_tag_placement: 'Inline ASS/SSA tag placement',
-    unchanged_source_text: 'Mostly unchanged source text'
+    unchanged_source_text: 'Mostly unchanged source text',
+    target_language_mismatch: 'Wrong target language'
 }
 
 const getAssIssueLabels = (issueTypes?: string[]) => {

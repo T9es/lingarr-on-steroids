@@ -132,6 +132,62 @@ public class SubtitleTranslationServiceTests
     }
 
     [Fact]
+    public async Task ProcessSubtitleBatch_WhenProviderUsesWrongTargetLanguage_CollectsFailuresWithoutTranslatedLines()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var loggerMock = new Mock<ILogger>();
+        var batchServiceMock = new Mock<IBatchTranslationService>();
+
+        var japaneseLines = new Dictionary<int, string>
+        {
+            [1] = "静流は大好きなゲームを迷わず諦める",
+            [2] = "ただ俺の負担にならないように",
+            [3] = "それに彼女は生活を維持しようと必死で",
+            [4] = "でも俺にも静流にしてやれることはある",
+            [5] = "静かにしろよ、拉致するからな"
+        };
+
+        batchServiceMock
+            .Setup(service => service.TranslateBatchAsync(
+                It.IsAny<List<BatchSubtitleItem>>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(japaneseLines);
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            loggerMock.Object,
+            Mock.Of<IProgressService>());
+
+        var currentBatch = new List<SubtitleItem>
+        {
+            Item(1, "Shizuri will give up a game she loves without question"),
+            Item(2, "just so she will not be a burden to me"),
+            Item(3, "And she is doing her best to maintain our lifestyle"),
+            Item(4, "but there are things I can do for Shizuri too"),
+            Item(5, "Stay quiet so we can kidnap you")
+        };
+
+        var result = await service.ProcessSubtitleBatch(
+            currentBatch,
+            batchServiceMock.Object,
+            sourceLanguage: "en",
+            targetLanguage: "pl",
+            stripSubtitleFormatting: false,
+            collectFailures: true,
+            fileIdentifier: "S01E16",
+            batchNumber: 1,
+            totalBatches: 1,
+            cancellationToken: CancellationToken.None);
+
+        Assert.Equal([1, 2, 3, 4, 5], result.Select(item => item.Position));
+        Assert.All(currentBatch, subtitle => Assert.Empty(subtitle.TranslatedLines));
+    }
+
+    [Fact]
     public async Task TranslateSubtitlesBatch_WhenProviderConfigurationFailure_ShouldFailFastWithoutDeferredRepair()
     {
         var translationServiceMock = new Mock<ITranslationService>();

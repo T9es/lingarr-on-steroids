@@ -230,6 +230,10 @@ public class VerifyAssIntegrityJob
                         targetSubtitles,
                         translation.SourceLanguage,
                         translation.TargetLanguage));
+                    scan.Merge(DetectWrongTargetLanguage(
+                        sourceSubtitles,
+                        targetSubtitles,
+                        translation.TargetLanguage));
                     scan.Merge(AssSubtitleArtifactDetector.DetectInlineTagPlacementArtifacts(
                         targetSubtitles.SelectMany(item => item.Lines)));
                     var generatedOutputScans = await ScanGeneratedOutputArtifactsAsync(
@@ -276,6 +280,10 @@ public class VerifyAssIntegrityJob
                                 sourceSubtitles,
                                 targetSubtitles,
                                 translation.SourceLanguage,
+                                translation.TargetLanguage));
+                            scan.Merge(DetectWrongTargetLanguage(
+                                sourceSubtitles,
+                                targetSubtitles,
                                 translation.TargetLanguage));
                             scan.Merge(AssSubtitleArtifactDetector.DetectInlineTagPlacementArtifacts(
                                 targetSubtitles.SelectMany(item => item.Lines)));
@@ -469,7 +477,33 @@ public class VerifyAssIntegrityJob
             IssueTypes = [AssVerificationIssueTypes.UnchangedSourceText],
             IssueSummaries =
             [
-                $"Found mostly unchanged source text in translated output ({analysis.EchoedCount}/{analysis.ComparableCount} comparable cues)."
+                $"Found mostly unchanged source text in translated output ({analysis.EchoedCount}/{analysis.ComparableCount} comparable cues; strongest cluster {analysis.ClusterEchoedCount}/{analysis.ClusterComparableCount})."
+            ]
+        };
+    }
+
+    private static AssArtifactScanResult DetectWrongTargetLanguage(
+        IReadOnlyList<SubtitleItem> sourceSubtitles,
+        IReadOnlyList<SubtitleItem> targetSubtitles,
+        string? targetLanguage)
+    {
+        var analysis = TranslationLanguageGuard.AnalyzeSubtitles(
+            sourceSubtitles,
+            targetSubtitles,
+            targetLanguage);
+        if (!analysis.IsMostlyMismatched)
+        {
+            return new AssArtifactScanResult();
+        }
+
+        return new AssArtifactScanResult
+        {
+            SuspiciousLineCount = analysis.MismatchedCount,
+            SuspiciousLines = analysis.Samples.ToList(),
+            IssueTypes = [AssVerificationIssueTypes.TargetLanguageMismatch],
+            IssueSummaries =
+            [
+                $"Found target-language/script mismatch ({analysis.MismatchedCount}/{analysis.ComparableCount} comparable cues; strongest cluster {analysis.ClusterMismatchedCount}/{analysis.ClusterComparableCount}; expected {analysis.ExpectedDescription}, observed {analysis.ObservedDescription})."
             ]
         };
     }

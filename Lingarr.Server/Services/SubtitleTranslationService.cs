@@ -413,6 +413,22 @@ public class SubtitleTranslationService
         {
             representativeProviderTranslations.Remove(position);
         }
+        var wrongLanguageRepresentativePositions = GetWrongTargetLanguagePositions(
+            globalDeduplication.Representatives
+                .Select(item => new BatchSubtitleItem
+                {
+                    Position = item.Position,
+                    Line = item.ProviderText
+                })
+                .ToList(),
+            representativeProviderTranslations,
+            translationRequest.TargetLanguage,
+            fileIdentifier,
+            "final");
+        foreach (var position in wrongLanguageRepresentativePositions)
+        {
+            representativeProviderTranslations.Remove(position);
+        }
 
         ApplyRepresentativeTranslations(
             structureEntries,
@@ -610,11 +626,18 @@ public class SubtitleTranslationService
             targetLanguage,
             fileIdentifier,
             $"batch {batchNumber}/{totalBatches}");
+        var wrongLanguagePositions = GetWrongTargetLanguagePositions(
+            batchItems,
+            batchResults,
+            targetLanguage,
+            fileIdentifier,
+            $"batch {batchNumber}/{totalBatches}");
         var resolvedProviderTranslations = new Dictionary<int, string>();
         foreach (var entry in structureEntries.Where(entry => entry.IsTranslatable))
         {
             var representativePosition = deduplication.GetRepresentativePosition(entry.Subtitle.Position);
-            if (echoedPositions.Contains(representativePosition))
+            if (echoedPositions.Contains(representativePosition) ||
+                wrongLanguagePositions.Contains(representativePosition))
             {
                 continue;
             }
@@ -705,14 +728,49 @@ public class SubtitleTranslationService
         }
 
         _logger.LogWarning(
-            "[{FileId}] {Phase}: provider output appears to echo source text. Unchanged comparable cues: {Echoed}/{Comparable} ({Ratio:P0}). Treating affected items as missing translations.",
+            "[{FileId}] {Phase}: provider output appears to echo source text. Unchanged comparable cues: {Echoed}/{Comparable} ({Ratio:P0}); strongest unchanged cluster: {ClusterEchoed}/{ClusterComparable} ({ClusterRatio:P0}). Treating affected items as missing translations.",
             fileIdentifier,
             phase,
             analysis.EchoedCount,
             analysis.ComparableCount,
-            analysis.EchoRatio);
+            analysis.EchoRatio,
+            analysis.ClusterEchoedCount,
+            analysis.ClusterComparableCount,
+            analysis.ClusterEchoRatio);
 
         return analysis.EchoedPositions.ToHashSet();
+    }
+
+    private HashSet<int> GetWrongTargetLanguagePositions(
+        IReadOnlyList<BatchSubtitleItem> sourceItems,
+        IReadOnlyDictionary<int, string> translations,
+        string targetLanguage,
+        string fileIdentifier,
+        string phase)
+    {
+        var analysis = TranslationLanguageGuard.AnalyzeBatch(
+            sourceItems,
+            translations,
+            targetLanguage);
+        if (!analysis.IsMostlyMismatched)
+        {
+            return [];
+        }
+
+        _logger.LogWarning(
+            "[{FileId}] {Phase}: provider output appears to use the wrong target language. Expected {Expected}, observed {Observed}. Mismatched comparable cues: {Mismatched}/{Comparable} ({Ratio:P0}); strongest mismatched cluster: {ClusterMismatched}/{ClusterComparable} ({ClusterRatio:P0}). Treating affected items as missing translations.",
+            fileIdentifier,
+            phase,
+            analysis.ExpectedDescription,
+            analysis.ObservedDescription,
+            analysis.MismatchedCount,
+            analysis.ComparableCount,
+            analysis.MismatchRatio,
+            analysis.ClusterMismatchedCount,
+            analysis.ClusterComparableCount,
+            analysis.ClusterMismatchRatio);
+
+        return analysis.MismatchedPositions.ToHashSet();
     }
 
     private async Task EmitProgressDirect(TranslationRequest translationRequest, double progressPercent)

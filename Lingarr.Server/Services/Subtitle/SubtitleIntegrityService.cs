@@ -107,6 +107,19 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
                 return false;
             }
 
+            var languageScan = DetectWrongTargetLanguage(
+                sourceSubtitles,
+                targetSubtitles,
+                SubtitleLanguageHelper.DetectLanguageFromFileName(targetSubtitlePath));
+            if (languageScan.HasIssues)
+            {
+                _logger.LogWarning(
+                    "Subtitle integrity check FAILED: target appears to use the wrong language/script. {Summary} File may be mistranslated: {TargetPath}",
+                    string.Join(" ", languageScan.IssueSummaries),
+                    targetSubtitlePath);
+                return false;
+            }
+
             _logger.LogInformation(
                 "Subtitle integrity check PASSED: {TargetCount}/{SourceCount} lines in {Path}",
                 targetCount, sourceCount, targetSubtitlePath);
@@ -266,6 +279,10 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
                     targetSubtitles,
                     translation.SourceLanguage,
                     translation.TargetLanguage));
+                scan.Merge(DetectWrongTargetLanguage(
+                    sourceSubtitles,
+                    targetSubtitles,
+                    translation.TargetLanguage));
 
                 if (!scan.HasIssues)
                 {
@@ -363,7 +380,33 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
             IssueTypes = [AssVerificationIssueTypes.UnchangedSourceText],
             IssueSummaries =
             [
-                $"Found mostly unchanged source text in translated output ({analysis.EchoedCount}/{analysis.ComparableCount} comparable cues)."
+                $"Found mostly unchanged source text in translated output ({analysis.EchoedCount}/{analysis.ComparableCount} comparable cues; strongest cluster {analysis.ClusterEchoedCount}/{analysis.ClusterComparableCount})."
+            ]
+        };
+    }
+
+    private static AssArtifactScanResult DetectWrongTargetLanguage(
+        IReadOnlyList<SubtitleItem> sourceSubtitles,
+        IReadOnlyList<SubtitleItem> targetSubtitles,
+        string? targetLanguage)
+    {
+        var analysis = TranslationLanguageGuard.AnalyzeSubtitles(
+            sourceSubtitles,
+            targetSubtitles,
+            targetLanguage);
+        if (!analysis.IsMostlyMismatched)
+        {
+            return new AssArtifactScanResult();
+        }
+
+        return new AssArtifactScanResult
+        {
+            SuspiciousLineCount = analysis.MismatchedCount,
+            SuspiciousLines = analysis.Samples.ToList(),
+            IssueTypes = [AssVerificationIssueTypes.TargetLanguageMismatch],
+            IssueSummaries =
+            [
+                $"Found target-language/script mismatch ({analysis.MismatchedCount}/{analysis.ComparableCount} comparable cues; strongest cluster {analysis.ClusterMismatchedCount}/{analysis.ClusterComparableCount}; expected {analysis.ExpectedDescription}, observed {analysis.ObservedDescription})."
             ]
         };
     }

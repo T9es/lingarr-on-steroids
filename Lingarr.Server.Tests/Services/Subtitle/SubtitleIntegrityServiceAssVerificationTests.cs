@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Lingarr.Core.Configuration;
@@ -57,6 +58,40 @@ public class SubtitleIntegrityServiceAssVerificationTests
     }
 
     [Fact]
+    public async Task ValidateIntegrityAsync_WhenTargetEchoesSourceInCluster_ReturnsFalse()
+    {
+        await using var context = BuildContext();
+        using var tempDirectory = new TemporaryDirectory();
+        var sourcePath = Path.Combine(tempDirectory.Path, "episode.en.srt");
+        var targetPath = Path.Combine(tempDirectory.Path, "episode.pl.srt");
+        await File.WriteAllTextAsync(sourcePath, "source");
+        await File.WriteAllTextAsync(targetPath, "target");
+
+        var sourceItems = Enumerable.Range(1, 20)
+            .Select(position => Item(position, $"This is a longer English source line number {position}"))
+            .ToList();
+        var targetItems = Enumerable.Range(1, 20)
+            .Select(position => position is >= 7 and <= 14
+                ? Item(position, $"This is a longer English source line number {position}")
+                : Item(position, $"To jest dluzszy polski wiersz numer {position}"))
+            .ToList();
+
+        var subtitleService = new Mock<ISubtitleService>();
+        subtitleService
+            .Setup(service => service.ReadSubtitles(sourcePath))
+            .ReturnsAsync(sourceItems);
+        subtitleService
+            .Setup(service => service.ReadSubtitles(targetPath))
+            .ReturnsAsync(targetItems);
+
+        var service = CreateIntegrityService(context, subtitleService.Object);
+
+        var isValid = await service.ValidateIntegrityAsync(sourcePath, targetPath);
+
+        Assert.False(isValid);
+    }
+
+    [Fact]
     public async Task ValidateIntegrityAsync_WhenTargetIsTranslated_ReturnsTrue()
     {
         await using var context = BuildContext();
@@ -91,6 +126,125 @@ public class SubtitleIntegrityServiceAssVerificationTests
         var isValid = await service.ValidateIntegrityAsync(sourcePath, targetPath);
 
         Assert.True(isValid);
+    }
+
+    [Fact]
+    public async Task ValidateIntegrityAsync_WhenTargetUsesWrongScript_ReturnsFalse()
+    {
+        await using var context = BuildContext();
+        using var tempDirectory = new TemporaryDirectory();
+        var sourcePath = Path.Combine(tempDirectory.Path, "episode.en.srt");
+        var targetPath = Path.Combine(tempDirectory.Path, "episode.pl.srt");
+        await File.WriteAllTextAsync(sourcePath, "source");
+        await File.WriteAllTextAsync(targetPath, "target");
+
+        var subtitleService = new Mock<ISubtitleService>();
+        subtitleService
+            .Setup(service => service.ReadSubtitles(sourcePath))
+            .ReturnsAsync([
+                Item(1, "Shizuri will give up a game she loves without question"),
+                Item(2, "just so she will not be a burden to me"),
+                Item(3, "And she is doing her best to maintain our lifestyle"),
+                Item(4, "but there are things I can do for Shizuri too"),
+                Item(5, "Stay quiet so we can kidnap you")
+            ]);
+        subtitleService
+            .Setup(service => service.ReadSubtitles(targetPath))
+            .ReturnsAsync([
+                Item(1, "静流は大好きなゲームを迷わず諦める"),
+                Item(2, "ただ俺の負担にならないように"),
+                Item(3, "それに彼女は生活を維持しようと必死で"),
+                Item(4, "でも俺にも静流にしてやれることはある"),
+                Item(5, "静かにしろよ、拉致するからな")
+            ]);
+
+        var service = CreateIntegrityService(context, subtitleService.Object);
+
+        var isValid = await service.ValidateIntegrityAsync(sourcePath, targetPath);
+
+        Assert.False(isValid);
+    }
+
+    [Fact]
+    public async Task ValidateIntegrityAsync_WhenTargetContainsMojibake_ReturnsFalse()
+    {
+        await using var context = BuildContext();
+        using var tempDirectory = new TemporaryDirectory();
+        var sourcePath = Path.Combine(tempDirectory.Path, "episode.en.srt");
+        var targetPath = Path.Combine(tempDirectory.Path, "episode.pl.srt");
+        await File.WriteAllTextAsync(sourcePath, "source");
+        await File.WriteAllTextAsync(targetPath, "target");
+
+        var subtitleService = new Mock<ISubtitleService>();
+        subtitleService
+            .Setup(service => service.ReadSubtitles(sourcePath))
+            .ReturnsAsync([
+                Item(1, "Shizuri will give up a game she loves without question"),
+                Item(2, "just so she will not be a burden to me"),
+                Item(3, "And she is doing her best to maintain our lifestyle"),
+                Item(4, "but there are things I can do for Shizuri too"),
+                Item(5, "Stay quiet so we can kidnap you")
+            ]);
+        subtitleService
+            .Setup(service => service.ReadSubtitles(targetPath))
+            .ReturnsAsync([
+                Item(1, "Shizuri bez wahania porzuci grÄ™"),
+                Item(2, "ĹĽeby tylko nie byÄ‡ ciÄ™ĹĽarem"),
+                Item(3, "Daje z siebie wszystko, by utrzymaÄ‡ ĹĽycie"),
+                Item(4, "ale ja teĹĽ mogÄ™ coĹ› zrobiÄ‡"),
+                Item(5, "SiedĹş cicho, ĹĽebyĹ›my mogli ciÄ™ porwaÄ‡")
+            ]);
+
+        var service = CreateIntegrityService(context, subtitleService.Object);
+
+        var isValid = await service.ValidateIntegrityAsync(sourcePath, targetPath);
+
+        Assert.False(isValid);
+    }
+
+    [Fact]
+    public async Task ValidateIntegrityAsync_WhenTargetUsesWrongScriptInCluster_ReturnsFalse()
+    {
+        await using var context = BuildContext();
+        using var tempDirectory = new TemporaryDirectory();
+        var sourcePath = Path.Combine(tempDirectory.Path, "episode.en.srt");
+        var targetPath = Path.Combine(tempDirectory.Path, "episode.pl.srt");
+        await File.WriteAllTextAsync(sourcePath, "source");
+        await File.WriteAllTextAsync(targetPath, "target");
+
+        var wrongScriptLines = new[]
+        {
+            "静流は大好きなゲームを迷わず諦める",
+            "ただ俺の負担にならないように",
+            "それに彼女は生活を維持しようと必死で",
+            "でも俺にも静流にしてやれることはある",
+            "静かにしろよ拉致するからな",
+            "高品質な商品を傷つけたくないんだ",
+            "実を収穫する前にな",
+            "抵抗するのは全員の時間の無駄だ"
+        };
+        var sourceItems = Enumerable.Range(1, 20)
+            .Select(position => Item(position, $"This is a longer English source line number {position}"))
+            .ToList();
+        var targetItems = Enumerable.Range(1, 20)
+            .Select(position => position is >= 7 and <= 14
+                ? Item(position, wrongScriptLines[position - 7])
+                : Item(position, $"To jest dluzszy polski wiersz numer {position}"))
+            .ToList();
+
+        var subtitleService = new Mock<ISubtitleService>();
+        subtitleService
+            .Setup(service => service.ReadSubtitles(sourcePath))
+            .ReturnsAsync(sourceItems);
+        subtitleService
+            .Setup(service => service.ReadSubtitles(targetPath))
+            .ReturnsAsync(targetItems);
+
+        var service = CreateIntegrityService(context, subtitleService.Object);
+
+        var isValid = await service.ValidateIntegrityAsync(sourcePath, targetPath);
+
+        Assert.False(isValid);
     }
 
     [Fact]
@@ -259,6 +413,76 @@ public class SubtitleIntegrityServiceAssVerificationTests
         var item = Assert.Single(result.FlaggedItems);
         Assert.Contains("unchanged_source_text", item.IssueTypes);
         Assert.Contains("mostly unchanged source text", item.IssueSummary, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task VerifyAssIntegrityAsync_IncludesWrongTargetLanguageFromCompletedTranslations()
+    {
+        await using var context = BuildContext();
+        using var tempDirectory = new TemporaryDirectory();
+        var sourcePath = Path.Combine(tempDirectory.Path, "movie.en.srt");
+        var targetPath = Path.Combine(tempDirectory.Path, "movie.pl.srt");
+        await File.WriteAllTextAsync(sourcePath, "1");
+        await File.WriteAllTextAsync(targetPath, "1");
+
+        var movie = AddMovie(context, tempDirectory.Path);
+        context.TranslationRequests.Add(new TranslationRequest
+        {
+            WorkloadKind = TranslationWorkloadKind.Library,
+            WorkloadItemKey = "library:Movie:1:srt",
+            MediaId = movie.Id,
+            MediaType = MediaType.Movie,
+            Title = "Movie",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = sourcePath,
+            TranslatedSubtitle = targetPath,
+            Status = TranslationStatus.Completed,
+            CompletedAt = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        var subtitleService = new Mock<ISubtitleService>();
+        subtitleService
+            .Setup(service => service.GetAllSubtitles(tempDirectory.Path))
+            .ReturnsAsync([]);
+        subtitleService
+            .Setup(service => service.ReadSubtitles(sourcePath))
+            .ReturnsAsync([
+                Item(1, "Shizuri will give up a game she loves without question"),
+                Item(2, "just so she will not be a burden to me"),
+                Item(3, "And she is doing her best to maintain our lifestyle"),
+                Item(4, "but there are things I can do for Shizuri too"),
+                Item(5, "Stay quiet so we can kidnap you")
+            ]);
+        subtitleService
+            .Setup(service => service.ReadSubtitles(targetPath))
+            .ReturnsAsync([
+                Item(1, "静流は大好きなゲームを迷わず諦める"),
+                Item(2, "ただ俺の負担にならないように"),
+                Item(3, "それに彼女は生活を維持しようと必死で"),
+                Item(4, "でも俺にも静流にしてやれることはある"),
+                Item(5, "静かにしろよ、拉致するからな")
+            ]);
+        var sourceSubtitleResolver = new Mock<ISourceSubtitleResolver>();
+        sourceSubtitleResolver
+            .Setup(service => service.ResolveReadableSourcePathAsync(
+                It.IsAny<TranslationRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TranslationRequest value, CancellationToken _) => value.SubtitleToTranslate);
+
+        var service = new SubtitleIntegrityService(
+            new Mock<ISettingService>().Object,
+            subtitleService.Object,
+            context,
+            sourceSubtitleResolver.Object,
+            NullLogger<SubtitleIntegrityService>.Instance);
+
+        var result = await service.VerifyAssIntegrityAsync(CancellationToken.None);
+
+        var item = Assert.Single(result.FlaggedItems);
+        Assert.Contains("target_language_mismatch", item.IssueTypes);
+        Assert.Contains("target-language/script mismatch", item.IssueSummary, StringComparison.OrdinalIgnoreCase);
     }
 
     private static LingarrDbContext BuildContext()

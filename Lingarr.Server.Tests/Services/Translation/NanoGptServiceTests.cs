@@ -404,6 +404,43 @@ public class NanoGptServiceTests
     }
 
     [Fact]
+    public async Task TranslateBatchAsync_MapsThinkingModelCaseInsensitiveStructuredProperties()
+    {
+        const string modelId = "deepseek/deepseek-v4-flash:thinking";
+        var service = CreateNanoGptService(
+            modelId,
+            JsonSerializer.Serialize(new
+            {
+                translations = new[]
+                {
+                    new { Position = 10, Line = "Czesc przyjacielu" },
+                    new { Position = 25, Line = "Musimy isc do domu" },
+                    new { Position = 40, Line = "To jest bardzo wazne" },
+                    new { Position = 55, Line = "Gdzie jest twoja siostra?" },
+                    new { Position = 70, Line = "Nie moge teraz rozmawiac" }
+                }
+            }));
+
+        var result = await service.TranslateBatchAsync(
+            [
+                new BatchSubtitleItem { Position = 10, Line = "Hello, my friend" },
+                new BatchSubtitleItem { Position = 25, Line = "We need to go home" },
+                new BatchSubtitleItem { Position = 40, Line = "This is very important" },
+                new BatchSubtitleItem { Position = 55, Line = "Where is your sister?" },
+                new BatchSubtitleItem { Position = 70, Line = "I cannot talk right now" }
+            ],
+            "en",
+            "pl",
+            null,
+            null,
+            CancellationToken.None);
+
+        Assert.Equal("Czesc przyjacielu", result[10]);
+        Assert.Equal("Musimy isc do domu", result[25]);
+        Assert.Equal("To jest bardzo wazne", result[40]);
+    }
+
+    [Fact]
     public async Task TranslateBatchAsync_RejectsThinkingModelStringArrayEchoResponse()
     {
         const string modelId = "deepseek/deepseek-v4-flash:thinking";
@@ -430,6 +467,154 @@ public class NanoGptServiceTests
             null,
             null,
             CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task TranslateBatchAsync_RejectsThinkingModelStringArrayEmptyResponse()
+    {
+        const string modelId = "deepseek/deepseek-v4-flash:thinking";
+        var service = CreateNanoGptService(
+            modelId,
+            JsonSerializer.Serialize(new[] { "", "", "", "", "" }));
+
+        await Assert.ThrowsAsync<TranslationException>(() => service.TranslateBatchAsync(
+            [
+                new BatchSubtitleItem { Position = 1, Line = "Hello, my friend" },
+                new BatchSubtitleItem { Position = 2, Line = "We need to go home" },
+                new BatchSubtitleItem { Position = 3, Line = "This is very important" },
+                new BatchSubtitleItem { Position = 4, Line = "Where is your sister?" },
+                new BatchSubtitleItem { Position = 5, Line = "I cannot talk right now" }
+            ],
+            "en",
+            "pl",
+            null,
+            null,
+            CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task TranslateBatchAsync_RejectsThinkingModelStringArrayWrongTargetLanguageResponse()
+    {
+        const string modelId = "deepseek/deepseek-v4-flash:thinking";
+        var service = CreateNanoGptService(
+            modelId,
+            JsonSerializer.Serialize(new[]
+            {
+                "静流は大好きなゲームを迷わず諦める",
+                "ただ俺の負担にならないように",
+                "それに彼女は生活を維持しようと必死で",
+                "でも俺にも静流にしてやれることはある",
+                "静かにしろよ、拉致するからな"
+            }));
+
+        await Assert.ThrowsAsync<TranslationException>(() => service.TranslateBatchAsync(
+            [
+                new BatchSubtitleItem { Position = 1, Line = "Shizuri will give up a game she loves without question" },
+                new BatchSubtitleItem { Position = 2, Line = "just so she will not be a burden to me" },
+                new BatchSubtitleItem { Position = 3, Line = "And she is doing her best to maintain our lifestyle" },
+                new BatchSubtitleItem { Position = 4, Line = "but there are things I can do for Shizuri too" },
+                new BatchSubtitleItem { Position = 5, Line = "Stay quiet so we can kidnap you" }
+            ],
+            "en",
+            "pl",
+            null,
+            null,
+            CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task TranslateBatchAsync_RejectsThinkingModelMojibakeResponse()
+    {
+        const string modelId = "deepseek/deepseek-v4-flash:thinking";
+        var service = CreateNanoGptService(
+            modelId,
+            JsonSerializer.Serialize(new
+            {
+                translations = new[]
+                {
+                    new { position = 1, line = "Shizuri bez wahania porzuci grÄ™" },
+                    new { position = 2, line = "ĹĽeby tylko nie byÄ‡ ciÄ™ĹĽarem" },
+                    new { position = 3, line = "Daje z siebie wszystko, by utrzymaÄ‡ ĹĽycie" },
+                    new { position = 4, line = "ale ja teĹĽ mogÄ™ coĹ› zrobiÄ‡" },
+                    new { position = 5, line = "SiedĹş cicho, ĹĽebyĹ›my mogli ciÄ™ porwaÄ‡" }
+                }
+            }));
+
+        await Assert.ThrowsAsync<TranslationException>(() => service.TranslateBatchAsync(
+            [
+                new BatchSubtitleItem { Position = 1, Line = "Shizuri will give up a game she loves without question" },
+                new BatchSubtitleItem { Position = 2, Line = "just so she will not be a burden to me" },
+                new BatchSubtitleItem { Position = 3, Line = "And she is doing her best to maintain our lifestyle" },
+                new BatchSubtitleItem { Position = 4, Line = "but there are things I can do for Shizuri too" },
+                new BatchSubtitleItem { Position = 5, Line = "Stay quiet so we can kidnap you" }
+            ],
+            "en",
+            "pl",
+            null,
+            null,
+            CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task TranslateBatchAsync_RejectsThinkingModelObjectsWithoutLineProperty()
+    {
+        const string modelId = "deepseek/deepseek-v4-flash:thinking";
+        var service = CreateNanoGptService(
+            modelId,
+            JsonSerializer.Serialize(new[]
+            {
+                new { position = 1, speaker = "Unknown" },
+                new { position = 2, speaker = "Unknown" },
+                new { position = 3, speaker = "Unknown" },
+                new { position = 4, speaker = "Unknown" },
+                new { position = 5, speaker = "Unknown" }
+            }));
+
+        await Assert.ThrowsAsync<TranslationException>(() => service.TranslateBatchAsync(
+            [
+                new BatchSubtitleItem { Position = 1, Line = "Shizuri will give up a game she loves without question" },
+                new BatchSubtitleItem { Position = 2, Line = "just so she will not be a burden to me" },
+                new BatchSubtitleItem { Position = 3, Line = "And she is doing her best to maintain our lifestyle" },
+                new BatchSubtitleItem { Position = 4, Line = "but there are things I can do for Shizuri too" },
+                new BatchSubtitleItem { Position = 5, Line = "Stay quiet so we can kidnap you" }
+            ],
+            "en",
+            "pl",
+            null,
+            null,
+            CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task TranslateBatchAsync_AllowsJapaneseWhenTargetLanguageIsJapanese()
+    {
+        const string modelId = "deepseek/deepseek-v4-flash:thinking";
+        var service = CreateNanoGptService(
+            modelId,
+            JsonSerializer.Serialize(new[]
+            {
+                "静流は大好きなゲームを迷わず諦める",
+                "ただ俺の負担にならないように",
+                "それに彼女は生活を維持しようと必死で",
+                "でも俺にも静流にしてやれることはある",
+                "静かにしろよ、拉致するからな"
+            }));
+
+        var result = await service.TranslateBatchAsync(
+            [
+                new BatchSubtitleItem { Position = 1, Line = "Shizuri will give up a game she loves without question" },
+                new BatchSubtitleItem { Position = 2, Line = "just so she will not be a burden to me" },
+                new BatchSubtitleItem { Position = 3, Line = "And she is doing her best to maintain our lifestyle" },
+                new BatchSubtitleItem { Position = 4, Line = "but there are things I can do for Shizuri too" },
+                new BatchSubtitleItem { Position = 5, Line = "Stay quiet so we can kidnap you" }
+            ],
+            "en",
+            "ja",
+            null,
+            null,
+            CancellationToken.None);
+
+        Assert.Equal("静流は大好きなゲームを迷わず諦める", result[1]);
     }
 
     [Fact]

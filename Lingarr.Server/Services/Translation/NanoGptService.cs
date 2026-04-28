@@ -396,6 +396,12 @@ public class NanoGptService : OpenAiService
                     sourceLanguage,
                     targetLanguage,
                     "NanoGPT");
+                ThrowIfMostlyEmptyTranslations(subtitleBatch, directTranslations, "NanoGPT");
+                TranslationLanguageGuard.ThrowIfTargetLanguageMismatch(
+                    subtitleBatch,
+                    directTranslations,
+                    targetLanguage,
+                    "NanoGPT");
                 return directTranslations;
             }
 
@@ -404,6 +410,7 @@ public class NanoGptService : OpenAiService
                 throw new TranslationException("Response 'translations' property is not an array");
             }
 
+            ValidateStructuredTranslationItems(translationsElement);
             var translatedItems = JsonSerializer.Deserialize<List<StructuredBatchResponse>>(
                 translationsElement.GetRawText(),
                 new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
@@ -424,6 +431,12 @@ public class NanoGptService : OpenAiService
                     subtitleBatch,
                     zeroBasedTranslations,
                     sourceLanguage,
+                    targetLanguage,
+                    "NanoGPT");
+                ThrowIfMostlyEmptyTranslations(subtitleBatch, zeroBasedTranslations, "NanoGPT");
+                TranslationLanguageGuard.ThrowIfTargetLanguageMismatch(
+                    subtitleBatch,
+                    zeroBasedTranslations,
                     targetLanguage,
                     "NanoGPT");
                 return zeroBasedTranslations;
@@ -470,6 +483,12 @@ public class NanoGptService : OpenAiService
                 sourceLanguage,
                 targetLanguage,
                 "NanoGPT");
+            ThrowIfMostlyEmptyTranslations(subtitleBatch, validTranslations, "NanoGPT");
+            TranslationLanguageGuard.ThrowIfTargetLanguageMismatch(
+                subtitleBatch,
+                validTranslations,
+                targetLanguage,
+                "NanoGPT");
             return validTranslations;
         }
         catch (JsonException ex)
@@ -511,6 +530,76 @@ public class NanoGptService : OpenAiService
                 Line = element.GetString() ?? string.Empty
             })
             .ToDictionary(item => item.Position, item => item.Line);
+    }
+
+    private static void ValidateStructuredTranslationItems(JsonElement translationsElement)
+    {
+        if (translationsElement.ValueKind != JsonValueKind.Array)
+        {
+            return;
+        }
+
+        foreach (var element in translationsElement.EnumerateArray())
+        {
+            if (element.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            if (!TryGetPropertyIgnoreCase(element, "position", out var positionElement) ||
+                positionElement.ValueKind != JsonValueKind.Number ||
+                !TryGetPropertyIgnoreCase(element, "line", out var lineElement) ||
+                lineElement.ValueKind != JsonValueKind.String)
+            {
+                throw new TranslationException(
+                    "NanoGPT response contains translation objects without required numeric 'position' and string 'line' properties");
+            }
+        }
+    }
+
+    private static bool TryGetPropertyIgnoreCase(
+        JsonElement element,
+        string propertyName,
+        out JsonElement propertyElement)
+    {
+        foreach (var property in element.EnumerateObject())
+        {
+            if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+            {
+                propertyElement = property.Value;
+                return true;
+            }
+        }
+
+        propertyElement = default;
+        return false;
+    }
+
+    private static void ThrowIfMostlyEmptyTranslations(
+        IReadOnlyList<BatchSubtitleItem> sourceItems,
+        IReadOnlyDictionary<int, string> translations,
+        string providerName)
+    {
+        var comparablePositions = sourceItems
+            .Where(item => !string.IsNullOrWhiteSpace(item.Line))
+            .Select(item => item.Position)
+            .ToList();
+        if (comparablePositions.Count < 4)
+        {
+            return;
+        }
+
+        var emptyCount = comparablePositions.Count(position =>
+            !translations.TryGetValue(position, out var translated) ||
+            string.IsNullOrWhiteSpace(translated));
+        var emptyRatio = (double)emptyCount / comparablePositions.Count;
+        if (emptyRatio < 0.8)
+        {
+            return;
+        }
+
+        throw new TranslationException(
+            $"{providerName} response did not contain usable translated text. Empty comparable cues: {emptyCount}/{comparablePositions.Count} ({emptyRatio:P0}).");
     }
 
     private static Dictionary<int, string>? TryMapZeroBasedPositions(
