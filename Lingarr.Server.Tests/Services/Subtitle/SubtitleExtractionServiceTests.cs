@@ -210,6 +210,54 @@ public class SubtitleExtractionServiceTests : IDisposable
         Assert.Contains("Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,Hello", lines);
     }
 
+    [Fact]
+    public async Task DetachTrackedEmbeddedSubtitlesForMedia_RemovesStaleTrackedRowsBeforeRefresh()
+    {
+        var movie = new Movie
+        {
+            Id = 30,
+            RadarrId = 30,
+            Title = "Movie",
+            FileName = "movie.mkv",
+            Path = CreateMediaDirectory(),
+            DateAdded = DateTime.UtcNow
+        };
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = movie.Id,
+            StreamIndex = 0,
+            Language = "eng",
+            CodecName = "subrip",
+            IsTextBased = true
+        });
+
+        _dbContext.Movies.Add(movie);
+        await _dbContext.SaveChangesAsync();
+        await _dbContext.Entry(movie).Collection(m => m.EmbeddedSubtitles).LoadAsync();
+
+        await _dbContext.EmbeddedSubtitles
+            .Where(subtitle => subtitle.MovieId == movie.Id)
+            .ExecuteDeleteAsync();
+        SubtitleExtractionService.DetachTrackedEmbeddedSubtitlesForMedia(
+            _dbContext,
+            episodeId: null,
+            movieId: movie.Id);
+
+        _dbContext.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = movie.Id,
+            StreamIndex = 0,
+            Language = "eng",
+            CodecName = "subrip",
+            IsTextBased = true
+        });
+        await _dbContext.SaveChangesAsync();
+        await _dbContext.Entry(movie).Collection(m => m.EmbeddedSubtitles).LoadAsync();
+
+        Assert.Single(movie.EmbeddedSubtitles);
+        Assert.Single(_dbContext.ChangeTracker.Entries<EmbeddedSubtitle>());
+    }
+
     public void Dispose()
     {
         var mediaDirectories = _dbContext.Movies

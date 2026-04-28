@@ -278,6 +278,16 @@ public class NanoGptServiceTests
         Assert.Equal("json_object", responseFormat.GetProperty("type").GetString());
         Assert.False(responseFormat.TryGetProperty("json_schema", out _));
         Assert.True(requestBody.RootElement.GetProperty("reasoning").GetProperty("exclude").GetBoolean());
+
+        var userContent = requestBody.RootElement
+            .GetProperty("messages")[1]
+            .GetProperty("content")
+            .GetString();
+        using var userPayload = JsonDocument.Parse(userContent!);
+        Assert.True(userPayload.RootElement[0].TryGetProperty("position", out _));
+        Assert.True(userPayload.RootElement[0].TryGetProperty("line", out _));
+        Assert.False(userPayload.RootElement[0].TryGetProperty("Position", out _));
+        Assert.False(userPayload.RootElement[0].TryGetProperty("Line", out _));
     }
 
     [Fact]
@@ -306,6 +316,77 @@ public class NanoGptServiceTests
             usageServiceMock.Object,
             new StaticHttpClientFactory(new HttpClient(handler)),
             new MemoryCache(new MemoryCacheOptions()));
+
+        await Assert.ThrowsAsync<TranslationException>(() => service.TranslateBatchAsync(
+            [
+                new BatchSubtitleItem { Position = 1, Line = "Hello" },
+                new BatchSubtitleItem { Position = 2, Line = "World" }
+            ],
+            "en",
+            "es",
+            null,
+            null,
+            CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task TranslateBatchAsync_MapsThinkingModelStringArrayResponseByRequestedOrder()
+    {
+        const string modelId = "deepseek/deepseek-v4-flash:thinking";
+        var service = CreateNanoGptService(
+            modelId,
+            JsonSerializer.Serialize(new[] { "Hola", "Mundo" }));
+
+        var result = await service.TranslateBatchAsync(
+            [
+                new BatchSubtitleItem { Position = 10, Line = "Hello" },
+                new BatchSubtitleItem { Position = 25, Line = "World" }
+            ],
+            "en",
+            "es",
+            null,
+            null,
+            CancellationToken.None);
+
+        Assert.Equal("Hola", result[10]);
+        Assert.Equal("Mundo", result[25]);
+    }
+
+    [Fact]
+    public async Task TranslateBatchAsync_MapsThinkingModelZeroBasedPositionsByRequestedOrder()
+    {
+        const string modelId = "deepseek/deepseek-v4-flash:thinking";
+        var service = CreateNanoGptService(
+            modelId,
+            JsonSerializer.Serialize(new
+            {
+                translations = new[]
+                {
+                    new { position = 0, line = "Hola" },
+                    new { position = 1, line = "Mundo" }
+                }
+            }));
+
+        var result = await service.TranslateBatchAsync(
+            [
+                new BatchSubtitleItem { Position = 10, Line = "Hello" },
+                new BatchSubtitleItem { Position = 25, Line = "World" }
+            ],
+            "en",
+            "es",
+            null,
+            null,
+            CancellationToken.None);
+
+        Assert.Equal("Hola", result[10]);
+        Assert.Equal("Mundo", result[25]);
+    }
+
+    [Fact]
+    public async Task TranslateBatchAsync_RejectsThinkingModelEmptyObjectResponse()
+    {
+        const string modelId = "deepseek/deepseek-v4-flash:thinking";
+        var service = CreateNanoGptService(modelId, "{}");
 
         await Assert.ThrowsAsync<TranslationException>(() => service.TranslateBatchAsync(
             [
@@ -349,6 +430,24 @@ public class NanoGptServiceTests
                 key => settings.TryGetValue(key, out var value) ? value : string.Empty));
 
         return settingsMock;
+    }
+
+    private static NanoGptService CreateNanoGptService(string modelId, string translatedContent)
+    {
+        var settings = CreateNanoGptSettings(modelId);
+        var settingsMock = CreateSettingServiceMock(settings);
+        var usageServiceMock = new Mock<INanoGptUsageService>();
+        usageServiceMock
+            .Setup(service => service.EnsureUsageAvailableAsync(It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var handler = new CapturingNanoGptHandler(modelId, translatedContent);
+        return new NanoGptService(
+            settingsMock.Object,
+            new Mock<ILogger<NanoGptService>>().Object,
+            usageServiceMock.Object,
+            new StaticHttpClientFactory(new HttpClient(handler)),
+            new MemoryCache(new MemoryCacheOptions()));
     }
 
     private sealed class StaticHttpClientFactory(HttpClient httpClient) : IHttpClientFactory

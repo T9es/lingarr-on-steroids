@@ -265,7 +265,9 @@ public class NanoGptService : OpenAiService
                            "IMPORTANT: Return only one valid JSON object, with no markdown or explanation. " +
                            "The JSON object must match this shape exactly: " +
                            "{\"translations\":[{\"position\":1,\"line\":\"Translated text\"}]}. " +
-                           "Every input position must appear exactly once, and each line must contain only the translated subtitle text.";
+                           "Every input position must appear exactly once, using the exact input position value. " +
+                           "Do not replace positions with zero-based array indexes. " +
+                           "Each line must contain only the translated subtitle text.";
 
         var requestBody = new Dictionary<string, object>
         {
@@ -380,8 +382,20 @@ public class NanoGptService : OpenAiService
                 throw new TranslationException("Response does not contain 'translations' property");
             }
 
-            var translatedItems =
-                JsonSerializer.Deserialize<List<StructuredBatchResponse>>(translationsElement.GetRawText());
+            var directTranslations = TryMapStringArrayResponse(translationsElement, subtitleBatch);
+            if (directTranslations != null)
+            {
+                return directTranslations;
+            }
+
+            if (translationsElement.ValueKind != JsonValueKind.Array)
+            {
+                throw new TranslationException("Response 'translations' property is not an array");
+            }
+
+            var translatedItems = JsonSerializer.Deserialize<List<StructuredBatchResponse>>(
+                translationsElement.GetRawText(),
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             if (translatedItems == null)
             {
                 throw new TranslationException("Failed to deserialize translated subtitles");
@@ -391,6 +405,12 @@ public class NanoGptService : OpenAiService
                 "NanoGPT json_object batch translation successful. Requested: {RequestedCount}, Received: {ReceivedCount}",
                 subtitleBatch.Count,
                 translatedItems.Count);
+
+            var zeroBasedTranslations = TryMapZeroBasedPositions(translatedItems, subtitleBatch);
+            if (zeroBasedTranslations != null)
+            {
+                return zeroBasedTranslations;
+            }
 
             var requestedPositions = subtitleBatch.Select(item => item.Position).ToHashSet();
             var unexpectedPositions = translatedItems
@@ -438,6 +458,62 @@ public class NanoGptService : OpenAiService
                 translatedJson.Substring(0, Math.Min(500, translatedJson.Length)));
             throw new TranslationException("Failed to parse translated subtitles", ex);
         }
+    }
+
+    private static Dictionary<int, string>? TryMapStringArrayResponse(
+        JsonElement translationsElement,
+        List<BatchSubtitleItem> subtitleBatch)
+    {
+        if (translationsElement.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        var elements = translationsElement.EnumerateArray().ToList();
+        if (elements.Count == 0 || elements.Any(element => element.ValueKind != JsonValueKind.String))
+        {
+            return null;
+        }
+
+        if (elements.Count != subtitleBatch.Count)
+        {
+            throw new TranslationException(
+                "NanoGPT returned a string array with a different item count than the requested batch");
+        }
+
+        return elements
+            .Select((element, index) => new
+            {
+                Position = subtitleBatch[index].Position,
+                Line = element.GetString() ?? string.Empty
+            })
+            .ToDictionary(item => item.Position, item => item.Line);
+    }
+
+    private static Dictionary<int, string>? TryMapZeroBasedPositions(
+        List<StructuredBatchResponse> translatedItems,
+        List<BatchSubtitleItem> subtitleBatch)
+    {
+        if (translatedItems.Count != subtitleBatch.Count)
+        {
+            return null;
+        }
+
+        var positions = translatedItems
+            .Select(item => item.Position)
+            .ToList();
+        var hasExactZeroBasedPositions = positions
+            .Distinct()
+            .OrderBy(position => position)
+            .SequenceEqual(Enumerable.Range(0, subtitleBatch.Count));
+        if (!hasExactZeroBasedPositions)
+        {
+            return null;
+        }
+
+        return translatedItems.ToDictionary(
+            item => subtitleBatch[item.Position].Position,
+            item => item.Line);
     }
 
     protected override async Task<string> GetChatCompletionsEndpointAsync(CancellationToken cancellationToken)

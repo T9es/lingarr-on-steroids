@@ -493,6 +493,7 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 await _dbContext.EmbeddedSubtitles
                     .Where(e => e.EpisodeId == episodeId && e.MovieId == movieId)
                     .ExecuteDeleteAsync();
+                DetachTrackedEmbeddedSubtitlesForMedia(_dbContext, episodeId, movieId);
 
                 // Add new records
                 foreach (var sub in embeddedSubs)
@@ -565,6 +566,42 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 
                 // Small delay before retry to reduce collision chance
                 await Task.Delay(50 * attempt);
+            }
+        }
+    }
+
+    internal static void DetachTrackedEmbeddedSubtitlesForMedia(
+        LingarrDbContext dbContext,
+        int? episodeId,
+        int? movieId)
+    {
+        var trackedSubtitles = dbContext.ChangeTracker
+            .Entries<EmbeddedSubtitle>()
+            .Where(entry => entry.Entity.EpisodeId == episodeId && entry.Entity.MovieId == movieId)
+            .ToList();
+
+        foreach (var entry in trackedSubtitles)
+        {
+            entry.State = EntityState.Detached;
+        }
+
+        if (episodeId.HasValue)
+        {
+            foreach (var entry in dbContext.ChangeTracker.Entries<Episode>()
+                         .Where(entry => entry.Entity.Id == episodeId.Value))
+            {
+                entry.Entity.EmbeddedSubtitles.Clear();
+                entry.Collection(episode => episode.EmbeddedSubtitles).IsLoaded = false;
+            }
+        }
+
+        if (movieId.HasValue)
+        {
+            foreach (var entry in dbContext.ChangeTracker.Entries<Movie>()
+                         .Where(entry => entry.Entity.Id == movieId.Value))
+            {
+                entry.Entity.EmbeddedSubtitles.Clear();
+                entry.Collection(movie => movie.EmbeddedSubtitles).IsLoaded = false;
             }
         }
     }
