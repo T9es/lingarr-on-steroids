@@ -11,6 +11,7 @@ using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Models;
 using Lingarr.Server.Models.FileSystem;
 using Lingarr.Server.Services.Subtitle;
+using Lingarr.Server.Services.Translation;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 
@@ -224,6 +225,11 @@ public class VerifyAssIntegrityJob
                             targetSubtitles,
                             translation.TranslatedSubtitle)
                         : new AssArtifactScanResult();
+                    scan.Merge(DetectUnchangedSourceText(
+                        sourceSubtitles,
+                        targetSubtitles,
+                        translation.SourceLanguage,
+                        translation.TargetLanguage));
                     scan.Merge(AssSubtitleArtifactDetector.DetectInlineTagPlacementArtifacts(
                         targetSubtitles.SelectMany(item => item.Lines)));
                     var generatedOutputScans = await ScanGeneratedOutputArtifactsAsync(
@@ -266,6 +272,11 @@ public class VerifyAssIntegrityJob
                                     targetSubtitles,
                                     translation.TranslatedSubtitle)
                                 : new AssArtifactScanResult();
+                            scan.Merge(DetectUnchangedSourceText(
+                                sourceSubtitles,
+                                targetSubtitles,
+                                translation.SourceLanguage,
+                                translation.TargetLanguage));
                             scan.Merge(AssSubtitleArtifactDetector.DetectInlineTagPlacementArtifacts(
                                 targetSubtitles.SelectMany(item => item.Lines)));
                             generatedOutputScans = await ScanGeneratedOutputArtifactsAsync(
@@ -433,6 +444,34 @@ public class VerifyAssIntegrityJob
     {
         return scan.IssueTypes.Contains(AssVerificationIssueTypes.InlineAssTagPlacement, StringComparer.Ordinal) ||
                scan.IssueTypes.Contains(AssVerificationIssueTypes.DrawingArtifact, StringComparer.Ordinal);
+    }
+
+    private static AssArtifactScanResult DetectUnchangedSourceText(
+        IReadOnlyList<SubtitleItem> sourceSubtitles,
+        IReadOnlyList<SubtitleItem> targetSubtitles,
+        string? sourceLanguage,
+        string? targetLanguage)
+    {
+        var analysis = TranslationEchoGuard.AnalyzeSubtitles(
+            sourceSubtitles,
+            targetSubtitles,
+            sourceLanguage,
+            targetLanguage);
+        if (!analysis.IsMostlyEchoed)
+        {
+            return new AssArtifactScanResult();
+        }
+
+        return new AssArtifactScanResult
+        {
+            SuspiciousLineCount = analysis.EchoedCount,
+            SuspiciousLines = analysis.Samples.ToList(),
+            IssueTypes = [AssVerificationIssueTypes.UnchangedSourceText],
+            IssueSummaries =
+            [
+                $"Found mostly unchanged source text in translated output ({analysis.EchoedCount}/{analysis.ComparableCount} comparable cues)."
+            ]
+        };
     }
 
     private async Task<SubtitleOutputBackfillResult> TryRepairExistingAssOutputsAsync(

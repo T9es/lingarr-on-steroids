@@ -5,6 +5,7 @@ using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models.Batch;
 using Lingarr.Server.Models.FileSystem;
 using Lingarr.Server.Services.Subtitle;
+using Lingarr.Server.Services.Translation;
 
 namespace Lingarr.Server.Services;
 
@@ -395,6 +396,24 @@ public class SubtitleTranslationService
             await EmitProgressDirect(translationRequest, 1.0);
         }
 
+        var echoedRepresentativePositions = GetMostlyEchoedPositions(
+            globalDeduplication.Representatives
+                .Select(item => new BatchSubtitleItem
+                {
+                    Position = item.Position,
+                    Line = item.ProviderText
+                })
+                .ToList(),
+            representativeProviderTranslations,
+            translationRequest.SourceLanguage,
+            translationRequest.TargetLanguage,
+            fileIdentifier,
+            "final");
+        foreach (var position in echoedRepresentativePositions)
+        {
+            representativeProviderTranslations.Remove(position);
+        }
+
         ApplyRepresentativeTranslations(
             structureEntries,
             representativeProviderTranslations,
@@ -584,10 +603,22 @@ public class SubtitleTranslationService
             }
         }
 
+        var echoedPositions = GetMostlyEchoedPositions(
+            batchItems,
+            batchResults,
+            sourceLanguage,
+            targetLanguage,
+            fileIdentifier,
+            $"batch {batchNumber}/{totalBatches}");
         var resolvedProviderTranslations = new Dictionary<int, string>();
         foreach (var entry in structureEntries.Where(entry => entry.IsTranslatable))
         {
             var representativePosition = deduplication.GetRepresentativePosition(entry.Subtitle.Position);
+            if (echoedPositions.Contains(representativePosition))
+            {
+                continue;
+            }
+
             if (!batchResults.TryGetValue(representativePosition, out var translated) ||
                 string.IsNullOrWhiteSpace(translated))
             {
@@ -653,6 +684,35 @@ public class SubtitleTranslationService
 
         ThrowMissingTranslationException(missingEntries);
         return new BatchProcessingResult(resolvedProviderTranslations, []);
+    }
+
+    private HashSet<int> GetMostlyEchoedPositions(
+        IReadOnlyList<BatchSubtitleItem> sourceItems,
+        IReadOnlyDictionary<int, string> translations,
+        string sourceLanguage,
+        string targetLanguage,
+        string fileIdentifier,
+        string phase)
+    {
+        var analysis = TranslationEchoGuard.AnalyzeBatch(
+            sourceItems,
+            translations,
+            sourceLanguage,
+            targetLanguage);
+        if (!analysis.IsMostlyEchoed)
+        {
+            return [];
+        }
+
+        _logger.LogWarning(
+            "[{FileId}] {Phase}: provider output appears to echo source text. Unchanged comparable cues: {Echoed}/{Comparable} ({Ratio:P0}). Treating affected items as missing translations.",
+            fileIdentifier,
+            phase,
+            analysis.EchoedCount,
+            analysis.ComparableCount,
+            analysis.EchoRatio);
+
+        return analysis.EchoedPositions.ToHashSet();
     }
 
     private async Task EmitProgressDirect(TranslationRequest translationRequest, double progressPercent)

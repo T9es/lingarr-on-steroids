@@ -881,7 +881,8 @@ const assIssueLabels: Record<string, string> = {
     drawing_artifact: 'Drawing residue',
     unexpected_ass_tags: 'Unexpected ASS/SSA tags',
     ass_tag_mismatch: 'ASS/SSA tag mismatch',
-    inline_ass_tag_placement: 'Inline ASS/SSA tag placement'
+    inline_ass_tag_placement: 'Inline ASS/SSA tag placement',
+    unchanged_source_text: 'Mostly unchanged source text'
 }
 
 const getAssIssueLabels = (issueTypes?: string[]) => {

@@ -335,21 +335,34 @@ public class NanoGptServiceTests
         const string modelId = "deepseek/deepseek-v4-flash:thinking";
         var service = CreateNanoGptService(
             modelId,
-            JsonSerializer.Serialize(new[] { "Hola", "Mundo" }));
+            JsonSerializer.Serialize(new[]
+            {
+                "Czesc, przyjacielu",
+                "Musimy isc do domu",
+                "To jest bardzo wazne",
+                "Gdzie jest twoja siostra?",
+                "Nie moge teraz rozmawiac"
+            }));
 
         var result = await service.TranslateBatchAsync(
             [
-                new BatchSubtitleItem { Position = 10, Line = "Hello" },
-                new BatchSubtitleItem { Position = 25, Line = "World" }
+                new BatchSubtitleItem { Position = 10, Line = "Hello, my friend" },
+                new BatchSubtitleItem { Position = 25, Line = "We need to go home" },
+                new BatchSubtitleItem { Position = 40, Line = "This is very important" },
+                new BatchSubtitleItem { Position = 55, Line = "Where is your sister?" },
+                new BatchSubtitleItem { Position = 70, Line = "I cannot talk right now" }
             ],
             "en",
-            "es",
+            "pl",
             null,
             null,
             CancellationToken.None);
 
-        Assert.Equal("Hola", result[10]);
-        Assert.Equal("Mundo", result[25]);
+        Assert.Equal("Czesc, przyjacielu", result[10]);
+        Assert.Equal("Musimy isc do domu", result[25]);
+        Assert.Equal("To jest bardzo wazne", result[40]);
+        Assert.Equal("Gdzie jest twoja siostra?", result[55]);
+        Assert.Equal("Nie moge teraz rozmawiac", result[70]);
     }
 
     [Fact]
@@ -380,6 +393,67 @@ public class NanoGptServiceTests
 
         Assert.Equal("Hola", result[10]);
         Assert.Equal("Mundo", result[25]);
+    }
+
+    [Fact]
+    public async Task TranslateBatchAsync_RejectsThinkingModelStringArrayEchoResponse()
+    {
+        const string modelId = "deepseek/deepseek-v4-flash:thinking";
+        var lines = new[]
+        {
+            "Hello, my friend",
+            "We need to go home",
+            "This is very important",
+            "Where is your sister?",
+            "I cannot talk right now"
+        };
+        var service = CreateNanoGptService(modelId, JsonSerializer.Serialize(lines));
+
+        await Assert.ThrowsAsync<TranslationException>(() => service.TranslateBatchAsync(
+            lines
+                .Select((line, index) => new BatchSubtitleItem
+                {
+                    Position = index + 1,
+                    Line = line
+                })
+                .ToList(),
+            "en",
+            "pl",
+            null,
+            null,
+            CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task TranslateBatchAsync_RejectsThinkingModelStructuredEchoResponse()
+    {
+        const string modelId = "deepseek/deepseek-v4-flash:thinking";
+        var sourceItems = new[]
+        {
+            new BatchSubtitleItem { Position = 1, Line = "Hello, my friend" },
+            new BatchSubtitleItem { Position = 2, Line = "We need to go home" },
+            new BatchSubtitleItem { Position = 3, Line = "This is very important" },
+            new BatchSubtitleItem { Position = 4, Line = "Where is your sister?" },
+            new BatchSubtitleItem { Position = 5, Line = "I cannot talk right now" }
+        };
+        var service = CreateNanoGptService(
+            modelId,
+            JsonSerializer.Serialize(new
+            {
+                translations = sourceItems.Select(item => new
+                {
+                    position = item.Position,
+                    line = item.Line
+                })
+            }));
+
+        await Assert.ThrowsAsync<TranslationException>(() => service.TranslateBatchAsync(
+            sourceItems.ToList(),
+            "en",
+            "pl",
+            null,
+            null,
+            CancellationToken.None));
     }
 
     [Fact]

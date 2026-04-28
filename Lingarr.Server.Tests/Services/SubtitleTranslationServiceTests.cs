@@ -84,6 +84,54 @@ public class SubtitleTranslationServiceTests
     }
 
     [Fact]
+    public async Task ProcessSubtitleBatch_WhenProviderEchoesSourceText_CollectsFailuresWithoutTranslatedLines()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var loggerMock = new Mock<ILogger>();
+        var batchServiceMock = new Mock<IBatchTranslationService>();
+
+        batchServiceMock
+            .Setup(service => service.TranslateBatchAsync(
+                It.IsAny<List<BatchSubtitleItem>>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((List<BatchSubtitleItem> batch, string _, string _, List<string>? _, List<string>? _, CancellationToken _) =>
+                batch.ToDictionary(item => item.Position, item => item.Line));
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            loggerMock.Object,
+            Mock.Of<IProgressService>());
+
+        var currentBatch = new List<SubtitleItem>
+        {
+            Item(1, "Hello, my friend"),
+            Item(2, "We need to go home"),
+            Item(3, "This is very important"),
+            Item(4, "Where is your sister?"),
+            Item(5, "I cannot talk right now")
+        };
+
+        var result = await service.ProcessSubtitleBatch(
+            currentBatch,
+            batchServiceMock.Object,
+            sourceLanguage: "en",
+            targetLanguage: "pl",
+            stripSubtitleFormatting: false,
+            collectFailures: true,
+            fileIdentifier: "S01E01",
+            batchNumber: 1,
+            totalBatches: 1,
+            cancellationToken: CancellationToken.None);
+
+        Assert.Equal([1, 2, 3, 4, 5], result.Select(item => item.Position));
+        Assert.All(currentBatch, subtitle => Assert.Empty(subtitle.TranslatedLines));
+    }
+
+    [Fact]
     public async Task TranslateSubtitlesBatch_WhenProviderConfigurationFailure_ShouldFailFastWithoutDeferredRepair()
     {
         var translationServiceMock = new Mock<ITranslationService>();
@@ -813,5 +861,15 @@ public class SubtitleTranslationServiceTests
         Assert.Equal("Fran", repairItem.OriginalLine);
         Assert.Equal("{\\an7}Franszczu", result[0].TranslatedLines[0]);
         Assert.Equal("{\\an8}Franszczu", result[1].TranslatedLines[0]);
+    }
+
+    private static SubtitleItem Item(int position, string line)
+    {
+        return new SubtitleItem
+        {
+            Position = position,
+            Lines = [line],
+            PlaintextLines = [line]
+        };
     }
 }

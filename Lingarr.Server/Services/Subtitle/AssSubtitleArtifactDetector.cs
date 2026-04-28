@@ -9,6 +9,7 @@ internal static class AssVerificationIssueTypes
     public const string UnexpectedAssTags = "unexpected_ass_tags";
     public const string AssTagMismatch = "ass_tag_mismatch";
     public const string InlineAssTagPlacement = "inline_ass_tag_placement";
+    public const string UnchangedSourceText = "unchanged_source_text";
 }
 
 internal sealed class AssArtifactScanResult

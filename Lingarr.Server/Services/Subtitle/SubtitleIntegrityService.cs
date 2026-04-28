@@ -4,6 +4,8 @@ using Lingarr.Core.Enum;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Models;
+using Lingarr.Server.Models.FileSystem;
+using Lingarr.Server.Services.Translation;
 using Microsoft.EntityFrameworkCore;
 
 namespace Lingarr.Server.Services.Subtitle;
@@ -88,6 +90,20 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
                     "Subtitle integrity check FAILED: Target has {TargetCount} lines but source has {SourceCount} (minimum acceptable: {Minimum}). " +
                     "File may be corrupted/partial: {TargetPath}",
                     targetCount, sourceCount, minimumAcceptable, targetSubtitlePath);
+                return false;
+            }
+
+            var echoScan = DetectUnchangedSourceText(
+                sourceSubtitles,
+                targetSubtitles,
+                SubtitleLanguageHelper.DetectLanguageFromFileName(sourceSubtitlePath),
+                SubtitleLanguageHelper.DetectLanguageFromFileName(targetSubtitlePath));
+            if (echoScan.HasIssues)
+            {
+                _logger.LogWarning(
+                    "Subtitle integrity check FAILED: target appears to contain mostly unchanged source text. {Summary} File may be untranslated: {TargetPath}",
+                    string.Join(" ", echoScan.IssueSummaries),
+                    targetSubtitlePath);
                 return false;
             }
 
@@ -245,6 +261,11 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
                     sourceSubtitles,
                     targetSubtitles,
                     translation.TranslatedSubtitle);
+                scan.Merge(DetectUnchangedSourceText(
+                    sourceSubtitles,
+                    targetSubtitles,
+                    translation.SourceLanguage,
+                    translation.TargetLanguage));
 
                 if (!scan.HasIssues)
                 {
@@ -317,6 +338,34 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
             _logger.LogWarning(ex, "Error reading subtitle file {Path}", subtitlePath);
             return new AssArtifactScanResult();
         }
+    }
+
+    private static AssArtifactScanResult DetectUnchangedSourceText(
+        IReadOnlyList<SubtitleItem> sourceSubtitles,
+        IReadOnlyList<SubtitleItem> targetSubtitles,
+        string? sourceLanguage,
+        string? targetLanguage)
+    {
+        var analysis = TranslationEchoGuard.AnalyzeSubtitles(
+            sourceSubtitles,
+            targetSubtitles,
+            sourceLanguage,
+            targetLanguage);
+        if (!analysis.IsMostlyEchoed)
+        {
+            return new AssArtifactScanResult();
+        }
+
+        return new AssArtifactScanResult
+        {
+            SuspiciousLineCount = analysis.EchoedCount,
+            SuspiciousLines = analysis.Samples.ToList(),
+            IssueTypes = [AssVerificationIssueTypes.UnchangedSourceText],
+            IssueSummaries =
+            [
+                $"Found mostly unchanged source text in translated output ({analysis.EchoedCount}/{analysis.ComparableCount} comparable cues)."
+            ]
+        };
     }
 
     private static void AddOrMergeFinding(

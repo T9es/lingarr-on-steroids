@@ -175,6 +175,8 @@ public class NanoGptService : OpenAiService
             {
                 return await SendNanoGptJsonObjectBatchAsync(
                     subtitleBatch,
+                    sourceLanguage,
+                    targetLanguage,
                     preContext,
                     postContext,
                     linked.Token);
@@ -255,6 +257,8 @@ public class NanoGptService : OpenAiService
 
     private async Task<Dictionary<int, string>> SendNanoGptJsonObjectBatchAsync(
         List<BatchSubtitleItem> subtitleBatch,
+        string sourceLanguage,
+        string targetLanguage,
         List<string>? preContext,
         List<string>? postContext,
         CancellationToken cancellationToken)
@@ -385,6 +389,12 @@ public class NanoGptService : OpenAiService
             var directTranslations = TryMapStringArrayResponse(translationsElement, subtitleBatch);
             if (directTranslations != null)
             {
+                TranslationEchoGuard.ThrowIfMostlyEchoed(
+                    subtitleBatch,
+                    directTranslations,
+                    sourceLanguage,
+                    targetLanguage,
+                    "NanoGPT");
                 return directTranslations;
             }
 
@@ -409,6 +419,12 @@ public class NanoGptService : OpenAiService
             var zeroBasedTranslations = TryMapZeroBasedPositions(translatedItems, subtitleBatch);
             if (zeroBasedTranslations != null)
             {
+                TranslationEchoGuard.ThrowIfMostlyEchoed(
+                    subtitleBatch,
+                    zeroBasedTranslations,
+                    sourceLanguage,
+                    targetLanguage,
+                    "NanoGPT");
                 return zeroBasedTranslations;
             }
 
@@ -447,6 +463,12 @@ public class NanoGptService : OpenAiService
                     string.Join(", ", missingPositions.Take(10)));
             }
 
+            TranslationEchoGuard.ThrowIfMostlyEchoed(
+                subtitleBatch,
+                validTranslations,
+                sourceLanguage,
+                targetLanguage,
+                "NanoGPT");
             return validTranslations;
         }
         catch (JsonException ex)
