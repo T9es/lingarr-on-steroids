@@ -13,6 +13,9 @@
         <p class="text-secondary-content text-xs leading-5">
             {{ translate('settings.services.nanoGptDescription') }}
         </p>
+        <div class="rounded-md bg-yellow-500/10 p-3 text-sm leading-5 text-yellow-300">
+            {{ translate('settings.services.nanoGptReliabilityWarning') }}
+        </div>
 
         <InputComponent
             v-model="apiKey"
@@ -51,6 +54,11 @@
             v-if="selectedModelIsPaid"
             class="rounded-md bg-yellow-500/10 p-3 text-sm text-yellow-300">
             {{ translate('settings.services.nanoGptPaidModelWarning') }}
+        </div>
+        <div
+            v-if="selectedModelHasKnownIssues"
+            class="rounded-md bg-red-500/10 p-3 text-sm leading-5 text-red-300">
+            {{ translate('settings.services.nanoGptKnownIssueModelWarning') }}
         </div>
         <div
             v-if="selectedModelLacksStructuredOutput"
@@ -123,6 +131,17 @@ const selectedModelLabel = computed(() => {
 })
 
 const selectedModelIsPaid = computed(() => selectedModelLabel.value.includes('Paid'))
+
+const selectedModelHasKnownIssues = computed(() => {
+    const model = aiModel.value.toLowerCase()
+    return (
+        model === 'deepseek/deepseek-v4-flash' ||
+        model === 'deepseek/deepseek-v4-flash:thinking' ||
+        model === 'deepseek/deepseek-v4-pro' ||
+        model === 'deepseek/deepseek-v4-pro-cheaper:thinking' ||
+        model === 'qwen/qwen3-235b-a22b'
+    )
+})
 
 const selectedModelLacksStructuredOutput = computed(() =>
     selectedModelLabel.value.toLowerCase().includes('no structured output')
