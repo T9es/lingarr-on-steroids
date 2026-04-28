@@ -279,6 +279,14 @@ public class NanoGptServiceTests
         Assert.False(responseFormat.TryGetProperty("json_schema", out _));
         Assert.True(requestBody.RootElement.GetProperty("reasoning").GetProperty("exclude").GetBoolean());
 
+        var systemContent = requestBody.RootElement
+            .GetProperty("messages")[0]
+            .GetProperty("content")
+            .GetString();
+        Assert.Contains(
+            "Translate every subtitle line from source language 'en' to target language 'es'.",
+            systemContent);
+
         var userContent = requestBody.RootElement
             .GetProperty("messages")[1]
             .GetProperty("content")

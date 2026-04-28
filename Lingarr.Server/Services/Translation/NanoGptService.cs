@@ -266,6 +266,7 @@ public class NanoGptService : OpenAiService
         var requestUrl = await GetChatCompletionsEndpointAsync(cancellationToken);
         var userContent = BuildBatchUserContent(subtitleBatch, preContext, postContext);
         var systemPrompt = _prompt + "\n\n" +
+                           $"Translate every subtitle line from source language '{sourceLanguage}' to target language '{targetLanguage}'. " +
                            "IMPORTANT: Return only one valid JSON object, with no markdown or explanation. " +
                            "The JSON object must match this shape exactly: " +
                            "{\"translations\":[{\"position\":1,\"line\":\"Translated text\"}]}. " +
