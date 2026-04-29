@@ -1059,6 +1059,14 @@ namespace Lingarr.Migrations.SQLite.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("selected_stream_title");
 
+                    b.Property<string>("SourceDedupeKey")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("primary")
+                        .HasColumnName("source_dedupe_key");
+
                     b.Property<string>("SourceLanguage")
                         .IsRequired()
                         .HasColumnType("TEXT")
@@ -1177,7 +1185,7 @@ namespace Lingarr.Migrations.SQLite.Migrations
                     b.HasIndex("Status", "IsPriority", "CreatedAt")
                         .HasDatabaseName("IX_TranslationRequests_Status_Priority_Created");
 
-                    b.HasIndex("WorkloadItemKey", "SourceLanguage", "TargetLanguage", "IsActive")
+                    b.HasIndex("WorkloadItemKey", "SourceLanguage", "TargetLanguage", "SourceDedupeKey", "IsActive")
                         .IsUnique()
                         .HasDatabaseName("ux_translation_requests_active_dedupe");
 

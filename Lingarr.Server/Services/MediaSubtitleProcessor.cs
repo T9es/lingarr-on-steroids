@@ -211,7 +211,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 var corruptLanguages = new List<string>();
                 foreach (var targetLang in targetLanguages.Intersect(existingLanguages))
                 {
-                    var targetSubtitle = subtitles.FirstOrDefault(s => s.Language == targetLang);
+                    var targetSubtitle = SelectMainTargetSubtitle(subtitles, targetLang);
                     if (targetSubtitle != null)
                     {
                         var isValid = await _integrityService.ValidateIntegrityAsync(
@@ -611,7 +611,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                     var corruptLanguages = new List<string>();
                     foreach (var targetLang in targetLanguages.Intersect(existingLanguages))
                     {
-                        var targetSubtitle = subtitles.FirstOrDefault(s => s.Language == targetLang);
+                        var targetSubtitle = SelectMainTargetSubtitle(subtitles, targetLang);
                         if (targetSubtitle != null)
                         {
                             var isValid = await _integrityService.ValidateIntegrityAsync(
@@ -1108,8 +1108,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                     var corruptLanguages = new List<string>();
                     foreach (var targetLang in targetLanguages.Intersect(existingExternalLanguages))
                     {
-                        var targetSubtitle = matchingExternalSubtitles.FirstOrDefault(s => 
-                            s.Language.Equals(targetLang, StringComparison.OrdinalIgnoreCase));
+                        var targetSubtitle = SelectMainTargetSubtitle(matchingExternalSubtitles, targetLang);
                         if (targetSubtitle != null)
                         {
                             var isValid = await _integrityService.ValidateIntegrityAsync(
@@ -1289,6 +1288,12 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         string? sourceSnapshotIdentity = null)
     {
         var workloadItemKey = $"library:{mediaType}:{mediaId}";
+        var sourceDedupeKey = TranslationRequestService.BuildSourceDedupeKey(
+            sourceSubtitleType,
+            false,
+            sourceSnapshotIdentity,
+            sourceSnapshotStreamIndex,
+            null);
         var isSupplemental = SubtitleLanguageHelper.IsSupplementalSubtitleType(sourceSubtitleType);
         var hasSourceType = !string.IsNullOrWhiteSpace(sourceSubtitleType);
         var hasSourceIdentity = !string.IsNullOrWhiteSpace(sourceSnapshotIdentity);
@@ -1301,6 +1306,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                     tr.MediaType == mediaType)) &&
                 tr.SourceLanguage == sourceLanguage &&
                 tr.TargetLanguage == targetLanguage &&
+                tr.SourceDedupeKey == sourceDedupeKey &&
                 tr.IsActive == true);
 
         query = isSupplemental
@@ -1498,6 +1504,19 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 !existingTargetFormats.TryGetValue(targetLanguage, out var existingFormats) ||
                 requiredOutputFormats.Any(requiredFormat => !existingFormats.Contains(requiredFormat)))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static Subtitles? SelectMainTargetSubtitle(
+        IEnumerable<Subtitles> subtitles,
+        string targetLanguage)
+    {
+        return subtitles
+            .Where(subtitle => !ExternalSubtitleCandidateHelper.ShouldSkipAsMainTarget(subtitle))
+            .Where(subtitle => SubtitleLanguageHelper.LanguageMatches(subtitle.Language, targetLanguage))
+            .OrderBy(subtitle => !string.IsNullOrWhiteSpace(subtitle.Caption))
+            .ThenBy(subtitle => subtitle.Path, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(subtitle => subtitle.FileName, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
     }
 
     private static string NormalizeRequiredOutputFormats(

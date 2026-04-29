@@ -89,6 +89,7 @@ public class LingarrDbContext : DbContext
                     tr.WorkloadItemKey,
                     tr.SourceLanguage,
                     tr.TargetLanguage,
+                    tr.SourceDedupeKey,
                     tr.IsActive
                 })
                 .IsUnique()
@@ -99,6 +100,10 @@ public class LingarrDbContext : DbContext
                 .HasDatabaseName("ix_translation_requests_completed_at");
 
             b.Property(tr => tr.IsActive).HasColumnName("is_active");
+            b.Property(tr => tr.SourceDedupeKey)
+                .HasMaxLength(512)
+                .HasDefaultValue("primary")
+                .HasColumnName("source_dedupe_key");
             b.Property(tr => tr.WorkloadItemKey)
                 .HasMaxLength(256);
         });

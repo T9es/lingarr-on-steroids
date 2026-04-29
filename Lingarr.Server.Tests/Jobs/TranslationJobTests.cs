@@ -276,6 +276,51 @@ public class TranslationJobTests : IDisposable
     }
 
     [Fact]
+    public void GetUnsafeSourceCancellationReason_ReturnsReason_ForSparseNeutralEmbeddedPrimarySource()
+    {
+        var request = new TranslationRequest
+        {
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            Title = "Sparse neutral source",
+            MediaType = MediaType.Episode,
+            Status = TranslationStatus.Pending,
+            SourceSubtitleType = SubtitleLanguageHelper.TypeFull,
+            SourceSubtitleEntryCount = 1,
+            IsForcedSubtitle = false,
+            SourceSubtitleFormat = ".srt"
+        };
+        var selectedSubtitle = new EmbeddedSubtitle
+        {
+            StreamIndex = 1,
+            Language = "eng",
+            Title = "English",
+            CodecName = "subrip",
+            IsTextBased = true,
+            IsForced = false
+        };
+        var settings = new Dictionary<string, string>
+        {
+            [SettingKeys.Translation.TranslateSupplementalSubtitles] = "false"
+        };
+
+        var reason = TranslationJob.GetUnsafeSourceCancellationReason(
+            request,
+            selectedSubtitle,
+            [
+                new SubtitleItem
+                {
+                    Position = 1,
+                    Lines = ["Hello"]
+                }
+            ],
+            settings);
+
+        Assert.NotNull(reason);
+        Assert.Contains("only 1 entries", reason);
+    }
+
+    [Fact]
     public async Task GetPreExistingExtractedSubtitlePathsAsync_FindsExistingAssExtraction()
     {
         var movie = CreateMovie(3);
@@ -318,8 +363,7 @@ public class TranslationJobTests : IDisposable
         var extractedAssPath = Path.Combine(_tempDirectory, "movie-4.eng.ass");
         await File.WriteAllTextAsync(
             extractedAssPath,
-            $"{SubtitleExtractionService.ExtractionMarkerPrefix} StreamIndex=2, Entries=1{Environment.NewLine}{Environment.NewLine}" +
-            "Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,Hello");
+            BuildExtractedAssContent(streamIndex: 2, entries: 50));
 
         var movie = CreateMovie(4);
         movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
@@ -370,17 +414,7 @@ public class TranslationJobTests : IDisposable
             .ReturnsAsync([]);
         subtitleServiceMock
             .Setup(service => service.ReadSubtitles(extractedAssPath))
-            .ReturnsAsync([
-                new SubtitleItem
-                {
-                    Position = 1,
-                    StartTime = 1000,
-                    EndTime = 2000,
-                    Lines = ["Hello"],
-                    PlaintextLines = ["Hello"],
-                    TranslatedLines = []
-                }
-            ]);
+            .ReturnsAsync(BuildSubtitleItems(50));
 
         var extractionServiceMock = new Mock<ISubtitleExtractionService>();
         extractionServiceMock
@@ -573,17 +607,7 @@ public class TranslationJobTests : IDisposable
             .ReturnsAsync([]);
         subtitleServiceMock
             .Setup(service => service.ReadSubtitles(extractedAssPath))
-            .ReturnsAsync([
-                new SubtitleItem
-                {
-                    Position = 1,
-                    StartTime = 1000,
-                    EndTime = 2000,
-                    Lines = ["Hello"],
-                    PlaintextLines = ["Hello"],
-                    TranslatedLines = []
-                }
-            ]);
+            .ReturnsAsync(BuildSubtitleItems(50));
 
         var extractionServiceMock = new Mock<ISubtitleExtractionService>();
         extractionServiceMock
@@ -597,8 +621,7 @@ public class TranslationJobTests : IDisposable
             {
                 File.WriteAllText(
                     extractedAssPath,
-                    $"{SubtitleExtractionService.ExtractionMarkerPrefix} StreamIndex=3, Entries=1{Environment.NewLine}{Environment.NewLine}" +
-                    "Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,Hello");
+                    BuildExtractedAssContent(streamIndex: 3, entries: 50));
 
                 fallbackSubtitle.IsExtracted = true;
                 fallbackSubtitle.ExtractedPath = extractedAssPath;
@@ -731,18 +754,7 @@ public class TranslationJobTests : IDisposable
         var sourceSubtitlePath = Path.Combine(_tempDirectory, "movie-6.en.ass");
         await File.WriteAllTextAsync(
             sourceSubtitlePath,
-            """
-            [Script Info]
-            Title: Example
-
-            [V4+ Styles]
-            Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-            Style: Default,Arial,28,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1
-
-            [Events]
-            Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-            Dialogue: 0,0:00:01.00,0:00:03.00,Default,,0,0,0,,Hello
-            """);
+            BuildAssContent(50));
 
         var movie = CreateMovie(6);
         movie.Path = _tempDirectory;
@@ -898,6 +910,48 @@ public class TranslationJobTests : IDisposable
         Assert.Equal(2, generatedPaths.Count);
         Assert.Contains(generatedPaths, path => Path.GetExtension(path) == ".ass" && File.Exists(path));
         Assert.Contains(generatedPaths, path => Path.GetExtension(path) == ".srt" && File.Exists(path));
+    }
+
+    private static List<SubtitleItem> BuildSubtitleItems(int count)
+    {
+        return Enumerable.Range(1, count)
+            .Select(index => new SubtitleItem
+            {
+                Position = index,
+                StartTime = index * 1_000,
+                EndTime = index * 1_000 + 500,
+                Lines = [$"Hello {index}"],
+                PlaintextLines = [$"Hello {index}"],
+                TranslatedLines = []
+            })
+            .ToList();
+    }
+
+    private static string BuildExtractedAssContent(int streamIndex, int entries)
+    {
+        return $"{SubtitleExtractionService.ExtractionMarkerPrefix} StreamIndex={streamIndex}, Entries={entries}{Environment.NewLine}{Environment.NewLine}" +
+               BuildAssContent(entries);
+    }
+
+    private static string BuildAssContent(int entries)
+    {
+        var dialogueLines = string.Join(
+            Environment.NewLine,
+            Enumerable.Range(1, entries)
+                .Select(index => $"Dialogue: 0,0:00:{index % 60:00}.00,0:00:{(index % 60) + 1:00}.00,Default,,0,0,0,,Hello {index}"));
+
+        return $"""
+            [Script Info]
+            Title: Example
+
+            [V4+ Styles]
+            Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+            Style: Default,Arial,28,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1
+
+            [Events]
+            Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+            {dialogueLines}
+            """;
     }
 
     public void Dispose()

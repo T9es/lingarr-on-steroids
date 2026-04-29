@@ -130,6 +130,7 @@ public class TranslationRequestService : ITranslationRequestService
     public async Task<int> CreateRequest(TranslationRequest translationRequest, bool forcePriority)
     {
         NormalizeWorkloadIdentity(translationRequest);
+        PopulateSourceDedupeKey(translationRequest);
         await PopulateOutputMetadataAsync(translationRequest);
 
         if (!forcePriority)
@@ -172,6 +173,7 @@ public class TranslationRequestService : ITranslationRequestService
             MediaType = translationRequest.MediaType,
             Status = TranslationStatus.Pending,
             IsActive = true,
+            SourceDedupeKey = translationRequest.SourceDedupeKey,
             IsPriority = isPriority,
             SourceSubtitleType = translationRequest.SourceSubtitleType,
             SourceSubtitleEntryCount = translationRequest.SourceSubtitleEntryCount,
@@ -508,6 +510,7 @@ public class TranslationRequestService : ITranslationRequestService
 
                 failedRequest.Status = TranslationStatus.Pending;
                 failedRequest.IsActive = true;
+                PopulateSourceDedupeKey(failedRequest);
                 failedRequest.IsPriority = true;
                 failedRequest.JobId = null;
                 failedRequest.CompletedAt = null;
@@ -665,6 +668,7 @@ public class TranslationRequestService : ITranslationRequestService
 
         translationRequest.Status = TranslationStatus.Pending;
         translationRequest.IsActive = true;
+        PopulateSourceDedupeKey(translationRequest);
         translationRequest.IsPriority = true;
         translationRequest.JobId = null;
         translationRequest.CompletedAt = null;
@@ -742,7 +746,7 @@ public class TranslationRequestService : ITranslationRequestService
             return null;
         }
 
-        return $"{workloadItemKey}|{request.SourceLanguage}|{request.TargetLanguage}";
+        return $"{workloadItemKey}|{request.SourceLanguage}|{request.TargetLanguage}|{GetEffectiveSourceDedupeKey(request)}";
     }
 
     private async Task<int> FindMatchingActiveRequestIdAsync(TranslationRequest translationRequest)
@@ -769,6 +773,7 @@ public class TranslationRequestService : ITranslationRequestService
                         tr.UploadBatchFileId == translationRequest.UploadBatchFileId)))) &&
                 tr.SourceLanguage == translationRequest.SourceLanguage &&
                 tr.TargetLanguage == translationRequest.TargetLanguage &&
+                tr.SourceDedupeKey == translationRequest.SourceDedupeKey &&
                 tr.IsActive == true);
 
         query = isSupplemental
@@ -1936,6 +1941,57 @@ public class TranslationRequestService : ITranslationRequestService
         {
             translationRequest.WorkloadItemKey = BuildWorkloadItemKey(translationRequest);
         }
+    }
+
+    private static void PopulateSourceDedupeKey(TranslationRequest translationRequest)
+    {
+        translationRequest.SourceDedupeKey = BuildSourceDedupeKey(translationRequest);
+    }
+
+    internal static string BuildSourceDedupeKey(TranslationRequest translationRequest)
+    {
+        return BuildSourceDedupeKey(
+            translationRequest.SourceSubtitleType,
+            translationRequest.IsForcedSubtitle,
+            translationRequest.SourceSnapshotIdentity,
+            translationRequest.SourceSnapshotStreamIndex,
+            translationRequest.SubtitleToTranslate);
+    }
+
+    internal static string BuildSourceDedupeKey(
+        string? sourceSubtitleType,
+        bool isForcedSubtitle,
+        string? sourceSnapshotIdentity,
+        int? sourceSnapshotStreamIndex,
+        string? subtitlePath)
+    {
+        var isSupplemental =
+            SubtitleLanguageHelper.IsSupplementalSubtitleType(sourceSubtitleType) ||
+            isForcedSubtitle;
+        if (!isSupplemental)
+        {
+            return "primary";
+        }
+
+        var role = SubtitleLanguageHelper.IsSupplementalSubtitleType(sourceSubtitleType)
+            ? sourceSubtitleType!
+            : SubtitleLanguageHelper.TypeForced;
+        var identity = !string.IsNullOrWhiteSpace(sourceSnapshotIdentity)
+            ? sourceSnapshotIdentity
+            : sourceSnapshotStreamIndex.HasValue
+                ? $"stream:{sourceSnapshotStreamIndex.Value}"
+                : !string.IsNullOrWhiteSpace(subtitlePath)
+                    ? subtitlePath
+                    : "unknown";
+        var key = $"supplemental:{role.Trim().ToLowerInvariant()}:{identity}";
+        return key.Length <= 512 ? key : key[..512];
+    }
+
+    private static string GetEffectiveSourceDedupeKey(TranslationRequest translationRequest)
+    {
+        return !string.IsNullOrWhiteSpace(translationRequest.SourceDedupeKey)
+            ? translationRequest.SourceDedupeKey
+            : BuildSourceDedupeKey(translationRequest);
     }
 
     private static TranslationWorkloadKind GetEffectiveWorkloadKind(TranslationRequest translationRequest)

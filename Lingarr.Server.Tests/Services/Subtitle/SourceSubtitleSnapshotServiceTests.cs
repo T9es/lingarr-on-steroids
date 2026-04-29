@@ -221,6 +221,68 @@ public class SourceSubtitleSnapshotServiceTests
     }
 
     [Fact]
+    public async Task GetStaleTargetLanguagesAsync_IgnoresSupplementalCompletedRequestsWhenPrimaryIsFresh()
+    {
+        var dbContext = CreateDbContext();
+        dbContext.TranslationRequests.AddRange(
+            new TranslationRequest
+            {
+                Id = 30,
+                MediaId = 104,
+                Title = "Movie",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                MediaType = MediaType.Movie,
+                WorkloadKind = TranslationWorkloadKind.Library,
+                Status = TranslationStatus.Completed,
+                CompletedAt = DateTime.UtcNow.AddHours(-2),
+                SourceSubtitleFormat = ".srt",
+                RequiredOutputFormats = ".srt",
+                GeneratedOutputFormats = ".srt",
+                SourceDedupeKey = "primary",
+                SourceSnapshotVersion = SourceSubtitleSnapshot.CurrentVersion,
+                SourceSnapshotFingerprint = "CURRENT"
+            },
+            new TranslationRequest
+            {
+                Id = 31,
+                MediaId = 104,
+                Title = "Movie",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                MediaType = MediaType.Movie,
+                WorkloadKind = TranslationWorkloadKind.Library,
+                Status = TranslationStatus.Completed,
+                CompletedAt = DateTime.UtcNow.AddHours(-1),
+                SourceSubtitleFormat = ".srt",
+                RequiredOutputFormats = ".srt",
+                GeneratedOutputFormats = ".srt",
+                SourceSubtitleType = SubtitleLanguageHelper.TypeForced,
+                SourceDedupeKey = "supplemental:forced:stream:2",
+                SourceSnapshotVersion = SourceSubtitleSnapshot.CurrentVersion,
+                SourceSnapshotFingerprint = "OLD-FORCED"
+            });
+        await dbContext.SaveChangesAsync();
+
+        var service = CreateService(dbContext);
+        var currentSnapshot = new SourceSubtitleSnapshot
+        {
+            SourceType = SourceSubtitleSnapshot.ExternalType,
+            SourceLanguage = "en",
+            Identity = "external|en|/movies/movie.en.srt",
+            Fingerprint = "CURRENT"
+        };
+
+        var stale = await service.GetStaleTargetLanguagesAsync(
+            104,
+            MediaType.Movie,
+            ["pl"],
+            currentSnapshot);
+
+        Assert.Empty(stale);
+    }
+
+    [Fact]
     public async Task ResolveCurrentSnapshotAsync_ShouldIgnoreTemporaryExternalSourceAndUseEmbedded()
     {
         var dbContext = CreateDbContext();

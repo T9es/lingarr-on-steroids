@@ -12,6 +12,7 @@ using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models.FileSystem;
 using Lingarr.Server.Services;
+using Lingarr.Server.Services.Subtitle;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -448,6 +449,65 @@ public class TranslationRequestServiceTests
 
         Assert.Equal(assId, srtId);
         Assert.Equal(1, await context.TranslationRequests.CountAsync());
+    }
+
+    [Fact]
+    public async Task CreateRequest_AllowsPrimaryAndSupplementalActiveRequestsForSameTarget()
+    {
+        using var connection = new SqliteConnection("Filename=:memory:");
+        connection.Open();
+        await using var context = BuildSqliteContext(connection);
+
+        var movie = new Movie
+        {
+            Id = 61,
+            RadarrId = 61,
+            Title = "Supplemental Movie",
+            FileName = "supplemental.mkv",
+            Path = "/movies",
+            DateAdded = DateTime.UtcNow
+        };
+
+        context.Movies.Add(movie);
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+        var createdAt = DateTime.UtcNow;
+
+        var primaryRequest = CreateRequest(
+            1,
+            movie.Id,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/movie.en.srt",
+            TranslationStatus.Pending,
+            createdAt);
+        primaryRequest.SourceSubtitleType = SubtitleLanguageHelper.TypeFull;
+        primaryRequest.WorkloadItemKey = $"library:{MediaType.Movie}:{movie.Id}";
+
+        var forcedRequest = CreateRequest(
+            2,
+            movie.Id,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/movie.en.srt",
+            TranslationStatus.Pending,
+            createdAt.AddSeconds(1));
+        forcedRequest.SourceSubtitleType = SubtitleLanguageHelper.TypeForced;
+        forcedRequest.IsForcedSubtitle = true;
+        forcedRequest.SourceSnapshotIdentity = "embedded|en|stream:3|codec:ass";
+        forcedRequest.SourceSnapshotStreamIndex = 3;
+        forcedRequest.WorkloadItemKey = $"library:{MediaType.Movie}:{movie.Id}";
+
+        var primaryId = await service.CreateRequest(primaryRequest);
+        var forcedId = await service.CreateRequest(forcedRequest);
+
+        Assert.NotEqual(0, primaryId);
+        Assert.NotEqual(0, forcedId);
+        Assert.NotEqual(primaryId, forcedId);
+        Assert.Equal(2, await context.TranslationRequests.CountAsync());
     }
 
     [Theory]

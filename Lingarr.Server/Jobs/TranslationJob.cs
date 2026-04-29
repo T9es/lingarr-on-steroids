@@ -1177,39 +1177,11 @@ public class TranslationJob
         IReadOnlyDictionary<string, string> settings,
         CancellationToken cancellationToken)
     {
-        var supplementalEnabled = settings.TryGetValue(
-                                      SettingKeys.Translation.TranslateSupplementalSubtitles,
-                                      out var supplementalSetting) &&
-                                  string.Equals(
-                                      supplementalSetting,
-                                      "true",
-                                      StringComparison.OrdinalIgnoreCase);
-
-        string? reason = null;
-        if (SubtitleLanguageHelper.IsSupplementalSubtitleType(request.SourceSubtitleType) &&
-            !supplementalEnabled)
-        {
-            reason =
-                $"Selected source is {request.SourceSubtitleType}, but supplemental subtitle translation is disabled.";
-        }
-        else if (request.SourceSubtitleEntryCount > 0 &&
-                 request.SourceSubtitleEntryCount < SubtitleExtractionService.MinimumDialogueEntries &&
-                 (SubtitleLanguageHelper.IsSupplementalSubtitleType(request.SourceSubtitleType) ||
-                  request.IsForcedSubtitle) &&
-                 !supplementalEnabled)
-        {
-            reason =
-                $"Selected source has only {request.SourceSubtitleEntryCount} entries; minimum full-dialogue threshold is {SubtitleExtractionService.MinimumDialogueEntries}.";
-        }
-        else if (LooksPathologicalAssSource(request, subtitles))
-        {
-            reason = "Selected ASS/SSA source is drawing-heavy/pathological and is not safe to translate.";
-        }
-        else if (EmbeddedSourceLanguageMismatchesRequest(request, selectedSubtitle))
-        {
-            reason =
-                $"Selected embedded source language '{selectedSubtitle!.Language}' does not match request source language '{request.SourceLanguage}'.";
-        }
+        var reason = GetUnsafeSourceCancellationReason(
+            request,
+            selectedSubtitle,
+            subtitles,
+            settings);
 
         if (string.IsNullOrWhiteSpace(reason))
         {
@@ -1248,6 +1220,47 @@ public class TranslationJob
 
         await RefreshTranslationStateAsync(request, cancellationToken);
         return true;
+    }
+
+    internal static string? GetUnsafeSourceCancellationReason(
+        TranslationRequest request,
+        EmbeddedSubtitle? selectedSubtitle,
+        IReadOnlyList<SubtitleItem> subtitles,
+        IReadOnlyDictionary<string, string> settings)
+    {
+        var supplementalEnabled = settings.TryGetValue(
+                                      SettingKeys.Translation.TranslateSupplementalSubtitles,
+                                      out var supplementalSetting) &&
+                                  string.Equals(
+                                      supplementalSetting,
+                                      "true",
+                                      StringComparison.OrdinalIgnoreCase);
+        var isSupplementalSource =
+            SubtitleLanguageHelper.IsSupplementalSubtitleType(request.SourceSubtitleType);
+
+        if (isSupplementalSource && !supplementalEnabled)
+        {
+            return $"Selected source is {request.SourceSubtitleType}, but supplemental subtitle translation is disabled.";
+        }
+
+        if (request.SourceSubtitleEntryCount > 0 &&
+            request.SourceSubtitleEntryCount < SubtitleExtractionService.MinimumDialogueEntries &&
+            !(supplementalEnabled && isSupplementalSource))
+        {
+            return $"Selected source has only {request.SourceSubtitleEntryCount} entries; minimum full-dialogue threshold is {SubtitleExtractionService.MinimumDialogueEntries}.";
+        }
+
+        if (LooksPathologicalAssSource(request, subtitles))
+        {
+            return "Selected ASS/SSA source is drawing-heavy/pathological and is not safe to translate.";
+        }
+
+        if (EmbeddedSourceLanguageMismatchesRequest(request, selectedSubtitle))
+        {
+            return $"Selected embedded source language '{selectedSubtitle!.Language}' does not match request source language '{request.SourceLanguage}'.";
+        }
+
+        return null;
     }
 
     internal static bool EmbeddedSourceLanguageMismatchesRequest(

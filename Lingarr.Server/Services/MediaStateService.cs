@@ -170,10 +170,11 @@ public class MediaStateService : IMediaStateService
         }
 
         // 5. Check for source subtitle
-        var hasExternalSource = externalSubtitles
-            .Where(s => !ExternalSubtitleCandidateHelper.ShouldSkipAsPrimarySource(s))
-            .Where(s => !IsRejectedExternalSourceCandidate(s))
-            .Any(s => sourceLanguages.Any(sl => SubtitleLanguageHelper.LanguageMatches(s.Language, sl)));
+        var externalSourceSelection = ExternalSubtitleCandidateHelper.SelectPrimarySourceCandidate(
+            externalSubtitles,
+            sourceLanguages,
+            ignoreCaptions);
+        var hasExternalSource = externalSourceSelection != null;
         var embeddedPrimarySelection = await _subtitleSourceSelectionService.SelectPrimaryAsync(
             embeddedSubtitles.Where(subtitle => subtitle.IsTextBased).ToList(),
             sourceLanguages.ToList(),
@@ -409,18 +410,15 @@ public class MediaStateService : IMediaStateService
         bool ignoreCaptions,
         SubtitleOutputMode subtitleOutputMode)
     {
-        var externalSource = externalSubtitles
-            .Where(subtitle => !ExternalSubtitleCandidateHelper.ShouldSkipAsPrimarySource(subtitle))
-            .Where(subtitle => !IsRejectedExternalSourceCandidate(subtitle))
-            .Where(subtitle => sourceLanguages.Any(sourceLanguage =>
-                SubtitleLanguageHelper.LanguageMatches(subtitle.Language, sourceLanguage)))
-            .OrderBy(subtitle => ignoreCaptions && !string.IsNullOrWhiteSpace(subtitle.Caption))
-            .FirstOrDefault();
+        var externalSource = ExternalSubtitleCandidateHelper.SelectPrimarySourceCandidate(
+            externalSubtitles,
+            sourceLanguages,
+            ignoreCaptions);
 
         if (externalSource != null)
         {
             return SubtitleOutputModeHelper.GetRequiredOutputFormats(
-                ResolveSubtitleFormat(externalSource),
+                ResolveSubtitleFormat(externalSource.Subtitle),
                 subtitleOutputMode);
         }
 
@@ -549,10 +547,5 @@ public class MediaStateService : IMediaStateService
         }
 
         return existingTargetFormats;
-    }
-
-    private static bool IsRejectedExternalSourceCandidate(Subtitles subtitle)
-    {
-        return ExternalSubtitleCandidateHelper.IsSupplementalOrCommentary(subtitle);
     }
 }

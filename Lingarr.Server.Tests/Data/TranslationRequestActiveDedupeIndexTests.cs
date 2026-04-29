@@ -30,7 +30,7 @@ public class TranslationRequestActiveDedupeIndexTests
             index => index.GetDatabaseName() == "ux_translation_requests_active_dedupe");
 
         Assert.Equal(
-            new[] { "WorkloadItemKey", "SourceLanguage", "TargetLanguage", "IsActive" },
+            new[] { "WorkloadItemKey", "SourceLanguage", "TargetLanguage", "SourceDedupeKey", "IsActive" },
             dedupeIndex.Properties.Select(property => property.Name).ToArray());
     }
 
@@ -76,6 +76,36 @@ public class TranslationRequestActiveDedupeIndexTests
         Assert.Contains("SET required_output_formats = CASE", source);
         Assert.Contains("WHEN source_subtitle_format IS NULL", source);
         Assert.Contains("WITH ranked_active AS", source);
+    }
+
+    [Fact]
+    public void PostgreSqlSourceDedupeMigration_BackfillsSupplementalRows()
+    {
+        var source = ReadRepositoryFile(
+            "Lingarr.Migrations.PostgreSQL",
+            "Migrations",
+            "20260429211943_AddSourceDedupeKeyToTranslationRequests.cs");
+
+        Assert.Contains("source_dedupe_key", source);
+        Assert.Contains("columns: new[] { \"workload_item_key\", \"source_language\", \"target_language\", \"source_dedupe_key\", \"is_active\" }", source);
+        Assert.Contains("UPDATE translation_requests", source);
+        Assert.Contains("supplemental:", source);
+        Assert.Contains("is_forced_subtitle = TRUE", source);
+    }
+
+    [Fact]
+    public void SqliteSourceDedupeMigration_BackfillsSupplementalRows()
+    {
+        var source = ReadRepositoryFile(
+            "Lingarr.Migrations.SQLite",
+            "Migrations",
+            "20260429211929_AddSourceDedupeKeyToTranslationRequests.cs");
+
+        Assert.Contains("source_dedupe_key", source);
+        Assert.Contains("columns: new[] { \"workload_item_key\", \"source_language\", \"target_language\", \"source_dedupe_key\", \"is_active\" }", source);
+        Assert.Contains("UPDATE translation_requests", source);
+        Assert.Contains("supplemental:", source);
+        Assert.Contains("is_forced_subtitle = 1", source);
     }
 
     private static string ReadRepositoryFile(params string[] parts)

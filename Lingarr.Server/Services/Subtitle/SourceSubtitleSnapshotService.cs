@@ -265,7 +265,11 @@ public class SourceSubtitleSnapshotService : ISourceSubtitleSnapshotService
             .Where(tr => tr.WorkloadKind == TranslationWorkloadKind.Library
                          && tr.MediaId == mediaId
                          && tr.MediaType == mediaType
-                         && tr.Status == TranslationStatus.Completed)
+                         && tr.Status == TranslationStatus.Completed
+                         && tr.SourceDedupeKey == "primary"
+                         && (tr.SourceSubtitleType == null ||
+                             (tr.SourceSubtitleType != SubtitleLanguageHelper.TypeForced &&
+                              tr.SourceSubtitleType != SubtitleLanguageHelper.TypeSignsSongs)))
             .OrderByDescending(tr => tr.CompletedAt)
             .ThenByDescending(tr => tr.Id)
             .ToListAsync(cancellationToken);
@@ -368,61 +372,11 @@ public class SourceSubtitleSnapshotService : ISourceSubtitleSnapshotService
         List<string> configuredSourceLanguages,
         bool ignoreCaptions)
     {
-        if (subtitles.Count == 0 || configuredSourceLanguages.Count == 0)
-        {
-            return (null, null);
-        }
-
-        var validSubtitles = subtitles
-            .Where(s => !ExternalSubtitleCandidateHelper.ShouldSkipAsPrimarySource(s))
-            .Where(s => !IsRejectedExternalSourceCandidate(s))
-            .ToList();
-        if (validSubtitles.Count == 0)
-        {
-            return (null, null);
-        }
-
-        var normalizedBySubtitle = validSubtitles.ToDictionary(
-            s => s,
-            s => SubtitleLanguageHelper.NormalizeLanguageCode(s.Language));
-
-        var sourceLanguage = configuredSourceLanguages
-            .FirstOrDefault(configured => normalizedBySubtitle.Values.Contains(configured, StringComparer.OrdinalIgnoreCase));
-        if (string.IsNullOrWhiteSpace(sourceLanguage))
-        {
-            return (null, null);
-        }
-
-        var sourceCandidates = validSubtitles
-            .Where(s => SubtitleLanguageHelper.LanguageMatches(normalizedBySubtitle[s], sourceLanguage))
-            .ToList();
-        if (sourceCandidates.Count == 0)
-        {
-            return (null, null);
-        }
-
-        var cleanCandidate = sourceCandidates
-            .Where(s => !SubtitleLanguageHelper.IsCaptionSubtitleType(
-                ExternalSubtitleCandidateHelper.GetSubtitleType(s)))
-            .OrderBy(s => !string.IsNullOrWhiteSpace(s.Caption))
-            .FirstOrDefault();
-        if (cleanCandidate != null)
-        {
-            return (cleanCandidate, sourceLanguage);
-        }
-
-        var candidate = ignoreCaptions
-            ? null
-            : sourceCandidates.FirstOrDefault(s =>
-                SubtitleLanguageHelper.IsCaptionSubtitleType(
-                    ExternalSubtitleCandidateHelper.GetSubtitleType(s)));
-
-        return (candidate, sourceLanguage);
-    }
-
-    private static bool IsRejectedExternalSourceCandidate(Subtitles candidate)
-    {
-        return ExternalSubtitleCandidateHelper.IsSupplementalOrCommentary(candidate);
+        var selection = ExternalSubtitleCandidateHelper.SelectPrimarySourceCandidate(
+            subtitles,
+            configuredSourceLanguages,
+            ignoreCaptions);
+        return (selection?.Subtitle, selection?.SourceLanguage);
     }
 
     private static string NormalizePath(string path)

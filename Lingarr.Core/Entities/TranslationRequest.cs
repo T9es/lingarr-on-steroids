@@ -23,6 +23,7 @@ public class TranslationRequest : BaseEntity
     public required MediaType MediaType { get; set; }
     public required TranslationStatus Status { get; set; }
     public bool? IsActive { get; set; }
+    public string SourceDedupeKey { get; set; } = "primary";
     public DateTime? CompletedAt { get; set; }
     public int Progress { get; set; }
     

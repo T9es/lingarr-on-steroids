@@ -396,6 +396,78 @@ public class MediaStateServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ComputeStateAsync_MatchSourceUsesConfiguredSourceLanguagePriorityForExternalFormats()
+    {
+        var movie = new Movie
+        {
+            Id = 23,
+            RadarrId = 23,
+            Title = "Priority Source Movie",
+            Path = "/movies/priority",
+            FileName = "priority.mkv",
+            DateAdded = DateTime.UtcNow
+        };
+
+        _context.Movies.Add(movie);
+        await _context.SaveChangesAsync();
+
+        _settingServiceMock
+            .SetupSequence(s => s.GetSettingAsJson<SourceLanguage>(It.IsAny<string>()))
+            .ReturnsAsync([
+                new SourceLanguage { Name = "English", Code = "en" },
+                new SourceLanguage { Name = "French", Code = "fr" }
+            ])
+            .ReturnsAsync([new SourceLanguage { Name = "Polish", Code = "pl" }]);
+
+        _settingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.Translation.IgnoreCaptions))
+            .ReturnsAsync("true");
+        _settingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.Translation.SubtitleOutputMode))
+            .ReturnsAsync(SubtitleOutputMode.MatchSource.ToSettingValue());
+        _settingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.SubtitleValidation.SkipWhenTargetEmbedded))
+            .ReturnsAsync("false");
+
+        _subtitleServiceMock
+            .Setup(s => s.GetAllSubtitles(It.IsAny<string>()))
+            .ReturnsAsync([
+                new Models.FileSystem.Subtitles
+                {
+                    FileName = "priority.fr.ass",
+                    Language = "fr",
+                    Path = "/movies/priority/priority.fr.ass",
+                    Format = ".ass"
+                },
+                new Models.FileSystem.Subtitles
+                {
+                    FileName = "priority.en.srt",
+                    Language = "en",
+                    Path = "/movies/priority/priority.en.srt",
+                    Format = ".srt"
+                },
+                new Models.FileSystem.Subtitles
+                {
+                    FileName = "priority.pl.srt",
+                    Language = "pl",
+                    Path = "/movies/priority/priority.pl.srt",
+                    Format = ".srt"
+                }
+            ]);
+
+        var service = new MediaStateService(
+            _context,
+            _settingServiceMock.Object,
+            _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
+            NullLogger<MediaStateService>.Instance);
+
+        var state = await service.UpdateStateAsync(movie, MediaType.Movie);
+
+        Assert.Equal(TranslationState.Complete, state);
+    }
+
+    [Fact]
     public async Task ComputeStateAsync_ShouldHandleBothExternalAndEmbeddedTargetLanguages()
     {
         // Arrange - Movie with embedded English (source), German (target) and external Dutch (target)
