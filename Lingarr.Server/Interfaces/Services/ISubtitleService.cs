@@ -41,6 +41,7 @@ public interface ISubtitleService
     /// <param name="originalPath">The original path of the subtitle file.</param>
     /// <param name="targetLanguage">The target language code to be added to the file name.</param>
     /// <param name="subtitleTag">Subtitle tag to be added to the file path</param>
+    /// <param name="outputFormat">Optional output extension override.</param>
     /// <returns>A new file path with the target language code inserted before the .srt extension.</returns>
     string CreateFilePath(string originalPath, string targetLanguage, string subtitleTag, string? outputFormat = null);
     
@@ -51,6 +52,8 @@ public interface ISubtitleService
     /// <param name="targetLanguage">The target language code.</param>
     /// <param name="subtitleTag">The primary subtitle tag.</param>
     /// <param name="subtitleTagShort">The short subtitle tag for fallback.</param>
+    /// <param name="outputFormat">Optional output extension override.</param>
+    /// <param name="forcedCaption">Optional supplemental caption suffix such as forced or signs.</param>
     /// <returns>A prioritized list of file paths.</returns>
     System.Collections.Generic.IEnumerable<string> CreateFallbackPaths(
         string originalPath,

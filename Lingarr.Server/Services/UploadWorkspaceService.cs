@@ -12,6 +12,7 @@ using Lingarr.Server.Models.UploadWorkspace;
 using Lingarr.Server.Services.Subtitle;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Lingarr.Server.Services;
 
@@ -39,6 +40,7 @@ public class UploadWorkspaceService : IUploadWorkspaceService, IUploadWorkspaceC
     private readonly ISettingService _settingService;
     private readonly ISubtitleService _subtitleService;
     private readonly ISubtitleExtractionService _subtitleExtractionService;
+    private readonly ISubtitleSourceSelectionService _subtitleSourceSelectionService;
     private readonly Lazy<ITranslationRequestService> _translationRequestServiceLazy;
     private readonly ILogger<UploadWorkspaceService> _logger;
 
@@ -48,12 +50,17 @@ public class UploadWorkspaceService : IUploadWorkspaceService, IUploadWorkspaceC
         ISubtitleService subtitleService,
         ISubtitleExtractionService subtitleExtractionService,
         Lazy<ITranslationRequestService> translationRequestServiceLazy,
-        ILogger<UploadWorkspaceService> logger)
+        ILogger<UploadWorkspaceService> logger,
+        ISubtitleSourceSelectionService? subtitleSourceSelectionService = null)
     {
         _dbContext = dbContext;
         _settingService = settingService;
         _subtitleService = subtitleService;
         _subtitleExtractionService = subtitleExtractionService;
+        _subtitleSourceSelectionService = subtitleSourceSelectionService ??
+            new SubtitleSourceSelectionService(
+                subtitleService,
+                NullLogger<SubtitleSourceSelectionService>.Instance);
         _translationRequestServiceLazy = translationRequestServiceLazy;
         _logger = logger;
     }
@@ -1219,22 +1226,27 @@ public class UploadWorkspaceService : IUploadWorkspaceService, IUploadWorkspaceC
                 var textBasedStreams = streams
                     .Where(stream => stream.IsTextBased)
                     .ToList();
-                EmbeddedSubtitle? bestStream;
-                string? matchedLanguage = null;
-
-                if (configuredSourceLanguages.Count > 0)
-                {
-                    var bestMatch = SubtitleLanguageHelper.FindBestMatch(textBasedStreams, configuredSourceLanguages);
-                    bestStream = bestMatch.Subtitle;
-                    matchedLanguage = NormalizeLanguage(bestMatch.MatchedLanguage);
-                }
-                else
-                {
-                    bestStream = textBasedStreams
-                        .OrderByDescending(stream => SubtitleLanguageHelper.ScoreSubtitleCandidate(stream, stream.Language))
-                        .ThenBy(stream => stream.StreamIndex)
-                        .FirstOrDefault();
-                }
+                var selectionSourceLanguages = configuredSourceLanguages.Count > 0
+                    ? configuredSourceLanguages
+                    : textBasedStreams
+                        .Select(stream => NormalizeLanguage(stream.Language))
+                        .Where(language => !string.IsNullOrWhiteSpace(language))
+                        .Select(language => language!)
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+                var ignoreCaptions = string.Equals(
+                    await _settingService.GetSetting(SettingKeys.Translation.IgnoreCaptions),
+                    "true",
+                    StringComparison.OrdinalIgnoreCase);
+                var bestMatch = selectionSourceLanguages.Count > 0
+                    ? await _subtitleSourceSelectionService.SelectPrimaryAsync(
+                        textBasedStreams,
+                        selectionSourceLanguages,
+                        allowCaptionFallback: !ignoreCaptions,
+                        cancellationToken)
+                    : new SubtitleSourceSelectionResult();
+                var bestStream = bestMatch.SelectedSubtitle;
+                var matchedLanguage = NormalizeLanguage(bestMatch.MatchedLanguage);
 
                 if (bestStream != null)
                 {

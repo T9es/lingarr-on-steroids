@@ -529,7 +529,6 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
     /// <summary>
     /// Processes subtitle files for translation and returns the count of translations queued.
     /// </summary>
-    /// <param name="forceTranslation">If true, translates to all target languages even if they already exist.</param>
     private async Task<int> ProcessSubtitlesWithCount(
         IMedia media,
         MediaType mediaType,
@@ -753,6 +752,8 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
     /// <param name="forceTranslation">If true, translates to all target languages even if they already exist.</param>
     /// <param name="forceProcess">If true, bypasses the media hash check</param>
     /// <param name="forcePriority">If true, forces jobs to use the priority queue</param>
+    /// <param name="queueTranslations">If false, reports queueable translations without creating requests.</param>
+    /// <param name="maxTranslationsToQueue">Optional maximum number of requests to create.</param>
     /// <returns>The number of translation requests queued</returns>
     private async Task<int> TryQueueEmbeddedSubtitleTranslation(
         IMedia media,

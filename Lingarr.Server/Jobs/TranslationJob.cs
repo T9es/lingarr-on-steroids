@@ -12,6 +12,7 @@ using Lingarr.Server.Extensions;
 using Lingarr.Server.Services.Subtitle;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.OpenApi.Extensions;
 using SubtitleValidationOptions = Lingarr.Server.Models.SubtitleValidationOptions;
 
@@ -39,6 +40,7 @@ public class TranslationJob
     private readonly ISourceSubtitleResolver _sourceSubtitleResolver;
     private readonly IEmbeddedSubtitleCacheService _embeddedSubtitleCacheService;
     private readonly IUploadWorkspaceService _uploadWorkspaceService;
+    private readonly ISubtitleSourceSelectionService _subtitleSourceSelectionService;
     private readonly ITranslationCheckpointService? _translationCheckpointService;
 
     public TranslationJob(
@@ -62,7 +64,8 @@ public class TranslationJob
         ISourceSubtitleResolver sourceSubtitleResolver,
         IEmbeddedSubtitleCacheService embeddedSubtitleCacheService,
         IUploadWorkspaceService uploadWorkspaceService,
-        ITranslationCheckpointService? translationCheckpointService = null)
+        ITranslationCheckpointService? translationCheckpointService = null,
+        ISubtitleSourceSelectionService? subtitleSourceSelectionService = null)
     {
         _logger = logger;
         _settings = settings;
@@ -84,6 +87,10 @@ public class TranslationJob
         _sourceSubtitleResolver = sourceSubtitleResolver;
         _embeddedSubtitleCacheService = embeddedSubtitleCacheService;
         _uploadWorkspaceService = uploadWorkspaceService;
+        _subtitleSourceSelectionService = subtitleSourceSelectionService ??
+            new SubtitleSourceSelectionService(
+                subtitleService,
+                NullLogger<SubtitleSourceSelectionService>.Instance);
         _translationCheckpointService = translationCheckpointService;
     }
 
@@ -1465,22 +1472,39 @@ public class TranslationJob
             return null;
         }
 
-        var embeddedSubtitles = await _extractionService.ProbeEmbeddedSubtitles(customItem.Path);
-        var candidate = SubtitleLanguageHelper.FindBestMatch(
-            embeddedSubtitles.Where(subtitle => subtitle.IsTextBased).ToList(),
-            [request.SourceLanguage]);
+        var embeddedSubtitles = (await _extractionService.ProbeEmbeddedSubtitles(customItem.Path))
+            .Where(subtitle => subtitle.IsTextBased)
+            .ToList();
+        var candidate = request.SourceSnapshotStreamIndex.HasValue
+            ? embeddedSubtitles.FirstOrDefault(subtitle =>
+                subtitle.StreamIndex == request.SourceSnapshotStreamIndex.Value)
+            : null;
 
-        if (candidate.Subtitle == null)
+        if (candidate == null)
+        {
+            var ignoreCaptions = string.Equals(
+                await _settings.GetSetting(SettingKeys.Translation.IgnoreCaptions),
+                "true",
+                StringComparison.OrdinalIgnoreCase);
+            var selection = await _subtitleSourceSelectionService.SelectPrimaryAsync(
+                embeddedSubtitles,
+                [request.SourceLanguage],
+                allowCaptionFallback: !ignoreCaptions,
+                cancellationToken);
+            candidate = selection.SelectedSubtitle;
+        }
+
+        if (candidate == null)
         {
             return null;
         }
 
         return await _extractionService.ExtractSubtitle(
             customItem.Path,
-            candidate.Subtitle.StreamIndex,
+            candidate.StreamIndex,
             outputDirectory,
-            candidate.Subtitle.CodecName,
-            candidate.Subtitle.Language);
+            candidate.CodecName,
+            candidate.Language);
     }
 
     internal static bool IsPreExistingExtractionPath(

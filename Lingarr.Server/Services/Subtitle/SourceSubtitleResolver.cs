@@ -1,9 +1,11 @@
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
+using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Models.Subtitle;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Lingarr.Server.Services.Subtitle;
 
@@ -13,19 +15,26 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
     private readonly ISubtitleExtractionService _subtitleExtractionService;
     private readonly ISourceSubtitleSnapshotService _sourceSubtitleSnapshotService;
     private readonly IEmbeddedSubtitleCacheService _embeddedSubtitleCacheService;
+    private readonly ISubtitleSourceSelectionService _subtitleSourceSelectionService;
     private readonly ILogger<SourceSubtitleResolver> _logger;
 
     public SourceSubtitleResolver(
         LingarrDbContext dbContext,
+        ISubtitleService subtitleService,
         ISubtitleExtractionService subtitleExtractionService,
         ISourceSubtitleSnapshotService sourceSubtitleSnapshotService,
         IEmbeddedSubtitleCacheService embeddedSubtitleCacheService,
-        ILogger<SourceSubtitleResolver> logger)
+        ILogger<SourceSubtitleResolver> logger,
+        ISubtitleSourceSelectionService? subtitleSourceSelectionService = null)
     {
         _dbContext = dbContext;
         _subtitleExtractionService = subtitleExtractionService;
         _sourceSubtitleSnapshotService = sourceSubtitleSnapshotService;
         _embeddedSubtitleCacheService = embeddedSubtitleCacheService;
+        _subtitleSourceSelectionService = subtitleSourceSelectionService ??
+            new SubtitleSourceSelectionService(
+                subtitleService,
+                NullLogger<SubtitleSourceSelectionService>.Instance);
         _logger = logger;
     }
 
@@ -127,8 +136,23 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
             }
         }
 
-        return embeddedSubtitles
+        var textBasedSubtitles = embeddedSubtitles
             .Where(subtitle => subtitle.IsTextBased)
+            .ToList();
+        if (!SubtitleLanguageHelper.IsSupplementalSubtitleType(request.SourceSubtitleType))
+        {
+            var selection = await _subtitleSourceSelectionService.SelectPrimaryAsync(
+                textBasedSubtitles,
+                [request.SourceLanguage],
+                allowCaptionFallback: true,
+                cancellationToken);
+            if (selection.SelectedSubtitle != null)
+            {
+                return selection.SelectedSubtitle.StreamIndex;
+            }
+        }
+
+        return textBasedSubtitles
             .OrderByDescending(subtitle => ScoreSubtitle(subtitle, request))
             .Select(subtitle => (int?)subtitle.StreamIndex)
             .FirstOrDefault();
