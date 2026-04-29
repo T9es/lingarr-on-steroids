@@ -1,13 +1,16 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
+using Lingarr.Core.Interfaces;
 using Lingarr.Server.Hubs;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Jobs;
+using Lingarr.Server.Models;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -43,7 +46,23 @@ public class BulkIntegrityCheckJobTests
                 false,
                 false,
                 false,
-                25))
+                25,
+                It.IsAny<ICollection<SubtitleIntegrityFinding>>()))
+            .Callback<IMedia, MediaType, bool, bool, bool, bool, int?, ICollection<SubtitleIntegrityFinding>>(
+                (_, _, _, _, _, _, _, findings) => findings.Add(new SubtitleIntegrityFinding
+                {
+                    MediaId = 1,
+                    MediaType = MediaType.Movie.ToString(),
+                    MediaTitle = "Movie",
+                    SourceLanguage = "eng",
+                    TargetLanguage = "pol",
+                    Reason = "Target has too few entries.",
+                    SourcePath = "/movies/movie.eng.srt",
+                    TargetPath = "/movies/movie.pol.srt",
+                    SourceEntries = 100,
+                    TargetEntries = 1,
+                    MinimumTargetEntries = 95
+                }))
             .ReturnsAsync(1);
 
         var settingServiceMock = new Mock<ISettingService>();
@@ -67,6 +86,10 @@ public class BulkIntegrityCheckJobTests
         Assert.NotNull(BulkIntegrityStats.Current);
         Assert.Equal(1, BulkIntegrityStats.Current!.CorruptCount);
         Assert.Equal(0, BulkIntegrityStats.Current.QueuedCount);
+        var finding = Assert.Single(BulkIntegrityStats.Current.FlaggedItems);
+        Assert.Equal("/movies/movie.pol.srt", finding.TargetPath);
+        Assert.Equal(100, finding.SourceEntries);
+        Assert.False(finding.IsQueued);
         processorMock.Verify(processor => processor.ProcessMediaForceAsync(
             It.IsAny<Movie>(),
             MediaType.Movie,
@@ -74,7 +97,8 @@ public class BulkIntegrityCheckJobTests
             false,
             false,
             false,
-            25), Times.Once);
+            25,
+            It.IsAny<ICollection<SubtitleIntegrityFinding>>()), Times.Once);
     }
 
     private static LingarrDbContext CreateDbContext()

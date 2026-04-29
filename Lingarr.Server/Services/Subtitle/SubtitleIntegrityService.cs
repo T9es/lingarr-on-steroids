@@ -45,25 +45,34 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
     /// <inheritdoc />
     public async Task<bool> ValidateIntegrityAsync(string sourceSubtitlePath, string targetSubtitlePath)
     {
+        var result = await ValidateIntegrityDetailedAsync(sourceSubtitlePath, targetSubtitlePath);
+        return result.IsValid;
+    }
+
+    /// <inheritdoc />
+    public async Task<SubtitleIntegrityCheckResult> ValidateIntegrityDetailedAsync(
+        string sourceSubtitlePath,
+        string targetSubtitlePath)
+    {
         // Check if integrity validation is enabled
         var enabled = await _settingService.GetSetting(SettingKeys.SubtitleValidation.IntegrityValidationEnabled);
         if (enabled != "true")
         {
             _logger.LogInformation("Integrity validation is disabled (setting={Setting}), skipping check for {TargetPath}", enabled ?? "null", targetSubtitlePath);
-            return true; // Validation disabled, treat as valid
+            return Valid("Integrity validation is disabled.");
         }
 
         // Validate file existence
         if (!File.Exists(sourceSubtitlePath))
         {
             _logger.LogWarning("Source subtitle not found for integrity check: {Path}", sourceSubtitlePath);
-            return true; // Can't validate without source
+            return Valid("Source subtitle was not found, so this target could not be validated.");
         }
 
         if (!File.Exists(targetSubtitlePath))
         {
             _logger.LogInformation("Target subtitle not found for integrity check: {Path}", targetSubtitlePath);
-            return true; // No target to validate
+            return Valid("Target subtitle was not found.");
         }
 
         try
@@ -78,7 +87,7 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
             if (sourceCount == 0)
             {
                 _logger.LogInformation("Source subtitle has no lines, skipping integrity check");
-                return true;
+                return Valid("Source subtitle has no dialogue entries.");
             }
 
             // Calculate minimum acceptable line count (with tolerance)
@@ -90,7 +99,11 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
                     "Subtitle integrity check FAILED: Target has {TargetCount} lines but source has {SourceCount} (minimum acceptable: {Minimum}). " +
                     "File may be corrupted/partial: {TargetPath}",
                     targetCount, sourceCount, minimumAcceptable, targetSubtitlePath);
-                return false;
+                return Invalid(
+                    $"Target has {targetCount} entries but the selected source has {sourceCount}. Minimum acceptable is {minimumAcceptable}.",
+                    sourceCount,
+                    targetCount,
+                    minimumAcceptable);
             }
 
             var echoScan = DetectUnchangedSourceText(
@@ -104,7 +117,12 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
                     "Subtitle integrity check FAILED: target appears to contain mostly unchanged source text. {Summary} File may be untranslated: {TargetPath}",
                     string.Join(" ", echoScan.IssueSummaries),
                     targetSubtitlePath);
-                return false;
+                return Invalid(
+                    "Target appears to contain mostly unchanged source text. " +
+                    string.Join(" ", echoScan.IssueSummaries),
+                    sourceCount,
+                    targetCount,
+                    minimumAcceptable);
             }
 
             var languageScan = DetectWrongTargetLanguage(
@@ -117,21 +135,52 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
                     "Subtitle integrity check FAILED: target appears to use the wrong language/script. {Summary} File may be mistranslated: {TargetPath}",
                     string.Join(" ", languageScan.IssueSummaries),
                     targetSubtitlePath);
-                return false;
+                return Invalid(
+                    "Target appears to use the wrong language/script. " +
+                    string.Join(" ", languageScan.IssueSummaries),
+                    sourceCount,
+                    targetCount,
+                    minimumAcceptable);
             }
 
             _logger.LogInformation(
                 "Subtitle integrity check PASSED: {TargetCount}/{SourceCount} lines in {Path}",
                 targetCount, sourceCount, targetSubtitlePath);
-            return true;
+            return new SubtitleIntegrityCheckResult
+            {
+                IsValid = true,
+                Reason = "Target subtitle passed integrity validation.",
+                SourceEntryCount = sourceCount,
+                TargetEntryCount = targetCount,
+                MinimumTargetEntryCount = minimumAcceptable
+            };
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error during subtitle integrity check for {TargetPath}", targetSubtitlePath);
             // On error, don't block processing - return true
-            return true;
+            return Valid("Integrity validation errored and was treated as inconclusive.");
         }
     }
+
+    private static SubtitleIntegrityCheckResult Valid(string reason) => new()
+    {
+        IsValid = true,
+        Reason = reason
+    };
+
+    private static SubtitleIntegrityCheckResult Invalid(
+        string reason,
+        int sourceCount,
+        int targetCount,
+        int minimumAcceptable) => new()
+    {
+        IsValid = false,
+        Reason = reason,
+        SourceEntryCount = sourceCount,
+        TargetEntryCount = targetCount,
+        MinimumTargetEntryCount = minimumAcceptable
+    };
 
     /// <inheritdoc />
     public async Task<Models.AssVerificationResult> VerifyAssIntegrityAsync(CancellationToken ct)

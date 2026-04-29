@@ -102,7 +102,8 @@ public class VerifyAssIntegrityJobTests
 
         var repairedSrt = await File.ReadAllTextAsync(translatedSrtPath);
         var result = JsonSerializer.Deserialize<AssVerificationResult>(
-            persistedResult ?? throw new InvalidOperationException("Verification result was not persisted."));
+            persistedResult ?? throw new InvalidOperationException("Verification result was not persisted."),
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
 
         Assert.Contains("Czesc", repairedSrt);
         Assert.DoesNotContain("m 0 0", repairedSrt);

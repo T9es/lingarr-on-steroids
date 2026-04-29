@@ -358,7 +358,7 @@ public class VerifyAssIntegrityJob
 
             await _settingService.SetSetting(
                 "subtitle_ass_verification_last_result",
-                System.Text.Json.JsonSerializer.Serialize(result));
+                JsonSerializer.Serialize(result, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
 
             _logger.LogInformation(
                 "ASS Integrity verification complete: Scanned {Total}, Found {Flagged}",

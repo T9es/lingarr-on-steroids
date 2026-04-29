@@ -140,6 +140,110 @@
                             class="rounded border border-red-500/30 bg-red-500/10 p-4 text-center text-red-400">
                             {{ stats.error }}
                         </div>
+
+                        <div v-if="visibleIntegrityFindings.length > 0" class="w-full space-y-3">
+                            <div class="flex items-center justify-between gap-3">
+                                <h4 class="font-semibold">Detected Subtitle Findings</h4>
+                                <button
+                                    class="bg-accent hover:bg-accent/80 text-primary-content rounded px-4 py-2 text-sm font-semibold"
+                                    @click="requeueAllIntegrityFindings">
+                                    Queue All Repairs
+                                </button>
+                            </div>
+                            <div class="bg-secondary/30 max-h-96 w-full overflow-y-auto rounded">
+                                <div
+                                    v-for="item in visibleIntegrityFindings"
+                                    :key="bulkFindingKey(item)"
+                                    class="border-secondary/50 border-b last:border-0">
+                                    <div
+                                        class="hover:bg-secondary/50 flex cursor-pointer items-center justify-between gap-3 p-3"
+                                        @click="toggleIntegrityFinding(item)">
+                                        <div class="min-w-0 flex-1">
+                                            <div class="truncate font-medium">
+                                                {{ item.mediaTitle }}
+                                            </div>
+                                            <div class="truncate text-xs opacity-50">
+                                                {{ item.targetPath || item.targetLanguage }}
+                                            </div>
+                                            <div class="mt-1 flex flex-wrap items-center gap-2">
+                                                <span class="text-xs text-yellow-500">
+                                                    {{ item.targetLanguage }}: {{ item.reason }}
+                                                </span>
+                                                <span
+                                                    v-if="item.isQueued"
+                                                    class="rounded bg-blue-500/20 px-2 py-0.5 text-xs text-blue-400">
+                                                    Already queued
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div class="flex shrink-0 items-center gap-1">
+                                            <button
+                                                v-if="!item.isQueued"
+                                                class="bg-accent/20 text-accent hover:bg-accent/30 rounded px-2 py-1 text-xs"
+                                                @click.stop="requeueIntegrityFinding(item)">
+                                                Queue Repair
+                                            </button>
+                                            <button
+                                                class="bg-secondary-content/20 text-secondary-content/70 hover:bg-secondary-content/30 rounded px-2 py-1 text-xs"
+                                                @click.stop="dismissIntegrityFinding(item)">
+                                                Dismiss
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div
+                                        v-if="
+                                            expandedIntegrityFindings.includes(bulkFindingKey(item))
+                                        "
+                                        class="bg-tertiary/50 border-secondary/50 space-y-2 border-t p-3 text-xs">
+                                        <div>
+                                            <span class="font-semibold opacity-70">Reason:</span>
+                                            <span class="ml-1 text-yellow-400">
+                                                {{ item.reason }}
+                                            </span>
+                                        </div>
+                                        <div
+                                            v-if="
+                                                item.sourceEntries !== null ||
+                                                item.targetEntries !== null
+                                            ">
+                                            <span class="font-semibold opacity-70">Entries:</span>
+                                            <span class="ml-1">
+                                                source {{ item.sourceEntries ?? 'unknown' }}, target
+                                                {{ item.targetEntries ?? 'unknown' }}, minimum
+                                                {{ item.minimumTargetEntries ?? 'unknown' }}
+                                            </span>
+                                        </div>
+                                        <div v-if="item.sourcePath" class="break-all">
+                                            <span class="font-semibold opacity-70">Source:</span>
+                                            <span class="ml-1 font-mono">
+                                                {{ item.sourcePath }}
+                                            </span>
+                                        </div>
+                                        <div v-if="item.targetPath" class="break-all">
+                                            <span class="font-semibold opacity-70">Target:</span>
+                                            <span class="ml-1 font-mono">
+                                                {{ item.targetPath }}
+                                            </span>
+                                        </div>
+                                        <div class="break-all">
+                                            <span class="font-semibold opacity-70">
+                                                Selected source:
+                                            </span>
+                                            <span class="ml-1">
+                                                {{ item.sourceSnapshotType || 'unknown' }}
+                                                <template
+                                                    v-if="item.sourceSnapshotStreamIndex !== null">
+                                                    stream #{{ item.sourceSnapshotStreamIndex }}
+                                                </template>
+                                                <template v-if="item.sourceSnapshotIdentity">
+                                                    - {{ item.sourceSnapshotIdentity }}
+                                                </template>
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </template>
@@ -425,8 +529,8 @@
                                             </div>
                                             <div class="flex items-center gap-2">
                                                 <span class="text-xs text-yellow-500">
-                                                    {{ item.suspiciousLineCount }} suspicious entries
-                                                    (click to view)
+                                                    {{ item.suspiciousLineCount }} suspicious
+                                                    entries (click to view)
                                                 </span>
                                                 <span
                                                     v-if="item.isQueued"
@@ -518,9 +622,34 @@ interface BulkIntegrityStats {
     errorCount: number
     autoQueueEnabled: boolean
     maxAutoQueuePerRun: number
+    flaggedItems: SubtitleIntegrityFinding[]
     isComplete: boolean
     error: string | null
     progressPercent: number
+}
+
+type BulkIntegrityProgressPayload = Omit<BulkIntegrityStats, 'flaggedItems'> & {
+    flaggedItems?: SubtitleIntegrityFinding[]
+}
+
+interface SubtitleIntegrityFinding {
+    mediaId: number
+    mediaType: string
+    mediaTitle: string
+    sourceLanguage: string
+    targetLanguage: string
+    sourceRole: string
+    reason: string
+    sourcePath: string | null
+    targetPath: string | null
+    sourceEntries: number | null
+    targetEntries: number | null
+    minimumTargetEntries: number | null
+    sourceSnapshotType: string | null
+    sourceSnapshotIdentity: string | null
+    sourceSnapshotStreamIndex: number | null
+    isQueued: boolean
+    dismissed: boolean
 }
 
 const isRunning = ref(false)
@@ -536,10 +665,13 @@ const stats = reactive<BulkIntegrityStats>({
     errorCount: 0,
     autoQueueEnabled: false,
     maxAutoQueuePerRun: 25,
+    flaggedItems: [],
     isComplete: false,
     error: null,
     progressPercent: 0
 })
+const expandedIntegrityFindings = ref<string[]>([])
+const bulkStatusPoll = ref<number | null>(null)
 
 const bulkIntegrityAutoQueue = computed({
     get: (): string =>
@@ -609,6 +741,7 @@ const subtitleTypeValidationStats = reactive<SubtitleTypeValidationStats>({
 const subtitleTypeHasStarted = ref(false)
 const subtitleTypeResult = ref<SubtitleTypeCheckSummary | null>(null)
 const expandedSubtitleTypeItems = ref<number[]>([])
+const subtitleTypeStatusPoll = ref<number | null>(null)
 
 // Subtitle Selector Modal
 const isSubtitleModalOpen = ref(false)
@@ -665,7 +798,67 @@ const handleSubtitleTypeValidationProgress = (newStats: SubtitleTypeValidationSt
     Object.assign(subtitleTypeValidationStats, newStats)
     if (newStats.isComplete) {
         subtitleTypeHasStarted.value = false
+        stopSubtitleTypeStatusPolling()
+        void loadSubtitleTypeValidationResult()
     }
+}
+
+const loadSubtitleTypeValidationResult = async () => {
+    try {
+        const subtitleTypeResponse = await axios.get(
+            '/api/setting/subtitle_type_validation_last_result'
+        )
+        if (subtitleTypeResponse.data) {
+            subtitleTypeResult.value = JSON.parse(subtitleTypeResponse.data)
+        }
+    } catch (error) {
+        console.debug('No existing subtitle type validation result')
+    }
+}
+
+const refreshSubtitleTypeValidationStatus = async () => {
+    try {
+        const response = await axios.get('/api/subtitle/validate-subtitle-types/status')
+        const status = response.data as SubtitleTypeValidationStats
+
+        if (status.isRunning || status.isComplete) {
+            Object.assign(subtitleTypeValidationStats, status)
+        }
+
+        subtitleTypeHasStarted.value = !!status.isRunning
+
+        if (status.isRunning) {
+            startSubtitleTypeStatusPolling()
+            return
+        }
+
+        stopSubtitleTypeStatusPolling()
+
+        if (status.isComplete) {
+            await loadSubtitleTypeValidationResult()
+        }
+    } catch (error) {
+        console.debug('Unable to refresh subtitle type validation status')
+    }
+}
+
+const startSubtitleTypeStatusPolling = () => {
+    if (subtitleTypeStatusPoll.value !== null) {
+        return
+    }
+
+    subtitleTypeStatusPoll.value = window.setInterval(() => {
+        void refreshSubtitleTypeValidationStatus()
+    }, 2000)
+}
+
+const stopSubtitleTypeStatusPolling = () => {
+    if (subtitleTypeStatusPoll.value === null) {
+        return
+    }
+
+    window.clearInterval(subtitleTypeStatusPoll.value)
+    subtitleTypeStatusPoll.value = null
 }
 
 const startSubtitleTypeValidation = async () => {
@@ -682,6 +875,7 @@ const startSubtitleTypeValidation = async () => {
         })
 
         await axios.post('/api/subtitle/validate-subtitle-types')
+        startSubtitleTypeStatusPolling()
     } catch (error) {
         console.error('Failed to start subtitle type validation:', error)
         subtitleTypeHasStarted.value = false
@@ -791,12 +985,14 @@ const startBulkCheck = async () => {
             errorCount: 0,
             autoQueueEnabled: false,
             maxAutoQueuePerRun: 25,
+            flaggedItems: [],
             isComplete: false,
             error: null,
             progressPercent: 0
         })
 
         await axios.post('/api/media/bulk-integrity-check')
+        startBulkStatusPolling()
     } catch (error) {
         console.error('Failed to start bulk integrity check:', error)
         stats.error = 'Failed to start integrity check'
@@ -804,30 +1000,131 @@ const startBulkCheck = async () => {
     }
 }
 
-const handleProgress = (newStats: BulkIntegrityStats) => {
-    Object.assign(stats, newStats)
+const normalizeBulkIntegrityStats = (
+    newStats: Partial<BulkIntegrityProgressPayload>
+): Partial<BulkIntegrityStats> => ({
+    ...newStats,
+    flaggedItems: newStats.flaggedItems ?? stats.flaggedItems ?? []
+})
+
+const handleProgress = (newStats: BulkIntegrityProgressPayload) => {
+    Object.assign(stats, normalizeBulkIntegrityStats(newStats))
     if (newStats.isComplete) {
         isRunning.value = false
+        stopBulkStatusPolling()
     }
 }
 
-onMounted(async () => {
-    // Check if a job is already running and restore state
+const bulkFindingKey = (item: SubtitleIntegrityFinding): string =>
+    `${item.mediaType}:${item.mediaId}:${item.targetLanguage}:${item.targetPath ?? item.reason}`
+
+const visibleIntegrityFindings = computed(() =>
+    stats.flaggedItems.filter((item) => !item.dismissed)
+)
+
+const toggleIntegrityFinding = (item: SubtitleIntegrityFinding) => {
+    const key = bulkFindingKey(item)
+    if (expandedIntegrityFindings.value.includes(key)) {
+        expandedIntegrityFindings.value = expandedIntegrityFindings.value.filter(
+            (value) => value !== key
+        )
+    } else {
+        expandedIntegrityFindings.value.push(key)
+    }
+}
+
+const persistBulkIntegrityResult = async () => {
+    await axios.post('/api/setting', {
+        key: 'subtitle_integrity_last_result',
+        value: JSON.stringify(stats)
+    })
+}
+
+const requeueIntegrityFinding = async (item: SubtitleIntegrityFinding) => {
     try {
-        const response = await axios.get('/api/media/bulk-integrity-status')
-        if (response.data && response.data.isRunning) {
-            hasStarted.value = true
-            isRunning.value = true
-            Object.assign(stats, response.data)
-        } else if (response.data && response.data.isComplete) {
-            // Show completed state if job finished while page was closed
+        await axios.post('/api/translate/media', {
+            mediaId: item.mediaId,
+            mediaType: item.mediaType
+        })
+        item.isQueued = true
+        await persistBulkIntegrityResult()
+    } catch (error) {
+        console.error('Failed to requeue integrity finding:', error)
+    }
+}
+
+const requeueAllIntegrityFindings = async () => {
+    const itemsToRequeue = visibleIntegrityFindings.value.filter((item) => !item.isQueued)
+    for (const item of itemsToRequeue) {
+        await requeueIntegrityFinding(item)
+    }
+}
+
+const dismissIntegrityFinding = async (item: SubtitleIntegrityFinding) => {
+    item.dismissed = true
+    await persistBulkIntegrityResult()
+}
+
+const loadBulkIntegrityResult = async () => {
+    try {
+        const response = await axios.get('/api/setting/subtitle_integrity_last_result')
+        if (response.data) {
             hasStarted.value = true
             isRunning.value = false
-            Object.assign(stats, response.data)
+            Object.assign(stats, normalizeBulkIntegrityStats(JSON.parse(response.data)))
         }
     } catch (error) {
-        console.debug('No existing integrity check status')
+        console.debug('No existing bulk integrity result')
     }
+}
+
+const refreshBulkIntegrityStatus = async () => {
+    try {
+        const response = await axios.get('/api/media/bulk-integrity-status')
+        if (response.data?.isRunning || response.data?.isComplete) {
+            hasStarted.value = true
+            isRunning.value = !!response.data.isRunning
+            Object.assign(stats, normalizeBulkIntegrityStats(response.data))
+        }
+
+        if (response.data?.isRunning) {
+            startBulkStatusPolling()
+            return
+        }
+
+        stopBulkStatusPolling()
+
+        if (response.data?.isComplete) {
+            return
+        }
+
+        await loadBulkIntegrityResult()
+    } catch (error) {
+        console.debug('Unable to refresh bulk integrity status')
+    }
+}
+
+const startBulkStatusPolling = () => {
+    if (bulkStatusPoll.value !== null) {
+        return
+    }
+
+    bulkStatusPoll.value = window.setInterval(() => {
+        void refreshBulkIntegrityStatus()
+    }, 2000)
+}
+
+const stopBulkStatusPolling = () => {
+    if (bulkStatusPoll.value === null) {
+        return
+    }
+
+    window.clearInterval(bulkStatusPoll.value)
+    bulkStatusPoll.value = null
+}
+
+onMounted(async () => {
+    await refreshBulkIntegrityStatus()
 
     // Load persisted ASS verification result
     try {
@@ -841,17 +1138,7 @@ onMounted(async () => {
         console.debug('No existing ASS verification result')
     }
 
-    // Load persisted subtitle type validation result
-    try {
-        const subtitleTypeResponse = await axios.get(
-            '/api/setting/subtitle_type_validation_last_result'
-        )
-        if (subtitleTypeResponse.data) {
-            subtitleTypeResult.value = JSON.parse(subtitleTypeResponse.data)
-        }
-    } catch (error) {
-        console.debug('No existing subtitle type validation result')
-    }
+    await loadSubtitleTypeValidationResult()
 
     try {
         const assStatusResponse = await axios.get('/api/subtitle/verify-ass/status')
@@ -871,17 +1158,7 @@ onMounted(async () => {
         console.debug('No existing ASS verification result')
     }
 
-    try {
-        const subtitleTypeStatusResponse = await axios.get(
-            '/api/subtitle/validate-subtitle-types/status'
-        )
-        if (subtitleTypeStatusResponse.data.isRunning) {
-            Object.assign(subtitleTypeValidationStats, subtitleTypeStatusResponse.data)
-            subtitleTypeHasStarted.value = true
-        }
-    } catch (error) {
-        console.debug('No existing subtitle type validation status')
-    }
+    await refreshSubtitleTypeValidationStatus()
 
     hubConnection.value = await signalR.connect('JobProgress', '/signalr/JobProgress')
     await hubConnection.value.joinGroup({ group: 'JobProgress' })
@@ -891,7 +1168,9 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+    stopBulkStatusPolling()
     stopAssStatusPolling()
+    stopSubtitleTypeStatusPolling()
     hubConnection.value?.off('BulkIntegrityProgress', handleProgress)
     hubConnection.value?.off('AssVerificationProgress', handleAssVerificationProgress)
     hubConnection.value?.off('SubtitleTypeValidationProgress', handleSubtitleTypeValidationProgress)
@@ -982,7 +1261,9 @@ const handleAssVerificationProgress = (newStats: AssVerificationStats) => {
 
 const loadAssVerificationResult = async () => {
     try {
-        const assResultResponse = await axios.get('/api/setting/subtitle_ass_verification_last_result')
+        const assResultResponse = await axios.get(
+            '/api/setting/subtitle_ass_verification_last_result'
+        )
         if (assResultResponse.data) {
             assResult.value = JSON.parse(assResultResponse.data)
         }

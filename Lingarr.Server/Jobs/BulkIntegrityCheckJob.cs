@@ -6,8 +6,10 @@ using Lingarr.Server.Filters;
 using Lingarr.Server.Hubs;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
+using Lingarr.Server.Models;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace Lingarr.Server.Jobs;
 
@@ -101,6 +103,7 @@ public class BulkIntegrityCheckJob
 
                     var shouldQueue = autoQueue && stats.QueuedCount < maxAutoQueue;
                     var remainingQueueSlots = Math.Max(0, maxAutoQueue - stats.QueuedCount);
+                    var mediaFindings = new List<SubtitleIntegrityFinding>();
                     var affectedCount = await _mediaSubtitleProcessor.ProcessMediaForceAsync(
                         movie, 
                         MediaType.Movie, 
@@ -108,8 +111,11 @@ public class BulkIntegrityCheckJob
                         forceTranslation: false, // Only queue corrupt ones
                         forcePriority: false,
                         queueTranslations: shouldQueue,
-                        maxTranslationsToQueue: remainingQueueSlots
+                        maxTranslationsToQueue: remainingQueueSlots,
+                        integrityFindings: mediaFindings
                     );
+
+                    stats.FlaggedItems.AddRange(mediaFindings);
 
                     if (affectedCount > 0)
                     {
@@ -154,6 +160,7 @@ public class BulkIntegrityCheckJob
 
                     var shouldQueue = autoQueue && stats.QueuedCount < maxAutoQueue;
                     var remainingQueueSlots = Math.Max(0, maxAutoQueue - stats.QueuedCount);
+                    var mediaFindings = new List<SubtitleIntegrityFinding>();
                     var affectedCount = await _mediaSubtitleProcessor.ProcessMediaForceAsync(
                         episode, 
                         MediaType.Episode, 
@@ -161,8 +168,11 @@ public class BulkIntegrityCheckJob
                         forceTranslation: false,
                         forcePriority: false,
                         queueTranslations: shouldQueue,
-                        maxTranslationsToQueue: remainingQueueSlots
+                        maxTranslationsToQueue: remainingQueueSlots,
+                        integrityFindings: mediaFindings
                     );
+
+                    stats.FlaggedItems.AddRange(mediaFindings);
 
                     if (affectedCount > 0)
                     {
@@ -193,6 +203,7 @@ public class BulkIntegrityCheckJob
 
             stats.IsComplete = true;
             stats.IsRunning = false;
+            await PersistResult(stats);
             await SendProgress(stats);
 
             _logger.LogInformation(
@@ -205,6 +216,7 @@ public class BulkIntegrityCheckJob
             stats.IsComplete = true;
             stats.IsRunning = false;
             stats.Error = ex.Message;
+            await PersistResult(stats);
             await SendProgress(stats);
             throw;
         }
@@ -220,6 +232,20 @@ public class BulkIntegrityCheckJob
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "Failed to send bulk integrity progress update");
+        }
+    }
+
+    private async Task PersistResult(BulkIntegrityStats stats)
+    {
+        try
+        {
+            await _settingService.SetSetting(
+                SettingKeys.SubtitleValidation.LastIntegrityCheckResult,
+                JsonSerializer.Serialize(stats, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Failed to persist bulk integrity result");
         }
     }
 }
@@ -254,6 +280,11 @@ public class BulkIntegrityStats
     /// List of flagged incomplete subtitle issues.
     /// </summary>
     public List<Models.SubtitleTypeCheckResult> IncompleteSubtitles { get; set; } = new();
+
+    /// <summary>
+    /// Detailed actionable findings detected by this integrity run.
+    /// </summary>
+    public List<SubtitleIntegrityFinding> FlaggedItems { get; set; } = new();
     
     public bool IsComplete { get; set; }
     public bool IsRunning { get; set; }

@@ -48,6 +48,13 @@ public abstract class MediaSubtitleProcessorTestBase : IDisposable
         SubtitleIntegrityServiceMock
             .Setup(s => s.ValidateIntegrityAsync(It.IsAny<string>(), It.IsAny<string>()))
             .ReturnsAsync(true);
+        SubtitleIntegrityServiceMock
+            .Setup(s => s.ValidateIntegrityDetailedAsync(It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync(new SubtitleIntegrityCheckResult
+            {
+                IsValid = true,
+                Reason = "valid"
+            });
 
         SourceSubtitleSnapshotServiceMock
             .Setup(s => s.ResolveExternalSourceAsync(

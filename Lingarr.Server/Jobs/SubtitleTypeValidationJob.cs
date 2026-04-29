@@ -7,6 +7,7 @@ using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Models;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace Lingarr.Server.Jobs;
 
@@ -97,7 +98,7 @@ public class SubtitleTypeValidationJob
 
             await _settingService.SetSetting(
                 "subtitle_type_validation_last_result",
-                System.Text.Json.JsonSerializer.Serialize(summary));
+                JsonSerializer.Serialize(summary, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
 
             _logger.LogInformation(
                 "Subtitle type validation complete: Scanned {Total}, Found {Incomplete} incomplete",

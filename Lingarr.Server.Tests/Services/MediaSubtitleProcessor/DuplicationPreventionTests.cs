@@ -163,9 +163,13 @@ public class DuplicationPreventionTests : MediaSubtitleProcessorTestBase
 
         var validatedTargets = new List<string>();
         SubtitleIntegrityServiceMock
-            .Setup(s => s.ValidateIntegrityAsync(It.IsAny<string>(), It.IsAny<string>()))
+            .Setup(s => s.ValidateIntegrityDetailedAsync(It.IsAny<string>(), It.IsAny<string>()))
             .Callback<string, string>((_, target) => validatedTargets.Add(target))
-            .ReturnsAsync((string _, string target) => target == subtitles[2].Path);
+            .ReturnsAsync((string _, string target) => new SubtitleIntegrityCheckResult
+            {
+                IsValid = target == subtitles[2].Path,
+                Reason = target == subtitles[2].Path ? "valid" : "invalid"
+            });
 
         var queuedRequests = new List<TranslateAbleSubtitle>();
         TranslationRequestServiceMock
@@ -186,7 +190,7 @@ public class DuplicationPreventionTests : MediaSubtitleProcessorTestBase
             s => s.CreateRequest(It.IsAny<TranslateAbleSubtitle>(), It.IsAny<bool>()),
             Times.Never);
         SubtitleIntegrityServiceMock.Verify(
-            s => s.ValidateIntegrityAsync(subtitles[0].Path, subtitles[2].Path),
+            s => s.ValidateIntegrityDetailedAsync(subtitles[0].Path, subtitles[2].Path),
             Times.Once);
     }
 

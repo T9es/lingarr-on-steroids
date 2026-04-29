@@ -34,6 +34,25 @@ export type EventCallbacks = {
         errorCount: number
         autoQueueEnabled: boolean
         maxAutoQueuePerRun: number
+        flaggedItems?: Array<{
+            mediaId: number
+            mediaType: string
+            mediaTitle: string
+            sourceLanguage: string
+            targetLanguage: string
+            sourceRole: string
+            reason: string
+            sourcePath: string | null
+            targetPath: string | null
+            sourceEntries: number | null
+            targetEntries: number | null
+            minimumTargetEntries: number | null
+            sourceSnapshotType: string | null
+            sourceSnapshotIdentity: string | null
+            sourceSnapshotStreamIndex: number | null
+            isQueued: boolean
+            dismissed: boolean
+        }>
         isComplete: boolean
         error: string | null
         progressPercent: number

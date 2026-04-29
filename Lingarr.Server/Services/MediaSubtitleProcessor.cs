@@ -9,6 +9,7 @@ using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Models;
 using Lingarr.Server.Models.FileSystem;
+using Lingarr.Server.Models.Subtitle;
 using Lingarr.Server.Services.Subtitle;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -449,6 +450,28 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         bool queueTranslations = true,
         int? maxTranslationsToQueue = null)
     {
+        return await ProcessMediaForceAsync(
+            media,
+            mediaType,
+            forceProcess,
+            forceTranslation,
+            forcePriority,
+            queueTranslations,
+            maxTranslationsToQueue,
+            new List<SubtitleIntegrityFinding>());
+    }
+
+    /// <inheritdoc />
+    public async Task<int> ProcessMediaForceAsync(
+        IMedia media,
+        MediaType mediaType,
+        bool forceProcess,
+        bool forceTranslation,
+        bool forcePriority,
+        bool queueTranslations,
+        int? maxTranslationsToQueue,
+        ICollection<SubtitleIntegrityFinding> integrityFindings)
+    {
         if (media.Path == null)
         {
             return 0;
@@ -477,7 +500,8 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 forceProcess,
                 forcePriority,
                 queueTranslations,
-                maxTranslationsToQueue);
+                maxTranslationsToQueue,
+                integrityFindings);
         }
 
         var sourceLanguages = await GetLanguagesSetting<SourceLanguage>(SettingKeys.Translation.SourceLanguages);
@@ -519,7 +543,8 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             forceProcess,
             forcePriority,
             queueTranslations,
-            maxTranslationsToQueue);
+            maxTranslationsToQueue,
+            integrityFindings);
         // return 0;
     }
     
@@ -537,7 +562,8 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         bool forceProcess = false,
         bool forcePriority = false,
         bool queueTranslations = true,
-        int? maxTranslationsToQueue = null)
+        int? maxTranslationsToQueue = null,
+        ICollection<SubtitleIntegrityFinding>? integrityFindings = null)
     {
         var existingLanguages = ExtractLanguageCodes(subtitles);
         var translationsQueued = 0;
@@ -584,6 +610,23 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                             targetLanguages,
                             requiredOutputFormats)
                         .ToList();
+
+                if (!forceTranslation)
+                {
+                    foreach (var targetLanguage in languagesToTranslate)
+                    {
+                        AddIntegrityFinding(
+                            integrityFindings,
+                            media,
+                            mediaType,
+                            sourceLanguage,
+                            targetLanguage,
+                            $"Missing required output format(s): {string.Join(", ", requiredOutputFormats)}.",
+                            resolvedExternalSource.Snapshot,
+                            sourceSubtitle.Path,
+                            SelectMainTargetSubtitle(subtitles, targetLanguage));
+                    }
+                }
                 
                 // Check integrity of existing target subtitles and add corrupt ones for re-translation
                 var foundCorruption = false;
@@ -599,6 +642,20 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                     {
                         foundCorruption = true;
                         languagesToTranslate = languagesToTranslate.Union(staleTargets).ToList();
+                        foreach (var targetLanguage in staleTargets)
+                        {
+                            AddIntegrityFinding(
+                                integrityFindings,
+                                media,
+                                mediaType,
+                                sourceLanguage,
+                                targetLanguage,
+                                "Target subtitle was translated from an older or different selected source.",
+                                resolvedExternalSource.Snapshot,
+                                sourceSubtitle.Path,
+                                SelectMainTargetSubtitle(subtitles, targetLanguage));
+                        }
+
                         _logger.LogInformation(
                             "Detected stale target subtitles for {FileName}: {Targets}. Scheduling re-translation.",
                             media.FileName,
@@ -614,14 +671,25 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                         var targetSubtitle = SelectMainTargetSubtitle(subtitles, targetLang);
                         if (targetSubtitle != null)
                         {
-                            var isValid = await _integrityService.ValidateIntegrityAsync(
+                            var integrityResult = await _integrityService.ValidateIntegrityDetailedAsync(
                                 sourceSubtitle.Path, 
                                 targetSubtitle.Path);
-                            if (!isValid)
+                            if (!integrityResult.IsValid)
                             {
                                 _logger.LogWarning(
                                     "Integrity check failed for {TargetLang} subtitle: {Path} - scheduling re-translation",
                                     targetLang, targetSubtitle.Path);
+                                AddIntegrityFinding(
+                                    integrityFindings,
+                                    media,
+                                    mediaType,
+                                    sourceLanguage,
+                                    targetLang,
+                                    integrityResult.Reason,
+                                    resolvedExternalSource.Snapshot,
+                                    sourceSubtitle.Path,
+                                    targetSubtitle,
+                                    integrityResult);
                                 corruptLanguages.Add(targetLang);
                             }
                         }
@@ -692,6 +760,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                             media.FileName,
                             sourceLanguage,
                             targetLanguage);
+                        MarkIntegrityFindingQueued(integrityFindings, media, mediaType, targetLanguage);
                         continue;
                     }
 
@@ -706,6 +775,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                         SourceSubtitleType = SubtitleLanguageHelper.DetermineSubtitleTypeFromFilename(sourceSubtitle.Path),
                         SourceSnapshot = resolvedExternalSource.Snapshot
                     }, forcePriority);
+                    MarkIntegrityFindingQueued(integrityFindings, media, mediaType, targetLanguage);
                     translationsQueued++;
                     _logger.LogInformation(
                         "Initiating translation from |Orange|{sourceLanguage}|/Orange| to |Orange|{targetLanguage}|/Orange| for |Green|{subtitleFile}|/Green|",
@@ -742,7 +812,8 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             forceProcess,
             forcePriority,
             queueTranslations,
-            maxTranslationsToQueue);
+            maxTranslationsToQueue,
+            integrityFindings);
     }
     
     /// <summary>
@@ -755,6 +826,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
     /// <param name="forcePriority">If true, forces jobs to use the priority queue</param>
     /// <param name="queueTranslations">If false, reports queueable translations without creating requests.</param>
     /// <param name="maxTranslationsToQueue">Optional maximum number of requests to create.</param>
+    /// <param name="integrityFindings">Optional collection that receives detailed integrity findings.</param>
     /// <returns>The number of translation requests queued</returns>
     private async Task<int> TryQueueEmbeddedSubtitleTranslation(
         IMedia media,
@@ -763,7 +835,8 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         bool forceProcess,
         bool forcePriority = false,
         bool queueTranslations = true,
-        int? maxTranslationsToQueue = null)
+        int? maxTranslationsToQueue = null,
+        ICollection<SubtitleIntegrityFinding>? integrityFindings = null)
     {
         if (media.Path == null)
         {
@@ -1038,6 +1111,9 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         var existingTargetSubtitles = matchingExternalSubtitles
             .Concat(qualifyingEmbeddedTargets)
             .ToList();
+        var selectedSourceSnapshot = _sourceSubtitleSnapshotService.CreateEmbeddedSnapshot(
+            selectedSubtitle,
+            selectedSourceLanguage);
         var languagesMissingRequiredFormats = GetLanguagesMissingRequiredOutputFormats(
             existingTargetSubtitles,
             targetLanguages,
@@ -1052,25 +1128,53 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                         SubtitleLanguageHelper.NormalizeLanguageCode(targetLanguage)))
                 .ToList();
 
+        if (!forceTranslation)
+        {
+            foreach (var targetLanguage in languagesToTranslate)
+            {
+                AddIntegrityFinding(
+                    integrityFindings,
+                    media,
+                    mediaType,
+                    selectedSourceLanguage,
+                    targetLanguage,
+                    $"Missing required output format(s): {string.Join(", ", requiredOutputFormats)}.",
+                    selectedSourceSnapshot,
+                    null,
+                    SelectMainTargetSubtitle(matchingExternalSubtitles, targetLanguage));
+            }
+        }
+
         // For integrity validation (forceTranslation=false), we need to extract temp source and check existing targets
         string? tempSourcePath = null;
         var foundCorruption = false;
 
         if (!forceTranslation)
         {
-            var currentSnapshot = _sourceSubtitleSnapshotService.CreateEmbeddedSnapshot(
-                selectedSubtitle,
-                selectedSourceLanguage);
             var staleTargets = await _sourceSubtitleSnapshotService.GetStaleTargetLanguagesAsync(
                 media.Id,
                 mediaType,
                 targetLanguages,
-                currentSnapshot);
+                selectedSourceSnapshot);
 
             if (staleTargets.Count > 0)
             {
                 foundCorruption = true;
                 languagesToTranslate = languagesToTranslate.Union(staleTargets).ToList();
+                foreach (var targetLanguage in staleTargets)
+                {
+                    AddIntegrityFinding(
+                        integrityFindings,
+                        media,
+                        mediaType,
+                        selectedSourceLanguage,
+                        targetLanguage,
+                        "Target subtitle was translated from an older or different selected embedded source.",
+                        selectedSourceSnapshot,
+                        null,
+                        SelectMainTargetSubtitle(matchingExternalSubtitles, targetLanguage));
+                }
+
                 _logger.LogInformation(
                     "Detected stale embedded target subtitles for {FileName}: {Targets}. Scheduling re-translation.",
                     media.FileName,
@@ -1111,14 +1215,25 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                         var targetSubtitle = SelectMainTargetSubtitle(matchingExternalSubtitles, targetLang);
                         if (targetSubtitle != null)
                         {
-                            var isValid = await _integrityService.ValidateIntegrityAsync(
+                            var integrityResult = await _integrityService.ValidateIntegrityDetailedAsync(
                                 tempSourcePath,
                                 targetSubtitle.Path);
-                            if (!isValid)
+                            if (!integrityResult.IsValid)
                             {
                                 _logger.LogWarning(
                                     "Integrity check failed for {TargetLang} subtitle: {Path} - scheduling re-translation (embedded source)",
                                     targetLang, targetSubtitle.Path);
+                                AddIntegrityFinding(
+                                    integrityFindings,
+                                    media,
+                                    mediaType,
+                                    selectedSourceLanguage,
+                                    targetLang,
+                                    integrityResult.Reason,
+                                    selectedSourceSnapshot,
+                                    null,
+                                    targetSubtitle,
+                                    integrityResult);
                                 corruptLanguages.Add(targetLang);
                             }
                         }
@@ -1150,9 +1265,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
 
             // Create translation requests for each target language (with empty subtitle path - TranslationJob will extract)
             var translationsQueued = 0;
-            var sourceSnapshot = _sourceSubtitleSnapshotService.CreateEmbeddedSnapshot(
-                selectedSubtitle,
-                selectedSourceLanguage);
+            var sourceSnapshot = selectedSourceSnapshot;
             var languagesToQueue = LimitQueuedLanguages(languagesToTranslate, maxTranslationsToQueue);
             foreach (var targetLanguage in languagesToQueue)
             {
@@ -1171,6 +1284,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                         media.FileName,
                         selectedSourceLanguage,
                         targetLanguage);
+                    MarkIntegrityFindingQueued(integrityFindings, media, mediaType, targetLanguage);
                     continue;
                 }
 
@@ -1187,6 +1301,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                     IsForcedSubtitle = selectedSubtitle.IsForced,
                     SourceSnapshot = sourceSnapshot
                 }, forcePriority);
+                MarkIntegrityFindingQueued(integrityFindings, media, mediaType, targetLanguage);
                 translationsQueued++;
                 _logger.LogInformation(
                     "Queued embedded subtitle translation from |Orange|{sourceLanguage}|/Orange| to |Orange|{targetLanguage}|/Orange| for |Green|{FileName}|/Green|",
@@ -1235,6 +1350,76 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             }
         }
 	    }
+
+    private static void AddIntegrityFinding(
+        ICollection<SubtitleIntegrityFinding>? findings,
+        IMedia media,
+        MediaType mediaType,
+        string sourceLanguage,
+        string targetLanguage,
+        string reason,
+        SourceSubtitleSnapshot? sourceSnapshot = null,
+        string? sourcePath = null,
+        Subtitles? targetSubtitle = null,
+        SubtitleIntegrityCheckResult? integrityResult = null)
+    {
+        if (findings == null)
+        {
+            return;
+        }
+
+        var normalizedTarget = SubtitleLanguageHelper.NormalizeLanguageCode(targetLanguage);
+        var targetPath = targetSubtitle?.Path;
+        if (findings.Any(f =>
+                f.MediaId == media.Id &&
+                string.Equals(f.MediaType, mediaType.ToString(), StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(f.TargetLanguage, normalizedTarget, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(f.TargetPath ?? string.Empty, targetPath ?? string.Empty, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(f.Reason, reason, StringComparison.Ordinal)))
+        {
+            return;
+        }
+
+        findings.Add(new SubtitleIntegrityFinding
+        {
+            MediaId = media.Id,
+            MediaType = mediaType.ToString(),
+            MediaTitle = media.Title,
+            SourceLanguage = SubtitleLanguageHelper.NormalizeLanguageCode(sourceLanguage),
+            TargetLanguage = normalizedTarget,
+            SourceRole = "primary",
+            Reason = reason,
+            SourcePath = sourcePath ?? sourceSnapshot?.SourcePath,
+            TargetPath = targetPath,
+            SourceEntries = integrityResult?.SourceEntryCount,
+            TargetEntries = integrityResult?.TargetEntryCount,
+            MinimumTargetEntries = integrityResult?.MinimumTargetEntryCount,
+            SourceSnapshotType = sourceSnapshot?.SourceType,
+            SourceSnapshotIdentity = sourceSnapshot?.Identity,
+            SourceSnapshotStreamIndex = sourceSnapshot?.StreamIndex
+        });
+    }
+
+    private static void MarkIntegrityFindingQueued(
+        ICollection<SubtitleIntegrityFinding>? findings,
+        IMedia media,
+        MediaType mediaType,
+        string targetLanguage)
+    {
+        if (findings == null)
+        {
+            return;
+        }
+
+        var normalizedTarget = SubtitleLanguageHelper.NormalizeLanguageCode(targetLanguage);
+        foreach (var finding in findings.Where(f =>
+                     f.MediaId == media.Id &&
+                     string.Equals(f.MediaType, mediaType.ToString(), StringComparison.OrdinalIgnoreCase) &&
+                     string.Equals(f.TargetLanguage, normalizedTarget, StringComparison.OrdinalIgnoreCase)))
+        {
+            finding.IsQueued = true;
+        }
+    }
 
 	    /// <summary>
     /// Probes and retrieves embedded subtitles for the currently processing media.
