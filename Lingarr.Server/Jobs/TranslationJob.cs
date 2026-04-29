@@ -181,7 +181,8 @@ public class TranslationJob
                 SettingKeys.Translation.CleanSourceAssDrawings,
                 SettingKeys.Translation.BatchContextEnabled,
                 SettingKeys.Translation.BatchContextBefore,
-                SettingKeys.Translation.BatchContextAfter
+                SettingKeys.Translation.BatchContextAfter,
+                SettingKeys.Translation.TranslateSupplementalSubtitles
             ]);
             var serviceType = settings[SettingKeys.Translation.ServiceType];
             var stripSubtitleFormatting = settings[SettingKeys.Translation.StripSubtitleFormatting] == "true";
@@ -415,7 +416,7 @@ public class TranslationJob
                     {
                         request.SelectedStreamTitle = selectedSubtitle.Title;
                         request.IsForcedSubtitle = selectedSubtitle.IsForced;
-                        request.SourceSubtitleType = DetermineSubtitleType(selectedSubtitle);
+                        request.SourceSubtitleType = SubtitleLanguageHelper.DetermineSubtitleType(selectedSubtitle);
                         _logger.LogInformation(
                             "[{FileId}] Captured subtitle metadata: Type={Type}, Entries={Entries}, Title={Title}, Forced={Forced}",
                             fileIdentifier, request.SourceSubtitleType, request.SourceSubtitleEntryCount,
@@ -424,7 +425,7 @@ public class TranslationJob
                     else
                     {
                         // For external subtitle files, try to determine type from filename
-                        request.SourceSubtitleType = DetermineSubtitleTypeFromFilename(request.SubtitleToTranslate);
+                        request.SourceSubtitleType = SubtitleLanguageHelper.DetermineSubtitleTypeFromFilename(request.SubtitleToTranslate);
                         _logger.LogInformation(
                             "[{FileId}] External subtitle: Type={Type}, Entries={Entries}",
                             fileIdentifier, request.SourceSubtitleType, request.SourceSubtitleEntryCount);
@@ -446,6 +447,16 @@ public class TranslationJob
                     request.SourceSnapshotLastWriteUtc = sourceSnapshot.LastWriteUtc;
                     request.SourceSnapshotStreamIndex = sourceSnapshot.StreamIndex;
                     await _dbContext.SaveChangesAsync(effectiveCancellationToken);
+
+                    if (await TryCancelObsoleteUnsafeSourceAsync(
+                            request,
+                            subtitles,
+                            settings,
+                            effectiveCancellationToken))
+                    {
+                        return;
+                    }
+
                     break;
                 }
 
@@ -867,7 +878,9 @@ public class TranslationJob
                         targetLanguage,
                         subtitleTag,
                         subtitleTagShort,
-                        outputFormat);
+                        outputFormat,
+                        SubtitleLanguageHelper.GetSupplementalOutputCaption(
+                            translationRequest.SourceSubtitleType));
 
                 Exception? lastException = null;
                 bool success = false;
@@ -1147,6 +1160,80 @@ public class TranslationJob
             }
             await RefreshTranslationStateAsync(translationRequest, cleanupToken);
         }
+    }
+
+    private async Task<bool> TryCancelObsoleteUnsafeSourceAsync(
+        TranslationRequest request,
+        IReadOnlyList<SubtitleItem> subtitles,
+        IReadOnlyDictionary<string, string> settings,
+        CancellationToken cancellationToken)
+    {
+        var supplementalEnabled = settings.TryGetValue(
+                                      SettingKeys.Translation.TranslateSupplementalSubtitles,
+                                      out var supplementalSetting) &&
+                                  string.Equals(
+                                      supplementalSetting,
+                                      "true",
+                                      StringComparison.OrdinalIgnoreCase);
+
+        string? reason = null;
+        if (SubtitleLanguageHelper.IsSupplementalSubtitleType(request.SourceSubtitleType) &&
+            !supplementalEnabled)
+        {
+            reason =
+                $"Selected source is {request.SourceSubtitleType}, but supplemental subtitle translation is disabled.";
+        }
+        else if (request.SourceSubtitleEntryCount > 0 &&
+                 request.SourceSubtitleEntryCount < SubtitleExtractionService.MinimumDialogueEntries &&
+                 (SubtitleLanguageHelper.IsSupplementalSubtitleType(request.SourceSubtitleType) ||
+                  request.IsForcedSubtitle) &&
+                 !supplementalEnabled)
+        {
+            reason =
+                $"Selected source has only {request.SourceSubtitleEntryCount} entries; minimum full-dialogue threshold is {SubtitleExtractionService.MinimumDialogueEntries}.";
+        }
+        else if (LooksPathologicalAssSource(request, subtitles))
+        {
+            reason = "Selected ASS/SSA source is drawing-heavy/pathological and is not safe to translate.";
+        }
+
+        if (string.IsNullOrWhiteSpace(reason))
+        {
+            return false;
+        }
+
+        _logger.LogWarning(
+            "Cancelling obsolete unsafe translation request {RequestId}: {Reason}",
+            request.Id,
+            reason);
+
+        request.CompletedAt = DateTime.UtcNow;
+        request.Status = TranslationStatus.Cancelled;
+        request.IsActive = null;
+        request.PausedAt = null;
+        request.PauseReason = null;
+        request.PausedProvider = null;
+        request.NextRetryAt = null;
+
+        _dbContext.TranslationRequestLogs.Add(new TranslationRequestLog
+        {
+            TranslationRequestId = request.Id,
+            Level = "Warning",
+            Message = "Translation cancelled before execution because the selected source is obsolete or unsafe.",
+            Details = reason
+        });
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        await _translationRequestService.ClearMediaHash(request);
+        await _translationRequestService.UpdateActiveCount();
+        await _progressService.Emit(request, 0);
+        if (_translationCheckpointService != null)
+        {
+            await _translationCheckpointService.DeleteAsync(request.Id, cancellationToken);
+        }
+
+        await RefreshTranslationStateAsync(request, cancellationToken);
+        return true;
     }
     
     /// <summary>
@@ -1538,58 +1625,33 @@ public class TranslationJob
         }
     }
 
-    /// <summary>
-    /// Determines the subtitle type based on embedded subtitle metadata.
-    /// </summary>
-    private static string DetermineSubtitleType(EmbeddedSubtitle subtitle)
+    private static bool LooksPathologicalAssSource(
+        TranslationRequest request,
+        IReadOnlyList<SubtitleItem> subtitles)
     {
-        // Check title for common indicators
-        if (!string.IsNullOrEmpty(subtitle.Title))
+        if (subtitles.Count == 0 ||
+            !SubtitleOutputModeHelper.IsAssFormat(
+                request.SourceSubtitleFormat ?? Path.GetExtension(request.SubtitleToTranslate)))
         {
-            var title = subtitle.Title.ToLowerInvariant();
-            if (title.Contains("sdh") || title.Contains("hearing") || title.Contains("deaf"))
-                return "SDH";
-            if (title.Contains("forced") || title.Contains("force") || title.Contains("foreign"))
-                return "Forced";
-            if (title.Contains("full") || title.Contains("dialogue") || title.Contains("complete"))
-                return "Full";
-            if (title.Contains("sign") || title.Contains("song"))
-                return "Signs/Songs";
+            return false;
         }
 
-        // Check if forced flag is set
-        if (subtitle.IsForced)
-            return "Forced";
-
-        // Default to Unknown - caller can check entry count to infer
-        return "Unknown";
+        var drawingEvents = subtitles.Count(subtitle =>
+            subtitle.Lines.Any(ContainsAssDrawingCommand));
+        return drawingEvents >= 500 && (double)drawingEvents / subtitles.Count >= 0.35;
     }
 
-    /// <summary>
-    /// Determines the subtitle type from external subtitle filename.
-    /// </summary>
-    private static string DetermineSubtitleTypeFromFilename(string? subtitlePath)
+    private static bool ContainsAssDrawingCommand(string line)
     {
-        if (string.IsNullOrEmpty(subtitlePath))
-            return "Unknown";
-
-        var fileName = Path.GetFileNameWithoutExtension(subtitlePath).ToLowerInvariant();
-
-        if (fileName.Contains(".sdh") || fileName.Contains("_sdh") ||
-            fileName.Contains(".hi") || fileName.Contains("_hi") ||
-            fileName.Contains("hearing"))
-            return "SDH";
-
-        if (fileName.Contains(".forced") || fileName.Contains("_forced") ||
-            fileName.Contains(".force") || fileName.Contains("_force") ||
-            fileName.Contains(".foreign") || fileName.Contains("_foreign"))
-            return "Forced";
-
-        if (fileName.Contains(".sign") || fileName.Contains("_sign") ||
-            fileName.Contains("song"))
-            return "Signs/Songs";
-
-        // Default to Full for external files
-        return "Full";
+        return line.Contains(@"{\p", StringComparison.OrdinalIgnoreCase) ||
+               line.Contains(@"\p1", StringComparison.OrdinalIgnoreCase) ||
+               line.Contains(@"\p2", StringComparison.OrdinalIgnoreCase) ||
+               line.Contains(@"\p3", StringComparison.OrdinalIgnoreCase) ||
+               line.Contains(@"\p4", StringComparison.OrdinalIgnoreCase) ||
+               line.Contains(@"\p5", StringComparison.OrdinalIgnoreCase) ||
+               line.Contains(@"\p6", StringComparison.OrdinalIgnoreCase) ||
+               line.Contains(@"\p7", StringComparison.OrdinalIgnoreCase) ||
+               line.Contains(@"\p8", StringComparison.OrdinalIgnoreCase) ||
+               line.Contains(@"\p9", StringComparison.OrdinalIgnoreCase);
     }
 }

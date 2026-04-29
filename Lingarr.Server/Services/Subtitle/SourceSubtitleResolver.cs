@@ -200,7 +200,7 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
 
         var requestType = request.SourceSubtitleType ?? string.Empty;
         if (!string.IsNullOrWhiteSpace(requestType) &&
-            string.Equals(DetermineSubtitleType(subtitle), requestType, StringComparison.OrdinalIgnoreCase))
+            string.Equals(SubtitleLanguageHelper.DetermineSubtitleType(subtitle), requestType, StringComparison.OrdinalIgnoreCase))
         {
             score += 40;
         }
@@ -208,37 +208,4 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
         return score;
     }
 
-    private static string DetermineSubtitleType(EmbeddedSubtitle subtitle)
-    {
-        if (!string.IsNullOrEmpty(subtitle.Title))
-        {
-            var title = subtitle.Title.ToLowerInvariant();
-            if (title.Contains("sdh") || title.Contains("hearing") || title.Contains("deaf"))
-            {
-                return "SDH";
-            }
-
-            if (title.Contains("forced") || title.Contains("force") || title.Contains("foreign"))
-            {
-                return "Forced";
-            }
-
-            if (title.Contains("full") || title.Contains("dialogue") || title.Contains("complete"))
-            {
-                return "Full";
-            }
-
-            if (title.Contains("sign") || title.Contains("song"))
-            {
-                return "Signs/Songs";
-            }
-        }
-
-        if (subtitle.IsForced)
-        {
-            return "Forced";
-        }
-
-        return "Unknown";
-    }
 }

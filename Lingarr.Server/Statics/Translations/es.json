@@ -543,7 +543,9 @@
       "recreateAllOutputs": "Recrear todas las salidas",
       "recreateAllOutputsDescription": "Vuelve a ejecutar las traducciones de toda la biblioteca usando el modo de salida actual. Usa de nuevo los proveedores de traducción, solo reemplaza subtítulos administrados por Lingarr y no toca subtítulos manuales.",
       "subtitleIntegrityValidationEnabled": "Validar integridad de subtítulos",
-      "subtitleIntegrityValidationEnabledDescription": "Verificar si el subtítulo traducido tiene aproximadamente el mismo número de líneas que el original para detectar traducciones parciales."
+      "subtitleIntegrityValidationEnabledDescription": "Verificar si el subtítulo traducido tiene aproximadamente el mismo número de líneas que el original para detectar traducciones parciales.",
+      "translateSupplementalSubtitles": "Traducir subtitulos suplementarios forzados/de carteles:",
+      "translateSupplementalSubtitlesDescription": "Cuando esta activado, Lingarr puede traducir pistas forzadas, de carteles y canciones como salidas suplementarias separadas. Los subtitulos principales siguen usando solo fuentes de dialogo completo."
     },
     "indexing": {
       "title": "Indexación",
@@ -666,7 +668,7 @@
     },
     "integrity": {
       "title": "Verificación de integridad masiva",
-      "description": "Valida todos los medios en estado 'Completado' para detectar traducciones de subtítulos parciales o corruptas. Cualquier subtítulo corrupto encontrado será automáticamente encolado para re-traducción.",
+      "description": "Valida todos los medios en estado Completo para detectar traducciones de subtitulos parciales o danadas. De forma predeterminada, solo informa los hallazgos sin poner reparaciones en cola.",
       "startButton": "Iniciar verificación de integridad",
       "running": "Verificando...",
       "progress": "Progreso",
@@ -679,7 +681,12 @@
         "total": "En total",
         "movies": "películas",
         "episodes": "episodios"
-      }
+      },
+      "autoQueue": "Poner traducciones de reparacion en cola automaticamente:",
+      "autoQueueDescription": "Dejalo desactivado para escaneos solo de informe. Cuando esta activado, Lingarr pone reparaciones en cola hasta el limite por ejecucion.",
+      "maxAutoQueuePerRun": "Reparaciones maximas en cola por ejecucion:",
+      "completedReportOnly": "Comprobacion de integridad completada. Los hallazgos se informaron sin poner reparaciones en cola.",
+      "completedWithQueue": "Comprobacion de integridad completada. Se pusieron traducciones de reparacion en cola para los hallazgos listados."
     }
   },
   "translationState": {

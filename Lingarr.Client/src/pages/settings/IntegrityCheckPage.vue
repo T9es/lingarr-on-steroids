@@ -6,6 +6,31 @@
             </template>
             <template #content>
                 <div class="flex flex-col items-center space-y-6">
+                    <SaveNotification ref="saveNotification" />
+                    <div class="w-full max-w-2xl space-y-3">
+                        <div class="flex flex-col space-x-2">
+                            <span class="font-semibold">
+                                {{ translate('settings.integrity.autoQueue') }}
+                            </span>
+                            {{ translate('settings.integrity.autoQueueDescription') }}
+                        </div>
+                        <ToggleButton v-model="bulkIntegrityAutoQueue">
+                            <span class="text-primary-content text-sm font-medium">
+                                {{
+                                    bulkIntegrityAutoQueue == 'true'
+                                        ? translate('common.enabled')
+                                        : translate('common.disabled')
+                                }}
+                            </span>
+                        </ToggleButton>
+                        <InputComponent
+                            v-if="bulkIntegrityAutoQueue == 'true'"
+                            v-model="bulkIntegrityMaxAutoQueuePerRun"
+                            validation-type="number"
+                            :label="translate('settings.integrity.maxAutoQueuePerRun')"
+                            @update:validation="(val) => (maxAutoQueueIsValid = val)" />
+                    </div>
+
                     <!-- Action Button -->
                     <div class="flex items-center justify-center">
                         <button
@@ -102,7 +127,11 @@
                         <div
                             v-if="stats.isComplete"
                             class="rounded border border-green-500/30 bg-green-500/10 p-4 text-center text-green-400">
-                            {{ translate('settings.integrity.completed') }}
+                            {{
+                                stats.queuedCount > 0
+                                    ? translate('settings.integrity.completedWithQueue')
+                                    : translate('settings.integrity.completedReportOnly')
+                            }}
                         </div>
 
                         <!-- Error Message -->
@@ -459,17 +488,24 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from '@/plugins/i18n'
 import CardComponent from '@/components/common/CardComponent.vue'
+import InputComponent from '@/components/common/InputComponent.vue'
+import SaveNotification from '@/components/common/SaveNotification.vue'
 import SubtitleSelectorModal from '@/components/features/settings/SubtitleSelectorModal.vue'
+import ToggleButton from '@/components/common/ToggleButton.vue'
 import { useSignalR } from '@/composables/useSignalR'
-import { Hub } from '@/ts'
+import { Hub, SETTINGS } from '@/ts'
+import { useSettingStore } from '@/store/setting'
 import axios from 'axios'
 
 const { translate } = useI18n()
 const signalR = useSignalR()
 const hubConnection = ref<Hub>()
+const settingsStore = useSettingStore()
+const saveNotification = ref<InstanceType<typeof SaveNotification> | null>(null)
+const maxAutoQueueIsValid = ref(true)
 
 interface BulkIntegrityStats {
     total: number
@@ -480,6 +516,8 @@ interface BulkIntegrityStats {
     corruptCount: number
     queuedCount: number
     errorCount: number
+    autoQueueEnabled: boolean
+    maxAutoQueuePerRun: number
     isComplete: boolean
     error: string | null
     progressPercent: number
@@ -496,9 +534,34 @@ const stats = reactive<BulkIntegrityStats>({
     corruptCount: 0,
     queuedCount: 0,
     errorCount: 0,
+    autoQueueEnabled: false,
+    maxAutoQueuePerRun: 25,
     isComplete: false,
     error: null,
     progressPercent: 0
+})
+
+const bulkIntegrityAutoQueue = computed({
+    get: (): string =>
+        (settingsStore.getSetting(SETTINGS.BULK_INTEGRITY_AUTO_QUEUE) as string) ?? 'false',
+    set: (newValue: string): void => {
+        settingsStore.updateSetting(SETTINGS.BULK_INTEGRITY_AUTO_QUEUE, newValue, true)
+        saveNotification.value?.show()
+    }
+})
+
+const bulkIntegrityMaxAutoQueuePerRun = computed({
+    get: (): string =>
+        (settingsStore.getSetting(SETTINGS.BULK_INTEGRITY_MAX_AUTO_QUEUE_PER_RUN) as string) ??
+        '25',
+    set: (newValue: string): void => {
+        settingsStore.updateSetting(
+            SETTINGS.BULK_INTEGRITY_MAX_AUTO_QUEUE_PER_RUN,
+            newValue,
+            maxAutoQueueIsValid.value
+        )
+        saveNotification.value?.show()
+    }
 })
 
 // Subtitle Type Validation
@@ -726,6 +789,8 @@ const startBulkCheck = async () => {
             corruptCount: 0,
             queuedCount: 0,
             errorCount: 0,
+            autoQueueEnabled: false,
+            maxAutoQueuePerRun: 25,
             isComplete: false,
             error: null,
             progressPercent: 0

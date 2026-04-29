@@ -31,5 +31,7 @@ public interface IMediaSubtitleProcessor
         MediaType mediaType,
         bool forceProcess = true, 
         bool forceTranslation = true, 
-        bool forcePriority = false);
+        bool forcePriority = false,
+        bool queueTranslations = true,
+        int? maxTranslationsToQueue = null);
 }

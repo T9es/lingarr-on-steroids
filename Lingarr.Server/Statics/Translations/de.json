@@ -543,7 +543,9 @@
       "recreateAllOutputs": "Alle Ausgaben neu erstellen",
       "recreateAllOutputsDescription": "Führe Übersetzungen für die gesamte Bibliothek mit dem aktuellen Ausgabemodus erneut aus. Dabei werden Übersetzungsanbieter erneut verwendet, nur von Lingarr verwaltete Untertitel ersetzt und manuelle Untertitel nicht berührt.",
       "subtitleIntegrityValidationEnabled": "Untertitel-Integrität validieren",
-      "subtitleIntegrityValidationEnabledDescription": "Überprüfen, ob der übersetzte Untertitel ungefähr die gleiche Anzahl von Zeilen hat wie das Original, um Teilübersetzungen zu erkennen."
+      "subtitleIntegrityValidationEnabledDescription": "Überprüfen, ob der übersetzte Untertitel ungefähr die gleiche Anzahl von Zeilen hat wie das Original, um Teilübersetzungen zu erkennen.",
+      "translateSupplementalSubtitles": "Ergaenzende erzwungene/Schilder-Untertitel uebersetzen:",
+      "translateSupplementalSubtitlesDescription": "Wenn aktiviert, kann Lingarr erzwungene, Schilder- und Song-Spuren als separate ergaenzende Ausgaben uebersetzen. Hauptuntertitel verwenden weiterhin nur vollstaendige Dialogquellen."
     },
     "indexing": {
       "title": "Indizierung",
@@ -666,7 +668,7 @@
     },
     "integrity": {
       "title": "Massen-Integritätsprüfung",
-      "description": "Validieren Sie alle Medien im Status 'Abgeschlossen', um teilweise oder korrupte Untertitelübersetzungen zu erkennen. Alle korrupten Untertitel werden automatisch zur Neuübersetzung in die Warteschlange gestellt.",
+      "description": "Validiert alle Medien im Status Abgeschlossen, um teilweise oder beschaedigte Untertiteluebersetzungen zu erkennen. Standardmaessig werden Funde nur gemeldet und keine Reparaturen eingereiht.",
       "startButton": "Integritätsprüfung starten",
       "running": "Prüfe...",
       "progress": "Fortschritt",
@@ -679,7 +681,12 @@
         "total": "Gesamt",
         "movies": "Filme",
         "episodes": "Episoden"
-      }
+      },
+      "autoQueue": "Reparaturuebersetzungen automatisch einreihen:",
+      "autoQueueDescription": "Fuer reine Berichtsscans deaktiviert lassen. Wenn aktiviert, reiht Lingarr Reparaturen bis zum Limit pro Lauf ein.",
+      "maxAutoQueuePerRun": "Maximale Reparaturen pro Lauf:",
+      "completedReportOnly": "Integritaetspruefung abgeschlossen. Funde wurden gemeldet, ohne Reparaturen einzureihen.",
+      "completedWithQueue": "Integritaetspruefung abgeschlossen. Reparaturuebersetzungen wurden fuer die gemeldeten Funde eingereiht."
     }
   },
   "translationState": {

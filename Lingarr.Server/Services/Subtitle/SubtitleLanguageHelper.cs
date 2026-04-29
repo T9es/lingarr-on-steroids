@@ -11,9 +11,18 @@ namespace Lingarr.Server.Services.Subtitle;
 /// </summary>
 public static class SubtitleLanguageHelper
 {
+    public const string TypeFull = "Full";
+    public const string TypeSdh = "SDH";
+    public const string TypeClosedCaptions = "CC";
+    public const string TypeForced = "Forced";
+    public const string TypeSignsSongs = "Signs/Songs";
+    public const string TypeCommentary = "Commentary";
+    public const string TypeUnknown = "Unknown";
+
     private static readonly Regex FileNameLanguageTokenRegex = new(
         @"(?<=^|[.\s_\-\[\]\(\)])([a-z]{2,3}(?:-[a-z]{2,4})?)(?=$|[.\s_\-\[\]\(\)])",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex TokenSeparatorRegex = new(@"[.\s_\-\[\]\(\)\{\}/\\]+", RegexOptions.Compiled);
 
     private static readonly Dictionary<string, string> Iso639Map = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -252,6 +261,7 @@ public static class SubtitleLanguageHelper
             score += 50;
         }
 
+        var subtitleType = DetermineSubtitleType(subtitle);
         var title = subtitle.Title?.ToLowerInvariant() ?? string.Empty;
 
         // Titles that usually indicate full dialogue tracks
@@ -262,7 +272,7 @@ public static class SubtitleLanguageHelper
 
         // Check for dialogue FIRST - if present, it's likely a complete track
         bool hasDialogue = title.Contains("dialog") || title.Contains("dialogue");
-        bool hasSignsOrSongs = title.Contains("sign") || title.Contains("song") || title.Contains("karaoke");
+        bool hasSignsOrSongs = IsSupplementalSubtitleType(subtitleType);
 
         if (hasDialogue)
         {
@@ -279,19 +289,19 @@ public static class SubtitleLanguageHelper
         }
 
         // Penalize SDH/Hearing Impaired/CC tracks as they often contain "poison" content (sound effects, lyrics)
-        if (title.Contains("sdh") || title.Contains("hearing impaired") || title.Contains("cc") || title.Contains("closed caption"))
+        if (IsCaptionSubtitleType(subtitleType))
         {
             score -= 10;
         }
 
         // Commentary tracks are almost never suitable for translation
-        if (title.Contains("commentary"))
+        if (string.Equals(subtitleType, TypeCommentary, StringComparison.OrdinalIgnoreCase))
         {
-            score -= 20;
+            score -= 100;
         }
 
         // Prefer non-forced tracks for full dialogue; forced tracks are often partial or effect-only.
-        if (subtitle.IsForced)
+        if (subtitle.IsForced || IsSupplementalSubtitleType(subtitleType))
         {
             score -= 50;
         }
@@ -308,6 +318,56 @@ public static class SubtitleLanguageHelper
 
         score += contentScoreAdjustment;
         return score;
+    }
+
+    public static string DetermineSubtitleType(EmbeddedSubtitle subtitle)
+    {
+        if (subtitle.IsForced)
+        {
+            return TypeForced;
+        }
+
+        var title = subtitle.Title ?? string.Empty;
+        return DetermineSubtitleTypeFromText(title, defaultType: TypeUnknown);
+    }
+
+    public static string DetermineSubtitleTypeFromFilename(string? subtitlePath)
+    {
+        if (string.IsNullOrWhiteSpace(subtitlePath))
+        {
+            return TypeUnknown;
+        }
+
+        return DetermineSubtitleTypeFromText(
+            Path.GetFileNameWithoutExtension(subtitlePath),
+            defaultType: TypeFull);
+    }
+
+    public static bool IsSupplementalSubtitleType(string? subtitleType)
+    {
+        return string.Equals(subtitleType, TypeForced, StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(subtitleType, TypeSignsSongs, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static bool IsCaptionSubtitleType(string? subtitleType)
+    {
+        return string.Equals(subtitleType, TypeSdh, StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(subtitleType, TypeClosedCaptions, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static string? GetSupplementalOutputCaption(string? subtitleType)
+    {
+        if (string.Equals(subtitleType, TypeForced, StringComparison.OrdinalIgnoreCase))
+        {
+            return "forced";
+        }
+
+        if (string.Equals(subtitleType, TypeSignsSongs, StringComparison.OrdinalIgnoreCase))
+        {
+            return "signs";
+        }
+
+        return null;
     }
     /// <summary>
     /// Minimum quality threshold for a subtitle track to be considered "acceptable".
@@ -405,6 +465,72 @@ public static class SubtitleLanguageHelper
             .Trim('[', ']', '(', ')', '{', '}')
             .Replace('_', '-')
             .ToLowerInvariant();
+    }
+
+    private static string DetermineSubtitleTypeFromText(string? text, string defaultType)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return defaultType;
+        }
+
+        var normalized = text.ToLowerInvariant();
+        var tokens = TokenSeparatorRegex
+            .Split(normalized)
+            .Where(token => !string.IsNullOrWhiteSpace(token))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (tokens.Contains("commentary") ||
+            normalized.Contains("director commentary", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("audio commentary", StringComparison.OrdinalIgnoreCase))
+        {
+            return TypeCommentary;
+        }
+
+        if (tokens.Contains("forced") ||
+            tokens.Contains("force") ||
+            tokens.Contains("foreign") ||
+            normalized.Contains("foreign only", StringComparison.OrdinalIgnoreCase))
+        {
+            return TypeForced;
+        }
+
+        if (tokens.Contains("sign") ||
+            tokens.Contains("signs") ||
+            tokens.Contains("song") ||
+            tokens.Contains("songs") ||
+            tokens.Contains("karaoke") ||
+            tokens.Contains("lyrics") ||
+            normalized.Contains("signs and songs", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("signs/songs", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("songs & signs", StringComparison.OrdinalIgnoreCase))
+        {
+            return TypeSignsSongs;
+        }
+
+        if (tokens.Contains("sdh") ||
+            normalized.Contains("hearing impaired", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("hearing-impaired", StringComparison.OrdinalIgnoreCase) ||
+            tokens.Contains("deaf"))
+        {
+            return TypeSdh;
+        }
+
+        if (tokens.Contains("cc") ||
+            normalized.Contains("closed caption", StringComparison.OrdinalIgnoreCase))
+        {
+            return TypeClosedCaptions;
+        }
+
+        if (tokens.Contains("full") ||
+            tokens.Contains("complete") ||
+            tokens.Contains("dialog") ||
+            tokens.Contains("dialogue"))
+        {
+            return TypeFull;
+        }
+
+        return defaultType;
     }
 
     private static Dictionary<string, string> BuildCultureLanguageMap()

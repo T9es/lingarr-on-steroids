@@ -131,22 +131,23 @@ public class SubtitleService : ISubtitleService
         string targetLanguage,
         string subtitleTag,
         string subtitleTagShort,
-        string? outputFormat = null)
+        string? outputFormat = null,
+        string? forcedCaption = null)
     {
         var paths = new List<string>();
 
         // 1. Full Tag
-        paths.Add(CreateFilePathInternal(originalPath, targetLanguage, subtitleTag, outputFormat));
+        paths.Add(CreateFilePathInternal(originalPath, targetLanguage, subtitleTag, outputFormat, forcedCaption));
 
         // 2. Short Tag (if provided and different)
         if (!string.IsNullOrEmpty(subtitleTagShort) && 
             !string.Equals(subtitleTagShort, subtitleTag, StringComparison.OrdinalIgnoreCase))
         {
-            paths.Add(CreateFilePathInternal(originalPath, targetLanguage, subtitleTagShort, outputFormat));
+            paths.Add(CreateFilePathInternal(originalPath, targetLanguage, subtitleTagShort, outputFormat, forcedCaption));
         }
 
         // 3. No Tag (if different from previous)
-        var noTagPath = CreateFilePathInternal(originalPath, targetLanguage, null, outputFormat);
+        var noTagPath = CreateFilePathInternal(originalPath, targetLanguage, null, outputFormat, forcedCaption);
         if (!paths.Contains(noTagPath))
         {
             paths.Add(noTagPath);
@@ -155,12 +156,17 @@ public class SubtitleService : ISubtitleService
         // 4. Truncated Path (Last Resort) using Short Tag (or no tag if short is empty)
         // We truncate the base filename to ensure proper length
         var tagForTruncation = !string.IsNullOrEmpty(subtitleTagShort) ? subtitleTagShort : null;
-        paths.Add(CreateTruncatedFilePath(originalPath, targetLanguage, tagForTruncation, outputFormat));
+        paths.Add(CreateTruncatedFilePath(originalPath, targetLanguage, tagForTruncation, outputFormat, forcedCaption));
 
         return paths.Distinct();
     }
 
-    private string CreateFilePathInternal(string originalPath, string targetLanguage, string? subtitleTag, string? outputFormat = null)
+    private string CreateFilePathInternal(
+        string originalPath,
+        string targetLanguage,
+        string? subtitleTag,
+        string? outputFormat = null,
+        string? forcedCaption = null)
     {
         var extension = !string.IsNullOrWhiteSpace(outputFormat)
             ? SubtitleOutputModeHelper.NormalizeFormat(outputFormat)
@@ -176,6 +182,11 @@ public class SubtitleService : ISubtitleService
         {
             caption = reversedParts[captionIndex].ToLowerInvariant();
             reversedParts.RemoveAt(captionIndex);
+        }
+
+        if (!string.IsNullOrWhiteSpace(forcedCaption))
+        {
+            caption = forcedCaption.ToLowerInvariant();
         }
 
         // Extract language
@@ -220,7 +231,12 @@ public class SubtitleService : ISubtitleService
         return Path.Combine(directory, newFileName);
     }
 
-    private string CreateTruncatedFilePath(string originalPath, string targetLanguage, string? subtitleTag, string? outputFormat = null)
+    private string CreateTruncatedFilePath(
+        string originalPath,
+        string targetLanguage,
+        string? subtitleTag,
+        string? outputFormat = null,
+        string? forcedCaption = null)
     {
         // Calculate max filename length (255)
         // Reserve space for extension, language, tag, separators
@@ -240,6 +256,7 @@ public class SubtitleService : ISubtitleService
         // Build suffix: .[code].[tag].srt
         var suffixParts = new List<string>();
         if (targetLanguageCode != null) suffixParts.Add(targetLanguageCode.ToLowerInvariant());
+        if (!string.IsNullOrWhiteSpace(forcedCaption)) suffixParts.Add(forcedCaption.ToLowerInvariant());
         if (!string.IsNullOrEmpty(subtitleTag)) suffixParts.Add(subtitleTag.ToLowerInvariant());
         
         var suffix = (suffixParts.Any() ? "." + string.Join(".", suffixParts) : "") + extension;

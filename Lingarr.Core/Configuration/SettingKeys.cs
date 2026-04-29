@@ -122,6 +122,7 @@ public static class SettingKeys
         public const string SubtitleTagShort = "subtitle_tag_short";
         public const string CleanupOrphanedSubtitles = "cleanup_orphaned_subtitles";
         public const string IgnoreCaptions = "ignore_captions";
+        public const string TranslateSupplementalSubtitles = "translate_supplemental_subtitles";
         public const string RequestTimeout = "request_timeout";
         public const string MaxRetries = "max_retries";
         public const string RetryDelay = "retry_delay";
@@ -200,6 +201,8 @@ public static class SettingKeys
         public const string MaxDurationSecs = "subtitle_validation_maxdurationsecs";
         public const string ValidateSubtitles = "subtitle_validation_enabled";
         public const string IntegrityValidationEnabled = "subtitle_integrity_validation_enabled";
+        public const string BulkIntegrityAutoQueue = "bulk_integrity_auto_queue";
+        public const string BulkIntegrityMaxAutoQueuePerRun = "bulk_integrity_max_auto_queue_per_run";
         
         /// <summary>
         /// When enabled, skip translation if the target language subtitle is already embedded in the media container.

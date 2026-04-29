@@ -100,8 +100,23 @@ public class TranslationRequestService : ITranslationRequestService
             RequiredOutputFormats = requiredOutputFormats,
             MediaType = translateAbleSubtitle.MediaType,
             Status = TranslationStatus.Pending,
-            IsActive = true
+            IsActive = true,
+            SourceSubtitleType = translateAbleSubtitle.SourceSubtitleType,
+            SourceSubtitleEntryCount = translateAbleSubtitle.SourceSubtitleEntryCount,
+            SelectedStreamTitle = translateAbleSubtitle.SelectedStreamTitle,
+            IsForcedSubtitle = translateAbleSubtitle.IsForcedSubtitle
         };
+
+        if (translateAbleSubtitle.SourceSnapshot != null)
+        {
+            translationRequest.SourceSnapshotVersion = translateAbleSubtitle.SourceSnapshot.Version;
+            translationRequest.SourceSnapshotType = translateAbleSubtitle.SourceSnapshot.SourceType;
+            translationRequest.SourceSnapshotIdentity = translateAbleSubtitle.SourceSnapshot.Identity;
+            translationRequest.SourceSnapshotFingerprint = translateAbleSubtitle.SourceSnapshot.Fingerprint;
+            translationRequest.SourceSnapshotFileSizeBytes = translateAbleSubtitle.SourceSnapshot.FileSizeBytes;
+            translationRequest.SourceSnapshotLastWriteUtc = translateAbleSubtitle.SourceSnapshot.LastWriteUtc;
+            translationRequest.SourceSnapshotStreamIndex = translateAbleSubtitle.SourceSnapshot.StreamIndex;
+        }
 
         return await CreateRequest(translationRequest, forcePriority);
     }
@@ -157,7 +172,18 @@ public class TranslationRequestService : ITranslationRequestService
             MediaType = translationRequest.MediaType,
             Status = TranslationStatus.Pending,
             IsActive = true,
-            IsPriority = isPriority
+            IsPriority = isPriority,
+            SourceSubtitleType = translationRequest.SourceSubtitleType,
+            SourceSubtitleEntryCount = translationRequest.SourceSubtitleEntryCount,
+            SelectedStreamTitle = translationRequest.SelectedStreamTitle,
+            IsForcedSubtitle = translationRequest.IsForcedSubtitle,
+            SourceSnapshotVersion = translationRequest.SourceSnapshotVersion,
+            SourceSnapshotType = translationRequest.SourceSnapshotType,
+            SourceSnapshotIdentity = translationRequest.SourceSnapshotIdentity,
+            SourceSnapshotFingerprint = translationRequest.SourceSnapshotFingerprint,
+            SourceSnapshotFileSizeBytes = translationRequest.SourceSnapshotFileSizeBytes,
+            SourceSnapshotLastWriteUtc = translationRequest.SourceSnapshotLastWriteUtc,
+            SourceSnapshotStreamIndex = translationRequest.SourceSnapshotStreamIndex
         };
 
         _dbContext.TranslationRequests.Add(translationRequestCopy);
@@ -721,7 +747,12 @@ public class TranslationRequestService : ITranslationRequestService
 
     private async Task<int> FindMatchingActiveRequestIdAsync(TranslationRequest translationRequest)
     {
-        var activeRequestIds = await _dbContext.TranslationRequests
+        var isSupplemental =
+            SubtitleLanguageHelper.IsSupplementalSubtitleType(translationRequest.SourceSubtitleType);
+        var hasSourceType = !string.IsNullOrWhiteSpace(translationRequest.SourceSubtitleType);
+        var hasSourceIdentity = !string.IsNullOrWhiteSpace(translationRequest.SourceSnapshotIdentity);
+
+        var query = _dbContext.TranslationRequests
             .Where(tr =>
                 (tr.WorkloadItemKey == translationRequest.WorkloadItemKey ||
                  ((tr.WorkloadItemKey == string.Empty || tr.WorkloadItemKey == null) &&
@@ -738,7 +769,23 @@ public class TranslationRequestService : ITranslationRequestService
                         tr.UploadBatchFileId == translationRequest.UploadBatchFileId)))) &&
                 tr.SourceLanguage == translationRequest.SourceLanguage &&
                 tr.TargetLanguage == translationRequest.TargetLanguage &&
-                tr.IsActive == true)
+                tr.IsActive == true);
+
+        query = isSupplemental
+            ? query.Where(tr =>
+                (tr.SourceSubtitleType == SubtitleLanguageHelper.TypeForced ||
+                 tr.SourceSubtitleType == SubtitleLanguageHelper.TypeSignsSongs) &&
+                (!hasSourceType ||
+                 tr.SourceSubtitleType == translationRequest.SourceSubtitleType) &&
+                (!translationRequest.SourceSnapshotStreamIndex.HasValue ||
+                 tr.SourceSnapshotStreamIndex == translationRequest.SourceSnapshotStreamIndex) &&
+                (!hasSourceIdentity ||
+                 tr.SourceSnapshotIdentity == translationRequest.SourceSnapshotIdentity))
+            : query.Where(tr =>
+                tr.SourceSubtitleType != SubtitleLanguageHelper.TypeForced &&
+                tr.SourceSubtitleType != SubtitleLanguageHelper.TypeSignsSongs);
+
+        var activeRequestIds = await query
             .Select(tr => tr.Id)
             .ToListAsync();
 
@@ -887,7 +934,13 @@ public class TranslationRequestService : ITranslationRequestService
                  {
                      WorkloadItemKey = GetEffectiveWorkloadItemKey(tr),
                      tr.SourceLanguage,
-                     tr.TargetLanguage
+                     tr.TargetLanguage,
+                     SourceRole = SubtitleLanguageHelper.IsSupplementalSubtitleType(tr.SourceSubtitleType)
+                         ? tr.SourceSubtitleType
+                         : "Primary",
+                     SourceIdentity = SubtitleLanguageHelper.IsSupplementalSubtitleType(tr.SourceSubtitleType)
+                         ? tr.SourceSnapshotIdentity ?? tr.SourceSnapshotStreamIndex?.ToString() ?? string.Empty
+                         : string.Empty
                  }))
         {
             if (group.Count() <= 1)

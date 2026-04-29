@@ -32,6 +32,8 @@ export type EventCallbacks = {
         corruptCount: number
         queuedCount: number
         errorCount: number
+        autoQueueEnabled: boolean
+        maxAutoQueuePerRun: number
         isComplete: boolean
         error: string | null
         progressPercent: number

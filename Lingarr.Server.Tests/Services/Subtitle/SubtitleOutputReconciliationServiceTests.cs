@@ -858,7 +858,9 @@ public class SubtitleOutputReconciliationServiceTests
                 It.IsAny<MediaType>(),
                 true,
                 false,
-                true))
+                true,
+                true,
+                null))
             .ReturnsAsync(queuedTranslations);
 
         return new SubtitleOutputReconciliationService(
@@ -903,7 +905,9 @@ public class SubtitleOutputReconciliationServiceTests
                 It.IsAny<MediaType>(),
                 true,
                 false,
-                true))
+                true,
+                true,
+                null))
             .ReturnsAsync(queuedTranslations);
 
         return new SubtitleOutputReconciliationService(

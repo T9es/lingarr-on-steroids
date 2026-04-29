@@ -544,7 +544,8 @@ public class UploadWorkspaceServiceTests
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<string>(),
-                It.IsAny<string>()))
+                It.IsAny<string>(),
+                It.IsAny<string?>()))
             .Returns(new List<string>
             {
                 Path.Combine(batch.StoragePath, "translated", "Episode.01.pl.srt"),

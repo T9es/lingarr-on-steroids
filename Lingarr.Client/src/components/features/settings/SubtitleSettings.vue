@@ -42,6 +42,22 @@
 
                 <div class="flex flex-col space-x-2">
                     <span class="font-semibold">
+                        {{ translate('settings.subtitle.translateSupplementalSubtitles') }}
+                    </span>
+                    {{ translate('settings.subtitle.translateSupplementalSubtitlesDescription') }}
+                </div>
+                <ToggleButton v-model="translateSupplementalSubtitles">
+                    <span class="text-primary-content text-sm font-medium">
+                        {{
+                            translateSupplementalSubtitles == 'true'
+                                ? translate('common.enabled')
+                                : translate('common.disabled')
+                        }}
+                    </span>
+                </ToggleButton>
+
+                <div class="flex flex-col space-x-2">
+                    <span class="font-semibold">
                         {{ translate('settings.subtitle.keepAssSsaWithSrt') }}
                     </span>
                     {{ translate('settings.subtitle.keepAssSsaWithSrtDescription') }}
@@ -286,6 +302,15 @@ const ignoreCaptions = computed({
     get: (): string => settingsStore.getSetting(SETTINGS.IGNORE_CAPTIONS) as string,
     set: (newValue: string): void => {
         settingsStore.updateSetting(SETTINGS.IGNORE_CAPTIONS, newValue, true)
+        saveNotification.value?.show()
+    }
+})
+
+const translateSupplementalSubtitles = computed({
+    get: (): string =>
+        (settingsStore.getSetting(SETTINGS.TRANSLATE_SUPPLEMENTAL_SUBTITLES) as string) ?? 'false',
+    set: (newValue: string): void => {
+        settingsStore.updateSetting(SETTINGS.TRANSLATE_SUPPLEMENTAL_SUBTITLES, newValue, true)
         saveNotification.value?.show()
     }
 })

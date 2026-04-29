@@ -63,6 +63,7 @@ public class StartupService : IHostedService
             { SettingKeys.Translation.SubtitleTag, "[Lingarr]" },
             { SettingKeys.Translation.SubtitleTagShort, "-ai-" },
             { SettingKeys.Translation.CleanupOrphanedSubtitles, "false" },
+            { SettingKeys.Translation.TranslateSupplementalSubtitles, "false" },
 
             // Request/Retry
             { SettingKeys.Translation.RequestTimeout, "15" },
@@ -116,6 +117,8 @@ public class StartupService : IHostedService
             // Validation
             { SettingKeys.SubtitleValidation.ValidateSubtitles, "false" },
             { SettingKeys.SubtitleValidation.IntegrityValidationEnabled, "false" },
+            { SettingKeys.SubtitleValidation.BulkIntegrityAutoQueue, "false" },
+            { SettingKeys.SubtitleValidation.BulkIntegrityMaxAutoQueuePerRun, "25" },
             { SettingKeys.SubtitleValidation.MaxFileSizeBytes, "1048576" },
             { SettingKeys.SubtitleValidation.MaxSubtitleLength, "500" },
             { SettingKeys.SubtitleValidation.MinSubtitleLength, "2" },

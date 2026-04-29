@@ -9,6 +9,7 @@ using Lingarr.Server.Models;
 using Lingarr.Server.Models.FileSystem;
 using Lingarr.Server.Services.Subtitle;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Lingarr.Server.Services;
 
@@ -22,6 +23,7 @@ public class MediaStateService : IMediaStateService
     private readonly ISettingService _settingService;
     private readonly ISubtitleService _subtitleService;
     private readonly ISourceSubtitleSnapshotService _sourceSubtitleSnapshotService;
+    private readonly ISubtitleSourceSelectionService _subtitleSourceSelectionService;
     private readonly ILogger<MediaStateService> _logger;
 
     public MediaStateService(
@@ -29,12 +31,17 @@ public class MediaStateService : IMediaStateService
         ISettingService settingService,
         ISubtitleService subtitleService,
         ISourceSubtitleSnapshotService sourceSubtitleSnapshotService,
-        ILogger<MediaStateService> logger)
+        ILogger<MediaStateService> logger,
+        ISubtitleSourceSelectionService? subtitleSourceSelectionService = null)
     {
         _dbContext = dbContext;
         _settingService = settingService;
         _subtitleService = subtitleService;
         _sourceSubtitleSnapshotService = sourceSubtitleSnapshotService;
+        _subtitleSourceSelectionService = subtitleSourceSelectionService ??
+            new SubtitleSourceSelectionService(
+                subtitleService,
+                NullLogger<SubtitleSourceSelectionService>.Instance);
         _logger = logger;
     }
 
@@ -165,11 +172,13 @@ public class MediaStateService : IMediaStateService
         // 5. Check for source subtitle
         var hasExternalSource = externalSubtitles
             .Where(s => !ShouldSkipExternalSourceCandidate(s))
+            .Where(s => !IsRejectedExternalSourceCandidate(s))
             .Any(s => sourceLanguages.Any(sl => SubtitleLanguageHelper.LanguageMatches(s.Language, sl)));
-        var hasEmbeddedSource = embeddedSubtitles
-            .Any(e => e.IsTextBased && 
-                     !string.IsNullOrEmpty(e.Language) && 
-                     sourceLanguages.Any(sl => SubtitleLanguageHelper.LanguageMatches(e.Language, sl)));
+        var embeddedPrimarySelection = await _subtitleSourceSelectionService.SelectPrimaryAsync(
+            embeddedSubtitles.Where(subtitle => subtitle.IsTextBased).ToList(),
+            sourceLanguages.ToList(),
+            allowCaptionFallback: !ignoreCaptions);
+        var hasEmbeddedSource = embeddedPrimarySelection.SelectedSubtitle != null;
 
         if (!hasExternalSource && !hasEmbeddedSource)
         {
@@ -177,7 +186,7 @@ public class MediaStateService : IMediaStateService
         }
 
         // 6. Check which targets are satisfied
-        var requiredOutputFormats = ResolveRequiredOutputFormats(
+        var requiredOutputFormats = await ResolveRequiredOutputFormatsAsync(
             externalSubtitles,
             embeddedSubtitles,
             sourceLanguages,
@@ -358,16 +367,20 @@ public class MediaStateService : IMediaStateService
             tr.Status == TranslationStatus.Failed);
     }
 
-    private async Task<HashSet<string>> GetConfiguredLanguages(string settingKey)
+    private async Task<List<string>> GetConfiguredLanguages(string settingKey)
     {
         try
         {
             var languages = await _settingService.GetSettingAsJson<SourceLanguage>(settingKey);
-            return languages.Select(l => l.Code.ToLowerInvariant()).ToHashSet();
+            return languages
+                .Select(l => l.Code.ToLowerInvariant())
+                .Where(code => !string.IsNullOrWhiteSpace(code))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
         catch
         {
-            return new HashSet<string>();
+            return [];
         }
     }
 
@@ -389,7 +402,7 @@ public class MediaStateService : IMediaStateService
         }
     }
 
-    private static IReadOnlyList<string> ResolveRequiredOutputFormats(
+    private async Task<IReadOnlyList<string>> ResolveRequiredOutputFormatsAsync(
         IReadOnlyCollection<Subtitles> externalSubtitles,
         IReadOnlyCollection<EmbeddedSubtitle> embeddedSubtitles,
         IReadOnlyCollection<string> sourceLanguages,
@@ -398,6 +411,7 @@ public class MediaStateService : IMediaStateService
     {
         var externalSource = externalSubtitles
             .Where(subtitle => !ShouldSkipExternalSourceCandidate(subtitle))
+            .Where(subtitle => !IsRejectedExternalSourceCandidate(subtitle))
             .Where(subtitle => sourceLanguages.Any(sourceLanguage =>
                 SubtitleLanguageHelper.LanguageMatches(subtitle.Language, sourceLanguage)))
             .OrderBy(subtitle => ignoreCaptions && !string.IsNullOrWhiteSpace(subtitle.Caption))
@@ -415,11 +429,14 @@ public class MediaStateService : IMediaStateService
             .ToList();
 
         var sourceLanguageList = sourceLanguages.ToList();
-        var bestEmbeddedMatch = SubtitleLanguageHelper.FindBestMatch(embeddedSourceCandidates, sourceLanguageList);
-        if (bestEmbeddedMatch.Subtitle != null)
+        var embeddedSelection = await _subtitleSourceSelectionService.SelectPrimaryAsync(
+            embeddedSourceCandidates,
+            sourceLanguageList,
+            allowCaptionFallback: !ignoreCaptions);
+        if (embeddedSelection.SelectedSubtitle != null)
         {
             return SubtitleOutputModeHelper.GetRequiredOutputFormats(
-                MapEmbeddedSubtitleFormat(bestEmbeddedMatch.Subtitle.CodecName),
+                MapEmbeddedSubtitleFormat(embeddedSelection.SelectedSubtitle.CodecName),
                 subtitleOutputMode);
         }
 
@@ -546,5 +563,30 @@ public class MediaStateService : IMediaStateService
         {
             return false;
         }
+    }
+
+    private static bool IsRejectedExternalSourceCandidate(Subtitles subtitle)
+    {
+        var subtitleType = GetExternalSubtitleType(subtitle);
+        return SubtitleLanguageHelper.IsSupplementalSubtitleType(subtitleType) ||
+               string.Equals(
+                   subtitleType,
+                   SubtitleLanguageHelper.TypeCommentary,
+                   StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string GetExternalSubtitleType(Subtitles subtitle)
+    {
+        if (!string.IsNullOrWhiteSpace(subtitle.Caption))
+        {
+            var captionType = SubtitleLanguageHelper.DetermineSubtitleTypeFromFilename(subtitle.Caption);
+            if (!string.Equals(captionType, SubtitleLanguageHelper.TypeFull, StringComparison.OrdinalIgnoreCase))
+            {
+                return captionType;
+            }
+        }
+
+        return SubtitleLanguageHelper.DetermineSubtitleTypeFromFilename(
+            !string.IsNullOrWhiteSpace(subtitle.Path) ? subtitle.Path : subtitle.FileName);
     }
 }

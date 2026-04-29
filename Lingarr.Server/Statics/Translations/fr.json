@@ -543,7 +543,9 @@
       "recreateAllOutputs": "Recréer toutes les sorties",
       "recreateAllOutputsDescription": "Relancez les traductions pour toute la bibliothèque avec le mode de sortie actuel. Cela réutilise les fournisseurs de traduction, remplace uniquement les sous-titres gérés par Lingarr et laisse les sous-titres manuels intacts.",
       "subtitleIntegrityValidationEnabled": "Valider l'intégrité des sous-titres",
-      "subtitleIntegrityValidationEnabledDescription": "Vérifier si le sous-titre traduit a à peu près le même nombre de lignes que l'original pour détecter les traductions partielles."
+      "subtitleIntegrityValidationEnabledDescription": "Vérifier si le sous-titre traduit a à peu près le même nombre de lignes que l'original pour détecter les traductions partielles.",
+      "translateSupplementalSubtitles": "Traduire les sous-titres supplementaires forces/panneaux :",
+      "translateSupplementalSubtitlesDescription": "Quand cette option est activee, Lingarr peut traduire les pistes forcees, panneaux et chansons comme sorties supplementaires separees. Les sous-titres principaux utilisent toujours uniquement des sources de dialogue complet."
     },
     "indexing": {
       "title": "Indexation",
@@ -666,7 +668,7 @@
     },
     "integrity": {
       "title": "Vérification d'intégrité en masse",
-      "description": "Validez tous les médias en état 'Terminé' pour détecter les traductions de sous-titres partielles ou corrompues. Tous les sous-titres corrompus trouvés seront automatiquement mis en file pour une nouvelle traduction.",
+      "description": "Valide tous les medias en etat Termine afin de detecter les traductions de sous-titres partielles ou corrompues. Par defaut, les resultats sont seulement signales sans mise en file de reparations.",
       "startButton": "Démarrer la vérification d'intégrité",
       "running": "Vérification...",
       "progress": "Progression",
@@ -679,7 +681,12 @@
         "total": "Total général",
         "movies": "films",
         "episodes": "épisodes"
-      }
+      },
+      "autoQueue": "Mettre automatiquement les traductions de reparation en file :",
+      "autoQueueDescription": "Laissez desactive pour les analyses en mode rapport uniquement. Quand active, Lingarr met les reparations en file jusqu au plafond par execution.",
+      "maxAutoQueuePerRun": "Nombre maximal de reparations par execution :",
+      "completedReportOnly": "Verification d integrite terminee. Les resultats ont ete signales sans mettre de reparations en file.",
+      "completedWithQueue": "Verification d integrite terminee. Les traductions de reparation ont ete mises en file pour les resultats listes."
     }
   },
   "translationState": {

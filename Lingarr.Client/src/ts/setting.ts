@@ -65,6 +65,8 @@ export const SETTINGS = {
     SUBTITLE_VALIDATION_MAXSUBTITLELENGTH: 'subtitle_validation_maxsubtitlelength',
     SUBTITLE_VALIDATION_MAXFILESIZEBYTES: 'subtitle_validation_maxfilesizebytes',
     SUBTITLE_INTEGRITY_VALIDATION_ENABLED: 'subtitle_integrity_validation_enabled',
+    BULK_INTEGRITY_AUTO_QUEUE: 'bulk_integrity_auto_queue',
+    BULK_INTEGRITY_MAX_AUTO_QUEUE_PER_RUN: 'bulk_integrity_max_auto_queue_per_run',
     AI_CONTEXT_PROMPT_ENABLED: 'ai_context_prompt_enabled',
     AI_CONTEXT_PROMPT: 'ai_context_prompt',
     AI_CONTEXT_BEFORE: 'ai_context_before',
@@ -77,6 +79,7 @@ export const SETTINGS = {
     SUBTITLE_TAG_SHORT: 'subtitle_tag_short',
     CLEANUP_ORPHANED_SUBTITLES: 'cleanup_orphaned_subtitles',
     IGNORE_CAPTIONS: 'ignore_captions',
+    TRANSLATE_SUPPLEMENTAL_SUBTITLES: 'translate_supplemental_subtitles',
     MAX_RETRIES: 'max_retries',
     RETRY_DELAY: 'retry_delay',
     RETRY_DELAY_MULTIPLIER: 'retry_delay_multiplier',
@@ -190,6 +193,8 @@ export interface ISettings {
     subtitle_validation_mindurationms: string
     subtitle_validation_maxdurationsecs: string
     subtitle_integrity_validation_enabled: string
+    bulk_integrity_auto_queue: string
+    bulk_integrity_max_auto_queue_per_run: string
     ai_context_prompt_enabled: string
     ai_context_prompt: string
     ai_context_before: string
@@ -202,6 +207,7 @@ export interface ISettings {
     subtitle_tag_short: string
     cleanup_orphaned_subtitles: string
     ignore_captions: string
+    translate_supplemental_subtitles: string
     max_retries: string
     retry_delay: string
     retry_delay_multiplier: string

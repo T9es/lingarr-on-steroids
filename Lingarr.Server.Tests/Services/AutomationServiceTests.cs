@@ -53,7 +53,9 @@ public class AutomationServiceTests
                 MediaType.Movie,
                 true,
                 false,
-                false))
+                false,
+                true,
+                null))
             .ReturnsAsync(1);
 
         var service = new AutomationService(
@@ -90,7 +92,9 @@ public class AutomationServiceTests
             MediaType.Movie,
             true,
             false,
-            false), Times.Once);
+            false,
+            true,
+            null), Times.Once);
     }
 
     [Fact]

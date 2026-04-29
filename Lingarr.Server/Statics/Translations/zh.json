@@ -543,7 +543,9 @@
       "recreateAllOutputs": "重新生成所有输出",
       "recreateAllOutputsDescription": "按当前输出模式重新运行整个媒体库的翻译。这会再次使用翻译提供商，只替换由 Lingarr 管理的字幕，手动字幕不会受到影响。",
       "subtitleIntegrityValidationEnabled": "验证字幕完整性",
-      "subtitleIntegrityValidationEnabledDescription": "检查翻译后的字幕是否具有与原始字幕大致相同的行数，以检测部分翻译。"
+      "subtitleIntegrityValidationEnabledDescription": "检查翻译后的字幕是否具有与原始字幕大致相同的行数，以检测部分翻译。",
+      "translateSupplementalSubtitles": "Translate supplemental forced/signs subtitles:",
+      "translateSupplementalSubtitlesDescription": "When enabled, Lingarr may translate forced, signs, and songs tracks as separate supplemental outputs. Main subtitles still use full-dialogue sources only."
     },
     "indexing": {
       "title": "索引",
@@ -666,7 +668,7 @@
     },
     "integrity": {
       "title": "批量完整性检查",
-      "description": "验证所有完成状态的媒体，以检测部分或损坏的字幕翻译。发现的任何损坏字幕将自动排队重新翻译。",
+      "description": "Validate all Complete-state media to detect partial or corrupted subtitle translations. By default this reports findings without queueing repairs.",
       "startButton": "开始完整性检查",
       "running": "检查中...",
       "progress": "进度",
@@ -679,7 +681,12 @@
         "total": "总计",
         "movies": "电影",
         "episodes": "剧集"
-      }
+      },
+      "autoQueue": "Automatically queue repair translations:",
+      "autoQueueDescription": "Keep disabled for report-only scans. When enabled, Lingarr queues repairs up to the per-run cap.",
+      "maxAutoQueuePerRun": "Maximum repairs to queue per run:",
+      "completedReportOnly": "Integrity check completed. Findings were reported without queueing repairs.",
+      "completedWithQueue": "Integrity check completed. Repair translations were queued for the listed findings."
     }
   },
   "translationState": {

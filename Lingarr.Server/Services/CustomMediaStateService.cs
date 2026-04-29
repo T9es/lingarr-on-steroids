@@ -9,6 +9,7 @@ using Lingarr.Server.Models.FileSystem;
 using Lingarr.Server.Models.Subtitle;
 using Lingarr.Server.Services.Subtitle;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Lingarr.Server.Services;
 
@@ -19,6 +20,7 @@ public class CustomMediaStateService : ICustomMediaStateService
     private readonly ISubtitleService _subtitleService;
     private readonly ISubtitleExtractionService _subtitleExtractionService;
     private readonly ISourceSubtitleSnapshotService _sourceSubtitleSnapshotService;
+    private readonly ISubtitleSourceSelectionService _subtitleSourceSelectionService;
     private readonly ILogger<CustomMediaStateService> _logger;
 
     public CustomMediaStateService(
@@ -27,13 +29,18 @@ public class CustomMediaStateService : ICustomMediaStateService
         ISubtitleService subtitleService,
         ISubtitleExtractionService subtitleExtractionService,
         ISourceSubtitleSnapshotService sourceSubtitleSnapshotService,
-        ILogger<CustomMediaStateService> logger)
+        ILogger<CustomMediaStateService> logger,
+        ISubtitleSourceSelectionService? subtitleSourceSelectionService = null)
     {
         _dbContext = dbContext;
         _settingService = settingService;
         _subtitleService = subtitleService;
         _subtitleExtractionService = subtitleExtractionService;
         _sourceSubtitleSnapshotService = sourceSubtitleSnapshotService;
+        _subtitleSourceSelectionService = subtitleSourceSelectionService ??
+            new SubtitleSourceSelectionService(
+                subtitleExtractionService,
+                NullLogger<SubtitleSourceSelectionService>.Instance);
         _logger = logger;
     }
 
@@ -197,15 +204,15 @@ public class CustomMediaStateService : ICustomMediaStateService
             _logger.LogDebug(ex, "Failed to probe embedded subtitles for custom item {ItemId}", item.Id);
         }
 
-        var hasExternalSource = externalSubtitles
-            .Where(subtitle => !ShouldSkipExternalSourceCandidate(subtitle))
-            .Any(subtitle =>
-                sourceLanguages.Any(sourceLanguage =>
-                    SubtitleLanguageHelper.LanguageMatches(subtitle.Language, sourceLanguage)));
-        var hasEmbeddedSource = embeddedSubtitles.Any(subtitle =>
-            subtitle.IsTextBased &&
-            !string.IsNullOrWhiteSpace(subtitle.Language) &&
-            sourceLanguages.Any(sourceLanguage => SubtitleLanguageHelper.LanguageMatches(subtitle.Language, sourceLanguage)));
+        var externalSource = await _sourceSubtitleSnapshotService.ResolveExternalSourceAsync(
+            item,
+            externalSubtitles);
+        var embeddedSourceSelection = await _subtitleSourceSelectionService.SelectPrimaryAsync(
+            embeddedSubtitles.Where(subtitle => subtitle.IsTextBased).ToList(),
+            sourceLanguages,
+            allowCaptionFallback: !ignoreCaptions);
+        var hasExternalSource = externalSource != null;
+        var hasEmbeddedSource = embeddedSourceSelection.SelectedSubtitle != null;
 
         if (!hasExternalSource && !hasEmbeddedSource)
         {
@@ -213,10 +220,8 @@ public class CustomMediaStateService : ICustomMediaStateService
         }
 
         var requiredOutputFormats = ResolveRequiredOutputFormats(
-            externalSubtitles,
-            embeddedSubtitles,
-            sourceLanguages,
-            ignoreCaptions,
+            externalSource,
+            embeddedSourceSelection,
             subtitleOutputMode);
         var sourceSnapshot = await _sourceSubtitleSnapshotService.ResolveCurrentSnapshotAsync(
             item,
@@ -253,14 +258,15 @@ public class CustomMediaStateService : ICustomMediaStateService
         return TranslationState.Pending;
     }
 
-    private async Task<HashSet<string>> GetConfiguredLanguages(string settingKey)
+    private async Task<List<string>> GetConfiguredLanguages(string settingKey)
     {
         try
         {
             var languages = await _settingService.GetSettingAsJson<SourceLanguage>(settingKey);
             return languages
                 .Select(language => language.Code.ToLowerInvariant())
-                .ToHashSet();
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
         catch
         {
@@ -422,37 +428,21 @@ public class CustomMediaStateService : ICustomMediaStateService
     }
 
     private static IReadOnlyList<string> ResolveRequiredOutputFormats(
-        IReadOnlyCollection<Subtitles> externalSubtitles,
-        IReadOnlyCollection<EmbeddedSubtitle> embeddedSubtitles,
-        IReadOnlyCollection<string> sourceLanguages,
-        bool ignoreCaptions,
+        ResolvedExternalSourceSubtitle? externalSource,
+        SubtitleSourceSelectionResult embeddedSourceSelection,
         SubtitleOutputMode subtitleOutputMode)
     {
-        var externalSource = externalSubtitles
-            .Where(subtitle => !ShouldSkipExternalSourceCandidate(subtitle))
-            .Where(subtitle => sourceLanguages.Any(sourceLanguage =>
-                SubtitleLanguageHelper.LanguageMatches(subtitle.Language, sourceLanguage)))
-            .OrderBy(subtitle => ignoreCaptions && !string.IsNullOrWhiteSpace(subtitle.Caption))
-            .FirstOrDefault();
-
-        if (externalSource != null)
+        if (externalSource?.Subtitle != null)
         {
             return SubtitleOutputModeHelper.GetRequiredOutputFormats(
-                ResolveSubtitleFormat(externalSource),
+                ResolveSubtitleFormat(externalSource.Subtitle),
                 subtitleOutputMode);
         }
 
-        var embeddedSourceCandidates = embeddedSubtitles
-            .Where(subtitle => subtitle.IsTextBased)
-            .ToList();
-        var bestEmbeddedMatch = SubtitleLanguageHelper.FindBestMatch(
-            embeddedSourceCandidates,
-            sourceLanguages.ToList());
-
-        if (bestEmbeddedMatch.Subtitle != null)
+        if (embeddedSourceSelection.SelectedSubtitle != null)
         {
             return SubtitleOutputModeHelper.GetRequiredOutputFormats(
-                MapEmbeddedSubtitleFormat(bestEmbeddedMatch.Subtitle.CodecName),
+                MapEmbeddedSubtitleFormat(embeddedSourceSelection.SelectedSubtitle.CodecName),
                 subtitleOutputMode);
         }
 

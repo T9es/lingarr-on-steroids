@@ -114,6 +114,19 @@ public abstract class MediaSubtitleProcessorTestBase : IDisposable
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new HashSet<string>());
 
+        SourceSubtitleSnapshotServiceMock
+            .Setup(s => s.CreateEmbeddedSnapshot(
+                It.IsAny<EmbeddedSubtitle>(),
+                It.IsAny<string>()))
+            .Returns((EmbeddedSubtitle subtitle, string sourceLanguage) => new SourceSubtitleSnapshot
+            {
+                SourceType = SourceSubtitleSnapshot.EmbeddedType,
+                SourceLanguage = sourceLanguage,
+                Identity = $"embedded|{sourceLanguage}|stream:{subtitle.StreamIndex}",
+                Fingerprint = $"fp:embedded:{sourceLanguage}:{subtitle.StreamIndex}",
+                StreamIndex = subtitle.StreamIndex
+            });
+
         var options = new DbContextOptionsBuilder<LingarrDbContext>()
             .UseInMemoryDatabase(databaseName: System.Guid.NewGuid().ToString())
             .Options;

@@ -543,7 +543,9 @@
       "recreateAllOutputs": "Odtwórz wszystkie wyjścia",
       "recreateAllOutputsDescription": "Uruchom ponownie tłumaczenia dla całej biblioteki z użyciem bieżącego trybu wyjścia. Ponownie używa dostawców tłumaczeń, zastępuje tylko napisy zarządzane przez Lingarr, a napisy dodane ręcznie pozostają bez zmian.",
       "subtitleIntegrityValidationEnabled": "Waliduj integralność napisów",
-      "subtitleIntegrityValidationEnabledDescription": "Sprawdź, czy przetłumaczone napisy mają z grubsza taką samą liczbę linii jak oryginał, aby wykryć częściowe tłumaczenia."
+      "subtitleIntegrityValidationEnabledDescription": "Sprawdź, czy przetłumaczone napisy mają z grubsza taką samą liczbę linii jak oryginał, aby wykryć częściowe tłumaczenia.",
+      "translateSupplementalSubtitles": "Tlumacz dodatkowe napisy wymuszone/napisy ekranowe:",
+      "translateSupplementalSubtitlesDescription": "Po wlaczeniu Lingarr moze tlumaczyc sciezki wymuszone, napisy ekranowe i piosenki jako osobne dodatkowe pliki. Glowne napisy nadal uzywaja wylacznie pelnych zrodel dialogowych."
     },
     "indexing": {
       "title": "Indeksowanie",
@@ -666,7 +668,7 @@
     },
     "integrity": {
       "title": "Masowe sprawdzanie integralności",
-      "description": "Zwaliduj wszystkie media w stanie 'Ukończone', aby wykryć częściowe lub uszkodzone tłumaczenia napisów. Wszystkie znalezione uszkodzone napisy zostaną automatycznie dodane do kolejki do ponownego tłumaczenia.",
+      "description": "Sprawdza wszystkie media w stanie Ukonczone, aby wykryc czesciowe lub uszkodzone tlumaczenia napisow. Domyslnie wyniki sa tylko raportowane, bez kolejkowania napraw.",
       "startButton": "Rozpocznij sprawdzanie integralności",
       "running": "Sprawdzanie...",
       "progress": "Postęp",
@@ -679,7 +681,12 @@
         "total": "Łącznie",
         "movies": "filmy",
         "episodes": "odcinki"
-      }
+      },
+      "autoQueue": "Automatycznie kolejkuj tlumaczenia naprawcze:",
+      "autoQueueDescription": "Pozostaw wylaczone dla skanow tylko raportujacych. Po wlaczeniu Lingarr kolejkuje naprawy do limitu na jedno uruchomienie.",
+      "maxAutoQueuePerRun": "Maksymalna liczba napraw na uruchomienie:",
+      "completedReportOnly": "Sprawdzanie integralnosci zakonczone. Wyniki zgloszono bez kolejkowania napraw.",
+      "completedWithQueue": "Sprawdzanie integralnosci zakonczone. Tlumaczenia naprawcze zostaly dodane do kolejki dla wykrytych pozycji."
     }
   },
   "translationState": {

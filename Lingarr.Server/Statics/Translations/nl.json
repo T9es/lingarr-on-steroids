@@ -543,7 +543,9 @@
       "recreateAllOutputs": "Alle uitvoer opnieuw maken",
       "recreateAllOutputsDescription": "Voer vertalingen voor je hele bibliotheek opnieuw uit met de huidige uitvoermodus. Dit gebruikt vertaalproviders opnieuw, vervangt alleen door Lingarr beheerde ondertitels en laat handmatige ondertitels ongemoeid.",
       "subtitleIntegrityValidationEnabled": "Ondertitelintegriteit valideren",
-      "subtitleIntegrityValidationEnabledDescription": "Controleer of de vertaalde ondertitel ongeveer hetzelfde aantal regels heeft als het origineel om gedeeltelijke vertalingen te detecteren."
+      "subtitleIntegrityValidationEnabledDescription": "Controleer of de vertaalde ondertitel ongeveer hetzelfde aantal regels heeft als het origineel om gedeeltelijke vertalingen te detecteren.",
+      "translateSupplementalSubtitles": "Aanvullende geforceerde/tekens-ondertitels vertalen:",
+      "translateSupplementalSubtitlesDescription": "Als dit is ingeschakeld, kan Lingarr geforceerde, tekens- en songtracks als aparte aanvullende uitvoer vertalen. Hoofdondertitels gebruiken nog steeds alleen volledige dialoogbronnen."
     },
     "indexing": {
       "title": "Indexering",
@@ -666,7 +668,7 @@
     },
     "integrity": {
       "title": "Bulk integriteitscontrole",
-      "description": "Valideer alle media met status 'Voltooid' om gedeeltelijke of corrupte ondertitelvertalingen te detecteren. Gevonden corrupte ondertitels worden automatisch in de wachtrij gezet voor hervertaling.",
+      "description": "Valideer alle media met status Voltooid om gedeeltelijke of beschadigde ondertitelvertalingen te vinden. Standaard worden bevindingen alleen gerapporteerd zonder reparaties in de wachtrij te zetten.",
       "startButton": "Start integriteitscontrole",
       "running": "Controleren...",
       "progress": "Voortgang",
@@ -679,7 +681,12 @@
         "total": "Totaal",
         "movies": "films",
         "episodes": "afleveringen"
-      }
+      },
+      "autoQueue": "Reparatievertalingen automatisch in de wachtrij zetten:",
+      "autoQueueDescription": "Laat uitgeschakeld voor scans die alleen rapporteren. Als dit is ingeschakeld, zet Lingarr reparaties in de wachtrij tot de limiet per run.",
+      "maxAutoQueuePerRun": "Maximaal aantal reparaties per run:",
+      "completedReportOnly": "Integriteitscontrole voltooid. Bevindingen zijn gerapporteerd zonder reparaties in de wachtrij te zetten.",
+      "completedWithQueue": "Integriteitscontrole voltooid. Reparatievertalingen zijn in de wachtrij gezet voor de vermelde bevindingen."
     }
   },
   "translationState": {

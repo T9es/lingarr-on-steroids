@@ -57,7 +57,8 @@ public interface ISubtitleService
         string targetLanguage,
         string subtitleTag,
         string subtitleTagShort,
-        string? outputFormat = null);
+        string? outputFormat = null,
+        string? forcedCaption = null);
     
     /// <summary>
     /// Adjusts subtitle timings to prevent overlaps and ensure optimal duration based on content length.
