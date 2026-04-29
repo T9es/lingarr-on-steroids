@@ -338,6 +338,84 @@ public class SourceSubtitleSnapshotServiceTests
     }
 
     [Fact]
+    public async Task ResolveCurrentSnapshotAsync_ShouldIgnoreSparseExternalSourceAndUseEmbeddedFullSource()
+    {
+        var dbContext = CreateDbContext();
+        var settingServiceMock = new Mock<ISettingService>();
+        var subtitleServiceMock = new Mock<ISubtitleService>();
+        var sparseExternalPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.en.srt");
+
+        try
+        {
+            File.WriteAllText(
+                sparseExternalPath,
+                """
+                1
+                00:48:33,147 --> 00:48:36,317
+                Tonight I would look upon your face!
+
+                """);
+
+            settingServiceMock
+                .Setup(s => s.GetSettingAsJson<SourceLanguage>(SettingKeys.Translation.SourceLanguages))
+                .ReturnsAsync([new SourceLanguage { Name = "English", Code = "en" }]);
+
+            settingServiceMock
+                .Setup(s => s.GetSetting(SettingKeys.Translation.IgnoreCaptions))
+                .ReturnsAsync("false");
+
+            var service = new SourceSubtitleSnapshotService(
+                dbContext,
+                settingServiceMock.Object,
+                subtitleServiceMock.Object,
+                NullLogger<SourceSubtitleSnapshotService>.Instance);
+
+            var movie = new Movie
+            {
+                Id = 4,
+                RadarrId = 4,
+                Title = "Movie",
+                Path = "/movies",
+                FileName = "movie.mkv",
+                DateAdded = DateTime.UtcNow
+            };
+
+            var snapshot = await service.ResolveCurrentSnapshotAsync(
+                movie,
+                MediaType.Movie,
+                [
+                    new EmbeddedSubtitle
+                    {
+                        StreamIndex = 2,
+                        Language = "eng",
+                        CodecName = "subrip",
+                        IsTextBased = true
+                    }
+                ],
+                [
+                    new Subtitles
+                    {
+                        Path = sparseExternalPath,
+                        FileName = "movie.en",
+                        Language = "en",
+                        Format = ".srt"
+                    }
+                ]);
+
+            Assert.NotNull(snapshot);
+            Assert.Equal(SourceSubtitleSnapshot.EmbeddedType, snapshot!.SourceType);
+            Assert.Equal(2, snapshot.StreamIndex);
+        }
+        finally
+        {
+            if (File.Exists(sparseExternalPath))
+            {
+                File.Delete(sparseExternalPath);
+            }
+        }
+    }
+
+    [Fact]
     public void CreateExternalSnapshot_ShouldUseContentFingerprint_WhenMetadataIsUnchanged()
     {
         var dbContext = CreateDbContext();

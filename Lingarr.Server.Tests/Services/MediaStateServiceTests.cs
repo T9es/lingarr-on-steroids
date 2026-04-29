@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data.Common;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Lingarr.Core.Configuration;
@@ -300,6 +301,98 @@ public class MediaStateServiceTests : IDisposable
 
         // Assert - Should be Pending because Dutch target is missing
         Assert.Equal(TranslationState.Pending, state);
+    }
+
+    [Fact]
+    public async Task ComputeStateAsync_ShouldReturnPending_WhenExternalTargetIsSparseEvenWithEmbeddedSource()
+    {
+        var tempDirectory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDirectory);
+        var sparseEnglishPath = Path.Combine(tempDirectory, "got.s01e02.en.srt");
+        var sparsePolishPath = Path.Combine(tempDirectory, "got.s01e02.pl.srt");
+
+        try
+        {
+            File.WriteAllText(
+                sparseEnglishPath,
+                """
+                1
+                00:48:33,147 --> 00:48:36,317
+                Tonight I would look upon your face!
+
+                """);
+            File.WriteAllText(
+                sparsePolishPath,
+                """
+                1
+                00:48:33,147 --> 00:48:36,317
+                Dzisiaj chce ujrzec twoja twarz!
+
+                """);
+
+            var movie = new Movie
+            {
+                Id = 22,
+                RadarrId = 22,
+                Title = "Game of Thrones - The Kingsroad",
+                Path = tempDirectory,
+                FileName = "got.s01e02.mkv",
+                DateAdded = DateTime.UtcNow
+            };
+            movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+            {
+                MovieId = 22,
+                Language = "eng",
+                IsTextBased = true,
+                CodecName = "subrip",
+                StreamIndex = 2
+            });
+
+            _context.Movies.Add(movie);
+            await _context.SaveChangesAsync();
+
+            _settingServiceMock
+                .SetupSequence(s => s.GetSettingAsJson<SourceLanguage>(It.IsAny<string>()))
+                .ReturnsAsync([new SourceLanguage { Name = "English", Code = "en" }])
+                .ReturnsAsync([new SourceLanguage { Name = "Polish", Code = "pl" }]);
+
+            _subtitleServiceMock
+                .Setup(s => s.GetAllSubtitles(It.IsAny<string>()))
+                .ReturnsAsync([
+                    new Models.FileSystem.Subtitles
+                    {
+                        FileName = "got.s01e02.en.srt",
+                        Language = "en",
+                        Path = sparseEnglishPath,
+                        Format = ".srt"
+                    },
+                    new Models.FileSystem.Subtitles
+                    {
+                        FileName = "got.s01e02.pl.srt",
+                        Language = "pl",
+                        Path = sparsePolishPath,
+                        Format = ".srt"
+                    }
+                ]);
+
+            var service = new MediaStateService(
+                _context,
+                _settingServiceMock.Object,
+                _subtitleServiceMock.Object,
+                _sourceSubtitleSnapshotServiceMock.Object,
+                NullLogger<MediaStateService>.Instance);
+
+            var state = await service.UpdateStateAsync(movie, MediaType.Movie);
+
+            Assert.Equal(TranslationState.Pending, state);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDirectory))
+            {
+                Directory.Delete(tempDirectory, recursive: true);
+            }
+        }
     }
 
     [Fact]

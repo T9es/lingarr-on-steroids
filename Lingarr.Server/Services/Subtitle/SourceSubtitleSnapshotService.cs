@@ -374,7 +374,7 @@ public class SourceSubtitleSnapshotService : ISourceSubtitleSnapshotService
         }
 
         var validSubtitles = subtitles
-            .Where(s => !ShouldSkipExternalSourceCandidate(s))
+            .Where(s => !ExternalSubtitleCandidateHelper.ShouldSkipAsPrimarySource(s))
             .Where(s => !IsRejectedExternalSourceCandidate(s))
             .ToList();
         if (validSubtitles.Count == 0)
@@ -402,7 +402,8 @@ public class SourceSubtitleSnapshotService : ISourceSubtitleSnapshotService
         }
 
         var cleanCandidate = sourceCandidates
-            .Where(s => !SubtitleLanguageHelper.IsCaptionSubtitleType(GetExternalSubtitleType(s)))
+            .Where(s => !SubtitleLanguageHelper.IsCaptionSubtitleType(
+                ExternalSubtitleCandidateHelper.GetSubtitleType(s)))
             .OrderBy(s => !string.IsNullOrWhiteSpace(s.Caption))
             .FirstOrDefault();
         if (cleanCandidate != null)
@@ -413,58 +414,15 @@ public class SourceSubtitleSnapshotService : ISourceSubtitleSnapshotService
         var candidate = ignoreCaptions
             ? null
             : sourceCandidates.FirstOrDefault(s =>
-                SubtitleLanguageHelper.IsCaptionSubtitleType(GetExternalSubtitleType(s)));
+                SubtitleLanguageHelper.IsCaptionSubtitleType(
+                    ExternalSubtitleCandidateHelper.GetSubtitleType(s)));
 
         return (candidate, sourceLanguage);
     }
 
     private static bool IsRejectedExternalSourceCandidate(Subtitles candidate)
     {
-        var subtitleType = GetExternalSubtitleType(candidate);
-        return SubtitleLanguageHelper.IsSupplementalSubtitleType(subtitleType) ||
-               string.Equals(
-                   subtitleType,
-                   SubtitleLanguageHelper.TypeCommentary,
-                   StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string GetExternalSubtitleType(Subtitles candidate)
-    {
-        if (!string.IsNullOrWhiteSpace(candidate.Caption))
-        {
-            var captionType = SubtitleLanguageHelper.DetermineSubtitleTypeFromFilename(candidate.Caption);
-            if (!string.Equals(captionType, SubtitleLanguageHelper.TypeFull, StringComparison.OrdinalIgnoreCase))
-            {
-                return captionType;
-            }
-        }
-
-        return SubtitleLanguageHelper.DetermineSubtitleTypeFromFilename(
-            !string.IsNullOrWhiteSpace(candidate.Path) ? candidate.Path : candidate.FileName);
-    }
-
-    private static bool ShouldSkipExternalSourceCandidate(Subtitles candidate)
-    {
-        var fileName = Path.GetFileName(candidate.Path);
-        if (fileName.StartsWith("lingarr_temp_source_", StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        try
-        {
-            var isExtracted = SubtitleExtractionService.IsLingarrExtracted(candidate.Path);
-            if (isExtracted && SubtitleExtractionService.IsSparseSubtitle(candidate.Path))
-            {
-                return true;
-            }
-        }
-        catch
-        {
-            // Non-fatal; if marker parsing fails we keep candidate selection resilient.
-        }
-
-        return false;
+        return ExternalSubtitleCandidateHelper.IsSupplementalOrCommentary(candidate);
     }
 
     private static string NormalizePath(string path)

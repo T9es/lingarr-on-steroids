@@ -228,6 +228,54 @@ public class TranslationJobTests : IDisposable
     }
 
     [Fact]
+    public void EmbeddedSourceLanguageMismatchesRequest_ReturnsTrue_WhenSelectedStreamLanguageDiffersFromRequest()
+    {
+        var request = new TranslationRequest
+        {
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            Title = "Wrong language source",
+            MediaType = MediaType.Episode,
+            Status = TranslationStatus.Pending
+        };
+        var selectedSubtitle = new EmbeddedSubtitle
+        {
+            StreamIndex = 1,
+            Language = "pol",
+            CodecName = "subrip",
+            IsTextBased = true
+        };
+
+        var result = TranslationJob.EmbeddedSourceLanguageMismatchesRequest(request, selectedSubtitle);
+
+        Assert.True(result);
+    }
+
+    [Fact]
+    public void EmbeddedSourceLanguageMismatchesRequest_ReturnsFalse_WhenSelectedStreamMatchesRequest()
+    {
+        var request = new TranslationRequest
+        {
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            Title = "Right language source",
+            MediaType = MediaType.Episode,
+            Status = TranslationStatus.Pending
+        };
+        var selectedSubtitle = new EmbeddedSubtitle
+        {
+            StreamIndex = 2,
+            Language = "eng",
+            CodecName = "subrip",
+            IsTextBased = true
+        };
+
+        var result = TranslationJob.EmbeddedSourceLanguageMismatchesRequest(request, selectedSubtitle);
+
+        Assert.False(result);
+    }
+
+    [Fact]
     public async Task GetPreExistingExtractedSubtitlePathsAsync_FindsExistingAssExtraction()
     {
         var movie = CreateMovie(3);

@@ -457,6 +457,7 @@ public class TranslationJob
 
                     if (await TryCancelObsoleteUnsafeSourceAsync(
                             request,
+                            sourceIsEmbedded ? selectedSubtitle : null,
                             subtitles,
                             settings,
                             effectiveCancellationToken))
@@ -1171,6 +1172,7 @@ public class TranslationJob
 
     private async Task<bool> TryCancelObsoleteUnsafeSourceAsync(
         TranslationRequest request,
+        EmbeddedSubtitle? selectedSubtitle,
         IReadOnlyList<SubtitleItem> subtitles,
         IReadOnlyDictionary<string, string> settings,
         CancellationToken cancellationToken)
@@ -1202,6 +1204,11 @@ public class TranslationJob
         else if (LooksPathologicalAssSource(request, subtitles))
         {
             reason = "Selected ASS/SSA source is drawing-heavy/pathological and is not safe to translate.";
+        }
+        else if (EmbeddedSourceLanguageMismatchesRequest(request, selectedSubtitle))
+        {
+            reason =
+                $"Selected embedded source language '{selectedSubtitle!.Language}' does not match request source language '{request.SourceLanguage}'.";
         }
 
         if (string.IsNullOrWhiteSpace(reason))
@@ -1241,6 +1248,22 @@ public class TranslationJob
 
         await RefreshTranslationStateAsync(request, cancellationToken);
         return true;
+    }
+
+    internal static bool EmbeddedSourceLanguageMismatchesRequest(
+        TranslationRequest request,
+        EmbeddedSubtitle? selectedSubtitle)
+    {
+        if (selectedSubtitle == null ||
+            string.IsNullOrWhiteSpace(selectedSubtitle.Language) ||
+            string.IsNullOrWhiteSpace(request.SourceLanguage))
+        {
+            return false;
+        }
+
+        return !SubtitleLanguageHelper.LanguageMatches(
+            selectedSubtitle.Language,
+            request.SourceLanguage);
     }
     
     /// <summary>

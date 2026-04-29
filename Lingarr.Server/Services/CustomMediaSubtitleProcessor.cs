@@ -220,6 +220,11 @@ public class CustomMediaSubtitleProcessor : ICustomMediaSubtitleProcessor
 
         foreach (var subtitle in externalSubtitles)
         {
+            if (ExternalSubtitleCandidateHelper.ShouldSkipAsMainTarget(subtitle))
+            {
+                continue;
+            }
+
             var normalizedLanguage = SubtitleLanguageHelper.NormalizeLanguageCode(subtitle.Language);
             if (string.IsNullOrWhiteSpace(normalizedLanguage))
             {
@@ -335,22 +340,17 @@ public class CustomMediaSubtitleProcessor : ICustomMediaSubtitleProcessor
             return false;
         }
 
-        var subtitleType = SubtitleLanguageHelper.DetermineSubtitleTypeFromFilename(candidate.Path);
-        if (SubtitleLanguageHelper.IsSupplementalSubtitleType(subtitleType) ||
-            string.Equals(subtitleType, SubtitleLanguageHelper.TypeCommentary, StringComparison.OrdinalIgnoreCase))
+        if (ExternalSubtitleCandidateHelper.IsSupplementalOrCommentary(candidate))
         {
             return false;
         }
 
-        try
+        if (ExternalSubtitleCandidateHelper.ShouldSkipAsPrimarySource(candidate))
         {
-            return !SubtitleExtractionService.IsLingarrExtracted(candidate.Path) ||
-                   !SubtitleExtractionService.IsSparseSubtitle(candidate.Path);
+            return false;
         }
-        catch
-        {
-            return true;
-        }
+
+        return true;
     }
 
     private async Task<List<string>> GetLanguagesSetting<T>(string settingName) where T : class, ILanguage

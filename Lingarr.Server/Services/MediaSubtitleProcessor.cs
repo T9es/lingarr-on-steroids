@@ -123,29 +123,20 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 subtitles);
             var sourceLanguage = resolvedExternalSource?.SourceLanguage;
             var sourceSubtitle = resolvedExternalSource?.Subtitle;
+            var sourceSnapshot = resolvedExternalSource?.Snapshot;
 
-            // Check if the found external subtitle is sparse (likely Signs/Songs from previous extraction)
-            // If it was extracted by Lingarr and is sparse, skip it and fall back to embedded extraction
             if (sourceSubtitle != null)
             {
-                var isSparse = SubtitleExtractionService.IsSparseSubtitle(sourceSubtitle.Path);
-                var isExtracted = SubtitleExtractionService.IsLingarrExtracted(sourceSubtitle.Path);
-                
-                if (isSparse)
+                if (ExternalSubtitleCandidateHelper.IsSparseSubtitleFile(sourceSubtitle))
                 {
                     var entryCount = SubtitleExtractionService.CountSubtitleEntries(sourceSubtitle.Path);
                     _logger.LogWarning(
-                        "External subtitle {Path} is sparse ({Count} entries, minimum: {Min}). {Action}",
+                        "External subtitle {Path} is sparse ({Count} entries, minimum: {Min}). Skipping it as a primary source and trying embedded fallback.",
                         sourceSubtitle.Path, 
                         entryCount, 
-                        SubtitleExtractionService.MinimumDialogueEntries,
-                        isExtracted ? "Lingarr-extracted file will be skipped, trying embedded fallback..." : "User-provided file will still be used.");
-                    
-                    // Only skip Lingarr-extracted sparse files; user-provided sparse files may be intentional
-                    if (isExtracted)
-                    {
-                        sourceSubtitle = null;
-                    }
+                        SubtitleExtractionService.MinimumDialogueEntries);
+                    sourceSubtitle = null;
+                    sourceSnapshot = null;
                 }
             }
 
@@ -195,6 +186,9 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                                  FileName = Path.GetFileName(tempSourcePath)
                              };
                              sourceLanguage = bestMatch.MatchedLanguage;
+                             sourceSnapshot = _sourceSubtitleSnapshotService.CreateEmbeddedSnapshot(
+                                 bestMatch.SelectedSubtitle,
+                                 bestMatch.MatchedLanguage);
                              _logger.LogInformation("Extracted temporary source subtitle for validation: {TempPath}", tempSourcePath);
                          }
                      }
@@ -240,7 +234,10 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 if (ignoreCaptions == "true")
                 {
                     var targetLanguagesWithCaptions = subtitles
-                        .Where(s => targetLanguages.Contains(s.Language) && !string.IsNullOrEmpty(s.Caption))
+                        .Where(s =>
+                            targetLanguages.Contains(s.Language) &&
+                            !string.IsNullOrEmpty(s.Caption) &&
+                            !ExternalSubtitleCandidateHelper.ShouldSkipAsMainTarget(s))
                         .Select(s => s.Language)
                         .Distinct()
                         .ToList();
@@ -314,7 +311,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                         SourceLanguage = sourceLanguage,
                         SubtitleFormat = sourceSubtitle.Format,
                         SourceSubtitleType = SubtitleLanguageHelper.DetermineSubtitleTypeFromFilename(sourceSubtitle.Path),
-                        SourceSnapshot = resolvedExternalSource?.Snapshot
+                        SourceSnapshot = sourceSnapshot
                     });
                     _logger.LogInformation(
                         "Initiating translation from |Orange|{sourceLanguage}|/Orange| to |Orange|{targetLanguage}|/Orange| for |Green|{subtitleFile}|/Green|",
@@ -572,7 +569,8 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             var sourceLanguage = resolvedExternalSource.SourceLanguage;
             var sourceSubtitle = resolvedExternalSource.Subtitle;
 
-            if (sourceSubtitle != null)
+            if (sourceSubtitle != null &&
+                !ExternalSubtitleCandidateHelper.ShouldSkipAsPrimarySource(sourceSubtitle))
             {
                 var requestedRequiredOutputFormats =
                     await GetRequestedRequiredOutputFormatsAsync(sourceSubtitle.Format);
@@ -641,7 +639,10 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 if (ignoreCaptions == "true")
                 {
                     var targetLanguagesWithCaptions = subtitles
-                        .Where(s => targetLanguages.Contains(s.Language) && !string.IsNullOrEmpty(s.Caption))
+                        .Where(s =>
+                            targetLanguages.Contains(s.Language) &&
+                            !string.IsNullOrEmpty(s.Caption) &&
+                            !ExternalSubtitleCandidateHelper.ShouldSkipAsMainTarget(s))
                         .Select(s => s.Language)
                         .Distinct()
                         .ToList();
@@ -970,6 +971,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             .Where(s => s.FileName.StartsWith(media.FileName + ".") || s.FileName == media.FileName)
             .ToList();
         var existingExternalLanguages = matchingExternalSubtitles
+            .Where(subtitle => !ExternalSubtitleCandidateHelper.ShouldSkipAsMainTarget(subtitle))
             .Select(s => s.Language.ToLowerInvariant())
             .ToHashSet();
 
@@ -1379,7 +1381,8 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 : GetLanguagesMissingRequiredOutputFormats(
                         existingSupplementalTargets,
                         targetLanguages,
-                        requiredOutputFormats)
+                        requiredOutputFormats,
+                        allowSupplementalTargets: true)
                     .ToList();
             if (languagesToTranslate.Count == 0)
             {
@@ -1448,13 +1451,20 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
     private static HashSet<string> GetLanguagesMissingRequiredOutputFormats(
         IEnumerable<Subtitles> subtitles,
         IEnumerable<string> targetLanguages,
-        IReadOnlyCollection<string> requiredOutputFormats)
+        IReadOnlyCollection<string> requiredOutputFormats,
+        bool allowSupplementalTargets = false)
     {
         var existingTargetFormats =
             new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var subtitle in subtitles)
         {
+            if (!allowSupplementalTargets &&
+                ExternalSubtitleCandidateHelper.ShouldSkipAsMainTarget(subtitle))
+            {
+                continue;
+            }
+
             var language = SubtitleLanguageHelper.NormalizeLanguageCode(subtitle.Language);
             if (string.IsNullOrWhiteSpace(language))
             {

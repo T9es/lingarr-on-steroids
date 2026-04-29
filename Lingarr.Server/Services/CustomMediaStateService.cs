@@ -372,6 +372,11 @@ public class CustomMediaStateService : ICustomMediaStateService
 
         foreach (var externalSubtitle in externalSubtitles)
         {
+            if (ExternalSubtitleCandidateHelper.ShouldSkipAsMainTarget(externalSubtitle))
+            {
+                continue;
+            }
+
             var normalizedLanguage = SubtitleLanguageHelper.NormalizeLanguageCode(externalSubtitle.Language);
             if (string.IsNullOrWhiteSpace(normalizedLanguage))
             {
@@ -514,22 +519,17 @@ public class CustomMediaStateService : ICustomMediaStateService
             return false;
         }
 
-        var subtitleType = SubtitleLanguageHelper.DetermineSubtitleTypeFromFilename(candidate.Path);
-        if (SubtitleLanguageHelper.IsSupplementalSubtitleType(subtitleType) ||
-            string.Equals(subtitleType, SubtitleLanguageHelper.TypeCommentary, StringComparison.OrdinalIgnoreCase))
+        if (ExternalSubtitleCandidateHelper.IsSupplementalOrCommentary(candidate))
         {
             return false;
         }
 
-        try
+        if (ExternalSubtitleCandidateHelper.ShouldSkipAsPrimarySource(candidate))
         {
-            return !SubtitleExtractionService.IsLingarrExtracted(candidate.Path) ||
-                   !SubtitleExtractionService.IsSparseSubtitle(candidate.Path);
+            return false;
         }
-        catch
-        {
-            return true;
-        }
+
+        return true;
     }
 
     private static string ResolveSubtitleFormat(Subtitles subtitle)
