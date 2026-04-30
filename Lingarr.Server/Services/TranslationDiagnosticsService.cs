@@ -90,11 +90,8 @@ public class TranslationDiagnosticsService : ITranslationDiagnosticsService
 
     public string CreateQuarantinePath(int translationRequestId, string finalPath)
     {
-        var root = Environment.GetEnvironmentVariable("LINGARR_TRANSLATION_QUARANTINE_PATH");
-        if (string.IsNullOrWhiteSpace(root))
-        {
-            root = Path.Combine(AppContext.BaseDirectory, "translation-quarantine");
-        }
+        var root = ResolveQuarantineRootPath(
+            Environment.GetEnvironmentVariable("LINGARR_TRANSLATION_QUARANTINE_PATH"));
 
         var fileName = Path.GetFileName(finalPath);
         var safeFileName = string.Join(
@@ -105,6 +102,21 @@ public class TranslationDiagnosticsService : ITranslationDiagnosticsService
             DateTime.UtcNow.ToString("yyyyMMdd"),
             translationRequestId.ToString(),
             $"{Guid.NewGuid():N}.{safeFileName}");
+    }
+
+    internal static string ResolveQuarantineRootPath(string? configuredRootPath)
+    {
+        if (!string.IsNullOrWhiteSpace(configuredRootPath))
+        {
+            return Path.GetFullPath(configuredRootPath);
+        }
+
+        if (!OperatingSystem.IsWindows())
+        {
+            return "/app/config/translation-quarantine";
+        }
+
+        return Path.Combine(AppContext.BaseDirectory, "config", "translation-quarantine");
     }
 
     public async Task<int> CleanupExpiredAsync(CancellationToken cancellationToken)

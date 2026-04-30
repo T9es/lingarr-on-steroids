@@ -96,6 +96,28 @@ public class TranslationDiagnosticsServiceTests : IDisposable
         Assert.Single(context.TranslationDiagnosticEvents);
     }
 
+    [Fact]
+    public void ResolveQuarantineRootPath_UsesWritableContainerConfigPathOnLinux()
+    {
+        var configuredRoot = Path.Combine(_tempDirectory, "configured");
+
+        Assert.Equal(
+            Path.GetFullPath(configuredRoot),
+            TranslationDiagnosticsService.ResolveQuarantineRootPath(configuredRoot));
+
+        var defaultRoot = TranslationDiagnosticsService.ResolveQuarantineRootPath(null);
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.EndsWith(
+                Path.Combine("config", "translation-quarantine"),
+                defaultRoot);
+        }
+        else
+        {
+            Assert.Equal("/app/config/translation-quarantine", defaultRoot);
+        }
+    }
+
     private static LingarrDbContext CreateDbContext()
     {
         var options = new DbContextOptionsBuilder<LingarrDbContext>()
