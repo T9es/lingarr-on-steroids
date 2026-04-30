@@ -111,7 +111,7 @@ public class TranslationDiagnosticsService : ITranslationDiagnosticsService
             return Path.GetFullPath(configuredRootPath);
         }
 
-        if (!OperatingSystem.IsWindows())
+        if (!OperatingSystem.IsWindows() && Directory.Exists("/app/config"))
         {
             return "/app/config/translation-quarantine";
         }

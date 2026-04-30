@@ -106,15 +106,15 @@ public class TranslationDiagnosticsServiceTests : IDisposable
             TranslationDiagnosticsService.ResolveQuarantineRootPath(configuredRoot));
 
         var defaultRoot = TranslationDiagnosticsService.ResolveQuarantineRootPath(null);
-        if (OperatingSystem.IsWindows())
+        if (!OperatingSystem.IsWindows() && Directory.Exists("/app/config"))
+        {
+            Assert.Equal("/app/config/translation-quarantine", defaultRoot);
+        }
+        else
         {
             Assert.EndsWith(
                 Path.Combine("config", "translation-quarantine"),
                 defaultRoot);
-        }
-        else
-        {
-            Assert.Equal("/app/config/translation-quarantine", defaultRoot);
         }
     }
 
