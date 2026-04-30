@@ -1007,6 +1007,113 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                     b.ToTable("test_results", (string)null);
                 });
 
+            modelBuilder.Entity("Lingarr.Core.Entities.TranslationDiagnosticEvent", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("DetailsJson")
+                        .HasColumnType("text")
+                        .HasColumnName("details_json");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<int?>("MediaId")
+                        .HasColumnType("integer")
+                        .HasColumnName("media_id");
+
+                    b.Property<int?>("MediaType")
+                        .HasColumnType("integer")
+                        .HasColumnName("media_type");
+
+                    b.Property<string>("OutputFormat")
+                        .HasColumnType("text")
+                        .HasColumnName("output_format");
+
+                    b.Property<string>("Provider")
+                        .HasColumnType("text")
+                        .HasColumnName("provider");
+
+                    b.Property<string>("QuarantinePath")
+                        .HasColumnType("text")
+                        .HasColumnName("quarantine_path");
+
+                    b.Property<string>("ReasonCode")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("reason_code");
+
+                    b.Property<string>("SampleLinesJson")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("sample_lines_json");
+
+                    b.Property<string>("SourcePath")
+                        .HasColumnType("text")
+                        .HasColumnName("source_path");
+
+                    b.Property<string>("SourceSnapshotFingerprint")
+                        .HasColumnType("text")
+                        .HasColumnName("source_snapshot_fingerprint");
+
+                    b.Property<string>("SourceSnapshotIdentity")
+                        .HasColumnType("text")
+                        .HasColumnName("source_snapshot_identity");
+
+                    b.Property<string>("Stage")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("stage");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("summary");
+
+                    b.Property<string>("TargetPath")
+                        .HasColumnType("text")
+                        .HasColumnName("target_path");
+
+                    b.Property<string>("Title")
+                        .HasColumnType("text")
+                        .HasColumnName("title");
+
+                    b.Property<int?>("TranslationRequestId")
+                        .HasColumnType("integer")
+                        .HasColumnName("translation_request_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_translation_diagnostic_events");
+
+                    b.HasIndex("ExpiresAt")
+                        .HasDatabaseName("IX_TranslationDiagnosticEvents_ExpiresAt");
+
+                    b.HasIndex("ReasonCode")
+                        .HasDatabaseName("IX_TranslationDiagnosticEvents_ReasonCode");
+
+                    b.HasIndex("TranslationRequestId")
+                        .HasDatabaseName("IX_TranslationDiagnosticEvents_TranslationRequestId");
+
+                    b.HasIndex("MediaType", "MediaId")
+                        .HasDatabaseName("IX_TranslationDiagnosticEvents_Media");
+
+                    b.ToTable("translation_diagnostic_events", (string)null);
+                });
+
             modelBuilder.Entity("Lingarr.Core.Entities.TranslationRequest", b =>
                 {
                     b.Property<int>("Id")

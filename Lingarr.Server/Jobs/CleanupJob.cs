@@ -13,15 +13,18 @@ public class CleanupJob
     private readonly LingarrDbContext _dbContext;
     private readonly ILogger<CleanupJob> _logger;
     private readonly IScheduleService _scheduleService;
+    private readonly ITranslationDiagnosticsService _translationDiagnosticsService;
 
     public CleanupJob(
         LingarrDbContext dbContext,
         IScheduleService scheduleService,
-        ILogger<CleanupJob> logger)
+        ILogger<CleanupJob> logger,
+        ITranslationDiagnosticsService translationDiagnosticsService)
     {
         _dbContext = dbContext;
         _logger = logger;
         _scheduleService = scheduleService;
+        _translationDiagnosticsService = translationDiagnosticsService;
     }
 
     [AutomaticRetry(Attempts = 0)]
@@ -42,7 +45,11 @@ public class CleanupJob
         }
 
         await _dbContext.SaveChangesAsync();
+        var removedDiagnosticCount = await _translationDiagnosticsService.CleanupExpiredAsync(CancellationToken.None);
         await _scheduleService.UpdateJobState(jobName, JobStatus.Succeeded.GetDisplayName());
-        _logger.LogInformation($"Removed {oldJobs.Count} translation requests that are older than a week.");
+        _logger.LogInformation(
+            "Removed {RequestCount} translation requests and {DiagnosticCount} translation diagnostics that are older than a week.",
+            oldJobs.Count,
+            removedDiagnosticCount);
     }
 }

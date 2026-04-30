@@ -168,6 +168,8 @@ public static class ServiceCollectionExtensions
         builder.Services.AddSingleton<IEmbeddedSubtitleCacheService, EmbeddedSubtitleCacheService>();
         builder.Services.AddScoped<ISubtitleExtractionService, SubtitleExtractionService>();
         builder.Services.AddScoped<ISubtitleIntegrityService, SubtitleIntegrityService>();
+        builder.Services.AddScoped<ISubtitleQualityValidatorService, SubtitleQualityValidatorService>();
+        builder.Services.AddScoped<ITranslationDiagnosticsService, TranslationDiagnosticsService>();
         builder.Services.AddScoped<ISubtitleSourceSelectionService, SubtitleSourceSelectionService>();
         builder.Services.AddScoped<ISourceSubtitleSnapshotService, SourceSubtitleSnapshotService>();
         builder.Services.AddScoped<ISourceSubtitleResolver, SourceSubtitleResolver>();

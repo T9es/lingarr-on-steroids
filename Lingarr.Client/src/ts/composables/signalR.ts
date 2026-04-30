@@ -74,6 +74,14 @@ export type EventCallbacks = {
         error: string | null
         progressPercent: number
     }) => void
+    SubtitleQualityAuditProgress: (stats: {
+        total: number
+        processedCount: number
+        isComplete: boolean
+        isRunning: boolean
+        error: string | null
+        progressPercent: number
+    }) => void
 }
 
 export interface Hub {

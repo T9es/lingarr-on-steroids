@@ -14,6 +14,7 @@ using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Jobs;
+using Lingarr.Server.Models;
 using Lingarr.Server.Models.FileSystem;
 using Lingarr.Server.Models.Subtitle;
 using Lingarr.Server.Services;
@@ -910,6 +911,217 @@ public class TranslationJobTests : IDisposable
         Assert.Equal(2, generatedPaths.Count);
         Assert.Contains(generatedPaths, path => Path.GetExtension(path) == ".ass" && File.Exists(path));
         Assert.Contains(generatedPaths, path => Path.GetExtension(path) == ".srt" && File.Exists(path));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenTranslatedOutputEchoesSource_QuarantinesOutputAndFailsRequest()
+    {
+        var sourceSubtitlePath = Path.Combine(_tempDirectory, "cars.en.srt");
+        await File.WriteAllTextAsync(
+            sourceSubtitlePath,
+            string.Join(
+                Environment.NewLine + Environment.NewLine,
+                Enumerable.Range(1, SubtitleExtractionService.MinimumDialogueEntries).Select(index =>
+                {
+                    var start = TimeSpan.FromSeconds(index);
+                    var end = TimeSpan.FromSeconds(index + 1);
+                    return $"{index}{Environment.NewLine}{start:hh\\:mm\\:ss},000 --> {end:hh\\:mm\\:ss},000{Environment.NewLine}English source line number {index}";
+                })));
+
+        var movie = CreateMovie(7);
+        movie.Path = _tempDirectory;
+        var request = new TranslationRequest
+        {
+            MediaId = movie.Id,
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaType = MediaType.Movie,
+            WorkloadItemKey = "library:Movie:7",
+            Status = TranslationStatus.Pending,
+            SubtitleToTranslate = sourceSubtitlePath,
+            SourceSubtitleFormat = ".srt",
+            SubtitleOutputMode = "match-source",
+            RequiredOutputFormats = ".srt",
+            IsActive = true
+        };
+
+        _dbContext.Movies.Add(movie);
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var quarantineRoot = Path.Combine(_tempDirectory, "quarantine");
+        var previousQuarantineRoot = Environment.GetEnvironmentVariable("LINGARR_TRANSLATION_QUARANTINE_PATH");
+        Environment.SetEnvironmentVariable("LINGARR_TRANSLATION_QUARANTINE_PATH", quarantineRoot);
+
+        try
+        {
+            var settingServiceMock = new Mock<ISettingService>();
+            settingServiceMock
+                .Setup(service => service.GetSettings(It.IsAny<IEnumerable<string>>()))
+                .ReturnsAsync((IEnumerable<string> keys) =>
+                {
+                    var settings = keys.ToDictionary(key => key, _ => string.Empty);
+                    settings[SettingKeys.Translation.ServiceType] = "mock";
+                    settings[SettingKeys.Translation.FixOverlappingSubtitles] = "false";
+                    settings[SettingKeys.Translation.StripSubtitleFormatting] = "false";
+                    settings[SettingKeys.Translation.AddTranslatorInfo] = "false";
+                    settings[SettingKeys.SubtitleValidation.ValidateSubtitles] = "false";
+                    settings[SettingKeys.Translation.AiContextPromptEnabled] = "false";
+                    settings[SettingKeys.Translation.UseBatchTranslation] = "false";
+                    settings[SettingKeys.Translation.RemoveLanguageTag] = "false";
+                    settings[SettingKeys.Translation.UseSubtitleTagging] = "true";
+                    settings[SettingKeys.Translation.SubtitleTag] = "lingarr";
+                    settings[SettingKeys.Translation.SubtitleTagShort] = "-ai-";
+                    settings[SettingKeys.Translation.SubtitleOutputMode] = "match-source";
+                    settings[SettingKeys.Translation.MaxBatchSplitAttempts] = "3";
+                    settings[SettingKeys.Translation.BatchRetryMode] = "deferred";
+                    settings[SettingKeys.Translation.RepairContextRadius] = "10";
+                    settings[SettingKeys.Translation.RepairMaxRetries] = "1";
+                    settings[SettingKeys.Translation.StripAssDrawingCommands] = "false";
+                    settings[SettingKeys.Translation.CleanSourceAssDrawings] = "false";
+                    settings[SettingKeys.Translation.BatchContextEnabled] = "false";
+                    return settings;
+                });
+
+            var subtitleService = new SubtitleService(NullLogger<SubtitleService>.Instance);
+            var translationServiceMock = new Mock<ITranslationService>();
+            translationServiceMock
+                .Setup(service => service.TranslateAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<List<string>?>(),
+                    It.IsAny<List<string>?>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync((string text, string _, string _, List<string>? _, List<string>? _, CancellationToken _) => text);
+
+            var translationServiceFactoryMock = new Mock<ITranslationServiceFactory>();
+            translationServiceFactoryMock
+                .Setup(factory => factory.CreateTranslationService("mock"))
+                .Returns(translationServiceMock.Object);
+
+            var translationRequestServiceMock = new Mock<ITranslationRequestService>();
+            translationRequestServiceMock
+                .Setup(service => service.UpdateTranslationRequest(
+                    It.IsAny<TranslationRequest>(),
+                    It.IsAny<TranslationStatus>(),
+                    It.IsAny<string?>()))
+                .ReturnsAsync((TranslationRequest value, TranslationStatus status, string? _) =>
+                {
+                    value.Status = status;
+                    value.IsActive = null;
+                    return value;
+                });
+            translationRequestServiceMock
+                .Setup(service => service.ClearMediaHash(It.IsAny<TranslationRequest>()))
+                .Returns(Task.CompletedTask);
+            translationRequestServiceMock
+                .Setup(service => service.UpdateActiveCount())
+                .ReturnsAsync(0);
+
+            var cancellationServiceMock = new Mock<ITranslationCancellationService>();
+            cancellationServiceMock
+                .Setup(service => service.RegisterJob(It.IsAny<int>()))
+                .Returns(CancellationToken.None);
+
+            var progressServiceMock = new Mock<IProgressService>();
+            progressServiceMock
+                .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+                .Returns(Task.CompletedTask);
+
+            var mediaStateServiceMock = new Mock<IMediaStateService>();
+            mediaStateServiceMock
+                .Setup(service => service.UpdateStateAsync(It.IsAny<Lingarr.Core.Interfaces.IMedia>(), It.IsAny<MediaType>(), It.IsAny<bool>()))
+                .ReturnsAsync(TranslationState.Failed);
+
+            var statisticsServiceMock = new Mock<IStatisticsService>();
+            statisticsServiceMock
+                .Setup(service => service.UpdateTranslationStatisticsFromSubtitles(
+                    It.IsAny<TranslationRequest>(),
+                    It.IsAny<string>(),
+                    It.IsAny<List<SubtitleItem>>()))
+                .ReturnsAsync(0);
+
+            var sourceSnapshotServiceMock = new Mock<ISourceSubtitleSnapshotService>();
+            sourceSnapshotServiceMock
+                .Setup(service => service.CreateExternalSnapshot(It.IsAny<string>(), It.IsAny<string>()))
+                .Returns(new SourceSubtitleSnapshot
+                {
+                    Version = SourceSubtitleSnapshot.CurrentVersion,
+                    SourceType = SourceSubtitleSnapshot.ExternalType,
+                    SourceLanguage = "en",
+                    Identity = "external",
+                    Fingerprint = "fingerprint-external",
+                    FileSizeBytes = 1
+                });
+            var sourceSubtitleResolverMock = new Mock<ISourceSubtitleResolver>();
+            sourceSubtitleResolverMock
+                .Setup(service => service.ResolveReadableSourcePathAsync(
+                    It.IsAny<TranslationRequest>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync((TranslationRequest value, CancellationToken _) => value.SubtitleToTranslate);
+
+            var diagnosticsService = new TranslationDiagnosticsService(
+                _dbContext,
+                NullLogger<TranslationDiagnosticsService>.Instance);
+            var qualityServiceMock = new Mock<ISubtitleQualityValidatorService>();
+            qualityServiceMock
+                .Setup(service => service.ValidateAsync(
+                    It.IsAny<SubtitleQualityValidationRequest>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new SubtitleQualityValidationResult
+                {
+                    IsValid = false,
+                    Summary = "Found mostly unchanged source text in translated output.",
+                    SourceEntryCount = SubtitleExtractionService.MinimumDialogueEntries,
+                    TargetEntryCount = SubtitleExtractionService.MinimumDialogueEntries,
+                    MinimumTargetEntryCount = SubtitleExtractionService.MinimumDialogueEntries - 10,
+                    IssueTypes = [SubtitleQualityIssueCodes.UnchangedSourceText],
+                    SampleLines = ["English source line 1"]
+                });
+            var job = new TranslationJob(
+                NullLogger<TranslationJob>.Instance,
+                settingServiceMock.Object,
+                _dbContext,
+                progressServiceMock.Object,
+                subtitleService,
+                Mock.Of<IScheduleService>(),
+                statisticsServiceMock.Object,
+                translationServiceFactoryMock.Object,
+                translationRequestServiceMock.Object,
+                Mock.Of<IBatchFallbackService>(),
+                Mock.Of<ISubtitleExtractionService>(),
+                cancellationServiceMock.Object,
+                mediaStateServiceMock.Object,
+                Mock.Of<ICustomMediaStateService>(),
+                Mock.Of<IDeferredRepairService>(),
+                Mock.Of<IDashboardService>(),
+                sourceSnapshotServiceMock.Object,
+                sourceSubtitleResolverMock.Object,
+                _embeddedSubtitleCacheService,
+                Mock.Of<IUploadWorkspaceService>(),
+                null,
+                null,
+                qualityServiceMock.Object,
+                diagnosticsService);
+
+            await Assert.ThrowsAsync<TranslationException>(() => job.ExecuteAsync(request.Id, CancellationToken.None));
+
+            var finalPath = Path.Combine(_tempDirectory, "cars.pl.lingarr.srt");
+            var updatedRequest = await _dbContext.TranslationRequests.SingleAsync(item => item.Id == request.Id);
+            var diagnostic = await _dbContext.TranslationDiagnosticEvents.SingleAsync();
+
+            Assert.Equal(TranslationStatus.Failed, updatedRequest.Status);
+            Assert.False(File.Exists(finalPath));
+            Assert.NotNull(diagnostic.QuarantinePath);
+            Assert.True(File.Exists(diagnostic.QuarantinePath));
+            Assert.Equal(SubtitleQualityIssueCodes.UnchangedSourceText, diagnostic.ReasonCode);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("LINGARR_TRANSLATION_QUARANTINE_PATH", previousQuarantineRoot);
+        }
     }
 
     private static List<SubtitleItem> BuildSubtitleItems(int count)

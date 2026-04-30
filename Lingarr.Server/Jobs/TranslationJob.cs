@@ -6,6 +6,7 @@ using Lingarr.Server.Exceptions;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Interfaces.Services.Translation;
+using Lingarr.Server.Models;
 using Lingarr.Server.Models.FileSystem;
 using Lingarr.Server.Services;
 using Lingarr.Server.Extensions;
@@ -42,6 +43,8 @@ public class TranslationJob
     private readonly IUploadWorkspaceService _uploadWorkspaceService;
     private readonly ISubtitleSourceSelectionService _subtitleSourceSelectionService;
     private readonly ITranslationCheckpointService? _translationCheckpointService;
+    private readonly ISubtitleQualityValidatorService _subtitleQualityValidatorService;
+    private readonly ITranslationDiagnosticsService _translationDiagnosticsService;
 
     public TranslationJob(
         ILogger<TranslationJob> logger,
@@ -65,7 +68,9 @@ public class TranslationJob
         IEmbeddedSubtitleCacheService embeddedSubtitleCacheService,
         IUploadWorkspaceService uploadWorkspaceService,
         ITranslationCheckpointService? translationCheckpointService = null,
-        ISubtitleSourceSelectionService? subtitleSourceSelectionService = null)
+        ISubtitleSourceSelectionService? subtitleSourceSelectionService = null,
+        ISubtitleQualityValidatorService? subtitleQualityValidatorService = null,
+        ITranslationDiagnosticsService? translationDiagnosticsService = null)
     {
         _logger = logger;
         _settings = settings;
@@ -92,6 +97,14 @@ public class TranslationJob
                 subtitleService,
                 NullLogger<SubtitleSourceSelectionService>.Instance);
         _translationCheckpointService = translationCheckpointService;
+        _subtitleQualityValidatorService = subtitleQualityValidatorService ??
+            new SubtitleQualityValidatorService(
+                subtitleService,
+                NullLogger<SubtitleQualityValidatorService>.Instance);
+        _translationDiagnosticsService = translationDiagnosticsService ??
+            new TranslationDiagnosticsService(
+                dbContext,
+                NullLogger<TranslationDiagnosticsService>.Instance);
     }
 
     /// <summary>
@@ -862,7 +875,7 @@ public class TranslationJob
                     SubtitleOutputModeHelper.Parse(translationRequest.SubtitleOutputMode));
             }
 
-            var writtenOutputs = new List<(string Format, string Path)>();
+            var stagedOutputs = new List<(string Format, string FinalPath, string StagingPath)>();
 
             foreach (var outputFormat in requiredOutputFormats)
             {
@@ -882,7 +895,7 @@ public class TranslationJob
                         outputFormat,
                         cancellationToken)
                     : _subtitleService.CreateFallbackPaths(
-                        translationRequest.SubtitleToTranslate!,
+                        await ResolveOutputBasePathAsync(translationRequest, cancellationToken),
                         targetLanguage,
                         subtitleTag,
                         subtitleTagShort,
@@ -892,16 +905,53 @@ public class TranslationJob
 
                 Exception? lastException = null;
                 bool success = false;
-                string usedPath = "";
 
                 foreach (var path in paths)
                 {
                     try
                     {
-                        await _subtitleService.WriteSubtitles(path, renderSubtitles, outputStripFormatting);
+                        var stagingPath = _translationDiagnosticsService.CreateQuarantinePath(
+                            translationRequest.Id,
+                            path);
+
+                        EnsureParentDirectory(stagingPath);
+                        await _subtitleService.WriteSubtitles(
+                            stagingPath,
+                            renderSubtitles,
+                            outputStripFormatting);
+
+                        var validationResult = await _subtitleQualityValidatorService.ValidateAsync(
+                            new SubtitleQualityValidationRequest
+                            {
+                                SourcePath = translationRequest.SubtitleToTranslate!,
+                                TargetPath = stagingPath,
+                                SourceLanguage = translationRequest.SourceLanguage,
+                                TargetLanguage = translationRequest.TargetLanguage,
+                                OutputFormat = outputFormat
+                            },
+                            cancellationToken);
+
+                        if (!validationResult.IsValid)
+                        {
+                            await RecordOutputValidationFailureAsync(
+                                translationRequest,
+                                path,
+                                stagingPath,
+                                outputFormat,
+                                validationResult,
+                                cancellationToken);
+
+                            throw new TranslationException(
+                                $"Generated subtitle failed quality validation before publishing: {validationResult.Summary}");
+                        }
+
                         success = true;
-                        usedPath = path;
+                        stagedOutputs.Add((outputFormat, path, stagingPath));
                         break;
+                    }
+                    catch (TranslationException)
+                    {
+                        throw;
                     }
                     catch (PathTooLongException ex)
                     {
@@ -925,7 +975,15 @@ public class TranslationJob
                     throw new Exception($"Failed to write subtitle to any fallback path for format {outputFormat}.");
                 }
 
-                writtenOutputs.Add((outputFormat, usedPath));
+            }
+
+            var writtenOutputs = new List<(string Format, string Path)>();
+            foreach (var output in stagedOutputs)
+            {
+                EnsureParentDirectory(output.FinalPath);
+                File.Copy(output.StagingPath, output.FinalPath, true);
+                File.Delete(output.StagingPath);
+                writtenOutputs.Add((output.Format, output.FinalPath));
             }
 
             var primaryPath = writtenOutputs
@@ -951,6 +1009,123 @@ public class TranslationJob
         {
             _logger.LogError(e, e.Message);
             throw;
+        }
+    }
+
+    private async Task<string> ResolveOutputBasePathAsync(
+        TranslationRequest translationRequest,
+        CancellationToken cancellationToken)
+    {
+        if (translationRequest.WorkloadKind != TranslationWorkloadKind.Library ||
+            string.IsNullOrWhiteSpace(translationRequest.SubtitleToTranslate) ||
+            !_embeddedSubtitleCacheService.IsManagedCachePath(translationRequest.SubtitleToTranslate) ||
+            !translationRequest.MediaId.HasValue)
+        {
+            return translationRequest.SubtitleToTranslate!;
+        }
+
+        if (translationRequest.MediaType == MediaType.Movie)
+        {
+            var movie = await _dbContext.Movies
+                .AsNoTracking()
+                .Where(item => item.Id == translationRequest.MediaId.Value)
+                .Select(item => new { item.Path, item.FileName })
+                .FirstOrDefaultAsync(cancellationToken);
+
+            var moviePath = ResolveMediaFilePath(movie?.Path, movie?.FileName);
+            if (!string.IsNullOrWhiteSpace(moviePath))
+            {
+                return moviePath;
+            }
+        }
+
+        if (translationRequest.MediaType == MediaType.Episode)
+        {
+            var episode = await _dbContext.Episodes
+                .AsNoTracking()
+                .Where(item => item.Id == translationRequest.MediaId.Value)
+                .Select(item => new { item.Path, item.FileName })
+                .FirstOrDefaultAsync(cancellationToken);
+
+            var episodePath = ResolveMediaFilePath(episode?.Path, episode?.FileName);
+            if (!string.IsNullOrWhiteSpace(episodePath))
+            {
+                return episodePath;
+            }
+        }
+
+        _logger.LogWarning(
+            "Could not resolve media file path for embedded-cache translation request {RequestId}. Falling back to cache source path.",
+            translationRequest.Id);
+        return translationRequest.SubtitleToTranslate!;
+    }
+
+    private static string? ResolveMediaFilePath(string? directoryPath, string? fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            return null;
+        }
+
+        if (Path.IsPathRooted(fileName))
+        {
+            return fileName;
+        }
+
+        if (string.IsNullOrWhiteSpace(directoryPath))
+        {
+            return null;
+        }
+
+        return Path.Combine(directoryPath, fileName);
+    }
+
+    private async Task RecordOutputValidationFailureAsync(
+        TranslationRequest translationRequest,
+        string finalPath,
+        string quarantinePath,
+        string outputFormat,
+        SubtitleQualityValidationResult validationResult,
+        CancellationToken cancellationToken)
+    {
+        var details = new
+        {
+            validationResult.SourceEntryCount,
+            validationResult.TargetEntryCount,
+            validationResult.MinimumTargetEntryCount,
+            validationResult.IssueTypes
+        };
+
+        await _translationDiagnosticsService.RecordAsync(
+            new TranslationDiagnosticEventRequest
+            {
+                TranslationRequestId = translationRequest.Id,
+                MediaId = translationRequest.MediaId,
+                MediaType = translationRequest.MediaType,
+                Title = translationRequest.Title,
+                Stage = "post_write_validation",
+                Provider = await _settings.GetSetting(SettingKeys.Translation.ServiceType),
+                SourcePath = translationRequest.SubtitleToTranslate,
+                TargetPath = finalPath,
+                QuarantinePath = quarantinePath,
+                OutputFormat = outputFormat,
+                SourceSnapshotIdentity = translationRequest.SourceSnapshotIdentity,
+                SourceSnapshotFingerprint = translationRequest.SourceSnapshotFingerprint,
+                ReasonCode = validationResult.IssueTypes.FirstOrDefault()
+                    ?? SubtitleQualityIssueCodes.ValidationError,
+                Summary = validationResult.Summary,
+                SampleLines = validationResult.SampleLines,
+                DetailsJson = JsonSerializer.Serialize(details)
+            },
+            cancellationToken);
+    }
+
+    private static void EnsureParentDirectory(string path)
+    {
+        var directory = Path.GetDirectoryName(path);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
         }
     }
 

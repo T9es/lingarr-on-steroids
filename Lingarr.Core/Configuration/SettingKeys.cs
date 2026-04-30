@@ -213,6 +213,7 @@ public static class SettingKeys
         // Persistent scan results
         public const string LastIntegrityCheckResult = "subtitle_integrity_last_result";
         public const string LastAssVerificationResult = "subtitle_ass_verification_last_result";
+        public const string LastQualityAuditResult = "subtitle_quality_audit_last_result";
     }
 
     public static class SubtitleExtraction

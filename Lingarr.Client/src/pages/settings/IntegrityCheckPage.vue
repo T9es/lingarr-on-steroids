@@ -249,6 +249,174 @@
             </template>
         </CardComponent>
 
+        <!-- Subtitle Quality Audit Section -->
+        <CardComponent title="Subtitle Quality Audit">
+            <template #description>
+                Report-only scan for completed generated subtitles that look untranslated,
+                wrong-language, cache-only, missing, too short, or contaminated with ASS artifacts.
+            </template>
+            <template #content>
+                <div class="flex flex-col space-y-6">
+                    <div class="flex flex-wrap items-center justify-center gap-3">
+                        <button
+                            :disabled="qualityAuditHasStarted"
+                            class="bg-accent hover:bg-accent/80 disabled:bg-secondary text-primary-content disabled:text-primary-content/50 rounded px-6 py-3 font-semibold transition-colors disabled:cursor-not-allowed"
+                            @click="startQualityAudit">
+                            <span v-if="qualityAuditHasStarted">
+                                {{ Math.round(qualityAuditStats.progressPercent) }}% ({{
+                                    qualityAuditStats.processedCount
+                                }}/{{ qualityAuditStats.total }})
+                            </span>
+                            <span v-else>Run Quality Audit</span>
+                        </button>
+                        <button
+                            class="bg-secondary hover:bg-secondary/80 text-primary-content rounded px-6 py-3 font-semibold transition-colors"
+                            @click="applySafeSettings">
+                            Apply Safe Queue Settings
+                        </button>
+                    </div>
+
+                    <div
+                        v-if="safeSettings"
+                        class="rounded border border-blue-500/30 bg-blue-500/10 p-3 text-sm text-blue-300">
+                        Bulk auto-queue: {{ safeSettings.bulkIntegrityAutoQueue }},
+                        cap: {{ safeSettings.bulkIntegrityMaxAutoQueuePerRun }},
+                        integrity validation: {{ safeSettings.integrityValidationEnabled }}
+                    </div>
+
+                    <div v-if="qualityAuditResult" class="w-full space-y-4">
+                        <div class="grid w-full grid-cols-2 gap-4 md:grid-cols-4">
+                            <div class="bg-secondary/30 rounded p-4 text-center">
+                                <div class="text-2xl font-bold">
+                                    {{ qualityAuditResult.filesScanned }}
+                                </div>
+                                <div class="text-sm opacity-70">Files Scanned</div>
+                            </div>
+                            <div class="bg-secondary/30 rounded p-4 text-center">
+                                <div
+                                    class="text-2xl font-bold"
+                                    :class="
+                                        visibleQualityAuditFindings.length > 0
+                                            ? 'text-yellow-500'
+                                            : 'text-green-500'
+                                    ">
+                                    {{ visibleQualityAuditFindings.length }}
+                                </div>
+                                <div class="text-sm opacity-70">Findings</div>
+                            </div>
+                            <div class="bg-secondary/30 rounded p-4 text-center">
+                                <div class="text-2xl font-bold">
+                                    {{ qualityAuditResult.cacheOnlyOutputs }}
+                                </div>
+                                <div class="text-sm opacity-70">Cache-only</div>
+                            </div>
+                            <div class="bg-secondary/30 rounded p-4 text-center">
+                                <div class="text-2xl font-bold">
+                                    {{ qualityAuditResult.missingOutputs }}
+                                </div>
+                                <div class="text-sm opacity-70">Missing</div>
+                            </div>
+                        </div>
+
+                        <div
+                            v-if="visibleQualityAuditFindings.length > 0"
+                            class="w-full space-y-3">
+                            <div class="flex items-center justify-between">
+                                <h4 class="font-semibold">Quality Findings</h4>
+                                <span class="text-sm opacity-70">Report only</span>
+                            </div>
+                            <div class="bg-secondary/30 max-h-96 w-full overflow-y-auto rounded">
+                                <div
+                                    v-for="item in visibleQualityAuditFindings"
+                                    :key="item.id"
+                                    class="border-secondary/50 border-b last:border-0">
+                                    <div
+                                        class="hover:bg-secondary/50 flex cursor-pointer items-center justify-between gap-3 p-3"
+                                        @click="toggleQualityAuditFinding(item.id)">
+                                        <div class="min-w-0 flex-1">
+                                            <div class="truncate font-medium">
+                                                {{ item.mediaTitle }}
+                                            </div>
+                                            <div class="truncate text-xs opacity-50">
+                                                {{ item.targetPath }}
+                                            </div>
+                                            <div class="mt-1 flex flex-wrap gap-1">
+                                                <span
+                                                    v-for="issueType in item.issueTypes"
+                                                    :key="issueType"
+                                                    class="rounded bg-yellow-500/15 px-2 py-0.5 text-xs text-yellow-400">
+                                                    {{ getQualityIssueLabel(issueType) }}
+                                                </span>
+                                                <span
+                                                    v-if="item.isQueued"
+                                                    class="rounded bg-blue-500/20 px-2 py-0.5 text-xs text-blue-400">
+                                                    Queued
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div class="flex shrink-0 items-center gap-1">
+                                            <button
+                                                v-if="!item.isQueued"
+                                                class="bg-accent/20 text-accent hover:bg-accent/30 rounded px-2 py-1 text-xs"
+                                                @click.stop="requeueQualityAuditFinding(item)">
+                                                Requeue
+                                            </button>
+                                            <button
+                                                class="bg-secondary-content/20 text-secondary-content/70 hover:bg-secondary-content/30 rounded px-2 py-1 text-xs"
+                                                @click.stop="dismissQualityAuditFinding(item)">
+                                                Dismiss
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div
+                                        v-if="expandedQualityAuditFindings.includes(item.id)"
+                                        class="bg-tertiary/50 border-secondary/50 space-y-2 border-t p-3 text-xs">
+                                        <div>
+                                            <span class="font-semibold opacity-70">Summary:</span>
+                                            <span class="ml-1 text-yellow-400">
+                                                {{ item.issueSummary }}
+                                            </span>
+                                        </div>
+                                        <div>
+                                            <span class="font-semibold opacity-70">Entries:</span>
+                                            <span class="ml-1">
+                                                source {{ item.sourceEntryCount }}, target
+                                                {{ item.targetEntryCount }}, minimum
+                                                {{ item.minimumTargetEntryCount }}
+                                            </span>
+                                        </div>
+                                        <div class="break-all">
+                                            <span class="font-semibold opacity-70">Source:</span>
+                                            <span class="ml-1 font-mono">{{ item.sourcePath }}</span>
+                                        </div>
+                                        <div class="break-all">
+                                            <span class="font-semibold opacity-70">Target:</span>
+                                            <span class="ml-1 font-mono">{{ item.targetPath }}</span>
+                                        </div>
+                                        <div v-if="item.sampleLines.length > 0">
+                                            <div class="mb-1 font-semibold opacity-70">Samples:</div>
+                                            <div
+                                                v-for="sample in item.sampleLines"
+                                                :key="sample"
+                                                class="truncate py-1 font-mono text-yellow-400">
+                                                {{ sample }}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div
+                            v-if="qualityAuditResult.findings.length === 0"
+                            class="w-full rounded border border-green-500/30 bg-green-500/10 p-4 text-center text-green-400">
+                            No subtitle quality issues found.
+                        </div>
+                    </div>
+                </div>
+            </template>
+        </CardComponent>
+
         <!-- Subtitle Source Issues Section -->
         <CardComponent title="Subtitle Source Issues">
             <template #description>
@@ -673,6 +841,66 @@ const stats = reactive<BulkIntegrityStats>({
 const expandedIntegrityFindings = ref<string[]>([])
 const bulkStatusPoll = ref<number | null>(null)
 
+interface SubtitleQualityAuditFinding {
+    id: string
+    translationRequestId: number | null
+    mediaId: number
+    mediaType: string
+    mediaTitle: string
+    sourcePath: string
+    targetPath: string
+    outputFormat: string | null
+    sourceEntryCount: number
+    targetEntryCount: number
+    minimumTargetEntryCount: number
+    issueTypes: string[]
+    issueSummary: string
+    sampleLines: string[]
+    isQueued: boolean
+    dismissed: boolean
+}
+
+interface SubtitleQualityAuditResult {
+    startedAt: string
+    completedAt: string | null
+    reportOnly: boolean
+    completedRequestsScanned: number
+    filesScanned: number
+    missingOutputs: number
+    cacheOnlyOutputs: number
+    findings: SubtitleQualityAuditFinding[]
+}
+
+interface SubtitleQualityAuditStats {
+    total: number
+    processedCount: number
+    isComplete: boolean
+    isRunning: boolean
+    error: string | null
+    progressPercent: number
+}
+
+interface SafetySettings {
+    bulkIntegrityAutoQueue: string
+    bulkIntegrityMaxAutoQueuePerRun: string
+    integrityValidationEnabled: string
+    isSafe: boolean
+}
+
+const qualityAuditStats = reactive<SubtitleQualityAuditStats>({
+    total: 0,
+    processedCount: 0,
+    isComplete: false,
+    isRunning: false,
+    error: null,
+    progressPercent: 0
+})
+const qualityAuditHasStarted = ref(false)
+const qualityAuditResult = ref<SubtitleQualityAuditResult | null>(null)
+const qualityAuditStatusPoll = ref<number | null>(null)
+const expandedQualityAuditFindings = ref<string[]>([])
+const safeSettings = ref<SafetySettings | null>(null)
+
 const bulkIntegrityAutoQueue = computed({
     get: (): string =>
         (settingsStore.getSetting(SETTINGS.BULK_INTEGRITY_AUTO_QUEUE) as string) ?? 'false',
@@ -849,7 +1077,7 @@ const startSubtitleTypeStatusPolling = () => {
 
     subtitleTypeStatusPoll.value = window.setInterval(() => {
         void refreshSubtitleTypeValidationStatus()
-    }, 2000)
+    }, 1000)
 }
 
 const stopSubtitleTypeStatusPolling = () => {
@@ -1123,8 +1351,168 @@ const stopBulkStatusPolling = () => {
     bulkStatusPoll.value = null
 }
 
+const qualityIssueLabels: Record<string, string> = {
+    missing_source: 'Missing source',
+    missing_target: 'Missing output',
+    empty_source: 'Empty source',
+    too_short: 'Too short',
+    too_long: 'Too long',
+    unchanged_source_text: 'Source echo',
+    target_language_mismatch: 'Wrong language',
+    drawing_artifact: 'Drawing residue',
+    unexpected_ass_tags: 'ASS/SSA tags in SRT',
+    ass_tag_mismatch: 'ASS/SSA tag mismatch',
+    inline_ass_tag_placement: 'Inline tag artifact',
+    cache_only_output: 'Cache-only output',
+    stale_source_snapshot: 'Stale source'
+}
+
+const getQualityIssueLabel = (issueType: string): string =>
+    qualityIssueLabels[issueType] ?? issueType
+
+const visibleQualityAuditFindings = computed(() =>
+    (qualityAuditResult.value?.findings ?? []).filter((item) => !item.dismissed)
+)
+
+const toggleQualityAuditFinding = (id: string) => {
+    if (expandedQualityAuditFindings.value.includes(id)) {
+        expandedQualityAuditFindings.value = expandedQualityAuditFindings.value.filter(
+            (value) => value !== id
+        )
+    } else {
+        expandedQualityAuditFindings.value.push(id)
+    }
+}
+
+const loadSafetySettings = async () => {
+    try {
+        const response = await axios.get('/api/diagnostics/safety-settings')
+        safeSettings.value = response.data
+    } catch (error) {
+        console.debug('Unable to load diagnostic safety settings')
+    }
+}
+
+const applySafeSettings = async () => {
+    try {
+        const response = await axios.post('/api/diagnostics/apply-safe-settings')
+        safeSettings.value = response.data
+        settingsStore.updateSetting(SETTINGS.BULK_INTEGRITY_AUTO_QUEUE, 'false', true)
+        settingsStore.updateSetting(SETTINGS.BULK_INTEGRITY_MAX_AUTO_QUEUE_PER_RUN, '25', true)
+        saveNotification.value?.show()
+    } catch (error) {
+        console.error('Failed to apply safe settings:', error)
+    }
+}
+
+const loadQualityAuditResult = async () => {
+    try {
+        const response = await axios.get('/api/subtitle/quality-audit/result')
+        qualityAuditResult.value = response.data
+    } catch (error) {
+        console.debug('No existing subtitle quality audit result')
+    }
+}
+
+const handleQualityAuditProgress = (newStats: SubtitleQualityAuditStats) => {
+    Object.assign(qualityAuditStats, newStats)
+    qualityAuditHasStarted.value = !!newStats.isRunning
+    if (newStats.isComplete) {
+        qualityAuditHasStarted.value = false
+        stopQualityAuditStatusPolling()
+        void loadQualityAuditResult()
+    }
+}
+
+const refreshQualityAuditStatus = async () => {
+    try {
+        const response = await axios.get('/api/subtitle/quality-audit/status')
+        const status = response.data as SubtitleQualityAuditStats
+
+        if (status.isRunning || status.isComplete) {
+            Object.assign(qualityAuditStats, status)
+        }
+
+        qualityAuditHasStarted.value = !!status.isRunning
+
+        if (status.isRunning) {
+            startQualityAuditStatusPolling()
+            return
+        }
+
+        stopQualityAuditStatusPolling()
+
+        if (status.isComplete) {
+            await loadQualityAuditResult()
+        }
+    } catch (error) {
+        console.debug('Unable to refresh subtitle quality audit status')
+    }
+}
+
+const startQualityAuditStatusPolling = () => {
+    if (qualityAuditStatusPoll.value !== null) {
+        return
+    }
+
+    qualityAuditStatusPoll.value = window.setInterval(() => {
+        void refreshQualityAuditStatus()
+    }, 1000)
+}
+
+const stopQualityAuditStatusPolling = () => {
+    if (qualityAuditStatusPoll.value === null) {
+        return
+    }
+
+    window.clearInterval(qualityAuditStatusPoll.value)
+    qualityAuditStatusPoll.value = null
+}
+
+const startQualityAudit = async () => {
+    try {
+        qualityAuditHasStarted.value = true
+        Object.assign(qualityAuditStats, {
+            total: 0,
+            processedCount: 0,
+            isComplete: false,
+            isRunning: true,
+            error: null,
+            progressPercent: 0
+        })
+
+        await axios.post('/api/subtitle/quality-audit')
+        startQualityAuditStatusPolling()
+    } catch (error) {
+        console.error('Failed to start subtitle quality audit:', error)
+        qualityAuditHasStarted.value = false
+        qualityAuditStats.isRunning = false
+    }
+}
+
+const dismissQualityAuditFinding = async (item: SubtitleQualityAuditFinding) => {
+    try {
+        const response = await axios.post(`/api/subtitle/quality-audit/findings/${item.id}/dismiss`)
+        qualityAuditResult.value = response.data
+    } catch (error) {
+        console.error('Failed to dismiss subtitle quality finding:', error)
+    }
+}
+
+const requeueQualityAuditFinding = async (item: SubtitleQualityAuditFinding) => {
+    try {
+        const response = await axios.post(`/api/subtitle/quality-audit/findings/${item.id}/requeue`)
+        qualityAuditResult.value = response.data
+    } catch (error) {
+        console.error('Failed to requeue subtitle quality finding:', error)
+    }
+}
+
 onMounted(async () => {
     await refreshBulkIntegrityStatus()
+    await loadSafetySettings()
+    await loadQualityAuditResult()
+    await refreshQualityAuditStatus()
 
     // Load persisted ASS verification result
     try {
@@ -1165,15 +1553,18 @@ onMounted(async () => {
     hubConnection.value.on('BulkIntegrityProgress', handleProgress)
     hubConnection.value.on('AssVerificationProgress', handleAssVerificationProgress)
     hubConnection.value.on('SubtitleTypeValidationProgress', handleSubtitleTypeValidationProgress)
+    hubConnection.value.on('SubtitleQualityAuditProgress', handleQualityAuditProgress)
 })
 
 onUnmounted(() => {
     stopBulkStatusPolling()
     stopAssStatusPolling()
     stopSubtitleTypeStatusPolling()
+    stopQualityAuditStatusPolling()
     hubConnection.value?.off('BulkIntegrityProgress', handleProgress)
     hubConnection.value?.off('AssVerificationProgress', handleAssVerificationProgress)
     hubConnection.value?.off('SubtitleTypeValidationProgress', handleSubtitleTypeValidationProgress)
+    hubConnection.value?.off('SubtitleQualityAuditProgress', handleQualityAuditProgress)
 })
 
 // ASS Verification

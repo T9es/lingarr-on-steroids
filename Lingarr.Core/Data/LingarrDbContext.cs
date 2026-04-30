@@ -21,6 +21,7 @@ public class LingarrDbContext : DbContext
     public DbSet<Setting> Settings { get; set; }
     public DbSet<TranslationRequest> TranslationRequests { get; set; }
     public DbSet<TranslationRequestLog> TranslationRequestLogs { get; set; }
+    public DbSet<TranslationDiagnosticEvent> TranslationDiagnosticEvents { get; set; }
     public DbSet<PathMapping> PathMappings { get; set; }
     public DbSet<Statistics> Statistics { get; set; }
     public DbSet<DailyStatistics> DailyStatistics { get; set; }
@@ -80,6 +81,7 @@ public class LingarrDbContext : DbContext
         modelBuilder.ApplyConfiguration(new ImageConfiguration());
         modelBuilder.ApplyConfiguration(new TranslationRequestConfiguration());
         modelBuilder.ApplyConfiguration(new TranslationRequestLogConfiguration());
+        modelBuilder.ApplyConfiguration(new TranslationDiagnosticEventConfiguration());
         modelBuilder.ApplyConfiguration(new EmbeddedSubtitleConfiguration());
 
         modelBuilder.Entity<TranslationRequest>(b =>
