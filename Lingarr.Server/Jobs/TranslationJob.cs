@@ -1870,22 +1870,7 @@ public class TranslationJob
             return false;
         }
 
-        var drawingEvents = subtitles.Count(subtitle =>
-            subtitle.Lines.Any(ContainsAssDrawingCommand));
-        return drawingEvents >= 500 && (double)drawingEvents / subtitles.Count >= 0.35;
-    }
-
-    private static bool ContainsAssDrawingCommand(string line)
-    {
-        return line.Contains(@"{\p", StringComparison.OrdinalIgnoreCase) ||
-               line.Contains(@"\p1", StringComparison.OrdinalIgnoreCase) ||
-               line.Contains(@"\p2", StringComparison.OrdinalIgnoreCase) ||
-               line.Contains(@"\p3", StringComparison.OrdinalIgnoreCase) ||
-               line.Contains(@"\p4", StringComparison.OrdinalIgnoreCase) ||
-               line.Contains(@"\p5", StringComparison.OrdinalIgnoreCase) ||
-               line.Contains(@"\p6", StringComparison.OrdinalIgnoreCase) ||
-               line.Contains(@"\p7", StringComparison.OrdinalIgnoreCase) ||
-               line.Contains(@"\p8", StringComparison.OrdinalIgnoreCase) ||
-               line.Contains(@"\p9", StringComparison.OrdinalIgnoreCase);
+        var analysis = AssSubtitleSourceAnalyzer.AnalyzeSubtitleItems(subtitles);
+        return analysis.IsPathological;
     }
 }

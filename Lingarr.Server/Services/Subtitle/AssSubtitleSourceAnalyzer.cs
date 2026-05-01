@@ -129,6 +129,11 @@ internal static class AssSubtitleSourceAnalyzer
 
         cancellationToken.ThrowIfCancellationRequested();
         var subtitles = await subtitleService.ReadSubtitles(subtitle.ExtractedPath);
+        return AnalyzeSubtitleItems(subtitles);
+    }
+
+    public static AssSubtitleSourceAnalysis AnalyzeSubtitleItems(IReadOnlyList<SubtitleItem> subtitles)
+    {
         var entries = subtitles
             .Select(subtitleItem =>
             {

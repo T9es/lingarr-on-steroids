@@ -1,3 +1,4 @@
+using System.Text;
 using Lingarr.Server.Models.FileSystem;
 
 namespace Lingarr.Server.Services.Subtitle;
@@ -68,7 +69,8 @@ public static class ExternalSubtitleCandidateHelper
     {
         return IsTemporarySource(subtitle) ||
                IsLingarrExtractedArtifact(subtitle) ||
-               IsSparseSubtitleFile(subtitle);
+               IsSparseSubtitleFile(subtitle) ||
+               IsPathologicalAssSource(subtitle);
     }
 
     public static bool ShouldSkipAsMainTarget(Subtitles subtitle)
@@ -131,6 +133,35 @@ public static class ExternalSubtitleCandidateHelper
         try
         {
             return SubtitleExtractionService.IsLingarrExtracted(subtitle.Path);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public static bool IsPathologicalAssSource(Subtitles subtitle)
+    {
+        if (string.IsNullOrWhiteSpace(subtitle.Path) || !File.Exists(subtitle.Path))
+        {
+            return false;
+        }
+
+        var normalizedFormat = SubtitleOutputModeHelper.NormalizeFormat(
+            !string.IsNullOrWhiteSpace(subtitle.Format)
+                ? subtitle.Format
+                : Path.GetExtension(subtitle.Path));
+        if (!SubtitleOutputModeHelper.IsAssFormat(normalizedFormat))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var stream = File.OpenRead(subtitle.Path);
+            var subtitles = new SsaParser().ParseStream(stream, Encoding.UTF8);
+            var analysis = AssSubtitleSourceAnalyzer.AnalyzeSubtitleItems(subtitles);
+            return analysis.IsPathological;
         }
         catch
         {

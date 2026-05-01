@@ -555,6 +555,88 @@ public class SourceSubtitleSnapshotServiceTests
     }
 
     [Fact]
+    public async Task ResolveCurrentSnapshotAsync_ShouldRejectPathologicalExternalAssAndUseEmbeddedSource()
+    {
+        var dbContext = CreateDbContext();
+        var settingServiceMock = new Mock<ISettingService>();
+        var subtitleServiceMock = new Mock<ISubtitleService>();
+        var pathologicalAssPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.en.ass");
+
+        try
+        {
+            await File.WriteAllTextAsync(
+                pathologicalAssPath,
+                "[Script Info]\n" +
+                "Title: CR English (US)\n\n" +
+                "[Events]\n" +
+                "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n" +
+                string.Join(
+                    "\n",
+                    Enumerable.Range(1, 600).Select(index =>
+                        $"Dialogue: 0,0:00:{index % 60:00}.00,0:00:{index % 60:00}.50,Default,,0,0,0,,a")));
+
+            settingServiceMock
+                .Setup(s => s.GetSettingAsJson<SourceLanguage>(SettingKeys.Translation.SourceLanguages))
+                .ReturnsAsync([new SourceLanguage { Name = "English", Code = "en" }]);
+
+            settingServiceMock
+                .Setup(s => s.GetSetting(SettingKeys.Translation.IgnoreCaptions))
+                .ReturnsAsync("false");
+
+            var service = new SourceSubtitleSnapshotService(
+                dbContext,
+                settingServiceMock.Object,
+                subtitleServiceMock.Object,
+                NullLogger<SourceSubtitleSnapshotService>.Instance);
+
+            var movie = new Movie
+            {
+                Id = 6,
+                RadarrId = 6,
+                Title = "Movie",
+                Path = "/movies",
+                FileName = "movie.mkv",
+                DateAdded = DateTime.UtcNow
+            };
+
+            var snapshot = await service.ResolveCurrentSnapshotAsync(
+                movie,
+                MediaType.Movie,
+                [
+                    new EmbeddedSubtitle
+                    {
+                        StreamIndex = 4,
+                        Language = "eng",
+                        Title = "English",
+                        CodecName = "subrip",
+                        IsTextBased = true
+                    }
+                ],
+                [
+                    new Subtitles
+                    {
+                        Path = pathologicalAssPath,
+                        FileName = "movie.en",
+                        Language = "en",
+                        Format = ".ass"
+                    }
+                ]);
+
+            Assert.NotNull(snapshot);
+            Assert.Equal(SourceSubtitleSnapshot.EmbeddedType, snapshot!.SourceType);
+            Assert.Equal(4, snapshot.StreamIndex);
+            Assert.DoesNotContain(Path.GetFileName(pathologicalAssPath), snapshot.Identity, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            if (File.Exists(pathologicalAssPath))
+            {
+                File.Delete(pathologicalAssPath);
+            }
+        }
+    }
+
+    [Fact]
     public void CreateExternalSnapshot_ShouldUseContentFingerprint_WhenMetadataIsUnchanged()
     {
         var dbContext = CreateDbContext();

@@ -322,6 +322,45 @@ public class TranslationJobTests : IDisposable
     }
 
     [Fact]
+    public void GetUnsafeSourceCancellationReason_ReturnsReason_ForFragmentedAssSource()
+    {
+        var request = new TranslationRequest
+        {
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            Title = "Fragmented ASS source",
+            MediaType = MediaType.Episode,
+            Status = TranslationStatus.Pending,
+            SourceSubtitleType = SubtitleLanguageHelper.TypeFull,
+            SourceSubtitleEntryCount = 600,
+            IsForcedSubtitle = false,
+            SourceSubtitleFormat = ".ass"
+        };
+        var settings = new Dictionary<string, string>
+        {
+            [SettingKeys.Translation.TranslateSupplementalSubtitles] = "false"
+        };
+
+        var reason = TranslationJob.GetUnsafeSourceCancellationReason(
+            request,
+            selectedSubtitle: null,
+            Enumerable.Range(1, 600)
+                .Select(index => new SubtitleItem
+                {
+                    Position = index,
+                    Lines = ["a"],
+                    PlaintextLines = ["a"],
+                    SsaDialogue = new SsaDialogue(),
+                    SsaFormat = new SsaFormat()
+                })
+                .ToList(),
+            settings);
+
+        Assert.NotNull(reason);
+        Assert.Contains("pathological", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task GetPreExistingExtractedSubtitlePathsAsync_FindsExistingAssExtraction()
     {
         var movie = CreateMovie(3);
