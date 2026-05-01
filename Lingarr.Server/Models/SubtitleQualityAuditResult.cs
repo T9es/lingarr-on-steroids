@@ -19,9 +19,15 @@ public class SubtitleQualityAuditFinding
     public int MediaId { get; set; }
     public string MediaType { get; set; } = string.Empty;
     public string MediaTitle { get; set; } = string.Empty;
+    public string? SourceLanguage { get; set; }
+    public string? TargetLanguage { get; set; }
+    public string? SourceSubtitleType { get; set; }
+    public string? SourceSubtitleSnapshot { get; set; }
+    public int SourceSubtitleEntryCount { get; set; }
     public string SourcePath { get; set; } = string.Empty;
     public string TargetPath { get; set; } = string.Empty;
     public string? OutputFormat { get; set; }
+    public string? GeneratedSubtitlePaths { get; set; }
     public int SourceEntryCount { get; set; }
     public int TargetEntryCount { get; set; }
     public int MinimumTargetEntryCount { get; set; }

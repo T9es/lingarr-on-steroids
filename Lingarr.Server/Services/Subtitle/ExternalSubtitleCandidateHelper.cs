@@ -66,12 +66,15 @@ public static class ExternalSubtitleCandidateHelper
 
     public static bool ShouldSkipAsPrimarySource(Subtitles subtitle)
     {
-        return IsTemporarySource(subtitle) || IsSparseSubtitleFile(subtitle);
+        return IsTemporarySource(subtitle) ||
+               IsLingarrExtractedArtifact(subtitle) ||
+               IsSparseSubtitleFile(subtitle);
     }
 
     public static bool ShouldSkipAsMainTarget(Subtitles subtitle)
     {
         return IsTemporarySource(subtitle) ||
+               IsLingarrExtractedArtifact(subtitle) ||
                IsSparseSubtitleFile(subtitle) ||
                IsSupplementalOrCommentary(subtitle);
     }
@@ -111,6 +114,23 @@ public static class ExternalSubtitleCandidateHelper
         try
         {
             return SubtitleExtractionService.IsSparseSubtitle(subtitle.Path);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public static bool IsLingarrExtractedArtifact(Subtitles subtitle)
+    {
+        if (string.IsNullOrWhiteSpace(subtitle.Path) || !File.Exists(subtitle.Path))
+        {
+            return false;
+        }
+
+        try
+        {
+            return SubtitleExtractionService.IsLingarrExtracted(subtitle.Path);
         }
         catch
         {

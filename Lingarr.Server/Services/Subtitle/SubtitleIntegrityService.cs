@@ -319,7 +319,7 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
 
                 var sourceSubtitles = await _subtitleService.ReadSubtitles(sourceSubtitlePath);
                 var targetSubtitles = await _subtitleService.ReadSubtitles(translation.TranslatedSubtitle);
-                var scan = AssSubtitleArtifactDetector.CompareTagStructure(
+                var scan = DetectFormatArtifacts(
                     sourceSubtitles,
                     targetSubtitles,
                     translation.TranslatedSubtitle);
@@ -397,13 +397,42 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
         try
         {
             var lines = await File.ReadAllLinesAsync(subtitlePath, ct);
-            return AssSubtitleArtifactDetector.DetectDrawingArtifacts(lines);
+            if (SubtitleOutputModeHelper.IsAssFormat(Path.GetExtension(subtitlePath)))
+            {
+                return AssSubtitleArtifactDetector.DetectInlineTagPlacementArtifacts(lines);
+            }
+
+            var scan = AssSubtitleArtifactDetector.DetectDrawingArtifacts(lines, suspiciousThreshold: 1);
+            scan.Merge(AssSubtitleArtifactDetector.DetectUnexpectedAssTagsInPlainTextOutput(lines));
+            return scan;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Error reading subtitle file {Path}", subtitlePath);
             return new AssArtifactScanResult();
         }
+    }
+
+    private static AssArtifactScanResult DetectFormatArtifacts(
+        IReadOnlyList<SubtitleItem> sourceSubtitles,
+        IReadOnlyList<SubtitleItem> targetSubtitles,
+        string targetSubtitlePath)
+    {
+        var scan = new AssArtifactScanResult();
+
+        if (SubtitleOutputModeHelper.IsAssFormat(Path.GetExtension(targetSubtitlePath)))
+        {
+            scan.Merge(AssSubtitleArtifactDetector.DetectInlineTagPlacementArtifacts(
+                targetSubtitles.SelectMany(item => item.Lines)));
+            return scan;
+        }
+
+        scan.Merge(AssSubtitleArtifactDetector.DetectUnexpectedAssTagsInPlainTextOutput(
+            targetSubtitles.SelectMany(item => item.Lines)));
+        scan.Merge(AssSubtitleArtifactDetector.DetectDrawingArtifacts(
+            targetSubtitles.SelectMany(item => item.Lines),
+            suspiciousThreshold: 1));
+        return scan;
     }
 
     private static AssArtifactScanResult DetectUnchangedSourceText(

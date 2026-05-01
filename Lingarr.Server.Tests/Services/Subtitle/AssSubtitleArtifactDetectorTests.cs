@@ -8,14 +8,15 @@ namespace Lingarr.Server.Tests.Services.Subtitle;
 public class AssSubtitleArtifactDetectorTests
 {
     [Fact]
-    public void CompareTagStructure_WithMatchingSrtAssTags_DoesNotFlag()
+    public void DetectUnexpectedAssTagsInPlainTextOutput_WithAssTags_FlagsUnexpectedTags()
     {
-        var source = new List<SubtitleItem> { Item(1, "{\\an7}Hello") };
-        var target = new List<SubtitleItem> { Item(1, "{\\an7}Czesc") };
+        var result = AssSubtitleArtifactDetector.DetectUnexpectedAssTagsInPlainTextOutput(
+        [
+            "{\\an7}Czesc"
+        ]);
 
-        var result = AssSubtitleArtifactDetector.CompareTagStructure(source, target, "target.srt");
-
-        Assert.False(result.HasIssues);
+        Assert.True(result.HasIssues);
+        Assert.Contains(AssVerificationIssueTypes.UnexpectedAssTags, result.IssueTypes);
     }
 
     [Fact]
@@ -68,6 +69,20 @@ public class AssSubtitleArtifactDetectorTests
 
         Assert.True(result.HasIssues);
         Assert.Equal(2, result.SuspiciousLineCount);
+        Assert.Contains(AssVerificationIssueTypes.DrawingArtifact, result.IssueTypes);
+    }
+
+    [Fact]
+    public void DetectDrawingArtifacts_WithSingleVectorResidueWhenThresholdIsOne_FlagsDrawingArtifact()
+    {
+        var result = AssSubtitleArtifactDetector.DetectDrawingArtifacts(
+        [
+            "m 0 0 280 250 l 280 285 425 285 425 250"
+        ],
+        suspiciousThreshold: 1);
+
+        Assert.True(result.HasIssues);
+        Assert.Equal(1, result.SuspiciousLineCount);
         Assert.Contains(AssVerificationIssueTypes.DrawingArtifact, result.IssueTypes);
     }
 

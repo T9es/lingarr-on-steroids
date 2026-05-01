@@ -62,7 +62,9 @@ internal static class AssSubtitleArtifactDetector
         @"(?<=[\p{L}\p{N}])\{\\(?:i[01]?|b[01]?|u[01]?|s[01]?|bord|shad|fs|fn)[^}]*\}(?=[\p{L}\p{N}])",
         RegexOptions.Compiled);
 
-    public static AssArtifactScanResult DetectDrawingArtifacts(IEnumerable<string> lines)
+    public static AssArtifactScanResult DetectDrawingArtifacts(
+        IEnumerable<string> lines,
+        int suspiciousThreshold = DrawingSuspiciousThreshold)
     {
         var suspiciousLines = lines
             .Where(line => DrawingPattern.IsMatch(line.Trim()))
@@ -75,10 +77,32 @@ internal static class AssSubtitleArtifactDetector
             SuspiciousLines = suspiciousLines.Take(SuspiciousLinePreviewLimit).ToList()
         };
 
-        if (suspiciousLines.Count >= DrawingSuspiciousThreshold)
+        if (suspiciousLines.Count >= suspiciousThreshold)
         {
             result.IssueTypes.Add(AssVerificationIssueTypes.DrawingArtifact);
             result.IssueSummaries.Add($"Found {suspiciousLines.Count} ASS drawing artifact lines.");
+        }
+
+        return result;
+    }
+
+    public static AssArtifactScanResult DetectUnexpectedAssTagsInPlainTextOutput(IEnumerable<string> lines)
+    {
+        var suspiciousLines = lines
+            .Where(line => AssSignaturePattern.IsMatch(line))
+            .Select(Truncate)
+            .ToList();
+
+        var result = new AssArtifactScanResult
+        {
+            SuspiciousLineCount = suspiciousLines.Count,
+            SuspiciousLines = suspiciousLines.Take(SuspiciousLinePreviewLimit).ToList()
+        };
+
+        if (suspiciousLines.Count > 0)
+        {
+            result.IssueTypes.Add(AssVerificationIssueTypes.UnexpectedAssTags);
+            result.IssueSummaries.Add($"Found {suspiciousLines.Count} plain-text subtitle lines with ASS/SSA tags.");
         }
 
         return result;

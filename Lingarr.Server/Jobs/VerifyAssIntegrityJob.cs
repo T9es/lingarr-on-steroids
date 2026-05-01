@@ -219,12 +219,7 @@ public class VerifyAssIntegrityJob
                         ? await _subtitleService.ReadSubtitles(sourceSubtitlePath)
                         : [];
                     var targetSubtitles = await _subtitleService.ReadSubtitles(translation.TranslatedSubtitle);
-                    var scan = sourceSubtitles.Count > 0
-                        ? AssSubtitleArtifactDetector.CompareTagStructure(
-                            sourceSubtitles,
-                            targetSubtitles,
-                            translation.TranslatedSubtitle)
-                        : new AssArtifactScanResult();
+                    var scan = DetectFormatArtifacts(targetSubtitles, translation.TranslatedSubtitle);
                     scan.Merge(DetectUnchangedSourceText(
                         sourceSubtitles,
                         targetSubtitles,
@@ -234,8 +229,6 @@ public class VerifyAssIntegrityJob
                         sourceSubtitles,
                         targetSubtitles,
                         translation.TargetLanguage));
-                    scan.Merge(AssSubtitleArtifactDetector.DetectInlineTagPlacementArtifacts(
-                        targetSubtitles.SelectMany(item => item.Lines)));
                     var generatedOutputScans = await ScanGeneratedOutputArtifactsAsync(
                         translation,
                         scannedPaths,
@@ -270,12 +263,7 @@ public class VerifyAssIntegrityJob
                                 ? await _subtitleService.ReadSubtitles(sourceSubtitlePath)
                                 : [];
                             targetSubtitles = await _subtitleService.ReadSubtitles(translation.TranslatedSubtitle);
-                            scan = sourceSubtitles.Count > 0
-                                ? AssSubtitleArtifactDetector.CompareTagStructure(
-                                    sourceSubtitles,
-                                    targetSubtitles,
-                                    translation.TranslatedSubtitle)
-                                : new AssArtifactScanResult();
+                            scan = DetectFormatArtifacts(targetSubtitles, translation.TranslatedSubtitle);
                             scan.Merge(DetectUnchangedSourceText(
                                 sourceSubtitles,
                                 targetSubtitles,
@@ -285,8 +273,6 @@ public class VerifyAssIntegrityJob
                                 sourceSubtitles,
                                 targetSubtitles,
                                 translation.TargetLanguage));
-                            scan.Merge(AssSubtitleArtifactDetector.DetectInlineTagPlacementArtifacts(
-                                targetSubtitles.SelectMany(item => item.Lines)));
                             generatedOutputScans = await ScanGeneratedOutputArtifactsAsync(
                                 translation,
                                 scannedPaths,
@@ -451,7 +437,28 @@ public class VerifyAssIntegrityJob
     private static bool ShouldAttemptLocalRepair(AssArtifactScanResult scan)
     {
         return scan.IssueTypes.Contains(AssVerificationIssueTypes.InlineAssTagPlacement, StringComparer.Ordinal) ||
-               scan.IssueTypes.Contains(AssVerificationIssueTypes.DrawingArtifact, StringComparer.Ordinal);
+               scan.IssueTypes.Contains(AssVerificationIssueTypes.DrawingArtifact, StringComparer.Ordinal) ||
+               scan.IssueTypes.Contains(AssVerificationIssueTypes.UnexpectedAssTags, StringComparer.Ordinal);
+    }
+
+    private static AssArtifactScanResult DetectFormatArtifacts(
+        IReadOnlyList<SubtitleItem> targetSubtitles,
+        string targetSubtitlePath)
+    {
+        var scan = new AssArtifactScanResult();
+        if (SubtitleOutputModeHelper.IsAssFormat(Path.GetExtension(targetSubtitlePath)))
+        {
+            scan.Merge(AssSubtitleArtifactDetector.DetectInlineTagPlacementArtifacts(
+                targetSubtitles.SelectMany(item => item.Lines)));
+            return scan;
+        }
+
+        scan.Merge(AssSubtitleArtifactDetector.DetectUnexpectedAssTagsInPlainTextOutput(
+            targetSubtitles.SelectMany(item => item.Lines)));
+        scan.Merge(AssSubtitleArtifactDetector.DetectDrawingArtifacts(
+            targetSubtitles.SelectMany(item => item.Lines),
+            suspiciousThreshold: 1));
+        return scan;
     }
 
     private static AssArtifactScanResult DetectUnchangedSourceText(
@@ -575,7 +582,14 @@ public class VerifyAssIntegrityJob
         try
         {
             var lines = await File.ReadAllLinesAsync(subtitlePath);
-            return AssSubtitleArtifactDetector.DetectDrawingArtifacts(lines);
+            if (SubtitleOutputModeHelper.IsAssFormat(Path.GetExtension(subtitlePath)))
+            {
+                return AssSubtitleArtifactDetector.DetectInlineTagPlacementArtifacts(lines);
+            }
+
+            var scan = AssSubtitleArtifactDetector.DetectDrawingArtifacts(lines, suspiciousThreshold: 1);
+            scan.Merge(AssSubtitleArtifactDetector.DetectUnexpectedAssTagsInPlainTextOutput(lines));
+            return scan;
         }
         catch (Exception ex)
         {

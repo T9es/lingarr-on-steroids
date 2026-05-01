@@ -429,6 +429,30 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             .ToHashSet();
     }
 
+    private static HashSet<string> FilterTargetLanguages(
+        HashSet<string> configuredTargetLanguages,
+        IReadOnlyCollection<string>? requestedTargetLanguages)
+    {
+        if (requestedTargetLanguages == null || requestedTargetLanguages.Count == 0)
+        {
+            return configuredTargetLanguages;
+        }
+
+        var requested = requestedTargetLanguages
+            .Select(SubtitleLanguageHelper.NormalizeLanguageCode)
+            .Where(language => !string.IsNullOrWhiteSpace(language))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (requested.Count == 0)
+        {
+            return [];
+        }
+
+        return configuredTargetLanguages
+            .Where(language => requested.Contains(SubtitleLanguageHelper.NormalizeLanguageCode(language)))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
     /// <summary>
     /// Updates the media hash in the database.
     /// </summary>
@@ -472,6 +496,52 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         int? maxTranslationsToQueue,
         ICollection<SubtitleIntegrityFinding> integrityFindings)
     {
+        return await ProcessMediaForceCoreAsync(
+            media,
+            mediaType,
+            forceProcess,
+            forceTranslation,
+            forcePriority,
+            queueTranslations,
+            maxTranslationsToQueue,
+            integrityFindings,
+            targetLanguageFilter: null);
+    }
+
+    /// <inheritdoc />
+    public async Task<int> ProcessMediaForceTargetAsync(
+        IMedia media,
+        MediaType mediaType,
+        string targetLanguage,
+        bool forceProcess = true,
+        bool forceTranslation = true,
+        bool forcePriority = false,
+        bool queueTranslations = true,
+        int? maxTranslationsToQueue = null)
+    {
+        return await ProcessMediaForceCoreAsync(
+            media,
+            mediaType,
+            forceProcess,
+            forceTranslation,
+            forcePriority,
+            queueTranslations,
+            maxTranslationsToQueue,
+            new List<SubtitleIntegrityFinding>(),
+            [targetLanguage]);
+    }
+
+    private async Task<int> ProcessMediaForceCoreAsync(
+        IMedia media,
+        MediaType mediaType,
+        bool forceProcess,
+        bool forceTranslation,
+        bool forcePriority,
+        bool queueTranslations,
+        int? maxTranslationsToQueue,
+        ICollection<SubtitleIntegrityFinding> integrityFindings,
+        IReadOnlyCollection<string>? targetLanguageFilter)
+    {
         if (media.Path == null)
         {
             return 0;
@@ -506,6 +576,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
 
         var sourceLanguages = await GetLanguagesSetting<SourceLanguage>(SettingKeys.Translation.SourceLanguages);
         var targetLanguages = await GetLanguagesSetting<TargetLanguage>(SettingKeys.Translation.TargetLanguages);
+        targetLanguages = FilterTargetLanguages(targetLanguages, targetLanguageFilter);
         var ignoreCaptions = await _settingService.GetSetting(SettingKeys.Translation.IgnoreCaptions);
 
         _logger.LogDebug(

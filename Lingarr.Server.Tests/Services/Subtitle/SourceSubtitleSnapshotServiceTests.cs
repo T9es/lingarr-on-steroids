@@ -341,6 +341,83 @@ public class SourceSubtitleSnapshotServiceTests
     }
 
     [Fact]
+    public async Task ResolveCurrentSnapshotAsync_ShouldIgnoreLingarrExtractedExternalSourceAndUseEmbedded()
+    {
+        var dbContext = CreateDbContext();
+        var settingServiceMock = new Mock<ISettingService>();
+        var subtitleServiceMock = new Mock<ISubtitleService>();
+        var extractedPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.eng.srt");
+
+        try
+        {
+            File.WriteAllText(
+                extractedPath,
+                $"{SubtitleExtractionService.ExtractionMarkerPrefix} StreamIndex=0, Entries=2{Environment.NewLine}{Environment.NewLine}" +
+                "1\n00:00:01,000 --> 00:00:02,000\nHello\n\n" +
+                "2\n00:00:03,000 --> 00:00:04,000\nWorld\n");
+
+            settingServiceMock
+                .Setup(s => s.GetSettingAsJson<SourceLanguage>(SettingKeys.Translation.SourceLanguages))
+                .ReturnsAsync([new SourceLanguage { Name = "English", Code = "en" }]);
+
+            settingServiceMock
+                .Setup(s => s.GetSetting(SettingKeys.Translation.IgnoreCaptions))
+                .ReturnsAsync("false");
+
+            var service = new SourceSubtitleSnapshotService(
+                dbContext,
+                settingServiceMock.Object,
+                subtitleServiceMock.Object,
+                NullLogger<SourceSubtitleSnapshotService>.Instance);
+
+            var movie = new Movie
+            {
+                Id = 5,
+                RadarrId = 5,
+                Title = "Cars",
+                Path = "/movies/Cars",
+                FileName = "Cars.mkv",
+                DateAdded = DateTime.UtcNow
+            };
+
+            var snapshot = await service.ResolveCurrentSnapshotAsync(
+                movie,
+                MediaType.Movie,
+                [
+                    new EmbeddedSubtitle
+                    {
+                        StreamIndex = 0,
+                        Language = "eng",
+                        Title = "English [SRT]",
+                        CodecName = "subrip",
+                        IsTextBased = true,
+                        IsDefault = true
+                    }
+                ],
+                [
+                    new Subtitles
+                    {
+                        Path = extractedPath,
+                        FileName = "Cars.eng",
+                        Language = "en",
+                        Format = ".srt"
+                    }
+                ]);
+
+            Assert.NotNull(snapshot);
+            Assert.Equal(SourceSubtitleSnapshot.EmbeddedType, snapshot!.SourceType);
+            Assert.Equal(0, snapshot.StreamIndex);
+        }
+        finally
+        {
+            if (File.Exists(extractedPath))
+            {
+                File.Delete(extractedPath);
+            }
+        }
+    }
+
+    [Fact]
     public async Task ResolveCurrentSnapshotAsync_ShouldSkipTemporaryExternalSourceAndUseNextValidExternalSource()
     {
         var dbContext = CreateDbContext();

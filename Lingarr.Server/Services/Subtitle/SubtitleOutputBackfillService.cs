@@ -584,8 +584,12 @@ public class SubtitleOutputBackfillService : ISubtitleOutputBackfillService
     private static bool PlainSubtitleLooksDamaged(IReadOnlyList<SubtitleItem> subtitles)
     {
         var lines = subtitles.SelectMany(item => item.Lines);
-        var drawingScan = AssSubtitleArtifactDetector.DetectDrawingArtifacts(lines);
-        return drawingScan.HasIssues || subtitles.Any(item => item.Lines.Any(line => AssLeakPattern.IsMatch(line)));
+        var drawingScan = AssSubtitleArtifactDetector.DetectDrawingArtifacts(lines, suspiciousThreshold: 1);
+        var tagScan = AssSubtitleArtifactDetector.DetectUnexpectedAssTagsInPlainTextOutput(
+            subtitles.SelectMany(item => item.Lines));
+        return drawingScan.HasIssues ||
+               tagScan.HasIssues ||
+               subtitles.Any(item => item.Lines.Any(line => AssLeakPattern.IsMatch(line)));
     }
 
     private static bool TranslatedAssNeedsInlineRepair(IReadOnlyList<SubtitleItem> subtitles)
@@ -605,7 +609,8 @@ public class SubtitleOutputBackfillService : ISubtitleOutputBackfillService
         }
 
         var lines = await File.ReadAllLinesAsync(srtPath, cancellationToken);
-        return AssSubtitleArtifactDetector.DetectDrawingArtifacts(lines).HasIssues;
+        return AssSubtitleArtifactDetector.DetectDrawingArtifacts(lines, suspiciousThreshold: 1).HasIssues ||
+               AssSubtitleArtifactDetector.DetectUnexpectedAssTagsInPlainTextOutput(lines).HasIssues;
     }
 
     private static string BuildRepairVisibleText(SubtitleItem translatedCue)

@@ -265,14 +265,29 @@ public class SubtitleController : ControllerBase
             return NotFound();
         }
 
-        await _mediaSubtitleProcessor.ProcessMediaForceAsync(
-            media,
-            mediaType,
-            forceProcess: true,
-            forceTranslation: true,
-            forcePriority: true,
-            queueTranslations: true,
-            maxTranslationsToQueue: 1);
+        if (!string.IsNullOrWhiteSpace(finding.TargetLanguage))
+        {
+            await _mediaSubtitleProcessor.ProcessMediaForceTargetAsync(
+                media,
+                mediaType,
+                finding.TargetLanguage,
+                forceProcess: true,
+                forceTranslation: true,
+                forcePriority: true,
+                queueTranslations: true,
+                maxTranslationsToQueue: 1);
+        }
+        else
+        {
+            await _mediaSubtitleProcessor.ProcessMediaForceAsync(
+                media,
+                mediaType,
+                forceProcess: true,
+                forceTranslation: true,
+                forcePriority: true,
+                queueTranslations: true,
+                maxTranslationsToQueue: 1);
+        }
 
         finding.IsQueued = true;
         await SaveQualityAuditResult(result);

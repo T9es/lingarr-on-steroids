@@ -92,16 +92,12 @@ public class SubtitleQualityValidatorService : ISubtitleQualityValidatorService
             var artifactScan = new AssArtifactScanResult();
             if (!SubtitleOutputModeHelper.IsAssFormat(request.OutputFormat ?? Path.GetExtension(request.TargetPath)))
             {
-                artifactScan.Merge(AssSubtitleArtifactDetector.CompareTagStructure(
-                    sourceSubtitles,
-                    targetSubtitles,
-                    request.TargetPath));
-                artifactScan.Merge(AssSubtitleArtifactDetector.DetectDrawingArtifacts(
+                artifactScan.Merge(AssSubtitleArtifactDetector.DetectUnexpectedAssTagsInPlainTextOutput(
                     targetSubtitles.SelectMany(item => item.Lines)));
+                artifactScan.Merge(AssSubtitleArtifactDetector.DetectDrawingArtifacts(
+                    targetSubtitles.SelectMany(item => item.Lines),
+                    suspiciousThreshold: 1));
             }
-
-            artifactScan.Merge(AssSubtitleArtifactDetector.DetectInlineTagPlacementArtifacts(
-                targetSubtitles.SelectMany(item => item.Lines)));
             MergeScan(issueTypes, summaries, samples, artifactScan);
 
             if (issueTypes.Count > 0)

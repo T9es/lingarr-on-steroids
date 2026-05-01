@@ -1148,9 +1148,8 @@ public class TranslationJob
                 : string.Join("\\N", subtitle.Lines);
             var plainTextLines = ConvertToPlainTextLines(translatedText);
 
-            if (writesPreservedAssOutput &&
-                plainTextLines.Count == 0 &&
-                SubtitleFormatterService.IsMeaningless(string.Join(" ", subtitle.PlaintextLines)))
+            if (plainTextLines.Count == 0 ||
+                plainTextLines.All(SubtitleFormatterService.IsAssDrawingCommand))
             {
                 continue;
             }
