@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Lingarr.Core.Configuration;
 using Lingarr.Core.Entities;
@@ -60,6 +61,71 @@ public class DuplicationPreventionTests : MediaSubtitleProcessorTestBase
 
         Assert.Equal(0, queued);
         TranslationRequestServiceMock.Verify(s => s.CreateRequest(It.IsAny<TranslateAbleSubtitle>(), It.IsAny<bool>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ProcessMediaForceAsync_WithCompletedShortenedGeneratedPath_DoesNotRequeue()
+    {
+        var movie = await CreateTestMovie("Very Long Movie Name [Bluray-1080p][DTS 5.1][x264]-Release");
+        SetupStandardSettings();
+
+        var sourcePath = "/movies/test/Very Long Movie Name [Bluray-1080p][DTS 5.1][x264]-Release.en.srt";
+        var shortenedTargetPath = "/movies/test/Very Long Movie Name [Bluray-1080p][DTS 5.ro.-ai-.srt";
+        var subtitles = new List<Subtitles>
+        {
+            new()
+            {
+                Path = sourcePath,
+                FileName = "Very Long Movie Name [Bluray-1080p][DTS 5.1][x264]-Release.en",
+                Language = "en",
+                Caption = "",
+                Format = ".srt"
+            },
+            new()
+            {
+                Path = shortenedTargetPath,
+                FileName = "Very Long Movie Name [Bluray-1080p][DTS 5.ro.-ai-",
+                Language = "ro",
+                Caption = "",
+                Format = ".srt"
+            }
+        };
+
+        SubtitleServiceMock
+            .Setup(s => s.GetAllSubtitles(It.IsAny<string>()))
+            .ReturnsAsync(subtitles);
+
+        DbContext.TranslationRequests.Add(new TranslationRequest
+        {
+            MediaId = movie.Id,
+            MediaType = MediaType.Movie,
+            WorkloadKind = TranslationWorkloadKind.Library,
+            WorkloadItemKey = $"library:{MediaType.Movie}:{movie.Id}",
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "ro",
+            SubtitleToTranslate = sourcePath,
+            TranslatedSubtitle = shortenedTargetPath,
+            SourceSubtitleFormat = ".srt",
+            GeneratedOutputFormats = ".srt",
+            RequiredOutputFormats = ".srt",
+            GeneratedSubtitlePaths = JsonSerializer.Serialize(new[] { shortenedTargetPath }),
+            Status = TranslationStatus.Completed,
+            IsActive = false,
+            CompletedAt = System.DateTime.UtcNow
+        });
+        await DbContext.SaveChangesAsync();
+
+        var queued = await Processor.ProcessMediaForceAsync(
+            movie,
+            MediaType.Movie,
+            forceProcess: true,
+            forceTranslation: false);
+
+        Assert.Equal(0, queued);
+        TranslationRequestServiceMock.Verify(
+            s => s.CreateRequest(It.IsAny<TranslateAbleSubtitle>(), It.IsAny<bool>()),
+            Times.Never);
     }
 
     [Fact]

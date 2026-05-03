@@ -107,7 +107,7 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
         var entryCount = GetExtractedEntryCount(candidate);
 
         if (entryCount.HasValue &&
-            entryCount.Value > 0 &&
+            entryCount.Value >= 0 &&
             entryCount.Value < SubtitleExtractionService.MinimumDialogueEntries)
         {
             return new SubtitleSourceCandidateAssessment(

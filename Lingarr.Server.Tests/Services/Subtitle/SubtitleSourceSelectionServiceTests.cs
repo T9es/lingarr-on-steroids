@@ -95,6 +95,75 @@ public class SubtitleSourceSelectionServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SelectPrimaryAsync_RejectsZeroDialogueAssTrack()
+    {
+        var assPath = Path.Combine(_tempDirectory, "empty.en.ass");
+        await File.WriteAllTextAsync(
+            assPath,
+            """
+            [Script Info]
+            Title: Empty
+
+            [Events]
+            Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+            """);
+        var service = CreateService();
+
+        var result = await service.SelectPrimaryAsync(
+            [
+                new EmbeddedSubtitle
+                {
+                    StreamIndex = 0,
+                    Language = "eng",
+                    Title = "English",
+                    CodecName = "ass",
+                    IsTextBased = true,
+                    ExtractedPath = assPath
+                }
+            ],
+            ["en"],
+            allowCaptionFallback: true);
+
+        Assert.Null(result.SelectedSubtitle);
+        Assert.Equal(SubtitleSourceCandidateRole.RejectedSparse, GetRole(result, 0));
+    }
+
+    [Fact]
+    public async Task SelectPrimaryAsync_RejectsTimingOnlySrtTrackAndUsesLowerPriorityFullTrack()
+    {
+        var timingOnlyPath = await WriteTimingOnlySrtAsync("timing-only.en.srt", 60);
+        var service = CreateService();
+
+        var result = await service.SelectPrimaryAsync(
+            [
+                new EmbeddedSubtitle
+                {
+                    StreamIndex = 0,
+                    Language = "eng",
+                    Title = "English",
+                    CodecName = "subrip",
+                    IsTextBased = true,
+                    ExtractedPath = timingOnlyPath
+                },
+                new EmbeddedSubtitle
+                {
+                    StreamIndex = 1,
+                    Language = "jpn",
+                    Title = "Japanese Full",
+                    CodecName = "subrip",
+                    IsTextBased = true
+                }
+            ],
+            ["en", "ja"],
+            allowCaptionFallback: true);
+
+        Assert.NotNull(result.SelectedSubtitle);
+        Assert.Equal(1, result.SelectedSubtitle!.StreamIndex);
+        Assert.Equal("ja", result.MatchedLanguage);
+        Assert.Equal(SubtitleSourceCandidateRole.RejectedSparse, GetRole(result, 0));
+    }
+
+    [Fact]
     public async Task SelectPrimaryAsync_RejectsPathologicalAssTrackAndUsesCleanSrt()
     {
         var assPath = Path.Combine(_tempDirectory, "pathological.en.ass");
@@ -206,6 +275,17 @@ public class SubtitleSourceSelectionServiceTests : IDisposable
             "\n\n",
             Enumerable.Range(1, cueCount).Select(index =>
                 $"{index}\n00:00:{index % 60:00},000 --> 00:00:{index % 60:00},500\nLine {index}"));
+        await File.WriteAllTextAsync(path, content);
+        return path;
+    }
+
+    private async Task<string> WriteTimingOnlySrtAsync(string fileName, int cueCount)
+    {
+        var path = Path.Combine(_tempDirectory, fileName);
+        var content = string.Join(
+            "\n\n",
+            Enumerable.Range(1, cueCount).Select(index =>
+                $"{index}\n00:00:{index % 60:00},000 --> 00:00:{index % 60:00},500"));
         await File.WriteAllTextAsync(path, content);
         return path;
     }

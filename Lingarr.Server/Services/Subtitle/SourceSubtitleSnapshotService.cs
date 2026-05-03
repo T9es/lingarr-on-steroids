@@ -99,7 +99,7 @@ public class SourceSubtitleSnapshotService : ISourceSubtitleSnapshotService
 
         var ignoreCaptions = await ShouldIgnoreCaptionsAsync(cancellationToken);
         var matchingExternalSubtitles = externalSubtitles?.ToList()
-                                       ?? await GetMatchingExternalSubtitlesAsync(media);
+                                       ?? await GetMatchingExternalSubtitlesAsync(media, cancellationToken);
 
         var externalCandidate = TrySelectExternalSourceCandidate(
             matchingExternalSubtitles,
@@ -336,7 +336,9 @@ public class SourceSubtitleSnapshotService : ISourceSubtitleSnapshotService
         return string.Equals(ignoreCaptions, "true", StringComparison.OrdinalIgnoreCase);
     }
 
-    private async Task<List<Subtitles>> GetMatchingExternalSubtitlesAsync(IMedia media)
+    private async Task<List<Subtitles>> GetMatchingExternalSubtitlesAsync(
+        IMedia media,
+        CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(media.Path) || string.IsNullOrWhiteSpace(media.FileName))
         {
@@ -346,7 +348,10 @@ public class SourceSubtitleSnapshotService : ISourceSubtitleSnapshotService
         try
         {
             var allSubtitles = await _subtitleService.GetAllSubtitles(media.Path);
-            return FilterMatchingSubtitles(media.FileName, allSubtitles);
+            return MediaSubtitleMatcher.FilterMatchingSubtitles(
+                media.FileName,
+                allSubtitles,
+                await GetKnownGeneratedSubtitlePathsAsync(media.Id, ResolveMediaType(media), cancellationToken));
         }
         catch (Exception ex)
         {
@@ -355,16 +360,25 @@ public class SourceSubtitleSnapshotService : ISourceSubtitleSnapshotService
         }
     }
 
-    private static List<Subtitles> FilterMatchingSubtitles(string mediaFileName, IEnumerable<Subtitles> subtitles)
+    private static MediaType ResolveMediaType(IMedia media)
     {
-        var mediaNameNoExt = Path.GetFileNameWithoutExtension(mediaFileName);
-        return subtitles
-            .Where(s =>
-                s.FileName.StartsWith(mediaFileName + ".", StringComparison.OrdinalIgnoreCase)
-                || s.FileName.Equals(mediaFileName, StringComparison.OrdinalIgnoreCase)
-                || (!string.IsNullOrWhiteSpace(mediaNameNoExt)
-                    && s.FileName.StartsWith(mediaNameNoExt + ".", StringComparison.OrdinalIgnoreCase)))
-            .ToList();
+        return media is Movie ? MediaType.Movie : MediaType.Episode;
+    }
+
+    private async Task<HashSet<string>> GetKnownGeneratedSubtitlePathsAsync(
+        int mediaId,
+        MediaType mediaType,
+        CancellationToken cancellationToken)
+    {
+        var requests = await _dbContext.TranslationRequests
+            .AsNoTracking()
+            .Where(request => request.WorkloadKind == TranslationWorkloadKind.Library)
+            .Where(request => request.MediaId == mediaId && request.MediaType == mediaType)
+            .Where(request => request.Status == TranslationStatus.Completed)
+            .Where(request => request.GeneratedSubtitlePaths != null && request.GeneratedSubtitlePaths != string.Empty)
+            .ToListAsync(cancellationToken);
+
+        return MediaSubtitleMatcher.ExtractGeneratedPaths(requests);
     }
 
     private static (Subtitles? Subtitle, string? SourceLanguage) TrySelectExternalSourceCandidate(

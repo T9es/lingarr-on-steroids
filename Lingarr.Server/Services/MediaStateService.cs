@@ -155,13 +155,10 @@ public class MediaStateService : IMediaStateService
             try
             {
                 var allSubs = await _subtitleService.GetAllSubtitles(media.Path);
-                var mediaNameNoExt = Path.GetFileNameWithoutExtension(media.FileName);
-                externalSubtitles = allSubs
-                    .Where(s => !string.IsNullOrEmpty(media.FileName) && 
-                               (s.FileName.StartsWith(media.FileName + ".") || 
-                                s.FileName == media.FileName ||
-                                (!string.IsNullOrEmpty(mediaNameNoExt) && s.FileName.StartsWith(mediaNameNoExt + "."))))
-                    .ToList();
+                externalSubtitles = MediaSubtitleMatcher.FilterMatchingSubtitles(
+                    media.FileName,
+                    allSubs,
+                    await GetKnownGeneratedSubtitlePathsAsync(media.Id, mediaType));
             }
             catch (Exception ex)
             {
@@ -547,5 +544,20 @@ public class MediaStateService : IMediaStateService
         }
 
         return existingTargetFormats;
+    }
+
+    private async Task<HashSet<string>> GetKnownGeneratedSubtitlePathsAsync(
+        int mediaId,
+        MediaType mediaType)
+    {
+        var requests = await _dbContext.TranslationRequests
+            .AsNoTracking()
+            .Where(request => request.WorkloadKind == TranslationWorkloadKind.Library)
+            .Where(request => request.MediaId == mediaId && request.MediaType == mediaType)
+            .Where(request => request.Status == TranslationStatus.Completed)
+            .Where(request => request.GeneratedSubtitlePaths != null && request.GeneratedSubtitlePaths != string.Empty)
+            .ToListAsync();
+
+        return MediaSubtitleMatcher.ExtractGeneratedPaths(requests);
     }
 }

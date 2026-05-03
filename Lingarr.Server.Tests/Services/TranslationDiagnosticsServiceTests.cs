@@ -118,6 +118,22 @@ public class TranslationDiagnosticsServiceTests : IDisposable
         }
     }
 
+    [Fact]
+    public void CreateQuarantinePath_TruncatesLongFinalFileName()
+    {
+        using var context = CreateDbContext();
+        var service = new TranslationDiagnosticsService(
+            context,
+            NullLogger<TranslationDiagnosticsService>.Instance);
+        var longFileName = new string('a', 260) + ".srt";
+        var path = service.CreateQuarantinePath(123, Path.Combine(_tempDirectory, longFileName));
+
+        Assert.True(
+            Path.GetFileName(path).Length <= 129,
+            $"Expected quarantine filename to stay below 129 chars, got {Path.GetFileName(path).Length}: {path}");
+        Assert.EndsWith(".srt", path);
+    }
+
     private static LingarrDbContext CreateDbContext()
     {
         var options = new DbContextOptionsBuilder<LingarrDbContext>()

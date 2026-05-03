@@ -786,8 +786,8 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             {
                 ".ass" or ".ssa" => File.ReadLines(filePath)
                     .Count(line => line.TrimStart().StartsWith("Dialogue:", StringComparison.OrdinalIgnoreCase)),
-                ".vtt" => File.ReadLines(filePath)
-                    .Count(line => line.Contains("-->", StringComparison.Ordinal)),
+                ".srt" => CountTextCueEntries(filePath, isWebVtt: false),
+                ".vtt" => CountTextCueEntries(filePath, isWebVtt: true),
                 _ => File.ReadLines(filePath)
                     .Count(line =>
                     {
@@ -800,6 +800,86 @@ public class SubtitleExtractionService : ISubtitleExtractionService
         {
             return -1;
         }
+    }
+
+    private static int CountTextCueEntries(string filePath, bool isWebVtt)
+    {
+        var count = 0;
+        var block = new List<string>();
+
+        foreach (var line in File.ReadLines(filePath))
+        {
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                if (IsTextCueBlock(block, isWebVtt))
+                {
+                    count++;
+                }
+
+                block.Clear();
+                continue;
+            }
+
+            block.Add(line.Trim());
+        }
+
+        if (IsTextCueBlock(block, isWebVtt))
+        {
+            count++;
+        }
+
+        return count;
+    }
+
+    private static bool IsTextCueBlock(IReadOnlyList<string> block, bool isWebVtt)
+    {
+        if (block.Count == 0)
+        {
+            return false;
+        }
+
+        var timeCodeIndex = -1;
+        for (var index = 0; index < block.Count; index++)
+        {
+            var line = block[index];
+            if (isWebVtt && ShouldSkipWebVttHeaderLine(line))
+            {
+                continue;
+            }
+
+            if (isWebVtt && IsWebVttMetadataBlock(line))
+            {
+                return false;
+            }
+
+            if (line.Contains("-->", StringComparison.Ordinal))
+            {
+                timeCodeIndex = index;
+                break;
+            }
+        }
+
+        if (timeCodeIndex < 0)
+        {
+            return false;
+        }
+
+        return block
+            .Skip(timeCodeIndex + 1)
+            .Any(line => !string.IsNullOrWhiteSpace(SubtitleFormatterService.RemoveMarkup(line)));
+    }
+
+    private static bool ShouldSkipWebVttHeaderLine(string line)
+    {
+        return line.StartsWith("WEBVTT", StringComparison.OrdinalIgnoreCase) ||
+               line.StartsWith("X-TIMESTAMP-MAP=", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsWebVttMetadataBlock(string line)
+    {
+        return line.StartsWith("NOTE", StringComparison.Ordinal) ||
+               line.StartsWith("STYLE", StringComparison.Ordinal) ||
+               line.StartsWith("REGION", StringComparison.Ordinal);
     }
 
     internal static async Task EnsureExtractionMarkerAsync(string filePath)

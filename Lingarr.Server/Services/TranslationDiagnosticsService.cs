@@ -97,11 +97,30 @@ public class TranslationDiagnosticsService : ITranslationDiagnosticsService
         var safeFileName = string.Join(
             "_",
             fileName.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries));
+        safeFileName = ShortenFileName(safeFileName, maxLength: 96);
         return Path.Combine(
             root,
             DateTime.UtcNow.ToString("yyyyMMdd"),
             translationRequestId.ToString(),
             $"{Guid.NewGuid():N}.{safeFileName}");
+    }
+
+    private static string ShortenFileName(string fileName, int maxLength)
+    {
+        if (fileName.Length <= maxLength)
+        {
+            return fileName;
+        }
+
+        var extension = Path.GetExtension(fileName);
+        var availableBaseLength = Math.Max(8, maxLength - extension.Length);
+        var baseName = Path.GetFileNameWithoutExtension(fileName);
+        if (baseName.Length > availableBaseLength)
+        {
+            baseName = baseName[..availableBaseLength];
+        }
+
+        return baseName + extension;
     }
 
     internal static string ResolveQuarantineRootPath(string? configuredRootPath)

@@ -66,9 +66,10 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             return false;
         }
         var allSubtitles = await _subtitleService.GetAllSubtitles(media.Path);
-        var matchingSubtitles = allSubtitles
-            .Where(s => s.FileName.StartsWith(media.FileName + ".") || s.FileName == media.FileName)
-            .ToList();
+        var matchingSubtitles = MediaSubtitleMatcher.FilterMatchingSubtitles(
+            media.FileName,
+            allSubtitles,
+            await GetKnownGeneratedSubtitlePathsAsync(media.Id, mediaType));
 
         if (!matchingSubtitles.Any())
         {
@@ -548,9 +549,10 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         }
         
         var allSubtitles = await _subtitleService.GetAllSubtitles(media.Path);
-        var matchingSubtitles = allSubtitles
-            .Where(s => s.FileName.StartsWith(media.FileName + ".") || s.FileName == media.FileName)
-            .ToList();
+        var matchingSubtitles = MediaSubtitleMatcher.FilterMatchingSubtitles(
+            media.FileName,
+            allSubtitles,
+            await GetKnownGeneratedSubtitlePathsAsync(media.Id, mediaType));
 
         _logger.LogDebug(
             "ProcessMediaForceAsync for {FileName}: Found {AllCount} subtitles in directory, {MatchCount} matching media file",
@@ -1111,9 +1113,10 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
 
         // Get external subtitles to check which target languages already exist and validate them
         var allExternalSubtitles = await _subtitleService.GetAllSubtitles(media.Path!);
-        var matchingExternalSubtitles = allExternalSubtitles
-            .Where(s => s.FileName.StartsWith(media.FileName + ".") || s.FileName == media.FileName)
-            .ToList();
+        var matchingExternalSubtitles = MediaSubtitleMatcher.FilterMatchingSubtitles(
+            media.FileName,
+            allExternalSubtitles,
+            await GetKnownGeneratedSubtitlePathsAsync(media.Id, mediaType));
         var existingExternalLanguages = matchingExternalSubtitles
             .Where(subtitle => !ExternalSubtitleCandidateHelper.ShouldSkipAsMainTarget(subtitle))
             .Select(s => s.Language.ToLowerInvariant())
@@ -1580,6 +1583,21 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 tr.SourceSubtitleType != SubtitleLanguageHelper.TypeSignsSongs);
 
         return await query.AnyAsync();
+    }
+
+    private async Task<HashSet<string>> GetKnownGeneratedSubtitlePathsAsync(
+        int mediaId,
+        MediaType mediaType)
+    {
+        var requests = await _dbContext.TranslationRequests
+            .AsNoTracking()
+            .Where(request => request.WorkloadKind == TranslationWorkloadKind.Library)
+            .Where(request => request.MediaId == mediaId && request.MediaType == mediaType)
+            .Where(request => request.Status == TranslationStatus.Completed)
+            .Where(request => request.GeneratedSubtitlePaths != null && request.GeneratedSubtitlePaths != string.Empty)
+            .ToListAsync();
+
+        return MediaSubtitleMatcher.ExtractGeneratedPaths(requests);
     }
 
     private async Task<int> TryQueueSupplementalEmbeddedTranslationsAsync(

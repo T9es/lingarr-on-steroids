@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using Lingarr.Server.Services.Subtitle;
 using Xunit;
 
@@ -43,6 +44,23 @@ public class SubtitleEntryCountingTests : IDisposable
 
         Assert.Equal(60, entryCount);
         Assert.False(SubtitleExtractionService.IsSparseSubtitle(filePath));
+    }
+
+    [Fact]
+    public void CountSubtitleEntries_ShouldNotCountTimingOnlySrtBlocksAsDialogueEntries()
+    {
+        var filePath = Path.Combine(_tempDirectory, "timing-only.en.srt");
+        var content = string.Join(
+            Environment.NewLine + Environment.NewLine,
+            Enumerable.Range(1, 60).Select(index =>
+                $"{index}{Environment.NewLine}00:00:{index % 60:00},000 --> 00:00:{index % 60:00},500"));
+
+        File.WriteAllText(filePath, content);
+
+        var entryCount = SubtitleExtractionService.CountSubtitleEntries(filePath);
+
+        Assert.Equal(0, entryCount);
+        Assert.True(SubtitleExtractionService.IsSparseSubtitle(filePath));
     }
 
     public void Dispose()

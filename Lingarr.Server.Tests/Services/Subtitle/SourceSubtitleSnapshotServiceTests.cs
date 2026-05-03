@@ -673,11 +673,24 @@ public class SourceSubtitleSnapshotServiceTests
         var dbContext = CreateDbContext();
         var settingServiceMock = new Mock<ISettingService>();
         var subtitleServiceMock = new Mock<ISubtitleService>();
-        var firstPath = Path.GetTempFileName();
-        var secondPath = Path.GetTempFileName();
+        var firstPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.eng.ass");
+        var secondPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.eng.ass");
 
         try
         {
+            await File.WriteAllTextAsync(
+                firstPath,
+                "[Events]\n" + string.Join(
+                    "\n",
+                    Enumerable.Range(1, 300).Select(index =>
+                        $"Dialogue: 0,0:00:{index % 60:00}.00,0:00:{index % 60:00}.50,Default,,0,0,0,,{{\\an7}}Fran")));
+            await File.WriteAllTextAsync(
+                secondPath,
+                "[Events]\n" + string.Join(
+                    "\n",
+                    Enumerable.Range(1, 300).Select(index =>
+                        $"Dialogue: 0,0:00:{index % 60:00}.00,0:00:{index % 60:00}.50,Default,,0,0,0,,Meaningful line {index}")));
+
             settingServiceMock
                 .Setup(s => s.GetSettingAsJson<SourceLanguage>(SettingKeys.Translation.SourceLanguages))
                 .ReturnsAsync([new SourceLanguage { Name = "English", Code = "en" }]);
