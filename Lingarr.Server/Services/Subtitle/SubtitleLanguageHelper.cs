@@ -338,9 +338,47 @@ public static class SubtitleLanguageHelper
             return TypeUnknown;
         }
 
-        return DetermineSubtitleTypeFromText(
-            Path.GetFileNameWithoutExtension(subtitlePath),
-            defaultType: TypeFull);
+        var baseName = Path.GetFileNameWithoutExtension(subtitlePath);
+        if (string.IsNullOrWhiteSpace(baseName))
+        {
+            return TypeFull;
+        }
+
+        var tokens = TokenSeparatorRegex
+            .Split(baseName.ToLowerInvariant())
+            .Where(token => !string.IsNullOrWhiteSpace(token))
+            .ToList();
+        if (tokens.Count == 0)
+        {
+            return TypeFull;
+        }
+
+        var lastLanguageTokenIndex = -1;
+        for (var index = tokens.Count - 1; index >= 0; index--)
+        {
+            if (TryNormalizeKnownLanguageCode(tokens[index], out _))
+            {
+                lastLanguageTokenIndex = index;
+                break;
+            }
+        }
+
+        if (lastLanguageTokenIndex >= 0)
+        {
+            var suffixTokens = tokens
+                .Skip(lastLanguageTokenIndex + 1)
+                .Where(token => !IsGeneratedSubtitleMarkerToken(token))
+                .ToList();
+
+            return DetermineSubtitleTypeFromRoleTokens(suffixTokens, defaultType: TypeFull);
+        }
+
+        if (tokens.Count <= 4)
+        {
+            return DetermineSubtitleTypeFromRoleTokens(tokens, defaultType: TypeFull);
+        }
+
+        return TypeFull;
     }
 
     public static bool IsSupplementalSubtitleType(string? subtitleType)
@@ -531,6 +569,94 @@ public static class SubtitleLanguageHelper
         }
 
         return defaultType;
+    }
+
+    private static string DetermineSubtitleTypeFromRoleTokens(IReadOnlyCollection<string> tokens, string defaultType)
+    {
+        if (tokens.Count == 0)
+        {
+            return defaultType;
+        }
+
+        if (tokens.Contains("commentary") ||
+            ContainsAdjacentTokens(tokens, "director", "commentary") ||
+            ContainsAdjacentTokens(tokens, "audio", "commentary"))
+        {
+            return TypeCommentary;
+        }
+
+        if (tokens.Contains("forced") ||
+            tokens.Contains("force") ||
+            tokens.Contains("foreign") ||
+            ContainsAdjacentTokens(tokens, "foreign", "only"))
+        {
+            return TypeForced;
+        }
+
+        if (tokens.Contains("sign") ||
+            tokens.Contains("signs") ||
+            tokens.Contains("song") ||
+            tokens.Contains("songs") ||
+            tokens.Contains("karaoke") ||
+            tokens.Contains("lyrics") ||
+            ContainsAdjacentTokens(tokens, "signs", "songs") ||
+            ContainsAdjacentTokens(tokens, "songs", "signs"))
+        {
+            return TypeSignsSongs;
+        }
+
+        if (tokens.Contains("sdh") ||
+            tokens.Contains("deaf") ||
+            ContainsAdjacentTokens(tokens, "hearing", "impaired"))
+        {
+            return TypeSdh;
+        }
+
+        if (tokens.Contains("cc") ||
+            ContainsAdjacentTokens(tokens, "closed", "caption") ||
+            ContainsAdjacentTokens(tokens, "closed", "captions"))
+        {
+            return TypeClosedCaptions;
+        }
+
+        if (tokens.Contains("full") ||
+            tokens.Contains("complete") ||
+            tokens.Contains("dialog") ||
+            tokens.Contains("dialogue"))
+        {
+            return TypeFull;
+        }
+
+        return defaultType;
+    }
+
+    private static bool ContainsAdjacentTokens(IReadOnlyCollection<string> tokens, string first, string second)
+    {
+        if (tokens.Count < 2)
+        {
+            return false;
+        }
+
+        var previous = string.Empty;
+        foreach (var token in tokens)
+        {
+            if (string.Equals(previous, first, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(token, second, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            previous = token;
+        }
+
+        return false;
+    }
+
+    private static bool IsGeneratedSubtitleMarkerToken(string token)
+    {
+        return string.Equals(token, "ai", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(token, "sztuczna", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(token, "inteligencja", StringComparison.OrdinalIgnoreCase);
     }
 
     private static Dictionary<string, string> BuildCultureLanguageMap()

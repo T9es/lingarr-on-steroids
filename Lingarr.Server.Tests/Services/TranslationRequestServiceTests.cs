@@ -756,6 +756,73 @@ public class TranslationRequestServiceTests
     }
 
     [Fact]
+    public async Task GetOverview_ReturnsCountsAndLimitsFailedAndInProgressItems()
+    {
+        await using var context = BuildContext();
+
+        var now = DateTime.UtcNow;
+        var requests = new List<TranslationRequest>
+        {
+            CreateRequest(1, 100, MediaType.Movie, "en", "pl", "/movies/pending-1.en.srt", TranslationStatus.Pending, now),
+            CreateRequest(2, 101, MediaType.Movie, "en", "pl", "/movies/pending-2.en.srt", TranslationStatus.Pending, now.AddSeconds(1)),
+            CreateRequest(3, 102, MediaType.Movie, "en", "pl", "/movies/failed-1.en.srt", TranslationStatus.Failed, now.AddSeconds(2)),
+            CreateRequest(4, 103, MediaType.Movie, "en", "pl", "/movies/failed-2.en.srt", TranslationStatus.Failed, now.AddSeconds(3)),
+            CreateRequest(5, 104, MediaType.Movie, "en", "pl", "/movies/failed-3.en.srt", TranslationStatus.Failed, now.AddSeconds(4)),
+            CreateRequest(6, 105, MediaType.Movie, "en", "pl", "/movies/progress-1.en.srt", TranslationStatus.InProgress, now.AddSeconds(5)),
+            CreateRequest(7, 106, MediaType.Movie, "en", "pl", "/movies/progress-2.en.srt", TranslationStatus.Paused, now.AddSeconds(6)),
+            CreateRequest(8, 107, MediaType.Movie, "en", "pl", "/movies/done.en.srt", TranslationStatus.Completed, now.AddSeconds(7))
+        };
+
+        requests[2].CompletedAt = now.AddMinutes(-1);
+        requests[3].CompletedAt = now.AddMinutes(-2);
+        requests[4].CompletedAt = now.AddMinutes(-3);
+        requests[7].CompletedAt = now;
+
+        context.TranslationRequests.AddRange(requests);
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+        var overview = await service.GetOverview(null, "CreatedAt", true, 1, 20, 2);
+
+        Assert.Equal(4, overview.ActiveCount);
+        Assert.Equal(2, overview.Pending.TotalCount);
+        Assert.Equal(2, overview.Pending.Items.Count());
+        Assert.Equal(3, overview.Failed.TotalCount);
+        Assert.Equal(2, overview.Failed.Items.Count);
+        Assert.Equal(2, overview.InProgress.TotalCount);
+        Assert.Equal(2, overview.InProgress.Items.Count);
+        Assert.DoesNotContain(overview.Failed.Items, request => request.Status != TranslationStatus.Failed);
+        Assert.DoesNotContain(overview.InProgress.Items, request =>
+            request.Status != TranslationStatus.InProgress && request.Status != TranslationStatus.Paused);
+    }
+
+    [Fact]
+    public async Task GetOverview_UsesPendingPaginationAndSearch()
+    {
+        await using var context = BuildContext();
+
+        var now = DateTime.UtcNow;
+        var alpha = CreateRequest(1, 100, MediaType.Movie, "en", "pl", "/movies/alpha.en.srt", TranslationStatus.Pending, now);
+        alpha.Title = "Alpha Movie";
+        var beta = CreateRequest(2, 101, MediaType.Movie, "en", "pl", "/movies/beta.en.srt", TranslationStatus.Pending, now.AddSeconds(1));
+        beta.Title = "Beta Movie";
+        var gamma = CreateRequest(3, 102, MediaType.Movie, "en", "pl", "/movies/gamma.en.srt", TranslationStatus.Pending, now.AddSeconds(2));
+        gamma.Title = "Gamma Movie";
+
+        context.TranslationRequests.AddRange(alpha, beta, gamma);
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+        var overview = await service.GetOverview("movie", "Title", true, 2, 1, 25);
+
+        Assert.Equal(3, overview.Pending.TotalCount);
+        Assert.Equal(2, overview.Pending.PageNumber);
+        Assert.Equal(1, overview.Pending.PageSize);
+        var pendingItem = Assert.Single(overview.Pending.Items);
+        Assert.Equal("Beta Movie", pendingItem.Title);
+    }
+
+    [Fact]
     public async Task RetryEligibleFailedRequests_RespectsFutureNextRetryAt()
     {
         await using var context = BuildContext();

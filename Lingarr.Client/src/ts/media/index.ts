@@ -100,6 +100,18 @@ export interface IRetryTranslationRequestResponse {
     message: string
 }
 
+export interface ITranslationRequestSection {
+    items: ITranslationRequest[]
+    totalCount: number
+}
+
+export interface ITranslationRequestsOverview {
+    activeCount: number
+    pending: IPagedResult<ITranslationRequest>
+    failed: ITranslationRequestSection
+    inProgress: ITranslationRequestSection
+}
+
 export interface IRequestProgress {
     id: number
     jobId: string

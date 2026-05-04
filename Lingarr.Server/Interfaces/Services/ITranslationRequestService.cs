@@ -116,6 +116,24 @@ public interface ITranslationRequestService
         int pageSize);
 
     /// <summary>
+    /// Retrieves the active count plus bounded pending, failed, and in-progress request sections.
+    /// </summary>
+    /// <param name="searchQuery">Optional search term to filter pending requests by title</param>
+    /// <param name="orderBy">Property to sort pending requests by: "Title", "CreatedAt", or "CompletedAt"</param>
+    /// <param name="ascending">Sort direction for pending requests</param>
+    /// <param name="pageNumber">Pending request page number</param>
+    /// <param name="pageSize">Number of pending requests per page</param>
+    /// <param name="sectionLimit">Maximum failed and in-progress rows returned</param>
+    /// <returns>Overview response for the translations page</returns>
+    Task<TranslationRequestsOverviewResponse> GetOverview(
+        string? searchQuery,
+        string? orderBy,
+        bool ascending,
+        int pageNumber,
+        int pageSize,
+        int sectionLimit);
+
+    /// <summary>
     /// Removes an existing translation request and its associated background job.
     /// </summary>
     /// <param name="cancelRequest">The translation request to remove</param>

@@ -18,6 +18,7 @@ const onboardingStore = useOnboardingStore()
 const signalR = useSignalR()
 const settingHubConnection = ref<Hub>()
 const requestHubConnection = ref<Hub>()
+let activeCountReconciliationInterval: number | null = null
 
 const showOnboarding = computed(() => {
     if (onboardingStore.isActive) return true
@@ -26,26 +27,30 @@ const showOnboarding = computed(() => {
     return !completed && !skipped
 })
 
+const handleRequestActive = (request: { count: number }) => {
+    translationRequestStore.setActiveCount(request.count)
+}
+
+const handleSettingUpdate = (setting: { key: keyof ISettings; value: string }) => {
+    settingStore.storeSetting(setting.key, setting.value)
+}
+
 onMounted(async () => {
     settingHubConnection.value = await signalR.connect('SettingUpdates', '/signalr/SettingUpdates')
     await settingHubConnection.value.joinGroup({ group: 'SettingUpdates' })
-    settingHubConnection.value.on(
-        'SettingUpdate',
-        (setting: { key: keyof ISettings; value: string }) => {
-            settingStore.storeSetting(setting.key, setting.value)
-        }
-    )
+    settingHubConnection.value.on('SettingUpdate', handleSettingUpdate)
 
     requestHubConnection.value = await signalR.connect(
         'TranslationRequests',
         '/signalr/TranslationRequests'
     )
     await requestHubConnection.value.joinGroup({ group: 'TranslationRequests' })
-    requestHubConnection.value.on('RequestActive', (request: { count: number }) => {
-        translationRequestStore.setActiveCount(request.count)
-    })
+    requestHubConnection.value.on('RequestActive', handleRequestActive)
 
     await translationRequestStore.getActiveCount()
+    activeCountReconciliationInterval = window.setInterval(() => {
+        void translationRequestStore.getActiveCount()
+    }, 30000)
 
     // Check if onboarding should start
     if (showOnboarding.value && !onboardingStore.isActive) {
@@ -54,7 +59,11 @@ onMounted(async () => {
 })
 
 onUnmounted(async () => {
-    settingHubConnection.value?.off('SettingUpdate', () => {})
-    requestHubConnection.value?.off('RequestActive', () => {})
+    settingHubConnection.value?.off('SettingUpdate', handleSettingUpdate)
+    requestHubConnection.value?.off('RequestActive', handleRequestActive)
+    if (activeCountReconciliationInterval) {
+        clearInterval(activeCountReconciliationInterval)
+        activeCountReconciliationInterval = null
+    }
 })
 </script>

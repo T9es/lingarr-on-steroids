@@ -4,6 +4,7 @@ import {
     IRetryTranslationRequestResponse,
     ITranslationRequest,
     ITranslationRequestLog,
+    ITranslationRequestsOverview,
     ITranslationRequestService
 } from '@/ts'
 
@@ -37,6 +38,33 @@ const service = (
         return new Promise((resolve, reject) => {
             http.get(`${resource}/inprogress`)
                 .then((response: AxiosResponse<T>) => {
+                    resolve(response.data)
+                })
+                .catch((error: AxiosError) => {
+                    reject(error.response)
+                })
+        })
+    },
+    overview(
+        pageNumber: number,
+        searchQuery: string,
+        orderBy: string,
+        ascending: boolean,
+        pageSize = 20,
+        sectionLimit = 100
+    ): Promise<ITranslationRequestsOverview> {
+        return new Promise((resolve, reject) => {
+            http.get(
+                `${resource}/overview`.addParams({
+                    pageNumber,
+                    searchQuery,
+                    orderBy,
+                    ascending,
+                    pageSize,
+                    sectionLimit
+                })
+            )
+                .then((response: AxiosResponse<ITranslationRequestsOverview>) => {
                     resolve(response.data)
                 })
                 .catch((error: AxiosError) => {

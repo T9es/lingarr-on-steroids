@@ -10,6 +10,7 @@ import {
     ISubtitle,
     ITranslationRequest,
     ITranslationRequestLog,
+    ITranslationRequestsOverview,
     IRetryFailedRequestsResponse,
     IRetryTranslationRequestResponse,
     IUploadChunkResponse,
@@ -127,6 +128,14 @@ export interface ITranslationRequestService {
     getActiveCount<T>(): Promise<T>
     getFailedRequests<T>(): Promise<T>
     getInProgressRequests<T>(): Promise<T>
+    overview(
+        pageNumber: number,
+        searchQuery: string,
+        sortBy: string,
+        ascending: boolean,
+        pageSize?: number,
+        sectionLimit?: number
+    ): Promise<ITranslationRequestsOverview>
     getRecentCompleted<T>(offset?: number, limit?: number): Promise<T>
     requests<T>(
         pageNumber: number,

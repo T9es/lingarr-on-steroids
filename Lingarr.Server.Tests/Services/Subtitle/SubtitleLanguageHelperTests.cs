@@ -282,4 +282,33 @@ public class SubtitleLanguageHelperTests
 
         Assert.Null(detectedLanguage);
     }
+
+    [Theory]
+    [InlineData("New Amsterdam (2018) - S05E06 - Give Me a Sign [WEBDL-1080p][EAC3 5.pl.-ai-sztuczna-inteligencja-.srt")]
+    [InlineData("The Walking Dead (2010) - S09E03 - Warning Signs [WEBDL-1080p][EAC3 5.pl.-ai-sztuczna-inteligencja-.srt")]
+    [InlineData("Toradora! (2008) - S01E03 - 003 - Your Song [Bluray-1080p][FLAC 2.pl.-ai-sztuczna-inteligencja-.srt")]
+    [InlineData("Pokemon (1997) - S20E31 - 1253 - Song Within the Mist [WEBDL-1080p][AAC 2.pl.-ai-sztuczna-inteligencja-.ass")]
+    public void DetermineSubtitleTypeFromFilename_ShouldNotTreatMediaTitleKeywordsAsSupplemental(string fileName)
+    {
+        var subtitleType = SubtitleLanguageHelper.DetermineSubtitleTypeFromFilename(fileName);
+
+        Assert.Equal(SubtitleLanguageHelper.TypeFull, subtitleType);
+    }
+
+    [Theory]
+    [InlineData("Movie.pl.forced.-ai-sztuczna-inteligencja-.srt", SubtitleLanguageHelper.TypeForced)]
+    [InlineData("Movie.en.signs.srt", SubtitleLanguageHelper.TypeSignsSongs)]
+    [InlineData("Movie.en.signs-and-songs.srt", SubtitleLanguageHelper.TypeSignsSongs)]
+    [InlineData("Movie.jpn.karaoke.ass", SubtitleLanguageHelper.TypeSignsSongs)]
+    [InlineData("Movie.en.sdh.srt", SubtitleLanguageHelper.TypeSdh)]
+    [InlineData("Movie.en.cc.srt", SubtitleLanguageHelper.TypeClosedCaptions)]
+    [InlineData("Movie.en.commentary.srt", SubtitleLanguageHelper.TypeCommentary)]
+    public void DetermineSubtitleTypeFromFilename_ShouldUseSubtitleSuffixAfterLanguageToken(
+        string fileName,
+        string expectedType)
+    {
+        var subtitleType = SubtitleLanguageHelper.DetermineSubtitleTypeFromFilename(fileName);
+
+        Assert.Equal(expectedType, subtitleType);
+    }
 }

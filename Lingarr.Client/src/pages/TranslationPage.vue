@@ -75,7 +75,7 @@
                                 {{ translate('common.statusInProgress') }}
                             </h2>
                             <span class="text-secondary-content text-xs">
-                                {{ inProgressRequests.length }}
+                                {{ inProgressTotalCount }}
                                 {{ translate('common.items') }}
                             </span>
                         </div>
@@ -154,6 +154,12 @@
                                         :on-action="(action) => handleAction(item, action)" />
                                 </div>
                             </div>
+                            <div
+                                v-if="inProgressTotalCount > inProgressRequests.length"
+                                class="text-secondary-content pt-2 text-center text-xs">
+                                {{ inProgressRequests.length }} / {{ inProgressTotalCount }}
+                                {{ translate('common.items') }}
+                            </div>
                         </div>
                         <div v-else class="text-secondary-content py-4 text-center text-sm">
                             {{ translate('translations.noActiveTranslations') }}
@@ -166,20 +172,20 @@
                             <h2 class="text-sm font-semibold tracking-wide uppercase">
                                 {{ translate('common.statusFailed') }}
                             </h2>
-                            <div v-if="failedRequests.length" class="flex gap-2">
+                            <div v-if="failedTotalCount" class="flex gap-2">
                                 <button
                                     class="cursor-pointer rounded-md border border-red-500/50 px-3 py-1 text-xs text-red-400 transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-60"
                                     :disabled="removingFailed || retryingFailed"
                                     @click="showRemoveConfirm = true">
                                     {{ translate('translations.removeAllFailed') }}
-                                    ({{ failedRequests.length }})
+                                    ({{ failedTotalCount }})
                                 </button>
                                 <button
                                     class="border-accent text-primary-content hover:bg-accent cursor-pointer rounded-md border px-3 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                                     :disabled="retryingFailed || removingFailed"
                                     @click="retryAllFailed">
                                     {{ translate('common.retry') }}
-                                    ({{ failedRequests.length }})
+                                    ({{ failedTotalCount }})
                                 </button>
                             </div>
                             <span v-else class="text-secondary-content text-xs">
@@ -262,6 +268,12 @@
                                         :status="item.status"
                                         :on-action="(action) => handleAction(item, action)" />
                                 </div>
+                            </div>
+                            <div
+                                v-if="failedTotalCount > failedRequests.length"
+                                class="text-secondary-content pt-2 text-center text-xs">
+                                {{ failedRequests.length }} / {{ failedTotalCount }}
+                                {{ translate('common.items') }}
                             </div>
                         </div>
                         <div v-else class="text-secondary-content py-4 text-center text-sm">
@@ -617,8 +629,10 @@ const translationRequests: ComputedRef<IPagedResult<ITranslationRequest>> = comp
 )
 
 const inProgressRequests = computed(() => translationRequestStore.inProgressRequests)
+const inProgressTotalCount = computed(() => translationRequestStore.inProgressTotalCount)
 
 const failedRequests = computed(() => translationRequestStore.failedRequests)
+const failedTotalCount = computed(() => translationRequestStore.failedTotalCount)
 
 const queuedRequests = computed(() =>
     translationRequests.value.items.filter(
@@ -705,7 +719,7 @@ function closeLogs() {
 }
 
 const retryAllFailed = async () => {
-    if (!failedRequests.value.length || retryingFailed.value) return
+    if (!failedTotalCount.value || retryingFailed.value) return
 
     retryingFailed.value = true
     try {
@@ -718,7 +732,7 @@ const retryAllFailed = async () => {
 }
 
 const removeAllFailed = async () => {
-    if (!failedRequests.value.length || removingFailed.value) return
+    if (!failedTotalCount.value || removingFailed.value) return
 
     showRemoveConfirm.value = false
     removingFailed.value = true

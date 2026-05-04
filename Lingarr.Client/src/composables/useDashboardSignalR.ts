@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { useSignalR } from './useSignalR'
 import services from '@/services'
+import { useTranslationRequestStore } from '@/store/translationRequest'
 import type { IRequestProgress, ITranslationRequest } from '@/ts'
 
 export interface ActiveTranslation {
@@ -24,6 +25,7 @@ export interface DashboardRealtimeState {
 
 export function useDashboardSignalR() {
     const signalR = useSignalR()
+    const translationRequestStore = useTranslationRequestStore()
 
     const state = ref<DashboardRealtimeState>({
         isConnected: false,
@@ -67,6 +69,7 @@ export function useDashboardSignalR() {
     const handleRequestActive = (request: { count: number }) => {
         state.value.activeCount = request.count
         state.value.lastUpdate = new Date()
+        translationRequestStore.setActiveCount(request.count)
     }
 
     /**
@@ -120,7 +123,7 @@ export function useDashboardSignalR() {
 
     const connect = async () => {
         try {
-            const hub = await signalR.connect('translationRequests', '/signalr/TranslationRequests')
+            const hub = await signalR.connect('TranslationRequests', '/signalr/TranslationRequests')
 
             await hub.joinGroup({ group: 'TranslationRequests' })
 
@@ -135,7 +138,7 @@ export function useDashboardSignalR() {
     }
 
     const disconnect = async () => {
-        const hubState = signalR.state.hubs['translationRequests']
+        const hubState = signalR.state.hubs['TranslationRequests']
         if (hubState?.connection) {
             const hub = {
                 on: hubState.connection.on.bind(hubState.connection),

@@ -7,13 +7,14 @@ import {
     IRetryTranslationRequestResponse,
     ITranslationRequest,
     ITranslationRequestLog,
+    ITranslationRequestsOverview,
     IUseTranslationRequestStore,
     TRANSLATION_STATUS
 } from '@/ts'
 import services from '@/services'
 
 const PROGRESS_FLUSH_DELAY_MS = 16
-const SECTION_REFRESH_DELAY_MS = 200
+const SECTION_REFRESH_DELAY_MS = 1000
 
 let queuedProgressUpdates = new Map<number, IRequestProgress>()
 let progressFlushTimer: ReturnType<typeof setTimeout> | null = null
@@ -62,7 +63,10 @@ export const useTranslationRequestStore = defineStore('translateRequest', {
             items: []
         },
         failedRequests: [] as ITranslationRequest[],
+        failedTotalCount: 0,
         inProgressRequests: [] as ITranslationRequest[],
+        inProgressTotalCount: 0,
+        overviewInFlight: false,
         filter: {
             searchQuery: '',
             sortBy: 'CreatedAt',
@@ -133,6 +137,7 @@ export const useTranslationRequestStore = defineStore('translateRequest', {
             }
 
             this.failedRequests = result
+            this.failedTotalCount = result.length
         },
         async fetchInProgressRequests() {
             const currentToken = ++inProgressFetchToken
@@ -144,37 +149,42 @@ export const useTranslationRequestStore = defineStore('translateRequest', {
             }
 
             this.inProgressRequests = result
+            this.inProgressTotalCount = result.length
         },
         async fetchAllSections() {
-            const currentToken = ++sectionFetchToken
-            const translationRequestsTokenAtStart = ++translationRequestsFetchToken
-            const failedRequestsTokenAtStart = ++failedFetchToken
-            const inProgressRequestsTokenAtStart = ++inProgressFetchToken
-            const [translationRequests, failedRequests, inProgressRequests] = await Promise.all([
-                services.translationRequest.requests<IPagedResult<ITranslationRequest>>(
-                    this.filter.pageNumber,
-                    this.filter.searchQuery,
-                    this.filter.sortBy,
-                    this.filter.isAscending
-                ),
-                services.translationRequest.getFailedRequests<ITranslationRequest[]>(),
-                services.translationRequest.getInProgressRequests<ITranslationRequest[]>()
-            ])
-
-            if (currentToken !== sectionFetchToken) {
+            if (this.overviewInFlight) {
                 return
             }
 
-            if (translationRequestsTokenAtStart === translationRequestsFetchToken) {
-                this.translationRequests = translationRequests
-            }
+            const currentToken = ++sectionFetchToken
+            ++translationRequestsFetchToken
+            ++failedFetchToken
+            ++inProgressFetchToken
+            this.overviewInFlight = true
 
-            if (failedRequestsTokenAtStart === failedFetchToken) {
-                this.failedRequests = failedRequests
-            }
+            try {
+                const overview: ITranslationRequestsOverview =
+                    await services.translationRequest.overview(
+                        this.filter.pageNumber,
+                        this.filter.searchQuery,
+                        this.filter.sortBy,
+                        this.filter.isAscending
+                    )
 
-            if (inProgressRequestsTokenAtStart === inProgressFetchToken) {
-                this.inProgressRequests = inProgressRequests
+                if (currentToken !== sectionFetchToken) {
+                    return
+                }
+
+                this.activeTranslationRequests = overview.activeCount
+                this.translationRequests = overview.pending
+                this.failedRequests = overview.failed.items
+                this.failedTotalCount = overview.failed.totalCount
+                this.inProgressRequests = overview.inProgress.items
+                this.inProgressTotalCount = overview.inProgress.totalCount
+            } finally {
+                if (currentToken === sectionFetchToken) {
+                    this.overviewInFlight = false
+                }
             }
         },
         async forceRefreshSections() {
@@ -218,6 +228,7 @@ export const useTranslationRequestStore = defineStore('translateRequest', {
         async removeAllFailed() {
             const count = await services.translationRequest.removeAllFailed<number>()
             this.failedRequests = []
+            this.failedTotalCount = 0
             return count
         },
         async reenqueueQueued(includeInProgress = false) {

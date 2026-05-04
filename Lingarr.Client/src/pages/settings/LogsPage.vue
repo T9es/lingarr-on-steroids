@@ -124,7 +124,6 @@
                         <option :value="500">500</option>
                         <option :value="1000">1000</option>
                         <option :value="2000">2000</option>
-                        <option :value="5000">5000</option>
                     </select>
                 </div>
             </div>
@@ -154,7 +153,8 @@ interface ILogEntryNormalized extends ILogEntry {
     logLevelNormalized: string
 }
 
-const DISPLAY_WINDOW_SIZE = 300
+const DISPLAY_WINDOW_SIZE = 150
+const LOG_FLUSH_DELAY_MS = 250
 
 const logs = ref<ILogEntryNormalized[]>([])
 const pendingLogs = ref<ILogEntryNormalized[]>([])
@@ -169,7 +169,9 @@ const filterOptions = ref<IFilterOptions>({
 
 const logOccurrences = new Map<string, number>()
 const clearedLogKeys = new Set<string>()
+const incomingLogBuffer: ILogEntry[] = []
 let logStream: EventSource | null = null
+let logFlushTimer: ReturnType<typeof setTimeout> | null = null
 
 const normalizedSearchQuery = computed(() => searchQuery.value.trim().toLowerCase())
 
@@ -308,20 +310,39 @@ const applySnapshotLogs = (snapshotLogs: ILogEntryNormalized[]) => {
     void scrollToBottom()
 }
 
-const appendIncomingLog = (log: ILogEntry) => {
-    const normalizedLog = buildNormalizedLogEntry(log, buildNextLogKey(log))
+const flushIncomingLogs = () => {
+    logFlushTimer = null
 
-    if (clearedLogKeys.has(normalizedLog.uniqueId)) {
+    if (incomingLogBuffer.length === 0) {
+        return
+    }
+
+    const normalizedLogs = incomingLogBuffer
+        .splice(0)
+        .map((log) => buildNormalizedLogEntry(log, buildNextLogKey(log)))
+        .filter((log) => !clearedLogKeys.has(log.uniqueId))
+
+    if (normalizedLogs.length === 0) {
         return
     }
 
     if (isPaused.value) {
-        pendingLogs.value = appendLogs(pendingLogs.value, [normalizedLog])
+        pendingLogs.value = appendLogs(pendingLogs.value, normalizedLogs)
         return
     }
 
-    logs.value = appendLogs(logs.value, [normalizedLog])
+    logs.value = appendLogs(logs.value, normalizedLogs)
     void scrollToBottom()
+}
+
+const appendIncomingLog = (log: ILogEntry) => {
+    incomingLogBuffer.push(log)
+
+    if (logFlushTimer) {
+        return
+    }
+
+    logFlushTimer = setTimeout(flushIncomingLogs, LOG_FLUSH_DELAY_MS)
 }
 
 const loadInitialLogs = async () => {
@@ -420,6 +441,12 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+    if (logFlushTimer) {
+        clearTimeout(logFlushTimer)
+        logFlushTimer = null
+    }
+    incomingLogBuffer.splice(0)
+
     if (logStream) {
         logStream.close()
         logStream = null

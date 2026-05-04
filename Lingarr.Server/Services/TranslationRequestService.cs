@@ -292,6 +292,71 @@ public class TranslationRequestService : ITranslationRequestService
     }
 
     /// <inheritdoc />
+    public async Task<TranslationRequestsOverviewResponse> GetOverview(
+        string? searchQuery,
+        string? orderBy,
+        bool ascending,
+        int pageNumber,
+        int pageSize,
+        int sectionLimit)
+    {
+        pageNumber = Math.Max(1, pageNumber);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+        sectionLimit = Math.Max(1, sectionLimit);
+
+        var pendingQuery = BuildPendingRequestsQuery(searchQuery, orderBy, ascending, asNoTracking: true);
+        var pendingTotalCount = await pendingQuery.CountAsync();
+        var pendingRequests = await pendingQuery
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
+        var failedQuery = _dbContext.TranslationRequests
+            .AsNoTracking()
+            .Where(tr => tr.Status == TranslationStatus.Failed)
+            .OrderByDescending(tr => tr.CompletedAt);
+        var failedTotalCount = await failedQuery.CountAsync();
+        var failedRequests = await failedQuery
+            .Take(sectionLimit)
+            .ToListAsync();
+
+        var inProgressQuery = _dbContext.TranslationRequests
+            .AsNoTracking()
+            .Where(tr => tr.Status == TranslationStatus.InProgress || tr.Status == TranslationStatus.Paused)
+            .OrderByDescending(tr => tr.CreatedAt);
+        var inProgressTotalCount = await inProgressQuery.CountAsync();
+        var inProgressRequests = await inProgressQuery
+            .Take(sectionLimit)
+            .ToListAsync();
+
+        await PopulatePriorityFlagsAsync(pendingRequests);
+        await PopulatePriorityFlagsAsync(failedRequests);
+        await PopulatePriorityFlagsAsync(inProgressRequests);
+
+        return new TranslationRequestsOverviewResponse
+        {
+            ActiveCount = await GetActiveCount(),
+            Pending = new PagedResult<TranslationRequest>
+            {
+                Items = pendingRequests,
+                TotalCount = pendingTotalCount,
+                PageNumber = pageNumber,
+                PageSize = pageSize
+            },
+            Failed = new TranslationRequestSectionResponse
+            {
+                Items = failedRequests,
+                TotalCount = failedTotalCount
+            },
+            InProgress = new TranslationRequestSectionResponse
+            {
+                Items = inProgressRequests,
+                TotalCount = inProgressTotalCount
+            }
+        };
+    }
+
+    /// <inheritdoc />
     public async Task<int> UpdateActiveCount()
     {
         var count = await GetActiveCount();
@@ -1222,32 +1287,8 @@ public class TranslationRequestService : ITranslationRequestService
         int pageNumber,
         int pageSize)
     {
-        var query = _dbContext.TranslationRequests
-            .AsSplitQuery()
-            .Where(tr => tr.Status == TranslationStatus.Pending)
-            .AsQueryable();
+        var query = BuildPendingRequestsQuery(searchQuery, orderBy, ascending);
 
-        if (!string.IsNullOrEmpty(searchQuery))
-        {
-            query = query.Where(translationRequest => translationRequest.Title.ToLower().Contains(searchQuery.ToLower()));
-        }
-    
-        query = orderBy switch
-        {
-            "Title" => ascending 
-                ? query.OrderBy(m => m.Title) 
-                : query.OrderByDescending(m => m.Title),
-            "CreatedAt" => ascending
-                ? query.OrderByDescending(tr => tr.CreatedAt)
-                : query.OrderBy(tr => tr.CreatedAt),
-            "CompletedAt" => ascending
-                ? query.OrderByDescending(tr => tr.CompletedAt)
-                : query.OrderBy(tr => tr.CompletedAt),
-            _ => ascending
-                ? query.OrderByDescending(tr => tr.CreatedAt)
-                : query.OrderBy(tr => tr.CreatedAt)
-        };
-        
         var totalCount = await query.CountAsync();
         var requests = await query
             .Skip((pageNumber - 1) * pageSize)
@@ -1262,6 +1303,46 @@ public class TranslationRequestService : ITranslationRequestService
             TotalCount = totalCount,
             PageNumber = pageNumber,
             PageSize = pageSize
+        };
+    }
+
+    private IQueryable<TranslationRequest> BuildPendingRequestsQuery(
+        string? searchQuery,
+        string? orderBy,
+        bool ascending,
+        bool asNoTracking = false)
+    {
+        var query = _dbContext.TranslationRequests
+            .AsSplitQuery()
+            .Where(tr => tr.Status == TranslationStatus.Pending)
+            .AsQueryable();
+
+        if (asNoTracking)
+        {
+            query = query.AsNoTracking();
+        }
+
+        if (!string.IsNullOrEmpty(searchQuery))
+        {
+            var normalizedSearchQuery = searchQuery.ToLower();
+            query = query.Where(translationRequest =>
+                translationRequest.Title.ToLower().Contains(normalizedSearchQuery));
+        }
+
+        return orderBy switch
+        {
+            "Title" => ascending
+                ? query.OrderBy(m => m.Title)
+                : query.OrderByDescending(m => m.Title),
+            "CreatedAt" => ascending
+                ? query.OrderByDescending(tr => tr.CreatedAt)
+                : query.OrderBy(tr => tr.CreatedAt),
+            "CompletedAt" => ascending
+                ? query.OrderByDescending(tr => tr.CompletedAt)
+                : query.OrderBy(tr => tr.CompletedAt),
+            _ => ascending
+                ? query.OrderByDescending(tr => tr.CreatedAt)
+                : query.OrderBy(tr => tr.CreatedAt)
         };
     }
     

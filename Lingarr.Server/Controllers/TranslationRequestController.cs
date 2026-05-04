@@ -58,6 +58,40 @@ public class TranslationRequestController : ControllerBase
     }
 
     /// <summary>
+    /// Gets a bounded overview of translation request sections for the translations page.
+    /// </summary>
+    /// <param name="searchQuery">Optional pending-request search term</param>
+    /// <param name="orderBy">Pending-request sort field</param>
+    /// <param name="ascending">Pending-request sort direction</param>
+    /// <param name="pageSize">Pending-request page size</param>
+    /// <param name="pageNumber">Pending-request page number</param>
+    /// <param name="sectionLimit">Maximum failed and in-progress rows returned</param>
+    /// <response code="200">Returns active count plus pending, failed, and in-progress sections</response>
+    [HttpGet("overview")]
+    public async Task<ActionResult<TranslationRequestsOverviewResponse>> GetOverview(
+        string? searchQuery,
+        string? orderBy,
+        bool ascending = true,
+        int pageSize = 20,
+        int pageNumber = 1,
+        int sectionLimit = 100)
+    {
+        pageNumber = Math.Max(1, pageNumber);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+        sectionLimit = Math.Clamp(sectionLimit, 25, 200);
+
+        var overview = await _translationRequestService.GetOverview(
+            searchQuery,
+            orderBy,
+            ascending,
+            pageNumber,
+            pageSize,
+            sectionLimit);
+
+        return Ok(overview);
+    }
+
+    /// <summary>
     /// Gets recent completed translation requests with pagination.
     /// </summary>
     /// <param name="offset">Number of items to skip (default: 0)</param>

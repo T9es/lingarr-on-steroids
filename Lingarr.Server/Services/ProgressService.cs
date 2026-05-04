@@ -5,6 +5,7 @@ using Lingarr.Server.Interfaces.Services;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Extensions;
+using System.Collections.Concurrent;
 
 namespace Lingarr.Server.Services;
 
@@ -15,8 +16,11 @@ namespace Lingarr.Server.Services;
 /// </summary>
 public class ProgressService : IProgressService
 {
+    private static readonly TimeSpan EmitThrottleWindow = TimeSpan.FromMilliseconds(250);
+
     private readonly IHubContext<TranslationRequestsHub> _hubContext;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ConcurrentDictionary<int, DateTime> _lastIntermediateEmitByRequestId = new();
 
     public ProgressService(
         IHubContext<TranslationRequestsHub> hubContext, 
@@ -29,6 +33,12 @@ public class ProgressService : IProgressService
     /// <inheritdoc />
     public async Task Emit(TranslationRequest translationRequest, int progress)
     {
+        var isTerminal = IsTerminalProgress(translationRequest, progress);
+        if (!isTerminal && !ShouldEmitIntermediateProgress(translationRequest.Id, progress))
+        {
+            return;
+        }
+
         // Create isolated DbContext to avoid threading conflicts during batch translation
         // The main TranslationJob uses a separate DbContext instance; this prevents
         // "A second operation was started on this context instance" exceptions
@@ -39,7 +49,7 @@ public class ProgressService : IProgressService
             .Where(tr => tr.Id == translationRequest.Id)
             .ExecuteUpdateAsync(setters => setters.SetProperty(tr => tr.Progress, progress));
 
-await _hubContext.Clients.Group("TranslationRequests").SendAsync("RequestProgress", new
+        await _hubContext.Clients.Group("TranslationRequests").SendAsync("RequestProgress", new
         {
             Id = translationRequest.Id,
             Title = translationRequest.Title,
@@ -51,6 +61,11 @@ await _hubContext.Clients.Group("TranslationRequests").SendAsync("RequestProgres
             Status = translationRequest.Status.GetDisplayName(),
             Progress = progress
         });
+
+        if (isTerminal)
+        {
+            _lastIntermediateEmitByRequestId.TryRemove(translationRequest.Id, out _);
+        }
     }
 
     /// <inheritdoc />
@@ -79,7 +94,7 @@ await _hubContext.Clients.Group("TranslationRequests").SendAsync("RequestProgres
         {
             foreach (var request in batch)
             {
-await _hubContext.Clients.Group("TranslationRequests").SendAsync("RequestProgress", new
+                await _hubContext.Clients.Group("TranslationRequests").SendAsync("RequestProgress", new
                 {
                     Id = request.Id,
                     Title = request.Title,
@@ -94,5 +109,40 @@ await _hubContext.Clients.Group("TranslationRequests").SendAsync("RequestProgres
             }
             await Task.Delay(delayMs);
         }
+    }
+
+    private bool ShouldEmitIntermediateProgress(int requestId, int progress)
+    {
+        if (progress == 0 || progress == 100)
+        {
+            _lastIntermediateEmitByRequestId[requestId] = DateTime.UtcNow;
+            return true;
+        }
+
+        var now = DateTime.UtcNow;
+        if (!_lastIntermediateEmitByRequestId.TryGetValue(requestId, out var lastEmit))
+        {
+            _lastIntermediateEmitByRequestId[requestId] = now;
+            return true;
+        }
+
+        if (now - lastEmit < EmitThrottleWindow)
+        {
+            return false;
+        }
+
+        _lastIntermediateEmitByRequestId[requestId] = now;
+        return true;
+    }
+
+    private static bool IsTerminalProgress(TranslationRequest translationRequest, int progress)
+    {
+        return progress == 0 ||
+               progress == 100 ||
+               translationRequest.Status is
+                   Lingarr.Core.Enum.TranslationStatus.Completed or
+                   Lingarr.Core.Enum.TranslationStatus.Failed or
+                   Lingarr.Core.Enum.TranslationStatus.Cancelled or
+                   Lingarr.Core.Enum.TranslationStatus.Interrupted;
     }
 }
