@@ -113,7 +113,7 @@ public class SubtitleTranslationService
                     entry.Structure.VisibleLineCount);
             }
 
-            entry.Subtitle.TranslatedLines = entry.Structure.ApplyProviderTranslation(translated);
+            ApplyTranslationToNode(entry, translated);
 
             iteration++;
             await EmitProgress(translationRequest, iteration, totalSubtitles);
@@ -200,11 +200,11 @@ public class SubtitleTranslationService
                 entry.RawSourceCharCount))
             .ToList();
         var analysis = AssSubtitleSourceAnalyzer.Analyze(analysisEntries);
-        var translatableItems = structureEntries
-            .Where(entry => entry.IsTranslatable)
-            .Select(entry => new ProviderTextItem(entry.Subtitle.Position, entry.ProviderText))
-            .ToList();
-        var globalDeduplication = ProviderTextDeduper.Deduplicate(translatableItems);
+        var globalDeduplication = ProviderTextDeduper.Deduplicate(
+            structureEntries
+                .Where(entry => entry.IsTranslatable)
+                .Select(entry => new ProviderTextItem(entry.Subtitle.Position, entry.ProviderText))
+                .ToList());
         var representativeProviderTranslations = new Dictionary<int, string>();
         foreach (var entry in structureEntries.Where(entry => entry.IsTranslatable))
         {
@@ -220,8 +220,7 @@ public class SubtitleTranslationService
 
         var representativeEntries = structureEntries
             .Where(entry =>
-                entry.IsTranslatable &&
-                globalDeduplication.IsRepresentative(entry.Subtitle.Position) &&
+                entry.Kind == SubtitleTranslationNodeKind.Representative &&
                 !representativeProviderTranslations.ContainsKey(entry.Subtitle.Position))
             .ToList();
         var representativeEntriesByPosition = representativeEntries.ToDictionary(
@@ -517,13 +516,20 @@ public class SubtitleTranslationService
                     ? preBuilt
                     : SubtitleTextStructureFactory.Create(subtitle, stripSubtitleFormatting, preserveAssFormatting);
                 var providerText = structure.ProviderVisibleText;
-                return new SubtitleStructureEntry(
+                var isTranslatable = !string.IsNullOrWhiteSpace(providerText) &&
+                                     !SubtitleFormatterService.IsMeaningless(providerText.Trim()) &&
+                                     providerText.Trim().Any(char.IsLetterOrDigit);
+
+                return new SubtitleTranslationNode(
                     index,
                     subtitle,
                     structure,
                     providerText,
-                    IsMeaningfullyTranslatable(providerText),
-                    0);
+                    isTranslatable,
+                    0,
+                    SubtitleTranslationNodeKind.Representative,
+                    isTranslatable ? subtitle.Position : null,
+                    isTranslatable ? null : "non-language");
             })
             .ToList();
 
@@ -542,6 +548,11 @@ public class SubtitleTranslationService
 
         if (batchItems.Count == 0)
         {
+            foreach (var entry in structureEntries)
+            {
+                ApplyTranslationToNode(entry, entry.ProviderText);
+            }
+
             return new BatchProcessingResult(new Dictionary<int, string>(), []);
         }
 
@@ -661,7 +672,7 @@ public class SubtitleTranslationService
                     entry.Structure.VisibleLineCount);
             }
 
-            entry.Subtitle.TranslatedLines = entry.Structure.ApplyProviderTranslation(translated);
+            ApplyTranslationToNode(entry, translated);
         }
 
         var missingEntries = structureEntries
@@ -802,7 +813,7 @@ public class SubtitleTranslationService
     }
 
     private static List<string> BuildBatchContext(
-        IReadOnlyList<SubtitleStructureEntry> entries,
+        IReadOnlyList<SubtitleTranslationNode> entries,
         int edgeIndex,
         int count,
         bool before)
@@ -842,7 +853,7 @@ public class SubtitleTranslationService
     }
 
     private static List<string> BuildContext(
-        IReadOnlyList<SubtitleStructureEntry> subtitles,
+        IReadOnlyList<SubtitleTranslationNode> subtitles,
         int startIndex,
         int count,
         bool isBeforeContext)
@@ -872,40 +883,17 @@ public class SubtitleTranslationService
         return context;
     }
 
-    private static bool IsMeaningfullyTranslatable(string providerText)
-    {
-        return !string.IsNullOrWhiteSpace(providerText) &&
-               !SubtitleFormatterService.IsMeaningless(providerText.Trim());
-    }
-
-    private List<SubtitleStructureEntry> BuildStructureEntries(
+    private List<SubtitleTranslationNode> BuildStructureEntries(
         List<SubtitleItem> subtitles,
         bool stripSubtitleFormatting,
         bool preserveAssFormatting)
     {
-        var entries = new List<SubtitleStructureEntry>(subtitles.Count);
-        for (var index = 0; index < subtitles.Count; index++)
-        {
-            var subtitle = subtitles[index];
-            var structure = SubtitleTextStructureFactory.Create(subtitle, stripSubtitleFormatting, preserveAssFormatting);
-            var providerText = structure.ProviderVisibleText;
-            var rawSourceLines = SubtitleTextStructureFactory.GetSourceLines(
-                subtitle,
+        return SubtitleTranslationNodePlanner.Plan(
+                subtitles,
                 stripSubtitleFormatting,
-                preserveAssFormatting);
-            var rawSourceChars = string.Join(" ", rawSourceLines).Length;
-
-            entries.Add(
-                new SubtitleStructureEntry(
-                    index,
-                    subtitle,
-                    structure,
-                    providerText,
-                    IsMeaningfullyTranslatable(providerText),
-                    rawSourceChars));
-        }
-
-        return entries;
+                preserveAssFormatting)
+            .Nodes
+            .ToList();
     }
 
     private void LogBatchPreparation(
@@ -949,14 +937,20 @@ public class SubtitleTranslationService
     }
 
     private void ApplyRepresentativeTranslations(
-        IReadOnlyList<SubtitleStructureEntry> structureEntries,
+        IReadOnlyList<SubtitleTranslationNode> structureEntries,
         IReadOnlyDictionary<int, string> representativeProviderTranslations,
         ProviderTextDeduplicationResult deduplication,
         string fileIdentifier,
         string phase)
     {
-        foreach (var entry in structureEntries.Where(entry => entry.IsTranslatable))
+        foreach (var entry in structureEntries)
         {
+            if (!entry.IsTranslatable)
+            {
+                ApplyTranslationToNode(entry, entry.ProviderText);
+                continue;
+            }
+
             var representativePosition = deduplication.GetRepresentativePosition(entry.Subtitle.Position);
             if (!representativeProviderTranslations.TryGetValue(representativePosition, out var translated) ||
                 string.IsNullOrWhiteSpace(translated))
@@ -975,12 +969,37 @@ public class SubtitleTranslationService
                     entry.Structure.VisibleLineCount);
             }
 
-            entry.Subtitle.TranslatedLines = entry.Structure.ApplyProviderTranslation(translated);
+            ApplyTranslationToNode(entry, translated);
         }
     }
 
+    private static void ApplyTranslationToNode(SubtitleTranslationNode entry, string translated)
+    {
+        if (!entry.IsTranslatable)
+        {
+            entry.Subtitle.TranslatedLines = entry.Structure.SourceLines.ToList();
+            return;
+        }
+
+        translated = SubtitleTextStructure.NormalizeProviderTranslationText(translated);
+        var translatedLines = entry.Structure.ApplyProviderTranslation(translated);
+        if (TranslatedLinesAreEmpty(translatedLines))
+        {
+            translatedLines = entry.Structure.ApplyProviderTranslationAsSingleVisibleText(translated);
+        }
+
+        entry.Subtitle.TranslatedLines = translatedLines;
+    }
+
+    private static bool TranslatedLinesAreEmpty(List<string>? translatedLines)
+    {
+        return translatedLines == null ||
+               translatedLines.Count == 0 ||
+               translatedLines.All(string.IsNullOrWhiteSpace);
+    }
+
     private static List<BatchSubtitleItem> BuildUnresolvedEntries(
-        IReadOnlyList<SubtitleStructureEntry> structureEntries,
+        IReadOnlyList<SubtitleTranslationNode> structureEntries,
         IReadOnlyDictionary<int, string> representativeProviderTranslations,
         ProviderTextDeduplicationResult deduplication)
     {
@@ -1012,7 +1031,7 @@ public class SubtitleTranslationService
     }
 
     private static List<BatchSubtitleItem> ExpandFailures(
-        IReadOnlyList<SubtitleStructureEntry> structureEntries,
+        IReadOnlyList<SubtitleTranslationNode> structureEntries,
         IReadOnlyList<BatchSubtitleItem> representativeFailures)
     {
         var entriesByPosition = structureEntries.ToDictionary(entry => entry.Subtitle.Position);
@@ -1040,7 +1059,7 @@ public class SubtitleTranslationService
     }
 
     private static List<SubtitleBatchSlice> BuildBatches(
-        IReadOnlyList<SubtitleStructureEntry> entries,
+        IReadOnlyList<SubtitleTranslationNode> entries,
         int maxCueCount,
         int maxProviderChars)
     {
@@ -1050,7 +1069,7 @@ public class SubtitleTranslationService
         }
 
         var batches = new List<SubtitleBatchSlice>();
-        var currentEntries = new List<SubtitleStructureEntry>();
+        var currentEntries = new List<SubtitleTranslationNode>();
         var currentProviderChars = 0;
         var currentTranslatableCount = 0;
 
@@ -1140,14 +1159,6 @@ public class SubtitleTranslationService
             translationRequest.SourceSubtitleFormat ?? string.Empty);
     }
 
-    private sealed record SubtitleStructureEntry(
-        int GlobalIndex,
-        SubtitleItem Subtitle,
-        SubtitleTextStructure Structure,
-        string ProviderText,
-        bool IsTranslatable,
-        int RawSourceCharCount);
-
     private sealed record BatchProcessingResult(
         Dictionary<int, string> ProviderTranslations,
         List<BatchSubtitleItem> Failures);
@@ -1155,6 +1166,6 @@ public class SubtitleTranslationService
     private sealed record SubtitleBatchSlice(
         int StartIndex,
         int EndIndex,
-        List<SubtitleStructureEntry> Entries,
+        List<SubtitleTranslationNode> Entries,
         int ProviderCharCount);
 }

@@ -420,7 +420,9 @@ public class TranslationJob
             EmbeddedSubtitle? selectedSubtitle = null;
             while (true)
             {
-                subtitles = await _subtitleService.ReadSubtitles(request.SubtitleToTranslate!);
+                subtitles = await ReadSubtitlesOrEmptyForFallbackAsync(
+                    request,
+                    excludedStreamIndices);
                 AddRequestLog("Information", $"Loaded subtitle file with {subtitles.Count} entries for translation");
 
                 // Capture subtitle tracking metadata
@@ -500,6 +502,14 @@ public class TranslationJob
                 {
                     excludedStreamIndices.Add(selectedSubtitle.StreamIndex);
                     _logger.LogInformation("Excluding stream {StreamIndex} from fallback selection", selectedSubtitle.StreamIndex);
+                }
+                else if (request.SourceSnapshotStreamIndex.HasValue &&
+                         !excludedStreamIndices.Contains(request.SourceSnapshotStreamIndex.Value))
+                {
+                    excludedStreamIndices.Add(request.SourceSnapshotStreamIndex.Value);
+                    _logger.LogInformation(
+                        "Excluding source snapshot stream {StreamIndex} from fallback selection",
+                        request.SourceSnapshotStreamIndex.Value);
                 }
 
                 var newSubtitlePath = await _extractionService.TryExtractEmbeddedSubtitleForRequestAsync(
@@ -855,6 +865,37 @@ public class TranslationJob
         }
     }
 
+    private async Task<List<SubtitleItem>> ReadSubtitlesOrEmptyForFallbackAsync(
+        TranslationRequest request,
+        List<int> excludedStreamIndices)
+    {
+        try
+        {
+            return await _subtitleService.ReadSubtitles(request.SubtitleToTranslate!);
+        }
+        catch (ArgumentException ex) when (IsEmptySsaSubtitleParseFailure(ex))
+        {
+            if (request.SourceSnapshotStreamIndex.HasValue &&
+                !excludedStreamIndices.Contains(request.SourceSnapshotStreamIndex.Value))
+            {
+                excludedStreamIndices.Add(request.SourceSnapshotStreamIndex.Value);
+            }
+
+            _logger.LogWarning(
+                ex,
+                "Selected ASS/SSA subtitle source {Path} contained no readable dialogue entries. Attempting embedded fallback if available.",
+                request.SubtitleToTranslate);
+            return [];
+        }
+    }
+
+    private static bool IsEmptySsaSubtitleParseFailure(ArgumentException exception)
+    {
+        return exception.Message.Contains(
+            "No valid subtitles found in SSA format",
+            StringComparison.OrdinalIgnoreCase);
+    }
+
     private async Task<WrittenSubtitleOutput> WriteSubtitles(TranslationRequest translationRequest,
         List<SubtitleItem> translatedSubtitles,
         bool stripSubtitleFormatting,
@@ -875,7 +916,7 @@ public class TranslationJob
                     SubtitleOutputModeHelper.Parse(translationRequest.SubtitleOutputMode));
             }
 
-            var stagedOutputs = new List<(string Format, string FinalPath, string StagingPath)>();
+            var writtenOutputs = new List<(string Format, string Path)>();
 
             foreach (var outputFormat in requiredOutputFormats)
             {
@@ -945,8 +986,12 @@ public class TranslationJob
                                 $"Generated subtitle failed quality validation before publishing: {validationResult.Summary}");
                         }
 
+                        EnsureParentDirectory(path);
+                        File.Copy(stagingPath, path, true);
+                        File.Delete(stagingPath);
+
                         success = true;
-                        stagedOutputs.Add((outputFormat, path, stagingPath));
+                        writtenOutputs.Add((outputFormat, path));
                         break;
                     }
                     catch (TranslationException)
@@ -975,15 +1020,6 @@ public class TranslationJob
                     throw new Exception($"Failed to write subtitle to any fallback path for format {outputFormat}.");
                 }
 
-            }
-
-            var writtenOutputs = new List<(string Format, string Path)>();
-            foreach (var output in stagedOutputs)
-            {
-                EnsureParentDirectory(output.FinalPath);
-                File.Copy(output.StagingPath, output.FinalPath, true);
-                File.Delete(output.StagingPath);
-                writtenOutputs.Add((output.Format, output.FinalPath));
             }
 
             var primaryPath = writtenOutputs

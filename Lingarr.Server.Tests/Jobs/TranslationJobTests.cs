@@ -1163,6 +1163,191 @@ public class TranslationJobTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task ExecuteAsync_WhenSelectedAssSourceHasNoDialogues_FallsBackToDifferentEmbeddedTextStream()
+    {
+        var sourceSubtitlePath = Path.Combine(_tempDirectory, "empty-source.eng.ass");
+        var fallbackSubtitlePath = Path.Combine(_tempDirectory, "fallback-source.eng.srt");
+        await File.WriteAllTextAsync(sourceSubtitlePath, "[Events]");
+        await File.WriteAllTextAsync(fallbackSubtitlePath, "1\n00:00:01,000 --> 00:00:02,000\nHello\n");
+
+        var movie = CreateMovie(8);
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = movie.Id,
+            StreamIndex = 2,
+            Language = "eng",
+            CodecName = "ass",
+            IsTextBased = true,
+            IsExtracted = true,
+            ExtractedPath = sourceSubtitlePath
+        });
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = movie.Id,
+            StreamIndex = 3,
+            Language = "eng",
+            CodecName = "subrip",
+            IsTextBased = true,
+            IsExtracted = true,
+            ExtractedPath = fallbackSubtitlePath
+        });
+
+        var request = new TranslationRequest
+        {
+            MediaId = movie.Id,
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Pending,
+            SubtitleToTranslate = sourceSubtitlePath,
+            SourceSnapshotStreamIndex = 2
+        };
+
+        _dbContext.Movies.Add(movie);
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var subtitleServiceMock = new Mock<ISubtitleService>();
+        subtitleServiceMock
+            .Setup(service => service.ReadSubtitles(sourceSubtitlePath))
+            .ThrowsAsync(new ArgumentException("No valid subtitles found in SSA format"));
+        subtitleServiceMock
+            .Setup(service => service.ReadSubtitles(fallbackSubtitlePath))
+            .ReturnsAsync(BuildSubtitleItems(50));
+
+        List<int>? excludedStreams = null;
+        var extractionServiceMock = new Mock<ISubtitleExtractionService>();
+        extractionServiceMock
+            .Setup(service => service.TryExtractEmbeddedSubtitleForRequestAsync(
+                movie.Id,
+                MediaType.Movie,
+                "en",
+                It.IsAny<List<int>?>(),
+                It.IsAny<int?>()))
+            .Callback((int _, MediaType _, string _, List<int>? excluded, int? _) =>
+            {
+                excludedStreams = excluded?.ToList();
+            })
+            .ReturnsAsync(fallbackSubtitlePath);
+
+        var translationServiceMock = new Mock<ITranslationService>();
+        translationServiceMock
+            .Setup(service => service.TranslateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new TranslationException("forced-test-failure-after-fallback"));
+
+        var job = BuildExecutableJob(
+            subtitleServiceMock.Object,
+            extractionServiceMock.Object,
+            translationServiceMock.Object);
+
+        await Assert.ThrowsAsync<TranslationException>(() => job.ExecuteAsync(request.Id, CancellationToken.None));
+
+        Assert.NotNull(excludedStreams);
+        Assert.Contains(2, excludedStreams!);
+        Assert.Equal(fallbackSubtitlePath, request.SubtitleToTranslate);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenFirstFinalPublishPathFails_TriesNextFallbackPath()
+    {
+        var sourceSubtitlePath = Path.Combine(_tempDirectory, "source.en.srt");
+        await File.WriteAllTextAsync(sourceSubtitlePath, "1\n00:00:01,000 --> 00:00:02,000\nHello\n");
+
+        var movie = CreateMovie(9);
+        movie.Path = _tempDirectory;
+        var request = new TranslationRequest
+        {
+            MediaId = movie.Id,
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Pending,
+            SubtitleToTranslate = sourceSubtitlePath,
+            SourceSubtitleFormat = ".srt",
+            SubtitleOutputMode = "match-source",
+            RequiredOutputFormats = ".srt",
+            IsActive = true
+        };
+
+        _dbContext.Movies.Add(movie);
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var badFinalPath = Path.Combine(_tempDirectory, new string('a', 300), "source.pl.lingarr.srt");
+        var goodFinalPath = Path.Combine(_tempDirectory, "source.pl.ai.srt");
+
+        var subtitleServiceMock = new Mock<ISubtitleService>();
+        subtitleServiceMock
+            .Setup(service => service.ReadSubtitles(sourceSubtitlePath))
+            .ReturnsAsync(BuildSubtitleItems(50));
+        subtitleServiceMock
+            .Setup(service => service.WriteSubtitles(
+                It.IsAny<string>(),
+                It.IsAny<List<SubtitleItem>>(),
+                It.IsAny<bool>()))
+            .Returns((string path, List<SubtitleItem> subtitles, bool _) =>
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                return File.WriteAllTextAsync(path, string.Join(Environment.NewLine, subtitles.SelectMany(item => item.TranslatedLines)));
+            });
+        subtitleServiceMock
+            .Setup(service => service.CreateFallbackPaths(
+                sourceSubtitlePath,
+                "pl",
+                "lingarr",
+                "-ai-",
+                ".srt",
+                null))
+            .Returns([badFinalPath, goodFinalPath]);
+
+        var translationServiceMock = new Mock<ITranslationService>();
+        translationServiceMock
+            .Setup(service => service.TranslateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync("Czesc");
+
+        var qualityServiceMock = new Mock<ISubtitleQualityValidatorService>();
+        qualityServiceMock
+            .Setup(service => service.ValidateAsync(
+                It.IsAny<SubtitleQualityValidationRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SubtitleQualityValidationResult
+            {
+                IsValid = true,
+                Summary = "ok",
+                SourceEntryCount = 50,
+                TargetEntryCount = 50,
+                MinimumTargetEntryCount = 45
+            });
+
+        var job = BuildExecutableJob(
+            subtitleServiceMock.Object,
+            Mock.Of<ISubtitleExtractionService>(),
+            translationServiceMock.Object,
+            qualityServiceMock.Object);
+
+        await job.ExecuteAsync(request.Id, CancellationToken.None);
+
+        var updatedRequest = await _dbContext.TranslationRequests.SingleAsync(item => item.Id == request.Id);
+        Assert.Equal(TranslationStatus.Completed, updatedRequest.Status);
+        Assert.Equal(goodFinalPath, updatedRequest.TranslatedSubtitle);
+        Assert.True(File.Exists(goodFinalPath));
+    }
+
     private static List<SubtitleItem> BuildSubtitleItems(int count)
     {
         return Enumerable.Range(1, count)
@@ -1176,6 +1361,150 @@ public class TranslationJobTests : IDisposable
                 TranslatedLines = []
             })
             .ToList();
+    }
+
+    private TranslationJob BuildExecutableJob(
+        ISubtitleService subtitleService,
+        ISubtitleExtractionService extractionService,
+        ITranslationService translationService,
+        ISubtitleQualityValidatorService? qualityValidatorService = null)
+    {
+        var settingServiceMock = new Mock<ISettingService>();
+        settingServiceMock
+            .Setup(service => service.GetSettings(It.IsAny<IEnumerable<string>>()))
+            .ReturnsAsync((IEnumerable<string> keys) =>
+            {
+                var settings = keys.ToDictionary(key => key, _ => string.Empty);
+                settings[SettingKeys.Translation.ServiceType] = "mock";
+                settings[SettingKeys.Translation.FixOverlappingSubtitles] = "false";
+                settings[SettingKeys.Translation.StripSubtitleFormatting] = "false";
+                settings[SettingKeys.Translation.AddTranslatorInfo] = "false";
+                settings[SettingKeys.SubtitleValidation.ValidateSubtitles] = "false";
+                settings[SettingKeys.Translation.AiContextPromptEnabled] = "false";
+                settings[SettingKeys.Translation.UseBatchTranslation] = "false";
+                settings[SettingKeys.Translation.RemoveLanguageTag] = "false";
+                settings[SettingKeys.Translation.UseSubtitleTagging] = "true";
+                settings[SettingKeys.Translation.SubtitleTag] = "lingarr";
+                settings[SettingKeys.Translation.SubtitleTagShort] = "-ai-";
+                settings[SettingKeys.Translation.SubtitleOutputMode] = "match-source";
+                settings[SettingKeys.Translation.MaxBatchSplitAttempts] = "3";
+                settings[SettingKeys.Translation.BatchRetryMode] = "deferred";
+                settings[SettingKeys.Translation.RepairContextRadius] = "10";
+                settings[SettingKeys.Translation.RepairMaxRetries] = "1";
+                settings[SettingKeys.Translation.StripAssDrawingCommands] = "false";
+                settings[SettingKeys.Translation.CleanSourceAssDrawings] = "false";
+                settings[SettingKeys.Translation.BatchContextEnabled] = "false";
+                return settings;
+            });
+
+        var translationServiceFactoryMock = new Mock<ITranslationServiceFactory>();
+        translationServiceFactoryMock
+            .Setup(factory => factory.CreateTranslationService("mock"))
+            .Returns(translationService);
+
+        var translationRequestServiceMock = new Mock<ITranslationRequestService>();
+        translationRequestServiceMock
+            .Setup(service => service.UpdateTranslationRequest(
+                It.IsAny<TranslationRequest>(),
+                It.IsAny<TranslationStatus>(),
+                It.IsAny<string?>()))
+            .ReturnsAsync((TranslationRequest value, TranslationStatus status, string? _) =>
+            {
+                value.Status = status;
+                value.IsActive = null;
+                return value;
+            });
+        translationRequestServiceMock
+            .Setup(service => service.ClearMediaHash(It.IsAny<TranslationRequest>()))
+            .Returns(Task.CompletedTask);
+        translationRequestServiceMock
+            .Setup(service => service.UpdateActiveCount())
+            .ReturnsAsync(0);
+
+        var cancellationServiceMock = new Mock<ITranslationCancellationService>();
+        cancellationServiceMock
+            .Setup(service => service.RegisterJob(It.IsAny<int>()))
+            .Returns(CancellationToken.None);
+
+        var progressServiceMock = new Mock<IProgressService>();
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+
+        var mediaStateServiceMock = new Mock<IMediaStateService>();
+        mediaStateServiceMock
+            .Setup(service => service.UpdateStateAsync(It.IsAny<Lingarr.Core.Interfaces.IMedia>(), It.IsAny<MediaType>(), It.IsAny<bool>()))
+            .ReturnsAsync(TranslationState.Complete);
+
+        var statisticsServiceMock = new Mock<IStatisticsService>();
+        statisticsServiceMock
+            .Setup(service => service.UpdateTranslationStatisticsFromSubtitles(
+                It.IsAny<TranslationRequest>(),
+                It.IsAny<string>(),
+                It.IsAny<List<SubtitleItem>>()))
+            .ReturnsAsync(0);
+
+        var dashboardServiceMock = new Mock<IDashboardService>();
+        dashboardServiceMock
+            .Setup(service => service.LogError(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>()))
+            .Returns(Task.CompletedTask);
+
+        var sourceSnapshotServiceMock = new Mock<ISourceSubtitleSnapshotService>();
+        sourceSnapshotServiceMock
+            .Setup(service => service.CreateExternalSnapshot(It.IsAny<string>(), It.IsAny<string>()))
+            .Returns(new SourceSubtitleSnapshot
+            {
+                Version = SourceSubtitleSnapshot.CurrentVersion,
+                SourceType = SourceSubtitleSnapshot.ExternalType,
+                SourceLanguage = "en",
+                Identity = "external",
+                Fingerprint = "fingerprint-external",
+                FileSizeBytes = 1
+            });
+        sourceSnapshotServiceMock
+            .Setup(service => service.CreateEmbeddedSnapshot(It.IsAny<EmbeddedSubtitle>(), It.IsAny<string>()))
+            .Returns(new SourceSubtitleSnapshot
+            {
+                Version = SourceSubtitleSnapshot.CurrentVersion,
+                SourceType = SourceSubtitleSnapshot.EmbeddedType,
+                SourceLanguage = "en",
+                Identity = "embedded",
+                Fingerprint = "fingerprint-embedded",
+                FileSizeBytes = 1,
+                StreamIndex = 3
+            });
+
+        var sourceSubtitleResolverMock = new Mock<ISourceSubtitleResolver>();
+        sourceSubtitleResolverMock
+            .Setup(service => service.ResolveReadableSourcePathAsync(
+                It.IsAny<TranslationRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TranslationRequest value, CancellationToken _) => value.SubtitleToTranslate);
+
+        return new TranslationJob(
+            NullLogger<TranslationJob>.Instance,
+            settingServiceMock.Object,
+            _dbContext,
+            progressServiceMock.Object,
+            subtitleService,
+            Mock.Of<IScheduleService>(),
+            statisticsServiceMock.Object,
+            translationServiceFactoryMock.Object,
+            translationRequestServiceMock.Object,
+            Mock.Of<IBatchFallbackService>(),
+            extractionService,
+            cancellationServiceMock.Object,
+            mediaStateServiceMock.Object,
+            Mock.Of<ICustomMediaStateService>(),
+            Mock.Of<IDeferredRepairService>(),
+            dashboardServiceMock.Object,
+            sourceSnapshotServiceMock.Object,
+            sourceSubtitleResolverMock.Object,
+            _embeddedSubtitleCacheService,
+            Mock.Of<IUploadWorkspaceService>(),
+            null,
+            null,
+            qualityValidatorService);
     }
 
     private static string BuildExtractedAssContent(int streamIndex, int entries)

@@ -241,6 +241,45 @@ public class SubtitleQualityValidatorServiceTests : IDisposable
         Assert.Empty(result.IssueTypes);
     }
 
+    [Fact]
+    public async Task ValidateAsync_WhenTargetIsTooShort_ReportsMissingPositionsAndSamples()
+    {
+        var sourcePath = await WriteSrtAsync("episode.en.srt", [
+            "Line one",
+            "♪～",
+            "Line three",
+            "Line four",
+            "Line five",
+            "Line six",
+            "Line seven",
+            "Line eight",
+            "Line nine",
+            "Line ten"
+        ]);
+        var targetPath = await WriteSparseSrtAsync("episode.pl.srt", [
+            (1, "Linia pierwsza"),
+            (3, "Linia trzecia"),
+            (4, "Linia czwarta"),
+            (5, "Linia piata"),
+            (7, "Linia siodma")
+        ]);
+
+        var result = await _service.ValidateAsync(new SubtitleQualityValidationRequest
+        {
+            SourcePath = sourcePath,
+            TargetPath = targetPath,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            OutputFormat = ".srt"
+        }, CancellationToken.None);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(SubtitleQualityIssueCodes.TooShort, result.IssueTypes);
+        Assert.Contains("Missing source positions: 2, 6, 8, 9, 10", result.Summary);
+        Assert.Contains(result.SampleLines, line => line.StartsWith("2:", StringComparison.Ordinal));
+        Assert.Contains(result.SampleLines, line => line.Contains("6: Line six", StringComparison.Ordinal));
+    }
+
     private async Task<string> WriteSrtAsync(string fileName, string[] lines)
     {
         var path = Path.Combine(_tempDirectory, fileName);
@@ -248,6 +287,17 @@ public class SubtitleQualityValidatorServiceTests : IDisposable
             Environment.NewLine + Environment.NewLine,
             lines.Select((line, index) =>
                 $"{index + 1}{Environment.NewLine}00:00:{index + 1:D2},000 --> 00:00:{index + 2:D2},000{Environment.NewLine}{line}"));
+        await File.WriteAllTextAsync(path, content);
+        return path;
+    }
+
+    private async Task<string> WriteSparseSrtAsync(string fileName, (int Position, string Line)[] cues)
+    {
+        var path = Path.Combine(_tempDirectory, fileName);
+        var content = string.Join(
+            Environment.NewLine + Environment.NewLine,
+            cues.Select(cue =>
+                $"{cue.Position}{Environment.NewLine}00:00:{cue.Position:D2},000 --> 00:00:{cue.Position + 1:D2},000{Environment.NewLine}{cue.Line}"));
         await File.WriteAllTextAsync(path, content);
         return path;
     }

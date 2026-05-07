@@ -65,8 +65,17 @@ public class SubtitleQualityValidatorService : ISubtitleQualityValidatorService
 
             if (targetCount < minimumTargetCount)
             {
+                var missingSourceEntries = GetMissingSourceEntries(sourceSubtitles, targetSubtitles);
                 issueTypes.Add(SubtitleQualityIssueCodes.TooShort);
                 summaries.Add($"Target has {targetCount} entries but selected source has {sourceCount}; minimum acceptable is {minimumTargetCount}.");
+                if (missingSourceEntries.Count > 0)
+                {
+                    summaries.Add(
+                        $"Missing source positions: {string.Join(", ", missingSourceEntries.Take(20).Select(item => item.Position))}.");
+                    samples.AddRange(missingSourceEntries
+                        .Take(10)
+                        .Select(item => $"{item.Position}: {string.Join(" ", item.PlaintextLines.Count > 0 ? item.PlaintextLines : item.Lines)}"));
+                }
             }
 
             if (sourceCount >= MaximumTargetRatioMinimumSourceEntries &&
@@ -220,4 +229,18 @@ public class SubtitleQualityValidatorService : ISubtitleQualityValidatorService
         MinimumTargetEntryCount = minimumTargetCount,
         IssueTypes = [issueType]
     };
+
+    private static List<SubtitleItem> GetMissingSourceEntries(
+        IReadOnlyList<SubtitleItem> sourceSubtitles,
+        IReadOnlyList<SubtitleItem> targetSubtitles)
+    {
+        var targetPositions = targetSubtitles
+            .Select(item => item.Position)
+            .ToHashSet();
+
+        return sourceSubtitles
+            .Where(item => !targetPositions.Contains(item.Position))
+            .OrderBy(item => item.Position)
+            .ToList();
+    }
 }
