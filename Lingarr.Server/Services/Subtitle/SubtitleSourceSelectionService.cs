@@ -83,7 +83,7 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
         {
             return new SubtitleSourceCandidateAssessment(
                 candidate,
-                candidate.IsTextBased
+                candidate.IsReadableSource()
                     ? SubtitleSourceCandidateRole.RejectedLanguage
                     : SubtitleSourceCandidateRole.RejectedNonText,
                 null,
@@ -92,7 +92,7 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
                 "Language is not configured as a source language.");
         }
 
-        if (!candidate.IsTextBased)
+        if (!candidate.IsReadableSource())
         {
             return new SubtitleSourceCandidateAssessment(
                 candidate,
@@ -100,7 +100,7 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
                 matchedLanguage,
                 int.MinValue,
                 null,
-                "Subtitle stream is not text-based.");
+                "Subtitle stream is not text-based and has no usable OCR output.");
         }
 
         var subtitleType = SubtitleLanguageHelper.DetermineSubtitleType(candidate);
@@ -233,7 +233,7 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
             ?.index ?? normalizedSourceLanguages.Count;
         score += (normalizedSourceLanguages.Count - languageIndex) * LanguagePriorityBonus;
 
-        var normalizedFormat = SubtitleOutputModeHelper.NormalizeFormat(candidate.CodecName);
+        var normalizedFormat = candidate.GetReadableSourceFormat();
         if (normalizedFormat is ".srt" or ".vtt")
         {
             score += 20;
@@ -248,14 +248,15 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
 
     private int? GetExtractedEntryCount(EmbeddedSubtitle candidate)
     {
-        if (string.IsNullOrWhiteSpace(candidate.ExtractedPath) || !File.Exists(candidate.ExtractedPath))
+        var readablePath = candidate.GetReadableSourcePath();
+        if (string.IsNullOrWhiteSpace(readablePath) || !File.Exists(readablePath))
         {
             return null;
         }
 
         try
         {
-            return SubtitleExtractionService.CountSubtitleEntries(candidate.ExtractedPath);
+            return SubtitleExtractionService.CountSubtitleEntries(readablePath);
         }
         catch (Exception ex)
         {
@@ -263,7 +264,7 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
                 ex,
                 "Failed to count extracted subtitle entries for stream {StreamIndex} at {Path}",
                 candidate.StreamIndex,
-                candidate.ExtractedPath);
+                readablePath);
             return null;
         }
     }
@@ -272,14 +273,15 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
         EmbeddedSubtitle candidate,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(candidate.ExtractedPath) || !File.Exists(candidate.ExtractedPath))
+        var readablePath = candidate.GetReadableSourcePath();
+        if (string.IsNullOrWhiteSpace(readablePath) || !File.Exists(readablePath))
         {
             return null;
         }
 
         try
         {
-            var subtitles = await _subtitleService.ReadSubtitles(candidate.ExtractedPath);
+            var subtitles = await _subtitleService.ReadSubtitles(readablePath);
             cancellationToken.ThrowIfCancellationRequested();
             return SubtitleSourceHealthAnalyzer.Analyze(subtitles);
         }
@@ -293,7 +295,7 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
                 ex,
                 "Failed to analyze subtitle source health for stream {StreamIndex} at {Path}. Continuing with metadata heuristics.",
                 candidate.StreamIndex,
-                candidate.ExtractedPath);
+                readablePath);
             return null;
         }
     }

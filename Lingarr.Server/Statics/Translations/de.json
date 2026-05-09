@@ -33,7 +33,22 @@
     "extractSuccess": "Untertitel erfolgreich extrahiert",
     "extractFailed": "Extraktion fehlgeschlagen",
     "forced": "Erzwungen",
-    "default": "Standard"
+    "default": "Standard",
+    "ocrRun": "OCR starten",
+    "ocrRetry": "OCR erneut versuchen",
+    "ocrQueued": "OCR in Warteschlange",
+    "ocrProcessing": "OCR laeuft...",
+    "ocrReady": "OCR bereit",
+    "ocrBlocked": "OCR durch Qualitaetspruefung blockiert",
+    "ocrUnsupported": "OCR nicht unterstuetzt",
+    "ocrPreview": "OCR-Ausgabe anzeigen",
+    "ocrApprove": "OCR-Ausgabe freigeben",
+    "ocrFailed": "OCR konnte nicht eingereiht werden",
+    "ocrApproveFailed": "OCR-Ausgabe konnte nicht freigegeben werden",
+    "ocrPreviewFailed": "OCR-Vorschau konnte nicht geladen werden",
+    "ocrRequired": "OCR muss erfolgreich sein oder freigegeben werden, bevor diese Bitmap-Untertitel uebersetzt werden koennen.",
+    "ocrQuality": "OCR-Qualitaet",
+    "ocrCueCount": "Anzahl der Cues"
   },
   "translationTest": {
     "title": "Übersetzungstest",
@@ -545,7 +560,15 @@
       "subtitleIntegrityValidationEnabled": "Untertitel-Integrität validieren",
       "subtitleIntegrityValidationEnabledDescription": "Überprüfen, ob der übersetzte Untertitel ungefähr die gleiche Anzahl von Zeilen hat wie das Original, um Teilübersetzungen zu erkennen.",
       "translateSupplementalSubtitles": "Ergaenzende erzwungene/Schilder-Untertitel uebersetzen:",
-      "translateSupplementalSubtitlesDescription": "Wenn aktiviert, kann Lingarr erzwungene, Schilder- und Song-Spuren als separate ergaenzende Ausgaben uebersetzen. Hauptuntertitel verwenden weiterhin nur vollstaendige Dialogquellen."
+      "translateSupplementalSubtitlesDescription": "Wenn aktiviert, kann Lingarr erzwungene, Schilder- und Song-Spuren als separate ergaenzende Ausgaben uebersetzen. Hauptuntertitel verwenden weiterhin nur vollstaendige Dialogquellen.",
+      "ocrEnabled": "OCR fuer Bitmap-Untertitel aktivieren",
+      "ocrEnabledDescription": "Konvertiert Blu-ray-PGS-Untertitel mit Tesseract OCR in zwischengespeicherte SRT-Dateien.",
+      "ocrAutoQueue": "Automatische OCR fuer reine Bitmap-Medien",
+      "ocrAutoQueueDescription": "Wenn keine Textquelle vorhanden ist, stellt die Automatisierung OCR fuer die beste unterstuetzte PGS-Quelle ein und wartet vor der Uebersetzung auf Qualitaetspruefungen.",
+      "ocrMinQualityScore": "Minimale OCR-Qualitaetsbewertung",
+      "ocrMinQualityScoreDescription": "OCR-Ausgaben unter dieser Bewertung werden bis zur manuellen Freigabe blockiert.",
+      "ocrLanguages": "OCR-Sprachmodus",
+      "ocrLanguagesDescription": "auto ordnet Untertitelsprachen Tesseract-Sprachen zu. Alternativ kann ein Code wie eng, jpn, fra, spa, deu oder pol eingegeben werden."
     },
     "indexing": {
       "title": "Indizierung",
@@ -709,7 +732,11 @@
     "tooltipNotApplicable": "Nicht anwendbar / Keine Quelle",
     "tooltipNoSuitableSubtitles": "Keine geeigneten Untertitelspuren gefunden (alle sind unvollständig/erzwungen)",
     "tooltipFailed": "Übersetzung fehlgeschlagen. Manuelle Wiederholung erforderlich.",
-    "tooltipAwaitingSource": "Warte auf Erscheinen des Quell-Untertitels"
+    "tooltipAwaitingSource": "Warte auf Erscheinen des Quell-Untertitels",
+    "ocrPending": "OCR ausstehend",
+    "ocrBlocked": "OCR blockiert",
+    "tooltipOcrPending": "Bitmap-Untertitel benoetigen OCR, bevor die Uebersetzung starten kann.",
+    "tooltipOcrBlocked": "Die OCR-Ausgabe hat die Qualitaetspruefung nicht bestanden und benoetigt manuelle Pruefung."
   },
   "onboarding": {
     "skipSetup": "Einrichtung überspringen",

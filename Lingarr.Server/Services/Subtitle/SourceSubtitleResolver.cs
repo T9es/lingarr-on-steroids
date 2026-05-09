@@ -117,7 +117,7 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
         if (request.SourceSnapshotStreamIndex.HasValue)
         {
             var exactStream = embeddedSubtitles.FirstOrDefault(subtitle =>
-                subtitle.IsTextBased && subtitle.StreamIndex == request.SourceSnapshotStreamIndex.Value);
+                subtitle.IsReadableSource() && subtitle.StreamIndex == request.SourceSnapshotStreamIndex.Value);
             if (exactStream != null)
             {
                 return exactStream.StreamIndex;
@@ -126,7 +126,7 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
 
         if (!string.IsNullOrWhiteSpace(request.SourceSnapshotIdentity))
         {
-            foreach (var subtitle in embeddedSubtitles.Where(subtitle => subtitle.IsTextBased))
+            foreach (var subtitle in embeddedSubtitles.Where(subtitle => subtitle.IsReadableSource()))
             {
                 var snapshot = _sourceSubtitleSnapshotService.CreateEmbeddedSnapshot(subtitle, request.SourceLanguage);
                 if (string.Equals(snapshot.Identity, request.SourceSnapshotIdentity, StringComparison.Ordinal))
@@ -136,13 +136,13 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
             }
         }
 
-        var textBasedSubtitles = embeddedSubtitles
-            .Where(subtitle => subtitle.IsTextBased)
+        var readableSubtitles = embeddedSubtitles
+            .Where(subtitle => subtitle.IsReadableSource())
             .ToList();
         if (!SubtitleLanguageHelper.IsSupplementalSubtitleType(request.SourceSubtitleType))
         {
             var selection = await _subtitleSourceSelectionService.SelectPrimaryAsync(
-                textBasedSubtitles,
+                readableSubtitles,
                 [request.SourceLanguage],
                 allowCaptionFallback: true,
                 cancellationToken);
@@ -152,7 +152,7 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
             }
         }
 
-        return textBasedSubtitles
+        return readableSubtitles
             .OrderByDescending(subtitle => ScoreSubtitle(subtitle, request))
             .Select(subtitle => (int?)subtitle.StreamIndex)
             .FirstOrDefault();

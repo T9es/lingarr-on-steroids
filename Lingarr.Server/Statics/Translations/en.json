@@ -33,7 +33,22 @@
     "extractSuccess": "Subtitle extracted successfully",
     "extractFailed": "Extraction failed",
     "forced": "Forced",
-    "default": "Default"
+    "default": "Default",
+    "ocrRun": "Run OCR",
+    "ocrRetry": "Retry OCR",
+    "ocrQueued": "OCR queued",
+    "ocrProcessing": "OCR processing...",
+    "ocrReady": "OCR ready",
+    "ocrBlocked": "OCR blocked by quality checks",
+    "ocrUnsupported": "OCR unsupported",
+    "ocrPreview": "Preview OCR output",
+    "ocrApprove": "Approve OCR output",
+    "ocrFailed": "Failed to queue OCR",
+    "ocrApproveFailed": "Failed to approve OCR output",
+    "ocrPreviewFailed": "Failed to load OCR preview",
+    "ocrRequired": "OCR must succeed or be approved before this bitmap subtitle can be translated.",
+    "ocrQuality": "OCR quality",
+    "ocrCueCount": "Cue count"
   },
   "translationTest": {
     "title": "Translation Test",
@@ -545,7 +560,15 @@
       "recreateAllOutputs": "Recreate all outputs",
       "recreateAllOutputsDescription": "Re-run translations for your whole library using the current output mode. This uses translation providers again, only replaces Lingarr-managed subtitle files, and leaves manual subtitles untouched.",
       "subtitleIntegrityValidationEnabled": "Validate Subtitle Integrity",
-      "subtitleIntegrityValidationEnabledDescription": "Check if the translated subtitle has roughly the same number of lines as the original to detect partial translations."
+      "subtitleIntegrityValidationEnabledDescription": "Check if the translated subtitle has roughly the same number of lines as the original to detect partial translations.",
+      "ocrEnabled": "Enable bitmap subtitle OCR",
+      "ocrEnabledDescription": "Allow Blu-ray PGS subtitles to be converted to cached SRT files with Tesseract OCR.",
+      "ocrAutoQueue": "Automatically OCR bitmap-only media",
+      "ocrAutoQueueDescription": "When no text source exists, automation queues OCR for the best supported PGS source and waits for quality checks before translating.",
+      "ocrMinQualityScore": "Minimum OCR quality score",
+      "ocrMinQualityScoreDescription": "OCR output below this score is blocked until manually approved.",
+      "ocrLanguages": "OCR language mode",
+      "ocrLanguagesDescription": "Use auto to map subtitle language tags to Tesseract languages, or enter a Tesseract code like eng, jpn, fra, spa, deu, or pol."
     },
     "indexing": {
       "title": "Indexing",
@@ -709,7 +732,11 @@
     "tooltipNotApplicable": "Not applicable / No source",
     "tooltipNoSuitableSubtitles": "No suitable subtitle tracks found (all are sparse/Signs & Songs)",
     "tooltipFailed": "Translation failed. Needs manual retry.",
-    "tooltipAwaitingSource": "Waiting for source subtitle to appear"
+    "tooltipAwaitingSource": "Waiting for source subtitle to appear",
+    "ocrPending": "OCR Pending",
+    "ocrBlocked": "OCR Blocked",
+    "tooltipOcrPending": "Bitmap subtitle OCR is needed before translation can start.",
+    "tooltipOcrBlocked": "OCR output failed quality checks and needs manual review."
   },
   "onboarding": {
     "skipSetup": "Skip Setup",

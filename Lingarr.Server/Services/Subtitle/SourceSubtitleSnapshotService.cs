@@ -63,18 +63,18 @@ public class SourceSubtitleSnapshotService : ISourceSubtitleSnapshotService
             return null;
         }
 
-        var textBasedEmbedded = embeddedSubtitles
-            .Where(s => s.IsTextBased)
+        var readableEmbedded = embeddedSubtitles
+            .Where(s => s.IsReadableSource())
             .ToList();
 
-        if (textBasedEmbedded.Count == 0)
+        if (readableEmbedded.Count == 0)
         {
             return null;
         }
 
         var allowCaptionFallback = !await ShouldIgnoreCaptionsAsync(cancellationToken);
         var selection = await _subtitleSourceSelectionService.SelectPrimaryAsync(
-            textBasedEmbedded,
+            readableEmbedded,
             configuredSourceLanguages,
             allowCaptionFallback,
             cancellationToken);
@@ -166,9 +166,14 @@ public class SourceSubtitleSnapshotService : ISourceSubtitleSnapshotService
         var normalizedLanguage = SubtitleLanguageHelper.NormalizeLanguageCode(sourceLanguage);
         var normalizedTitle = (subtitle.Title ?? string.Empty).Trim().ToLowerInvariant();
         var normalizedCodec = (subtitle.CodecName ?? string.Empty).Trim().ToLowerInvariant();
+        var ocrMarker = subtitle.HasUsableOcr()
+            ? $"|ocr:{subtitle.OcrStatus}|ocrquality:{subtitle.OcrQualityScore}|ocrcues:{subtitle.OcrCueCount}"
+            : string.Empty;
         var identity =
-            $"embedded|{normalizedLanguage}|stream:{subtitle.StreamIndex}|codec:{normalizedCodec}|title:{normalizedTitle}|forced:{subtitle.IsForced}|default:{subtitle.IsDefault}";
-        var fingerprint = ComputeMetadataFingerprint(identity, subtitle.StreamIndex, 0);
+            $"embedded|{normalizedLanguage}|stream:{subtitle.StreamIndex}|codec:{normalizedCodec}|title:{normalizedTitle}|forced:{subtitle.IsForced}|default:{subtitle.IsDefault}{ocrMarker}";
+        var fingerprint = subtitle.HasUsableOcr()
+            ? ComputeOcrFingerprint(identity, subtitle.OcrExtractedPath)
+            : ComputeMetadataFingerprint(identity, subtitle.StreamIndex, 0);
 
         return new SourceSubtitleSnapshot
         {
@@ -512,6 +517,11 @@ public class SourceSubtitleSnapshotService : ISourceSubtitleSnapshotService
         }
 
         var codecMarker = "|codec:";
+        if (currentSnapshot.Identity.Contains("|ocr:", StringComparison.OrdinalIgnoreCase))
+        {
+            return SubtitleOutputModeHelper.NormalizeFormat(".srt");
+        }
+
         var markerIndex = currentSnapshot.Identity.IndexOf(codecMarker, StringComparison.OrdinalIgnoreCase);
         if (markerIndex >= 0)
         {
@@ -530,5 +540,35 @@ public class SourceSubtitleSnapshotService : ISourceSubtitleSnapshotService
     {
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(input));
         return Convert.ToHexString(bytes);
+    }
+
+    private static string ComputeOcrFingerprint(string identity, string? ocrPath)
+    {
+        if (string.IsNullOrWhiteSpace(ocrPath) || !File.Exists(ocrPath))
+        {
+            return ComputeMetadataFingerprint(identity, null, null);
+        }
+
+        try
+        {
+            using var stream = File.OpenRead(ocrPath);
+            var contentHash = Convert.ToHexString(SHA256.HashData(stream));
+            return ComputeStringFingerprint($"{identity}|content:{contentHash}|v{SourceSubtitleSnapshot.CurrentVersion}");
+        }
+        catch
+        {
+            try
+            {
+                var info = new FileInfo(ocrPath);
+                return ComputeMetadataFingerprint(
+                    identity,
+                    info.Exists ? info.Length : null,
+                    info.Exists ? info.LastWriteTimeUtc.Ticks : null);
+            }
+            catch
+            {
+                return ComputeMetadataFingerprint(identity, null, null);
+            }
+        }
     }
 }

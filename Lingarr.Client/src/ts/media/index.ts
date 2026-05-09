@@ -31,6 +31,43 @@ export interface IEmbeddedSubtitle {
     isForced: boolean
     isExtracted: boolean
     extractedPath: string | null
+    ocrStatus: SubtitleOcrStatus
+    ocrExtractedPath: string | null
+    ocrError: string | null
+    ocrAttemptedAt: string | null
+    ocrCompletedAt: string | null
+    ocrCueCount: number | null
+    ocrQualityScore: number | null
+    ocrIssueSummary: string | null
+    ocrApprovedAt: string | null
+    isOcrSupported: boolean
+    isOcrUsable: boolean
+}
+
+export type SubtitleOcrStatus =
+    | 'NotStarted'
+    | 'Queued'
+    | 'Processing'
+    | 'Succeeded'
+    | 'BlockedLowQuality'
+    | 'Failed'
+    | 'Approved'
+
+export interface ISubtitleOcrPreviewLine {
+    position: number
+    startTime: number
+    endTime: number
+    text: string
+}
+
+export interface ISubtitleOcrPreview {
+    success: boolean
+    status: SubtitleOcrStatus
+    cueCount: number | null
+    qualityScore: number | null
+    issueSummary: string | null
+    error: string | null
+    lines: ISubtitleOcrPreviewLine[]
 }
 
 export interface IMovie extends IBaseEntity {
@@ -244,7 +281,9 @@ export const TRANSLATION_STATE = {
     STALE: 5,
     NO_SUITABLE_SUBTITLES: 6,
     FAILED: 7,
-    AWAITING_SOURCE: 8
+    AWAITING_SOURCE: 8,
+    OCR_PENDING: 9,
+    OCR_BLOCKED: 10
 } as const
 
 export type TranslationStateType = (typeof TRANSLATION_STATE)[keyof typeof TRANSLATION_STATE]

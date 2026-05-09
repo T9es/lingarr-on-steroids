@@ -159,7 +159,7 @@ public class AutomationService : IAutomationService
             await _mediaStateService.UpdateLastSubtitleCheckAt(media.Id, mediaType);
         }
 
-        var forceProcess = currentState == TranslationState.Pending || currentState == TranslationState.Stale;
+        var forceProcess = currentState is TranslationState.Pending or TranslationState.Stale or TranslationState.OcrPending;
         var queuedCount = await _mediaSubtitleProcessor.ProcessMediaForceAsync(
             media,
             mediaType,
@@ -268,7 +268,7 @@ public class AutomationService : IAutomationService
             await _customMediaStateService.UpdateLastSubtitleCheckAt(item.Id);
         }
 
-        var forceProcess = currentState == TranslationState.Pending || currentState == TranslationState.Stale;
+        var forceProcess = currentState is TranslationState.Pending or TranslationState.Stale or TranslationState.OcrPending;
         var queuedCount = await _customMediaSubtitleProcessor.ProcessCustomItemForceAsync(
             item,
             forceProcess: forceProcess,
@@ -327,6 +327,7 @@ public class AutomationService : IAutomationService
     {
         return state == TranslationState.Pending
             || state == TranslationState.Stale
+            || state == TranslationState.OcrPending
             || (state == TranslationState.AwaitingSource && indexedAt == null);
     }
 

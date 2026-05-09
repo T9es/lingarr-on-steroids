@@ -222,6 +222,10 @@ public static class SettingKeys
         /// Extraction mode: "on_demand" | "specific_language" | "extract_all"
         /// </summary>
         public const string ExtractionMode = "subtitle_extraction_mode";
+        public const string OcrEnabled = "subtitle_ocr_enabled";
+        public const string OcrAutoQueue = "subtitle_ocr_auto_queue";
+        public const string OcrMinQualityScore = "subtitle_ocr_min_quality_score";
+        public const string OcrLanguages = "subtitle_ocr_languages";
     }
 
     public static class Onboarding

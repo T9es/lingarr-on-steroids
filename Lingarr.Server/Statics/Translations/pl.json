@@ -33,7 +33,22 @@
     "extractSuccess": "Napisy wypakowano pomyślnie",
     "extractFailed": "Wypakowanie nie powiodło się",
     "forced": "Wymuszone",
-    "default": "Domyślne"
+    "default": "Domyślne",
+    "ocrRun": "Uruchom OCR",
+    "ocrRetry": "Ponow OCR",
+    "ocrQueued": "OCR w kolejce",
+    "ocrProcessing": "OCR w toku...",
+    "ocrReady": "OCR gotowy",
+    "ocrBlocked": "OCR zablokowany przez kontrole jakosci",
+    "ocrUnsupported": "OCR nieobslugiwany",
+    "ocrPreview": "Podglad wyniku OCR",
+    "ocrApprove": "Zatwierdz wynik OCR",
+    "ocrFailed": "Nie udalo sie dodac OCR do kolejki",
+    "ocrApproveFailed": "Nie udalo sie zatwierdzic wyniku OCR",
+    "ocrPreviewFailed": "Nie udalo sie wczytac podgladu OCR",
+    "ocrRequired": "OCR musi sie udac albo zostac zatwierdzony, zanim ten bitmapowy napis bedzie mozna tlumaczyc.",
+    "ocrQuality": "Jakosc OCR",
+    "ocrCueCount": "Liczba wpisow"
   },
   "translationTest": {
     "title": "Test tłumaczenia",
@@ -545,7 +560,15 @@
       "subtitleIntegrityValidationEnabled": "Waliduj integralność napisów",
       "subtitleIntegrityValidationEnabledDescription": "Sprawdź, czy przetłumaczone napisy mają z grubsza taką samą liczbę linii jak oryginał, aby wykryć częściowe tłumaczenia.",
       "translateSupplementalSubtitles": "Tlumacz dodatkowe napisy wymuszone/napisy ekranowe:",
-      "translateSupplementalSubtitlesDescription": "Po wlaczeniu Lingarr moze tlumaczyc sciezki wymuszone, napisy ekranowe i piosenki jako osobne dodatkowe pliki. Glowne napisy nadal uzywaja wylacznie pelnych zrodel dialogowych."
+      "translateSupplementalSubtitlesDescription": "Po wlaczeniu Lingarr moze tlumaczyc sciezki wymuszone, napisy ekranowe i piosenki jako osobne dodatkowe pliki. Glowne napisy nadal uzywaja wylacznie pelnych zrodel dialogowych.",
+      "ocrEnabled": "Wlacz OCR napisow bitmapowych",
+      "ocrEnabledDescription": "Pozwala konwertowac napisy Blu-ray PGS do buforowanych plikow SRT przy uzyciu Tesseract OCR.",
+      "ocrAutoQueue": "Automatyczny OCR dla mediow tylko z bitmapami",
+      "ocrAutoQueueDescription": "Gdy nie ma zrodla tekstowego, automatyzacja kolejkuje OCR dla najlepszego obslugiwanego zrodla PGS i czeka na kontrole jakosci przed tlumaczeniem.",
+      "ocrMinQualityScore": "Minimalny wynik jakosci OCR",
+      "ocrMinQualityScoreDescription": "Wynik OCR ponizej tej wartosci jest blokowany do recznego zatwierdzenia.",
+      "ocrLanguages": "Tryb jezyka OCR",
+      "ocrLanguagesDescription": "Uzyj auto, aby mapowac jezyk napisow na jezyk Tesseract, albo wpisz kod, np. eng, jpn, fra, spa, deu lub pol."
     },
     "indexing": {
       "title": "Indeksowanie",
@@ -709,7 +732,11 @@
     "tooltipNotApplicable": "Nie dotyczy / Brak źródła",
     "tooltipNoSuitableSubtitles": "Nie znaleziono odpowiednich ścieżek napisów (wszystkie są wymuszone/znaki i piosenki)",
     "tooltipFailed": "Tłumaczenie nieudane. Wymaga ręcznego ponowienia.",
-    "tooltipAwaitingSource": "Oczekiwanie na pojawienie się napisów źródłowych"
+    "tooltipAwaitingSource": "Oczekiwanie na pojawienie się napisów źródłowych",
+    "ocrPending": "OCR oczekuje",
+    "ocrBlocked": "OCR zablokowany",
+    "tooltipOcrPending": "Przed tlumaczeniem trzeba wykonac OCR bitmapowych napisow.",
+    "tooltipOcrBlocked": "Wynik OCR nie przeszedl kontroli jakosci i wymaga recznego sprawdzenia."
   },
   "onboarding": {
     "skipSetup": "Pomiń konfigurację",

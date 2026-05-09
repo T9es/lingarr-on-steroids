@@ -59,5 +59,16 @@ public enum TranslationState
     /// Configured for translation but no source subtitle exists yet.
     /// Will be re-checked during sync when directory mtime changes.
     /// </summary>
-    AwaitingSource = 8
+    AwaitingSource = 8,
+
+    /// <summary>
+    /// A source subtitle exists only as an OCR-capable bitmap stream and must be OCR'd
+    /// before translation can start.
+    /// </summary>
+    OcrPending = 9,
+
+    /// <summary>
+    /// OCR produced no usable source or failed quality gates. Manual review is required.
+    /// </summary>
+    OcrBlocked = 10
 }

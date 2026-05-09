@@ -351,12 +351,12 @@ public class TranslateController : ControllerBase
                 });
             }
 
-            if (!selectedSubtitle.IsTextBased)
+            if (!selectedSubtitle.IsTextBased && !selectedSubtitle.IsOcrUsable)
             {
                 return BadRequest(new QueueWithSubtitleResponse 
                 { 
                     Success = false, 
-                    Message = "Cannot use image-based subtitles (PGS/VobSub). Please select a text-based subtitle." 
+                    Message = "Cannot use this image-based subtitle until OCR has succeeded or been approved."
                 });
             }
 
@@ -396,7 +396,7 @@ public class TranslateController : ControllerBase
                     SubtitlePath = null, // Will trigger extraction with specific stream index in TranslationJob
                     TargetLanguage = targetLanguage,
                     SourceLanguage = sourceLanguage,
-                    SubtitleFormat = selectedSubtitle.CodecName
+                    SubtitleFormat = selectedSubtitle.IsOcrUsable ? ".srt" : selectedSubtitle.CodecName
                 }, forcePriority: true);
 
                 translationsQueued++;

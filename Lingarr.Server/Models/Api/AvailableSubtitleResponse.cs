@@ -1,5 +1,7 @@
 namespace Lingarr.Server.Models.Api;
 
+using Lingarr.Core.Enum;
+
 /// <summary>
 /// Response model for available subtitle information with entry count
 /// </summary>
@@ -23,6 +25,17 @@ public class AvailableSubtitleResponse
     /// Whether this subtitle is considered sparse (below minimum entry threshold)
     /// </summary>
     public bool? IsSparse { get; set; }
+    public SubtitleOcrStatus OcrStatus { get; set; }
+    public string? OcrExtractedPath { get; set; }
+    public string? OcrError { get; set; }
+    public DateTime? OcrAttemptedAt { get; set; }
+    public DateTime? OcrCompletedAt { get; set; }
+    public int? OcrCueCount { get; set; }
+    public int? OcrQualityScore { get; set; }
+    public string? OcrIssueSummary { get; set; }
+    public DateTime? OcrApprovedAt { get; set; }
+    public bool IsOcrSupported { get; set; }
+    public bool IsOcrUsable { get; set; }
 }
 
 /// <summary>

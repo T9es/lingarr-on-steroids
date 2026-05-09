@@ -342,6 +342,42 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("movie_id");
 
+                    b.Property<DateTime?>("OcrApprovedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ocr_approved_at");
+
+                    b.Property<DateTime?>("OcrAttemptedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ocr_attempted_at");
+
+                    b.Property<DateTime?>("OcrCompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ocr_completed_at");
+
+                    b.Property<int?>("OcrCueCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("ocr_cue_count");
+
+                    b.Property<string>("OcrError")
+                        .HasColumnType("text")
+                        .HasColumnName("ocr_error");
+
+                    b.Property<string>("OcrExtractedPath")
+                        .HasColumnType("text")
+                        .HasColumnName("ocr_extracted_path");
+
+                    b.Property<string>("OcrIssueSummary")
+                        .HasColumnType("text")
+                        .HasColumnName("ocr_issue_summary");
+
+                    b.Property<int?>("OcrQualityScore")
+                        .HasColumnType("integer")
+                        .HasColumnName("ocr_quality_score");
+
+                    b.Property<int>("OcrStatus")
+                        .HasColumnType("integer")
+                        .HasColumnName("ocr_status");
+
                     b.Property<int>("StreamIndex")
                         .HasColumnType("integer")
                         .HasColumnName("stream_index");

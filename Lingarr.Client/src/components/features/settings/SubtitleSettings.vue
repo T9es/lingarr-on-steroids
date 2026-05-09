@@ -56,6 +56,53 @@
                     </span>
                 </ToggleButton>
 
+                <div class="border-accent/60 mt-2 flex flex-col space-y-3 border-t pt-4">
+                    <div class="flex flex-col space-x-2">
+                        <span class="font-semibold">
+                            {{ translate('settings.subtitle.ocrEnabled') }}
+                        </span>
+                        {{ translate('settings.subtitle.ocrEnabledDescription') }}
+                    </div>
+                    <ToggleButton v-model="subtitleOcrEnabled">
+                        <span class="text-primary-content text-sm font-medium">
+                            {{
+                                subtitleOcrEnabled == 'true'
+                                    ? translate('common.enabled')
+                                    : translate('common.disabled')
+                            }}
+                        </span>
+                    </ToggleButton>
+
+                    <div class="flex flex-col space-x-2">
+                        <span class="font-semibold">
+                            {{ translate('settings.subtitle.ocrAutoQueue') }}
+                        </span>
+                        {{ translate('settings.subtitle.ocrAutoQueueDescription') }}
+                    </div>
+                    <ToggleButton v-model="subtitleOcrAutoQueue">
+                        <span class="text-primary-content text-sm font-medium">
+                            {{
+                                subtitleOcrAutoQueue == 'true'
+                                    ? translate('common.enabled')
+                                    : translate('common.disabled')
+                            }}
+                        </span>
+                    </ToggleButton>
+
+                    <InputComponent
+                        v-model="subtitleOcrMinQualityScore"
+                        validation-type="number"
+                        :label="translate('settings.subtitle.ocrMinQualityScore')"
+                        :description="translate('settings.subtitle.ocrMinQualityScoreDescription')"
+                        @update:validation="(val) => (isValid.subtitleOcrMinQualityScore = val)" />
+
+                    <InputComponent
+                        v-model="subtitleOcrLanguages"
+                        validation-type="string"
+                        :label="translate('settings.subtitle.ocrLanguages')"
+                        :description="translate('settings.subtitle.ocrLanguagesDescription')" />
+                </div>
+
                 <div class="flex flex-col space-x-2">
                     <span class="font-semibold">
                         {{ translate('settings.subtitle.keepAssSsaWithSrt') }}
@@ -274,7 +321,8 @@ const isRecreatingAll = ref(false)
 const isReconcilingOutputs = ref(false)
 const isValid = reactive({
     subtitleTag: true,
-    subtitleTagShort: true
+    subtitleTagShort: true,
+    subtitleOcrMinQualityScore: true
 })
 
 const keepAssSsaWithSrt = computed({
@@ -311,6 +359,44 @@ const translateSupplementalSubtitles = computed({
         (settingsStore.getSetting(SETTINGS.TRANSLATE_SUPPLEMENTAL_SUBTITLES) as string) ?? 'false',
     set: (newValue: string): void => {
         settingsStore.updateSetting(SETTINGS.TRANSLATE_SUPPLEMENTAL_SUBTITLES, newValue, true)
+        saveNotification.value?.show()
+    }
+})
+
+const subtitleOcrEnabled = computed({
+    get: (): string => (settingsStore.getSetting(SETTINGS.SUBTITLE_OCR_ENABLED) as string) ?? 'true',
+    set: (newValue: string): void => {
+        settingsStore.updateSetting(SETTINGS.SUBTITLE_OCR_ENABLED, newValue, true)
+        saveNotification.value?.show()
+    }
+})
+
+const subtitleOcrAutoQueue = computed({
+    get: (): string =>
+        (settingsStore.getSetting(SETTINGS.SUBTITLE_OCR_AUTO_QUEUE) as string) ?? 'true',
+    set: (newValue: string): void => {
+        settingsStore.updateSetting(SETTINGS.SUBTITLE_OCR_AUTO_QUEUE, newValue, true)
+        saveNotification.value?.show()
+    }
+})
+
+const subtitleOcrMinQualityScore = computed({
+    get: (): string =>
+        (settingsStore.getSetting(SETTINGS.SUBTITLE_OCR_MIN_QUALITY_SCORE) as string) ?? '80',
+    set: (newValue: string): void => {
+        settingsStore.updateSetting(
+            SETTINGS.SUBTITLE_OCR_MIN_QUALITY_SCORE,
+            newValue,
+            isValid.subtitleOcrMinQualityScore
+        )
+        saveNotification.value?.show()
+    }
+})
+
+const subtitleOcrLanguages = computed({
+    get: (): string => (settingsStore.getSetting(SETTINGS.SUBTITLE_OCR_LANGUAGES) as string) ?? 'auto',
+    set: (newValue: string): void => {
+        settingsStore.updateSetting(SETTINGS.SUBTITLE_OCR_LANGUAGES, newValue || 'auto', true)
         saveNotification.value?.show()
     }
 })

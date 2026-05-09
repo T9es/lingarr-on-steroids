@@ -33,7 +33,11 @@ public class SettingChangedListenerTests
                 new Setting { Key = SettingKeys.Translation.TargetLanguages, Value = "[{\"code\":\"pl\",\"name\":\"Polish\"}]" },
                 new Setting { Key = SettingKeys.Translation.IgnoreCaptions, Value = "false" },
                 new Setting { Key = SettingKeys.Translation.SubtitleOutputMode, Value = "match-source" },
-                new Setting { Key = SettingKeys.SubtitleValidation.SkipWhenTargetEmbedded, Value = "true" });
+                new Setting { Key = SettingKeys.SubtitleValidation.SkipWhenTargetEmbedded, Value = "true" },
+                new Setting { Key = SettingKeys.SubtitleExtraction.OcrEnabled, Value = "true" },
+                new Setting { Key = SettingKeys.SubtitleExtraction.OcrAutoQueue, Value = "true" },
+                new Setting { Key = SettingKeys.SubtitleExtraction.OcrMinQualityScore, Value = "80" },
+                new Setting { Key = SettingKeys.SubtitleExtraction.OcrLanguages, Value = "auto" });
             await seedContext.SaveChangesAsync();
         }
 
@@ -104,7 +108,11 @@ public class SettingChangedListenerTests
                 new Setting { Key = SettingKeys.Translation.TargetLanguages, Value = "[{\"code\":\"pl\",\"name\":\"Polish\"}]" },
                 new Setting { Key = SettingKeys.Translation.IgnoreCaptions, Value = "false" },
                 new Setting { Key = SettingKeys.Translation.SubtitleOutputMode, Value = "match-source" },
-                new Setting { Key = SettingKeys.SubtitleValidation.SkipWhenTargetEmbedded, Value = "true" });
+                new Setting { Key = SettingKeys.SubtitleValidation.SkipWhenTargetEmbedded, Value = "true" },
+                new Setting { Key = SettingKeys.SubtitleExtraction.OcrEnabled, Value = "true" },
+                new Setting { Key = SettingKeys.SubtitleExtraction.OcrAutoQueue, Value = "true" },
+                new Setting { Key = SettingKeys.SubtitleExtraction.OcrMinQualityScore, Value = "80" },
+                new Setting { Key = SettingKeys.SubtitleExtraction.OcrLanguages, Value = "auto" });
             await seedContext.SaveChangesAsync();
         }
 

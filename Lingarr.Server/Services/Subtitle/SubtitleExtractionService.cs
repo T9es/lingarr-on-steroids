@@ -490,6 +490,11 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             try
             {
                 // Use ExecuteDeleteAsync for atomic deletion - won't fail if rows already deleted
+                var existingSubtitles = await _dbContext.EmbeddedSubtitles
+                    .AsNoTracking()
+                    .Where(e => e.EpisodeId == episodeId && e.MovieId == movieId)
+                    .ToListAsync();
+
                 await _dbContext.EmbeddedSubtitles
                     .Where(e => e.EpisodeId == episodeId && e.MovieId == movieId)
                     .ExecuteDeleteAsync();
@@ -506,6 +511,7 @@ public class SubtitleExtractionService : ISubtitleExtractionService
 
                     sub.EpisodeId = episodeId;
                     sub.MovieId = movieId;
+                    CopyOcrMetadataIfSameStream(existingSubtitles, sub);
                     _dbContext.EmbeddedSubtitles.Add(sub);
                 }
 
@@ -1139,10 +1145,16 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             if (preferredStreamIndex.HasValue)
             {
                 var preferredSubtitle = embeddedSubtitles?.FirstOrDefault(s => 
-                    s.StreamIndex == preferredStreamIndex.Value && s.IsTextBased);
+                    s.StreamIndex == preferredStreamIndex.Value && s.IsReadableSource());
 
                 if (preferredSubtitle != null)
                 {
+                    if (preferredSubtitle.HasUsableOcr())
+                    {
+                        _embeddedSubtitleCacheService.Touch(preferredSubtitle.OcrExtractedPath!);
+                        return preferredSubtitle.OcrExtractedPath;
+                    }
+
                     _logger.LogInformation(
                         "Using preferred stream index {StreamIndex} for extraction",
                         preferredStreamIndex.Value);
@@ -1182,7 +1194,7 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 else
                 {
                     _logger.LogWarning(
-                        "Preferred stream index {StreamIndex} not found or not text-based, falling back to auto-selection",
+                        "Preferred stream index {StreamIndex} not found or not readable, falling back to auto-selection",
                         preferredStreamIndex.Value);
                 }
             }
@@ -1218,6 +1230,20 @@ public class SubtitleExtractionService : ISubtitleExtractionService
 
                 try
                 {
+                    if (candidate.HasUsableOcr())
+                    {
+                        var ocrEntryCount = candidate.OcrCueCount ?? CountSubtitleEntries(candidate.OcrExtractedPath!);
+                        viableCandidates.Add(
+                            new ExtractedSubtitleCandidate(
+                                candidate,
+                                candidate.OcrExtractedPath!,
+                                ocrEntryCount,
+                                SubtitleLanguageHelper.ScoreSubtitleCandidate(candidate, sourceLanguage),
+                                null,
+                                true));
+                        continue;
+                    }
+
                     var extractionLanguageTag = candidate.Language;
                     var candidateOutputPath = useInternalCache
                         ? _embeddedSubtitleCacheService.GetCachePath(
@@ -1344,8 +1370,11 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                     DeleteDiscardedExtraction(discardedCandidate);
                 }
 
-                selectedCandidate.Subtitle.IsExtracted = true;
-                selectedCandidate.Subtitle.ExtractedPath = selectedCandidate.ExtractedPath;
+                if (!selectedCandidate.Subtitle.HasUsableOcr())
+                {
+                    selectedCandidate.Subtitle.IsExtracted = true;
+                    selectedCandidate.Subtitle.ExtractedPath = selectedCandidate.ExtractedPath;
+                }
                 await _dbContext.SaveChangesAsync();
 
                 if (selectedCandidate.Analysis?.IsPathological == true)
@@ -1489,20 +1518,19 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             return [];
         }
 
-        // Only consider text-based subtitles
-        var textBased = embeddedSubtitles.Where(s => s.IsTextBased).ToList();
-        if (textBased.Count == 0)
+        var readableSubtitles = embeddedSubtitles.Where(s => s.IsReadableSource()).ToList();
+        if (readableSubtitles.Count == 0)
         {
             return [];
         }
 
         // Prefer subtitles whose language matches the configured source language.
-        // If none match, fall back to all text-based streams.
-        var languageMatched = textBased
+        // If none match, fall back to all readable streams.
+        var languageMatched = readableSubtitles
             .Where(s => SubtitleLanguageHelper.LanguageMatches(s.Language, sourceLanguage))
             .ToList();
 
-        var candidates = languageMatched.Count > 0 ? languageMatched : textBased;
+        var candidates = languageMatched.Count > 0 ? languageMatched : readableSubtitles;
 
         // Score candidates and sort
         return candidates
@@ -1511,6 +1539,33 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             .ThenBy(x => x.Subtitle.StreamIndex) // Stability
             .Select(x => x.Subtitle)
             .ToList();
+    }
+
+    private static void CopyOcrMetadataIfSameStream(
+        IReadOnlyCollection<EmbeddedSubtitle> existingSubtitles,
+        EmbeddedSubtitle newSubtitle)
+    {
+        var existing = existingSubtitles.FirstOrDefault(subtitle =>
+            subtitle.StreamIndex == newSubtitle.StreamIndex &&
+            string.Equals(subtitle.CodecName, newSubtitle.CodecName, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(subtitle.Language, newSubtitle.Language, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(subtitle.Title, newSubtitle.Title, StringComparison.OrdinalIgnoreCase) &&
+            subtitle.IsDefault == newSubtitle.IsDefault &&
+            subtitle.IsForced == newSubtitle.IsForced);
+        if (existing == null)
+        {
+            return;
+        }
+
+        newSubtitle.OcrStatus = existing.OcrStatus;
+        newSubtitle.OcrExtractedPath = existing.OcrExtractedPath;
+        newSubtitle.OcrError = existing.OcrError;
+        newSubtitle.OcrAttemptedAt = existing.OcrAttemptedAt;
+        newSubtitle.OcrCompletedAt = existing.OcrCompletedAt;
+        newSubtitle.OcrCueCount = existing.OcrCueCount;
+        newSubtitle.OcrQualityScore = existing.OcrQualityScore;
+        newSubtitle.OcrIssueSummary = existing.OcrIssueSummary;
+        newSubtitle.OcrApprovedAt = existing.OcrApprovedAt;
     }
 
     private static string? BuildStreamSpecificLanguageTag(string? language, int streamIndex)
@@ -1628,6 +1683,11 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 entryCount = CountSubtitleEntries(sub.ExtractedPath);
                 isSparse = entryCount >= 0 && entryCount < MinimumDialogueEntries;
             }
+            else if (sub.HasUsableOcr())
+            {
+                entryCount = sub.OcrCueCount ?? CountSubtitleEntries(sub.OcrExtractedPath!);
+                isSparse = entryCount >= 0 && entryCount < MinimumDialogueEntries;
+            }
 
             result.Add(new AvailableSubtitleResponse
             {
@@ -1642,7 +1702,20 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 IsExtracted = sub.IsExtracted,
                 ExtractedPath = sub.ExtractedPath,
                 EntryCount = entryCount,
-                IsSparse = isSparse
+                IsSparse = isSparse,
+                OcrStatus = sub.OcrStatus,
+                OcrExtractedPath = sub.OcrExtractedPath,
+                OcrError = sub.OcrError,
+                OcrAttemptedAt = sub.OcrAttemptedAt,
+                OcrCompletedAt = sub.OcrCompletedAt,
+                OcrCueCount = sub.OcrCueCount,
+                OcrQualityScore = sub.OcrQualityScore,
+                OcrIssueSummary = sub.OcrIssueSummary,
+                OcrApprovedAt = sub.OcrApprovedAt,
+                IsOcrSupported = !sub.IsTextBased &&
+                                 (string.Equals(sub.CodecName, "hdmv_pgs_subtitle", StringComparison.OrdinalIgnoreCase) ||
+                                  string.Equals(sub.CodecName, "pgssub", StringComparison.OrdinalIgnoreCase)),
+                IsOcrUsable = sub.HasUsableOcr()
             });
         }
 

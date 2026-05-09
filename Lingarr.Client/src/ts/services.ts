@@ -22,6 +22,7 @@ import {
     MediaType,
     UploadProgressCallback
 } from '@/ts'
+import { ISubtitleOcrPreview } from '@/ts/media'
 import { IPathMapping } from '@/ts/index'
 
 export interface Services {
@@ -88,6 +89,37 @@ export interface ISubtitleService {
         mediaId: number,
         streamIndex: number
     ): Promise<{ success: boolean; extractedPath: string | null; error: string | null }>
+    queueOcr(
+        mediaType: 'movie' | 'episode',
+        mediaId: number,
+        streamIndex: number
+    ): Promise<{
+        success: boolean
+        status: string
+        extractedPath: string | null
+        error: string | null
+        cueCount: number | null
+        qualityScore: number | null
+        issueSummary: string | null
+    }>
+    approveOcr(
+        mediaType: 'movie' | 'episode',
+        mediaId: number,
+        streamIndex: number
+    ): Promise<{
+        success: boolean
+        status: string
+        extractedPath: string | null
+        error: string | null
+        cueCount: number | null
+        qualityScore: number | null
+        issueSummary: string | null
+    }>
+    previewOcr(
+        mediaType: 'movie' | 'episode',
+        mediaId: number,
+        streamIndex: number
+    ): Promise<ISubtitleOcrPreview>
     probeEmbeddedSubtitles<T>(mediaType: 'movie' | 'episode', mediaId: number): Promise<T>
 }
 

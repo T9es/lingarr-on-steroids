@@ -96,6 +96,10 @@ export const SETTINGS = {
     BATCH_CONTEXT_BEFORE: 'batch_context_before',
     BATCH_CONTEXT_AFTER: 'batch_context_after',
     SKIP_WHEN_TARGET_EMBEDDED: 'skip_when_target_embedded',
+    SUBTITLE_OCR_ENABLED: 'subtitle_ocr_enabled',
+    SUBTITLE_OCR_AUTO_QUEUE: 'subtitle_ocr_auto_queue',
+    SUBTITLE_OCR_MIN_QUALITY_SCORE: 'subtitle_ocr_min_quality_score',
+    SUBTITLE_OCR_LANGUAGES: 'subtitle_ocr_languages',
     RADARR_INSTANCES: 'radarr_instances',
     SONARR_INSTANCES: 'sonarr_instances',
     ONBOARDING_COMPLETED: 'onboarding_completed',
@@ -224,6 +228,10 @@ export interface ISettings {
     batch_context_before: string
     batch_context_after: string
     skip_when_target_embedded: string
+    subtitle_ocr_enabled: string
+    subtitle_ocr_auto_queue: string
+    subtitle_ocr_min_quality_score: string
+    subtitle_ocr_languages: string
     radarr_instances: string | IInstance[]
     sonarr_instances: string | IInstance[]
     onboarding_completed: string

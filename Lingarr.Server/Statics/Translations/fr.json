@@ -33,7 +33,22 @@
     "extractSuccess": "Sous-titre extrait avec succès",
     "extractFailed": "Échec de l'extraction",
     "forced": "Forcé",
-    "default": "Par défaut"
+    "default": "Par défaut",
+    "ocrRun": "Lancer OCR",
+    "ocrRetry": "Reessayer OCR",
+    "ocrQueued": "OCR en file",
+    "ocrProcessing": "OCR en cours...",
+    "ocrReady": "OCR pret",
+    "ocrBlocked": "OCR bloque par les controles qualite",
+    "ocrUnsupported": "OCR non pris en charge",
+    "ocrPreview": "Previsualiser la sortie OCR",
+    "ocrApprove": "Approuver la sortie OCR",
+    "ocrFailed": "Impossible de mettre OCR en file",
+    "ocrApproveFailed": "Impossible approuver la sortie OCR",
+    "ocrPreviewFailed": "Impossible de charger apercu OCR",
+    "ocrRequired": "OCR doit reussir ou etre approuve avant que ce sous-titre bitmap puisse etre traduit.",
+    "ocrQuality": "Qualite OCR",
+    "ocrCueCount": "Nombre de repliques"
   },
   "translationTest": {
     "title": "Test de traduction",
@@ -545,7 +560,15 @@
       "subtitleIntegrityValidationEnabled": "Valider l'intégrité des sous-titres",
       "subtitleIntegrityValidationEnabledDescription": "Vérifier si le sous-titre traduit a à peu près le même nombre de lignes que l'original pour détecter les traductions partielles.",
       "translateSupplementalSubtitles": "Traduire les sous-titres supplementaires forces/panneaux :",
-      "translateSupplementalSubtitlesDescription": "Quand cette option est activee, Lingarr peut traduire les pistes forcees, panneaux et chansons comme sorties supplementaires separees. Les sous-titres principaux utilisent toujours uniquement des sources de dialogue complet."
+      "translateSupplementalSubtitlesDescription": "Quand cette option est activee, Lingarr peut traduire les pistes forcees, panneaux et chansons comme sorties supplementaires separees. Les sous-titres principaux utilisent toujours uniquement des sources de dialogue complet.",
+      "ocrEnabled": "Activer OCR des sous-titres bitmap",
+      "ocrEnabledDescription": "Convertit les sous-titres Blu-ray PGS en fichiers SRT mis en cache avec Tesseract OCR.",
+      "ocrAutoQueue": "OCR automatique pour les medias bitmap seuls",
+      "ocrAutoQueueDescription": "Sans source texte, automatisation met en file OCR de la meilleure source PGS prise en charge et attend les controles qualite avant traduction.",
+      "ocrMinQualityScore": "Score qualite OCR minimal",
+      "ocrMinQualityScoreDescription": "La sortie OCR sous ce score est bloquee jusqu a approbation manuelle.",
+      "ocrLanguages": "Mode de langue OCR",
+      "ocrLanguagesDescription": "Utilisez auto pour mapper les langues des sous-titres vers Tesseract, ou entrez un code comme eng, jpn, fra, spa, deu ou pol."
     },
     "indexing": {
       "title": "Indexation",
@@ -709,7 +732,11 @@
     "tooltipNotApplicable": "Non applicable / Pas de source",
     "tooltipNoSuitableSubtitles": "Aucune piste de sous-titres appropriée trouvée (toutes sont incomplètes/forcées)",
     "tooltipFailed": "Traduction échouée. Réessai manuel nécessaire.",
-    "tooltipAwaitingSource": "En attente de l'apparition du sous-titre source"
+    "tooltipAwaitingSource": "En attente de l'apparition du sous-titre source",
+    "ocrPending": "OCR en attente",
+    "ocrBlocked": "OCR bloque",
+    "tooltipOcrPending": "OCR du sous-titre bitmap est necessaire avant de lancer la traduction.",
+    "tooltipOcrBlocked": "La sortie OCR a echoue aux controles qualite et doit etre verifiee manuellement."
   },
   "onboarding": {
     "skipSetup": "Passer la configuration",

@@ -33,7 +33,22 @@
     "extractSuccess": "Subtítulo extraído exitosamente",
     "extractFailed": "Extracción fallida",
     "forced": "Forzado",
-    "default": "Por defecto"
+    "default": "Por defecto",
+    "ocrRun": "Ejecutar OCR",
+    "ocrRetry": "Reintentar OCR",
+    "ocrQueued": "OCR en cola",
+    "ocrProcessing": "OCR en curso...",
+    "ocrReady": "OCR listo",
+    "ocrBlocked": "OCR bloqueado por calidad",
+    "ocrUnsupported": "OCR no compatible",
+    "ocrPreview": "Vista previa del OCR",
+    "ocrApprove": "Aprobar resultado OCR",
+    "ocrFailed": "No se pudo poner OCR en cola",
+    "ocrApproveFailed": "No se pudo aprobar el resultado OCR",
+    "ocrPreviewFailed": "No se pudo cargar la vista previa OCR",
+    "ocrRequired": "El OCR debe completarse o aprobarse antes de traducir este subtitulo bitmap.",
+    "ocrQuality": "Calidad OCR",
+    "ocrCueCount": "Numero de cues"
   },
   "translationTest": {
     "title": "Prueba de traducción",
@@ -545,7 +560,15 @@
       "subtitleIntegrityValidationEnabled": "Validar integridad de subtítulos",
       "subtitleIntegrityValidationEnabledDescription": "Verificar si el subtítulo traducido tiene aproximadamente el mismo número de líneas que el original para detectar traducciones parciales.",
       "translateSupplementalSubtitles": "Traducir subtitulos suplementarios forzados/de carteles:",
-      "translateSupplementalSubtitlesDescription": "Cuando esta activado, Lingarr puede traducir pistas forzadas, de carteles y canciones como salidas suplementarias separadas. Los subtitulos principales siguen usando solo fuentes de dialogo completo."
+      "translateSupplementalSubtitlesDescription": "Cuando esta activado, Lingarr puede traducir pistas forzadas, de carteles y canciones como salidas suplementarias separadas. Los subtitulos principales siguen usando solo fuentes de dialogo completo.",
+      "ocrEnabled": "Activar OCR para subtitulos bitmap",
+      "ocrEnabledDescription": "Permite convertir subtitulos Blu-ray PGS a SRT en cache con Tesseract OCR.",
+      "ocrAutoQueue": "OCR automatico para medios solo bitmap",
+      "ocrAutoQueueDescription": "Si no hay fuente de texto, la automatizacion pone en cola el OCR de la mejor fuente PGS compatible y espera los controles de calidad antes de traducir.",
+      "ocrMinQualityScore": "Puntuacion minima de calidad OCR",
+      "ocrMinQualityScoreDescription": "La salida OCR por debajo de esta puntuacion se bloquea hasta aprobacion manual.",
+      "ocrLanguages": "Modo de idioma OCR",
+      "ocrLanguagesDescription": "Usa auto para mapear etiquetas de idioma a Tesseract, o introduce un codigo como eng, jpn, fra, spa, deu o pol."
     },
     "indexing": {
       "title": "Indexación",
@@ -709,7 +732,11 @@
     "tooltipNotApplicable": "No aplicable / Sin fuente",
     "tooltipNoSuitableSubtitles": "No se encontraron pistas de subtítulos adecuadas (todas son dispersas/Signs & Songs)",
     "tooltipFailed": "Traducción fallida. Requiere reintento manual.",
-    "tooltipAwaitingSource": "Esperando que aparezca el subtítulo fuente"
+    "tooltipAwaitingSource": "Esperando que aparezca el subtítulo fuente",
+    "ocrPending": "OCR pendiente",
+    "ocrBlocked": "OCR bloqueado",
+    "tooltipOcrPending": "Se necesita OCR del subtitulo bitmap antes de iniciar la traduccion.",
+    "tooltipOcrBlocked": "La salida OCR no supero los controles de calidad y requiere revision manual."
   },
   "onboarding": {
     "skipSetup": "Omitir configuración",

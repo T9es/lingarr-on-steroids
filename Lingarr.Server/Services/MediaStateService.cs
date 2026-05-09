@@ -130,6 +130,10 @@ public class MediaStateService : IMediaStateService
             await _settingService.GetSetting(SettingKeys.SubtitleValidation.SkipWhenTargetEmbedded) ?? "true",
             "true",
             StringComparison.OrdinalIgnoreCase);
+        var ocrEnabled = string.Equals(
+            await _settingService.GetSetting(SettingKeys.SubtitleExtraction.OcrEnabled) ?? "true",
+            "true",
+            StringComparison.OrdinalIgnoreCase);
 
         if (sourceLanguages.Count == 0 || targetLanguages.Count == 0)
         {
@@ -167,13 +171,23 @@ public class MediaStateService : IMediaStateService
             ignoreCaptions);
         var hasExternalSource = externalSourceSelection != null;
         var embeddedPrimarySelection = await _subtitleSourceSelectionService.SelectPrimaryAsync(
-            embeddedSubtitles.Where(subtitle => subtitle.IsTextBased).ToList(),
+            embeddedSubtitles.Where(subtitle => subtitle.IsReadableSource()).ToList(),
             sourceLanguages.ToList(),
             allowCaptionFallback: !ignoreCaptions);
         var hasEmbeddedSource = embeddedPrimarySelection.SelectedSubtitle != null;
 
         if (!hasExternalSource && !hasEmbeddedSource)
         {
+            if (ocrEnabled && HasOcrBlockedSourceCandidate(embeddedSubtitles, sourceLanguages, ignoreCaptions))
+            {
+                return TranslationState.OcrBlocked;
+            }
+
+            if (ocrEnabled && HasOcrPendingSourceCandidate(embeddedSubtitles, sourceLanguages, ignoreCaptions))
+            {
+                return TranslationState.OcrPending;
+            }
+
             return TranslationState.AwaitingSource;
         }
 
@@ -269,6 +283,7 @@ public class MediaStateService : IMediaStateService
             .Where(m => !m.ExcludeFromTranslation)
             .Where(m => m.TranslationState == TranslationState.Pending 
                      || m.TranslationState == TranslationState.Stale
+                     || m.TranslationState == TranslationState.OcrPending
                      || m.TranslationState == TranslationState.Unknown
                      || m.StateSettingsVersion < currentVersion
                      || (m.TranslationState == TranslationState.AwaitingSource && m.IndexedAt == null));
@@ -301,6 +316,7 @@ public class MediaStateService : IMediaStateService
             .Where(e => !e.Season.Show.ExcludeFromTranslation)
             .Where(e => e.TranslationState == TranslationState.Pending 
                      || e.TranslationState == TranslationState.Stale
+                     || e.TranslationState == TranslationState.OcrPending
                      || e.TranslationState == TranslationState.Unknown
                      || e.StateSettingsVersion < currentVersion
                      || (e.TranslationState == TranslationState.AwaitingSource && e.IndexedAt == null));
@@ -419,7 +435,7 @@ public class MediaStateService : IMediaStateService
         }
 
         var embeddedSourceCandidates = embeddedSubtitles
-            .Where(subtitle => subtitle.IsTextBased)
+            .Where(subtitle => subtitle.IsReadableSource())
             .ToList();
 
         var sourceLanguageList = sourceLanguages.ToList();
@@ -430,7 +446,7 @@ public class MediaStateService : IMediaStateService
         if (embeddedSelection.SelectedSubtitle != null)
         {
             return SubtitleOutputModeHelper.GetRequiredOutputFormats(
-                MapEmbeddedSubtitleFormat(embeddedSelection.SelectedSubtitle.CodecName),
+                MapEmbeddedSubtitleFormat(embeddedSelection.SelectedSubtitle.GetReadableSourceFormat()),
                 subtitleOutputMode);
         }
 
@@ -558,5 +574,53 @@ public class MediaStateService : IMediaStateService
             .ToListAsync();
 
         return MediaSubtitleMatcher.ExtractGeneratedPaths(requests);
+    }
+
+    private static bool HasOcrPendingSourceCandidate(
+        IReadOnlyCollection<EmbeddedSubtitle> embeddedSubtitles,
+        IReadOnlyCollection<string> sourceLanguages,
+        bool ignoreCaptions)
+    {
+        return GetOcrSourceCandidates(embeddedSubtitles, sourceLanguages, ignoreCaptions)
+            .Any(subtitle => subtitle.OcrStatus is SubtitleOcrStatus.NotStarted
+                or SubtitleOcrStatus.Queued
+                or SubtitleOcrStatus.Processing);
+    }
+
+    private static bool HasOcrBlockedSourceCandidate(
+        IReadOnlyCollection<EmbeddedSubtitle> embeddedSubtitles,
+        IReadOnlyCollection<string> sourceLanguages,
+        bool ignoreCaptions)
+    {
+        return GetOcrSourceCandidates(embeddedSubtitles, sourceLanguages, ignoreCaptions)
+            .Any(subtitle => subtitle.OcrStatus is SubtitleOcrStatus.BlockedLowQuality
+                or SubtitleOcrStatus.Failed);
+    }
+
+    private static IEnumerable<EmbeddedSubtitle> GetOcrSourceCandidates(
+        IReadOnlyCollection<EmbeddedSubtitle> embeddedSubtitles,
+        IReadOnlyCollection<string> sourceLanguages,
+        bool ignoreCaptions)
+    {
+        return embeddedSubtitles
+            .Where(subtitle => !subtitle.IsTextBased)
+            .Where(subtitle => IsSupportedOcrCodec(subtitle.CodecName))
+            .Where(subtitle => sourceLanguages.Any(language =>
+                SubtitleLanguageHelper.LanguageMatches(subtitle.Language, language)))
+            .Where(subtitle => !ignoreCaptions ||
+                               !SubtitleLanguageHelper.IsCaptionSubtitleType(
+                                   SubtitleLanguageHelper.DetermineSubtitleType(subtitle)))
+            .Where(subtitle => !SubtitleLanguageHelper.IsSupplementalSubtitleType(
+                SubtitleLanguageHelper.DetermineSubtitleType(subtitle)))
+            .OrderByDescending(subtitle => sourceLanguages.Max(language =>
+                SubtitleLanguageHelper.ScoreSubtitleCandidate(subtitle, language)))
+            .ThenBy(subtitle => subtitle.StreamIndex);
+    }
+
+    private static bool IsSupportedOcrCodec(string? codecName)
+    {
+        return !string.IsNullOrWhiteSpace(codecName) &&
+               (codecName.Equals("hdmv_pgs_subtitle", StringComparison.OrdinalIgnoreCase) ||
+                codecName.Equals("pgssub", StringComparison.OrdinalIgnoreCase));
     }
 }

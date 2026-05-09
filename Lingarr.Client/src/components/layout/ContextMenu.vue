@@ -3,7 +3,7 @@
         <!-- Context -->
         <TooltipComponent ref="tooltip" alignment="left">
             <div ref="clickOutside" @click="toggle">
-                <slot :isExtracting="isExtracting"></slot>
+                <slot :isExtracting="isExtracting || isOcrProcessing"></slot>
             </div>
         </TooltipComponent>
         <!-- Menu -->
@@ -18,7 +18,7 @@
                         {{ translate('embedded.title') }}
                     </span>
                     <div
-                        v-if="!embeddedSubtitle.isExtracted"
+                        v-if="embeddedSubtitle.isTextBased && !embeddedSubtitle.isExtracted"
                         class="text-primary-content flex text-sm"
                         role="menuitem"
                         @click="handleJustExtract">
@@ -30,7 +30,7 @@
                         </span>
                     </div>
                     <div
-                        v-else
+                        v-else-if="embeddedSubtitle.isTextBased"
                         class="flex cursor-pointer text-sm text-green-400"
                         role="menuitem"
                         @mouseenter="isReextractHovered = true"
@@ -45,6 +45,36 @@
                                 {{ translate('embedded.extractAgain') || 'Extract again?' }}
                             </template>
                             <template v-else>{{ translate('embedded.extracted') }} ✓</template>
+                        </span>
+                    </div>
+                    <div
+                        v-if="!embeddedSubtitle.isTextBased"
+                        class="text-primary-content flex text-sm"
+                        role="menuitem"
+                        @click="handleOcr">
+                        <span class="h-full w-full cursor-pointer py-2 hover:brightness-150">
+                            {{ ocrActionLabel }}
+                            <LoaderCircleIcon
+                                v-if="isOcrProcessing"
+                                class="ml-2 inline h-3 w-3 animate-spin" />
+                        </span>
+                    </div>
+                    <div
+                        v-if="embeddedSubtitle.ocrExtractedPath"
+                        class="text-primary-content flex text-sm"
+                        role="menuitem"
+                        @click="handleOcrPreview">
+                        <span class="h-full w-full cursor-pointer py-2 hover:brightness-150">
+                            {{ translate('embedded.ocrPreview') }}
+                        </span>
+                    </div>
+                    <div
+                        v-if="embeddedSubtitle.ocrStatus === 'BlockedLowQuality'"
+                        class="text-primary-content flex text-sm"
+                        role="menuitem"
+                        @click="handleOcrApprove">
+                        <span class="h-full w-full cursor-pointer py-2 hover:brightness-150">
+                            {{ translate('embedded.ocrApprove') }}
                         </span>
                     </div>
                 </div>
@@ -92,11 +122,23 @@ const isOpen: Ref<boolean> = ref(false)
 const clickOutside: Ref = ref(null)
 const excludeClickOutside: Ref = ref(null)
 const isExtracting = ref(false)
+const isOcrProcessing = ref(false)
 const isReextractHovered = ref(false)
 
 const languages: ComputedRef<ILanguage[]> = computed(
     () => settingsStore.getSetting('target_languages') as ILanguage[]
 )
+
+const ocrActionLabel = computed(() => {
+    const sub = props.embeddedSubtitle
+    if (!sub?.isOcrSupported) return translate('embedded.ocrUnsupported')
+    if (sub.ocrStatus === 'Queued') return translate('embedded.ocrQueued')
+    if (sub.ocrStatus === 'Processing') return translate('embedded.ocrProcessing')
+    if (sub.isOcrUsable) return translate('embedded.ocrReady')
+    if (sub.ocrStatus === 'Failed') return translate('embedded.ocrRetry')
+    if (sub.ocrStatus === 'BlockedLowQuality') return translate('embedded.ocrBlocked')
+    return translate('embedded.ocrRun')
+})
 
 function toggle() {
     emit('update:toggle')
@@ -168,12 +210,94 @@ async function handleReExtract() {
     }
 }
 
+async function handleOcr() {
+    const sub = props.embeddedSubtitle
+    if (!sub || sub.isTextBased || !sub.isOcrSupported || isOcrProcessing.value) return
+    if (sub.ocrStatus === 'Queued' || sub.ocrStatus === 'Processing' || sub.isOcrUsable) return
+
+    try {
+        isOcrProcessing.value = true
+        const typeStr = (props.mediaType.toLowerCase() === 'movie' ? 'movie' : 'episode') as
+            | 'movie'
+            | 'episode'
+        const result = await services.subtitle.queueOcr(typeStr, props.media.id, sub.streamIndex)
+        sub.ocrStatus = result.status as typeof sub.ocrStatus
+        sub.ocrError = result.error
+        sub.ocrCueCount = result.cueCount
+        sub.ocrQualityScore = result.qualityScore
+        sub.ocrIssueSummary = result.issueSummary
+    } catch (error) {
+        console.error('OCR queue failed:', error)
+        alert(translate('embedded.ocrFailed'))
+    } finally {
+        isOcrProcessing.value = false
+        toggle()
+    }
+}
+
+async function handleOcrApprove() {
+    const sub = props.embeddedSubtitle
+    if (!sub) return
+
+    try {
+        const typeStr = (props.mediaType.toLowerCase() === 'movie' ? 'movie' : 'episode') as
+            | 'movie'
+            | 'episode'
+        const result = await services.subtitle.approveOcr(typeStr, props.media.id, sub.streamIndex)
+        sub.ocrStatus = result.status as typeof sub.ocrStatus
+        sub.isOcrUsable = result.success
+        sub.ocrError = result.error
+        sub.ocrCueCount = result.cueCount
+        sub.ocrQualityScore = result.qualityScore
+        sub.ocrIssueSummary = result.issueSummary
+    } catch (error) {
+        console.error('OCR approval failed:', error)
+        alert(translate('embedded.ocrApproveFailed'))
+    } finally {
+        toggle()
+    }
+}
+
+async function handleOcrPreview() {
+    const sub = props.embeddedSubtitle
+    if (!sub) return
+
+    try {
+        const typeStr = (props.mediaType.toLowerCase() === 'movie' ? 'movie' : 'episode') as
+            | 'movie'
+            | 'episode'
+        const preview = await services.subtitle.previewOcr(typeStr, props.media.id, sub.streamIndex)
+        const samples = preview.lines
+            .slice(0, 8)
+            .map((line) => `${line.position}. ${line.text}`)
+            .join('\n')
+        alert(
+            `${translate('embedded.ocrPreview')}\n${translate('embedded.ocrQuality')}: ${
+                preview.qualityScore ?? '-'
+            }\n${translate('embedded.ocrCueCount')}: ${preview.cueCount ?? '-'}\n${
+                preview.issueSummary ?? ''
+            }\n\n${samples}`
+        )
+    } catch (error) {
+        console.error('OCR preview failed:', error)
+        alert(translate('embedded.ocrPreviewFailed'))
+    } finally {
+        toggle()
+    }
+}
+
 async function selectOption(target: ILanguage) {
     let subToTranslate = props.subtitle
 
     if (props.embeddedSubtitle) {
+        if (!props.embeddedSubtitle.isTextBased && !props.embeddedSubtitle.isOcrUsable) {
+            alert(translate('embedded.ocrRequired'))
+            toggle()
+            return
+        }
+
         // If embedded, ensure extracted first
-        if (!props.embeddedSubtitle.isExtracted) {
+        if (props.embeddedSubtitle.isTextBased && !props.embeddedSubtitle.isExtracted) {
             const success = await extractSubtitle()
             if (!success) {
                 toggle()
@@ -182,13 +306,16 @@ async function selectOption(target: ILanguage) {
         }
 
         // Create a temporary ISubtitle for the store
-        if (props.embeddedSubtitle.extractedPath) {
+        const sourcePath = props.embeddedSubtitle.isOcrUsable
+            ? props.embeddedSubtitle.ocrExtractedPath
+            : props.embeddedSubtitle.extractedPath
+        if (sourcePath) {
             subToTranslate = {
-                path: props.embeddedSubtitle.extractedPath,
+                path: sourcePath,
                 language: props.embeddedSubtitle.language || 'unknown',
                 fileName:
                     props.embeddedSubtitle.title || `Stream ${props.embeddedSubtitle.streamIndex}`,
-                format: props.embeddedSubtitle.codecName,
+                format: props.embeddedSubtitle.isOcrUsable ? '.srt' : props.embeddedSubtitle.codecName,
                 caption: props.embeddedSubtitle.title || ''
             }
         }

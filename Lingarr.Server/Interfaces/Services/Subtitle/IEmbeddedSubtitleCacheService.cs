@@ -10,6 +10,8 @@ public interface IEmbeddedSubtitleCacheService
 
     string GetCachePath(int mediaId, MediaType mediaType, int streamIndex, string codecName, string? language);
 
+    string GetOcrCachePath(int mediaId, MediaType mediaType, int streamIndex, string? language);
+
     bool IsManagedCachePath(string? path);
 
     bool IsExpired(string path);

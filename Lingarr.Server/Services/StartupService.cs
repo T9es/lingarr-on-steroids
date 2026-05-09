@@ -113,6 +113,10 @@ public class StartupService : IHostedService
 
             // Subtitle Extraction
             { SettingKeys.SubtitleExtraction.ExtractionMode, "on_demand" },
+            { SettingKeys.SubtitleExtraction.OcrEnabled, "true" },
+            { SettingKeys.SubtitleExtraction.OcrAutoQueue, "true" },
+            { SettingKeys.SubtitleExtraction.OcrMinQualityScore, "80" },
+            { SettingKeys.SubtitleExtraction.OcrLanguages, "auto" },
 
             // Validation
             { SettingKeys.SubtitleValidation.ValidateSubtitles, "false" },

@@ -118,7 +118,11 @@ public class SettingChangedListener
                     SettingKeys.Translation.TargetLanguages,
                     SettingKeys.Translation.IgnoreCaptions,
                     SettingKeys.Translation.SubtitleOutputMode,
-                    SettingKeys.SubtitleValidation.SkipWhenTargetEmbedded
+                    SettingKeys.SubtitleValidation.SkipWhenTargetEmbedded,
+                    SettingKeys.SubtitleExtraction.OcrEnabled,
+                    SettingKeys.SubtitleExtraction.OcrAutoQueue,
+                    SettingKeys.SubtitleExtraction.OcrMinQualityScore,
+                    SettingKeys.SubtitleExtraction.OcrLanguages
                 ])
             }
         };

@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations.Schema;
+using Lingarr.Core.Enum;
 
 namespace Lingarr.Core.Entities;
 
@@ -52,6 +53,51 @@ public class EmbeddedSubtitle : BaseEntity
     /// Path to the extracted subtitle file (null if not extracted)
     /// </summary>
     public string? ExtractedPath { get; set; }
+
+    /// <summary>
+    /// Current OCR state for image-based embedded subtitles.
+    /// </summary>
+    public SubtitleOcrStatus OcrStatus { get; set; } = SubtitleOcrStatus.NotStarted;
+
+    /// <summary>
+    /// Path to OCR-generated SRT output, if available.
+    /// </summary>
+    public string? OcrExtractedPath { get; set; }
+
+    /// <summary>
+    /// Most recent OCR error message.
+    /// </summary>
+    public string? OcrError { get; set; }
+
+    /// <summary>
+    /// When OCR was last attempted.
+    /// </summary>
+    public DateTime? OcrAttemptedAt { get; set; }
+
+    /// <summary>
+    /// When OCR last completed successfully or with a quality verdict.
+    /// </summary>
+    public DateTime? OcrCompletedAt { get; set; }
+
+    /// <summary>
+    /// Number of cues parsed from the OCR output.
+    /// </summary>
+    public int? OcrCueCount { get; set; }
+
+    /// <summary>
+    /// Derived OCR quality score from 0 to 100.
+    /// </summary>
+    public int? OcrQualityScore { get; set; }
+
+    /// <summary>
+    /// Human-readable summary of OCR quality issues.
+    /// </summary>
+    public string? OcrIssueSummary { get; set; }
+
+    /// <summary>
+    /// When a user approved a low-quality OCR output for manual translation.
+    /// </summary>
+    public DateTime? OcrApprovedAt { get; set; }
 
     // Foreign key for Episode (nullable - belongs to either Episode or Movie)
     public int? EpisodeId { get; set; }

@@ -33,7 +33,22 @@
     "extractSuccess": "Ondertitel succesvol uitgepakt",
     "extractFailed": "Uitpakken mislukt",
     "forced": "Geforceerd",
-    "default": "Standaard"
+    "default": "Standaard",
+    "ocrRun": "OCR uitvoeren",
+    "ocrRetry": "OCR opnieuw proberen",
+    "ocrQueued": "OCR in wachtrij",
+    "ocrProcessing": "OCR wordt verwerkt...",
+    "ocrReady": "OCR gereed",
+    "ocrBlocked": "OCR geblokkeerd door kwaliteitscontrole",
+    "ocrUnsupported": "OCR niet ondersteund",
+    "ocrPreview": "OCR-uitvoer bekijken",
+    "ocrApprove": "OCR-uitvoer goedkeuren",
+    "ocrFailed": "OCR kon niet worden ingepland",
+    "ocrApproveFailed": "OCR-uitvoer kon niet worden goedgekeurd",
+    "ocrPreviewFailed": "OCR-voorbeeld kon niet worden geladen",
+    "ocrRequired": "OCR moet slagen of worden goedgekeurd voordat deze bitmapondertiteling kan worden vertaald.",
+    "ocrQuality": "OCR-kwaliteit",
+    "ocrCueCount": "Aantal cues"
   },
   "translationTest": {
     "title": "Vertaaltest",
@@ -545,7 +560,15 @@
       "subtitleIntegrityValidationEnabled": "Ondertitelintegriteit valideren",
       "subtitleIntegrityValidationEnabledDescription": "Controleer of de vertaalde ondertitel ongeveer hetzelfde aantal regels heeft als het origineel om gedeeltelijke vertalingen te detecteren.",
       "translateSupplementalSubtitles": "Aanvullende geforceerde/tekens-ondertitels vertalen:",
-      "translateSupplementalSubtitlesDescription": "Als dit is ingeschakeld, kan Lingarr geforceerde, tekens- en songtracks als aparte aanvullende uitvoer vertalen. Hoofdondertitels gebruiken nog steeds alleen volledige dialoogbronnen."
+      "translateSupplementalSubtitlesDescription": "Als dit is ingeschakeld, kan Lingarr geforceerde, tekens- en songtracks als aparte aanvullende uitvoer vertalen. Hoofdondertitels gebruiken nog steeds alleen volledige dialoogbronnen.",
+      "ocrEnabled": "OCR voor bitmapondertitels inschakelen",
+      "ocrEnabledDescription": "Sta toe dat Blu-ray PGS-ondertitels met Tesseract OCR worden omgezet naar gecachte SRT-bestanden.",
+      "ocrAutoQueue": "Bitmap-only media automatisch OCR-en",
+      "ocrAutoQueueDescription": "Als er geen tekstbron bestaat, zet automatisering OCR in de wachtrij voor de beste ondersteunde PGS-bron en wacht op kwaliteitscontrole voordat er wordt vertaald.",
+      "ocrMinQualityScore": "Minimale OCR-kwaliteitsscore",
+      "ocrMinQualityScoreDescription": "OCR-uitvoer onder deze score wordt geblokkeerd tot handmatige goedkeuring.",
+      "ocrLanguages": "OCR-taalmodus",
+      "ocrLanguagesDescription": "Gebruik auto om ondertiteltalen naar Tesseract-talen te mappen, of voer een Tesseract-code in zoals eng, jpn, fra, spa, deu of pol."
     },
     "indexing": {
       "title": "Indexering",
@@ -709,7 +732,11 @@
     "tooltipNotApplicable": "Niet van toepassing / Geen bron",
     "tooltipNoSuitableSubtitles": "Geen geschikte ondertitelsporen gevonden (allemaal dun/Signs & Songs)",
     "tooltipFailed": "Vertaling mislukt. Handmatige herpoging nodig.",
-    "tooltipAwaitingSource": "Wacht tot bronondertitel beschikbaar is"
+    "tooltipAwaitingSource": "Wacht tot bronondertitel beschikbaar is",
+    "ocrPending": "OCR wacht",
+    "ocrBlocked": "OCR geblokkeerd",
+    "tooltipOcrPending": "Bitmapondertitel-OCR is nodig voordat vertaling kan starten.",
+    "tooltipOcrBlocked": "OCR-uitvoer is niet door de kwaliteitscontrole gekomen en moet handmatig worden bekeken."
   },
   "onboarding": {
     "skipSetup": "Installatie overslaan",

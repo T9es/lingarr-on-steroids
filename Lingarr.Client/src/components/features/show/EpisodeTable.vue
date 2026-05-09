@@ -313,7 +313,18 @@ const truncate = (str: string | null | undefined, len: number): string => {
 
 const getEmbeddedBadgeClasses = (sub: IEmbeddedSubtitle): string => {
     if (!sub.isTextBased) {
-        // Image-based (PGS/VobSub) - gray, non-clickable
+        if (sub.ocrStatus === 'Queued' || sub.ocrStatus === 'Processing') {
+            return 'cursor-pointer text-accent border-accent bg-accent/10'
+        }
+        if (sub.isOcrUsable) {
+            return 'cursor-pointer text-blue-300 border-blue-500 bg-blue-900/30'
+        }
+        if (sub.ocrStatus === 'BlockedLowQuality' || sub.ocrStatus === 'Failed') {
+            return 'cursor-pointer text-red-300 border-red-500 bg-red-900/30'
+        }
+        if (sub.isOcrSupported) {
+            return 'cursor-pointer text-blue-300 border-blue-500 bg-blue-900/20'
+        }
         return 'cursor-not-allowed text-secondary-content/50 border-secondary-content/30 bg-secondary/30 opacity-60'
     }
     if (sub.isExtracted) {

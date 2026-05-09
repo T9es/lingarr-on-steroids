@@ -42,6 +42,18 @@ public class EmbeddedSubtitleCacheService : IEmbeddedSubtitleCacheService
         return Path.Combine(CacheRootPath, fileName);
     }
 
+    public string GetOcrCachePath(int mediaId, MediaType mediaType, int streamIndex, string? language)
+    {
+        EnsureCacheDirectory();
+
+        var normalizedLanguage = string.IsNullOrWhiteSpace(language)
+            ? "und"
+            : language.Trim().ToLowerInvariant();
+        var mediaMarker = mediaType == MediaType.Movie ? "movie" : "episode";
+        var fileName = $"{mediaMarker}-{mediaId}-stream-{streamIndex}-{normalizedLanguage}.ocr.srt";
+        return Path.Combine(CacheRootPath, fileName);
+    }
+
     public bool IsManagedCachePath(string? path)
     {
         if (string.IsNullOrWhiteSpace(path))

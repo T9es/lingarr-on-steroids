@@ -33,7 +33,22 @@
     "extractSuccess": "字幕提取成功",
     "extractFailed": "提取失败",
     "forced": "强制",
-    "default": "默认"
+    "default": "默认",
+    "ocrRun": "Yunxing OCR",
+    "ocrRetry": "Chongshi OCR",
+    "ocrQueued": "OCR yi paidui",
+    "ocrProcessing": "OCR chulizhong...",
+    "ocrReady": "OCR keyong",
+    "ocrBlocked": "OCR yin zhiliang jiancha bei zudang",
+    "ocrUnsupported": "Bu zhichi OCR",
+    "ocrPreview": "Yulan OCR shuchu",
+    "ocrApprove": "Pizhun OCR shuchu",
+    "ocrFailed": "Wufa jiaru OCR duilie",
+    "ocrApproveFailed": "Wufa pizhun OCR shuchu",
+    "ocrPreviewFailed": "Wufa jiazai OCR yulan",
+    "ocrRequired": "Ci bitmap zimu xu xian wancheng huo pizhun OCR cai neng fanyi.",
+    "ocrQuality": "OCR zhiliang",
+    "ocrCueCount": "Zimu tiaomu shu"
   },
   "translationTest": {
     "title": "翻译测试",
@@ -545,7 +560,15 @@
       "subtitleIntegrityValidationEnabled": "验证字幕完整性",
       "subtitleIntegrityValidationEnabledDescription": "检查翻译后的字幕是否具有与原始字幕大致相同的行数，以检测部分翻译。",
       "translateSupplementalSubtitles": "Translate supplemental forced/signs subtitles:",
-      "translateSupplementalSubtitlesDescription": "When enabled, Lingarr may translate forced, signs, and songs tracks as separate supplemental outputs. Main subtitles still use full-dialogue sources only."
+      "translateSupplementalSubtitlesDescription": "When enabled, Lingarr may translate forced, signs, and songs tracks as separate supplemental outputs. Main subtitles still use full-dialogue sources only.",
+      "ocrEnabled": "Qiyong bitmap zimu OCR",
+      "ocrEnabledDescription": "Shi yong Tesseract OCR jiang Blu-ray PGS zimu zhuanwei huancun SRT wenjian.",
+      "ocrAutoQueue": "Bitmap-only meiti zidong OCR",
+      "ocrAutoQueueDescription": "Meiyou wenben yuan shi, zidonghua hui wei zuijia PGS yuan paidui OCR, bing zai fanyi qian dengdai zhiliang jiancha.",
+      "ocrMinQualityScore": "Zuidi OCR zhiliang fenshu",
+      "ocrMinQualityScoreDescription": "Di yu ci fenshu de OCR shuchu hui bei zudang, zhidao shoudong pizhun.",
+      "ocrLanguages": "OCR yuyan moshi",
+      "ocrLanguagesDescription": "Shi yong auto jiang zimu yuyan ying she dao Tesseract, huo shuru eng, jpn, fra, spa, deu, pol deng daima."
     },
     "indexing": {
       "title": "索引",
@@ -709,7 +732,11 @@
     "tooltipNotApplicable": "不适用 / 无源",
     "tooltipNoSuitableSubtitles": "未找到合适的字幕轨道（全部为强制/仅外语及歌曲）",
     "tooltipFailed": "翻译失败。需要手动重试。",
-    "tooltipAwaitingSource": "等待源字幕出现"
+    "tooltipAwaitingSource": "等待源字幕出现",
+    "ocrPending": "OCR daichuli",
+    "ocrBlocked": "OCR yi zudang",
+    "tooltipOcrPending": "Kaishi fanyi qian xu yao xian dui bitmap zimu zhixing OCR.",
+    "tooltipOcrBlocked": "OCR shuchu wei tongguo zhiliang jiancha, xu yao shoudong shenhe."
   },
   "onboarding": {
     "skipSetup": "跳过设置",

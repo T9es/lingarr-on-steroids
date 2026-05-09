@@ -35,15 +35,36 @@ ARG TARGETARCH=amd64
 RUN echo "Current BUILD_CONFIGURATION: $BUILD_CONFIGURATION"
 RUN dotnet publish "./Lingarr.Server.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false --arch $TARGETARCH
 
+# Step 4b: Build PGS-to-SRT OCR helper
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:9.0 AS pgstosrt
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+RUN git clone --depth 1 https://github.com/Tentacule/PgsToSrt.git /src/PgsToSrt
+WORKDIR /src/PgsToSrt/src/PgsToSrt
+RUN dotnet publish PgsToSrt.csproj -c Release -o /opt/pgstosrt
+
 # Step 5: Final image
 FROM base AS final
 
-# Install FFmpeg for embedded subtitle extraction
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+# Install FFmpeg and OCR runtime dependencies for embedded subtitle extraction
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ffmpeg \
+        mkvtoolnix \
+        libtesseract5 \
+        libleptonica-dev \
+        tesseract-ocr-eng \
+        tesseract-ocr-jpn \
+        tesseract-ocr-fra \
+        tesseract-ocr-spa \
+        tesseract-ocr-deu \
+        tesseract-ocr-pol \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY --from=publish /app/publish .
+COPY --from=pgstosrt /opt/pgstosrt /opt/pgstosrt
+ENV DOTNET_ROLL_FORWARD=Major
 
 VOLUME /app/config
 # Start the application
