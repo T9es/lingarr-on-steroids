@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
@@ -135,6 +136,7 @@ public class SubtitleOcrService : ISubtitleOcrService
 
         try
         {
+            NormalizeOcrOutputFile(engineResult.OutputPath);
             var subtitles = await _subtitleService.ReadSubtitles(engineResult.OutputPath);
             var quality = SubtitleOcrQualityAnalyzer.Analyze(
                 subtitles,
@@ -300,6 +302,21 @@ public class SubtitleOcrService : ISubtitleOcrService
         return null;
     }
 
+    private static void NormalizeOcrOutputFile(string outputPath)
+    {
+        var text = File.ReadAllText(outputPath);
+        var normalized = NormalizeCommonOcrTextArtifacts(text);
+        if (!string.Equals(text, normalized, StringComparison.Ordinal))
+        {
+            File.WriteAllText(outputPath, normalized);
+        }
+    }
+
+    internal static string NormalizeCommonOcrTextArtifacts(string text)
+    {
+        return Regex.Replace(text, @"(?<![A-Za-z0-9])\|(?![A-Za-z0-9])", "I");
+    }
+
     private async Task<bool> IsOcrEnabledAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -394,8 +411,15 @@ public class SubtitleOcrService : ISubtitleOcrService
             return direct;
         }
 
-        var baseName = Path.GetFileNameWithoutExtension(fileName);
-        foreach (var extension in new[] { ".mkv", ".mp4", ".avi", ".m4v", ".webm", ".mov", ".wmv" })
+        var mediaExtensions = new[] { ".mkv", ".mp4", ".avi", ".m4v", ".webm", ".mov", ".wmv" };
+        var fileNameHasMediaExtension = mediaExtensions.Contains(
+            Path.GetExtension(fileName),
+            StringComparer.OrdinalIgnoreCase);
+        var baseName = fileNameHasMediaExtension
+            ? Path.GetFileNameWithoutExtension(fileName)
+            : fileName;
+
+        foreach (var extension in mediaExtensions)
         {
             var candidate = Path.Combine(directory, baseName + extension);
             if (File.Exists(candidate))
