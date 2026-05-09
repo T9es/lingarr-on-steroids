@@ -140,6 +140,14 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                     sourceSubtitle = null;
                     sourceSnapshot = null;
                 }
+                else if (await IsCorruptExternalSourceAsync(sourceSubtitle))
+                {
+                    _logger.LogWarning(
+                        "External subtitle {Path} looks like OCR/random-text garbage. Skipping it as a primary source and trying embedded fallback.",
+                        sourceSubtitle.Path);
+                    sourceSubtitle = null;
+                    sourceSnapshot = null;
+                }
             }
 
             // Fallback: If no external source found (even if sourceLanguage was detected but file missing?)
@@ -1533,6 +1541,29 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         }
         
         return null;
+    }
+
+    private async Task<bool> IsCorruptExternalSourceAsync(Subtitles subtitle)
+    {
+        if (string.IsNullOrWhiteSpace(subtitle.Path) || !File.Exists(subtitle.Path))
+        {
+            return false;
+        }
+
+        try
+        {
+            var subtitles = await _subtitleService.ReadSubtitles(subtitle.Path);
+            var health = SubtitleSourceHealthAnalyzer.Analyze(subtitles);
+            return health.Status == SubtitleSourceHealthStatus.CorruptText;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(
+                ex,
+                "Failed to analyze external subtitle source health for {Path}. Continuing with selected source.",
+                subtitle.Path);
+            return false;
+        }
     }
 
 

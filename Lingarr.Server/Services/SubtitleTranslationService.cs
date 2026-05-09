@@ -436,6 +436,12 @@ public class SubtitleTranslationService
             fileIdentifier,
             "batch");
 
+        ApplyMissingProviderFallbacks(
+            structureEntries,
+            representativeProviderTranslations,
+            globalDeduplication,
+            fileIdentifier);
+
         var unresolvedEntries = BuildUnresolvedEntries(
             structureEntries,
             representativeProviderTranslations,
@@ -516,9 +522,11 @@ public class SubtitleTranslationService
                     ? preBuilt
                     : SubtitleTextStructureFactory.Create(subtitle, stripSubtitleFormatting, preserveAssFormatting);
                 var providerText = structure.ProviderVisibleText;
-                var isTranslatable = !string.IsNullOrWhiteSpace(providerText) &&
-                                     !SubtitleFormatterService.IsMeaningless(providerText.Trim()) &&
-                                     providerText.Trim().Any(char.IsLetterOrDigit);
+                var semanticClassification = SubtitleSemanticClassifier.Classify(
+                    subtitle,
+                    providerText,
+                    subtitle.SsaDialogue?.Style);
+                var isTranslatable = semanticClassification.ShouldRequestProvider;
 
                 return new SubtitleTranslationNode(
                     index,
@@ -529,7 +537,9 @@ public class SubtitleTranslationService
                     0,
                     SubtitleTranslationNodeKind.Representative,
                     isTranslatable ? subtitle.Position : null,
-                    isTranslatable ? null : "non-language");
+                    semanticClassification.Kind,
+                    semanticClassification.CanPreserveSourceWhenProviderMissing,
+                    isTranslatable ? null : semanticClassification.Reason);
             })
             .ToList();
 
@@ -686,12 +696,30 @@ public class SubtitleTranslationService
                 if (!resolvedProviderTranslations.TryGetValue(entry.Subtitle.Position, out var translated) ||
                     string.IsNullOrWhiteSpace(translated))
                 {
+                    if (!collectFailures && entry.CanPreserveSourceWhenProviderMissing)
+                    {
+                        ApplyTranslationToNode(entry, entry.ProviderText);
+                        return false;
+                    }
+
                     return true;
                 }
 
-                return entry.Subtitle.TranslatedLines == null ||
-                       entry.Subtitle.TranslatedLines.Count == 0 ||
-                       entry.Subtitle.TranslatedLines.All(string.IsNullOrWhiteSpace);
+                var translatedLinesMissing = entry.Subtitle.TranslatedLines == null ||
+                                             entry.Subtitle.TranslatedLines.Count == 0 ||
+                                             entry.Subtitle.TranslatedLines.All(string.IsNullOrWhiteSpace);
+                if (!translatedLinesMissing)
+                {
+                    return false;
+                }
+
+                if (!collectFailures && entry.CanPreserveSourceWhenProviderMissing)
+                {
+                    ApplyTranslationToNode(entry, entry.ProviderText);
+                    return false;
+                }
+
+                return true;
             })
             .Select(entry => new BatchSubtitleItem
             {
@@ -1011,6 +1039,11 @@ public class SubtitleTranslationService
                     return false;
                 }
 
+                if (entry.CanPreserveSourceWhenProviderMissing)
+                {
+                    return false;
+                }
+
                 var representativePosition = deduplication.GetRepresentativePosition(entry.Subtitle.Position);
                 if (!representativeProviderTranslations.TryGetValue(representativePosition, out var translated) ||
                     string.IsNullOrWhiteSpace(translated))
@@ -1028,6 +1061,37 @@ public class SubtitleTranslationService
                 Line = entry.ProviderText
             })
             .ToList();
+    }
+
+    private void ApplyMissingProviderFallbacks(
+        IReadOnlyList<SubtitleTranslationNode> structureEntries,
+        IReadOnlyDictionary<int, string> representativeProviderTranslations,
+        ProviderTextDeduplicationResult deduplication,
+        string fileIdentifier)
+    {
+        var fallbackCount = 0;
+        foreach (var entry in structureEntries.Where(entry =>
+                     entry.IsTranslatable &&
+                     entry.CanPreserveSourceWhenProviderMissing))
+        {
+            var representativePosition = deduplication.GetRepresentativePosition(entry.Subtitle.Position);
+            if (representativeProviderTranslations.TryGetValue(representativePosition, out var translated) &&
+                !string.IsNullOrWhiteSpace(translated))
+            {
+                continue;
+            }
+
+            ApplyTranslationToNode(entry, entry.ProviderText);
+            fallbackCount++;
+        }
+
+        if (fallbackCount > 0)
+        {
+            _logger.LogWarning(
+                "[{FileId}] Preserved {Count} provider-omitted non-dialogue subtitle node(s) locally instead of dropping cues.",
+                fileIdentifier,
+                fallbackCount);
+        }
     }
 
     private static List<BatchSubtitleItem> ExpandFailures(

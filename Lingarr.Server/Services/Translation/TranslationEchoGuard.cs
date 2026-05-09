@@ -175,7 +175,9 @@ internal static class TranslationEchoGuard
     private static bool TryNormalizeComparable(string? text, out string comparable)
     {
         comparable = string.Empty;
-        if (string.IsNullOrWhiteSpace(text) || IsBracketOnlyCue(text))
+        if (string.IsNullOrWhiteSpace(text) ||
+            IsBracketOnlyCue(text) ||
+            SubtitleSemanticClassifier.CanIgnoreUnchangedEcho(text))
         {
             return false;
         }

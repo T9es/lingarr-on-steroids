@@ -18,6 +18,8 @@ internal sealed record SubtitleTranslationNode(
     int RawSourceCharCount,
     SubtitleTranslationNodeKind Kind,
     int? RepresentativePosition,
+    SubtitleSemanticKind SemanticKind,
+    bool CanPreserveSourceWhenProviderMissing,
     string? PassThroughReason);
 
 internal sealed class SubtitleTranslationPlan
@@ -47,14 +49,17 @@ internal static class SubtitleTranslationNodePlanner
                     stripSubtitleFormatting,
                     preserveAssFormatting);
                 var rawSourceChars = string.Join(" ", rawSourceLines).Length;
-                var isTranslatable = IsMeaningfullyTranslatable(providerText);
+                var semanticClassification = SubtitleSemanticClassifier.Classify(
+                    subtitle,
+                    providerText,
+                    subtitle.SsaDialogue?.Style);
 
                 return new NodeCandidate(
                     index,
                     subtitle,
                     structure,
                     providerText,
-                    isTranslatable,
+                    semanticClassification,
                     rawSourceChars);
             })
             .ToList();
@@ -73,7 +78,7 @@ internal static class SubtitleTranslationNodePlanner
                     return candidate.ToNode(
                         SubtitleTranslationNodeKind.PassThrough,
                         representativePosition: null,
-                        passThroughReason: "non-language");
+                        passThroughReason: candidate.SemanticClassification.Reason);
                 }
 
                 var representativePosition = deduplication.GetRepresentativePosition(candidate.Subtitle.Position);
@@ -95,22 +100,16 @@ internal static class SubtitleTranslationNodePlanner
         };
     }
 
-    private static bool IsMeaningfullyTranslatable(string providerText)
-    {
-        var trimmed = providerText.Trim();
-        return !string.IsNullOrWhiteSpace(trimmed) &&
-               !SubtitleFormatterService.IsMeaningless(trimmed) &&
-               trimmed.Any(char.IsLetterOrDigit);
-    }
-
     private sealed record NodeCandidate(
         int GlobalIndex,
         SubtitleItem Subtitle,
         SubtitleTextStructure Structure,
         string ProviderText,
-        bool IsTranslatable,
+        SubtitleSemanticClassification SemanticClassification,
         int RawSourceCharCount)
     {
+        public bool IsTranslatable => SemanticClassification.ShouldRequestProvider;
+
         public SubtitleTranslationNode ToNode(
             SubtitleTranslationNodeKind kind,
             int? representativePosition,
@@ -125,6 +124,8 @@ internal static class SubtitleTranslationNodePlanner
                 RawSourceCharCount,
                 kind,
                 representativePosition,
+                SemanticClassification.Kind,
+                SemanticClassification.CanPreserveSourceWhenProviderMissing,
                 passThroughReason);
         }
     }

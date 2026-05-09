@@ -58,6 +58,47 @@ public class SubtitleQualityValidatorServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ValidateAsync_WhenOnlyPreservedLyricOrForeignLinesEcho_DoesNotRejectOutput()
+    {
+        var sourcePath = await WriteSrtAsync("movie.en.srt", [
+            "Hello, my friend.",
+            "Noho i ka lipo",
+            "We need to go home.",
+            "One fond embrace",
+            "This is very important.",
+            "Ha'aheo ka ua i na pali",
+            "Where is your sister?",
+            "Nani, Nani, Nani!",
+            "I cannot talk right now.",
+            "Please open the door."
+        ]);
+        var targetPath = await WriteSrtAsync("movie.pl.srt", [
+            "Czesc, przyjacielu.",
+            "Noho i ka lipo",
+            "Musimy isc do domu.",
+            "One fond embrace",
+            "To jest bardzo wazne.",
+            "Ha'aheo ka ua i na pali",
+            "Gdzie jest twoja siostra?",
+            "Nani, Nani, Nani!",
+            "Nie moge teraz rozmawiac.",
+            "Prosze otworz drzwi."
+        ]);
+
+        var result = await _service.ValidateAsync(new SubtitleQualityValidationRequest
+        {
+            SourcePath = sourcePath,
+            TargetPath = targetPath,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            OutputFormat = ".srt"
+        }, CancellationToken.None);
+
+        Assert.True(result.IsValid, result.Summary);
+        Assert.DoesNotContain(SubtitleQualityIssueCodes.UnchangedSourceText, result.IssueTypes);
+    }
+
+    [Fact]
     public async Task ValidateAsync_WhenPolishTargetContainsChineseCluster_RejectsOutput()
     {
         var sourcePath = await WriteSrtAsync("movie.en.srt", Enumerable.Range(1, 10)

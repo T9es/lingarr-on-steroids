@@ -58,15 +58,63 @@ public class SubtitleTranslationNodePlannerTests
 
         Assert.Equal(5, plan.Nodes.Count);
         Assert.Equal(SubtitleTranslationNodeKind.PassThrough, plan.Nodes[0].Kind);
-        Assert.Equal("non-language", plan.Nodes[0].PassThroughReason);
+        Assert.Equal("symbol-only", plan.Nodes[0].PassThroughReason);
         Assert.Equal(SubtitleTranslationNodeKind.Representative, plan.Nodes[1].Kind);
         Assert.Equal("kokoro ni kakushiteta omoi", plan.Nodes[1].ProviderText);
         Assert.Equal(SubtitleTranslationNodeKind.PassThrough, plan.Nodes[2].Kind);
-        Assert.Equal("non-language", plan.Nodes[2].PassThroughReason);
+        Assert.Equal("drawing-only", plan.Nodes[2].PassThroughReason);
         Assert.Equal(SubtitleTranslationNodeKind.Representative, plan.Nodes[3].Kind);
         Assert.Equal(SubtitleTranslationNodeKind.DuplicateMember, plan.Nodes[4].Kind);
         Assert.Equal(4, plan.Nodes[4].RepresentativePosition);
 
         Assert.Equal([2, 4], plan.RepresentativeNodes.Select(node => node.Subtitle.Position));
+    }
+
+    [Fact]
+    public void Plan_SemanticPolicy_MarksNonDialogueNodesAsProviderOptional()
+    {
+        var subtitles = new List<SubtitleItem>
+        {
+            new()
+            {
+                Position = 1,
+                Lines = ["[grumbles softly]"],
+                PlaintextLines = ["[grumbles softly]"]
+            },
+            new()
+            {
+                Position = 2,
+                Lines = ["Rent-a-Girlfriend"],
+                PlaintextLines = ["Rent-a-Girlfriend"],
+                SsaDialogue = new SsaDialogue { Style = "Title" }
+            },
+            new()
+            {
+                Position = 3,
+                Lines = ["Noho i ka lipo"],
+                PlaintextLines = ["Noho i ka lipo"]
+            },
+            new()
+            {
+                Position = 4,
+                Lines = ["We need to leave right now."],
+                PlaintextLines = ["We need to leave right now."]
+            }
+        };
+
+        var plan = SubtitleTranslationNodePlanner.Plan(
+            subtitles,
+            stripSubtitleFormatting: false,
+            preserveAssFormatting: true);
+
+        Assert.All(plan.Nodes, node => Assert.Equal(SubtitleTranslationNodeKind.Representative, node.Kind));
+        Assert.Equal(SubtitleSemanticKind.SdhSoundEffect, plan.Nodes[0].SemanticKind);
+        Assert.Equal(SubtitleSemanticKind.SignOrTitle, plan.Nodes[1].SemanticKind);
+        Assert.Equal(SubtitleSemanticKind.LyricOrChant, plan.Nodes[2].SemanticKind);
+        Assert.Equal(SubtitleSemanticKind.Dialogue, plan.Nodes[3].SemanticKind);
+        Assert.True(plan.Nodes[0].CanPreserveSourceWhenProviderMissing);
+        Assert.True(plan.Nodes[1].CanPreserveSourceWhenProviderMissing);
+        Assert.True(plan.Nodes[2].CanPreserveSourceWhenProviderMissing);
+        Assert.False(plan.Nodes[3].CanPreserveSourceWhenProviderMissing);
     }
 }

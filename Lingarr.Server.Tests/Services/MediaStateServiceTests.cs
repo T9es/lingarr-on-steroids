@@ -193,6 +193,72 @@ public class MediaStateServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ComputeStateAsync_WhenEmbeddedTargetExists_IgnoresOldFailedRequestHistory()
+    {
+        var movie = new Movie
+        {
+            Id = 10,
+            RadarrId = 10,
+            Title = "Recovered Movie",
+            Path = "/movies/recovered.mkv",
+            FileName = "recovered.mkv",
+            DateAdded = DateTime.UtcNow
+        };
+
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = 10,
+            Language = "eng",
+            IsTextBased = true,
+            CodecName = "subrip",
+            StreamIndex = 0
+        });
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = 10,
+            Language = "pol",
+            IsTextBased = true,
+            CodecName = "subrip",
+            StreamIndex = 1
+        });
+        _context.Movies.Add(movie);
+        _context.TranslationRequests.Add(new TranslationRequest
+        {
+            Id = 910,
+            WorkloadKind = TranslationWorkloadKind.Library,
+            MediaId = 10,
+            MediaType = MediaType.Movie,
+            Title = "Recovered Movie",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            Status = TranslationStatus.Failed
+        });
+        await _context.SaveChangesAsync();
+
+        _settingServiceMock
+            .SetupSequence(s => s.GetSettingAsJson<SourceLanguage>(It.IsAny<string>()))
+            .ReturnsAsync(new List<SourceLanguage> { new() { Name = "English", Code = "en" } })
+            .ReturnsAsync(new List<SourceLanguage> { new() { Name = "Polish", Code = "pl" } });
+        _settingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.SubtitleValidation.SkipWhenTargetEmbedded))
+            .ReturnsAsync("true");
+        _subtitleServiceMock
+            .Setup(s => s.GetAllSubtitles(It.IsAny<string>()))
+            .ReturnsAsync(new List<Models.FileSystem.Subtitles>());
+
+        var service = new MediaStateService(
+            _context,
+            _settingServiceMock.Object,
+            _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
+            NullLogger<MediaStateService>.Instance);
+
+        var state = await service.UpdateStateAsync(movie, MediaType.Movie);
+
+        Assert.Equal(TranslationState.Complete, state);
+    }
+
+    [Fact]
     public async Task ComputeStateAsync_ShouldReturnPending_WhenOnlySparseEmbeddedTargetExists()
     {
         var movie = new Movie

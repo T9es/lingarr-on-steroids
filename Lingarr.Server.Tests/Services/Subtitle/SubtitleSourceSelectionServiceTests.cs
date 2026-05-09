@@ -214,6 +214,52 @@ public class SubtitleSourceSelectionServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SelectPrimaryAsync_RejectsCorruptTextTrackAndUsesCleanAssFallback()
+    {
+        var corruptPath = await WriteCorruptSrtAsync("pgs-convert.en.srt", 80);
+        _subtitleServiceMock
+            .Setup(service => service.ReadSubtitles(corruptPath))
+            .ReturnsAsync(Enumerable.Range(1, 80)
+                .Select(index => new SubtitleItem
+                {
+                    Position = index,
+                    Lines = [$"kthytpselqgv{index:D3}"],
+                    PlaintextLines = [$"kthytpselqgv{index:D3}"]
+                })
+                .ToList());
+
+        var service = CreateService();
+
+        var result = await service.SelectPrimaryAsync(
+            [
+                new EmbeddedSubtitle
+                {
+                    StreamIndex = 0,
+                    Language = "eng",
+                    Title = "PGS Convert",
+                    CodecName = "subrip",
+                    IsTextBased = true,
+                    ExtractedPath = corruptPath
+                },
+                new EmbeddedSubtitle
+                {
+                    StreamIndex = 1,
+                    Language = "eng",
+                    Title = "Full Subtitles",
+                    CodecName = "ass",
+                    IsTextBased = true
+                }
+            ],
+            ["en"],
+            allowCaptionFallback: true);
+
+        Assert.NotNull(result.SelectedSubtitle);
+        Assert.Equal(1, result.SelectedSubtitle!.StreamIndex);
+        Assert.Equal(SubtitleSourceCandidateRole.RejectedCorrupt, GetRole(result, 0));
+    }
+
+
+    [Fact]
     public async Task SelectPrimaryAsync_UsesCaptionFallbackOnlyWhenAllowedAndNoCleanSourceExists()
     {
         var service = CreateService();
@@ -286,6 +332,17 @@ public class SubtitleSourceSelectionServiceTests : IDisposable
             "\n\n",
             Enumerable.Range(1, cueCount).Select(index =>
                 $"{index}\n00:00:{index % 60:00},000 --> 00:00:{index % 60:00},500"));
+        await File.WriteAllTextAsync(path, content);
+        return path;
+    }
+
+    private async Task<string> WriteCorruptSrtAsync(string fileName, int cueCount)
+    {
+        var path = Path.Combine(_tempDirectory, fileName);
+        var content = string.Join(
+            "\n\n",
+            Enumerable.Range(1, cueCount).Select(index =>
+                $"{index}\n00:00:{index % 60:00},000 --> 00:00:{index % 60:00},500\nkthytpselqgv{index:D3}"));
         await File.WriteAllTextAsync(path, content);
         return path;
     }

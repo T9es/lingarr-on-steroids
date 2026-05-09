@@ -119,6 +119,18 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
                 $"Extracted source has only {entryCount.Value} dialogue entries.");
         }
 
+        var health = await GetSourceHealthAsync(candidate, cancellationToken);
+        if (health?.Status == SubtitleSourceHealthStatus.CorruptText)
+        {
+            return new SubtitleSourceCandidateAssessment(
+                candidate,
+                SubtitleSourceCandidateRole.RejectedCorrupt,
+                matchedLanguage,
+                int.MinValue + 5,
+                entryCount,
+                health.Reason);
+        }
+
         var pathologicalAdjustment = await GetPathologicalScoreAdjustmentAsync(
             candidate,
             cancellationToken);
@@ -250,6 +262,36 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
             _logger.LogDebug(
                 ex,
                 "Failed to count extracted subtitle entries for stream {StreamIndex} at {Path}",
+                candidate.StreamIndex,
+                candidate.ExtractedPath);
+            return null;
+        }
+    }
+
+    private async Task<SubtitleSourceHealthAnalysis?> GetSourceHealthAsync(
+        EmbeddedSubtitle candidate,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(candidate.ExtractedPath) || !File.Exists(candidate.ExtractedPath))
+        {
+            return null;
+        }
+
+        try
+        {
+            var subtitles = await _subtitleService.ReadSubtitles(candidate.ExtractedPath);
+            cancellationToken.ThrowIfCancellationRequested();
+            return SubtitleSourceHealthAnalyzer.Analyze(subtitles);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(
+                ex,
+                "Failed to analyze subtitle source health for stream {StreamIndex} at {Path}. Continuing with metadata heuristics.",
                 candidate.StreamIndex,
                 candidate.ExtractedPath);
             return null;

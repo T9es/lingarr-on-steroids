@@ -142,12 +142,6 @@ public class MediaStateService : IMediaStateService
             return TranslationState.InProgress;
         }
 
-        // 3b. Check for failed translation request
-        if (await HasFailedTranslationRequestAsync(media.Id, mediaType))
-        {
-            return TranslationState.Failed;
-        }
-
         // 4. Get external subtitles
         var externalSubtitles = new List<Subtitles>();
         if (!string.IsNullOrEmpty(media.Path))
@@ -231,7 +225,12 @@ public class MediaStateService : IMediaStateService
             return TranslationState.Complete;
         }
 
-        // Has source, missing targets, no active request = Pending
+        if (await HasFailedTranslationRequestAsync(media.Id, mediaType))
+        {
+            return TranslationState.Failed;
+        }
+
+        // Has source, missing targets, no active or failed request = Pending
         return TranslationState.Pending;
     }
 

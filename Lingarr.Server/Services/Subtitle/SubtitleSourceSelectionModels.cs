@@ -9,6 +9,7 @@ public enum SubtitleSourceCandidateRole
     SupplementalForcedSigns,
     RejectedSparse,
     RejectedPathological,
+    RejectedCorrupt,
     RejectedCommentary,
     RejectedLanguage,
     RejectedNonText

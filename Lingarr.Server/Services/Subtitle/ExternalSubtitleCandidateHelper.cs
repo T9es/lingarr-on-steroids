@@ -70,6 +70,7 @@ public static class ExternalSubtitleCandidateHelper
         return IsTemporarySource(subtitle) ||
                IsLingarrExtractedArtifact(subtitle) ||
                IsSparseSubtitleFile(subtitle) ||
+               IsCorruptTextSubtitleFile(subtitle) ||
                IsPathologicalAssSource(subtitle);
     }
 
@@ -169,6 +170,35 @@ public static class ExternalSubtitleCandidateHelper
         }
     }
 
+    public static bool IsCorruptTextSubtitleFile(Subtitles subtitle)
+    {
+        if (string.IsNullOrWhiteSpace(subtitle.Path) || !File.Exists(subtitle.Path))
+        {
+            return false;
+        }
+
+        try
+        {
+            var items = File.ReadLines(subtitle.Path)
+                .Select(ExtractReadablePayload)
+                .Where(line => !string.IsNullOrWhiteSpace(line))
+                .Select((line, index) => new SubtitleItem
+                {
+                    Position = index + 1,
+                    Lines = [line],
+                    PlaintextLines = [line]
+                })
+                .Take(5_000)
+                .ToList();
+            return items.Count > 0 &&
+                   SubtitleSourceHealthAnalyzer.Analyze(items).Status == SubtitleSourceHealthStatus.CorruptText;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private static int ScorePrimarySourceCandidate(Subtitles subtitle)
     {
         var score = 0;
@@ -197,6 +227,43 @@ public static class ExternalSubtitleCandidateHelper
         }
 
         return score;
+    }
+
+    private static string ExtractReadablePayload(string line)
+    {
+        var trimmed = line.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed) ||
+            trimmed.All(char.IsDigit) ||
+            trimmed.Contains("-->", StringComparison.Ordinal) ||
+            trimmed.StartsWith("[", StringComparison.Ordinal) ||
+            trimmed.StartsWith("Format:", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("Style:", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("Comment:", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.Empty;
+        }
+
+        if (!trimmed.StartsWith("Dialogue:", StringComparison.OrdinalIgnoreCase))
+        {
+            return trimmed;
+        }
+
+        var commaCount = 0;
+        for (var index = 0; index < trimmed.Length; index++)
+        {
+            if (trimmed[index] != ',')
+            {
+                continue;
+            }
+
+            commaCount++;
+            if (commaCount == 9 && index + 1 < trimmed.Length)
+            {
+                return trimmed[(index + 1)..];
+            }
+        }
+
+        return string.Empty;
     }
 
     private static int? CountEntriesOrNull(Subtitles subtitle)
