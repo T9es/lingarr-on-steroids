@@ -68,6 +68,7 @@ public class StartupService : IHostedService
             // Request/Retry
             { SettingKeys.Translation.RequestTimeout, "15" },
             { SettingKeys.Translation.MaxRetries, "20" },
+            { SettingKeys.Translation.MaxRequestRetries, "10" },
             { SettingKeys.Translation.RetryDelay, "5" },
             { SettingKeys.Translation.RetryDelayMultiplier, "2" },
 

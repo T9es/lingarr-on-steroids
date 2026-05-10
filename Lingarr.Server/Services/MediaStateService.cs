@@ -264,7 +264,7 @@ public class MediaStateService : IMediaStateService
             isAutoMode,
             targetLanguages);
 
-        if (missingTargets.Count == 0)
+if (missingTargets.Count == 0)
         {
             var staleTargets = await _sourceSubtitleSnapshotService.GetStaleTargetLanguagesAsync(
                 media.Id,
@@ -284,6 +284,13 @@ public class MediaStateService : IMediaStateService
             }
 
             return TranslationState.Complete;
+        }
+
+        // Re-check source availability: if the source was from stale DB records
+        // that have since been cleaned up, AwaitingSource takes precedence over Failed
+        if (!hasExternalSource && !hasEmbeddedSource)
+        {
+            return TranslationState.AwaitingSource;
         }
 
         if (await HasFailedTranslationRequestAsync(media.Id, mediaType))

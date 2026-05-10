@@ -507,8 +507,14 @@ public class TranslationRequestService : ITranslationRequestService
         return await RetryFailedRequests(ignoreBackoff: false);
     }
 
-    private async Task<RetryFailedRequestsResponse> RetryFailedRequests(bool ignoreBackoff)
+private async Task<RetryFailedRequestsResponse> RetryFailedRequests(bool ignoreBackoff)
     {
+        var maxRequestRetries = int.TryParse(
+            await _settingService.GetSetting(SettingKeys.Translation.MaxRequestRetries),
+            out var parsedRetries)
+            ? parsedRetries
+            : 10;
+
         var now = DateTime.UtcNow;
         var failedQuery = _dbContext.TranslationRequests
             .Where(tr => tr.Status == TranslationStatus.Failed);
@@ -535,8 +541,9 @@ public class TranslationRequestService : ITranslationRequestService
         }
 
         var activeDuplicateKeys = await GetActiveDuplicateKeysAsync();
-        var retriedCount = 0;
+var retriedCount = 0;
         var blockedByActiveRequest = 0;
+        var permanentlyResolved = 0;
         var lastProcessedId = 0;
         var retriedBatch = new List<TranslationRequest>(RetryFailedRequestsBatchSize);
 
@@ -565,9 +572,22 @@ public class TranslationRequestService : ITranslationRequestService
                     continue;
                 }
 
-                if (activeDuplicateKeys.Contains(duplicateKey))
+if (activeDuplicateKeys.Contains(duplicateKey))
                 {
                     blockedByActiveRequest++;
+                    continue;
+                }
+
+                if (maxRequestRetries > 0 && failedRequest.RetryCount >= maxRequestRetries)
+                {
+                    _logger.LogInformation(
+                        "Permanently resolving failed request {RequestId} for {Title}: exceeded max request retries ({RetryCount}/{Max})",
+                        failedRequest.Id, failedRequest.Title, failedRequest.RetryCount, maxRequestRetries);
+                    var resolvedRequest = await ResolvePermanentlyFailedRequestAsync(failedRequest);
+                    if (resolvedRequest != null)
+                    {
+                        permanentlyResolved++;
+                    }
                     continue;
                 }
 
@@ -607,25 +627,50 @@ public class TranslationRequestService : ITranslationRequestService
         var remainingFailed = await _dbContext.TranslationRequests.CountAsync(
             tr => tr.Status == TranslationStatus.Failed);
 
-        var response = new RetryFailedRequestsResponse
+var response = new RetryFailedRequestsResponse
         {
             TotalFailed = totalFailed,
             Retried = retriedCount,
             BlockedByActiveRequest = blockedByActiveRequest,
             RemainingFailed = remainingFailed,
             Message =
-                $"Retried {retriedCount} failed request(s). Blocked {blockedByActiveRequest} due to active duplicates."
+                $"Retried {retriedCount} failed request(s). Blocked {blockedByActiveRequest} due to active duplicates. Permanently resolved {permanentlyResolved} exceeded max retries."
         };
 
         _logger.LogInformation(
-            "Failed retry completed. IgnoreBackoff={IgnoreBackoff}, TotalFailed={TotalFailed}, Retried={Retried}, Blocked={BlockedByActiveRequest}, RemainingFailed={RemainingFailed}",
+            "Failed retry completed. IgnoreBackoff={IgnoreBackoff}, TotalFailed={TotalFailed}, Retried={Retried}, Blocked={BlockedByActiveRequest}, PermanentlyResolved={PermanentlyResolved}, RemainingFailed={RemainingFailed}",
             ignoreBackoff,
             response.TotalFailed,
             response.Retried,
             response.BlockedByActiveRequest,
+            permanentlyResolved,
             response.RemainingFailed);
 
         return response;
+}
+
+    private async Task<TranslationRequest?> ResolvePermanentlyFailedRequestAsync(TranslationRequest failedRequest)
+    {
+        try
+        {
+            _dbContext.TranslationRequests.Remove(failedRequest);
+            await _dbContext.SaveChangesAsync();
+
+            await UpdateMediaState(failedRequest);
+
+            _logger.LogInformation(
+                "Permanently resolved failed request {RequestId} for {Title} after {RetryCount} retries",
+                failedRequest.Id, failedRequest.Title, failedRequest.RetryCount);
+
+            return failedRequest;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Failed to resolve permanently failed request {RequestId}",
+                failedRequest.Id);
+            return null;
+        }
     }
 
     /// <inheritdoc />

@@ -157,6 +157,12 @@ public static class SettingKeys
         public const string RepairMaxRetries = "repair_max_retries";
         
         /// <summary>
+        /// Maximum number of request-level retries before a failed translation request
+        /// is permanently abandoned. Default: 10. Set to 0 for unlimited retries.
+        /// </summary>
+        public const string MaxRequestRetries = "max_request_retries";
+        
+        /// <summary>
         /// Integer version that increments when source/target languages or ignore_captions change.
         /// Media with StateSettingsVersion != this value need re-analysis.
         /// </summary>
