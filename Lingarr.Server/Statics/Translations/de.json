@@ -489,8 +489,8 @@
       "languageLoadErrorDescription": "Unbekannter Fehler beim Abrufen der Sprachen, stellen Sie sicher, dass der API-Schlüssel korrekt festgelegt ist.",
       "sourceLanguageModeTitle": "Quellsprachenmodus",
       "sourceLanguageModeManual": "Manuell",
-      "sourceLanguageModeAuto": "Auto (Beste Verfügbare)",
-      "sourceLanguageModeAutoDescription": "Wenn keine konfigurierte Quellsprache Untertitel hat, wählt automatisch die beste verfügbare Sprache mittels Übersetzungsqualitätsbewertung aus.",
+      "sourceLanguageModeAuto": "Automatic",
+      "sourceLanguageModeAutoDescription": "When enabled, Lingarr automatically picks the best available source language for each file without any user configuration needed.",
       "sourceLanguageModeAutoBadge": "Auto-Modus aktiv"
     },
     "translation": {

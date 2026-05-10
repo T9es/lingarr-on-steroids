@@ -489,8 +489,8 @@
       "languageLoadErrorDescription": "Unknown error occurred while retrieving languages, make sure the api key is set correctly.",
       "sourceLanguageModeTitle": "Source language mode",
       "sourceLanguageModeManual": "Manual",
-      "sourceLanguageModeAuto": "Auto (Best Available)",
-      "sourceLanguageModeAutoDescription": "When subtitles aren't available in your selected source languages, the system automatically uses the best alternative instead.",
+      "sourceLanguageModeAuto": "Automatic",
+      "sourceLanguageModeAutoDescription": "When enabled, Lingarr automatically picks the best available source language for each file without any user configuration needed.",
       "sourceLanguageModeAutoBadge": "Auto Mode Active"
     },
     "translation": {

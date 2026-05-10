@@ -51,31 +51,23 @@
         <template v-else>
             <!-- Source Language Mode Toggle -->
             <div class="border-accent bg-secondary mt-4 rounded-md border p-4">
-                <div class="flex items-center justify-between">
-                    <div class="flex flex-col">
-                        <span class="font-medium">
-                            {{ translate('settings.translate.sourceLanguageModeTitle') }}
-                        </span>
-                        <span class="text-secondary-content text-sm">
-                            {{ translate('settings.translate.sourceLanguageModeAutoDescription') }}
-                        </span>
-                    </div>
-                    <div class="flex items-center space-x-3">
-                        <span class="text-sm">
-                            {{ translate('settings.translate.sourceLanguageModeManual') }}
-                        </span>
-                        <button
-                            class="relative inline-flex h-7 w-12 cursor-pointer items-center rounded-full transition-colors flex-shrink-0"
-                            :class="isAutoMode ? 'bg-accent' : 'bg-tertiary'"
-                            role="switch"
-                            :aria-checked="isAutoMode"
-                            @click="toggleAutoMode">
-                            <span
-                                class="inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform"
-                                :class="isAutoMode ? 'translate-x-6' : 'translate-x-1'" />
-                        </button>
-                    </div>
+                <div class="mb-3 flex flex-col space-x-2">
+                    <span class="font-semibold">
+                        {{ translate('settings.translate.sourceLanguageModeTitle') }}
+                    </span>
+                    <span class="text-secondary-content text-sm">
+                        {{ translate('settings.translate.sourceLanguageModeAutoDescription') }}
+                    </span>
                 </div>
+                <ToggleButton v-model="autoModeSetting">
+                    <span class="text-primary-content text-sm font-medium">
+                        {{
+                            isAutoMode
+                                ? translate('settings.translate.sourceLanguageModeAuto')
+                                : translate('settings.translate.sourceLanguageModeManual')
+                        }}
+                    </span>
+                </ToggleButton>
                 <div
                     v-if="isAutoMode"
                     class="bg-accent/10 text-accent mt-3 inline-flex items-center rounded-md px-3 py-1 text-xs font-medium">
@@ -111,6 +103,7 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import LanguageSelect from '@/components/features/settings/LanguageSelect.vue'
+import ToggleButton from '@/components/common/ToggleButton.vue'
 import { ILanguage, SETTINGS } from '@/ts'
 import { useTranslateStore } from '@/store/translate'
 import { useSettingStore } from '@/store/setting'
@@ -121,21 +114,15 @@ const translateStore = useTranslateStore()
 const languages = computed(() => translateStore.getLanguages)
 const emit = defineEmits(['save'])
 
-const isAutoMode = computed({
-    get: (): boolean => {
-        const mode = settingsStore.getSetting(SETTINGS.SOURCE_LANGUAGE_MODE) as string
-        return mode === 'auto'
-    },
-    set: (newValue: boolean): void => {
-        settingsStore.updateSetting(
-            SETTINGS.SOURCE_LANGUAGE_MODE,
-            newValue ? 'auto' : 'manual',
-            true,
-            true
-        )
+const autoModeSetting = computed({
+    get: (): string => settingsStore.getSetting(SETTINGS.SOURCE_LANGUAGE_MODE) as string ?? 'manual',
+    set: (newValue: string): void => {
+        settingsStore.updateSetting(SETTINGS.SOURCE_LANGUAGE_MODE, newValue, true, true)
         emit('save')
     }
 })
+
+const isAutoMode = computed((): boolean => autoModeSetting.value === 'auto')
 
 const sourceLanguages = computed({
     get: (): ILanguage[] => settingsStore.getSetting(SETTINGS.SOURCE_LANGUAGES) as ILanguage[],
@@ -174,10 +161,6 @@ const selectedTargetLanguages = computed(() => {
         }
     }) as ILanguage[]
 })
-
-function toggleAutoMode() {
-    isAutoMode.value = !isAutoMode.value
-}
 
 function retryLoadLanguages() {
     translateStore.setLanguages()

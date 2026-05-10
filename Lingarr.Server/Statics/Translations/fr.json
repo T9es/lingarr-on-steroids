@@ -489,8 +489,8 @@
       "languageLoadErrorDescription": "Une erreur inconnue s'est produite lors de la récupération des langues, assurez-vous que la clé API est correctement définie.",
       "sourceLanguageModeTitle": "Mode de langue source",
       "sourceLanguageModeManual": "Manuel",
-      "sourceLanguageModeAuto": "Auto (Meilleure Disponible)",
-      "sourceLanguageModeAutoDescription": "Lorsqu'aucune langue source configurée n'a de sous-titres, sélectionne automatiquement la meilleure langue disponible en utilisant le score de qualité de traduction.",
+      "sourceLanguageModeAuto": "Automatic",
+      "sourceLanguageModeAutoDescription": "When enabled, Lingarr automatically picks the best available source language for each file without any user configuration needed.",
       "sourceLanguageModeAutoBadge": "Mode auto actif"
     },
     "translation": {

@@ -489,8 +489,8 @@
       "languageLoadErrorDescription": "Onbekende fout opgetreden bij het ophalen van talen, zorg ervoor dat de API-sleutel correct is ingesteld.",
       "sourceLanguageModeTitle": "Bron taalmodus",
       "sourceLanguageModeManual": "Handmatig",
-      "sourceLanguageModeAuto": "Automatisch (Beste Beschikbare)",
-      "sourceLanguageModeAutoDescription": "Wanneer geen geconfigureerde brontaal ondertitels heeft, selecteert automatisch de beste beschikbare taal met behulp van vertaalkwaliteitsscore.",
+      "sourceLanguageModeAuto": "Automatic",
+      "sourceLanguageModeAutoDescription": "When enabled, Lingarr automatically picks the best available source language for each file without any user configuration needed.",
       "sourceLanguageModeAutoBadge": "Automatische modus actief"
     },
     "translation": {
