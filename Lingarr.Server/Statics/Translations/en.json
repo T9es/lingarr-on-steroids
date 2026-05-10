@@ -490,7 +490,7 @@
       "sourceLanguageModeTitle": "Source language mode",
       "sourceLanguageModeManual": "Manual",
       "sourceLanguageModeAuto": "Auto (Best Available)",
-      "sourceLanguageModeAutoDescription": "When no configured source language has subtitles, automatically selects the best available language using translation quality scoring.",
+      "sourceLanguageModeAutoDescription": "When subtitles aren't available in your selected source languages, the system automatically uses the best alternative instead.",
       "sourceLanguageModeAutoBadge": "Auto Mode Active"
     },
     "translation": {

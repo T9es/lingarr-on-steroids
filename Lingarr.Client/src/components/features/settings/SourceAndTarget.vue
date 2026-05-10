@@ -61,26 +61,19 @@
                         </span>
                     </div>
                     <div class="flex items-center space-x-3">
-                        <span
-                            class="text-sm"
-                            :class="isAutoMode ? 'text-secondary-content' : 'font-medium'">
+                        <span class="text-sm">
                             {{ translate('settings.translate.sourceLanguageModeManual') }}
                         </span>
                         <button
-                            class="relative inline-flex h-6 w-11 cursor-pointer items-center rounded-full transition-colors"
+                            class="relative inline-flex h-7 w-12 cursor-pointer items-center rounded-full transition-colors flex-shrink-0"
                             :class="isAutoMode ? 'bg-accent' : 'bg-tertiary'"
                             role="switch"
                             :aria-checked="isAutoMode"
                             @click="toggleAutoMode">
                             <span
-                                class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
+                                class="inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform"
                                 :class="isAutoMode ? 'translate-x-6' : 'translate-x-1'" />
                         </button>
-                        <span
-                            class="text-sm"
-                            :class="isAutoMode ? 'font-medium' : 'text-secondary-content'">
-                            {{ translate('settings.translate.sourceLanguageModeAuto') }}
-                        </span>
                     </div>
                 </div>
                 <div
