@@ -44,9 +44,10 @@ public class TranslationJob
     private readonly IUploadWorkspaceService _uploadWorkspaceService;
     private readonly ISubtitleSourceSelectionService _subtitleSourceSelectionService;
     private readonly ITranslationCheckpointService? _translationCheckpointService;
-    private readonly ISubtitleQualityValidatorService _subtitleQualityValidatorService;
+private readonly ISubtitleQualityValidatorService _subtitleQualityValidatorService;
     private readonly ITranslationDiagnosticsService _translationDiagnosticsService;
     private readonly ITranslationPromptContextAccessor _translationPromptContextAccessor;
+    private readonly IMkvEmbeddingService _mkvEmbeddingService;
 
     public TranslationJob(
         ILogger<TranslationJob> logger,
@@ -71,9 +72,10 @@ public class TranslationJob
         IUploadWorkspaceService uploadWorkspaceService,
         ITranslationCheckpointService? translationCheckpointService = null,
         ISubtitleSourceSelectionService? subtitleSourceSelectionService = null,
-        ISubtitleQualityValidatorService? subtitleQualityValidatorService = null,
+ISubtitleQualityValidatorService? subtitleQualityValidatorService = null,
         ITranslationDiagnosticsService? translationDiagnosticsService = null,
-        ITranslationPromptContextAccessor? translationPromptContextAccessor = null)
+        ITranslationPromptContextAccessor? translationPromptContextAccessor = null,
+        IMkvEmbeddingService? mkvEmbeddingService = null)
     {
         _logger = logger;
         _settings = settings;
@@ -108,8 +110,10 @@ public class TranslationJob
             new TranslationDiagnosticsService(
                 dbContext,
                 NullLogger<TranslationDiagnosticsService>.Instance);
-        _translationPromptContextAccessor = translationPromptContextAccessor ??
+_translationPromptContextAccessor = translationPromptContextAccessor ??
             new Services.Translation.TranslationPromptContextAccessor();
+        _mkvEmbeddingService = mkvEmbeddingService ?? new MkvEmbeddingService(
+            NullLogger<MkvEmbeddingService>.Instance);
     }
 
     /// <summary>
@@ -207,8 +211,9 @@ public class TranslationJob
                 SettingKeys.Translation.CleanSourceAssDrawings,
                 SettingKeys.Translation.BatchContextEnabled,
                 SettingKeys.Translation.BatchContextBefore,
-                SettingKeys.Translation.BatchContextAfter,
+SettingKeys.Translation.BatchContextAfter,
                 SettingKeys.Translation.TranslateSupplementalSubtitles,
+                SettingKeys.Translation.EmbedInContainer,
                 SettingKeys.SubtitleExtraction.OcrTranslationPromptEnabled
             ]);
             var serviceType = settings[SettingKeys.Translation.ServiceType];
@@ -715,6 +720,9 @@ public class TranslationJob
                 ? settings[SettingKeys.Translation.SubtitleTagShort]
                 : null;
 
+var embedInContainer = settings.TryGetValue(SettingKeys.Translation.EmbedInContainer, out var embedVal)
+                && string.Equals(embedVal, "true", StringComparison.OrdinalIgnoreCase);
+
             var writtenOutput = await WriteSubtitles(
                 request,
                 translatedSubtitles,
@@ -723,6 +731,8 @@ public class TranslationJob
                 subtitleTagShort ?? "",
                 removeLanguageTag,
                 writesPreservedAssOutput,
+                settings,
+                embedInContainer,
                 effectiveCancellationToken);
             request.TranslatedSubtitle = writtenOutput.PrimaryPath;
             request.GeneratedOutputFormats = writtenOutput.GeneratedFormats;
@@ -934,13 +944,15 @@ private async Task<List<SubtitleItem>> ReadSubtitlesOrEmptyForFallbackAsync(
         }
     }
 
-    private async Task<WrittenSubtitleOutput> WriteSubtitles(TranslationRequest translationRequest,
+private async Task<WrittenSubtitleOutput> WriteSubtitles(TranslationRequest translationRequest,
         List<SubtitleItem> translatedSubtitles,
         bool stripSubtitleFormatting,
         string subtitleTag,
         string subtitleTagShort,
         bool removeLanguageTag,
         bool writesPreservedAssOutput,
+        IReadOnlyDictionary<string, string> settings,
+        bool embedInContainer,
         CancellationToken cancellationToken)
     {
         try
@@ -982,69 +994,124 @@ private async Task<List<SubtitleItem>> ReadSubtitlesOrEmptyForFallbackAsync(
                         SubtitleLanguageHelper.GetSupplementalOutputCaption(
                             translationRequest.SourceSubtitleType));
 
-                Exception? lastException = null;
+Exception? lastException = null;
                 bool success = false;
+                bool allPathsTooLong = true;
 
-                foreach (var path in paths)
+                if (embedInContainer)
                 {
-                    try
+                    var anyPathExceedsLimit = paths.Any(p => _mkvEmbeddingService.WouldExceedPathLimit(p));
+                    if (anyPathExceedsLimit)
                     {
-                        var stagingPath = _translationDiagnosticsService.CreateQuarantinePath(
-                            translationRequest.Id,
-                            path);
-
-                        EnsureParentDirectory(stagingPath);
-                        await _subtitleService.WriteSubtitles(
-                            stagingPath,
+                        var embeddedPath = await TryEmbedInMkvContainerAsync(
+                            translationRequest,
                             renderSubtitles,
-                            outputStripFormatting);
-
-                        var validationResult = await _subtitleQualityValidatorService.ValidateAsync(
-                            new SubtitleQualityValidationRequest
-                            {
-                                SourcePath = translationRequest.SubtitleToTranslate!,
-                                TargetPath = stagingPath,
-                                SourceLanguage = translationRequest.SourceLanguage,
-                                TargetLanguage = translationRequest.TargetLanguage,
-                                OutputFormat = outputFormat
-                            },
+                            outputFormat,
+                            outputStripFormatting,
+                            targetLanguage,
                             cancellationToken);
 
-                        if (!validationResult.IsValid)
+                        if (embeddedPath != null)
                         {
-                            await RecordOutputValidationFailureAsync(
-                                translationRequest,
-                                path,
-                                stagingPath,
+                            success = true;
+                            allPathsTooLong = false;
+                            writtenOutputs.Add((outputFormat, embeddedPath));
+                        }
+                        else
+                        {
+                            lastException = new PathTooLongException(
+                                $"All output file paths exceed filesystem limits for format {outputFormat}, " +
+                                "and MKV embedding was not possible.");
+                            _logger.LogWarning(
+                                "Path exceeds filesystem limit and MKV embedding failed for format {Format} on request {RequestId}. Falling back to path write attempts.",
                                 outputFormat,
-                                validationResult,
+                                translationRequest.Id);
+                        }
+                    }
+                }
+
+                if (!success)
+                {
+                    foreach (var path in paths)
+                    {
+                        try
+                        {
+                            var stagingPath = _translationDiagnosticsService.CreateQuarantinePath(
+                                translationRequest.Id,
+                                path);
+
+                            EnsureParentDirectory(stagingPath);
+                            await _subtitleService.WriteSubtitles(
+                                stagingPath,
+                                renderSubtitles,
+                                outputStripFormatting);
+
+                            var validationResult = await _subtitleQualityValidatorService.ValidateAsync(
+                                new SubtitleQualityValidationRequest
+                                {
+                                    SourcePath = translationRequest.SubtitleToTranslate!,
+                                    TargetPath = stagingPath,
+                                    SourceLanguage = translationRequest.SourceLanguage,
+                                    TargetLanguage = translationRequest.TargetLanguage,
+                                    OutputFormat = outputFormat
+                                },
                                 cancellationToken);
 
-                            throw new TranslationException(
-                                $"Generated subtitle failed quality validation before publishing: {validationResult.Summary}");
+                            if (!validationResult.IsValid)
+                            {
+                                await RecordOutputValidationFailureAsync(
+                                    translationRequest,
+                                    path,
+                                    stagingPath,
+                                    outputFormat,
+                                    validationResult,
+                                    cancellationToken);
+
+                                throw new TranslationException(
+                                    $"Generated subtitle failed quality validation before publishing: {validationResult.Summary}");
+                            }
+
+                            EnsureParentDirectory(path);
+                            File.Copy(stagingPath, path, true);
+                            File.Delete(stagingPath);
+
+                            success = true;
+                            allPathsTooLong = false;
+                            writtenOutputs.Add((outputFormat, path));
+                            break;
                         }
+                        catch (TranslationException)
+                        {
+                            throw;
+                        }
+                        catch (PathTooLongException ex)
+                        {
+                            _logger.LogWarning("Path too long: {Path}. Trying fallback...", path);
+                            lastException = ex;
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to write subtitle to {Path}. Trying fallback...", path);
+                            lastException = ex;
+                            allPathsTooLong = false;
+                        }
+                    }
+                }
 
-                        EnsureParentDirectory(path);
-                        File.Copy(stagingPath, path, true);
-                        File.Delete(stagingPath);
+                if (!success && embedInContainer && allPathsTooLong)
+                {
+                    var embeddedPath = await TryEmbedInMkvContainerAsync(
+                        translationRequest,
+                        renderSubtitles,
+                        outputFormat,
+                        outputStripFormatting,
+                        targetLanguage,
+                        cancellationToken);
 
+                    if (embeddedPath != null)
+                    {
                         success = true;
-                        writtenOutputs.Add((outputFormat, path));
-                        break;
-                    }
-                    catch (TranslationException)
-                    {
-                        throw;
-                    }
-                    catch (PathTooLongException ex)
-                    {
-                        _logger.LogWarning("Path too long: {Path}. Trying fallback...", path);
-                        lastException = ex;
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Failed to write subtitle to {Path}. Trying fallback...", path);
-                        lastException = ex;
+                        writtenOutputs.Add((outputFormat, embeddedPath));
                     }
                 }
 
@@ -1079,10 +1146,113 @@ private async Task<List<SubtitleItem>> ReadSubtitlesOrEmptyForFallbackAsync(
                 generatedFormats,
                 writtenOutputs.Select(output => output.Path).ToList());
         }
-        catch (Exception e)
+catch (Exception e)
         {
             _logger.LogError(e, e.Message);
             throw;
+        }
+    }
+
+    private async Task<string?> TryEmbedInMkvContainerAsync(
+        TranslationRequest translationRequest,
+        List<SubtitleItem> renderSubtitles,
+        string outputFormat,
+        bool outputStripFormatting,
+        string targetLanguage,
+        CancellationToken cancellationToken)
+    {
+        var basePath = await ResolveOutputBasePathAsync(translationRequest, cancellationToken);
+        if (string.IsNullOrEmpty(basePath))
+        {
+            _logger.LogWarning("Cannot embed subtitle in MKV: no base media path resolved for request {RequestId}", translationRequest.Id);
+            return null;
+        }
+
+        var extension = Path.GetExtension(basePath);
+        if (!string.Equals(extension, ".mkv", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogInformation(
+                "Cannot embed subtitle in container: media file is not MKV ({Extension}). Request {RequestId}",
+                extension,
+                translationRequest.Id);
+            return null;
+        }
+
+        if (!File.Exists(basePath))
+        {
+            _logger.LogWarning(
+                "Cannot embed subtitle in MKV: media file not found at {Path}. Request {RequestId}",
+                basePath,
+                translationRequest.Id);
+            return null;
+        }
+
+        var normalizedLanguage = SubtitleLanguageHelper.NormalizeLanguageCode(targetLanguage);
+        if (string.IsNullOrEmpty(normalizedLanguage))
+        {
+            normalizedLanguage = targetLanguage;
+        }
+
+        string? tempSubtitlePath = null;
+        try
+        {
+            var subtitleExtension = SubtitleOutputModeHelper.NormalizeFormat(outputFormat);
+            if (string.IsNullOrEmpty(subtitleExtension))
+            {
+                subtitleExtension = ".srt";
+            }
+
+            tempSubtitlePath = Path.Combine(
+                Path.GetTempPath(),
+                $"lingarr_embed_{translationRequest.Id}_{Guid.NewGuid():N}{subtitleExtension}");
+
+            EnsureParentDirectory(tempSubtitlePath);
+            await _subtitleService.WriteSubtitles(tempSubtitlePath, renderSubtitles, outputStripFormatting);
+
+            var trackName = $"{normalizedLanguage} (Lingarr)";
+            var result = await _mkvEmbeddingService.EmbedSubtitleAsync(
+                basePath,
+                tempSubtitlePath,
+                normalizedLanguage,
+                trackName,
+                cancellationToken);
+
+            if (!result.Success)
+            {
+                _logger.LogWarning(
+                    "MKV embedding failed for request {RequestId}: {Error}",
+                    translationRequest.Id,
+                    result.Error);
+                return null;
+            }
+
+            _logger.LogInformation(
+                "Successfully embedded subtitle in MKV container for request {RequestId}. Language: {Language}, Track: {TrackName}",
+                translationRequest.Id,
+                normalizedLanguage,
+                trackName);
+
+            var embeddedMarker = $"mkv-embedded:stream0";
+            return $"{embeddedMarker}|{basePath}";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to embed subtitle in MKV container for request {RequestId}", translationRequest.Id);
+            return null;
+        }
+        finally
+        {
+            if (tempSubtitlePath != null && File.Exists(tempSubtitlePath))
+            {
+                try
+                {
+                    File.Delete(tempSubtitlePath);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to delete temporary subtitle file: {Path}", tempSubtitlePath);
+                }
+            }
         }
     }
 

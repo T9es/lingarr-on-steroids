@@ -959,13 +959,15 @@ public class SubtitleOutputBackfillService : ISubtitleOutputBackfillService
             }
         }
 
-        if (!string.IsNullOrWhiteSpace(request.TranslatedSubtitle))
+        if (!string.IsNullOrWhiteSpace(request.TranslatedSubtitle)
+            && !request.TranslatedSubtitle.StartsWith("mkv-embedded:", StringComparison.OrdinalIgnoreCase))
         {
             paths.Add(request.TranslatedSubtitle);
         }
 
         return paths
-            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Where(path => !string.IsNullOrWhiteSpace(path)
+                && !path.StartsWith("mkv-embedded:", StringComparison.OrdinalIgnoreCase))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
     }

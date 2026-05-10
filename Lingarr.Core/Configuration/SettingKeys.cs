@@ -182,6 +182,12 @@ public static class SettingKeys
         /// Number of context lines to include after the last item in each batch
         /// </summary>
         public const string BatchContextAfter = "batch_context_after";
+
+        /// <summary>
+        /// When enabled, embeds translated subtitles into MKV containers when
+        /// the output file path would exceed filesystem limits. Default: true
+        /// </summary>
+        public const string EmbedInContainer = "embed_in_container";
     }
 
     public static class Automation

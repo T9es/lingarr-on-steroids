@@ -86,6 +86,9 @@ public class StartupService : IHostedService
             { SettingKeys.Translation.BatchContextBefore, "3" },
             { SettingKeys.Translation.BatchContextAfter, "3" },
 
+            // MKV Container Embedding
+            { SettingKeys.Translation.EmbedInContainer, "true" },
+
             // Provider specific defaults
             { SettingKeys.Translation.Chutes.RequestBuffer, "50" },
             { SettingKeys.Translation.NanoGpt.SubscriptionModelsOnly, "true" },
