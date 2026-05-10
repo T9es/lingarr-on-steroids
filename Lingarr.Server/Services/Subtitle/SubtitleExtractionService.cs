@@ -480,6 +480,17 @@ public class SubtitleExtractionService : ISubtitleExtractionService
 
         if (embeddedSubs.Count == 0)
         {
+            var existingCount = await _dbContext.EmbeddedSubtitles
+                .Where(e => e.EpisodeId == episodeId && e.MovieId == movieId)
+                .ExecuteDeleteAsync();
+
+            if (existingCount > 0)
+            {
+                _logger.LogInformation(
+                    "Removed {Count} stale embedded subtitle records for media with no subtitle streams (EpisodeId={EpisodeId}, MovieId={MovieId})",
+                    existingCount, episodeId, movieId);
+            }
+
             return;
         }
 

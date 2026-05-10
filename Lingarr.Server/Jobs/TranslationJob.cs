@@ -893,15 +893,32 @@ public class TranslationJob
         }
     }
 
-    private async Task<List<SubtitleItem>> ReadSubtitlesOrEmptyForFallbackAsync(
+private async Task<List<SubtitleItem>> ReadSubtitlesOrEmptyForFallbackAsync(
         TranslationRequest request,
         List<int> excludedStreamIndices)
     {
         try
         {
-            return await _subtitleService.ReadSubtitles(request.SubtitleToTranslate!);
+            var subtitles = await _subtitleService.ReadSubtitles(request.SubtitleToTranslate!);
+
+            if (subtitles.Count == 0)
+            {
+                if (request.SourceSnapshotStreamIndex.HasValue &&
+                    !excludedStreamIndices.Contains(request.SourceSnapshotStreamIndex.Value))
+                {
+                    excludedStreamIndices.Add(request.SourceSnapshotStreamIndex.Value);
+                }
+
+                _logger.LogWarning(
+                    "Selected subtitle source {Path} contained no readable dialogue entries. Attempting embedded fallback if available.",
+                    request.SubtitleToTranslate);
+            }
+
+            return subtitles;
         }
-        catch (ArgumentException ex) when (IsEmptySsaSubtitleParseFailure(ex))
+        catch (ArgumentException ex) when (ex.Message.Contains(
+            "No valid subtitles found in SSA format",
+            StringComparison.OrdinalIgnoreCase))
         {
             if (request.SourceSnapshotStreamIndex.HasValue &&
                 !excludedStreamIndices.Contains(request.SourceSnapshotStreamIndex.Value))
@@ -915,13 +932,6 @@ public class TranslationJob
                 request.SubtitleToTranslate);
             return [];
         }
-    }
-
-    private static bool IsEmptySsaSubtitleParseFailure(ArgumentException exception)
-    {
-        return exception.Message.Contains(
-            "No valid subtitles found in SSA format",
-            StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task<WrittenSubtitleOutput> WriteSubtitles(TranslationRequest translationRequest,

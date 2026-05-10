@@ -110,11 +110,6 @@ public class SsaParser : ISubtitleParser
             }
         }
 
-        if (!items.Any())
-        {
-            throw new ArgumentException("No valid subtitles found in SSA format");
-        }
-
         return items;
     }
 
