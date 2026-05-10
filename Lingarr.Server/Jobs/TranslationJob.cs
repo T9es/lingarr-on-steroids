@@ -1881,6 +1881,7 @@ public class TranslationJob
             {
                 var episode = await _dbContext.Episodes
                     .AsNoTracking()
+                    .IgnoreAutoIncludes()
                     .Include(e => e.EmbeddedSubtitles)
                     .FirstOrDefaultAsync(e => e.Id == request.MediaId.Value);
                 embeddedSubtitles = episode?.EmbeddedSubtitles?.ToList();
