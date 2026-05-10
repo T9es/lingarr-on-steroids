@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Lingarr.Server.Interfaces.Services;
+using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models;
 using Lingarr.Server.Models.Batch;
 
@@ -14,11 +15,13 @@ public abstract class BaseLanguageService : BaseTranslationService
     protected string? _contextPromptEnabled;
     protected Dictionary<string, string> _replacements;
     protected List<KeyValuePair<string, object>>? _customParameters;
+    protected readonly ITranslationPromptAugmenter? _translationPromptAugmenter;
 
     protected BaseLanguageService(
         ISettingService settings,
         ILogger logger,
-        string languageFilePath) : base(settings, logger)
+        string languageFilePath,
+        ITranslationPromptAugmenter? translationPromptAugmenter = null) : base(settings, logger)
     {
         // Resolve absolute Docker paths (/app/...) relative to application base directory if they don't exist
         // This ensures local development works when hardcoded absolute Docker paths are passed.
@@ -50,6 +53,16 @@ public abstract class BaseLanguageService : BaseTranslationService
 
         _languageFilePath = languageFilePath;
         _replacements = new Dictionary<string, string>();
+        _translationPromptAugmenter = translationPromptAugmenter;
+    }
+
+    protected async Task<string> ApplyTranslationPromptContextAsync(
+        string systemPrompt,
+        CancellationToken cancellationToken = default)
+    {
+        return _translationPromptAugmenter == null
+            ? systemPrompt
+            : await _translationPromptAugmenter.AugmentAsync(systemPrompt, cancellationToken);
     }
     
     /// <summary>

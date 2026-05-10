@@ -100,6 +100,7 @@ export const SETTINGS = {
     SUBTITLE_OCR_AUTO_QUEUE: 'subtitle_ocr_auto_queue',
     SUBTITLE_OCR_MIN_QUALITY_SCORE: 'subtitle_ocr_min_quality_score',
     SUBTITLE_OCR_LANGUAGES: 'subtitle_ocr_languages',
+    SUBTITLE_OCR_TRANSLATION_PROMPT_ENABLED: 'subtitle_ocr_translation_prompt_enabled',
     RADARR_INSTANCES: 'radarr_instances',
     SONARR_INSTANCES: 'sonarr_instances',
     ONBOARDING_COMPLETED: 'onboarding_completed',
@@ -232,6 +233,7 @@ export interface ISettings {
     subtitle_ocr_auto_queue: string
     subtitle_ocr_min_quality_score: string
     subtitle_ocr_languages: string
+    subtitle_ocr_translation_prompt_enabled: string
     radarr_instances: string | IInstance[]
     sonarr_instances: string | IInstance[]
     onboarding_completed: string

@@ -44,8 +44,9 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
         HttpClient httpClient,
         ILogger<GoogleGeminiService> logger,
         IDashboardService? dashboardService = null,
-        ITokenUsageService? tokenUsageService = null)
-        : base(settings, logger, "/app/Statics/ai_languages.json")
+        ITokenUsageService? tokenUsageService = null,
+        ITranslationPromptAugmenter? translationPromptAugmenter = null)
+        : base(settings, logger, "/app/Statics/ai_languages.json", translationPromptAugmenter)
     {
         _httpClient = httpClient;
         _dashboardService = dashboardService;
@@ -95,7 +96,8 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
                 ["sourceLanguage"] = GetFullLanguageName(sourceLanguage),
                 ["targetLanguage"] = GetFullLanguageName(targetLanguage)
             };
-            _prompt = ReplacePlaceholders(settings[SettingKeys.Translation.AiPrompt], _replacements);
+            _prompt = await ApplyTranslationPromptContextAsync(
+                ReplacePlaceholders(settings[SettingKeys.Translation.AiPrompt], _replacements));
             _contextPrompt = settings[SettingKeys.Translation.AiContextPrompt];
             _customParameters = PrepareCustomParameters(settings, SettingKeys.Translation.CustomAiParameters);
 

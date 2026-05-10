@@ -568,7 +568,9 @@
       "ocrMinQualityScore": "Minimum OCR quality score",
       "ocrMinQualityScoreDescription": "OCR output below this score is blocked until manually approved.",
       "ocrLanguages": "OCR language mode",
-      "ocrLanguagesDescription": "Use auto to map subtitle language tags to Tesseract languages, or enter a Tesseract code like eng, jpn, fra, spa, deu, or pol."
+      "ocrLanguagesDescription": "Use auto to map subtitle language tags to Tesseract languages, or enter a Tesseract code like eng, jpn, fra, spa, deu, or pol.",
+      "ocrTranslationPrompt": "Use OCR-aware translation prompt",
+      "ocrTranslationPromptDescription": "When translating OCR-derived subtitles, add conservative OCR correction guidance and media context to AI prompts."
     },
     "indexing": {
       "title": "Indexing",

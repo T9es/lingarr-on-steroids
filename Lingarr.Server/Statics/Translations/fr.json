@@ -568,7 +568,9 @@
       "ocrMinQualityScore": "Score qualite OCR minimal",
       "ocrMinQualityScoreDescription": "La sortie OCR sous ce score est bloquee jusqu a approbation manuelle.",
       "ocrLanguages": "Mode de langue OCR",
-      "ocrLanguagesDescription": "Utilisez auto pour mapper les langues des sous-titres vers Tesseract, ou entrez un code comme eng, jpn, fra, spa, deu ou pol."
+      "ocrLanguagesDescription": "Utilisez auto pour mapper les langues des sous-titres vers Tesseract, ou entrez un code comme eng, jpn, fra, spa, deu ou pol.",
+      "ocrTranslationPrompt": "Utiliser une invite de traduction sensible a l OCR",
+      "ocrTranslationPromptDescription": "Lors de la traduction de sous-titres issus de l OCR, ajoute des consignes prudentes de correction OCR et le contexte du media aux invites IA."
     },
     "indexing": {
       "title": "Indexation",

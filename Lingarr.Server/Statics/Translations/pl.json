@@ -568,7 +568,9 @@
       "ocrMinQualityScore": "Minimalny wynik jakosci OCR",
       "ocrMinQualityScoreDescription": "Wynik OCR ponizej tej wartosci jest blokowany do recznego zatwierdzenia.",
       "ocrLanguages": "Tryb jezyka OCR",
-      "ocrLanguagesDescription": "Uzyj auto, aby mapowac jezyk napisow na jezyk Tesseract, albo wpisz kod, np. eng, jpn, fra, spa, deu lub pol."
+      "ocrLanguagesDescription": "Uzyj auto, aby mapowac jezyk napisow na jezyk Tesseract, albo wpisz kod, np. eng, jpn, fra, spa, deu lub pol.",
+      "ocrTranslationPrompt": "Uzywaj promptu tlumaczenia swiadomego OCR",
+      "ocrTranslationPromptDescription": "Podczas tlumaczenia napisow po OCR dodaje ostrozne wskazowki korekty OCR i kontekst materialu do promptow AI."
     },
     "indexing": {
       "title": "Indeksowanie",

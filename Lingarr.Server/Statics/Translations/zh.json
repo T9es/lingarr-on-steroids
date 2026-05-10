@@ -568,7 +568,9 @@
       "ocrMinQualityScore": "Zuidi OCR zhiliang fenshu",
       "ocrMinQualityScoreDescription": "Di yu ci fenshu de OCR shuchu hui bei zudang, zhidao shoudong pizhun.",
       "ocrLanguages": "OCR yuyan moshi",
-      "ocrLanguagesDescription": "Shi yong auto jiang zimu yuyan ying she dao Tesseract, huo shuru eng, jpn, fra, spa, deu, pol deng daima."
+      "ocrLanguagesDescription": "Shi yong auto jiang zimu yuyan ying she dao Tesseract, huo shuru eng, jpn, fra, spa, deu, pol deng daima.",
+      "ocrTranslationPrompt": "Shiyong OCR gan zhi fanyi tishi",
+      "ocrTranslationPromptDescription": "Fanyi OCR laiyuan zimu shi, xiang AI tishi tianjia baoshou de OCR xiuzheng zhidao he meiti beijing."
     },
     "indexing": {
       "title": "索引",

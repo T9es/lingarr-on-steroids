@@ -568,7 +568,9 @@
       "ocrMinQualityScore": "Minimale OCR-Qualitaetsbewertung",
       "ocrMinQualityScoreDescription": "OCR-Ausgaben unter dieser Bewertung werden bis zur manuellen Freigabe blockiert.",
       "ocrLanguages": "OCR-Sprachmodus",
-      "ocrLanguagesDescription": "auto ordnet Untertitelsprachen Tesseract-Sprachen zu. Alternativ kann ein Code wie eng, jpn, fra, spa, deu oder pol eingegeben werden."
+      "ocrLanguagesDescription": "auto ordnet Untertitelsprachen Tesseract-Sprachen zu. Alternativ kann ein Code wie eng, jpn, fra, spa, deu oder pol eingegeben werden.",
+      "ocrTranslationPrompt": "OCR-bewussten Uebersetzungsprompt verwenden",
+      "ocrTranslationPromptDescription": "Fuegt bei OCR-abgeleiteten Untertiteln konservative OCR-Korrekturhinweise und Medienkontext zu KI-Prompts hinzu."
     },
     "indexing": {
       "title": "Indizierung",

@@ -568,7 +568,9 @@
       "ocrMinQualityScore": "Minimale OCR-kwaliteitsscore",
       "ocrMinQualityScoreDescription": "OCR-uitvoer onder deze score wordt geblokkeerd tot handmatige goedkeuring.",
       "ocrLanguages": "OCR-taalmodus",
-      "ocrLanguagesDescription": "Gebruik auto om ondertiteltalen naar Tesseract-talen te mappen, of voer een Tesseract-code in zoals eng, jpn, fra, spa, deu of pol."
+      "ocrLanguagesDescription": "Gebruik auto om ondertiteltalen naar Tesseract-talen te mappen, of voer een Tesseract-code in zoals eng, jpn, fra, spa, deu of pol.",
+      "ocrTranslationPrompt": "OCR-bewuste vertaalprompt gebruiken",
+      "ocrTranslationPromptDescription": "Voeg bij OCR-afgeleide ondertitels conservatieve OCR-correctie-instructies en mediacontext toe aan AI-prompts."
     },
     "indexing": {
       "title": "Indexering",

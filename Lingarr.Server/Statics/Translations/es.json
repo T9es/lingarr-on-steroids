@@ -568,7 +568,9 @@
       "ocrMinQualityScore": "Puntuacion minima de calidad OCR",
       "ocrMinQualityScoreDescription": "La salida OCR por debajo de esta puntuacion se bloquea hasta aprobacion manual.",
       "ocrLanguages": "Modo de idioma OCR",
-      "ocrLanguagesDescription": "Usa auto para mapear etiquetas de idioma a Tesseract, o introduce un codigo como eng, jpn, fra, spa, deu o pol."
+      "ocrLanguagesDescription": "Usa auto para mapear etiquetas de idioma a Tesseract, o introduce un codigo como eng, jpn, fra, spa, deu o pol.",
+      "ocrTranslationPrompt": "Usar prompt de traduccion consciente de OCR",
+      "ocrTranslationPromptDescription": "Al traducir subtitulos derivados de OCR, agrega indicaciones conservadoras de correccion OCR y contexto del medio a los prompts de IA."
     },
     "indexing": {
       "title": "Indexación",

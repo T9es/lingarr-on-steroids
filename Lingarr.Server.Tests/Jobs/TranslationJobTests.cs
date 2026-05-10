@@ -229,6 +229,27 @@ public class TranslationJobTests : IDisposable
     }
 
     [Fact]
+    public async Task ShouldUseEmbeddedSourceSubtitle_ReturnsTrue_ForUsableOcrSubtitlePath()
+    {
+        var subtitlePath = Path.Combine(_tempDirectory, "movie.eng.ocr.srt");
+        await File.WriteAllTextAsync(subtitlePath, "1\n00:00:01,000 --> 00:00:02,000\nAlr.\n");
+
+        var selectedSubtitle = new EmbeddedSubtitle
+        {
+            StreamIndex = 0,
+            Language = "eng",
+            CodecName = "hdmv_pgs_subtitle",
+            IsTextBased = false,
+            OcrStatus = SubtitleOcrStatus.Succeeded,
+            OcrExtractedPath = subtitlePath
+        };
+
+        var result = TranslationJob.ShouldUseEmbeddedSourceSubtitle(subtitlePath, selectedSubtitle);
+
+        Assert.True(result);
+    }
+
+    [Fact]
     public void EmbeddedSourceLanguageMismatchesRequest_ReturnsTrue_WhenSelectedStreamLanguageDiffersFromRequest()
     {
         var request = new TranslationRequest

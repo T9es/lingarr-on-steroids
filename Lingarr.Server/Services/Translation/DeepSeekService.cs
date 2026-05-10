@@ -31,8 +31,9 @@ public class DeepSeekService : OpenAiService
         ILogger<DeepSeekService> logger,
         IHttpClientFactory httpClientFactory,
         IDashboardService? dashboardService = null,
-        ITokenUsageService? tokenUsageService = null)
-        : base(settings, logger, httpClientFactory.CreateClient(nameof(DeepSeekService)), dashboardService, tokenUsageService)
+        ITokenUsageService? tokenUsageService = null,
+        ITranslationPromptAugmenter? translationPromptAugmenter = null)
+        : base(settings, logger, httpClientFactory.CreateClient(nameof(DeepSeekService)), dashboardService, tokenUsageService, translationPromptAugmenter)
     {
     }
 

@@ -89,6 +89,22 @@
                         </span>
                     </ToggleButton>
 
+                    <div class="flex flex-col space-x-2">
+                        <span class="font-semibold">
+                            {{ translate('settings.subtitle.ocrTranslationPrompt') }}
+                        </span>
+                        {{ translate('settings.subtitle.ocrTranslationPromptDescription') }}
+                    </div>
+                    <ToggleButton v-model="subtitleOcrTranslationPromptEnabled">
+                        <span class="text-primary-content text-sm font-medium">
+                            {{
+                                subtitleOcrTranslationPromptEnabled == 'true'
+                                    ? translate('common.enabled')
+                                    : translate('common.disabled')
+                            }}
+                        </span>
+                    </ToggleButton>
+
                     <InputComponent
                         v-model="subtitleOcrMinQualityScore"
                         validation-type="number"
@@ -376,6 +392,20 @@ const subtitleOcrAutoQueue = computed({
         (settingsStore.getSetting(SETTINGS.SUBTITLE_OCR_AUTO_QUEUE) as string) ?? 'true',
     set: (newValue: string): void => {
         settingsStore.updateSetting(SETTINGS.SUBTITLE_OCR_AUTO_QUEUE, newValue, true)
+        saveNotification.value?.show()
+    }
+})
+
+const subtitleOcrTranslationPromptEnabled = computed({
+    get: (): string =>
+        (settingsStore.getSetting(SETTINGS.SUBTITLE_OCR_TRANSLATION_PROMPT_ENABLED) as string) ??
+        'true',
+    set: (newValue: string): void => {
+        settingsStore.updateSetting(
+            SETTINGS.SUBTITLE_OCR_TRANSLATION_PROMPT_ENABLED,
+            newValue,
+            true
+        )
         saveNotification.value?.show()
     }
 })

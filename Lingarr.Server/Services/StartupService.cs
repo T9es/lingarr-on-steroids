@@ -117,6 +117,7 @@ public class StartupService : IHostedService
             { SettingKeys.SubtitleExtraction.OcrAutoQueue, "true" },
             { SettingKeys.SubtitleExtraction.OcrMinQualityScore, "80" },
             { SettingKeys.SubtitleExtraction.OcrLanguages, "auto" },
+            { SettingKeys.SubtitleExtraction.OcrTranslationPromptEnabled, "true" },
 
             // Validation
             { SettingKeys.SubtitleValidation.ValidateSubtitles, "false" },

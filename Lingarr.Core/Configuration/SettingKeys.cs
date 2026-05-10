@@ -226,6 +226,7 @@ public static class SettingKeys
         public const string OcrAutoQueue = "subtitle_ocr_auto_queue";
         public const string OcrMinQualityScore = "subtitle_ocr_min_quality_score";
         public const string OcrLanguages = "subtitle_ocr_languages";
+        public const string OcrTranslationPromptEnabled = "subtitle_ocr_translation_prompt_enabled";
     }
 
     public static class Onboarding

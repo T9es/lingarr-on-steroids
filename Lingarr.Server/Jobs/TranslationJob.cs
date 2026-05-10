@@ -8,6 +8,7 @@ using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models;
 using Lingarr.Server.Models.FileSystem;
+using Lingarr.Server.Models.Translation;
 using Lingarr.Server.Services;
 using Lingarr.Server.Extensions;
 using Lingarr.Server.Services.Subtitle;
@@ -45,6 +46,7 @@ public class TranslationJob
     private readonly ITranslationCheckpointService? _translationCheckpointService;
     private readonly ISubtitleQualityValidatorService _subtitleQualityValidatorService;
     private readonly ITranslationDiagnosticsService _translationDiagnosticsService;
+    private readonly ITranslationPromptContextAccessor _translationPromptContextAccessor;
 
     public TranslationJob(
         ILogger<TranslationJob> logger,
@@ -70,7 +72,8 @@ public class TranslationJob
         ITranslationCheckpointService? translationCheckpointService = null,
         ISubtitleSourceSelectionService? subtitleSourceSelectionService = null,
         ISubtitleQualityValidatorService? subtitleQualityValidatorService = null,
-        ITranslationDiagnosticsService? translationDiagnosticsService = null)
+        ITranslationDiagnosticsService? translationDiagnosticsService = null,
+        ITranslationPromptContextAccessor? translationPromptContextAccessor = null)
     {
         _logger = logger;
         _settings = settings;
@@ -105,6 +108,8 @@ public class TranslationJob
             new TranslationDiagnosticsService(
                 dbContext,
                 NullLogger<TranslationDiagnosticsService>.Instance);
+        _translationPromptContextAccessor = translationPromptContextAccessor ??
+            new Services.Translation.TranslationPromptContextAccessor();
     }
 
     /// <summary>
@@ -130,6 +135,7 @@ public class TranslationJob
         }
 
         var requestLogs = new List<TranslationRequestLog>();
+        _translationPromptContextAccessor.Clear();
 
         void AddRequestLog(string level, string message, string? details = null)
         {
@@ -202,7 +208,8 @@ public class TranslationJob
                 SettingKeys.Translation.BatchContextEnabled,
                 SettingKeys.Translation.BatchContextBefore,
                 SettingKeys.Translation.BatchContextAfter,
-                SettingKeys.Translation.TranslateSupplementalSubtitles
+                SettingKeys.Translation.TranslateSupplementalSubtitles,
+                SettingKeys.SubtitleExtraction.OcrTranslationPromptEnabled
             ]);
             var serviceType = settings[SettingKeys.Translation.ServiceType];
             var stripSubtitleFormatting = settings[SettingKeys.Translation.StripSubtitleFormatting] == "true";
@@ -469,6 +476,26 @@ public class TranslationJob
                     request.SourceSnapshotLastWriteUtc = sourceSnapshot.LastWriteUtc;
                     request.SourceSnapshotStreamIndex = sourceSnapshot.StreamIndex;
                     await _dbContext.SaveChangesAsync(effectiveCancellationToken);
+
+                    var promptContext = await BuildOcrTranslationPromptContextAsync(
+                        request,
+                        selectedSubtitle,
+                        effectiveCancellationToken);
+                    if (promptContext != null &&
+                        (!settings.TryGetValue(
+                             SettingKeys.SubtitleExtraction.OcrTranslationPromptEnabled,
+                             out var ocrPromptEnabled) ||
+                         !string.Equals(ocrPromptEnabled, "false", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        _translationPromptContextAccessor.Current = promptContext;
+                        AddRequestLog(
+                            "Information",
+                            "OCR-aware translation prompt applied for this OCR-derived subtitle source.");
+                    }
+                    else
+                    {
+                        _translationPromptContextAccessor.Clear();
+                    }
 
                     if (await TryCancelObsoleteUnsafeSourceAsync(
                             request,
@@ -858,6 +885,7 @@ public class TranslationJob
         }
         finally
         {
+            _translationPromptContextAccessor.Clear();
             // Always unregister the job from cooperative cancellation
             _cancellationService.UnregisterJob(translationRequest.Id);
 
@@ -1826,6 +1854,13 @@ public class TranslationJob
             return true;
         }
 
+        if (selectedSubtitle != null &&
+            !string.IsNullOrWhiteSpace(selectedSubtitle.OcrExtractedPath) &&
+            string.Equals(selectedSubtitle.OcrExtractedPath, subtitlePath, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
         return SubtitleExtractionService.IsLingarrExtracted(subtitlePath);
     }
 
@@ -1875,6 +1910,13 @@ public class TranslationJob
             if (matched != null)
                 return matched;
 
+            matched = embeddedSubtitles.FirstOrDefault(es =>
+                !string.IsNullOrEmpty(es.OcrExtractedPath) &&
+                es.OcrExtractedPath.Equals(subtitlePath, StringComparison.OrdinalIgnoreCase));
+
+            if (matched != null)
+                return matched;
+
             // Try to match by language code in the filename
             foreach (var es in embeddedSubtitles.Where(es => !string.IsNullOrEmpty(es.Language)))
             {
@@ -1893,6 +1935,74 @@ public class TranslationJob
             _logger.LogWarning(ex, "Error getting embedded subtitle metadata for request {RequestId}", request.Id);
             return null;
         }
+    }
+
+    private async Task<TranslationPromptContext?> BuildOcrTranslationPromptContextAsync(
+        TranslationRequest request,
+        EmbeddedSubtitle? selectedSubtitle,
+        CancellationToken cancellationToken)
+    {
+        var isOcrSource = selectedSubtitle?.HasUsableOcr() == true ||
+                          IsOcrCachePath(request.SubtitleToTranslate);
+        if (!isOcrSource)
+        {
+            return null;
+        }
+
+        var context = new TranslationPromptContext
+        {
+            IsOcrDerivedSource = true,
+            SourceLanguage = request.SourceLanguage,
+            TargetLanguage = request.TargetLanguage,
+            SelectedStreamTitle = selectedSubtitle?.Title,
+            SourceSubtitleType = request.SourceSubtitleType,
+            SourceNote = BuildOcrSourceNote(selectedSubtitle)
+        };
+
+        if (request.MediaId.HasValue && request.MediaType == MediaType.Movie)
+        {
+            var movie = await _dbContext.Movies
+                .AsNoTracking()
+                .FirstOrDefaultAsync(item => item.Id == request.MediaId.Value, cancellationToken);
+            context.MovieTitle = movie?.Title ?? request.Title;
+        }
+        else if (request.MediaId.HasValue && request.MediaType == MediaType.Episode)
+        {
+            var episode = await _dbContext.Episodes
+                .AsNoTracking()
+                .Include(item => item.Season)
+                .ThenInclude(season => season.Show)
+                .FirstOrDefaultAsync(item => item.Id == request.MediaId.Value, cancellationToken);
+            context.SeriesTitle = episode?.Season?.Show?.Title;
+            context.SeasonNumber = episode?.Season?.SeasonNumber;
+            context.EpisodeNumber = episode?.EpisodeNumber;
+            context.EpisodeTitle = episode?.Title ?? request.Title;
+        }
+        else
+        {
+            context.MovieTitle = request.Title;
+        }
+
+        return context;
+    }
+
+    private static bool IsOcrCachePath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return false;
+        }
+
+        var fileName = Path.GetFileName(path);
+        return fileName.Contains(".ocr.", StringComparison.OrdinalIgnoreCase) ||
+               fileName.EndsWith(".ocr.srt", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string BuildOcrSourceNote(EmbeddedSubtitle? selectedSubtitle)
+    {
+        return string.Equals(selectedSubtitle?.CodecName, "hdmv_pgs_subtitle", StringComparison.OrdinalIgnoreCase)
+            ? "OCR from Blu-ray PGS subtitles"
+            : $"OCR from {selectedSubtitle?.CodecName ?? "image-based"} subtitles";
     }
 
     private static bool LooksPathologicalAssSource(
