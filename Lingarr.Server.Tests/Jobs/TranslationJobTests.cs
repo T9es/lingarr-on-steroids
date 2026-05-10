@@ -186,6 +186,78 @@ public class TranslationJobTests : IDisposable
     }
 
     [Fact]
+    public async Task BuildOcrTranslationPromptContextAsync_ForEpisode_DoesNotFollowAutoIncludeCycles()
+    {
+        var show = new Show
+        {
+            Id = 3001,
+            SonarrId = 3001,
+            Title = "Ajin",
+            Path = "/shows/ajin",
+            DateAdded = DateTime.UtcNow
+        };
+        var season = new Season
+        {
+            Id = 3002,
+            SeasonNumber = 1,
+            Path = "/shows/ajin/season-1",
+            ShowId = show.Id,
+            Show = show
+        };
+        var episode = new Episode
+        {
+            Id = 3003,
+            SonarrId = 3003,
+            EpisodeNumber = 4,
+            Title = "Have You Ever Seen a Black Ghost?",
+            FileName = "ajin-s01e04.mkv",
+            Path = "/shows/ajin/season-1",
+            SeasonId = season.Id,
+            Season = season
+        };
+        var subtitle = new EmbeddedSubtitle
+        {
+            EpisodeId = episode.Id,
+            StreamIndex = 1,
+            Language = "eng",
+            CodecName = "hdmv_pgs_subtitle",
+            Title = "Dialogue",
+            IsTextBased = false,
+            OcrStatus = SubtitleOcrStatus.Succeeded,
+            OcrExtractedPath = "/app/config/embedded-subtitle-cache/episode-3003-stream-1-eng.ocr.srt"
+        };
+
+        show.Seasons.Add(season);
+        season.Episodes.Add(episode);
+        episode.EmbeddedSubtitles.Add(subtitle);
+        _dbContext.Shows.Add(show);
+        await _dbContext.SaveChangesAsync();
+
+        var request = new TranslationRequest
+        {
+            MediaId = episode.Id,
+            MediaType = MediaType.Episode,
+            Title = episode.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SourceSubtitleType = "FullDialogue",
+            SubtitleToTranslate = subtitle.OcrExtractedPath,
+            Status = TranslationStatus.Pending
+        };
+
+        var context = await _job.BuildOcrTranslationPromptContextAsync(
+            request,
+            subtitle,
+            CancellationToken.None);
+
+        Assert.NotNull(context);
+        Assert.Equal("Ajin", context.SeriesTitle);
+        Assert.Equal(1, context.SeasonNumber);
+        Assert.Equal(4, context.EpisodeNumber);
+        Assert.Equal("Have You Ever Seen a Black Ghost?", context.EpisodeTitle);
+    }
+
+    [Fact]
     public async Task ShouldUseEmbeddedSourceSubtitle_ReturnsFalse_ForExternalSubtitlePath()
     {
         var subtitlePath = Path.Combine(_tempDirectory, "external-source.en.srt");

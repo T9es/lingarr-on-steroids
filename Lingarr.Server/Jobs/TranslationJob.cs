@@ -1937,7 +1937,7 @@ public class TranslationJob
         }
     }
 
-    private async Task<TranslationPromptContext?> BuildOcrTranslationPromptContextAsync(
+    internal async Task<TranslationPromptContext?> BuildOcrTranslationPromptContextAsync(
         TranslationRequest request,
         EmbeddedSubtitle? selectedSubtitle,
         CancellationToken cancellationToken)
@@ -1963,18 +1963,28 @@ public class TranslationJob
         {
             var movie = await _dbContext.Movies
                 .AsNoTracking()
-                .FirstOrDefaultAsync(item => item.Id == request.MediaId.Value, cancellationToken);
+                .IgnoreAutoIncludes()
+                .Where(item => item.Id == request.MediaId.Value)
+                .Select(item => new { item.Title })
+                .FirstOrDefaultAsync(cancellationToken);
             context.MovieTitle = movie?.Title ?? request.Title;
         }
         else if (request.MediaId.HasValue && request.MediaType == MediaType.Episode)
         {
             var episode = await _dbContext.Episodes
                 .AsNoTracking()
-                .Include(item => item.Season)
-                .ThenInclude(season => season.Show)
-                .FirstOrDefaultAsync(item => item.Id == request.MediaId.Value, cancellationToken);
-            context.SeriesTitle = episode?.Season?.Show?.Title;
-            context.SeasonNumber = episode?.Season?.SeasonNumber;
+                .IgnoreAutoIncludes()
+                .Where(item => item.Id == request.MediaId.Value)
+                .Select(item => new
+                {
+                    item.EpisodeNumber,
+                    item.Title,
+                    SeasonNumber = item.Season.SeasonNumber,
+                    SeriesTitle = item.Season.Show.Title
+                })
+                .FirstOrDefaultAsync(cancellationToken);
+            context.SeriesTitle = episode?.SeriesTitle;
+            context.SeasonNumber = episode?.SeasonNumber;
             context.EpisodeNumber = episode?.EpisodeNumber;
             context.EpisodeTitle = episode?.Title ?? request.Title;
         }
