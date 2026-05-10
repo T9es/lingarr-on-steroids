@@ -624,6 +624,14 @@ public class NanoGptService : OpenAiService
             return null;
         }
 
+        foreach (var item in translatedItems)
+        {
+            if (item.Position < 0 || item.Position >= subtitleBatch.Count)
+            {
+                return null;
+            }
+        }
+
         return translatedItems.ToDictionary(
             item => subtitleBatch[item.Position].Position,
             item => item.Line);
