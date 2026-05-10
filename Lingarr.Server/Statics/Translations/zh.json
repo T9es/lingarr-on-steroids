@@ -420,6 +420,10 @@
       "overrideUsageLimitHelp": "可选：限制Lingarr每天可以发出的请求数量，即使您的计划允许更多。留空以使用完整的计划限制。",
       "chutesUsageTitle": "Chutes使用情况",
       "chutesPlan": "计划：{plan}",
+      "credits": "积分",
+      "crofaiMissingApiKey": "未配置CrofAI API密钥。",
+      "crofaiUsageDescription": "查看您的剩余积分和每日请求限制",
+      "crofaiUsageTitle": "CrofAI使用情况",
       "chutesPlanUnknown": "计划信息不可用。",
       "refreshUsage": "刷新",
       "requestsToday": "今日请求",
@@ -849,6 +853,7 @@
       "microsoft": "Microsoft 翻译器",
       "yandex": "Yandex 翻译",
       "chutes": "Chutes.ai",
+      "crofai": "CrofAI",
       "nanogpt": "NanoGPT"
     }
   },

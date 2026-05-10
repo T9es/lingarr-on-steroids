@@ -29,6 +29,7 @@ public class SettingService : ISettingService
         SettingKeys.Translation.DeepSeek.ApiKey,
         SettingKeys.Translation.Chutes.ApiKey,
         SettingKeys.Translation.NanoGpt.ApiKey,
+        SettingKeys.Translation.CrofAi.ApiKey,
         SettingKeys.Translation.LibreTranslate.ApiKey
     ];
 

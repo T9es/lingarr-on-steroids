@@ -420,6 +420,10 @@
       "overrideUsageLimitHelp": "Optionnel : limiter le nombre de requêtes que Lingarr peut effectuer chaque jour, même si votre plan en permet plus. Laissez vide pour utiliser la limite complète du plan.",
       "chutesUsageTitle": "Utilisation Chutes",
       "chutesPlan": "Plan : {plan}",
+      "credits": "Crédits",
+      "crofaiMissingApiKey": "La clé API CrofAI n'est pas configurée.",
+      "crofaiUsageDescription": "Vérifiez vos crédits restants et limites de requêtes quotidiennes",
+      "crofaiUsageTitle": "Utilisation CrofAI",
       "chutesPlanUnknown": "Informations du plan non disponibles.",
       "refreshUsage": "Actualiser",
       "requestsToday": "Requêtes aujourd'hui",
@@ -849,6 +853,7 @@
       "microsoft": "Microsoft Translator",
       "yandex": "Yandex Translate",
       "chutes": "Chutes.ai",
+      "crofai": "CrofAI",
       "nanogpt": "NanoGPT"
     }
   },

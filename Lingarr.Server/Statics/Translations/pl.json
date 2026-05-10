@@ -420,6 +420,10 @@
       "overrideUsageLimitHelp": "Opcjonalnie: ogranicz liczbę żądań, które Lingarr może wykonać każdego dnia, nawet jeśli Twój plan pozwala na więcej. Pozostaw puste, aby użyć pełnego limitu planu.",
       "chutesUsageTitle": "Użycie Chutes",
       "chutesPlan": "Plan taryfowy: {plan}",
+      "credits": "Kredyty",
+      "crofaiMissingApiKey": "Klucz API CrofAI nie jest skonfigurowany.",
+      "crofaiUsageDescription": "Sprawdź pozostałe kredyty i dzienne limity żądań",
+      "crofaiUsageTitle": "Użycie CrofAI",
       "chutesPlanUnknown": "Informacje o planie niedostępne.",
       "refreshUsage": "Odśwież",
       "requestsToday": "Żądania dzisiaj",
@@ -849,6 +853,7 @@
       "microsoft": "Microsoft Translator",
       "yandex": "Yandex Translate",
       "chutes": "Chutes.ai",
+      "crofai": "CrofAI",
       "nanogpt": "NanoGPT"
     }
   },

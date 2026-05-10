@@ -31,6 +31,7 @@ export interface Services {
     translate: ITranslateService
     chutes: IChutesService
     nanoGpt: INanoGptService
+    crofAi: ICrofAiService
     tokenUsage: ITokenUsageService
     translationRequest: ITranslationRequestService
     version: IVersionService
@@ -147,6 +148,10 @@ export interface IChutesService {
 }
 
 export interface INanoGptService {
+    getUsage<T>(forceRefresh?: boolean): Promise<T>
+}
+
+export interface ICrofAiService {
     getUsage<T>(forceRefresh?: boolean): Promise<T>
 }
 

@@ -44,6 +44,8 @@ export const SETTINGS = {
     CHUTES_USAGE_LIMIT_OVERRIDE: 'chutes_usage_limit_override',
     NANOGPT_MODEL: 'nanogpt_model',
     NANOGPT_API_KEY: 'nanogpt_api_key',
+    CROFAI_MODEL: 'crofai_model',
+    CROFAI_API_KEY: 'crofai_api_key',
     NANOGPT_SUBSCRIPTION_MODELS_ONLY: 'nanogpt_subscription_models_only',
     NANOGPT_WEEKLY_TOKEN_ALLOWANCE: 'nanogpt_weekly_token_allowance',
     NANOGPT_TOKEN_RESERVE: 'nanogpt_token_reserve',
@@ -118,6 +120,7 @@ export const SETTINGS = {
     LOCALAI_TOKEN_LIMIT_ENABLED: 'localai_token_limit_enabled',
     CHUTES_TOKEN_LIMIT: 'chutes_token_limit',
     NANOGPT_TOKEN_LIMIT: 'nanogpt_token_limit',
+    CROFAI_TOKEN_LIMIT: 'crofai_token_limit',
     CHUTES_MODE: 'chutes_mode',
     TOKEN_LIMIT_RESET_TIME: 'token_limit_reset_time'
 } as const
@@ -134,6 +137,7 @@ export const ENCRYPTED_SETTING_KEYS = new Set<string>([
     SETTINGS.DEEPSEEK_API_KEY,
     SETTINGS.CHUTES_API_KEY,
     SETTINGS.NANOGPT_API_KEY,
+    SETTINGS.CROFAI_API_KEY,
     SETTINGS.RADARR_INSTANCES,
     SETTINGS.SONARR_INSTANCES
 ])
@@ -183,6 +187,8 @@ export interface ISettings {
     nanogpt_token_reserve: string
     nanogpt_daily_unit_reserve: string
     nanogpt_monthly_unit_reserve: string
+    crofai_model: string
+    crofai_api_key: string
     ai_prompt: string
     movie_age_threshold: string
     show_age_threshold: string
@@ -251,6 +257,7 @@ export interface ISettings {
     localai_token_limit_enabled: string
     chutes_token_limit: string
     nanogpt_token_limit: string
+    crofai_token_limit: string
     chutes_mode: string
     token_limit_reset_time: string
 }
@@ -273,7 +280,8 @@ export const SERVICE_TYPE = {
     MICROSOFT: 'microsoft',
     YANDEX: 'yandex',
     CHUTES: 'chutes',
-    NANOGPT: 'nanogpt'
+    NANOGPT: 'nanogpt',
+    CROFAI: 'crofai'
 } as const
 
 export type ServiceType = (typeof SERVICE_TYPE)[keyof typeof SERVICE_TYPE]

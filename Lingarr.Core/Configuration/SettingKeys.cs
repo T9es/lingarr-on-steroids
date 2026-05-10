@@ -83,6 +83,12 @@ public static class SettingKeys
             public const string MonthlyUnitReserve = "nanogpt_monthly_unit_reserve";
         }
 
+        public static class CrofAi
+        {
+            public const string Model = "crofai_model";
+            public const string ApiKey = "crofai_api_key";
+        }
+
         public static class TokenLimits
         {
             public const string OpenAiTokenLimit = "openai_token_limit";
@@ -92,6 +98,7 @@ public static class SettingKeys
             public const string LocalAiTokenLimit = "localai_token_limit";
             public const string ChutesTokenLimit = "chutes_token_limit";
             public const string NanoGptTokenLimit = "nanogpt_token_limit";
+            public const string CrofAiTokenLimit = "crofai_token_limit";
             public const string LocalAiTokenLimitEnabled = "localai_token_limit_enabled";
             public const string ChutesMode = "chutes_mode";
             public const string TokenLimitResetTime = "token_limit_reset_time";

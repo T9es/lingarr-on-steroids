@@ -15,6 +15,7 @@ import { statisticsService } from '@/services/statisticsService'
 import { logsService } from '@/services/logsService'
 import { chutesService } from '@/services/chutesService'
 import { nanoGptService } from '@/services/nanoGptService'
+import { crofAiService } from '@/services/crofAiService'
 import { tokenUsageService } from '@/services/tokenUsageService'
 import { dashboardService } from '@/services/dashboardService'
 
@@ -24,6 +25,7 @@ const services = (axios: AxiosStatic): Services => ({
     translate: translateService(axios),
     chutes: chutesService(axios),
     nanoGpt: nanoGptService(axios),
+    crofAi: crofAiService(axios),
     tokenUsage: tokenUsageService(axios),
     translationRequest: translationRequestService(axios),
     version: versionService(axios),

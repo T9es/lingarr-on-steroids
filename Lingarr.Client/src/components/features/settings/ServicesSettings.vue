@@ -17,6 +17,7 @@
 
                 <ChutesUsageCard v-if="serviceType === SERVICE_TYPE.CHUTES" />
                 <NanoGptUsageCard v-if="serviceType === SERVICE_TYPE.NANOGPT" />
+                <CrofAiUsageCard v-if="serviceType === SERVICE_TYPE.CROFAI" />
 
                 <TokenUsageCard v-if="tokenUsageService" :service="tokenUsageService" />
             </div>
@@ -46,6 +47,8 @@ import SourceAndTarget from '@/components/features/settings/SourceAndTarget.vue'
 import ChutesConfig from '@/components/features/settings/services/ChutesConfig.vue'
 import ChutesUsageCard from '@/components/features/settings/ChutesUsageCard.vue'
 import NanoGptUsageCard from '@/components/features/settings/NanoGptUsageCard.vue'
+import CrofAiConfig from '@/components/features/settings/services/CrofAiConfig.vue'
+import CrofAiUsageCard from '@/components/features/settings/CrofAiUsageCard.vue'
 import TokenUsageCard from '@/components/features/settings/TokenUsageCard.vue'
 
 const saveNotification = ref<InstanceType<typeof SaveNotification> | null>(null)
@@ -64,6 +67,7 @@ const serviceOptions = [
     { value: SERVICE_TYPE.BING, label: 'Bing' },
     { value: SERVICE_TYPE.DEEPL, label: 'DeepL' },
     { value: SERVICE_TYPE.DEEPSEEK, label: 'DeepSeek' },
+    { value: SERVICE_TYPE.CROFAI, label: 'CrofAI' },
     { value: SERVICE_TYPE.GEMINI, label: 'Gemini' },
     { value: SERVICE_TYPE.GOOGLE, label: 'Google' },
     { value: SERVICE_TYPE.LIBRETRANSLATE, label: 'LibreTranslate' },
@@ -93,6 +97,8 @@ const serviceConfigComponent = computed(() => {
             return DeepSeekConfig
         case SERVICE_TYPE.CHUTES:
             return ChutesConfig
+        case SERVICE_TYPE.CROFAI:
+            return CrofAiConfig
         case SERVICE_TYPE.NANOGPT:
             return NanoGptConfig
         case SERVICE_TYPE.GOOGLE:
@@ -109,7 +115,8 @@ const tokenLimitServices = [
     SERVICE_TYPE.OPENAI,
     SERVICE_TYPE.ANTHROPIC,
     SERVICE_TYPE.GEMINI,
-    SERVICE_TYPE.DEEPSEEK
+    SERVICE_TYPE.DEEPSEEK,
+    SERVICE_TYPE.CROFAI
 ] as const
 
 type TokenUsageService = (typeof tokenLimitServices)[number] | typeof SERVICE_TYPE.LOCALAI

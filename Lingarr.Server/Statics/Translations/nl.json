@@ -420,6 +420,10 @@
       "overrideUsageLimitHelp": "Optioneel: beperk het aantal verzoeken dat Lingarr per dag kan doen, zelfs als uw abonnement meer toestaat. Laat leeg om de volledige abonnementslimiet te gebruiken.",
       "chutesUsageTitle": "Chutes gebruik",
       "chutesPlan": "Abonnement: {plan}",
+      "credits": "Credits",
+      "crofaiMissingApiKey": "CrofAI API-sleutel is niet geconfigureerd.",
+      "crofaiUsageDescription": "Controleer uw resterende credits en dagelijkse aanvraaglimieten",
+      "crofaiUsageTitle": "CrofAI-gebruik",
       "chutesPlanUnknown": "Abonnementsinformatie niet beschikbaar.",
       "refreshUsage": "Vernieuwen",
       "requestsToday": "Verzoeken vandaag",
@@ -849,6 +853,7 @@
       "microsoft": "Microsoft Translator",
       "yandex": "Yandex Translate",
       "chutes": "Chutes.ai",
+      "crofai": "CrofAI",
       "nanogpt": "NanoGPT"
     }
   },

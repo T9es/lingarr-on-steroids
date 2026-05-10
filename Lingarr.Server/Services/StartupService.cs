@@ -273,7 +273,10 @@ public class StartupService : IHostedService
             { "NANOGPT_WEEKLY_TOKEN_ALLOWANCE", SettingKeys.Translation.NanoGpt.WeeklyTokenAllowance },
             { "NANOGPT_TOKEN_RESERVE", SettingKeys.Translation.NanoGpt.TokenReserve },
             { "NANOGPT_DAILY_UNIT_RESERVE", SettingKeys.Translation.NanoGpt.DailyUnitReserve },
-            { "NANOGPT_MONTHLY_UNIT_RESERVE", SettingKeys.Translation.NanoGpt.MonthlyUnitReserve }
+            { "NANOGPT_MONTHLY_UNIT_RESERVE", SettingKeys.Translation.NanoGpt.MonthlyUnitReserve },
+
+            { "CROFAI_MODEL", SettingKeys.Translation.CrofAi.Model },
+            { "CROFAI_API_KEY", SettingKeys.Translation.CrofAi.ApiKey }
         };
 
         foreach (var (envVar, settingKey) in environmentSettings)

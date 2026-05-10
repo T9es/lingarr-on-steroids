@@ -207,6 +207,7 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<IStatisticsService, StatisticsService>();
         builder.Services.AddScoped<IChutesUsageService, ChutesUsageService>();
         builder.Services.AddScoped<INanoGptUsageService, NanoGptUsageService>();
+        builder.Services.AddScoped<ICrofAiUsageService, CrofAiUsageService>();
         builder.Services.AddScoped<ITokenUsageService, TokenUsageService>();
         builder.Services.AddScoped<ITranslationCheckpointService, TranslationCheckpointService>();
         builder.Services.AddScoped<IPausedTranslationResumeService, PausedTranslationResumeService>();

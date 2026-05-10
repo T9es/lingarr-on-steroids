@@ -12,6 +12,14 @@ export interface TranslateModelsResponse {
     options: LabelValue[]
 }
 
+export interface CrofAiUsageSnapshot {
+    hasApiKey: boolean
+    usableRequests?: number
+    credits?: number
+    lastSyncedUtc: string
+    message?: string
+}
+
 export interface ChutesUsageSnapshot {
     date: string
     plan?: string

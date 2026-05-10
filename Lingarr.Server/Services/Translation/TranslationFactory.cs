@@ -130,6 +130,16 @@ public class TranslationFactory : ITranslationServiceFactory
                 _serviceProvider.GetService<ITranslationPromptAugmenter>()
             ),
 
+            "crofai" => new CrofAiService(
+                _serviceProvider.GetRequiredService<ISettingService>(),
+                _serviceProvider.GetRequiredService<ILogger<CrofAiService>>(),
+                _serviceProvider.GetRequiredService<ICrofAiUsageService>(),
+                _serviceProvider.GetRequiredService<IHttpClientFactory>(),
+                _serviceProvider.GetService<IDashboardService>(),
+                _tokenUsageService,
+                _serviceProvider.GetService<ITranslationPromptAugmenter>()
+            ),
+
             _ => throw new ArgumentException("Unsupported translation service type", nameof(serviceType))
         };
     }
