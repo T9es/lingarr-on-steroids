@@ -5,6 +5,7 @@ using Lingarr.Core.Enum;
 using Lingarr.Core.Interfaces;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
+using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models;
 using Lingarr.Server.Models.FileSystem;
 using Lingarr.Server.Services.Subtitle;
@@ -24,6 +25,7 @@ public class MediaStateService : IMediaStateService
     private readonly ISubtitleService _subtitleService;
     private readonly ISourceSubtitleSnapshotService _sourceSubtitleSnapshotService;
     private readonly ISubtitleSourceSelectionService _subtitleSourceSelectionService;
+    private readonly ITranslationQualityScorer? _qualityScorer;
     private readonly ILogger<MediaStateService> _logger;
 
     public MediaStateService(
@@ -32,7 +34,8 @@ public class MediaStateService : IMediaStateService
         ISubtitleService subtitleService,
         ISourceSubtitleSnapshotService sourceSubtitleSnapshotService,
         ILogger<MediaStateService> logger,
-        ISubtitleSourceSelectionService? subtitleSourceSelectionService = null)
+        ISubtitleSourceSelectionService? subtitleSourceSelectionService = null,
+        ITranslationQualityScorer? qualityScorer = null)
     {
         _dbContext = dbContext;
         _settingService = settingService;
@@ -42,6 +45,7 @@ public class MediaStateService : IMediaStateService
             new SubtitleSourceSelectionService(
                 subtitleService,
                 NullLogger<SubtitleSourceSelectionService>.Instance);
+        _qualityScorer = qualityScorer;
         _logger = logger;
     }
 
@@ -188,7 +192,28 @@ public class MediaStateService : IMediaStateService
                 return TranslationState.OcrPending;
             }
 
-            return TranslationState.AwaitingSource;
+            // Auto mode: score non-configured sources via quality scorer
+            if (_qualityScorer != null &&
+                string.Equals(
+                    await _settingService.GetSetting(SettingKeys.Translation.SourceLanguageMode),
+                    "auto",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var autoSource = await FindAutoSourceCandidateAsync(
+                    embeddedSubtitles, externalSubtitles, targetLanguages);
+                if (autoSource != null)
+                {
+                    _logger.LogInformation(
+                        "Auto mode selected source language '{Language}' via quality scoring",
+                        autoSource);
+                    hasEmbeddedSource = true;
+                }
+            }
+
+            if (!hasExternalSource && !hasEmbeddedSource)
+            {
+                return TranslationState.AwaitingSource;
+            }
         }
 
         // 6. Check which targets are satisfied
@@ -622,5 +647,58 @@ public class MediaStateService : IMediaStateService
         return !string.IsNullOrWhiteSpace(codecName) &&
                (codecName.Equals("hdmv_pgs_subtitle", StringComparison.OrdinalIgnoreCase) ||
                 codecName.Equals("pgssub", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private async Task<string?> FindAutoSourceCandidateAsync(
+        List<EmbeddedSubtitle> embeddedSubtitles,
+        List<Subtitles> externalSubtitles,
+        IReadOnlyList<string> targetLanguages)
+    {
+        // Check embedded subtitles first (preferred)
+        foreach (var subtitle in embeddedSubtitles.Where(s => s.IsReadableSource()))
+        {
+            if (string.IsNullOrWhiteSpace(subtitle.Language) ||
+                subtitle.Language.Equals("und", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            foreach (var target in targetLanguages)
+            {
+                var score = _qualityScorer!.ScoreDirection(subtitle.Language, target);
+                if (score.HasValue && _qualityScorer.IsAcceptableForAutoFallback(score.Value))
+                {
+                    _logger.LogDebug(
+                        "Auto mode: embedded stream {StreamIndex} ({Language}) → {Target} scores {Score:F1}",
+                        subtitle.StreamIndex, subtitle.Language, target, score.Value);
+                    return subtitle.Language;
+                }
+            }
+        }
+
+        // Check external subtitles as fallback
+        foreach (var subtitle in externalSubtitles)
+        {
+            var language = SubtitleLanguageHelper.DetectLanguageFromFileName(subtitle.FileName);
+            if (string.IsNullOrWhiteSpace(language) ||
+                language.Equals("und", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            foreach (var target in targetLanguages)
+            {
+                var score = _qualityScorer!.ScoreDirection(language, target);
+                if (score.HasValue && _qualityScorer.IsAcceptableForAutoFallback(score.Value))
+                {
+                    _logger.LogDebug(
+                        "Auto mode: external subtitle '{FileName}' ({Language}) → {Target} scores {Score:F1}",
+                        subtitle.FileName, language, target, score.Value);
+                    return language;
+                }
+            }
+        }
+
+        return null;
     }
 }
