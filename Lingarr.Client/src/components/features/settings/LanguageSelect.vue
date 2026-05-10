@@ -3,6 +3,7 @@
         <div
             ref="excludeClickOutside"
             class="border-accent flex h-12 cursor-pointer items-center justify-between rounded-md border px-4 py-2"
+            :class="{ 'opacity-50 cursor-not-allowed': disabled }"
             @click="toggleDropdown">
             <span v-if="selectedItems.length === 0" class="text-primary-content/50">
                 {{ translate('settings.translate.languageSelectPlaceholder') }}
@@ -13,9 +14,10 @@
                     :key="`${item.code}-${index}`"
                     :data-key="`${item.code}-${index}`"
                     class="bg-accent text-secondary-content flex cursor-pointer items-center rounded-md px-3 py-1 text-sm font-medium"
-                    @click.stop="removeItem(item)">
+                    :class="{ 'cursor-default': disabled }"
+                    @click.stop="disabled ? null : removeItem(item)">
                     <span class="text-accent-content mr-2">{{ item.name }}</span>
-                    <TimesIcon class="mt-0.5 h-4 w-4" />
+                    <TimesIcon v-if="!disabled" class="mt-0.5 h-4 w-4" />
                 </span>
             </div>
             <CaretRightIcon

@@ -15,6 +15,7 @@ export const SETTINGS = {
     SONARR_URL: 'sonarr_url',
     SOURCE_LANGUAGES: 'source_languages',
     TARGET_LANGUAGES: 'target_languages',
+    SOURCE_LANGUAGE_MODE: 'source_language_mode',
     SONARR_SETTINGS_COMPLETED: 'sonarr_settings_completed',
     RADARR_SETTINGS_COMPLETED: 'radarr_settings_completed',
     SERVICE_TYPE: 'service_type',
@@ -156,6 +157,7 @@ export interface ISettings {
     translation_schedule: string
     source_languages: string | ILanguage[]
     target_languages: string | ILanguage[]
+    source_language_mode: string
     automation_enabled: string
     sonarr_settings_completed: string
     radarr_settings_completed: string

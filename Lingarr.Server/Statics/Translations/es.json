@@ -486,7 +486,12 @@
       "languageSelectPlaceholder": "Seleccionar idioma...",
       "languageSelectTargetNotification": "Selecciona primero un idioma de origen.",
       "languageLoadErrorTitle": "Error al recuperar idiomas",
-      "languageLoadErrorDescription": "Ocurrió un error desconocido al recuperar los idiomas, asegúrate de que la clave API esté configurada correctamente."
+      "languageLoadErrorDescription": "Ocurrió un error desconocido al recuperar los idiomas, asegúrate de que la clave API esté configurada correctamente.",
+      "sourceLanguageModeTitle": "Modo de idioma de origen",
+      "sourceLanguageModeManual": "Manual",
+      "sourceLanguageModeAuto": "Automático (Mejor Disponible)",
+      "sourceLanguageModeAutoDescription": "Cuando ningún idioma de origen configurado tiene subtítulos, selecciona automáticamente el mejor idioma disponible utilizando la puntuación de calidad de traducción.",
+      "sourceLanguageModeAutoBadge": "Modo automático activo"
     },
     "translation": {
       "title": "Solicitud de traducción",

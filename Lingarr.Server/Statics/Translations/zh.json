@@ -486,7 +486,12 @@
       "languageSelectPlaceholder": "选择语言...",
       "languageSelectTargetNotification": "请先选择源语言。",
       "languageLoadErrorTitle": "获取语言时出错",
-      "languageLoadErrorDescription": "获取语言时发生未知错误，请确保API密钥设置正确。"
+      "languageLoadErrorDescription": "获取语言时发生未知错误，请确保API密钥设置正确。",
+      "sourceLanguageModeTitle": "源语言模式",
+      "sourceLanguageModeManual": "手动",
+      "sourceLanguageModeAuto": "自动（最佳可用）",
+      "sourceLanguageModeAutoDescription": "当已配置的源语言没有字幕时，自动使用翻译质量评分选择最佳可用语言。",
+      "sourceLanguageModeAutoBadge": "自动模式已激活"
     },
     "translation": {
       "title": "翻译请求",

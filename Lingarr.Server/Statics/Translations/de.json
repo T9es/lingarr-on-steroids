@@ -486,7 +486,12 @@
       "languageSelectPlaceholder": "Sprache auswählen...",
       "languageSelectTargetNotification": "Wählen Sie zuerst eine Quellsprache.",
       "languageLoadErrorTitle": "Fehler beim Abrufen der Sprachen",
-      "languageLoadErrorDescription": "Unbekannter Fehler beim Abrufen der Sprachen, stellen Sie sicher, dass der API-Schlüssel korrekt festgelegt ist."
+      "languageLoadErrorDescription": "Unbekannter Fehler beim Abrufen der Sprachen, stellen Sie sicher, dass der API-Schlüssel korrekt festgelegt ist.",
+      "sourceLanguageModeTitle": "Quellsprachenmodus",
+      "sourceLanguageModeManual": "Manuell",
+      "sourceLanguageModeAuto": "Auto (Beste Verfügbare)",
+      "sourceLanguageModeAutoDescription": "Wenn keine konfigurierte Quellsprache Untertitel hat, wählt automatisch die beste verfügbare Sprache mittels Übersetzungsqualitätsbewertung aus.",
+      "sourceLanguageModeAutoBadge": "Auto-Modus aktiv"
     },
     "translation": {
       "title": "Übersetzungsanfrage",
