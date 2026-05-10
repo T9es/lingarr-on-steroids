@@ -37,6 +37,13 @@ public interface IScheduleService
     Task SyncCustomSourceScanJobAsync();
 
     /// <summary>
+    /// Synchronizes the unknown language detection job registration with current settings.
+    /// Registers the job when detect_unknown_languages is true and has a schedule,
+    /// removes it otherwise.
+    /// </summary>
+    Task SyncUnknownLanguageDetectionJobAsync();
+
+    /// <summary>
     /// Synchronizes recurring indexer job registrations with current settings.
     /// </summary>
     Task SyncIndexerJobsAsync();

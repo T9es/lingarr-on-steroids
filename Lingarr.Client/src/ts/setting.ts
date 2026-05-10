@@ -104,6 +104,10 @@ export const SETTINGS = {
     SUBTITLE_OCR_MIN_QUALITY_SCORE: 'subtitle_ocr_min_quality_score',
     SUBTITLE_OCR_LANGUAGES: 'subtitle_ocr_languages',
     SUBTITLE_OCR_TRANSLATION_PROMPT_ENABLED: 'subtitle_ocr_translation_prompt_enabled',
+    EMBED_IN_CONTAINER: 'embed_in_container',
+    DETECT_UNKNOWN_LANGUAGES: 'detect_unknown_languages',
+    DETECT_UNKNOWN_LANGUAGES_SCHEDULE: 'detect_unknown_languages_schedule',
+    MAX_REQUEST_RETRIES: 'max_request_retries',
     RADARR_INSTANCES: 'radarr_instances',
     SONARR_INSTANCES: 'sonarr_instances',
     ONBOARDING_COMPLETED: 'onboarding_completed',
@@ -242,6 +246,10 @@ export interface ISettings {
     subtitle_ocr_min_quality_score: string
     subtitle_ocr_languages: string
     subtitle_ocr_translation_prompt_enabled: string
+    embed_in_container: string
+    detect_unknown_languages: string
+    detect_unknown_languages_schedule: string
+    max_request_retries: string
     radarr_instances: string | IInstance[]
     sonarr_instances: string | IInstance[]
     onboarding_completed: string

@@ -118,6 +118,12 @@ public class SettingChangedListener
                 ])
             },
             {
+                "unknownLanguageDetection", ("Action", "SyncUnknownLanguageDetection", [
+                    SettingKeys.SubtitleExtraction.DetectUnknownLanguages,
+                    SettingKeys.SubtitleExtraction.DetectUnknownLanguagesSchedule
+                ])
+            },
+            {
                 "languageSettings", ("Action", "InvalidateTranslationState", [
                     SettingKeys.Translation.SourceLanguages,
                     SettingKeys.Translation.TargetLanguages,
@@ -249,7 +255,9 @@ public class SettingChangedListener
                     await _scheduleService.SyncCustomSourceScanJobAsync();
                     break;
 
-
+                case "SyncUnknownLanguageDetection":
+                    await _scheduleService.SyncUnknownLanguageDetectionJobAsync();
+                    break;
 
                 case "BatchTranslation":
                     var useBatchTranslation = await settingService.GetSetting(SettingKeys.Translation.UseBatchTranslation);

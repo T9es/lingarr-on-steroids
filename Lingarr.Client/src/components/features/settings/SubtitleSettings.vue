@@ -233,6 +233,40 @@
                     </span>
                 </ToggleButton>
 
+                <!-- Embed in container -->
+                <div class="flex flex-col space-x-2">
+                    <span class="font-semibold">
+                        {{ translate('settings.subtitle.embedInContainer') }}
+                    </span>
+                    {{ translate('settings.subtitle.embedInContainerDescription') }}
+                </div>
+                <ToggleButton v-model="embedInContainer">
+                    <span class="text-primary-content text-sm font-medium">
+                        {{
+                            embedInContainer == 'true'
+                                ? translate('common.enabled')
+                                : translate('common.disabled')
+                        }}
+                    </span>
+                </ToggleButton>
+
+                <!-- Detect unknown languages -->
+                <div class="flex flex-col space-x-2">
+                    <span class="font-semibold">
+                        {{ translate('settings.subtitle.detectUnknownLanguages') }}
+                    </span>
+                    {{ translate('settings.subtitle.detectUnknownLanguagesDescription') }}
+                </div>
+                <ToggleButton v-model="detectUnknownLanguages">
+                    <span class="text-primary-content text-sm font-medium">
+                        {{
+                            detectUnknownLanguages == 'true'
+                                ? translate('common.enabled')
+                                : translate('common.disabled')
+                        }}
+                    </span>
+                </ToggleButton>
+
                 <div class="flex flex-col space-y-4">
                     <div class="flex flex-col space-x-2">
                         <span class="font-semibold">
@@ -491,6 +525,22 @@ const cleanupOrphanedSubtitles = computed({
     get: (): string => settingsStore.getSetting(SETTINGS.CLEANUP_ORPHANED_SUBTITLES) as string,
     set: (newValue: string): void => {
         settingsStore.updateSetting(SETTINGS.CLEANUP_ORPHANED_SUBTITLES, newValue, true)
+        saveNotification.value?.show()
+    }
+})
+
+const embedInContainer = computed({
+    get: (): string => settingsStore.getSetting(SETTINGS.EMBED_IN_CONTAINER) as string,
+    set: (newValue: string): void => {
+        settingsStore.updateSetting(SETTINGS.EMBED_IN_CONTAINER, newValue, true)
+        saveNotification.value?.show()
+    }
+})
+
+const detectUnknownLanguages = computed({
+    get: (): string => settingsStore.getSetting(SETTINGS.DETECT_UNKNOWN_LANGUAGES) as string,
+    set: (newValue: string): void => {
+        settingsStore.updateSetting(SETTINGS.DETECT_UNKNOWN_LANGUAGES, newValue, true)
         saveNotification.value?.show()
     }
 })

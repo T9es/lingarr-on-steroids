@@ -163,4 +163,128 @@ public class SettingChangedListenerTests
         mediaStateServiceMock.Verify(service => service.IncrementSettingsVersionAsync(), Times.Once);
         mediaStateServiceMock.Verify(service => service.MarkAllStaleAsync(), Times.Once);
     }
+
+    [Fact]
+    public async Task OnSettingChanged_WithDetectUnknownLanguages_CallsSyncUnknownLanguageDetectionJob()
+    {
+        var databaseName = Guid.NewGuid().ToString();
+        var options = new DbContextOptionsBuilder<LingarrDbContext>()
+            .UseInMemoryDatabase(databaseName)
+            .Options;
+
+        await using (var seedContext = new LingarrDbContext(options))
+        {
+            seedContext.Settings.AddRange(
+                new Setting { Key = SettingKeys.SubtitleExtraction.DetectUnknownLanguages, Value = "true" },
+                new Setting { Key = SettingKeys.SubtitleExtraction.DetectUnknownLanguagesSchedule, Value = "0 3 * * *" });
+            await seedContext.SaveChangesAsync();
+        }
+
+        var scheduleServiceMock = new Mock<IScheduleService>();
+        var syncCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        scheduleServiceMock
+            .Setup(service => service.SyncUnknownLanguageDetectionJobAsync())
+            .Callback(() => syncCompleted.TrySetResult())
+            .Returns(Task.CompletedTask);
+
+        var services = new ServiceCollection();
+        services.AddDbContext<LingarrDbContext>(builder => builder.UseInMemoryDatabase(databaseName));
+        services.AddScoped(_ => Mock.Of<ISettingService>());
+        services.AddScoped(_ => Mock.Of<IMediaStateService>());
+        var provider = services.BuildServiceProvider();
+
+        var listener = new SettingChangedListener(
+            provider,
+            scheduleServiceMock.Object,
+            Mock.Of<IHubContext<SettingUpdatesHub>>(),
+            NullLogger<SettingChangedListener>.Instance);
+
+        listener.OnSettingChanged(null!, SettingKeys.SubtitleExtraction.DetectUnknownLanguages);
+
+        await syncCompleted.Task.WaitAsync(TimeSpan.FromSeconds(3));
+
+        scheduleServiceMock.Verify(service => service.SyncUnknownLanguageDetectionJobAsync(), Times.Once);
+    }
+
+    [Fact]
+    public async Task OnSettingChanged_WithDetectUnknownLanguagesSchedule_CallsSyncUnknownLanguageDetectionJob()
+    {
+        var databaseName = Guid.NewGuid().ToString();
+        var options = new DbContextOptionsBuilder<LingarrDbContext>()
+            .UseInMemoryDatabase(databaseName)
+            .Options;
+
+        await using (var seedContext = new LingarrDbContext(options))
+        {
+            seedContext.Settings.AddRange(
+                new Setting { Key = SettingKeys.SubtitleExtraction.DetectUnknownLanguages, Value = "true" },
+                new Setting { Key = SettingKeys.SubtitleExtraction.DetectUnknownLanguagesSchedule, Value = "0 3 * * *" });
+            await seedContext.SaveChangesAsync();
+        }
+
+        var scheduleServiceMock = new Mock<IScheduleService>();
+        var syncCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        scheduleServiceMock
+            .Setup(service => service.SyncUnknownLanguageDetectionJobAsync())
+            .Callback(() => syncCompleted.TrySetResult())
+            .Returns(Task.CompletedTask);
+
+        var services = new ServiceCollection();
+        services.AddDbContext<LingarrDbContext>(builder => builder.UseInMemoryDatabase(databaseName));
+        services.AddScoped(_ => Mock.Of<ISettingService>());
+        services.AddScoped(_ => Mock.Of<IMediaStateService>());
+        var provider = services.BuildServiceProvider();
+
+        var listener = new SettingChangedListener(
+            provider,
+            scheduleServiceMock.Object,
+            Mock.Of<IHubContext<SettingUpdatesHub>>(),
+            NullLogger<SettingChangedListener>.Instance);
+
+        listener.OnSettingChanged(null!, SettingKeys.SubtitleExtraction.DetectUnknownLanguagesSchedule);
+
+        await syncCompleted.Task.WaitAsync(TimeSpan.FromSeconds(3));
+
+        scheduleServiceMock.Verify(service => service.SyncUnknownLanguageDetectionJobAsync(), Times.Once);
+    }
+
+    [Fact]
+    public async Task OnSettingChanged_WithDetectUnknownLanguages_DoesNotCallSync_WhenValuesMissing()
+    {
+        var databaseName = Guid.NewGuid().ToString();
+        var options = new DbContextOptionsBuilder<LingarrDbContext>()
+            .UseInMemoryDatabase(databaseName)
+            .Options;
+
+        await using (var seedContext = new LingarrDbContext(options))
+        {
+            seedContext.Settings.AddRange(
+                new Setting { Key = SettingKeys.SubtitleExtraction.DetectUnknownLanguages, Value = "" });
+            await seedContext.SaveChangesAsync();
+        }
+
+        var scheduleServiceMock = new Mock<IScheduleService>();
+
+        var services = new ServiceCollection();
+        services.AddDbContext<LingarrDbContext>(builder => builder.UseInMemoryDatabase(databaseName));
+        services.AddScoped(_ => Mock.Of<ISettingService>());
+        services.AddScoped(_ => Mock.Of<IMediaStateService>());
+        var provider = services.BuildServiceProvider();
+
+        var listener = new SettingChangedListener(
+            provider,
+            scheduleServiceMock.Object,
+            Mock.Of<IHubContext<SettingUpdatesHub>>(),
+            NullLogger<SettingChangedListener>.Instance);
+
+        listener.OnSettingChanged(null!, SettingKeys.SubtitleExtraction.DetectUnknownLanguages);
+
+        await Task.Delay(500);
+
+        scheduleServiceMock.Verify(
+            service => service.SyncUnknownLanguageDetectionJobAsync(),
+            Times.Never);
+    }
 }

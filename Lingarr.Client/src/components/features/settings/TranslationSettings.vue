@@ -113,6 +113,17 @@
 
             <div class="flex flex-col space-x-2">
                 <span class="font-semibold">
+                    {{ translate('settings.translation.maxRequestRetries') }}
+                </span>
+                {{ translate('settings.translation.maxRequestRetriesDescription') }}
+            </div>
+            <InputComponent
+                v-model="maxRequestRetries"
+                validation-type="number"
+                @update:validation="(val) => (isValid.maxRequestRetries = val)" />
+
+            <div class="flex flex-col space-x-2">
+                <span class="font-semibold">
                     {{ translate('settings.translation.retryDelay') }}
                 </span>
                 {{ translate('settings.translation.retryDelayDescription') }}
@@ -174,6 +185,7 @@ const maxConcurrentLimit = ref<number>(20)
 const isValid = reactive({
     maxBatchSize: true,
     maxRetries: true,
+    maxRequestRetries: true,
     retryDelay: true,
     retryDelayMultiplier: true,
     maxParallelTranslations: true,
@@ -214,6 +226,19 @@ const maxRetries = computed({
     get: (): string => (settingsStore.getSetting(SETTINGS.MAX_RETRIES) as string) ?? '',
     set: (newValue: string): void => {
         settingsStore.updateSetting(SETTINGS.MAX_RETRIES, newValue, isValid.maxRetries)
+        saveNotification.value?.show()
+    }
+})
+
+const maxRequestRetries = computed({
+    get: (): string =>
+        (settingsStore.getSetting(SETTINGS.MAX_REQUEST_RETRIES) as string) ?? '10',
+    set: (newValue: string): void => {
+        settingsStore.updateSetting(
+            SETTINGS.MAX_REQUEST_RETRIES,
+            newValue,
+            isValid.maxRequestRetries
+        )
         saveNotification.value?.show()
     }
 })
