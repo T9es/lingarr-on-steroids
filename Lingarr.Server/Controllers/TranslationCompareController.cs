@@ -388,30 +388,28 @@ public class TranslationCompareController : ControllerBase
         return string.Equals(left.Trim(), right.Trim(), StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string DetermineSubtitleType(EmbeddedSubtitle subtitle)
+private static string DetermineSubtitleType(EmbeddedSubtitle subtitle)
     {
-        if (!string.IsNullOrEmpty(subtitle.Title))
+        var title = (subtitle.Title ?? string.Empty).ToLowerInvariant();
+
+        if (title.Contains("sdh") || title.Contains("hearing") || title.Contains("deaf"))
         {
-            var title = subtitle.Title.ToLowerInvariant();
-            if (title.Contains("sdh") || title.Contains("hearing") || title.Contains("deaf"))
-            {
-                return "SDH";
-            }
+            return "SDH";
+        }
 
-            if (title.Contains("forced") || title.Contains("force") || title.Contains("foreign"))
-            {
-                return "Forced";
-            }
+        if (title.Contains("forced") || title.Contains("force") || title.Contains("foreign"))
+        {
+            return "Forced";
+        }
 
-            if (title.Contains("full") || title.Contains("dialogue") || title.Contains("complete"))
-            {
-                return "Full";
-            }
+        if (title.Contains("full") || title.Contains("dialogue") || title.Contains("complete"))
+        {
+            return "Full";
+        }
 
-            if (title.Contains("sign") || title.Contains("song"))
-            {
-                return "Signs/Songs";
-            }
+        if (title.Contains("sign") || title.Contains("song"))
+        {
+            return "Signs/Songs";
         }
 
         if (subtitle.IsForced)

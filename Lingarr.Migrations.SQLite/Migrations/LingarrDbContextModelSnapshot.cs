@@ -496,7 +496,7 @@ namespace Lingarr.Migrations.SQLite.Migrations
                         .HasColumnName("id");
 
                     b.Property<string>("Details")
-                        .HasMaxLength(2000)
+                        .HasMaxLength(10000)
                         .HasColumnType("TEXT")
                         .HasColumnName("details");
 

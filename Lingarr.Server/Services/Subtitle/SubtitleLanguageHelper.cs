@@ -11,13 +11,21 @@ namespace Lingarr.Server.Services.Subtitle;
 /// </summary>
 public static class SubtitleLanguageHelper
 {
-    public const string TypeFull = "Full";
+public const string TypeFull = "Full";
     public const string TypeSdh = "SDH";
     public const string TypeClosedCaptions = "CC";
     public const string TypeForced = "Forced";
     public const string TypeSignsSongs = "Signs/Songs";
     public const string TypeCommentary = "Commentary";
     public const string TypeUnknown = "Unknown";
+    public const string TypeForcedDialogue = "ForcedDialogue";
+
+    /// <summary>
+    /// Minimum number of subtitle entries that a forced track must have to be
+    /// reclassified from supplemental forced to forced-dialogue. Tracks with
+    /// fewer entries are likely signs/songs-only tracks rather than full dialogue.
+    /// </summary>
+    public const int ForcedDialogueMinimumEntries = 50;
 
     private static readonly Regex FileNameLanguageTokenRegex = new(
         @"(?<=^|[.\s_\-\[\]\(\)])([a-z]{2,3}(?:-[a-z]{2,4})?)(?=$|[.\s_\-\[\]\(\)])",
@@ -301,9 +309,13 @@ public static class SubtitleLanguageHelper
         }
 
         // Prefer non-forced tracks for full dialogue; forced tracks are often partial or effect-only.
-        if (subtitle.IsForced || IsSupplementalSubtitleType(subtitleType))
+if (subtitle.IsForced || IsSupplementalSubtitleType(subtitleType))
         {
             score -= 50;
+        }
+        else if (IsForcedDialogueType(subtitleType))
+        {
+            score -= 15;
         }
         else
         {
@@ -320,15 +332,54 @@ public static class SubtitleLanguageHelper
         return score;
     }
 
-    public static string DetermineSubtitleType(EmbeddedSubtitle subtitle)
+public static string DetermineSubtitleType(EmbeddedSubtitle subtitle)
     {
-        if (subtitle.IsForced)
+        return DetermineSubtitleType(subtitle, entryCount: null);
+    }
+
+    /// <summary>
+    /// Determines the semantic type of a subtitle track, using content heuristics
+    /// to override the forced disposition when the track clearly contains full dialogue.
+    /// Anime Bluray remuxes commonly mark ALL subtitle tracks as forced, so a
+    /// content-based check prevents misclassifying dialogue tracks as supplemental.
+    /// </summary>
+    public static string DetermineSubtitleType(EmbeddedSubtitle subtitle, int? entryCount)
+    {
+        var title = subtitle.Title ?? string.Empty;
+        var titleType = DetermineSubtitleTypeFromText(title, defaultType: TypeUnknown);
+
+        if (!subtitle.IsForced)
         {
-            return TypeForced;
+            return titleType;
         }
 
-        var title = subtitle.Title ?? string.Empty;
-        return DetermineSubtitleTypeFromText(title, defaultType: TypeUnknown);
+        if (string.Equals(titleType, TypeCommentary, StringComparison.OrdinalIgnoreCase))
+        {
+            return TypeCommentary;
+        }
+
+        if (string.Equals(titleType, TypeSdh, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(titleType, TypeClosedCaptions, StringComparison.OrdinalIgnoreCase))
+        {
+            return titleType;
+        }
+
+        if (string.Equals(titleType, TypeSignsSongs, StringComparison.OrdinalIgnoreCase))
+        {
+            return TypeSignsSongs;
+        }
+
+        if (string.Equals(titleType, TypeFull, StringComparison.OrdinalIgnoreCase))
+        {
+            return TypeForcedDialogue;
+        }
+
+        if (entryCount.HasValue && entryCount.Value >= ForcedDialogueMinimumEntries)
+        {
+            return TypeForcedDialogue;
+        }
+
+        return TypeForced;
     }
 
     public static string DetermineSubtitleTypeFromFilename(string? subtitlePath)
@@ -381,10 +432,19 @@ public static class SubtitleLanguageHelper
         return TypeFull;
     }
 
-    public static bool IsSupplementalSubtitleType(string? subtitleType)
+public static bool IsSupplementalSubtitleType(string? subtitleType)
     {
         return string.Equals(subtitleType, TypeForced, StringComparison.OrdinalIgnoreCase) ||
                string.Equals(subtitleType, TypeSignsSongs, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Returns true if the subtitle type represents a forced track that contains
+    /// enough entries to be treated as dialogue (rather than signs/songs only).
+    /// </summary>
+    public static bool IsForcedDialogueType(string? subtitleType)
+    {
+        return string.Equals(subtitleType, TypeForcedDialogue, StringComparison.OrdinalIgnoreCase);
     }
 
     public static bool IsCaptionSubtitleType(string? subtitleType)
@@ -393,9 +453,10 @@ public static class SubtitleLanguageHelper
                string.Equals(subtitleType, TypeClosedCaptions, StringComparison.OrdinalIgnoreCase);
     }
 
-    public static string? GetSupplementalOutputCaption(string? subtitleType)
+public static string? GetSupplementalOutputCaption(string? subtitleType)
     {
-        if (string.Equals(subtitleType, TypeForced, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(subtitleType, TypeForced, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(subtitleType, TypeForcedDialogue, StringComparison.OrdinalIgnoreCase))
         {
             return "forced";
         }

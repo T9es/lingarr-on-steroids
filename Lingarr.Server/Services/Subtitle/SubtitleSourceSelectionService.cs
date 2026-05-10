@@ -103,8 +103,8 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
                 "Subtitle stream is not text-based and has no usable OCR output.");
         }
 
-        var subtitleType = SubtitleLanguageHelper.DetermineSubtitleType(candidate);
         var entryCount = GetExtractedEntryCount(candidate);
+        var subtitleType = SubtitleLanguageHelper.DetermineSubtitleType(candidate, entryCount);
 
         if (entryCount.HasValue &&
             entryCount.Value >= 0 &&
@@ -165,6 +165,23 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
                 BuildScore(candidate, matchedLanguage, normalizedSourceLanguages, pathologicalAdjustment.ScoreAdjustment),
                 entryCount,
                 "Forced/signs/songs subtitles are supplemental and cannot be primary sources.");
+        }
+
+        if (SubtitleLanguageHelper.IsForcedDialogueType(subtitleType))
+        {
+            var forcedDialogueScore = BuildScore(
+                candidate,
+                matchedLanguage,
+                normalizedSourceLanguages,
+                pathologicalAdjustment.ScoreAdjustment);
+
+            return new SubtitleSourceCandidateAssessment(
+                candidate,
+                SubtitleSourceCandidateRole.PrimaryFullDialogue,
+                matchedLanguage,
+                forcedDialogueScore,
+                entryCount,
+                "Forced-disposition track reclassified as full-dialogue based on entry count and title.");
         }
 
         var score = BuildScore(

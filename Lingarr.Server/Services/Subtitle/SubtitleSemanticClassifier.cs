@@ -134,6 +134,11 @@ internal static class SubtitleSemanticClassifier
             return true;
         }
 
+        if (HasRepeatedCharacterPattern(normalized))
+        {
+            return true;
+        }
+
         var tokens = GetAlphaNumericTokens(normalized).ToList();
         if (tokens.Count == 0)
         {
@@ -153,7 +158,102 @@ internal static class SubtitleSemanticClassifier
 
         var letters = normalized.Count(char.IsLetter);
         var spaces = normalized.Count(char.IsWhiteSpace);
-        return letters >= 18 && spaces == 0 && suspiciousTokens > 0;
+        if (letters >= 18 && spaces == 0 && suspiciousTokens > 0)
+        {
+            return true;
+        }
+
+        if (HasMixedScriptGarbage(normalized))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Detects repeated character patterns common in OCR garbage output,
+    /// e.g. "AAAAA BBBBB" or "11111 22222" where a single character dominates a token.
+    /// </summary>
+    private static bool HasRepeatedCharacterPattern(string text)
+    {
+        if (text.Length < 4)
+        {
+            return false;
+        }
+
+        var tokens = GetAlphaNumericTokens(text).ToList();
+        if (tokens.Count == 0)
+        {
+            return false;
+        }
+
+        var repeatedCharTokens = 0;
+        foreach (var token in tokens)
+        {
+            if (token.Length < 3)
+            {
+                continue;
+            }
+
+            var charGroups = token.GroupBy(c => c).ToList();
+            if (charGroups.Count == 0)
+            {
+                continue;
+            }
+
+            var maxGroupSize = charGroups.Max(g => g.Count());
+            if (maxGroupSize >= 3 && (double)maxGroupSize / token.Length >= 0.6)
+            {
+                repeatedCharTokens++;
+            }
+        }
+
+        return repeatedCharTokens >= 2;
+    }
+
+    /// <summary>
+    /// Detects mixed-script garbage where a single line combines characters from
+    /// incompatible scripts (e.g., Latin + CJK + Cyrillic), which is a strong OCR error signal.
+    /// </summary>
+    private static bool HasMixedScriptGarbage(string text)
+    {
+        if (text.Length < 6)
+        {
+            return false;
+        }
+
+        var hasLatin = false;
+        var hasCjk = false;
+        var hasOtherNonLatin = false;
+
+        foreach (var c in text)
+        {
+            if (!char.IsLetter(c))
+            {
+                continue;
+            }
+
+            var category = char.GetUnicodeCategory(c);
+            if (category == System.Globalization.UnicodeCategory.OtherLetter)
+            {
+                // CJK, Hangul, Thai, etc.
+                hasCjk = true;
+            }
+            else if (c is >= 'A' and <= 'Z' or >= 'a' and <= 'z')
+            {
+                hasLatin = true;
+            }
+            else
+            {
+                // Cyrillic, Arabic, Devanagari, etc.
+                hasOtherNonLatin = true;
+            }
+        }
+
+        // More than 2 script categories in one line is suspicious for OCR
+        var scriptCount = (hasLatin ? 1 : 0) + (hasCjk ? 1 : 0) + (hasOtherNonLatin ? 1 : 0);
+        return scriptCount >= 3;
     }
 
     public static string ToReason(SubtitleSemanticKind kind)

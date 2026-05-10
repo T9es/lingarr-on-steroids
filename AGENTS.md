@@ -453,6 +453,13 @@ When adding a new language:
 - Check for invalid JSON, duplicate keys, missing frontend-used keys, and suspicious untranslated values by running: `python scripts/verify_translations.py`
 - Frontend will log warnings for missing translation keys in the browser console
 
+## Diagnostics
+
+When debugging any kind of issue, check `~/.codex/skills/` for available
+diagnostic skills on this machine before asking for manual log access.
+These provide SSH access, container inspection, and live troubleshooting
+capabilities without manual intervention.
+
 ### Maintaining AGENTS.md
 
 **Update this file when:**

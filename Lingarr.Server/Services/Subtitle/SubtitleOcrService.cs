@@ -166,6 +166,46 @@ public class SubtitleOcrService : ISubtitleOcrService
                 context.Subtitle.OcrCueCount,
                 context.Subtitle.OcrQualityScore);
 
+            if (!quality.Accepted)
+            {
+                var corruptSamples = subtitles
+                    .Where(s =>
+                    {
+                        var text = string.Join(' ', s.Lines).Trim();
+                        return !string.IsNullOrWhiteSpace(text) &&
+                               SubtitleSemanticClassifier.IsLikelyCorruptText(text);
+                    })
+                    .Take(10)
+                    .Select(s =>
+                    {
+                        var raw = $"[{s.Position}] {string.Join(' ', s.Lines).Trim()}";
+                        return raw.Length > 200 ? raw[..197] + "..." : raw;
+                    })
+                    .ToList();
+
+                if (corruptSamples.Count > 0)
+                {
+                    _logger.LogWarning(
+                        "OCR blocked for {MediaType} {MediaId} stream {StreamIndex}: quality={QualityScore}, issues={Issues}. Corrupt sample lines: {Samples}",
+                        mediaType,
+                        mediaId,
+                        streamIndex,
+                        quality.QualityScore,
+                        quality.IssueSummary,
+                        string.Join(" | ", corruptSamples));
+                }
+                else
+                {
+                    _logger.LogWarning(
+                        "OCR blocked for {MediaType} {MediaId} stream {StreamIndex}: quality={QualityScore}, issues={Issues}",
+                        mediaType,
+                        mediaId,
+                        streamIndex,
+                        quality.QualityScore,
+                        quality.IssueSummary);
+                }
+            }
+
             return FromSubtitle(context.Subtitle, success: quality.Accepted);
         }
         catch (OperationCanceledException)

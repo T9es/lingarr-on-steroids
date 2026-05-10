@@ -829,14 +829,20 @@ public class SubtitleTranslationService
 
     private static void ThrowMissingTranslationException(List<BatchSubtitleItem> missingItems)
     {
-        var positionRange = missingItems.Count <= 5
+        var positionRange = missingItems.Count <= 10
             ? string.Join(", ", missingItems.Select(item => item.Position))
-            : $"{string.Join(", ", missingItems.Take(5).Select(item => item.Position))}... (+{missingItems.Count - 5} more)";
+            : $"{string.Join(", ", missingItems.Take(10).Select(item => item.Position))}... (+{missingItems.Count - 10} more)";
 
-        var example = missingItems[0];
-        var exampleText = example.Line.Length > 80 ? example.Line[..77] + "..." : example.Line;
+        var examples = missingItems.Take(5)
+            .Select(item =>
+            {
+                var text = item.Line.Length > 120 ? item.Line[..117] + "..." : item.Line;
+                return $"pos {item.Position}: \"{text}\"";
+            });
+        var exampleText = string.Join("; ", examples);
+
         var message =
-            $"Translation failed: {missingItems.Count} subtitle(s) missing at positions: {positionRange}. Example original text at position {example.Position}: \"{exampleText}\"";
+            $"Translation failed: {missingItems.Count} subtitle(s) missing at positions: {positionRange}. First examples: {exampleText}";
         throw new TranslationException(message);
     }
 

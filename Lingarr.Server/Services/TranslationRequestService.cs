@@ -841,10 +841,11 @@ public class TranslationRequestService : ITranslationRequestService
                 tr.SourceDedupeKey == translationRequest.SourceDedupeKey &&
                 tr.IsActive == true);
 
-        query = isSupplemental
+query = isSupplemental
             ? query.Where(tr =>
                 (tr.SourceSubtitleType == SubtitleLanguageHelper.TypeForced ||
-                 tr.SourceSubtitleType == SubtitleLanguageHelper.TypeSignsSongs) &&
+                 tr.SourceSubtitleType == SubtitleLanguageHelper.TypeSignsSongs ||
+                 tr.SourceSubtitleType == SubtitleLanguageHelper.TypeForcedDialogue) &&
                 (!hasSourceType ||
                  tr.SourceSubtitleType == translationRequest.SourceSubtitleType) &&
                 (!translationRequest.SourceSnapshotStreamIndex.HasValue ||
@@ -853,7 +854,8 @@ public class TranslationRequestService : ITranslationRequestService
                  tr.SourceSnapshotIdentity == translationRequest.SourceSnapshotIdentity))
             : query.Where(tr =>
                 tr.SourceSubtitleType != SubtitleLanguageHelper.TypeForced &&
-                tr.SourceSubtitleType != SubtitleLanguageHelper.TypeSignsSongs);
+                tr.SourceSubtitleType != SubtitleLanguageHelper.TypeSignsSongs &&
+                tr.SourceSubtitleType != SubtitleLanguageHelper.TypeForcedDialogue);
 
         var activeRequestIds = await query
             .Select(tr => tr.Id)

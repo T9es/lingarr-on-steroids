@@ -29,7 +29,8 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
     private readonly ISubtitleIntegrityService _integrityService;
     private readonly ISourceSubtitleSnapshotService _sourceSubtitleSnapshotService;
     private readonly ISubtitleSourceSelectionService _subtitleSourceSelectionService;
-    private readonly ISubtitleOcrService? _subtitleOcrService;
+private readonly ISubtitleOcrService? _subtitleOcrService;
+    private readonly ITranslationDiagnosticsService? _diagnosticsService;
     private string _hash = string.Empty;
     private IMedia _media = null!;
     private MediaType _mediaType;
@@ -43,8 +44,9 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         ISubtitleIntegrityService integrityService,
         ISourceSubtitleSnapshotService sourceSubtitleSnapshotService,
         LingarrDbContext dbContext,
-        ISubtitleSourceSelectionService? subtitleSourceSelectionService = null,
-        ISubtitleOcrService? subtitleOcrService = null)
+ISubtitleSourceSelectionService? subtitleSourceSelectionService = null,
+        ISubtitleOcrService? subtitleOcrService = null,
+        ITranslationDiagnosticsService? diagnosticsService = null)
     {
         _translationRequestService = translationRequestService;
         _settingService = settingService;
@@ -53,6 +55,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         _integrityService = integrityService;
         _sourceSubtitleSnapshotService = sourceSubtitleSnapshotService;
         _subtitleOcrService = subtitleOcrService;
+        _diagnosticsService = diagnosticsService;
         _subtitleSourceSelectionService = subtitleSourceSelectionService ??
             new SubtitleSourceSelectionService(
                 subtitleService,
@@ -1107,7 +1110,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 .Distinct()
                 .ToList();
 
-	            _logger.LogWarning(
+_logger.LogWarning(
 	                "No usable full-dialogue embedded subtitle matches configured source languages [{Sources}] for {FileName}. " +
 	                "Available embedded subtitle languages: [{Available}]. Candidate assessment: [{Assessments}]. " +
 	                "Update your source languages on the Services page if you want to translate from one of these.",
@@ -1116,6 +1119,42 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
 	                string.Join(", ", availableLanguages),
 	                string.Join("; ", sourceSelection.Assessments.Select(assessment =>
 	                    $"stream={assessment.Subtitle.StreamIndex}, role={assessment.Role}, reason={assessment.Reason}")));
+
+	            if (_diagnosticsService != null)
+	            {
+	                try
+	                {
+	                    await _diagnosticsService.RecordAsync(
+	                        new TranslationDiagnosticEventRequest
+	                        {
+	                            MediaId = media.Id,
+	                            MediaType = _mediaType,
+	                            Title = media.FileName,
+	                            Stage = "source_selection",
+	                            ReasonCode = "no_usable_source",
+	                            Summary = $"No usable full-dialogue source for languages [{string.Join(", ", configuredSourceLanguages)}]. Available: [{string.Join(", ", availableLanguages)}].",
+	                            SampleLines = sourceSelection.Assessments.Select(a =>
+	                                $"stream={a.Subtitle.StreamIndex}: role={a.Role}, lang={a.Subtitle.Language ?? "?"}, title=\"{a.Subtitle.Title ?? ""}\", reason={a.Reason}").ToList(),
+	                            DetailsJson = System.Text.Json.JsonSerializer.Serialize(sourceSelection.Assessments.Select(a => new
+	                            {
+	                                a.Subtitle.StreamIndex,
+	                                a.Subtitle.Language,
+	                                a.Subtitle.Title,
+	                                a.Subtitle.CodecName,
+	                                a.Subtitle.IsForced,
+	                                a.Role,
+	                                a.Score,
+	                                a.EntryCount,
+	                                a.Reason
+	                            }))
+	                        },
+	                        CancellationToken.None);
+	                }
+	                catch (Exception diagEx)
+	                {
+	                    _logger.LogDebug(diagEx, "Failed to record source_selection diagnostic event.");
+	                }
+	            }
 
 	            await UpdateHash();
 	            return 0;
@@ -1711,10 +1750,11 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 tr.SourceDedupeKey == sourceDedupeKey &&
                 tr.IsActive == true);
 
-        query = isSupplemental
+query = isSupplemental
             ? query.Where(tr =>
                 (tr.SourceSubtitleType == SubtitleLanguageHelper.TypeForced ||
-                 tr.SourceSubtitleType == SubtitleLanguageHelper.TypeSignsSongs) &&
+                 tr.SourceSubtitleType == SubtitleLanguageHelper.TypeSignsSongs ||
+                 tr.SourceSubtitleType == SubtitleLanguageHelper.TypeForcedDialogue) &&
                 (!hasSourceType ||
                  tr.SourceSubtitleType == sourceSubtitleType) &&
                 (!sourceSnapshotStreamIndex.HasValue ||
@@ -1723,7 +1763,8 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                  tr.SourceSnapshotIdentity == sourceSnapshotIdentity))
             : query.Where(tr =>
                 tr.SourceSubtitleType != SubtitleLanguageHelper.TypeForced &&
-                tr.SourceSubtitleType != SubtitleLanguageHelper.TypeSignsSongs);
+                tr.SourceSubtitleType != SubtitleLanguageHelper.TypeSignsSongs &&
+                tr.SourceSubtitleType != SubtitleLanguageHelper.TypeForcedDialogue);
 
         return await query.AnyAsync();
     }
