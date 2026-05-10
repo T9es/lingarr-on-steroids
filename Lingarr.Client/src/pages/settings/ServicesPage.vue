@@ -11,7 +11,8 @@
                     SERVICE_TYPE.LOCALAI,
                     SERVICE_TYPE.NANOGPT,
                     SERVICE_TYPE.OPENAI,
-                    SERVICE_TYPE.CHUTES
+                    SERVICE_TYPE.CHUTES,
+                    SERVICE_TYPE.CROFAI
                 ].includes(
                     serviceType as
                         | 'openai'
@@ -21,6 +22,7 @@
                         | 'gemini'
                         | 'deepseek'
                         | 'chutes'
+                        | 'crofai'
                 )
             " />
         <TranslationSettings
@@ -32,7 +34,8 @@
                     SERVICE_TYPE.LOCALAI,
                     SERVICE_TYPE.NANOGPT,
                     SERVICE_TYPE.OPENAI,
-                    SERVICE_TYPE.CHUTES
+                    SERVICE_TYPE.CHUTES,
+                    SERVICE_TYPE.CROFAI
                 ].includes(
                     serviceType as
                         | 'openai'
@@ -42,6 +45,7 @@
                         | 'gemini'
                         | 'deepseek'
                         | 'chutes'
+                        | 'crofai'
                 )
             " />
         <CustomAiParameters
@@ -53,7 +57,8 @@
                     SERVICE_TYPE.LOCALAI,
                     SERVICE_TYPE.NANOGPT,
                     SERVICE_TYPE.OPENAI,
-                    SERVICE_TYPE.CHUTES
+                    SERVICE_TYPE.CHUTES,
+                    SERVICE_TYPE.CROFAI
                 ].includes(
                     serviceType as
                         | 'openai'
@@ -63,6 +68,7 @@
                         | 'gemini'
                         | 'deepseek'
                         | 'chutes'
+                        | 'crofai'
                 )
             " />
     </div>

@@ -165,9 +165,9 @@ public class CrofAiService : OpenAiService
 
         if (model.Pricing is { Prompt: not null, Completion: not null })
         {
-            var promptPrice = model.Pricing.Prompt.Value * 1_000_000;
-            var completionPrice = model.Pricing.Completion.Value * 1_000_000;
-            return $"{modelName} · ${promptPrice:F2}/${completionPrice:F2} per MTok";
+            var promptPrice = model.Pricing.Prompt.Value;
+            var completionPrice = model.Pricing.Completion.Value;
+            return $"{modelName} · ${promptPrice:F4}/${completionPrice:F4} per MTok";
         }
 
         return modelName;

@@ -117,7 +117,12 @@ const emit = defineEmits(['save'])
 const autoModeSetting = computed({
     get: (): string => settingsStore.getSetting(SETTINGS.SOURCE_LANGUAGE_MODE) as string ?? 'manual',
     set: (newValue: string): void => {
-        settingsStore.updateSetting(SETTINGS.SOURCE_LANGUAGE_MODE, newValue, true, true)
+        settingsStore.updateSetting(
+            SETTINGS.SOURCE_LANGUAGE_MODE,
+            newValue === 'true' ? 'auto' : 'manual',
+            true,
+            true
+        )
         emit('save')
     }
 })

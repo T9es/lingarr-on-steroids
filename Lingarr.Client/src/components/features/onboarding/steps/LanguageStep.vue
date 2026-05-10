@@ -121,7 +121,12 @@ const targetLanguageOptions = computed(() => {
 const autoModeSetting = computed({
     get: (): string => (settingStore.getSetting(SETTINGS.SOURCE_LANGUAGE_MODE) as string) ?? 'manual',
     set: (newValue: string): void => {
-        settingStore.updateSetting(SETTINGS.SOURCE_LANGUAGE_MODE, newValue, true, true)
+        settingStore.updateSetting(
+            SETTINGS.SOURCE_LANGUAGE_MODE,
+            newValue === 'true' ? 'auto' : 'manual',
+            true,
+            true
+        )
     }
 })
 
