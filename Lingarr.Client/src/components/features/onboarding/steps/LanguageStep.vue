@@ -1,5 +1,46 @@
 <template>
     <div class="space-y-6">
+        <!-- Source Language Mode Toggle -->
+        <div class="border-accent bg-secondary rounded-md border p-4">
+            <div class="flex items-center justify-between">
+                <div class="flex flex-col">
+                    <span class="font-medium">
+                        {{ translate('settings.translate.sourceLanguageModeTitle') }}
+                    </span>
+                    <span class="text-secondary-content text-sm">
+                        {{ translate('settings.translate.sourceLanguageModeAutoDescription') }}
+                    </span>
+                </div>
+                <div class="flex items-center space-x-3">
+                    <span
+                        class="text-sm"
+                        :class="isAutoMode ? 'text-secondary-content' : 'font-medium'">
+                        {{ translate('settings.translate.sourceLanguageModeManual') }}
+                    </span>
+                    <button
+                        class="relative inline-flex h-6 w-11 cursor-pointer items-center rounded-full transition-colors"
+                        :class="isAutoMode ? 'bg-accent' : 'bg-tertiary'"
+                        role="switch"
+                        :aria-checked="isAutoMode"
+                        @click="toggleAutoMode">
+                        <span
+                            class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
+                            :class="isAutoMode ? 'translate-x-6' : 'translate-x-1'" />
+                    </button>
+                    <span
+                        class="text-sm"
+                        :class="isAutoMode ? 'font-medium' : 'text-secondary-content'">
+                        {{ translate('settings.translate.sourceLanguageModeAuto') }}
+                    </span>
+                </div>
+            </div>
+            <div
+                v-if="isAutoMode"
+                class="bg-accent/10 text-accent mt-3 inline-flex items-center rounded-md px-3 py-1 text-xs font-medium">
+                {{ translate('settings.translate.sourceLanguageModeAutoBadge') }}
+            </div>
+        </div>
+
         <!-- Source Languages Section -->
         <div>
             <h3 class="text-primary-content mb-2 text-lg font-semibold">
@@ -8,7 +49,7 @@
             <p class="text-secondary-content mb-3 text-sm">
                 {{ translate('onboarding.language.sourceDescription') }}
             </p>
-            <LanguageSelect v-model:selected="sourceLanguages" :options="languages" />
+            <LanguageSelect v-model:selected="sourceLanguages" :options="languages" :disabled="isAutoMode" />
         </div>
 
         <!-- Target Languages Section (only shown when source languages are selected) -->
@@ -90,6 +131,26 @@ const targetLanguageOptions = computed(() => {
         })
         .filter((lang): lang is ILanguage => lang !== null)
 })
+
+// Auto mode computed property
+const isAutoMode = computed({
+    get: (): boolean => {
+        const mode = settingStore.getSetting(SETTINGS.SOURCE_LANGUAGE_MODE)
+        return (mode as string) === 'auto'
+    },
+    set: (newValue: boolean): void => {
+        settingStore.updateSetting(
+            SETTINGS.SOURCE_LANGUAGE_MODE,
+            newValue ? 'auto' : 'manual',
+            true,
+            true
+        )
+    }
+})
+
+function toggleAutoMode() {
+    isAutoMode.value = !isAutoMode.value
+}
 
 // Load languages on mount
 onMounted(() => {
