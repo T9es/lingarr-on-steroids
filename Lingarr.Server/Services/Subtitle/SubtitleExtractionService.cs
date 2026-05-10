@@ -26,6 +26,7 @@ public class SubtitleExtractionService : ISubtitleExtractionService
     private readonly ISettingService _settingService;
     private readonly ISubtitleService _subtitleService;
     private readonly IEmbeddedSubtitleCacheService _embeddedSubtitleCacheService;
+    private readonly ISubtitleLanguageDetectionService _languageDetectionService;
 
     // Codecs that are text-based and can be extracted/translated
     private static readonly HashSet<string> TextBasedCodecs = new(StringComparer.OrdinalIgnoreCase)
@@ -71,13 +72,15 @@ public class SubtitleExtractionService : ISubtitleExtractionService
         LingarrDbContext dbContext,
         ISettingService settingService,
         ISubtitleService subtitleService,
-        IEmbeddedSubtitleCacheService embeddedSubtitleCacheService)
+        IEmbeddedSubtitleCacheService embeddedSubtitleCacheService,
+        ISubtitleLanguageDetectionService languageDetectionService)
     {
         _logger = logger;
         _dbContext = dbContext;
         _settingService = settingService;
         _subtitleService = subtitleService;
         _embeddedSubtitleCacheService = embeddedSubtitleCacheService;
+        _languageDetectionService = languageDetectionService;
     }
 
     /// <inheritdoc />
@@ -527,7 +530,7 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 }
 
                 await _dbContext.SaveChangesAsync();
-                return; // Success, exit the retry loop
+                break; // Success, exit the retry loop
             }
             catch (DbUpdateException ex)
             {
@@ -584,6 +587,41 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 // Small delay before retry to reduce collision chance
                 await Task.Delay(50 * attempt);
             }
+        }
+
+        // Run AI language detection for untagged streams after successful sync
+        await TryDetectUnknownLanguagesAsync(episodeId, movieId);
+    }
+
+    private async Task TryDetectUnknownLanguagesAsync(int? episodeId, int? movieId)
+    {
+        var detectEnabled = string.Equals(
+            await _settingService.GetSetting(SettingKeys.SubtitleExtraction.DetectUnknownLanguages),
+            "true",
+            StringComparison.OrdinalIgnoreCase);
+
+        if (!detectEnabled)
+        {
+            return;
+        }
+
+        try
+        {
+            var detected = await _languageDetectionService.DetectUnknownLanguagesAsync(
+                movieId, episodeId);
+
+            if (detected > 0)
+            {
+                _logger.LogInformation(
+                    "Detected languages for {Count} untagged subtitle stream(s) via AI (EpisodeId={EpisodeId}, MovieId={MovieId})",
+                    detected, episodeId, movieId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "AI language detection failed during subtitle sync (EpisodeId={EpisodeId}, MovieId={MovieId}); streams will remain untagged",
+                episodeId, movieId);
         }
     }
 

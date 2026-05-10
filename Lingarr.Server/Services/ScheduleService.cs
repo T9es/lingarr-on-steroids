@@ -15,7 +15,7 @@ public class ScheduleService : IScheduleService
 {
     private sealed record JobMetadata(string DisplayNameKey, string? ScheduleSettingKey, bool IsEditable);
 
-    private static readonly IReadOnlyDictionary<string, JobMetadata> JobMetadataMap =
+private static readonly IReadOnlyDictionary<string, JobMetadata> JobMetadataMap =
         new Dictionary<string, JobMetadata>(StringComparer.OrdinalIgnoreCase)
         {
             ["AutomatedTranslationJob"] = new("schedule.jobDisplay.automatedTranslation", SettingKeys.Automation.TranslationSchedule, true),
@@ -25,7 +25,8 @@ public class ScheduleService : IScheduleService
             ["CleanupJob"] = new("schedule.jobDisplay.cleanup", null, false),
             ["UploadWorkspaceCleanupJob"] = new("schedule.jobDisplay.cleanup", null, false),
             ["StatisticsJob"] = new("schedule.jobDisplay.statistics", null, false),
-            ["RetryFailedRequestsJob"] = new("schedule.jobDisplay.retryFailed", null, false)
+            ["RetryFailedRequestsJob"] = new("schedule.jobDisplay.retryFailed", null, false),
+            ["UnknownLanguageDetectionJob"] = new("schedule.jobDisplay.languageDetection", SettingKeys.SubtitleExtraction.DetectUnknownLanguagesSchedule, true)
         };
 
     private readonly IHubContext<JobProgressHub> _hubContext;
@@ -78,6 +79,8 @@ public class ScheduleService : IScheduleService
             Cron.Daily(22),
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        await SyncUnknownLanguageDetectionJobAsync();
+
         _logger.LogInformation("Starting pending translation requests.");
         await translationRequestService.ResumeTranslationRequests();
     }
@@ -123,7 +126,7 @@ public class ScheduleService : IScheduleService
         RecurringJob.RemoveIfExists("AutomatedTranslationJob");
     }
 
-    /// <inheritdoc />
+/// <inheritdoc />
     public async Task SyncCustomSourceScanJobAsync()
     {
         using var scope = _serviceProvider.CreateScope();
@@ -141,6 +144,36 @@ public class ScheduleService : IScheduleService
         }
 
         RecurringJob.RemoveIfExists("CustomSourceScanJob");
+    }
+
+    /// <inheritdoc />
+    public async Task SyncUnknownLanguageDetectionJobAsync()
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var settingService = scope.ServiceProvider.GetRequiredService<ISettingService>();
+
+        var settings = await settingService.GetSettings([
+            SettingKeys.SubtitleExtraction.DetectUnknownLanguages,
+            SettingKeys.SubtitleExtraction.DetectUnknownLanguagesSchedule
+        ]);
+
+        var detectEnabled = string.Equals(
+            settings.GetValueOrDefault(SettingKeys.SubtitleExtraction.DetectUnknownLanguages),
+            "true",
+            StringComparison.OrdinalIgnoreCase);
+        var schedule = settings.GetValueOrDefault(SettingKeys.SubtitleExtraction.DetectUnknownLanguagesSchedule);
+
+        if (detectEnabled && !string.IsNullOrWhiteSpace(schedule))
+        {
+            RecurringJob.AddOrUpdate<UnknownLanguageDetectionJob>(
+                "UnknownLanguageDetectionJob",
+                job => job.Execute(),
+                schedule,
+                new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+            return;
+        }
+
+        RecurringJob.RemoveIfExists("UnknownLanguageDetectionJob");
     }
 
     /// <inheritdoc />

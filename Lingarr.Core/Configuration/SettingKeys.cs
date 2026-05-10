@@ -236,7 +236,7 @@ public static class SettingKeys
         public const string LastQualityAuditResult = "subtitle_quality_audit_last_result";
     }
 
-    public static class SubtitleExtraction
+public static class SubtitleExtraction
     {
         /// <summary>
         /// Extraction mode: "on_demand" | "specific_language" | "extract_all"
@@ -247,6 +247,18 @@ public static class SettingKeys
         public const string OcrMinQualityScore = "subtitle_ocr_min_quality_score";
         public const string OcrLanguages = "subtitle_ocr_languages";
         public const string OcrTranslationPromptEnabled = "subtitle_ocr_translation_prompt_enabled";
+
+        /// <summary>
+        /// Enable AI-based language detection for subtitle streams with no language tag.
+        /// Default: false (disabled)
+        /// </summary>
+        public const string DetectUnknownLanguages = "detect_unknown_languages";
+
+        /// <summary>
+        /// Cron schedule for the automatic unknown language detection job.
+        /// Default: "0 3 * * *" (daily at 3 AM UTC)
+        /// </summary>
+        public const string DetectUnknownLanguagesSchedule = "detect_unknown_languages_schedule";
     }
 
     public static class Onboarding

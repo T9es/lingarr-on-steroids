@@ -7,6 +7,7 @@ using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Interfaces.Services;
+using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Services.Subtitle;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -39,7 +40,8 @@ public class SubtitleExtractionServiceTests : IDisposable
             _dbContext,
             Mock.Of<ISettingService>(),
             Mock.Of<ISubtitleService>(),
-            new EmbeddedSubtitleCacheService(NullLogger<EmbeddedSubtitleCacheService>.Instance));
+            new EmbeddedSubtitleCacheService(NullLogger<EmbeddedSubtitleCacheService>.Instance),
+            Mock.Of<ISubtitleLanguageDetectionService>());
     }
 
     [Fact]

@@ -180,6 +180,7 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<ISubtitleOutputReconciliationService, SubtitleOutputReconciliationService>();
         builder.Services.AddScoped<IMkvEmbeddingService, MkvEmbeddingService>();
         builder.Services.AddSingleton<ITranslationQualityScorer, TranslationQualityScorer>();
+        builder.Services.AddScoped<ISubtitleLanguageDetectionService, SubtitleLanguageDetectionService>();
 
         // Register translate services
         builder.Services.AddScoped<ITranslationPromptContextAccessor, TranslationPromptContextAccessor>();

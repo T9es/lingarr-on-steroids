@@ -58,7 +58,8 @@ public class TranslationJobTests : IDisposable
             _dbContext,
             _settingServiceMock.Object,
             subtitleService,
-            _embeddedSubtitleCacheService);
+            _embeddedSubtitleCacheService,
+            Mock.Of<ISubtitleLanguageDetectionService>());
 
         _job = new TranslationJob(
             NullLogger<TranslationJob>.Instance,

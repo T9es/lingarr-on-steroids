@@ -115,13 +115,15 @@ public class StartupService : IHostedService
             { SettingKeys.UploadWorkspace.MaxBatchSize, "100" },
             { SettingKeys.UploadWorkspace.MaxFileSizeBytes, "2147483648" },
 
-            // Subtitle Extraction
+// Subtitle Extraction
             { SettingKeys.SubtitleExtraction.ExtractionMode, "on_demand" },
             { SettingKeys.SubtitleExtraction.OcrEnabled, "true" },
             { SettingKeys.SubtitleExtraction.OcrAutoQueue, "true" },
             { SettingKeys.SubtitleExtraction.OcrMinQualityScore, "80" },
             { SettingKeys.SubtitleExtraction.OcrLanguages, "auto" },
             { SettingKeys.SubtitleExtraction.OcrTranslationPromptEnabled, "true" },
+            { SettingKeys.SubtitleExtraction.DetectUnknownLanguages, "false" },
+            { SettingKeys.SubtitleExtraction.DetectUnknownLanguagesSchedule, "0 3 * * *" },
 
             // Validation
             { SettingKeys.SubtitleValidation.ValidateSubtitles, "false" },
