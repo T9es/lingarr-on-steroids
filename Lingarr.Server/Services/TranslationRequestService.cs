@@ -884,9 +884,9 @@ var response = new RetryFailedRequestsResponse
                 tr.SourceLanguage == translationRequest.SourceLanguage &&
                 tr.TargetLanguage == translationRequest.TargetLanguage &&
                 tr.SourceDedupeKey == translationRequest.SourceDedupeKey &&
-                tr.IsActive == true);
+(tr.IsActive == true || tr.Status == TranslationStatus.Failed));
 
-query = isSupplemental
+        query = isSupplemental
             ? query.Where(tr =>
                 (tr.SourceSubtitleType == SubtitleLanguageHelper.TypeForced ||
                  tr.SourceSubtitleType == SubtitleLanguageHelper.TypeSignsSongs ||

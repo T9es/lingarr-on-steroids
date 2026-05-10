@@ -46,14 +46,16 @@ public class CrofAiUsageService : ICrofAiUsageService
 
         var currentRequestsUsed = Volatile.Read(ref _requestsUsed);
 
-        if (snapshot.UsableRequests.HasValue && currentRequestsUsed >= snapshot.UsableRequests.Value)
+        if (snapshot.UsableRequests.HasValue)
         {
-            _logger.LogWarning("CrofAI daily request limit reached ({Used}/{Total}). Waiting for reset.",
-                currentRequestsUsed, snapshot.UsableRequests.Value);
-            throw new InvalidOperationException("CrofAI daily request limit reached. Please wait for reset or add more credits.");
+            if (currentRequestsUsed >= snapshot.UsableRequests.Value)
+            {
+                _logger.LogWarning("CrofAI daily request limit reached ({Used}/{Total}). Waiting for reset.",
+                    currentRequestsUsed, snapshot.UsableRequests.Value);
+                throw new InvalidOperationException("CrofAI daily request limit reached. Please wait for reset or add more credits.");
+            }
         }
-
-        if (snapshot.Credits.HasValue && snapshot.Credits.Value <= 0)
+        else if (snapshot.Credits.HasValue && snapshot.Credits.Value <= 0)
         {
             _logger.LogWarning("CrofAI credits exhausted ({Credits}). Cannot translate.", snapshot.Credits.Value);
             throw new InvalidOperationException("CrofAI credits exhausted. Please add more credits to continue.");

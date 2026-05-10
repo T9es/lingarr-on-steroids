@@ -1812,7 +1812,7 @@ ISubtitleSourceSelectionService? subtitleSourceSelectionService = null,
                 tr.SourceLanguage == sourceLanguage &&
                 tr.TargetLanguage == targetLanguage &&
                 tr.SourceDedupeKey == sourceDedupeKey &&
-                tr.IsActive == true);
+(tr.IsActive == true || tr.Status == TranslationStatus.Failed));
 
 query = isSupplemental
             ? query.Where(tr =>

@@ -376,7 +376,7 @@ public class CustomMediaSubtitleProcessor : ICustomMediaSubtitleProcessor
                     request.CustomMediaItemId == customMediaItemId)) &&
                 request.SourceLanguage == sourceLanguage &&
                 request.TargetLanguage == targetLanguage &&
-                request.IsActive == true)
+                (request.IsActive == true || request.Status == TranslationStatus.Failed))
             .AnyAsync();
     }
 
