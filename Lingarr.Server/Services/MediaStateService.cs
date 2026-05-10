@@ -168,59 +168,79 @@ public class MediaStateService : IMediaStateService
             }
         }
 
-        // 5. Check for source subtitle
-        var externalSourceSelection = ExternalSubtitleCandidateHelper.SelectPrimarySourceCandidate(
-            externalSubtitles,
-            sourceLanguages,
-            ignoreCaptions);
-        var hasExternalSource = externalSourceSelection != null;
-        var embeddedPrimarySelection = await _subtitleSourceSelectionService.SelectPrimaryAsync(
-            embeddedSubtitles.Where(subtitle => subtitle.IsReadableSource()).ToList(),
-            sourceLanguages.ToList(),
-            allowCaptionFallback: !ignoreCaptions);
-        var hasEmbeddedSource = embeddedPrimarySelection.SelectedSubtitle != null;
+        // 5. Check auto mode first (when ON, configured source languages are ignored)
+        var isAutoMode = string.Equals(
+            await _settingService.GetSetting(SettingKeys.Translation.SourceLanguageMode),
+            "auto",
+            StringComparison.OrdinalIgnoreCase);
 
-        if (!hasExternalSource && !hasEmbeddedSource)
+        bool hasExternalSource, hasEmbeddedSource;
+
+        if (isAutoMode)
         {
-            if (ocrEnabled && HasOcrBlockedSourceCandidate(embeddedSubtitles, sourceLanguages, ignoreCaptions))
+            // Auto mode: use quality scorer to find best source from ALL streams
+            var autoSource = await FindAutoSourceCandidateAsync(
+                embeddedSubtitles, externalSubtitles, targetLanguages);
+            if (autoSource != null)
             {
-                return TranslationState.OcrBlocked;
+                _logger.LogInformation(
+                    "Auto mode selected source language '{Language}' via quality scoring",
+                    autoSource);
+                hasEmbeddedSource = true;
+                hasExternalSource = false;
             }
-
-            if (ocrEnabled && HasOcrPendingSourceCandidate(embeddedSubtitles, sourceLanguages, ignoreCaptions))
+            else
             {
-                return TranslationState.OcrPending;
-            }
-
-            // Auto mode: score non-configured sources via quality scorer
-            if (_qualityScorer != null &&
-                string.Equals(
-                    await _settingService.GetSetting(SettingKeys.Translation.SourceLanguageMode),
-                    "auto",
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                var autoSource = await FindAutoSourceCandidateAsync(
-                    embeddedSubtitles, externalSubtitles, targetLanguages);
-                if (autoSource != null)
+                // Check if OCR is needed for image-based subtitles (any language)
+                if (ocrEnabled && HasOcrBlockedSourceCandidate(embeddedSubtitles, [], ignoreCaptions))
                 {
-                    _logger.LogInformation(
-                        "Auto mode selected source language '{Language}' via quality scoring",
-                        autoSource);
-                    hasEmbeddedSource = true;
+                    return TranslationState.OcrBlocked;
                 }
+
+                if (ocrEnabled && HasOcrPendingSourceCandidate(embeddedSubtitles, [], ignoreCaptions))
+                {
+                    return TranslationState.OcrPending;
+                }
+
+                return TranslationState.AwaitingSource;
             }
+        }
+        else
+        {
+            // Manual mode: use configured source languages
+            var externalSourceSelection = ExternalSubtitleCandidateHelper.SelectPrimarySourceCandidate(
+                externalSubtitles,
+                sourceLanguages,
+                ignoreCaptions);
+            hasExternalSource = externalSourceSelection != null;
+            var embeddedPrimarySelection = await _subtitleSourceSelectionService.SelectPrimaryAsync(
+                embeddedSubtitles.Where(subtitle => subtitle.IsReadableSource()).ToList(),
+                sourceLanguages.ToList(),
+                allowCaptionFallback: !ignoreCaptions);
+            hasEmbeddedSource = embeddedPrimarySelection.SelectedSubtitle != null;
 
             if (!hasExternalSource && !hasEmbeddedSource)
             {
+                if (ocrEnabled && HasOcrBlockedSourceCandidate(embeddedSubtitles, sourceLanguages, ignoreCaptions))
+                {
+                    return TranslationState.OcrBlocked;
+                }
+
+                if (ocrEnabled && HasOcrPendingSourceCandidate(embeddedSubtitles, sourceLanguages, ignoreCaptions))
+                {
+                    return TranslationState.OcrPending;
+                }
+
                 return TranslationState.AwaitingSource;
             }
         }
 
         // 6. Check which targets are satisfied
+        // In auto mode, use empty source languages for required format resolution (accept all)
         var requiredOutputFormats = await ResolveRequiredOutputFormatsAsync(
             externalSubtitles,
             embeddedSubtitles,
-            sourceLanguages,
+            isAutoMode ? [] : sourceLanguages,
             ignoreCaptions,
             subtitleOutputMode);
 
@@ -236,11 +256,13 @@ public class MediaStateService : IMediaStateService
                 requiredOutputFormats.Any(requiredFormat => !formats.Contains(requiredFormat)))
             .ToList();
 
-        var sourceSnapshot = await _sourceSubtitleSnapshotService.ResolveCurrentSnapshotAsync(
+        var sourceSnapshot = await _sourceSubtitleSnapshotService.ResolveCurrentSnapshotWithAutoAsync(
             media,
             mediaType,
             embeddedSubtitles,
-            externalSubtitles);
+            externalSubtitles,
+            isAutoMode,
+            targetLanguages);
 
         if (missingTargets.Count == 0)
         {
@@ -654,6 +676,9 @@ public class MediaStateService : IMediaStateService
         List<Subtitles> externalSubtitles,
         IReadOnlyList<string> targetLanguages)
     {
+        // Score all candidates and pick the best one
+        var bestCandidate = (Language: null as string, BestScore: 0.0, Source: "none");
+        
         // Check embedded subtitles first (preferred)
         foreach (var subtitle in embeddedSubtitles.Where(s => s.IsReadableSource()))
         {
@@ -663,20 +688,32 @@ public class MediaStateService : IMediaStateService
                 continue;
             }
 
+            // Compute aggregate score across all target languages
+            var totalScore = 0.0;
+            var scoredTargets = 0;
             foreach (var target in targetLanguages)
             {
                 var score = _qualityScorer!.ScoreDirection(subtitle.Language, target);
-                if (score.HasValue && _qualityScorer.IsAcceptableForAutoFallback(score.Value))
+                if (score.HasValue)
                 {
-                    _logger.LogDebug(
-                        "Auto mode: embedded stream {StreamIndex} ({Language}) → {Target} scores {Score:F1}",
-                        subtitle.StreamIndex, subtitle.Language, target, score.Value);
-                    return subtitle.Language;
+                    totalScore += score.Value;
+                    scoredTargets++;
                 }
+            }
+
+            if (scoredTargets == 0) continue;
+
+            var avgScore = totalScore / scoredTargets;
+            if (avgScore >= _qualityScorer!.MinimumAcceptableScore && avgScore > bestCandidate.BestScore)
+            {
+                bestCandidate = (subtitle.Language, avgScore, "embedded");
+                _logger.LogDebug(
+                    "Auto mode: embedded stream {StreamIndex} ({Language}) average score {Score:F1} across {Count} targets",
+                    subtitle.StreamIndex, subtitle.Language, avgScore, scoredTargets);
             }
         }
 
-        // Check external subtitles as fallback
+        // Check external subtitles
         foreach (var subtitle in externalSubtitles)
         {
             var language = SubtitleLanguageHelper.DetectLanguageFromFileName(subtitle.FileName);
@@ -686,17 +723,36 @@ public class MediaStateService : IMediaStateService
                 continue;
             }
 
+            var totalScore = 0.0;
+            var scoredTargets = 0;
             foreach (var target in targetLanguages)
             {
                 var score = _qualityScorer!.ScoreDirection(language, target);
-                if (score.HasValue && _qualityScorer.IsAcceptableForAutoFallback(score.Value))
+                if (score.HasValue)
                 {
-                    _logger.LogDebug(
-                        "Auto mode: external subtitle '{FileName}' ({Language}) → {Target} scores {Score:F1}",
-                        subtitle.FileName, language, target, score.Value);
-                    return language;
+                    totalScore += score.Value;
+                    scoredTargets++;
                 }
             }
+
+            if (scoredTargets == 0) continue;
+
+            var avgScore = totalScore / scoredTargets;
+            if (avgScore >= _qualityScorer!.MinimumAcceptableScore && avgScore > bestCandidate.BestScore)
+            {
+                bestCandidate = (language, avgScore, "external");
+                _logger.LogDebug(
+                    "Auto mode: external subtitle '{FileName}' ({Language}) average score {Score:F1} across {Count} targets",
+                    subtitle.FileName, language, avgScore, scoredTargets);
+            }
+        }
+
+        if (bestCandidate.Language != null)
+        {
+            _logger.LogInformation(
+                "Auto mode selected best source: {Language} ({Source}) with average score {Score:F1}",
+                bestCandidate.Language, bestCandidate.Source, bestCandidate.BestScore);
+            return bestCandidate.Language;
         }
 
         return null;

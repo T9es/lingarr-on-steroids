@@ -113,6 +113,11 @@ public class SettingChangedListener
                 ])
             },
             {
+                "sourceLanguageMode", ("Action", "InvalidateTranslationState", [
+                    SettingKeys.Translation.SourceLanguageMode
+                ])
+            },
+            {
                 "languageSettings", ("Action", "InvalidateTranslationState", [
                     SettingKeys.Translation.SourceLanguages,
                     SettingKeys.Translation.TargetLanguages,
@@ -277,8 +282,7 @@ public class SettingChangedListener
                         : 0;
                     await workerServiceForReservedSlots.ReconfigureReservedUploadSlotsAsync(reservedSlots);
                     _logger.LogInformation(
-                        "Settings changed for |Green|UploadReservedWorkerSlots|/Green|. Reconfigured to |Orange|{ReservedSlots}|/Orange| reserved upload slot(s).",
-                        reservedSlots);
+                        "Settings changed for |Green|UploadReservedWorkerSlots|/Green|. Reconfigured to |Orange|{ReservedSlots}|/Orange| reserved upload slot(s).");
                     break;
                     
                 case "InvalidateTranslationState":

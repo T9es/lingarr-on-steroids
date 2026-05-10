@@ -1764,7 +1764,7 @@ public class TranslationJob
                 embeddedSubtitles,
                 [request.SourceLanguage],
                 allowCaptionFallback: !ignoreCaptions,
-                cancellationToken);
+                cancellationToken: cancellationToken);
             candidate = selection.SelectedSubtitle;
         }
 

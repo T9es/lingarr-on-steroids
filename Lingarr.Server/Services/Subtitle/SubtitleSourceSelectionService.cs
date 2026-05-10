@@ -1,20 +1,25 @@
 using Lingarr.Core.Entities;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
+using Lingarr.Server.Interfaces.Services.Translation;
 
 namespace Lingarr.Server.Services.Subtitle;
 
 public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
 {
     private const int LanguagePriorityBonus = 20;
+    private const double MinimumAutoFallbackScore = 50.0;
     private readonly ISubtitleService _subtitleService;
+    private readonly ITranslationQualityScorer? _qualityScorer;
     private readonly ILogger<SubtitleSourceSelectionService> _logger;
 
     public SubtitleSourceSelectionService(
         ISubtitleService subtitleService,
-        ILogger<SubtitleSourceSelectionService> logger)
+        ILogger<SubtitleSourceSelectionService> logger,
+        ITranslationQualityScorer? qualityScorer = null)
     {
         _subtitleService = subtitleService;
+        _qualityScorer = qualityScorer;
         _logger = logger;
     }
 
@@ -22,8 +27,11 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
         IReadOnlyCollection<EmbeddedSubtitle> candidates,
         IReadOnlyList<string> configuredSourceLanguages,
         bool allowCaptionFallback,
+        IReadOnlyList<string>? targetLanguages = null,
         CancellationToken cancellationToken = default)
     {
+        var isAutoMode = targetLanguages != null && targetLanguages.Count > 0;
+
         var normalizedSourceLanguages = configuredSourceLanguages
             .Select(SubtitleLanguageHelper.NormalizeLanguageCode)
             .Where(language => !string.IsNullOrWhiteSpace(language))
@@ -31,7 +39,14 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
             .ToList();
 
         var assessments = new List<SubtitleSourceCandidateAssessment>();
-        if (candidates.Count == 0 || normalizedSourceLanguages.Count == 0)
+        
+        // In auto mode, accept all candidates (don't require configured languages to be set)
+        if (candidates.Count == 0)
+        {
+            return new SubtitleSourceSelectionResult { Assessments = assessments };
+        }
+        
+        if (!isAutoMode && normalizedSourceLanguages.Count == 0)
         {
             return new SubtitleSourceSelectionResult { Assessments = assessments };
         }
@@ -42,6 +57,8 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
             assessments.Add(await AssessCandidateAsync(
                 candidate,
                 normalizedSourceLanguages,
+                isAutoMode,
+                targetLanguages,
                 cancellationToken));
         }
 
@@ -76,9 +93,14 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
     private async Task<SubtitleSourceCandidateAssessment> AssessCandidateAsync(
         EmbeddedSubtitle candidate,
         IReadOnlyList<string> normalizedSourceLanguages,
-        CancellationToken cancellationToken)
+        bool isAutoMode,
+        IReadOnlyList<string>? targetLanguages = null,
+        CancellationToken cancellationToken = default)
     {
-        var matchedLanguage = MatchConfiguredLanguage(candidate, normalizedSourceLanguages);
+        var matchedLanguage = isAutoMode
+            ? GetCandidateLanguage(candidate)
+            : MatchConfiguredLanguage(candidate, normalizedSourceLanguages);
+
         if (string.IsNullOrWhiteSpace(matchedLanguage))
         {
             return new SubtitleSourceCandidateAssessment(
@@ -90,6 +112,22 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
                 int.MinValue,
                 null,
                 "Language is not configured as a source language.");
+        }
+
+        // In auto mode, check translation quality score against target languages
+        if (isAutoMode && targetLanguages != null && targetLanguages.Count > 0)
+        {
+            var bestScore = ScoreAgainstTargets(matchedLanguage, targetLanguages);
+            if (bestScore < MinimumAutoFallbackScore)
+            {
+                return new SubtitleSourceCandidateAssessment(
+                    candidate,
+                    SubtitleSourceCandidateRole.RejectedLanguage,
+                    matchedLanguage,
+                    int.MinValue,
+                    null,
+                    $"Auto mode: language '{matchedLanguage}' scored {bestScore:F1} against targets, below minimum of {MinimumAutoFallbackScore}.");
+            }
         }
 
         if (!candidate.IsReadableSource())
@@ -162,7 +200,7 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
                 candidate,
                 SubtitleSourceCandidateRole.SupplementalForcedSigns,
                 matchedLanguage,
-                BuildScore(candidate, matchedLanguage, normalizedSourceLanguages, pathologicalAdjustment.ScoreAdjustment),
+                BuildScore(candidate, matchedLanguage, normalizedSourceLanguages, isAutoMode, pathologicalAdjustment.ScoreAdjustment),
                 entryCount,
                 "Forced/signs/songs subtitles are supplemental and cannot be primary sources.");
         }
@@ -173,6 +211,7 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
                 candidate,
                 matchedLanguage,
                 normalizedSourceLanguages,
+                isAutoMode,
                 pathologicalAdjustment.ScoreAdjustment);
 
             return new SubtitleSourceCandidateAssessment(
@@ -188,6 +227,7 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
             candidate,
             matchedLanguage,
             normalizedSourceLanguages,
+            isAutoMode,
             pathologicalAdjustment.ScoreAdjustment);
 
         if (SubtitleLanguageHelper.IsCaptionSubtitleType(subtitleType))
@@ -234,6 +274,7 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
         EmbeddedSubtitle candidate,
         string matchedLanguage,
         IReadOnlyList<string> normalizedSourceLanguages,
+        bool isAutoMode,
         int contentScoreAdjustment)
     {
         var score = SubtitleLanguageHelper.ScoreSubtitleCandidate(
@@ -241,14 +282,18 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
             matchedLanguage,
             contentScoreAdjustment);
 
-        var languageIndex = normalizedSourceLanguages
-            .Select((language, index) => new { language, index })
-            .FirstOrDefault(item => string.Equals(
-                item.language,
-                matchedLanguage,
-                StringComparison.OrdinalIgnoreCase))
-            ?.index ?? normalizedSourceLanguages.Count;
-        score += (normalizedSourceLanguages.Count - languageIndex) * LanguagePriorityBonus;
+        // In auto mode, skip the configured-language priority bonus
+        if (!isAutoMode)
+        {
+            var languageIndex = normalizedSourceLanguages
+                .Select((language, index) => new { language, index })
+                .FirstOrDefault(item => string.Equals(
+                    item.language,
+                    matchedLanguage,
+                    StringComparison.OrdinalIgnoreCase))
+                ?.index ?? normalizedSourceLanguages.Count;
+            score += (normalizedSourceLanguages.Count - languageIndex) * LanguagePriorityBonus;
+        }
 
         var normalizedFormat = candidate.GetReadableSourceFormat();
         if (normalizedFormat is ".srt" or ".vtt")
@@ -261,6 +306,43 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
         }
 
         return score;
+    }
+
+    /// <summary>
+    /// Gets the candidate's language directly, without matching against configured languages.
+    /// Used in auto mode when configured source languages should be ignored.
+    /// </summary>
+    private static string? GetCandidateLanguage(EmbeddedSubtitle candidate)
+    {
+        if (string.IsNullOrWhiteSpace(candidate.Language) ||
+            candidate.Language.Equals("und", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+        return SubtitleLanguageHelper.NormalizeLanguageCode(candidate.Language);
+    }
+
+    /// <summary>
+    /// Scores a language against all target languages using the translation quality scorer.
+    /// Returns the best (highest) score found, or 0 if scoring is unavailable.
+    /// </summary>
+    private double ScoreAgainstTargets(string language, IReadOnlyList<string> targetLanguages)
+    {
+        if (_qualityScorer == null)
+        {
+            return MinimumAutoFallbackScore; // No scorer available — accept all candidates
+        }
+
+        var bestScore = 0.0;
+        foreach (var target in targetLanguages)
+        {
+            var score = _qualityScorer.ScoreDirection(language, target);
+            if (score.HasValue && score.Value > bestScore)
+            {
+                bestScore = score.Value;
+            }
+        }
+        return bestScore;
     }
 
     private int? GetExtractedEntryCount(EmbeddedSubtitle candidate)

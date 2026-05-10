@@ -20,6 +20,30 @@ public interface ISourceSubtitleSnapshotService
         IReadOnlyCollection<Subtitles>? externalSubtitles = null,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Resolves the best available external subtitle, optionally using auto mode
+    /// to bypass configured source language filtering.
+    /// </summary>
+    Task<ResolvedExternalSourceSubtitle?> ResolveExternalSourceWithAutoAsync(
+        IMedia media,
+        IReadOnlyCollection<Subtitles>? externalSubtitles,
+        bool useAutoMode,
+        IReadOnlyList<string>? targetLanguages,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Resolves a snapshot of the current source subtitle, optionally using auto mode
+    /// to bypass configured source language filtering.
+    /// </summary>
+    Task<SourceSubtitleSnapshot?> ResolveCurrentSnapshotWithAutoAsync(
+        IMedia media,
+        MediaType mediaType,
+        IReadOnlyCollection<EmbeddedSubtitle> embeddedSubtitles,
+        IReadOnlyCollection<Subtitles>? externalSubtitles,
+        bool useAutoMode,
+        IReadOnlyList<string>? targetLanguages,
+        CancellationToken cancellationToken = default);
+
     SourceSubtitleSnapshot CreateExternalSnapshot(string subtitlePath, string sourceLanguage);
 
     SourceSubtitleSnapshot CreateEmbeddedSnapshot(EmbeddedSubtitle subtitle, string sourceLanguage);

@@ -77,13 +77,61 @@ public class SourceSubtitleSnapshotService : ISourceSubtitleSnapshotService
             readableEmbedded,
             configuredSourceLanguages,
             allowCaptionFallback,
-            cancellationToken);
+            cancellationToken: cancellationToken);
         if (selection.SelectedSubtitle == null || string.IsNullOrWhiteSpace(selection.MatchedLanguage))
         {
             return null;
         }
 
         return CreateEmbeddedSnapshot(selection.SelectedSubtitle, selection.MatchedLanguage);
+    }
+
+    public async Task<SourceSubtitleSnapshot?> ResolveCurrentSnapshotWithAutoAsync(
+        IMedia media,
+        MediaType mediaType,
+        IReadOnlyCollection<EmbeddedSubtitle> embeddedSubtitles,
+        IReadOnlyCollection<Subtitles>? externalSubtitles,
+        bool useAutoMode,
+        IReadOnlyList<string>? targetLanguages,
+        CancellationToken cancellationToken = default)
+    {
+        if (!useAutoMode)
+        {
+            return await ResolveCurrentSnapshotAsync(
+                media, mediaType, embeddedSubtitles, externalSubtitles, cancellationToken);
+        }
+
+        // In auto mode, bypass configured language filtering — accept all sources
+        var externalSource = await ResolveExternalSourceWithAutoAsync(
+            media, externalSubtitles, true, targetLanguages, cancellationToken);
+        if (externalSource != null)
+        {
+            return externalSource.Snapshot;
+        }
+
+        var readableEmbedded = embeddedSubtitles
+            .Where(s => s.IsReadableSource())
+            .ToList();
+
+        if (readableEmbedded.Count == 0)
+        {
+            return null;
+        }
+
+        var allowCaptionFallback = !await ShouldIgnoreCaptionsAsync(cancellationToken);
+        var selection = await _subtitleSourceSelectionService.SelectPrimaryAsync(
+            readableEmbedded,
+            [],
+            allowCaptionFallback,
+            targetLanguages: targetLanguages,
+            cancellationToken: cancellationToken);
+
+        if (selection.SelectedSubtitle != null && !string.IsNullOrWhiteSpace(selection.MatchedLanguage))
+        {
+            return CreateEmbeddedSnapshot(selection.SelectedSubtitle, selection.MatchedLanguage);
+        }
+
+        return null;
     }
 
     public async Task<ResolvedExternalSourceSubtitle?> ResolveExternalSourceAsync(
@@ -117,6 +165,99 @@ public class SourceSubtitleSnapshotService : ISourceSubtitleSnapshotService
             SourceLanguage = externalCandidate.SourceLanguage,
             Snapshot = CreateExternalSnapshot(externalCandidate.Subtitle.Path, externalCandidate.SourceLanguage)
         };
+    }
+
+    public async Task<ResolvedExternalSourceSubtitle?> ResolveExternalSourceWithAutoAsync(
+        IMedia media,
+        IReadOnlyCollection<Subtitles>? externalSubtitles,
+        bool useAutoMode,
+        IReadOnlyList<string>? targetLanguages,
+        CancellationToken cancellationToken = default)
+    {
+        if (!useAutoMode)
+        {
+            return await ResolveExternalSourceAsync(media, externalSubtitles, cancellationToken);
+        }
+
+        var ignoreCaptions = await ShouldIgnoreCaptionsAsync(cancellationToken);
+        var matchingExternalSubtitles = externalSubtitles?.ToList()
+                                       ?? await GetMatchingExternalSubtitlesAsync(media, cancellationToken);
+
+        // Accept all external subtitles regardless of configured languages
+        var autoCandidate = SelectAutoExternalCandidate(matchingExternalSubtitles, ignoreCaptions);
+        if (autoCandidate.Subtitle == null || string.IsNullOrWhiteSpace(autoCandidate.SourceLanguage))
+        {
+            return null;
+        }
+
+        return new ResolvedExternalSourceSubtitle
+        {
+            Subtitle = autoCandidate.Subtitle,
+            SourceLanguage = autoCandidate.SourceLanguage,
+            Snapshot = CreateExternalSnapshot(autoCandidate.Subtitle.Path, autoCandidate.SourceLanguage)
+        };
+    }
+
+    /// <summary>
+    /// Selects the best external subtitle candidate without filtering by configured source languages.
+    /// Used in auto mode when any available external subtitle language is acceptable.
+    /// </summary>
+    private static (Subtitles? Subtitle, string? SourceLanguage) SelectAutoExternalCandidate(
+        List<Subtitles> subtitles,
+        bool ignoreCaptions)
+    {
+        var validSubtitles = subtitles
+            .Where(s => !ExternalSubtitleCandidateHelper.ShouldSkipAsPrimarySource(s))
+            .Where(s => !ExternalSubtitleCandidateHelper.IsSupplementalOrCommentary(s))
+            .ToList();
+
+        if (validSubtitles.Count == 0)
+        {
+            return (null, null);
+        }
+
+        var candidates = new List<(Subtitles Subtitle, string Language, int Score)>();
+        foreach (var subtitle in validSubtitles)
+        {
+            var language = SubtitleLanguageHelper.DetectLanguageFromFileName(subtitle.FileName);
+            if (string.IsNullOrWhiteSpace(language) ||
+                language.Equals("und", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var score = ExternalSubtitleCandidateHelper.ScorePrimarySourceCandidate(subtitle);
+            candidates.Add((subtitle, language, score));
+        }
+
+        var cleanCandidate = candidates
+            .Where(c => !SubtitleLanguageHelper.IsCaptionSubtitleType(
+                ExternalSubtitleCandidateHelper.GetSubtitleType(c.Subtitle)))
+            .OrderByDescending(c => c.Score)
+            .ThenBy(c => c.Subtitle.Path, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
+
+        if (cleanCandidate.Subtitle != null)
+        {
+            return (cleanCandidate.Subtitle, cleanCandidate.Language);
+        }
+
+        if (!ignoreCaptions)
+        {
+            var captionCandidate = candidates
+                .Where(c => SubtitleLanguageHelper.IsCaptionSubtitleType(
+                    ExternalSubtitleCandidateHelper.GetSubtitleType(c.Subtitle)))
+                .OrderByDescending(c => c.Score)
+                .ThenBy(c => c.Subtitle.Path, StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault();
+
+            if (captionCandidate.Subtitle != null)
+            {
+                return (captionCandidate.Subtitle, captionCandidate.Language);
+            }
+        }
+
+        return (null, null);
     }
 
     public SourceSubtitleSnapshot CreateExternalSnapshot(string subtitlePath, string sourceLanguage)

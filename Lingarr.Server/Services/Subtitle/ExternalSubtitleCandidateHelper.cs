@@ -199,7 +199,7 @@ public static class ExternalSubtitleCandidateHelper
         }
     }
 
-    private static int ScorePrimarySourceCandidate(Subtitles subtitle)
+    public static int ScorePrimarySourceCandidate(Subtitles subtitle)
     {
         var score = 0;
         var normalizedFormat = SubtitleOutputModeHelper.NormalizeFormat(

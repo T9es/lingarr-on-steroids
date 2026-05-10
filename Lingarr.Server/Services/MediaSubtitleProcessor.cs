@@ -125,12 +125,30 @@ ISubtitleSourceSelectionService? subtitleSourceSelectionService = null,
             return false;
         }
 
+        // Check auto mode at the start of processing
+        var isAutoMode = string.Equals(
+            await _settingService.GetSetting(SettingKeys.Translation.SourceLanguageMode),
+            "auto",
+            StringComparison.OrdinalIgnoreCase);
+
         string? tempSourcePath = null;
         try
         {
-            var resolvedExternalSource = await _sourceSubtitleSnapshotService.ResolveExternalSourceAsync(
-                _media,
-                subtitles);
+            ResolvedExternalSourceSubtitle? resolvedExternalSource;
+            if (isAutoMode)
+            {
+                resolvedExternalSource = await _sourceSubtitleSnapshotService.ResolveExternalSourceWithAutoAsync(
+                    _media,
+                    subtitles,
+                    true,
+                    targetLanguages.ToList());
+            }
+            else
+            {
+                resolvedExternalSource = await _sourceSubtitleSnapshotService.ResolveExternalSourceAsync(
+                    _media,
+                    subtitles);
+            }
             var sourceLanguage = resolvedExternalSource?.SourceLanguage;
             var sourceSubtitle = resolvedExternalSource?.Subtitle;
             var sourceSnapshot = resolvedExternalSource?.Snapshot;
@@ -175,11 +193,12 @@ ISubtitleSourceSelectionService? subtitleSourceSelectionService = null,
                 
                 if (embeddedSubtitles != null && embeddedSubtitles.Any())
                 {
-                     var textBasedSubs = embeddedSubtitles.Where(s => s.IsTextBased).ToList();
+                 var textBasedSubs = embeddedSubtitles.Where(s => s.IsTextBased).ToList();
                      var bestMatch = await _subtitleSourceSelectionService.SelectPrimaryAsync(
                          textBasedSubs,
                          configuredSourceLanguages,
-                         allowCaptionFallback: !string.Equals(ignoreCaptions, "true", StringComparison.OrdinalIgnoreCase));
+                         allowCaptionFallback: !string.Equals(ignoreCaptions, "true", StringComparison.OrdinalIgnoreCase),
+                         targetLanguages: isAutoMode ? targetLanguages.ToList() : null);
                      
                      if (bestMatch.SelectedSubtitle != null)
                      {
@@ -673,9 +692,27 @@ ISubtitleSourceSelectionService? subtitleSourceSelectionService = null,
             return 0;
         }
 
-        var resolvedExternalSource = await _sourceSubtitleSnapshotService.ResolveExternalSourceAsync(
-            media,
-            subtitles);
+        // Check auto mode
+        var isAutoMode = string.Equals(
+            await _settingService.GetSetting(SettingKeys.Translation.SourceLanguageMode),
+            "auto",
+            StringComparison.OrdinalIgnoreCase);
+
+        ResolvedExternalSourceSubtitle? resolvedExternalSource;
+        if (isAutoMode)
+        {
+            resolvedExternalSource = await _sourceSubtitleSnapshotService.ResolveExternalSourceWithAutoAsync(
+                media,
+                subtitles,
+                true,
+                targetLanguages.ToList());
+        }
+        else
+        {
+            resolvedExternalSource = await _sourceSubtitleSnapshotService.ResolveExternalSourceAsync(
+                media,
+                subtitles);
+        }
         var resolvedSourceLanguage = resolvedExternalSource?.SourceLanguage;
         _logger.LogDebug("Source language match result: {SourceLanguage}", resolvedSourceLanguage ?? "NONE");
 
@@ -1097,10 +1134,16 @@ ISubtitleSourceSelectionService? subtitleSourceSelectionService = null,
         }
 
         var ignoreCaptionsSetting = await _settingService.GetSetting(SettingKeys.Translation.IgnoreCaptions);
+        var isAutoMode = string.Equals(
+            await _settingService.GetSetting(SettingKeys.Translation.SourceLanguageMode),
+            "auto",
+            StringComparison.OrdinalIgnoreCase);
+
         var sourceSelection = await _subtitleSourceSelectionService.SelectPrimaryAsync(
             readableEmbeddedSubs,
             configuredSourceLanguages,
-            allowCaptionFallback: !string.Equals(ignoreCaptionsSetting, "true", StringComparison.OrdinalIgnoreCase));
+            allowCaptionFallback: !string.Equals(ignoreCaptionsSetting, "true", StringComparison.OrdinalIgnoreCase),
+            targetLanguages: isAutoMode ? targetLanguages.ToList() : null);
 
         if (sourceSelection.SelectedSubtitle == null)
         {
@@ -1110,51 +1153,65 @@ ISubtitleSourceSelectionService? subtitleSourceSelectionService = null,
                 .Distinct()
                 .ToList();
 
-_logger.LogWarning(
-	                "No usable full-dialogue embedded subtitle matches configured source languages [{Sources}] for {FileName}. " +
-	                "Available embedded subtitle languages: [{Available}]. Candidate assessment: [{Assessments}]. " +
-	                "Update your source languages on the Services page if you want to translate from one of these.",
-	                string.Join(", ", configuredSourceLanguages),
-	                media.FileName,
-	                string.Join(", ", availableLanguages),
-	                string.Join("; ", sourceSelection.Assessments.Select(assessment =>
-	                    $"stream={assessment.Subtitle.StreamIndex}, role={assessment.Role}, reason={assessment.Reason}")));
+            if (isAutoMode)
+            {
+                _logger.LogWarning(
+                    "Auto mode: no usable embedded subtitle found for {FileName}. " +
+                    "All candidate languages scored below minimum threshold. " +
+                    "Available embedded subtitle languages: [{Available}].",
+                    media.FileName,
+                    string.Join(", ", availableLanguages));
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "No usable full-dialogue embedded subtitle matches configured source languages [{Sources}] for {FileName}. " +
+                    "Available embedded subtitle languages: [{Available}]. Candidate assessment: [{Assessments}]. " +
+                    "Update your source languages on the Services page if you want to translate from one of these.",
+                    string.Join(", ", configuredSourceLanguages),
+                    media.FileName,
+                    string.Join(", ", availableLanguages),
+                    string.Join("; ", sourceSelection.Assessments.Select(assessment =>
+                        $"stream={assessment.Subtitle.StreamIndex}, role={assessment.Role}, reason={assessment.Reason}")));
+            }
 
-	            if (_diagnosticsService != null)
-	            {
-	                try
-	                {
-	                    await _diagnosticsService.RecordAsync(
-	                        new TranslationDiagnosticEventRequest
-	                        {
-	                            MediaId = media.Id,
-	                            MediaType = _mediaType,
-	                            Title = media.FileName,
-	                            Stage = "source_selection",
-	                            ReasonCode = "no_usable_source",
-	                            Summary = $"No usable full-dialogue source for languages [{string.Join(", ", configuredSourceLanguages)}]. Available: [{string.Join(", ", availableLanguages)}].",
-	                            SampleLines = sourceSelection.Assessments.Select(a =>
-	                                $"stream={a.Subtitle.StreamIndex}: role={a.Role}, lang={a.Subtitle.Language ?? "?"}, title=\"{a.Subtitle.Title ?? ""}\", reason={a.Reason}").ToList(),
-	                            DetailsJson = System.Text.Json.JsonSerializer.Serialize(sourceSelection.Assessments.Select(a => new
-	                            {
-	                                a.Subtitle.StreamIndex,
-	                                a.Subtitle.Language,
-	                                a.Subtitle.Title,
-	                                a.Subtitle.CodecName,
-	                                a.Subtitle.IsForced,
-	                                a.Role,
-	                                a.Score,
-	                                a.EntryCount,
-	                                a.Reason
-	                            }))
-	                        },
-	                        CancellationToken.None);
-	                }
-	                catch (Exception diagEx)
-	                {
-	                    _logger.LogDebug(diagEx, "Failed to record source_selection diagnostic event.");
-	                }
-	            }
+            if (_diagnosticsService != null)
+            {
+                try
+                {
+                    await _diagnosticsService.RecordAsync(
+                        new TranslationDiagnosticEventRequest
+                        {
+                            MediaId = media.Id,
+                            MediaType = _mediaType,
+                            Title = media.FileName,
+                            Stage = "source_selection",
+                            ReasonCode = "no_usable_source",
+                            Summary = isAutoMode
+                                ? $"Auto mode: no embedded subtitle scored high enough. Available: [{string.Join(", ", availableLanguages)}]."
+                                : $"No usable full-dialogue source for languages [{string.Join(", ", configuredSourceLanguages)}]. Available: [{string.Join(", ", availableLanguages)}].",
+                            SampleLines = sourceSelection.Assessments.Select(a =>
+                                $"stream={a.Subtitle.StreamIndex}: role={a.Role}, lang={a.Subtitle.Language ?? "?"}, title=\"{a.Subtitle.Title ?? ""}\", reason={a.Reason}").ToList(),
+                            DetailsJson = System.Text.Json.JsonSerializer.Serialize(sourceSelection.Assessments.Select(a => new
+                            {
+                                a.Subtitle.StreamIndex,
+                                a.Subtitle.Language,
+                                a.Subtitle.Title,
+                                a.Subtitle.CodecName,
+                                a.Subtitle.IsForced,
+                                a.Role,
+                                a.Score,
+                                a.EntryCount,
+                                a.Reason
+                            }))
+                        },
+                        CancellationToken.None);
+                }
+                catch (Exception diagEx)
+                {
+                    _logger.LogDebug(diagEx, "Failed to record source_selection diagnostic event.");
+                }
+            }
 
 	            await UpdateHash();
 	            return 0;
@@ -1524,21 +1581,28 @@ _logger.LogWarning(
             await _settingService.GetSetting(SettingKeys.Translation.IgnoreCaptions),
             "true",
             StringComparison.OrdinalIgnoreCase);
+        var isAutoMode = string.Equals(
+            await _settingService.GetSetting(SettingKeys.Translation.SourceLanguageMode),
+            "auto",
+            StringComparison.OrdinalIgnoreCase);
         var candidate = embeddedSubtitles
             .Where(subtitle => !subtitle.IsTextBased)
             .Where(subtitle => _subtitleOcrService.IsSupportedCodec(subtitle.CodecName))
             .Where(subtitle => subtitle.OcrStatus is SubtitleOcrStatus.NotStarted
                 or SubtitleOcrStatus.Queued
                 or SubtitleOcrStatus.Processing)
-            .Where(subtitle => configuredSourceLanguages.Any(language =>
-                SubtitleLanguageHelper.LanguageMatches(subtitle.Language, language)))
+            .Where(subtitle => isAutoMode ||
+                configuredSourceLanguages.Any(language =>
+                    SubtitleLanguageHelper.LanguageMatches(subtitle.Language, language)))
             .Where(subtitle => !ignoreCaptions ||
                                !SubtitleLanguageHelper.IsCaptionSubtitleType(
                                    SubtitleLanguageHelper.DetermineSubtitleType(subtitle)))
             .Where(subtitle => !SubtitleLanguageHelper.IsSupplementalSubtitleType(
                 SubtitleLanguageHelper.DetermineSubtitleType(subtitle)))
-            .OrderByDescending(subtitle => configuredSourceLanguages.Max(language =>
-                SubtitleLanguageHelper.ScoreSubtitleCandidate(subtitle, language)))
+            .OrderByDescending(subtitle => isAutoMode
+                ? SubtitleLanguageHelper.ScoreSubtitleCandidate(subtitle, subtitle.Language)
+                : configuredSourceLanguages.Max(language =>
+                    SubtitleLanguageHelper.ScoreSubtitleCandidate(subtitle, language)))
             .ThenBy(subtitle => subtitle.StreamIndex)
             .FirstOrDefault();
 

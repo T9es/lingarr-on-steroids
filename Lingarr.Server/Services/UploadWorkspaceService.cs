@@ -1243,7 +1243,7 @@ public class UploadWorkspaceService : IUploadWorkspaceService, IUploadWorkspaceC
                         textBasedStreams,
                         selectionSourceLanguages,
                         allowCaptionFallback: !ignoreCaptions,
-                        cancellationToken)
+                        cancellationToken: cancellationToken)
                     : new SubtitleSourceSelectionResult();
                 var bestStream = bestMatch.SelectedSubtitle;
                 var matchedLanguage = NormalizeLanguage(bestMatch.MatchedLanguage);

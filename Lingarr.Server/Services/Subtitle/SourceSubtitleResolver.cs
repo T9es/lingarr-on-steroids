@@ -145,7 +145,7 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
                 readableSubtitles,
                 [request.SourceLanguage],
                 allowCaptionFallback: true,
-                cancellationToken);
+                cancellationToken: cancellationToken);
             if (selection.SelectedSubtitle != null)
             {
                 return selection.SelectedSubtitle.StreamIndex;
