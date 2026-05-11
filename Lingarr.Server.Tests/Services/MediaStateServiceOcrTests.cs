@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Lingarr.Core.Configuration;
@@ -56,6 +57,38 @@ public class MediaStateServiceOcrTests
         Assert.Equal(TranslationState.OcrBlocked, state);
     }
 
+    [Fact]
+    public async Task UpdateStateAsync_WithAutoModeAndNoConfiguredSourceLanguages_ReturnsOcrPending()
+    {
+        await using var context = BuildContext();
+        var movie = await CreateMovieWithPgsAsync(context, SubtitleOcrStatus.NotStarted);
+        var service = BuildService(
+            context,
+            ocrEnabled: "true",
+            sourceLanguageMode: "auto",
+            sourceLanguages: []);
+
+        var state = await service.UpdateStateAsync(movie, MediaType.Movie, saveChanges: false);
+
+        Assert.Equal(TranslationState.OcrPending, state);
+    }
+
+    [Fact]
+    public async Task UpdateStateAsync_WithAutoModeAndBlockedOcrAndNoConfiguredSourceLanguages_ReturnsOcrBlocked()
+    {
+        await using var context = BuildContext();
+        var movie = await CreateMovieWithPgsAsync(context, SubtitleOcrStatus.BlockedLowQuality);
+        var service = BuildService(
+            context,
+            ocrEnabled: "true",
+            sourceLanguageMode: "auto",
+            sourceLanguages: []);
+
+        var state = await service.UpdateStateAsync(movie, MediaType.Movie, saveChanges: false);
+
+        Assert.Equal(TranslationState.OcrBlocked, state);
+    }
+
     private static LingarrDbContext BuildContext()
     {
         var options = new DbContextOptionsBuilder<LingarrDbContext>()
@@ -92,12 +125,18 @@ public class MediaStateServiceOcrTests
         return movie;
     }
 
-    private static MediaStateService BuildService(LingarrDbContext context, string ocrEnabled)
+    private static MediaStateService BuildService(
+        LingarrDbContext context,
+        string ocrEnabled,
+        string sourceLanguageMode = "manual",
+        IReadOnlyList<SourceLanguage>? sourceLanguages = null)
     {
+        sourceLanguages ??= [new SourceLanguage { Code = "en", Name = "English" }];
+
         var settingService = new Mock<ISettingService>();
         settingService
             .Setup(service => service.GetSettingAsJson<SourceLanguage>(SettingKeys.Translation.SourceLanguages))
-            .ReturnsAsync([new SourceLanguage { Code = "en", Name = "English" }]);
+            .ReturnsAsync(sourceLanguages.ToList());
         settingService
             .Setup(service => service.GetSettingAsJson<TargetLanguage>(SettingKeys.Translation.TargetLanguages))
             .ReturnsAsync([new TargetLanguage { Code = "pl", Name = "Polish" }]);
@@ -117,6 +156,9 @@ public class MediaStateServiceOcrTests
             .Setup(service => service.GetSetting(SettingKeys.SubtitleExtraction.OcrEnabled))
             .ReturnsAsync(ocrEnabled);
         settingService
+            .Setup(service => service.GetSetting(SettingKeys.Translation.SourceLanguageMode))
+            .ReturnsAsync(sourceLanguageMode);
+        settingService
             .Setup(service => service.GetSetting(SettingKeys.Translation.LanguageSettingsVersion))
             .ReturnsAsync("1");
 
@@ -132,6 +174,16 @@ public class MediaStateServiceOcrTests
                 It.IsAny<MediaType>(),
                 It.IsAny<IReadOnlyCollection<EmbeddedSubtitle>>(),
                 It.IsAny<IReadOnlyCollection<Subtitles>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((SourceSubtitleSnapshot?)null);
+        snapshotService
+            .Setup(service => service.ResolveCurrentSnapshotWithAutoAsync(
+                It.IsAny<Lingarr.Core.Interfaces.IMedia>(),
+                It.IsAny<MediaType>(),
+                It.IsAny<IReadOnlyCollection<EmbeddedSubtitle>>(),
+                It.IsAny<IReadOnlyCollection<Subtitles>>(),
+                It.IsAny<bool>(),
+                It.IsAny<IReadOnlyList<string>>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync((SourceSubtitleSnapshot?)null);
 

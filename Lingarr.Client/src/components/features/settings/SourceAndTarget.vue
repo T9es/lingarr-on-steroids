@@ -59,7 +59,7 @@
                         {{ translate('settings.translate.sourceLanguageModeAutoDescription') }}
                     </span>
                 </div>
-                <ToggleButton v-model="autoModeSetting">
+                <ToggleButton v-model="autoModeEnabled">
                     <span class="text-primary-content text-sm font-medium">
                         {{
                             isAutoMode
@@ -114,8 +114,11 @@ const translateStore = useTranslateStore()
 const languages = computed(() => translateStore.getLanguages)
 const emit = defineEmits(['save'])
 
-const autoModeSetting = computed({
-    get: (): string => settingsStore.getSetting(SETTINGS.SOURCE_LANGUAGE_MODE) as string ?? 'manual',
+const autoModeEnabled = computed({
+    get: (): string =>
+        (settingsStore.getSetting(SETTINGS.SOURCE_LANGUAGE_MODE) as string) === 'auto'
+            ? 'true'
+            : 'false',
     set: (newValue: string): void => {
         settingsStore.updateSetting(
             SETTINGS.SOURCE_LANGUAGE_MODE,
@@ -127,7 +130,7 @@ const autoModeSetting = computed({
     }
 })
 
-const isAutoMode = computed((): boolean => autoModeSetting.value === 'auto')
+const isAutoMode = computed((): boolean => autoModeEnabled.value === 'true')
 
 const sourceLanguages = computed({
     get: (): ILanguage[] => settingsStore.getSetting(SETTINGS.SOURCE_LANGUAGES) as ILanguage[],
@@ -146,16 +149,19 @@ const targetLanguages = computed({
 })
 
 const selectedTargetLanguages = computed(() => {
-    if (sourceLanguages.value.length === 0) {
+    const sourceOptions = isAutoMode.value && sourceLanguages.value.length === 0
+        ? languages.value
+        : sourceLanguages.value
+    if (sourceOptions.length === 0) {
         return []
     }
 
-    const allTargets = sourceLanguages.value.flatMap((sourceLanguage) => {
+    const allTargets = sourceOptions.flatMap((sourceLanguage) => {
         const sourceTargetSet = languages.value.find((lang) => lang.code === sourceLanguage.code)
         if (!sourceTargetSet) {
             return []
         }
-        return sourceTargetSet.targets
+        return sourceTargetSet.targets ?? []
     })
 
     const uniqueTargets = [...new Set(allTargets)]

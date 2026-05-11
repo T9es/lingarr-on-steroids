@@ -492,9 +492,9 @@
       "languageLoadErrorTitle": "Error al recuperar idiomas",
       "languageLoadErrorDescription": "Ocurrió un error desconocido al recuperar los idiomas, asegúrate de que la clave API esté configurada correctamente.",
       "sourceLanguageModeTitle": "Modo de idioma de origen",
-      "sourceLanguageModeManual": "Manual",
-      "sourceLanguageModeAuto": "Automatic",
-      "sourceLanguageModeAutoDescription": "When enabled, Lingarr automatically picks the best available source language for each file without any user configuration needed.",
+      "sourceLanguageModeManual": "Modo manual",
+      "sourceLanguageModeAuto": "Automatico",
+      "sourceLanguageModeAutoDescription": "Cuando esta opcion esta activada, Lingarr elige automaticamente el mejor idioma de origen disponible para cada archivo sin necesidad de configuracion manual.",
       "sourceLanguageModeAutoBadge": "Modo automático activo"
     },
     "translation": {

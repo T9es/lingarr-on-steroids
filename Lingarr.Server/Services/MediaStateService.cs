@@ -139,18 +139,24 @@ public class MediaStateService : IMediaStateService
             "true",
             StringComparison.OrdinalIgnoreCase);
 
-        if (sourceLanguages.Count == 0 || targetLanguages.Count == 0)
+        // 3. Check auto mode first (when ON, configured source languages are ignored)
+        var isAutoMode = string.Equals(
+            await _settingService.GetSetting(SettingKeys.Translation.SourceLanguageMode),
+            "auto",
+            StringComparison.OrdinalIgnoreCase);
+
+        if ((!isAutoMode && sourceLanguages.Count == 0) || targetLanguages.Count == 0)
         {
             return TranslationState.NotApplicable;
         }
 
-        // 3. Check for active translation request
+        // 4. Check for active translation request
         if (await HasActiveTranslationRequestAsync(media.Id, mediaType))
         {
             return TranslationState.InProgress;
         }
 
-        // 4. Get external subtitles
+        // 5. Get external subtitles
         var externalSubtitles = new List<Subtitles>();
         if (!string.IsNullOrEmpty(media.Path))
         {
@@ -168,12 +174,6 @@ public class MediaStateService : IMediaStateService
             }
         }
 
-        // 5. Check auto mode first (when ON, configured source languages are ignored)
-        var isAutoMode = string.Equals(
-            await _settingService.GetSetting(SettingKeys.Translation.SourceLanguageMode),
-            "auto",
-            StringComparison.OrdinalIgnoreCase);
-
         bool hasExternalSource, hasEmbeddedSource;
 
         if (isAutoMode)
@@ -185,9 +185,9 @@ public class MediaStateService : IMediaStateService
             {
                 _logger.LogInformation(
                     "Auto mode selected source language '{Language}' via quality scoring",
-                    autoSource);
-                hasEmbeddedSource = true;
-                hasExternalSource = false;
+                    autoSource.Value.Language);
+                hasEmbeddedSource = autoSource.Value.IsEmbedded;
+                hasExternalSource = !autoSource.Value.IsEmbedded;
             }
             else
             {
@@ -264,7 +264,7 @@ public class MediaStateService : IMediaStateService
             isAutoMode,
             targetLanguages);
 
-if (missingTargets.Count == 0)
+        if (missingTargets.Count == 0)
         {
             var staleTargets = await _sourceSubtitleSnapshotService.GetStaleTargetLanguagesAsync(
                 media.Id,
@@ -656,16 +656,23 @@ if (missingTargets.Count == 0)
         IReadOnlyCollection<string> sourceLanguages,
         bool ignoreCaptions)
     {
-        return embeddedSubtitles
+        var candidates = embeddedSubtitles
             .Where(subtitle => !subtitle.IsTextBased)
             .Where(subtitle => IsSupportedOcrCodec(subtitle.CodecName))
-            .Where(subtitle => sourceLanguages.Any(language =>
-                SubtitleLanguageHelper.LanguageMatches(subtitle.Language, language)))
             .Where(subtitle => !ignoreCaptions ||
                                !SubtitleLanguageHelper.IsCaptionSubtitleType(
                                    SubtitleLanguageHelper.DetermineSubtitleType(subtitle)))
             .Where(subtitle => !SubtitleLanguageHelper.IsSupplementalSubtitleType(
-                SubtitleLanguageHelper.DetermineSubtitleType(subtitle)))
+                SubtitleLanguageHelper.DetermineSubtitleType(subtitle)));
+
+        if (sourceLanguages.Count == 0)
+        {
+            return candidates.OrderBy(subtitle => subtitle.StreamIndex);
+        }
+
+        return candidates
+            .Where(subtitle => sourceLanguages.Any(language =>
+                SubtitleLanguageHelper.LanguageMatches(subtitle.Language, language)))
             .OrderByDescending(subtitle => sourceLanguages.Max(language =>
                 SubtitleLanguageHelper.ScoreSubtitleCandidate(subtitle, language)))
             .ThenBy(subtitle => subtitle.StreamIndex);
@@ -678,14 +685,23 @@ if (missingTargets.Count == 0)
                 codecName.Equals("pgssub", StringComparison.OrdinalIgnoreCase));
     }
 
-    private async Task<string?> FindAutoSourceCandidateAsync(
+    private async Task<(string Language, bool IsEmbedded)?> FindAutoSourceCandidateAsync(
         List<EmbeddedSubtitle> embeddedSubtitles,
         List<Subtitles> externalSubtitles,
         IReadOnlyList<string> targetLanguages)
     {
+        if (_qualityScorer == null)
+        {
+            _logger.LogWarning("Auto mode unavailable: TranslationQualityScorer is not registered");
+            return null;
+        }
+
+        var scorer = _qualityScorer;
+        var minAcceptable = scorer.MinimumAcceptableScore;
+
         // Score all candidates and pick the best one
-        var bestCandidate = (Language: null as string, BestScore: 0.0, Source: "none");
-        
+        var bestCandidate = (Language: null as string, BestScore: 0.0, IsEmbedded: false);
+
         // Check embedded subtitles first (preferred)
         foreach (var subtitle in embeddedSubtitles.Where(s => s.IsReadableSource()))
         {
@@ -700,7 +716,7 @@ if (missingTargets.Count == 0)
             var scoredTargets = 0;
             foreach (var target in targetLanguages)
             {
-                var score = _qualityScorer!.ScoreDirection(subtitle.Language, target);
+                var score = scorer.ScoreDirection(subtitle.Language, target);
                 if (score.HasValue)
                 {
                     totalScore += score.Value;
@@ -711,9 +727,9 @@ if (missingTargets.Count == 0)
             if (scoredTargets == 0) continue;
 
             var avgScore = totalScore / scoredTargets;
-            if (avgScore >= _qualityScorer!.MinimumAcceptableScore && avgScore > bestCandidate.BestScore)
+            if (avgScore >= minAcceptable && avgScore > bestCandidate.BestScore)
             {
-                bestCandidate = (subtitle.Language, avgScore, "embedded");
+                bestCandidate = (subtitle.Language, avgScore, true);
                 _logger.LogDebug(
                     "Auto mode: embedded stream {StreamIndex} ({Language}) average score {Score:F1} across {Count} targets",
                     subtitle.StreamIndex, subtitle.Language, avgScore, scoredTargets);
@@ -734,7 +750,7 @@ if (missingTargets.Count == 0)
             var scoredTargets = 0;
             foreach (var target in targetLanguages)
             {
-                var score = _qualityScorer!.ScoreDirection(language, target);
+                var score = scorer.ScoreDirection(language, target);
                 if (score.HasValue)
                 {
                     totalScore += score.Value;
@@ -745,9 +761,9 @@ if (missingTargets.Count == 0)
             if (scoredTargets == 0) continue;
 
             var avgScore = totalScore / scoredTargets;
-            if (avgScore >= _qualityScorer!.MinimumAcceptableScore && avgScore > bestCandidate.BestScore)
+            if (avgScore >= minAcceptable && avgScore > bestCandidate.BestScore)
             {
-                bestCandidate = (language, avgScore, "external");
+                bestCandidate = (language, avgScore, false);
                 _logger.LogDebug(
                     "Auto mode: external subtitle '{FileName}' ({Language}) average score {Score:F1} across {Count} targets",
                     subtitle.FileName, language, avgScore, scoredTargets);
@@ -758,8 +774,8 @@ if (missingTargets.Count == 0)
         {
             _logger.LogInformation(
                 "Auto mode selected best source: {Language} ({Source}) with average score {Score:F1}",
-                bestCandidate.Language, bestCandidate.Source, bestCandidate.BestScore);
-            return bestCandidate.Language;
+                bestCandidate.Language, bestCandidate.IsEmbedded ? "embedded" : "external", bestCandidate.BestScore);
+            return (bestCandidate.Language, bestCandidate.IsEmbedded);
         }
 
         return null;

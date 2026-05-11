@@ -44,7 +44,7 @@ public class TranslationJob
     private readonly IUploadWorkspaceService _uploadWorkspaceService;
     private readonly ISubtitleSourceSelectionService _subtitleSourceSelectionService;
     private readonly ITranslationCheckpointService? _translationCheckpointService;
-private readonly ISubtitleQualityValidatorService _subtitleQualityValidatorService;
+    private readonly ISubtitleQualityValidatorService _subtitleQualityValidatorService;
     private readonly ITranslationDiagnosticsService _translationDiagnosticsService;
     private readonly ITranslationPromptContextAccessor _translationPromptContextAccessor;
     private readonly IMkvEmbeddingService _mkvEmbeddingService;
@@ -720,7 +720,7 @@ SettingKeys.Translation.BatchContextAfter,
                 ? settings[SettingKeys.Translation.SubtitleTagShort]
                 : null;
 
-var embedInContainer = settings.TryGetValue(SettingKeys.Translation.EmbedInContainer, out var embedVal)
+                var embedInContainer = settings.TryGetValue(SettingKeys.Translation.EmbedInContainer, out var embedVal)
                 && string.Equals(embedVal, "true", StringComparison.OrdinalIgnoreCase);
 
             var writtenOutput = await WriteSubtitles(
@@ -903,7 +903,7 @@ var embedInContainer = settings.TryGetValue(SettingKeys.Translation.EmbedInConta
         }
     }
 
-private async Task<List<SubtitleItem>> ReadSubtitlesOrEmptyForFallbackAsync(
+    private async Task<List<SubtitleItem>> ReadSubtitlesOrEmptyForFallbackAsync(
         TranslationRequest request,
         List<int> excludedStreamIndices)
     {
@@ -944,7 +944,7 @@ private async Task<List<SubtitleItem>> ReadSubtitlesOrEmptyForFallbackAsync(
         }
     }
 
-private async Task<WrittenSubtitleOutput> WriteSubtitles(TranslationRequest translationRequest,
+    private async Task<WrittenSubtitleOutput> WriteSubtitles(TranslationRequest translationRequest,
         List<SubtitleItem> translatedSubtitles,
         bool stripSubtitleFormatting,
         string subtitleTag,
@@ -1146,7 +1146,7 @@ Exception? lastException = null;
                 generatedFormats,
                 writtenOutputs.Select(output => output.Path).ToList());
         }
-catch (Exception e)
+        catch (Exception e)
         {
             _logger.LogError(e, e.Message);
             throw;

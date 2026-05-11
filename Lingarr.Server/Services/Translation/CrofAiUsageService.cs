@@ -50,9 +50,14 @@ public class CrofAiUsageService : ICrofAiUsageService
         {
             if (currentRequestsUsed >= snapshot.UsableRequests.Value)
             {
-                _logger.LogWarning("CrofAI daily request limit reached ({Used}/{Total}). Waiting for reset.",
+                _logger.LogWarning("CrofAI daily request limit reached ({Used}/{Total}). Checking credits fallback.",
                     currentRequestsUsed, snapshot.UsableRequests.Value);
-                throw new InvalidOperationException("CrofAI daily request limit reached. Please wait for reset or add more credits.");
+                if (snapshot.Credits.HasValue && snapshot.Credits.Value > 0)
+                {
+                    _logger.LogInformation("CrofAI falling back to credits ({Credits} remaining).", snapshot.Credits.Value);
+                    return;
+                }
+                throw new InvalidOperationException("CrofAI daily request limit reached and no credits available. Please wait for subscription reset or add more credits.");
             }
         }
         else if (snapshot.Credits.HasValue && snapshot.Credits.Value <= 0)
