@@ -6,9 +6,10 @@ namespace Lingarr.Server.Services.Subtitle;
 
 public class MkvEmbeddingService : IMkvEmbeddingService
 {
-    private const string MkvMergePath = "/usr/bin/mkvmerge";
-    private const string MkvPropEditPath = "/usr/bin/mkvpropedit";
+    private const string MkvMergeBinary = "mkvmerge";
+    private const string MkvPropEditBinary = "mkvpropedit";
     private const int Ext4MaxFilenameBytes = 255;
+    private const string TempOutputPrefix = "lingarr_merged_";
 
     private readonly ILogger<MkvEmbeddingService> _logger;
 
@@ -28,6 +29,13 @@ public class MkvEmbeddingService : IMkvEmbeddingService
         var fileName = Path.GetFileName(filePath);
         var byteCount = Encoding.UTF8.GetByteCount(fileName);
         return byteCount > Ext4MaxFilenameBytes;
+    }
+
+    public static string CreateTempOutputPath(string mkvPath)
+    {
+        var directory = Path.GetDirectoryName(mkvPath) ?? string.Empty;
+        var extension = Path.GetExtension(mkvPath);
+        return Path.Combine(directory, $"{TempOutputPrefix}{Guid.NewGuid():N}{extension}");
     }
 
     /// <inheritdoc />
@@ -61,9 +69,7 @@ public class MkvEmbeddingService : IMkvEmbeddingService
         var extension = Path.GetExtension(subtitlePath).ToLowerInvariant();
         var isAss = extension is ".ass" or ".ssa";
 
-        var directory = Path.GetDirectoryName(mkvPath) ?? string.Empty;
-        var mkvFileName = Path.GetFileNameWithoutExtension(mkvPath);
-        var tempOutputPath = Path.Combine(directory, $"{mkvFileName}.lingarr_merged{Path.GetExtension(mkvPath)}");
+        var tempOutputPath = CreateTempOutputPath(mkvPath);
 
         var arguments = BuildMkvMergeArguments(mkvPath, subtitlePath, languageCode, trackName, isAss, tempOutputPath);
 
@@ -75,7 +81,7 @@ public class MkvEmbeddingService : IMkvEmbeddingService
 
         try
         {
-            var result = await RunProcessAsync(MkvMergePath, arguments, ct);
+            var result = await RunProcessAsync(MkvMergeBinary, arguments, ct);
 
             if (result.ExitCode == 0 || result.ExitCode == 1)
             {
@@ -213,7 +219,7 @@ public class MkvEmbeddingService : IMkvEmbeddingService
         try
         {
             var result = await RunProcessAsync(
-                MkvPropEditPath,
+                MkvPropEditBinary,
                 $"\"{mkvPath}\" --dry-run",
                 ct);
 

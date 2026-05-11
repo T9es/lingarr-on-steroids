@@ -29,8 +29,9 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
     private readonly ISubtitleIntegrityService _integrityService;
     private readonly ISourceSubtitleSnapshotService _sourceSubtitleSnapshotService;
     private readonly ISubtitleSourceSelectionService _subtitleSourceSelectionService;
-private readonly ISubtitleOcrService? _subtitleOcrService;
+    private readonly ISubtitleOcrService? _subtitleOcrService;
     private readonly ITranslationDiagnosticsService? _diagnosticsService;
+    private readonly IBackgroundJobClient? _backgroundJobClient;
     private string _hash = string.Empty;
     private IMedia _media = null!;
     private MediaType _mediaType;
@@ -44,9 +45,10 @@ private readonly ISubtitleOcrService? _subtitleOcrService;
         ISubtitleIntegrityService integrityService,
         ISourceSubtitleSnapshotService sourceSubtitleSnapshotService,
         LingarrDbContext dbContext,
-ISubtitleSourceSelectionService? subtitleSourceSelectionService = null,
+        ISubtitleSourceSelectionService? subtitleSourceSelectionService = null,
         ISubtitleOcrService? subtitleOcrService = null,
-        ITranslationDiagnosticsService? diagnosticsService = null)
+        ITranslationDiagnosticsService? diagnosticsService = null,
+        IBackgroundJobClient? backgroundJobClient = null)
     {
         _translationRequestService = translationRequestService;
         _settingService = settingService;
@@ -56,6 +58,7 @@ ISubtitleSourceSelectionService? subtitleSourceSelectionService = null,
         _sourceSubtitleSnapshotService = sourceSubtitleSnapshotService;
         _subtitleOcrService = subtitleOcrService;
         _diagnosticsService = diagnosticsService;
+        _backgroundJobClient = backgroundJobClient;
         _subtitleSourceSelectionService = subtitleSourceSelectionService ??
             new SubtitleSourceSelectionService(
                 subtitleService,
@@ -115,21 +118,21 @@ ISubtitleSourceSelectionService? subtitleSourceSelectionService = null,
         string ignoreCaptions)
     {
         var existingLanguages = ExtractLanguageCodes(subtitles);
-
-        if (sourceLanguages.Count == 0 || targetLanguages.Count == 0)
-        {
-            _logger.LogWarning(
-                "Source or target languages are empty. Source languages: {SourceCount}, Target languages: {TargetCount}",
-                sourceLanguages.Count, targetLanguages.Count);
-            await UpdateHash();
-            return false;
-        }
-
-        // Check auto mode at the start of processing
         var isAutoMode = string.Equals(
             await _settingService.GetSetting(SettingKeys.Translation.SourceLanguageMode),
             "auto",
             StringComparison.OrdinalIgnoreCase);
+
+        if ((!isAutoMode && sourceLanguages.Count == 0) || targetLanguages.Count == 0)
+        {
+            _logger.LogWarning(
+                "Source or target languages are empty for subtitle processing. Auto mode: {IsAutoMode}. Source languages: {SourceCount}, Target languages: {TargetCount}",
+                isAutoMode,
+                sourceLanguages.Count,
+                targetLanguages.Count);
+            await UpdateHash();
+            return false;
+        }
 
         string? tempSourcePath = null;
         try
@@ -683,20 +686,21 @@ ISubtitleSourceSelectionService? subtitleSourceSelectionService = null,
             string.Join(", ", targetLanguages),
             forceTranslation);
 
-        if (sourceLanguages.Count == 0 || targetLanguages.Count == 0)
-        {
-            _logger.LogWarning(
-                "Source or target languages are empty. Source languages: {SourceCount}, Target languages: {TargetCount}",
-                sourceLanguages.Count, targetLanguages.Count);
-            await UpdateHash();
-            return 0;
-        }
-
-        // Check auto mode
         var isAutoMode = string.Equals(
             await _settingService.GetSetting(SettingKeys.Translation.SourceLanguageMode),
             "auto",
             StringComparison.OrdinalIgnoreCase);
+
+        if ((!isAutoMode && sourceLanguages.Count == 0) || targetLanguages.Count == 0)
+        {
+            _logger.LogWarning(
+                "Source or target languages are empty for counted subtitle processing. Auto mode: {IsAutoMode}. Source languages: {SourceCount}, Target languages: {TargetCount}",
+                isAutoMode,
+                sourceLanguages.Count,
+                targetLanguages.Count);
+            await UpdateHash();
+            return 0;
+        }
 
         ResolvedExternalSourceSubtitle? resolvedExternalSource;
         if (isAutoMode)
@@ -986,12 +990,18 @@ ISubtitleSourceSelectionService? subtitleSourceSelectionService = null,
             .Select(lang => lang.Code.ToLowerInvariant())
             .Where(code => !string.IsNullOrWhiteSpace(code))
             .ToHashSet();
-        
-        if (configuredSourceLanguages.Count == 0 || targetLanguages.Count == 0)
+
+        var isAutoMode = string.Equals(
+            await _settingService.GetSetting(SettingKeys.Translation.SourceLanguageMode),
+            "auto",
+            StringComparison.OrdinalIgnoreCase);
+
+        if ((!isAutoMode && configuredSourceLanguages.Count == 0) || targetLanguages.Count == 0)
         {
             _logger.LogWarning(
-                "Cannot queue embedded subtitle translation for {FileName}: source or target languages not configured",
-                media.FileName);
+                "Cannot queue embedded subtitle translation for {FileName}: source or target languages not configured. Auto mode: {IsAutoMode}",
+                media.FileName,
+                isAutoMode);
             return 0;
         }
         
@@ -1134,10 +1144,6 @@ ISubtitleSourceSelectionService? subtitleSourceSelectionService = null,
         }
 
         var ignoreCaptionsSetting = await _settingService.GetSetting(SettingKeys.Translation.IgnoreCaptions);
-        var isAutoMode = string.Equals(
-            await _settingService.GetSetting(SettingKeys.Translation.SourceLanguageMode),
-            "auto",
-            StringComparison.OrdinalIgnoreCase);
 
         var sourceSelection = await _subtitleSourceSelectionService.SelectPrimaryAsync(
             readableEmbeddedSubs,
@@ -1213,9 +1219,9 @@ ISubtitleSourceSelectionService? subtitleSourceSelectionService = null,
                 }
             }
 
-	            await UpdateHash();
-	            return 0;
-	        }
+            await UpdateHash();
+            return 0;
+        }
 
         var selectedSubtitle = sourceSelection.SelectedSubtitle;
         var selectedSourceLanguage = sourceSelection.MatchedLanguage;
@@ -1559,7 +1565,7 @@ ISubtitleSourceSelectionService? subtitleSourceSelectionService = null,
         IReadOnlyCollection<string> configuredSourceLanguages,
         IReadOnlyCollection<string> targetLanguages)
     {
-        if (_subtitleOcrService == null || configuredSourceLanguages.Count == 0 || targetLanguages.Count == 0)
+        if (_subtitleOcrService == null || targetLanguages.Count == 0)
         {
             return false;
         }
@@ -1585,6 +1591,11 @@ ISubtitleSourceSelectionService? subtitleSourceSelectionService = null,
             await _settingService.GetSetting(SettingKeys.Translation.SourceLanguageMode),
             "auto",
             StringComparison.OrdinalIgnoreCase);
+        if (!isAutoMode && configuredSourceLanguages.Count == 0)
+        {
+            return false;
+        }
+
         var candidate = embeddedSubtitles
             .Where(subtitle => !subtitle.IsTextBased)
             .Where(subtitle => _subtitleOcrService.IsSupportedCodec(subtitle.CodecName))
@@ -1636,11 +1647,22 @@ ISubtitleSourceSelectionService? subtitleSourceSelectionService = null,
             return false;
         }
 
-        BackgroundJob.Enqueue<SubtitleOcrJob>(job => job.Execute(
-            media.Id,
-            mediaType,
-            candidate.StreamIndex,
-            false));
+        if (_backgroundJobClient != null)
+        {
+            _backgroundJobClient.Enqueue<SubtitleOcrJob>(job => job.Execute(
+                media.Id,
+                mediaType,
+                candidate.StreamIndex,
+                false));
+        }
+        else
+        {
+            BackgroundJob.Enqueue<SubtitleOcrJob>(job => job.Execute(
+                media.Id,
+                mediaType,
+                candidate.StreamIndex,
+                false));
+        }
         _logger.LogInformation(
             "Queued subtitle OCR for {FileName} stream {StreamIndex}. Translation will be reconsidered after OCR quality checks pass.",
             media.FileName,

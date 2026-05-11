@@ -493,8 +493,8 @@
       "languageLoadErrorDescription": "获取语言时发生未知错误，请确保API密钥设置正确。",
       "sourceLanguageModeTitle": "源语言模式",
       "sourceLanguageModeManual": "手动",
-      "sourceLanguageModeAuto": "Automatic",
-      "sourceLanguageModeAutoDescription": "When enabled, Lingarr automatically picks the best available source language for each file without any user configuration needed.",
+      "sourceLanguageModeAuto": "自动",
+      "sourceLanguageModeAutoDescription": "启用后，Lingarr 会为每个文件自动选择最合适的可用源语言，无需任何手动配置。",
       "sourceLanguageModeAutoBadge": "自动模式已激活"
     },
     "translation": {
@@ -574,8 +574,8 @@
       "recreateAllOutputsDescription": "按当前输出模式重新运行整个媒体库的翻译。这会再次使用翻译提供商，只替换由 Lingarr 管理的字幕，手动字幕不会受到影响。",
       "subtitleIntegrityValidationEnabled": "验证字幕完整性",
       "subtitleIntegrityValidationEnabledDescription": "检查翻译后的字幕是否具有与原始字幕大致相同的行数，以检测部分翻译。",
-      "translateSupplementalSubtitles": "Translate supplemental forced/signs subtitles:",
-      "translateSupplementalSubtitlesDescription": "When enabled, Lingarr may translate forced, signs, and songs tracks as separate supplemental outputs. Main subtitles still use full-dialogue sources only.",
+      "translateSupplementalSubtitles": "翻译补充的强制/标识字幕：",
+      "translateSupplementalSubtitlesDescription": "启用后，Lingarr 可以将强制字幕、标识字幕和歌曲轨道作为单独的补充输出进行翻译。主字幕仍仅使用完整对白来源。",
       "ocrEnabled": "Qiyong bitmap zimu OCR",
       "ocrEnabledDescription": "Shi yong Tesseract OCR jiang Blu-ray PGS zimu zhuanwei huancun SRT wenjian.",
       "ocrAutoQueue": "Bitmap-only meiti zidong OCR",
@@ -708,7 +708,7 @@
     },
     "integrity": {
       "title": "批量完整性检查",
-      "description": "Validate all Complete-state media to detect partial or corrupted subtitle translations. By default this reports findings without queueing repairs.",
+      "description": "验证所有处于 Complete 状态的媒体，以检测部分或损坏的字幕翻译。默认情况下，此检查只报告问题，不会自动排队修复。",
       "startButton": "开始完整性检查",
       "running": "检查中...",
       "progress": "进度",
@@ -722,11 +722,11 @@
         "movies": "电影",
         "episodes": "剧集"
       },
-      "autoQueue": "Automatically queue repair translations:",
-      "autoQueueDescription": "Keep disabled for report-only scans. When enabled, Lingarr queues repairs up to the per-run cap.",
-      "maxAutoQueuePerRun": "Maximum repairs to queue per run:",
-      "completedReportOnly": "Integrity check completed. Findings were reported without queueing repairs.",
-      "completedWithQueue": "Integrity check completed. Repair translations were queued for the listed findings."
+      "autoQueue": "自动排队修复翻译：",
+      "autoQueueDescription": "如果只想生成报告，请保持禁用。启用后，Lingarr 会在每次运行的上限内自动排队修复任务。",
+      "maxAutoQueuePerRun": "每次运行最多排队的修复数量：",
+      "completedReportOnly": "完整性检查已完成。问题已报告，但未排队修复。",
+      "completedWithQueue": "完整性检查已完成。已为列出的问题排队修复翻译。"
     }
   },
   "translationState": {

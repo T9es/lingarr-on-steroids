@@ -507,7 +507,7 @@ public class TranslationRequestService : ITranslationRequestService
         return await RetryFailedRequests(ignoreBackoff: false);
     }
 
-private async Task<RetryFailedRequestsResponse> RetryFailedRequests(bool ignoreBackoff)
+    private async Task<RetryFailedRequestsResponse> RetryFailedRequests(bool ignoreBackoff)
     {
         var maxRequestRetries = int.TryParse(
             await _settingService.GetSetting(SettingKeys.Translation.MaxRequestRetries),
@@ -541,7 +541,7 @@ private async Task<RetryFailedRequestsResponse> RetryFailedRequests(bool ignoreB
         }
 
         var activeDuplicateKeys = await GetActiveDuplicateKeysAsync();
-var retriedCount = 0;
+        var retriedCount = 0;
         var blockedByActiveRequest = 0;
         var permanentlyResolved = 0;
         var lastProcessedId = 0;
@@ -572,7 +572,7 @@ var retriedCount = 0;
                     continue;
                 }
 
-if (activeDuplicateKeys.Contains(duplicateKey))
+                if (activeDuplicateKeys.Contains(duplicateKey))
                 {
                     blockedByActiveRequest++;
                     continue;
@@ -627,7 +627,7 @@ if (activeDuplicateKeys.Contains(duplicateKey))
         var remainingFailed = await _dbContext.TranslationRequests.CountAsync(
             tr => tr.Status == TranslationStatus.Failed);
 
-var response = new RetryFailedRequestsResponse
+        var response = new RetryFailedRequestsResponse
         {
             TotalFailed = totalFailed,
             Retried = retriedCount,
@@ -647,7 +647,7 @@ var response = new RetryFailedRequestsResponse
             response.RemainingFailed);
 
         return response;
-}
+    }
 
     private async Task<TranslationRequest?> ResolvePermanentlyFailedRequestAsync(TranslationRequest failedRequest)
     {

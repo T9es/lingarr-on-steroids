@@ -11,7 +11,7 @@ namespace Lingarr.Server.Services.Subtitle;
 /// </summary>
 public static class SubtitleLanguageHelper
 {
-public const string TypeFull = "Full";
+    public const string TypeFull = "Full";
     public const string TypeSdh = "SDH";
     public const string TypeClosedCaptions = "CC";
     public const string TypeForced = "Forced";
@@ -309,7 +309,7 @@ public const string TypeFull = "Full";
         }
 
         // Prefer non-forced tracks for full dialogue; forced tracks are often partial or effect-only.
-if (subtitle.IsForced || IsSupplementalSubtitleType(subtitleType))
+        if (subtitle.IsForced || IsSupplementalSubtitleType(subtitleType))
         {
             score -= 50;
         }
@@ -332,7 +332,7 @@ if (subtitle.IsForced || IsSupplementalSubtitleType(subtitleType))
         return score;
     }
 
-public static string DetermineSubtitleType(EmbeddedSubtitle subtitle)
+    public static string DetermineSubtitleType(EmbeddedSubtitle subtitle)
     {
         return DetermineSubtitleType(subtitle, entryCount: null);
     }
@@ -432,7 +432,7 @@ public static string DetermineSubtitleType(EmbeddedSubtitle subtitle)
         return TypeFull;
     }
 
-public static bool IsSupplementalSubtitleType(string? subtitleType)
+    public static bool IsSupplementalSubtitleType(string? subtitleType)
     {
         return string.Equals(subtitleType, TypeForced, StringComparison.OrdinalIgnoreCase) ||
                string.Equals(subtitleType, TypeSignsSongs, StringComparison.OrdinalIgnoreCase);
@@ -453,7 +453,7 @@ public static bool IsSupplementalSubtitleType(string? subtitleType)
                string.Equals(subtitleType, TypeClosedCaptions, StringComparison.OrdinalIgnoreCase);
     }
 
-public static string? GetSupplementalOutputCaption(string? subtitleType)
+    public static string? GetSupplementalOutputCaption(string? subtitleType)
     {
         if (string.Equals(subtitleType, TypeForced, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(subtitleType, TypeForcedDialogue, StringComparison.OrdinalIgnoreCase))

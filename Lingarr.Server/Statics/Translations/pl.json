@@ -493,8 +493,8 @@
       "languageLoadErrorDescription": "Wystąpił nieznany błąd podczas pobierania języków, upewnij się, że klucz API jest poprawnie ustawiony.",
       "sourceLanguageModeTitle": "Tryb języka źródłowego",
       "sourceLanguageModeManual": "Ręczny",
-      "sourceLanguageModeAuto": "Automatic",
-      "sourceLanguageModeAutoDescription": "When enabled, Lingarr automatically picks the best available source language for each file without any user configuration needed.",
+      "sourceLanguageModeAuto": "Automatyczny",
+      "sourceLanguageModeAutoDescription": "Po wlaczeniu Lingarr automatycznie wybiera najlepszy dostepny jezyk zrodlowy dla kazdego pliku bez potrzeby recznej konfiguracji.",
       "sourceLanguageModeAutoBadge": "Tryb auto aktywny"
     },
     "translation": {

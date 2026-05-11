@@ -290,7 +290,8 @@ public class SettingChangedListener
                         : 0;
                     await workerServiceForReservedSlots.ReconfigureReservedUploadSlotsAsync(reservedSlots);
                     _logger.LogInformation(
-                        "Settings changed for |Green|UploadReservedWorkerSlots|/Green|. Reconfigured to |Orange|{ReservedSlots}|/Orange| reserved upload slot(s).");
+                        "Settings changed for |Green|UploadReservedWorkerSlots|/Green|. Reconfigured to |Orange|{ReservedSlots}|/Orange| reserved upload slot(s).",
+                        reservedSlots);
                     break;
                     
                 case "InvalidateTranslationState":

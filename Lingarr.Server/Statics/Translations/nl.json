@@ -420,7 +420,7 @@
       "overrideUsageLimitHelp": "Optioneel: beperk het aantal verzoeken dat Lingarr per dag kan doen, zelfs als uw abonnement meer toestaat. Laat leeg om de volledige abonnementslimiet te gebruiken.",
       "chutesUsageTitle": "Chutes gebruik",
       "chutesPlan": "Abonnement: {plan}",
-      "credits": "Credits",
+      "credits": "Tegoeden",
       "crofaiMissingApiKey": "CrofAI API-sleutel is niet geconfigureerd.",
       "crofaiUsageDescription": "Controleer uw resterende credits en dagelijkse aanvraaglimieten",
       "crofaiUsageTitle": "CrofAI-gebruik",
@@ -493,8 +493,8 @@
       "languageLoadErrorDescription": "Onbekende fout opgetreden bij het ophalen van talen, zorg ervoor dat de API-sleutel correct is ingesteld.",
       "sourceLanguageModeTitle": "Bron taalmodus",
       "sourceLanguageModeManual": "Handmatig",
-      "sourceLanguageModeAuto": "Automatic",
-      "sourceLanguageModeAutoDescription": "When enabled, Lingarr automatically picks the best available source language for each file without any user configuration needed.",
+      "sourceLanguageModeAuto": "Automatisch",
+      "sourceLanguageModeAutoDescription": "Wanneer dit is ingeschakeld, kiest Lingarr automatisch de best beschikbare brontaal voor elk bestand zonder dat handmatige configuratie nodig is.",
       "sourceLanguageModeAutoBadge": "Automatische modus actief"
     },
     "translation": {
