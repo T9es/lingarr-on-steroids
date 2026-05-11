@@ -199,11 +199,11 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
                         throw new HttpRequestException("Rate limit exceeded", null, HttpStatusCode.TooManyRequests);
                     }
 
-                    if (response.StatusCode == HttpStatusCode.ServiceUnavailable)
+                    if ((int)response.StatusCode >= 500 && (int)response.StatusCode < 600)
                     {
                         var responseBody = await response.Content.ReadAsStringAsync(linked.Token);
-                        _logger.LogWarning("503 Service Unavailable. Provider Message: {Content}", responseBody);
-                        throw new HttpRequestException("OpenAI temporary unavailable", null, HttpStatusCode.ServiceUnavailable);
+                        _logger.LogWarning("{StatusCode} Server Error. Provider Message: {Content}", response.StatusCode, responseBody);
+                        throw new HttpRequestException("Provider server error", null, HttpStatusCode.ServiceUnavailable);
                     }
 
                     _logger.LogError("Response Status Code: {StatusCode}", response.StatusCode);
@@ -493,10 +493,10 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
                 throw new TranslationException($"Batch translation using OpenAI API failed. Status: PaymentRequired. Response: {responseBody}");
             }
 
-            if (response.StatusCode == HttpStatusCode.ServiceUnavailable)
+            if ((int)response.StatusCode >= 500 && (int)response.StatusCode < 600)
             {
-                _logger.LogWarning("503 Service Unavailable (Batch). Provider Message: {Content}", responseBody);
-                throw new HttpRequestException("OpenAI temporary unavailable", null, HttpStatusCode.ServiceUnavailable);
+                _logger.LogWarning("{StatusCode} Server Error (Batch). Provider Message: {Content}", response.StatusCode, responseBody);
+                throw new HttpRequestException("Provider server error", null, HttpStatusCode.ServiceUnavailable);
             }
             
             _logger.LogError(

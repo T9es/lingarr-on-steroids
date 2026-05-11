@@ -138,7 +138,7 @@ public class StartupService : IHostedService
             { SettingKeys.SubtitleValidation.SkipWhenTargetEmbedded, "true" },
 
             // Default AI Prompt Safeguard
-            { SettingKeys.Translation.AiPrompt, "Translate subtitles into natural, plain text. NEVER include ASS/SSA tags ({\\...}), HTML tags, or animation/karaoke markers in your output. If a line is purely an animation syllable (e.g., 'ha', 'na', 'te') or non-dialogue fragment, return an empty string for that position. Maintain the natural flow of speech and do NOT remove valid short dialogue like 'No!', 'Stop!', or single-word meanings." }
+            { SettingKeys.Translation.AiPrompt, "Translate subtitles into natural, plain text in {targetLanguage}. NEVER include ASS/SSA tags ({\\...}), HTML tags, or formatting markers in your output. Maintain the natural flow of speech. Translate ALL content including dialogue, song lyrics, signs, titles, and on-screen text. Do not return empty strings for any position - always provide a translation." }
         });
 
         await CheckAndUpdateIntegrationSettings(dbContext, "radarr", [
