@@ -113,6 +113,22 @@ public class SubtitleServiceFilePathTests
     }
 
     [Fact]
+    public void CreateFallbackPaths_FromVideoFile_DoesNotReturnTruncatedPrefixPath()
+    {
+        var longBaseName = new string('A', 245) + " [DTS 5.1]-GRP";
+        var paths = _service.CreateFallbackPaths(
+            $@"C:\Movies\Film\{longBaseName}.mkv",
+            "pl", "lingarr", "ai", ".srt").ToList();
+
+        Assert.Equal(3, paths.Count);
+        Assert.All(paths, path =>
+        {
+            Assert.Contains(longBaseName, path);
+            Assert.DoesNotContain("[DTS 5.pl", path);
+        });
+    }
+
+    [Fact]
     public void CreateFallbackPaths_FromVideoFile_WithForcedCaption()
     {
         var paths = _service.CreateFallbackPaths(

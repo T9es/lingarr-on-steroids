@@ -144,7 +144,7 @@ public class SubtitleService : ISubtitleService
         paths.Add(CreateFilePathInternal(originalPath, targetLanguage, subtitleTag, outputFormat, forcedCaption));
 
         // 2. Short Tag (if provided and different)
-        if (!string.IsNullOrEmpty(subtitleTagShort) && 
+        if (!string.IsNullOrEmpty(subtitleTagShort) &&
             !string.Equals(subtitleTagShort, subtitleTag, StringComparison.OrdinalIgnoreCase))
         {
             paths.Add(CreateFilePathInternal(originalPath, targetLanguage, subtitleTagShort, outputFormat, forcedCaption));
@@ -157,15 +157,10 @@ public class SubtitleService : ISubtitleService
             paths.Add(noTagPath);
         }
 
-        // 4. Truncated Path (Last Resort) using Short Tag (or no tag if short is empty)
-        // We truncate the base filename to ensure proper length
-        var tagForTruncation = !string.IsNullOrEmpty(subtitleTagShort) ? subtitleTagShort : null;
-        paths.Add(CreateTruncatedFilePath(originalPath, targetLanguage, tagForTruncation, outputFormat, forcedCaption));
-
         return paths.Distinct();
     }
 
-private string CreateFilePathInternal(
+    private string CreateFilePathInternal(
         string originalPath,
         string targetLanguage,
         string? subtitleTag,
@@ -281,63 +276,6 @@ private string CreateFilePathInternal(
         }
 
         return string.Join(".", parts) + extension;
-    }
-
-private string CreateTruncatedFilePath(
-        string originalPath,
-        string targetLanguage,
-        string? subtitleTag,
-        string? outputFormat = null,
-        string? forcedCaption = null)
-    {
-        // Calculate max filename length (255)
-        // Reserve space for extension, language, tag, separators
-        const int maxFilenameLength = 250; // Safety margin
-        var extension = !string.IsNullOrWhiteSpace(outputFormat)
-            ? SubtitleOutputModeHelper.NormalizeFormat(outputFormat)
-            : Path.GetExtension(originalPath); // e.g. .srt
-        
-        // Resolve target language code
-        string? targetLanguageCode = null;
-        if (!string.IsNullOrEmpty(targetLanguage)
-            && !TryGetLanguageByPart(targetLanguage, out targetLanguageCode))
-        {
-            targetLanguageCode = targetLanguage;
-        }
-
-        // Build suffix: .[code].[tag].srt
-        var suffixParts = new List<string>();
-        if (targetLanguageCode != null) suffixParts.Add(targetLanguageCode.ToLowerInvariant());
-        if (!string.IsNullOrWhiteSpace(forcedCaption)) suffixParts.Add(forcedCaption.ToLowerInvariant());
-        if (!string.IsNullOrEmpty(subtitleTag)) suffixParts.Add(subtitleTag.ToLowerInvariant());
-        
-        var suffix = (suffixParts.Any() ? "." + string.Join(".", suffixParts) : "") + extension;
-
-        // Calculate maximum allowed length for base name
-        // BaseName + Suffix <= 255
-        var maxBaseLength = maxFilenameLength - suffix.Length;
-        if (maxBaseLength < 10) maxBaseLength = 10; // Ensure at least some characters
-
-        string baseNameWithoutLang;
-        if (IsVideoFilePath(originalPath))
-        {
-            // For video file paths, use the full base name without parsing
-            baseNameWithoutLang = Path.GetFileNameWithoutExtension(originalPath);
-        }
-        else
-        {
-            // Get original base name (without language parts) using the subtitle parsing logic
-            var pathWithoutLang = CreateFilePathInternal(originalPath, "", null, outputFormat);
-            baseNameWithoutLang = Path.GetFileNameWithoutExtension(pathWithoutLang);
-        }
-
-        if (baseNameWithoutLang.Length > maxBaseLength)
-        {
-            baseNameWithoutLang = baseNameWithoutLang.Substring(0, maxBaseLength);
-        }
-
-        var dir = Path.GetDirectoryName(originalPath) ?? "";
-        return Path.Combine(dir, baseNameWithoutLang + suffix);
     }
 
     /// <inheritdoc />
