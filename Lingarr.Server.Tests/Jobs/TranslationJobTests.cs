@@ -1442,6 +1442,196 @@ public class TranslationJobTests : IDisposable
         Assert.True(File.Exists(goodFinalPath));
     }
 
+    [Fact]
+    public async Task ExecuteAsync_WhenPublishingTaggedOutput_RemovesStaleTaggedFallbackSiblings()
+    {
+        var sourceSubtitlePath = Path.Combine(_tempDirectory, "source.en.srt");
+        await File.WriteAllTextAsync(sourceSubtitlePath, "source");
+
+        var movie = CreateMovie(10);
+        movie.Path = _tempDirectory;
+        var request = new TranslationRequest
+        {
+            MediaId = movie.Id,
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Pending,
+            SubtitleToTranslate = sourceSubtitlePath,
+            SourceSubtitleFormat = ".srt",
+            SubtitleOutputMode = "match-source",
+            RequiredOutputFormats = ".srt",
+            IsActive = true
+        };
+
+        _dbContext.Movies.Add(movie);
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var currentTaggedPath = Path.Combine(_tempDirectory, "source.pl.-ai-.srt");
+        var staleTaggedPath = Path.Combine(_tempDirectory, "source.pl.lingarr.srt");
+        var untaggedPath = Path.Combine(_tempDirectory, "source.pl.srt");
+        await File.WriteAllTextAsync(staleTaggedPath, "stale tagged output");
+        await File.WriteAllTextAsync(untaggedPath, "manual subtitle");
+
+        var subtitleServiceMock = new Mock<ISubtitleService>();
+        subtitleServiceMock
+            .Setup(service => service.ReadSubtitles(sourceSubtitlePath))
+            .ReturnsAsync(BuildSubtitleItems(50));
+        subtitleServiceMock
+            .Setup(service => service.WriteSubtitles(
+                It.IsAny<string>(),
+                It.IsAny<List<SubtitleItem>>(),
+                It.IsAny<bool>()))
+            .Returns((string path, List<SubtitleItem> subtitles, bool _) =>
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                return File.WriteAllTextAsync(
+                    path,
+                    string.Join(Environment.NewLine, subtitles.SelectMany(item => item.TranslatedLines)));
+            });
+        subtitleServiceMock
+            .Setup(service => service.CreateFallbackPaths(
+                sourceSubtitlePath,
+                "pl",
+                "lingarr",
+                "-ai-",
+                ".srt",
+                null))
+            .Returns([currentTaggedPath, staleTaggedPath, untaggedPath]);
+
+        var translationServiceMock = new Mock<ITranslationService>();
+        translationServiceMock
+            .Setup(service => service.TranslateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync("Czesc");
+
+        var qualityServiceMock = new Mock<ISubtitleQualityValidatorService>();
+        qualityServiceMock
+            .Setup(service => service.ValidateAsync(
+                It.IsAny<SubtitleQualityValidationRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SubtitleQualityValidationResult
+            {
+                IsValid = true,
+                Summary = "ok",
+                SourceEntryCount = 50,
+                TargetEntryCount = 50,
+                MinimumTargetEntryCount = 45
+            });
+
+        var job = BuildExecutableJob(
+            subtitleServiceMock.Object,
+            Mock.Of<ISubtitleExtractionService>(),
+            translationServiceMock.Object,
+            qualityServiceMock.Object);
+
+        await job.ExecuteAsync(request.Id, CancellationToken.None);
+
+        var updatedRequest = await _dbContext.TranslationRequests.SingleAsync(item => item.Id == request.Id);
+        Assert.Equal(TranslationStatus.Completed, updatedRequest.Status);
+        Assert.Equal(currentTaggedPath, updatedRequest.TranslatedSubtitle);
+        Assert.True(File.Exists(currentTaggedPath));
+        Assert.False(File.Exists(staleTaggedPath));
+        Assert.True(File.Exists(untaggedPath));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenEmbeddedSourceMediaFileNameHasNoExtension_PreservesVideoBaseName()
+    {
+        var mediaBaseName = "Movie 11 [Bluray-1080p][DTS-HD MA 5.1]-FraMeSToR";
+        var mediaPath = Path.Combine(_tempDirectory, mediaBaseName + ".mkv");
+        await File.WriteAllTextAsync(mediaPath, string.Empty);
+
+        var movie = CreateMovie(11);
+        movie.Path = _tempDirectory;
+        movie.FileName = mediaBaseName;
+        _dbContext.Movies.Add(movie);
+        await _dbContext.SaveChangesAsync();
+
+        var sourceSubtitlePath = _embeddedSubtitleCacheService.GetOcrCachePath(
+            movie.Id,
+            MediaType.Movie,
+            streamIndex: 1,
+            language: "en");
+        Directory.CreateDirectory(Path.GetDirectoryName(sourceSubtitlePath)!);
+        await File.WriteAllTextAsync(
+            sourceSubtitlePath,
+            string.Join(
+                Environment.NewLine + Environment.NewLine,
+                Enumerable.Range(1, 50).Select(index =>
+                {
+                    var start = TimeSpan.FromSeconds(index);
+                    var end = TimeSpan.FromSeconds(index + 1);
+                    return $"{index}{Environment.NewLine}{start:hh\\:mm\\:ss},000 --> {end:hh\\:mm\\:ss},000{Environment.NewLine}Hello {index}";
+                })));
+
+        var request = new TranslationRequest
+        {
+            MediaId = movie.Id,
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Pending,
+            SubtitleToTranslate = sourceSubtitlePath,
+            SourceSubtitleFormat = ".srt",
+            SubtitleOutputMode = "match-source",
+            RequiredOutputFormats = ".srt",
+            WorkloadKind = TranslationWorkloadKind.Library,
+            IsActive = true
+        };
+
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var translationServiceMock = new Mock<ITranslationService>();
+        translationServiceMock
+            .Setup(service => service.TranslateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync("Czesc");
+
+        var qualityServiceMock = new Mock<ISubtitleQualityValidatorService>();
+        qualityServiceMock
+            .Setup(service => service.ValidateAsync(
+                It.IsAny<SubtitleQualityValidationRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SubtitleQualityValidationResult
+            {
+                IsValid = true,
+                Summary = "ok",
+                SourceEntryCount = 50,
+                TargetEntryCount = 50,
+                MinimumTargetEntryCount = 45
+            });
+
+        var job = BuildExecutableJob(
+            new SubtitleService(NullLogger<SubtitleService>.Instance),
+            Mock.Of<ISubtitleExtractionService>(),
+            translationServiceMock.Object,
+            qualityServiceMock.Object);
+
+        await job.ExecuteAsync(request.Id, CancellationToken.None);
+
+        var expectedPath = Path.Combine(_tempDirectory, mediaBaseName + ".pl.lingarr.srt");
+        var choppedPath = Path.Combine(_tempDirectory, "Movie 11 [Bluray-1080p][DTS-HD MA 5.pl.lingarr.srt");
+        var updatedRequest = await _dbContext.TranslationRequests.SingleAsync(item => item.Id == request.Id);
+        Assert.Equal(expectedPath, updatedRequest.TranslatedSubtitle);
+        Assert.True(File.Exists(expectedPath));
+        Assert.False(File.Exists(choppedPath));
+    }
+
     private static List<SubtitleItem> BuildSubtitleItems(int count)
     {
         return Enumerable.Range(1, count)

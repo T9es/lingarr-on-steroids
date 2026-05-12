@@ -22,6 +22,20 @@ namespace Lingarr.Server.Jobs;
 
 public class TranslationJob
 {
+    private static readonly HashSet<string> MediaFileExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".mkv",
+        ".mp4",
+        ".avi",
+        ".mov",
+        ".wmv",
+        ".flv",
+        ".webm",
+        ".m4v",
+        ".ts",
+        ".m2ts"
+    };
+
     private readonly ILogger<TranslationJob> _logger;
     private readonly ISettingService _settings;
     private readonly LingarrDbContext _dbContext;
@@ -977,7 +991,7 @@ SettingKeys.Translation.BatchContextAfter,
                 var outputStripFormatting = stripSubtitleFormatting
                                             && !(writesPreservedAssOutput
                                                 && SubtitleOutputModeHelper.IsAssFormat(outputFormat));
-                var paths = translationRequest.WorkloadKind == TranslationWorkloadKind.Upload
+                var paths = (translationRequest.WorkloadKind == TranslationWorkloadKind.Upload
                     ? await _uploadWorkspaceService.GetOutputPathsAsync(
                         translationRequest,
                         targetLanguage,
@@ -992,7 +1006,8 @@ SettingKeys.Translation.BatchContextAfter,
                         subtitleTagShort,
                         outputFormat,
                         SubtitleLanguageHelper.GetSupplementalOutputCaption(
-                            translationRequest.SourceSubtitleType));
+                            translationRequest.SourceSubtitleType)))
+                    .ToList();
 
 Exception? lastException = null;
                 bool success = false;
@@ -1074,6 +1089,12 @@ Exception? lastException = null;
                             EnsureParentDirectory(path);
                             File.Copy(stagingPath, path, true);
                             File.Delete(stagingPath);
+                            DeleteStaleTaggedFallbackSiblings(
+                                paths,
+                                path,
+                                translationRequest.SubtitleToTranslate,
+                                subtitleTag,
+                                subtitleTagShort);
 
                             success = true;
                             allPathsTooLong = false;
@@ -1151,6 +1172,70 @@ Exception? lastException = null;
             _logger.LogError(e, e.Message);
             throw;
         }
+    }
+
+    private void DeleteStaleTaggedFallbackSiblings(
+        IEnumerable<string> fallbackPaths,
+        string publishedPath,
+        string? sourcePath,
+        string subtitleTag,
+        string subtitleTagShort)
+    {
+        var configuredTags = new[] { subtitleTag, subtitleTagShort }
+            .Where(tag => !string.IsNullOrWhiteSpace(tag))
+            .Select(tag => tag.Trim().Trim('.').ToLowerInvariant())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (configuredTags.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var stalePath in fallbackPaths.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (!File.Exists(stalePath) ||
+                IsSamePath(stalePath, publishedPath) ||
+                IsSamePath(stalePath, sourcePath) ||
+                !HasConfiguredSubtitleTag(stalePath, configuredTags))
+            {
+                continue;
+            }
+
+            try
+            {
+                File.Delete(stalePath);
+                _logger.LogInformation(
+                    "Deleted stale tagged subtitle output {Path} after publishing {PublishedPath}",
+                    stalePath,
+                    publishedPath);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Failed to delete stale tagged subtitle output {Path} after publishing {PublishedPath}",
+                    stalePath,
+                    publishedPath);
+            }
+        }
+    }
+
+    private static bool HasConfiguredSubtitleTag(string path, IReadOnlyCollection<string> configuredTags)
+    {
+        var fileName = Path.GetFileNameWithoutExtension(path).ToLowerInvariant();
+        return configuredTags.Any(tag =>
+            fileName.EndsWith($".{tag}", StringComparison.OrdinalIgnoreCase) ||
+            fileName.Contains($".{tag}.", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsSamePath(string path, string? otherPath)
+    {
+        return !string.IsNullOrWhiteSpace(otherPath) &&
+               string.Equals(
+                   Path.GetFullPath(path),
+                   Path.GetFullPath(otherPath),
+                   StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task<string?> TryEmbedInMkvContainerAsync(
@@ -1313,7 +1398,9 @@ Exception? lastException = null;
 
         if (Path.IsPathRooted(fileName))
         {
-            return fileName;
+            return ResolveExistingMediaFilePath(
+                Path.GetDirectoryName(fileName),
+                Path.GetFileName(fileName)) ?? fileName;
         }
 
         if (string.IsNullOrWhiteSpace(directoryPath))
@@ -1321,7 +1408,36 @@ Exception? lastException = null;
             return null;
         }
 
-        return Path.Combine(directoryPath, fileName);
+        return ResolveExistingMediaFilePath(directoryPath, fileName)
+               ?? Path.Combine(directoryPath, fileName);
+    }
+
+    private static string? ResolveExistingMediaFilePath(string? directoryPath, string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(directoryPath))
+        {
+            return null;
+        }
+
+        var candidatePath = Path.Combine(directoryPath, fileName);
+        if (File.Exists(candidatePath))
+        {
+            return candidatePath;
+        }
+
+        if (!Directory.Exists(directoryPath))
+        {
+            return null;
+        }
+
+        return Directory
+            .EnumerateFiles(directoryPath)
+            .FirstOrDefault(path =>
+                MediaFileExtensions.Contains(Path.GetExtension(path)) &&
+                string.Equals(
+                    Path.GetFileNameWithoutExtension(path),
+                    fileName,
+                    StringComparison.OrdinalIgnoreCase));
     }
 
     private async Task RecordOutputValidationFailureAsync(
