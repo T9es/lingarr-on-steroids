@@ -70,7 +70,8 @@ public class TranslationFactory : ITranslationServiceFactory
                 _serviceProvider.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(OpenAiService)),
                 _serviceProvider.GetService<IDashboardService>(),
                 _tokenUsageService,
-                _serviceProvider.GetService<ITranslationPromptAugmenter>()
+                _serviceProvider.GetService<ITranslationPromptAugmenter>(),
+                _serviceProvider.GetService<IProviderCircuitBreaker>()
             ),
 
             "anthropic" => new AnthropicService(
@@ -79,7 +80,8 @@ public class TranslationFactory : ITranslationServiceFactory
                 _serviceProvider.GetRequiredService<ILogger<AnthropicService>>(),
                 _serviceProvider.GetService<IDashboardService>(),
                 _tokenUsageService,
-                _serviceProvider.GetService<ITranslationPromptAugmenter>()
+                _serviceProvider.GetService<ITranslationPromptAugmenter>(),
+                _serviceProvider.GetService<IProviderCircuitBreaker>()
             ),
 
             "localai" => new LocalAiService(
@@ -97,7 +99,8 @@ public class TranslationFactory : ITranslationServiceFactory
                 _serviceProvider.GetRequiredService<IHttpClientFactory>(),
                 _serviceProvider.GetService<IDashboardService>(),
                 _tokenUsageService,
-                _serviceProvider.GetService<ITranslationPromptAugmenter>()
+                _serviceProvider.GetService<ITranslationPromptAugmenter>(),
+                _serviceProvider.GetService<IProviderCircuitBreaker>()
             ),
 
             "gemini" => new GoogleGeminiService(
@@ -106,7 +109,8 @@ public class TranslationFactory : ITranslationServiceFactory
                 _serviceProvider.GetRequiredService<ILogger<GoogleGeminiService>>(),
                 _serviceProvider.GetService<IDashboardService>(),
                 _tokenUsageService,
-                _serviceProvider.GetService<ITranslationPromptAugmenter>()
+                _serviceProvider.GetService<ITranslationPromptAugmenter>(),
+                _serviceProvider.GetService<IProviderCircuitBreaker>()
             ),
 
             "chutes" => new ChutesAiService(
@@ -116,7 +120,8 @@ public class TranslationFactory : ITranslationServiceFactory
                 _serviceProvider.GetRequiredService<IHttpClientFactory>(),
                 _serviceProvider.GetService<IDashboardService>(),
                 _tokenUsageService,
-                _serviceProvider.GetService<ITranslationPromptAugmenter>()
+                _serviceProvider.GetService<ITranslationPromptAugmenter>(),
+                _serviceProvider.GetService<IProviderCircuitBreaker>()
             ),
 
             "nanogpt" => new NanoGptService(
@@ -127,7 +132,8 @@ public class TranslationFactory : ITranslationServiceFactory
                 _serviceProvider.GetRequiredService<IMemoryCache>(),
                 _serviceProvider.GetService<IDashboardService>(),
                 _tokenUsageService,
-                _serviceProvider.GetService<ITranslationPromptAugmenter>()
+                _serviceProvider.GetService<ITranslationPromptAugmenter>(),
+                _serviceProvider.GetService<IProviderCircuitBreaker>()
             ),
 
             "crofai" => new CrofAiService(
@@ -137,7 +143,8 @@ public class TranslationFactory : ITranslationServiceFactory
                 _serviceProvider.GetRequiredService<IHttpClientFactory>(),
                 _serviceProvider.GetService<IDashboardService>(),
                 _tokenUsageService,
-                _serviceProvider.GetService<ITranslationPromptAugmenter>()
+                _serviceProvider.GetService<ITranslationPromptAugmenter>(),
+                _serviceProvider.GetService<IProviderCircuitBreaker>()
             ),
 
             _ => throw new ArgumentException("Unsupported translation service type", nameof(serviceType))

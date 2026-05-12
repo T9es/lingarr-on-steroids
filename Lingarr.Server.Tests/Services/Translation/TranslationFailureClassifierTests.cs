@@ -35,4 +35,42 @@ public class TranslationFailureClassifierTests
 
         Assert.False(TranslationFailureClassifier.IsNonRepairableProviderConfigurationFailure(exception));
     }
+
+    [Theory]
+    [InlineData(HttpStatusCode.ServiceUnavailable)]
+    [InlineData(HttpStatusCode.BadGateway)]
+    [InlineData(HttpStatusCode.GatewayTimeout)]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    public void IsProviderUnavailable_ShouldDetectProviderOutageStatusCodes(HttpStatusCode statusCode)
+    {
+        var exception = new HttpRequestException("Provider error", null, statusCode);
+
+        Assert.True(TranslationFailureClassifier.IsProviderUnavailable(exception));
+    }
+
+    [Fact]
+    public void IsProviderUnavailable_ShouldDetectProviderOutageViaInnerException()
+    {
+        var outer = new TranslationException(
+            "Provider is temporarily unavailable. Retry limit reached.",
+            new HttpRequestException("Provider server error", null, HttpStatusCode.ServiceUnavailable));
+
+        Assert.True(TranslationFailureClassifier.IsProviderUnavailable(outer));
+    }
+
+    [Fact]
+    public void IsProviderUnavailable_ShouldNotMatchNonErrorStatus()
+    {
+        var exception = new HttpRequestException("Not found", null, HttpStatusCode.NotFound);
+
+        Assert.False(TranslationFailureClassifier.IsProviderUnavailable(exception));
+    }
+
+    [Fact]
+    public void IsProviderUnavailable_ShouldDetectTemporarilyUnavailableMessage()
+    {
+        var exception = new TranslationException("The service is temporarily unavailable.");
+
+        Assert.True(TranslationFailureClassifier.IsProviderUnavailable(exception));
+    }
 }

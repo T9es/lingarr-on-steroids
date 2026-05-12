@@ -27,8 +27,9 @@ public class CrofAiService : OpenAiService
         IHttpClientFactory httpClientFactory,
         IDashboardService? dashboardService = null,
         ITokenUsageService? tokenUsageService = null,
-        ITranslationPromptAugmenter? translationPromptAugmenter = null)
-        : base(settings, logger, httpClientFactory.CreateClient(nameof(CrofAiService)), dashboardService, tokenUsageService, translationPromptAugmenter)
+        ITranslationPromptAugmenter? translationPromptAugmenter = null,
+        IProviderCircuitBreaker? circuitBreaker = null)
+        : base(settings, logger, httpClientFactory.CreateClient(nameof(CrofAiService)), dashboardService, tokenUsageService, translationPromptAugmenter, circuitBreaker)
     {
         _usageService = usageService;
     }

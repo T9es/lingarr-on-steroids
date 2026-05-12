@@ -82,7 +82,8 @@ public static class TranslationFailureClassifier
     {
         return statusCode == HttpStatusCode.ServiceUnavailable ||
                statusCode == HttpStatusCode.BadGateway ||
-               statusCode == HttpStatusCode.GatewayTimeout;
+               statusCode == HttpStatusCode.GatewayTimeout ||
+               statusCode == HttpStatusCode.InternalServerError;
     }
 
     private static IEnumerable<Exception> Enumerate(Exception exception)

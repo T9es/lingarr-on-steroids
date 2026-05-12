@@ -24,6 +24,7 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
     private readonly HttpClient _httpClient;
     private readonly IDashboardService? _dashboardService;
     private readonly ITokenUsageService? _tokenUsageService;
+    private readonly IProviderCircuitBreaker? _circuitBreaker;
     private const string ServiceName = "gemini";
     private string? _model;
     private string? _apiKey;
@@ -45,12 +46,14 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
         ILogger<GoogleGeminiService> logger,
         IDashboardService? dashboardService = null,
         ITokenUsageService? tokenUsageService = null,
-        ITranslationPromptAugmenter? translationPromptAugmenter = null)
+        ITranslationPromptAugmenter? translationPromptAugmenter = null,
+        IProviderCircuitBreaker? circuitBreaker = null)
         : base(settings, logger, "/app/Statics/ai_languages.json", translationPromptAugmenter)
     {
         _httpClient = httpClient;
         _dashboardService = dashboardService;
         _tokenUsageService = tokenUsageService;
+        _circuitBreaker = circuitBreaker;
     }
 
     /// <summary>
@@ -139,6 +142,11 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
     {
         await InitializeAsync(sourceLanguage, targetLanguage);
 
+        if (_circuitBreaker != null)
+        {
+            await _circuitBreaker.EnsureAllowedAsync(ServiceName, cancellationToken);
+        }
+
         if (_tokenUsageService != null)
         {
             await _tokenUsageService.EnsureTokensAvailableAsync(ServiceName, cancellationToken);
@@ -153,7 +161,9 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
         {
             try
             {
-                return await TranslateWithGeminiApi(text, linked.Token);
+                var result = await TranslateWithGeminiApi(text, linked.Token);
+                _circuitBreaker?.RecordSuccess(ServiceName);
+                return result;
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
             {
@@ -179,6 +189,8 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable || 
                 ex.StatusCode == HttpStatusCode.GatewayTimeout || ex.StatusCode == HttpStatusCode.BadGateway)
             {
+                _circuitBreaker?.RecordFailure(ServiceName, ex);
+
                 if (attempt == _maxRetries)
                 {
                     _logger.LogError(ex, "Gemini server error. Max retries exhausted for text: {Text}", text);
@@ -421,6 +433,11 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
         CancellationToken cancellationToken)
     {
         await InitializeAsync(sourceLanguage, targetLanguage);
+
+        if (_circuitBreaker != null)
+        {
+            await _circuitBreaker.EnsureAllowedAsync(ServiceName, cancellationToken);
+        }
         
         using var retry = new CancellationTokenSource();
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, retry.Token);
@@ -430,7 +447,9 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
         {
             try
             {
-                return await TranslateBatchWithGeminiApi(subtitleBatch, preContext, postContext, linked.Token);
+                var result = await TranslateBatchWithGeminiApi(subtitleBatch, preContext, postContext, linked.Token);
+                _circuitBreaker?.RecordSuccess(ServiceName);
+                return result;
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
             {
@@ -456,6 +475,8 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable || 
                 ex.StatusCode == HttpStatusCode.GatewayTimeout || ex.StatusCode == HttpStatusCode.BadGateway)
             {
+                _circuitBreaker?.RecordFailure(ServiceName, ex);
+
                 if (attempt == _maxRetries)
                 {
                     _logger.LogError(ex, "Service unavailable. Max retries exhausted for batch translation");

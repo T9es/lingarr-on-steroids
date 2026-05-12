@@ -33,6 +33,7 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
     protected readonly SemaphoreSlim _initLock = new(1, 1);
     protected readonly IDashboardService? _dashboardService;
     protected readonly ITokenUsageService? _tokenUsageService;
+    protected readonly IProviderCircuitBreaker? _circuitBreaker;
 
     // retry settings
     protected int _maxRetries;
@@ -45,13 +46,15 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
         HttpClient? httpClient = null,
         IDashboardService? dashboardService = null,
         ITokenUsageService? tokenUsageService = null,
-        ITranslationPromptAugmenter? translationPromptAugmenter = null)
+        ITranslationPromptAugmenter? translationPromptAugmenter = null,
+        IProviderCircuitBreaker? circuitBreaker = null)
         : base(settings, logger, "/app/Statics/ai_languages.json", translationPromptAugmenter)
     {
         _httpClient = httpClient ?? new HttpClient();
         _endpoint = EndpointBase;
         _dashboardService = dashboardService;
         _tokenUsageService = tokenUsageService;
+        _circuitBreaker = circuitBreaker;
     }
 
     /// <summary>
@@ -140,6 +143,11 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
         CancellationToken cancellationToken)
     {
         await InitializeAsync(sourceLanguage, targetLanguage);
+
+        if (_circuitBreaker != null)
+        {
+            await _circuitBreaker.EnsureAllowedAsync(ServiceName, cancellationToken);
+        }
 
         if (_tokenUsageService != null)
         {
@@ -232,10 +240,14 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
                         completionTokens: completionResponse.Usage?.CompletionTokens);
                 }
 
+                _circuitBreaker?.RecordSuccess(ServiceName);
+
                 return completionResponse.Choices[0].Message.Content;
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
             {
+                _circuitBreaker?.RecordFailure(ServiceName, ex);
+
                 if (attempt == _maxRetries)
                 {
                     _logger.LogError(ex, "Too many requests. Max retries exhausted for text: {Text}", text);
@@ -251,6 +263,8 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable || ex.StatusCode == HttpStatusCode.GatewayTimeout || ex.StatusCode == HttpStatusCode.BadGateway)
             {
+                _circuitBreaker?.RecordFailure(ServiceName, ex);
+
                 if (attempt == _maxRetries)
                 {
                     _logger.LogError(ex, "OpenAI server error, it might be down. Max retries exhausted for text: {Text}", text);
@@ -311,6 +325,11 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
     {
         await InitializeAsync(sourceLanguage, targetLanguage);
 
+        if (_circuitBreaker != null)
+        {
+            await _circuitBreaker.EnsureAllowedAsync(ServiceName, cancellationToken);
+        }
+
         using var retry = new CancellationTokenSource();
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, retry.Token);
         
@@ -319,10 +338,14 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
         {
             try
             {
-                return await TranslateBatchWithOpenAiApi(subtitleBatch, preContext, postContext, linked.Token);
+                var result = await TranslateBatchWithOpenAiApi(subtitleBatch, preContext, postContext, linked.Token);
+                _circuitBreaker?.RecordSuccess(ServiceName);
+                return result;
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
             {
+                _circuitBreaker?.RecordFailure(ServiceName, ex);
+
                 if (attempt == _maxRetries)
                 {
                     _logger.LogError(ex, "Too many requests. Max retries exhausted for batch translation");
@@ -338,6 +361,8 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable || ex.StatusCode == HttpStatusCode.GatewayTimeout || ex.StatusCode == HttpStatusCode.BadGateway)
             {
+                _circuitBreaker?.RecordFailure(ServiceName, ex);
+
                 if (attempt == _maxRetries)
                 {
                     _logger.LogError(ex, "Service unavailable. Max retries exhausted for batch translation");
@@ -353,12 +378,10 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                 // Ensure we respect the user's cancellation immediately
-                 throw;
+                throw;
             }
             catch (Exception ex) when (ex is IOException || ex is SocketException || ex is TaskCanceledException || (ex is HttpRequestException && ex.InnerException is IOException))
             {
-                // This block catches network-level errors (connection reset, timeout, etc.)
                 if (attempt == _maxRetries)
                 {
                     _logger.LogError(ex, "Network error during batch translation. Max retries exhausted");

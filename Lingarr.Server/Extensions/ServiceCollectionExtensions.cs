@@ -222,6 +222,9 @@ public static class ServiceCollectionExtensions
         // Translation cancellation service (singleton to allow cancelling running jobs)
         builder.Services.AddSingleton<ITranslationCancellationService, TranslationCancellationService>();
         
+        // Circuit breaker for translation providers (singleton to coordinate across all workers)
+        builder.Services.AddSingleton<IProviderCircuitBreaker, ProviderCircuitBreaker>();
+        
         // Batch fallback service for graduated retry with chunk splitting
         builder.Services.AddScoped<IBatchFallbackService, BatchFallbackService>();
         

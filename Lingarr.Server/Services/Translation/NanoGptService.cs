@@ -41,8 +41,9 @@ public class NanoGptService : OpenAiService
         IMemoryCache cache,
         IDashboardService? dashboardService = null,
         ITokenUsageService? tokenUsageService = null,
-        ITranslationPromptAugmenter? translationPromptAugmenter = null)
-        : base(settings, logger, httpClientFactory.CreateClient(nameof(NanoGptService)), dashboardService, tokenUsageService, translationPromptAugmenter)
+        ITranslationPromptAugmenter? translationPromptAugmenter = null,
+        IProviderCircuitBreaker? circuitBreaker = null)
+        : base(settings, logger, httpClientFactory.CreateClient(nameof(NanoGptService)), dashboardService, tokenUsageService, translationPromptAugmenter, circuitBreaker)
     {
         _usageService = usageService;
         _httpClientFactory = httpClientFactory;

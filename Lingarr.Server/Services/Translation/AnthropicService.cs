@@ -21,6 +21,7 @@ public class AnthropicService : BaseLanguageService, ITranslationService, IBatch
     private readonly HttpClient _httpClient;
     private readonly IDashboardService? _dashboardService;
     private readonly ITokenUsageService? _tokenUsageService;
+    private readonly IProviderCircuitBreaker? _circuitBreaker;
     private const string ServiceName = "anthropic";
     private string? _model;
     private string? _prompt;
@@ -39,12 +40,14 @@ public class AnthropicService : BaseLanguageService, ITranslationService, IBatch
         ILogger<AnthropicService> logger,
         IDashboardService? dashboardService = null,
         ITokenUsageService? tokenUsageService = null,
-        ITranslationPromptAugmenter? translationPromptAugmenter = null)
+        ITranslationPromptAugmenter? translationPromptAugmenter = null,
+        IProviderCircuitBreaker? circuitBreaker = null)
         : base(settings, logger, "/app/Statics/ai_languages.json", translationPromptAugmenter)
     {
         _httpClient = httpClient;
         _dashboardService = dashboardService;
         _tokenUsageService = tokenUsageService;
+        _circuitBreaker = circuitBreaker;
     }
 
     /// <summary>
@@ -136,6 +139,11 @@ public class AnthropicService : BaseLanguageService, ITranslationService, IBatch
     {
         await InitializeAsync(sourceLanguage, targetLanguage);
 
+        if (_circuitBreaker != null)
+        {
+            await _circuitBreaker.EnsureAllowedAsync(ServiceName, cancellationToken);
+        }
+
         if (_tokenUsageService != null)
         {
             await _tokenUsageService.EnsureTokensAvailableAsync(ServiceName, cancellationToken);
@@ -184,6 +192,13 @@ public class AnthropicService : BaseLanguageService, ITranslationService, IBatch
                         throw new HttpRequestException("Rate limit exceeded", null, HttpStatusCode.TooManyRequests);
                     }
 
+                    if ((int)response.StatusCode >= 500 && (int)response.StatusCode < 600)
+                    {
+                        var errorBody = await response.Content.ReadAsStringAsync(linked.Token);
+                        _logger.LogWarning("{StatusCode} Server Error. Provider Message: {Content}", response.StatusCode, errorBody);
+                        throw new HttpRequestException("Provider server error", null, HttpStatusCode.ServiceUnavailable);
+                    }
+
                     _logger.LogError("Response Status Code: {StatusCode}", response.StatusCode);
                     _logger.LogError("Response Content: {ResponseContent}",
                         await response.Content.ReadAsStringAsync(cancellationToken: linked.Token));
@@ -216,6 +231,7 @@ if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var us
                 }
 
                 var subtitleLine = jsonResponse.GetProperty("content")[0].GetProperty("text").GetString();
+                _circuitBreaker?.RecordSuccess(ServiceName);
                 return subtitleLine ?? throw new InvalidOperationException();
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
@@ -236,6 +252,8 @@ if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var us
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable || 
                 ex.StatusCode == HttpStatusCode.GatewayTimeout || ex.StatusCode == HttpStatusCode.BadGateway)
             {
+                _circuitBreaker?.RecordFailure(ServiceName, ex);
+
                 if (attempt == _maxRetries)
                 {
                     _logger.LogError(ex, "Anthropic server error. Max retries exhausted for text: {Text}", text);
@@ -298,6 +316,11 @@ if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var us
     {
         await InitializeAsync(sourceLanguage, targetLanguage);
 
+        if (_circuitBreaker != null)
+        {
+            await _circuitBreaker.EnsureAllowedAsync(ServiceName, cancellationToken);
+        }
+
         using var retry = new CancellationTokenSource();
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, retry.Token);
         
@@ -306,7 +329,9 @@ if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var us
         {
             try
             {
-                return await TranslateBatchWithAnthropicApi(subtitleBatch, preContext, postContext, linked.Token);
+                var result = await TranslateBatchWithAnthropicApi(subtitleBatch, preContext, postContext, linked.Token);
+                _circuitBreaker?.RecordSuccess(ServiceName);
+                return result;
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
             {
@@ -326,6 +351,8 @@ if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var us
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable || 
                 ex.StatusCode == HttpStatusCode.GatewayTimeout || ex.StatusCode == HttpStatusCode.BadGateway)
             {
+                _circuitBreaker?.RecordFailure(ServiceName, ex);
+
                 if (attempt == _maxRetries)
                 {
                     _logger.LogError(ex, "Service unavailable. Max retries exhausted for batch translation");

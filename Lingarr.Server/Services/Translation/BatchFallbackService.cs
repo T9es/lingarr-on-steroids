@@ -55,6 +55,7 @@ public class BatchFallbackService : IBatchFallbackService
 
             var chunks = SplitIntoChunks(failedItems, splitLevel);
             var stillFailed = new List<BatchSubtitleItem>();
+            var providerUnavailableAbort = false;
 
             _logger.LogInformation(
                 "{BatchProgress}[{FileId}] Split level {Level}/{Max}: processing {ChunkCount} chunk(s), {ItemCount} items",
@@ -128,15 +129,20 @@ public class BatchFallbackService : IBatchFallbackService
                         throw;
                     }
 
-                    lastFailureSummary = TranslationFailureClassifier.GetFailureSummary(ex);
                     if (TranslationFailureClassifier.IsProviderUnavailable(ex))
                     {
                         sawProviderUnavailableFailure = true;
+                        providerUnavailableAbort = true;
+                        lastFailureSummary = TranslationFailureClassifier.GetFailureSummary(ex);
+                        _logger.LogWarning(ex,
+                            "{BatchProgress}[{FileId}] Provider unavailable at split level {Level}: {Count} items. Aborting split retry — provider outage will not be resolved by splitting.",
+                            batchProgress, fileIdentifier, splitLevel, chunk.Count);
+                        stillFailed.AddRange(chunk);
+                        break;
                     }
-                    else
-                    {
-                        sawNonProviderFailure = true;
-                    }
+
+                    sawNonProviderFailure = true;
+                    lastFailureSummary = TranslationFailureClassifier.GetFailureSummary(ex);
 
                     _logger.LogWarning(ex,
                         "{BatchProgress}[{FileId}] Chunk failed at split level {Level}: {Count} items. Will retry with smaller chunks if available.",
@@ -156,6 +162,18 @@ public class BatchFallbackService : IBatchFallbackService
                         throw;
                     }
 
+                    if (TranslationFailureClassifier.IsProviderUnavailable(ex))
+                    {
+                        sawProviderUnavailableFailure = true;
+                        providerUnavailableAbort = true;
+                        lastFailureSummary = TranslationFailureClassifier.GetFailureSummary(ex);
+                        _logger.LogWarning(ex,
+                            "{BatchProgress}[{FileId}] Provider unavailable at split level {Level}: {Count} items. Aborting split retry — provider outage will not be resolved by splitting.",
+                            batchProgress, fileIdentifier, splitLevel, chunk.Count);
+                        stillFailed.AddRange(chunk);
+                        break;
+                    }
+
                     lastFailureSummary = TranslationFailureClassifier.GetFailureSummary(ex);
                     sawNonProviderFailure = true;
 
@@ -167,6 +185,11 @@ public class BatchFallbackService : IBatchFallbackService
             }
 
             failedItems = stillFailed;
+
+            if (providerUnavailableAbort)
+            {
+                break;
+            }
 
             if (failedItems.Count > 0 && splitLevel < maxSplitAttempts)
             {
