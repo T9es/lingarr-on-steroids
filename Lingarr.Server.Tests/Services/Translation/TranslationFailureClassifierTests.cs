@@ -1,6 +1,8 @@
+using System;
 using System.Net;
 using System.Net.Http;
 using Lingarr.Server.Exceptions;
+using Lingarr.Server.Interfaces.Services.Translation;
 using Xunit;
 
 namespace Lingarr.Server.Tests.Services.Translation;
@@ -70,6 +72,14 @@ public class TranslationFailureClassifierTests
     public void IsProviderUnavailable_ShouldDetectTemporarilyUnavailableMessage()
     {
         var exception = new TranslationException("The service is temporarily unavailable.");
+
+        Assert.True(TranslationFailureClassifier.IsProviderUnavailable(exception));
+    }
+
+    [Fact]
+    public void IsProviderUnavailable_ShouldDetectOpenCircuitBreaker()
+    {
+        var exception = new ProviderCircuitOpenException("crofai", TimeSpan.FromSeconds(30), 3);
 
         Assert.True(TranslationFailureClassifier.IsProviderUnavailable(exception));
     }

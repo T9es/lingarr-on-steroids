@@ -139,10 +139,7 @@ public class AnthropicService : BaseLanguageService, ITranslationService, IBatch
     {
         await InitializeAsync(sourceLanguage, targetLanguage);
 
-        if (_circuitBreaker != null)
-        {
-            await _circuitBreaker.EnsureAllowedAsync(ServiceName, cancellationToken);
-        }
+        await EnsureProviderCircuitAllowedAsync(cancellationToken);
 
         if (_tokenUsageService != null)
         {
@@ -252,7 +249,7 @@ if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var us
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable || 
                 ex.StatusCode == HttpStatusCode.GatewayTimeout || ex.StatusCode == HttpStatusCode.BadGateway)
             {
-                _circuitBreaker?.RecordFailure(ServiceName, ex);
+                await RecordProviderFailureAsync(ex, cancellationToken);
 
                 if (attempt == _maxRetries)
                 {
@@ -316,10 +313,7 @@ if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var us
     {
         await InitializeAsync(sourceLanguage, targetLanguage);
 
-        if (_circuitBreaker != null)
-        {
-            await _circuitBreaker.EnsureAllowedAsync(ServiceName, cancellationToken);
-        }
+        await EnsureProviderCircuitAllowedAsync(cancellationToken);
 
         using var retry = new CancellationTokenSource();
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, retry.Token);
@@ -351,7 +345,7 @@ if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var us
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable || 
                 ex.StatusCode == HttpStatusCode.GatewayTimeout || ex.StatusCode == HttpStatusCode.BadGateway)
             {
-                _circuitBreaker?.RecordFailure(ServiceName, ex);
+                await RecordProviderFailureAsync(ex, cancellationToken);
 
                 if (attempt == _maxRetries)
                 {
@@ -658,5 +652,21 @@ if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var us
                 Message = "Error fetching models from Anthropic API: " + ex.Message
             };
         }
+    }
+
+    private Task EnsureProviderCircuitAllowedAsync(CancellationToken cancellationToken)
+    {
+        return _circuitBreaker?.EnsureAllowedAsync(ServiceName, cancellationToken) ?? Task.CompletedTask;
+    }
+
+    private async Task RecordProviderFailureAsync(Exception exception, CancellationToken cancellationToken)
+    {
+        if (_circuitBreaker == null)
+        {
+            return;
+        }
+
+        _circuitBreaker.RecordFailure(ServiceName, exception);
+        await _circuitBreaker.EnsureAllowedAsync(ServiceName, cancellationToken);
     }
 }

@@ -142,10 +142,7 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
     {
         await InitializeAsync(sourceLanguage, targetLanguage);
 
-        if (_circuitBreaker != null)
-        {
-            await _circuitBreaker.EnsureAllowedAsync(ServiceName, cancellationToken);
-        }
+        await EnsureProviderCircuitAllowedAsync(cancellationToken);
 
         if (_tokenUsageService != null)
         {
@@ -189,7 +186,7 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable || 
                 ex.StatusCode == HttpStatusCode.GatewayTimeout || ex.StatusCode == HttpStatusCode.BadGateway)
             {
-                _circuitBreaker?.RecordFailure(ServiceName, ex);
+                await RecordProviderFailureAsync(ex, cancellationToken);
 
                 if (attempt == _maxRetries)
                 {
@@ -434,10 +431,7 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
     {
         await InitializeAsync(sourceLanguage, targetLanguage);
 
-        if (_circuitBreaker != null)
-        {
-            await _circuitBreaker.EnsureAllowedAsync(ServiceName, cancellationToken);
-        }
+        await EnsureProviderCircuitAllowedAsync(cancellationToken);
         
         using var retry = new CancellationTokenSource();
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, retry.Token);
@@ -475,7 +469,7 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable || 
                 ex.StatusCode == HttpStatusCode.GatewayTimeout || ex.StatusCode == HttpStatusCode.BadGateway)
             {
-                _circuitBreaker?.RecordFailure(ServiceName, ex);
+                await RecordProviderFailureAsync(ex, cancellationToken);
 
                 if (attempt == _maxRetries)
                 {
@@ -764,6 +758,22 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
 
         var jitter = TimeSpan.FromMilliseconds(Random.Shared.Next(0, 500));
         return delay + jitter;
+    }
+
+    private Task EnsureProviderCircuitAllowedAsync(CancellationToken cancellationToken)
+    {
+        return _circuitBreaker?.EnsureAllowedAsync(ServiceName, cancellationToken) ?? Task.CompletedTask;
+    }
+
+    private async Task RecordProviderFailureAsync(Exception exception, CancellationToken cancellationToken)
+    {
+        if (_circuitBreaker == null)
+        {
+            return;
+        }
+
+        _circuitBreaker.RecordFailure(ServiceName, exception);
+        await _circuitBreaker.EnsureAllowedAsync(ServiceName, cancellationToken);
     }
 
     private static bool IsRetryableStatus(HttpStatusCode statusCode)

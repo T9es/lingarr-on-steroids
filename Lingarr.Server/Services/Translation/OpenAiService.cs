@@ -144,10 +144,7 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
     {
         await InitializeAsync(sourceLanguage, targetLanguage);
 
-        if (_circuitBreaker != null)
-        {
-            await _circuitBreaker.EnsureAllowedAsync(ServiceName, cancellationToken);
-        }
+        await EnsureProviderCircuitAllowedAsync(cancellationToken);
 
         if (_tokenUsageService != null)
         {
@@ -246,7 +243,7 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
             {
-                _circuitBreaker?.RecordFailure(ServiceName, ex);
+                await RecordProviderFailureAsync(ex, cancellationToken);
 
                 if (attempt == _maxRetries)
                 {
@@ -263,7 +260,7 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable || ex.StatusCode == HttpStatusCode.GatewayTimeout || ex.StatusCode == HttpStatusCode.BadGateway)
             {
-                _circuitBreaker?.RecordFailure(ServiceName, ex);
+                await RecordProviderFailureAsync(ex, cancellationToken);
 
                 if (attempt == _maxRetries)
                 {
@@ -325,10 +322,7 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
     {
         await InitializeAsync(sourceLanguage, targetLanguage);
 
-        if (_circuitBreaker != null)
-        {
-            await _circuitBreaker.EnsureAllowedAsync(ServiceName, cancellationToken);
-        }
+        await EnsureProviderCircuitAllowedAsync(cancellationToken);
 
         using var retry = new CancellationTokenSource();
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, retry.Token);
@@ -344,7 +338,7 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
             {
-                _circuitBreaker?.RecordFailure(ServiceName, ex);
+                await RecordProviderFailureAsync(ex, cancellationToken);
 
                 if (attempt == _maxRetries)
                 {
@@ -361,7 +355,7 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable || ex.StatusCode == HttpStatusCode.GatewayTimeout || ex.StatusCode == HttpStatusCode.BadGateway)
             {
-                _circuitBreaker?.RecordFailure(ServiceName, ex);
+                await RecordProviderFailureAsync(ex, cancellationToken);
 
                 if (attempt == _maxRetries)
                 {
@@ -673,5 +667,21 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
         CancellationToken cancellationToken)
     {
         return Task.CompletedTask;
+    }
+
+    protected Task EnsureProviderCircuitAllowedAsync(CancellationToken cancellationToken)
+    {
+        return _circuitBreaker?.EnsureAllowedAsync(ServiceName, cancellationToken) ?? Task.CompletedTask;
+    }
+
+    protected async Task RecordProviderFailureAsync(Exception exception, CancellationToken cancellationToken)
+    {
+        if (_circuitBreaker == null)
+        {
+            return;
+        }
+
+        _circuitBreaker.RecordFailure(ServiceName, exception);
+        await _circuitBreaker.EnsureAllowedAsync(ServiceName, cancellationToken);
     }
 }

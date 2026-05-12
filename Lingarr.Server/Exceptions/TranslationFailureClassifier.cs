@@ -1,4 +1,5 @@
 using System.Net;
+using Lingarr.Server.Interfaces.Services.Translation;
 
 namespace Lingarr.Server.Exceptions;
 
@@ -40,6 +41,11 @@ public static class TranslationFailureClassifier
     {
         foreach (var current in Enumerate(exception))
         {
+            if (current is ProviderCircuitOpenException)
+            {
+                return true;
+            }
+
             if (current is HttpRequestException httpException &&
                 IsRetryableProviderStatus(httpException.StatusCode))
             {

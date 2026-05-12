@@ -166,6 +166,7 @@ public class NanoGptService : OpenAiService
         CancellationToken cancellationToken)
     {
         await InitializeAsync(sourceLanguage, targetLanguage);
+        await EnsureProviderCircuitAllowedAsync(cancellationToken);
 
         using var retry = new CancellationTokenSource();
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, retry.Token);
@@ -175,16 +176,20 @@ public class NanoGptService : OpenAiService
         {
             try
             {
-                return await SendNanoGptJsonObjectBatchAsync(
+                var result = await SendNanoGptJsonObjectBatchAsync(
                     subtitleBatch,
                     sourceLanguage,
                     targetLanguage,
                     preContext,
                     postContext,
                     linked.Token);
+                _circuitBreaker?.RecordSuccess(ServiceName);
+                return result;
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
             {
+                await RecordProviderFailureAsync(ex, cancellationToken);
+
                 if (attempt == _maxRetries)
                 {
                     _logger.LogError(ex, "Too many requests. Max retries exhausted for NanoGPT batch translation");
@@ -205,6 +210,8 @@ public class NanoGptService : OpenAiService
                 ex.StatusCode == HttpStatusCode.GatewayTimeout ||
                 ex.StatusCode == HttpStatusCode.BadGateway)
             {
+                await RecordProviderFailureAsync(ex, cancellationToken);
+
                 if (attempt == _maxRetries)
                 {
                     _logger.LogError(ex, "Service unavailable. Max retries exhausted for NanoGPT batch translation");
