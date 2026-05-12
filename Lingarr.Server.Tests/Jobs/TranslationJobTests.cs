@@ -48,9 +48,14 @@ public class TranslationJobTests : IDisposable
         _dbContext = new LingarrDbContext(options);
         _dbContext.Database.EnsureCreated();
 
+        _tempDirectory = Path.Combine(Path.GetTempPath(), "lingarr-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(_tempDirectory);
+
         _settingServiceMock = new Mock<ISettingService>();
         _embeddedSubtitleCacheService = new EmbeddedSubtitleCacheService(
-            NullLogger<EmbeddedSubtitleCacheService>.Instance);
+            NullLogger<EmbeddedSubtitleCacheService>.Instance,
+            Path.Combine(_tempDirectory, "embedded-subtitle-cache"),
+            retention: null);
 
         var subtitleService = new SubtitleService(NullLogger<SubtitleService>.Instance);
         var extractionService = new SubtitleExtractionService(
@@ -83,8 +88,6 @@ public class TranslationJobTests : IDisposable
             _embeddedSubtitleCacheService,
             Mock.Of<IUploadWorkspaceService>());
 
-        _tempDirectory = Path.Combine(Path.GetTempPath(), "lingarr-tests", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(_tempDirectory);
     }
 
     [Fact]
