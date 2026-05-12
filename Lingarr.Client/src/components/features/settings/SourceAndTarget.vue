@@ -123,7 +123,6 @@ const autoModeEnabled = computed({
         settingsStore.updateSetting(
             SETTINGS.SOURCE_LANGUAGE_MODE,
             newValue === 'true' ? 'auto' : 'manual',
-            true,
             true
         )
         emit('save')

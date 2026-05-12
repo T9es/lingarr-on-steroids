@@ -75,9 +75,11 @@ public class GoogleGeminiServiceTests
         };
 
         // Truncated JSON response
-        // Full response would be: [{"position":1,"line":"Hola"},{"position":2,"line":"Mundo"}]
-        // Truncated: [{"position":1,"line":"Hola"},{"position":2,"line":"Mun
-        var truncatedJson = "[{\"position\":1,\"line\":\"Hola\"},{\"position\":2,\"line\":\"Mun";
+        // Full response would include an exact sourceKey for each translated item.
+        var helloKey = SourceKey(1, "Hello");
+        var worldKey = SourceKey(2, "World");
+        var truncatedJson =
+            $"[{{\"position\":1,\"sourceKey\":\"{helloKey}\",\"line\":\"Hola\"}},{{\"position\":2,\"sourceKey\":\"{worldKey}\",\"line\":\"Mun";
         
         var geminiResponse = new
         {
@@ -159,7 +161,8 @@ public class GoogleGeminiServiceTests
 
         // Simulate truncation happening right inside a number, like in Issue #204
         // ...{"position":43
-        var truncatedJson = "[{\"position\":1,\"line\":\"Line 1\"},{\"position\":2";
+        var lineKey = SourceKey(1, "Line 1");
+        var truncatedJson = $"[{{\"position\":1,\"sourceKey\":\"{lineKey}\",\"line\":\"Line 1\"}},{{\"position\":2";
         
         var geminiResponse = new
         {
@@ -317,6 +320,7 @@ public class GoogleGeminiServiceTests
             }
             """;
 
+        var helloKey = SourceKey(1, "Hello");
         var successBody = JsonSerializer.Serialize(new
         {
             candidates = new[]
@@ -327,7 +331,7 @@ public class GoogleGeminiServiceTests
                     {
                         parts = new[]
                         {
-                            new { text = "[{\"position\":1,\"line\":\"Hola\"}]" }
+                            new { text = $"[{{\"position\":1,\"sourceKey\":\"{helloKey}\",\"line\":\"Hola\"}}]" }
                         }
                     }
                 }
@@ -532,5 +536,14 @@ public class GoogleGeminiServiceTests
                 123,
                 45),
             Times.Once);
+    }
+
+    private static string SourceKey(int position, string line)
+    {
+        return BatchTranslationResponseMapper.GetSourceKey(new BatchSubtitleItem
+        {
+            Position = position,
+            Line = line
+        });
     }
 }

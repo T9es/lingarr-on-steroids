@@ -368,13 +368,18 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
                                         type = "integer",
                                         description = "Position number of the subtitle item"
                                     },
+                                    sourceKey = new
+                                    {
+                                        type = "string",
+                                        description = "Source key copied exactly from the subtitle item"
+                                    },
                                     line = new
                                     {
                                         type = "string",
                                         description = "Translated subtitle text"
                                     }
                                 },
-                                required = new[] { "position", "line" },
+                                required = new[] { "position", "sourceKey", "line" },
                                 additionalProperties = false
                             }
                         }
@@ -489,9 +494,11 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
                 throw new TranslationException("Failed to deserialize translated subtitles");
             }
 
-            return translatedItems
-                .GroupBy(item => item.Position)
-                .ToDictionary(group => group.Key, group => group.First().Line);
+            return BatchTranslationResponseMapper.MapAlignedTranslations(
+                subtitleBatch,
+                translatedItems,
+                _logger,
+                ServiceName);
         }
         catch (JsonException ex)
         {
@@ -593,9 +600,11 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
                 throw new TranslationException("Failed to deserialize translated subtitles from JSON parsing");
             }
 
-            return translatedItems
-                .GroupBy(item => item.Position)
-                .ToDictionary(group => group.Key, group => group.First().Line);
+            return BatchTranslationResponseMapper.MapAlignedTranslations(
+                subtitleBatch,
+                translatedItems,
+                _logger,
+                ServiceName);
         }
         catch (JsonException ex)
         {
@@ -611,7 +620,7 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
         CancellationToken cancellationToken)
     {
         var batchPrompt = _prompt +
-                          "\n\nPlease return the response as a JSON array with objects containing 'position' and 'line' fields. Example: [{\"position\": 1, \"line\": \"translated text\"}]\n\n";
+                          "\n\nPlease return the response as a JSON array with objects containing 'position', 'sourceKey', and 'line' fields. Example: [{\"position\": 1, \"sourceKey\": \"abc123def456\", \"line\": \"translated text\"}]\n\n";
 
         var userContent = BuildBatchUserContent(subtitleBatch, preContext, postContext);
 
@@ -677,9 +686,11 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
                 throw new TranslationException("Failed to deserialize translated subtitles from generate API");
             }
 
-            return translatedItems
-                .GroupBy(item => item.Position)
-                .ToDictionary(group => group.Key, group => group.First().Line);
+            return BatchTranslationResponseMapper.MapAlignedTranslations(
+                subtitleBatch,
+                translatedItems,
+                _logger,
+                ServiceName);
         }
         catch (JsonException ex)
         {

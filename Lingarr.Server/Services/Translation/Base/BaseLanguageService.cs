@@ -250,8 +250,7 @@ public abstract class BaseLanguageService : BaseTranslationService
 
         if (!hasPreContext && !hasPostContext)
         {
-            // No context wrapper, just return the batch as JSON
-            return JsonSerializer.Serialize(subtitleBatch);
+            return BuildStrictBatchInstructions(JsonSerializer.Serialize(BuildKeyedBatchPayload(subtitleBatch)));
         }
 
         // Build content with context wrapper
@@ -269,7 +268,7 @@ public abstract class BaseLanguageService : BaseTranslationService
         }
 
         sb.AppendLine("[SUBTITLES_TO_TRANSLATE]");
-        sb.AppendLine(JsonSerializer.Serialize(subtitleBatch));
+        sb.AppendLine(JsonSerializer.Serialize(BuildKeyedBatchPayload(subtitleBatch)));
         sb.AppendLine("[/SUBTITLES_TO_TRANSLATE]");
 
         if (hasPostContext)
@@ -283,6 +282,28 @@ public abstract class BaseLanguageService : BaseTranslationService
             sb.AppendLine("[/CONTEXT_AFTER]");
         }
 
-        return sb.ToString();
+        return BuildStrictBatchInstructions(sb.ToString());
+    }
+
+    private static string BuildStrictBatchInstructions(string subtitlePayload)
+    {
+        return
+            "Translate every subtitle item exactly once. Do not omit, merge, split, reorder, or renumber items. " +
+            "For each output object, keep position and sourceKey unchanged; put only the translated text in line." +
+            Environment.NewLine +
+            subtitlePayload;
+    }
+
+    private static List<BatchSubtitleItem> BuildKeyedBatchPayload(
+        IEnumerable<BatchSubtitleItem> subtitleBatch)
+    {
+        return subtitleBatch
+            .Select(item => new BatchSubtitleItem
+            {
+                Position = item.Position,
+                SourceKey = BatchTranslationResponseMapper.GetSourceKey(item),
+                Line = item.Line
+            })
+            .ToList();
     }
 }

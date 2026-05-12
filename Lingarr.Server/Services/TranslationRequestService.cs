@@ -150,6 +150,27 @@ public class TranslationRequestService : ITranslationRequestService
             }
         }
 
+        var existingUniqueNonSupplementalId =
+            await FindMatchingUniqueNonSupplementalRequestIdAsync(translationRequest);
+        if (existingUniqueNonSupplementalId != 0)
+        {
+            if (!forcePriority)
+            {
+                _logger.LogInformation(
+                    "Skipping duplicate non-supplemental translation request for workload {WorkloadItemKey} {Source}->{Target} (subtitle={SubtitlePath}). Existing request {RequestId} already owns this translation slot.",
+                    translationRequest.WorkloadItemKey,
+                    translationRequest.SourceLanguage,
+                    translationRequest.TargetLanguage,
+                    translationRequest.SubtitleToTranslate ?? "<embedded>",
+                    existingUniqueNonSupplementalId);
+                return existingUniqueNonSupplementalId;
+            }
+
+            return await RestartExistingUniqueNonSupplementalRequestAsync(
+                existingUniqueNonSupplementalId,
+                translationRequest);
+        }
+
         // Create a new TranslationRequest to not keep ID and JobID
         // Look up media priority to initialize IsPriority on the request
         var isPriority = forcePriority || await GetMediaPriorityAsync(translationRequest);
@@ -210,6 +231,10 @@ public class TranslationRequestService : ITranslationRequestService
             
             // Find and return the existing request
             var existingRequest = await FindMatchingActiveRequestIdAsync(translationRequest);
+            if (existingRequest == 0)
+            {
+                existingRequest = await FindMatchingUniqueNonSupplementalRequestIdAsync(translationRequest);
+            }
             
             return existingRequest;
         }
@@ -907,6 +932,108 @@ public class TranslationRequestService : ITranslationRequestService
             .ToListAsync();
 
         return activeRequestIds.FirstOrDefault();
+    }
+
+    private async Task<int> FindMatchingUniqueNonSupplementalRequestIdAsync(
+        TranslationRequest translationRequest)
+    {
+        if (string.IsNullOrWhiteSpace(translationRequest.WorkloadItemKey) ||
+            string.IsNullOrWhiteSpace(translationRequest.SourceLanguage) ||
+            string.IsNullOrWhiteSpace(translationRequest.TargetLanguage) ||
+            string.IsNullOrWhiteSpace(translationRequest.SourceDedupeKey) ||
+            SubtitleLanguageHelper.IsSupplementalSubtitleType(translationRequest.SourceSubtitleType))
+        {
+            return 0;
+        }
+
+        return await _dbContext.TranslationRequests
+            .Where(tr =>
+                tr.WorkloadItemKey == translationRequest.WorkloadItemKey &&
+                tr.SourceLanguage == translationRequest.SourceLanguage &&
+                tr.TargetLanguage == translationRequest.TargetLanguage &&
+                tr.SourceDedupeKey == translationRequest.SourceDedupeKey &&
+                (tr.SourceSubtitleType == null ||
+                 (tr.SourceSubtitleType != SubtitleLanguageHelper.TypeForced &&
+                  tr.SourceSubtitleType != SubtitleLanguageHelper.TypeSignsSongs &&
+                  tr.SourceSubtitleType != SubtitleLanguageHelper.TypeForcedDialogue)))
+            .OrderByDescending(tr => tr.Id)
+            .Select(tr => tr.Id)
+            .FirstOrDefaultAsync();
+    }
+
+    private async Task<int> RestartExistingUniqueNonSupplementalRequestAsync(
+        int requestId,
+        TranslationRequest source)
+    {
+        var existing = await _dbContext.TranslationRequests
+            .FirstAsync(tr => tr.Id == requestId);
+
+        if (existing.Status == TranslationStatus.InProgress)
+        {
+            existing.IsPriority = true;
+            await _dbContext.SaveChangesAsync();
+
+            _logger.LogInformation(
+                "Reusing in-progress non-supplemental translation request {RequestId} for workload {WorkloadItemKey} {Source}->{Target} instead of creating a duplicate row.",
+                existing.Id,
+                existing.WorkloadItemKey,
+                existing.SourceLanguage,
+                existing.TargetLanguage);
+
+            return existing.Id;
+        }
+
+        existing.WorkloadKind = source.WorkloadKind;
+        existing.WorkloadItemKey = source.WorkloadItemKey;
+        existing.MediaId = source.MediaId;
+        existing.CustomMediaItemId = source.CustomMediaItemId;
+        existing.UploadBatchFileId = source.UploadBatchFileId;
+        existing.Title = source.Title;
+        existing.SourceLanguage = source.SourceLanguage;
+        existing.TargetLanguage = source.TargetLanguage;
+        existing.SubtitleToTranslate = source.SubtitleToTranslate;
+        existing.TranslatedSubtitle = null;
+        existing.SourceSubtitleFormat = source.SourceSubtitleFormat;
+        existing.SubtitleOutputMode = source.SubtitleOutputMode;
+        existing.RequiredOutputFormats = source.RequiredOutputFormats;
+        existing.GeneratedOutputFormats = null;
+        existing.GeneratedSubtitlePaths = null;
+        existing.MediaType = source.MediaType;
+        existing.Status = TranslationStatus.Pending;
+        existing.IsActive = true;
+        existing.SourceDedupeKey = source.SourceDedupeKey;
+        existing.CompletedAt = null;
+        existing.Progress = 0;
+        existing.IsPriority = true;
+        existing.SourceSubtitleType = source.SourceSubtitleType;
+        existing.SourceSubtitleEntryCount = source.SourceSubtitleEntryCount;
+        existing.SelectedStreamTitle = source.SelectedStreamTitle;
+        existing.IsForcedSubtitle = source.IsForcedSubtitle;
+        existing.StartedAt = null;
+        existing.SourceSnapshotVersion = source.SourceSnapshotVersion;
+        existing.SourceSnapshotType = source.SourceSnapshotType;
+        existing.SourceSnapshotIdentity = source.SourceSnapshotIdentity;
+        existing.SourceSnapshotFingerprint = source.SourceSnapshotFingerprint;
+        existing.SourceSnapshotFileSizeBytes = source.SourceSnapshotFileSizeBytes;
+        existing.SourceSnapshotLastWriteUtc = source.SourceSnapshotLastWriteUtc;
+        existing.SourceSnapshotStreamIndex = source.SourceSnapshotStreamIndex;
+        existing.NextRetryAt = null;
+        existing.PausedAt = null;
+        existing.PauseReason = null;
+        existing.PausedProvider = null;
+
+        await EnqueueTranslationJobAsync(existing, true);
+        await UpdateMediaState(existing);
+        await UpdateActiveCount();
+
+        _logger.LogInformation(
+            "Restarted existing non-supplemental translation request {RequestId} for workload {WorkloadItemKey} {Source}->{Target} instead of creating a duplicate row.",
+            existing.Id,
+            existing.WorkloadItemKey,
+            existing.SourceLanguage,
+            existing.TargetLanguage);
+
+        return existing.Id;
     }
     
     /// <inheritdoc />

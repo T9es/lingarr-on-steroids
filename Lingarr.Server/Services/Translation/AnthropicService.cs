@@ -433,13 +433,18 @@ if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var us
                                         type = "integer",
                                         description = "Position/index of the subtitle item"
                                     },
+                                    ["sourceKey"] = new
+                                    {
+                                        type = "string",
+                                        description = "Source key copied exactly from the subtitle item"
+                                    },
                                     ["line"] = new
                                     {
                                         type = "string",
                                         description = "Translated subtitle text"
                                     }
                                 },
-                                required = new[] { "position", "line" }
+                                required = new[] { "position", "sourceKey", "line" }
                             },
                             description = "Array of translated subtitle items with their positions"
                         }
@@ -553,18 +558,22 @@ if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var us
             foreach (var translation in translationsProperty.EnumerateArray())
             {
                 var position = translation.GetProperty("position").GetInt32();
+                var sourceKey = translation.GetProperty("sourceKey").GetString();
                 var line = translation.GetProperty("line").GetString() ?? string.Empty;
 
                 translatedItems.Add(new StructuredBatchResponse
                 {
                     Position = position,
+                    SourceKey = sourceKey,
                     Line = line
                 });
             }
 
-            return translatedItems
-                .GroupBy(item => item.Position)
-                .ToDictionary(group => group.Key, group => group.First().Line);
+            return BatchTranslationResponseMapper.MapAlignedTranslations(
+                subtitleBatch,
+                translatedItems,
+                _logger,
+                ServiceName);
         }
         catch (Exception ex)
         {

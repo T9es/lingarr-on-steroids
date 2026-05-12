@@ -271,8 +271,9 @@ public class NanoGptService : OpenAiService
                            $"Translate every subtitle line from source language '{sourceLanguage}' to target language '{targetLanguage}'. " +
                            "IMPORTANT: Return only one valid JSON object, with no markdown or explanation. " +
                            "The JSON object must match this shape exactly: " +
-                           "{\"translations\":[{\"position\":1,\"line\":\"Translated text\"}]}. " +
+                           "{\"translations\":[{\"position\":1,\"sourceKey\":\"abc123def456\",\"line\":\"Translated text\"}]}. " +
                            "Every input position must appear exactly once, using the exact input position value. " +
+                           "Copy sourceKey exactly from the input item for the same position. " +
                            "Do not replace positions with zero-based array indexes. " +
                            "Each line must contain only the translated subtitle text.";
 
@@ -458,10 +459,11 @@ public class NanoGptService : OpenAiService
                     string.Join(", ", unexpectedPositions.Take(10)));
             }
 
-            var validTranslations = translatedItems
-                .Where(item => requestedPositions.Contains(item.Position))
-                .GroupBy(item => item.Position)
-                .ToDictionary(group => group.Key, group => group.First().Line);
+            var validTranslations = BatchTranslationResponseMapper.MapAlignedTranslations(
+                subtitleBatch,
+                translatedItems,
+                _logger,
+                ServiceName);
 
             if (validTranslations.Count == 0 && subtitleBatch.Count > 0)
             {
@@ -550,11 +552,13 @@ public class NanoGptService : OpenAiService
 
             if (!TryGetPropertyIgnoreCase(element, "position", out var positionElement) ||
                 positionElement.ValueKind != JsonValueKind.Number ||
+                !TryGetPropertyIgnoreCase(element, "sourceKey", out var sourceKeyElement) ||
+                sourceKeyElement.ValueKind != JsonValueKind.String ||
                 !TryGetPropertyIgnoreCase(element, "line", out var lineElement) ||
                 lineElement.ValueKind != JsonValueKind.String)
             {
                 throw new TranslationException(
-                    "NanoGPT response contains translation objects without required numeric 'position' and string 'line' properties");
+                    "NanoGPT response contains translation objects without required numeric 'position', string 'sourceKey', and string 'line' properties");
             }
         }
     }
@@ -628,6 +632,14 @@ public class NanoGptService : OpenAiService
         foreach (var item in translatedItems)
         {
             if (item.Position < 0 || item.Position >= subtitleBatch.Count)
+            {
+                return null;
+            }
+
+            var requested = subtitleBatch[item.Position];
+            var requestedSourceKey = BatchTranslationResponseMapper.GetSourceKey(requested);
+            if (string.IsNullOrWhiteSpace(item.SourceKey) ||
+                !string.Equals(item.SourceKey, requestedSourceKey, StringComparison.Ordinal))
             {
                 return null;
             }

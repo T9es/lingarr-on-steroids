@@ -438,12 +438,16 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
                                     {
                                         type = "integer"
                                     },
+                                    sourceKey = new
+                                    {
+                                        type = "string"
+                                    },
                                     line = new
                                     {
                                         type = "string"
                                     }
                                 },
-                                required = new[] { "position", "line" },
+                                required = new[] { "position", "sourceKey", "line" },
                                 additionalProperties = false
                             }
                         }
@@ -573,21 +577,11 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
                 "Batch translation successful. Requested: {RequestedCount}, Received: {ReceivedCount}",
                 subtitleBatch.Count, translatedItems.Count);
 
-            // Warn if we received fewer translations than requested
-            if (translatedItems.Count < subtitleBatch.Count)
-            {
-                var requestedPositions = subtitleBatch.Select(i => i.Position).ToHashSet();
-                var receivedPositions = translatedItems.Select(i => i.Position).ToHashSet();
-                var missingPositions = requestedPositions.Except(receivedPositions).ToList();
-                
-                _logger.LogWarning(
-                    "Partial translation received. Missing {MissingCount} items at positions: {Positions}",
-                    missingPositions.Count, string.Join(", ", missingPositions.Take(10)));
-            }
-
-            return translatedItems
-                .GroupBy(item => item.Position)
-                .ToDictionary(group => group.Key, group => group.First().Line);
+            return BatchTranslationResponseMapper.MapAlignedTranslations(
+                subtitleBatch,
+                translatedItems,
+                _logger,
+                ServiceName);
         }
         catch (JsonException ex)
         {

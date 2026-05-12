@@ -291,8 +291,11 @@ public class NanoGptServiceTests
             .GetProperty("messages")[1]
             .GetProperty("content")
             .GetString();
-        using var userPayload = JsonDocument.Parse(userContent!);
+        var payloadStart = userContent!.IndexOf('[', StringComparison.Ordinal);
+        Assert.True(payloadStart >= 0);
+        using var userPayload = JsonDocument.Parse(userContent[payloadStart..]);
         Assert.True(userPayload.RootElement[0].TryGetProperty("position", out _));
+        Assert.True(userPayload.RootElement[0].TryGetProperty("sourceKey", out _));
         Assert.True(userPayload.RootElement[0].TryGetProperty("line", out _));
         Assert.False(userPayload.RootElement[0].TryGetProperty("Position", out _));
         Assert.False(userPayload.RootElement[0].TryGetProperty("Line", out _));
@@ -383,8 +386,8 @@ public class NanoGptServiceTests
             {
                 translations = new[]
                 {
-                    new { position = 0, line = "Hola" },
-                    new { position = 1, line = "Mundo" }
+                    new { position = 0, sourceKey = SourceKey(10, "Hello"), line = "Hola" },
+                    new { position = 1, sourceKey = SourceKey(25, "World"), line = "Mundo" }
                 }
             }));
 
@@ -413,11 +416,11 @@ public class NanoGptServiceTests
             {
                 translations = new[]
                 {
-                    new { Position = 10, Line = "Czesc przyjacielu" },
-                    new { Position = 25, Line = "Musimy isc do domu" },
-                    new { Position = 40, Line = "To jest bardzo wazne" },
-                    new { Position = 55, Line = "Gdzie jest twoja siostra?" },
-                    new { Position = 70, Line = "Nie moge teraz rozmawiac" }
+                    new { Position = 10, SourceKey = SourceKey(10, "Hello, my friend"), Line = "Czesc przyjacielu" },
+                    new { Position = 25, SourceKey = SourceKey(25, "We need to go home"), Line = "Musimy isc do domu" },
+                    new { Position = 40, SourceKey = SourceKey(40, "This is very important"), Line = "To jest bardzo wazne" },
+                    new { Position = 55, SourceKey = SourceKey(55, "Where is your sister?"), Line = "Gdzie jest twoja siostra?" },
+                    new { Position = 70, SourceKey = SourceKey(70, "I cannot talk right now"), Line = "Nie moge teraz rozmawiac" }
                 }
             }));
 
@@ -636,6 +639,7 @@ public class NanoGptServiceTests
                 translations = sourceItems.Select(item => new
                 {
                     position = item.Position,
+                    sourceKey = SourceKey(item.Position, item.Line),
                     line = item.Line
                 })
             }));
@@ -717,6 +721,15 @@ public class NanoGptServiceTests
             new MemoryCache(new MemoryCacheOptions()));
     }
 
+    private static string SourceKey(int position, string line)
+    {
+        return BatchTranslationResponseMapper.GetSourceKey(new BatchSubtitleItem
+        {
+            Position = position,
+            Line = line
+        });
+    }
+
     private sealed class StaticHttpClientFactory(HttpClient httpClient) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name)
@@ -769,8 +782,8 @@ public class NanoGptServiceTests
                     {
                         translations = new[]
                         {
-                            new { position = 1, line = "Hola" },
-                            new { position = 2, line = "Mundo" }
+                            new { position = 1, sourceKey = SourceKey(1, "Hello"), line = "Hola" },
+                            new { position = 2, sourceKey = SourceKey(2, "World"), line = "Mundo" }
                         }
                     });
                 var chatResponse = JsonSerializer.Serialize(new

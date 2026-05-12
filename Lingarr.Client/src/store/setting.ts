@@ -147,6 +147,7 @@ export const useSettingStore = defineStore('setting', {
 
             this.settings = {
                 ...settings,
+                source_language_mode: normalizeScalarSetting(settings.source_language_mode),
                 source_languages: JSON.parse(settings.source_languages as string),
                 target_languages: JSON.parse(settings.target_languages as string),
                 custom_ai_parameters: JSON.parse(settings.custom_ai_parameters as string)
@@ -179,6 +180,15 @@ function allKeysHaveValues(values: string | boolean | unknown[]) {
             (value) => value !== null && value !== undefined && value !== ''
         )
     })
+}
+
+function normalizeScalarSetting(value: string): string {
+    try {
+        const parsed = JSON.parse(value)
+        return typeof parsed === 'string' ? parsed : value
+    } catch {
+        return value
+    }
 }
 
 if (import.meta.hot) {

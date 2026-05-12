@@ -202,10 +202,10 @@ public class DeepSeekService : OpenAiService
                            "IMPORTANT: You must output a valid JSON object matching this schema:\n" +
                            "{\n" +
                            "  \"translations\": [\n" +
-                           "    { \"position\": 1, \"line\": \"Translated text\" }\n" +
+                           "    { \"position\": 1, \"sourceKey\": \"abc123def456\", \"line\": \"Translated text\" }\n" +
                            "  ]\n" +
                            "}\n" +
-                           "The 'position' field must match the input position. The 'line' field contains the translated text.";
+                           "The 'position' and 'sourceKey' fields must match the input item. The 'line' field contains the translated text.";
 
         // Build user content with optional batch context wrapper
         var userContent = BuildBatchUserContent(subtitleBatch, preContext, postContext);
@@ -344,9 +344,11 @@ public class DeepSeekService : OpenAiService
                 "Batch translation successful. Requested: {RequestedCount}, Received: {ReceivedCount}",
                 subtitleBatch.Count, translatedItems.Count);
 
-            return translatedItems
-                .GroupBy(item => item.Position)
-                .ToDictionary(group => group.Key, group => group.First().Line);
+            return BatchTranslationResponseMapper.MapAlignedTranslations(
+                subtitleBatch,
+                translatedItems,
+                _logger,
+                ServiceName);
         }
         catch (JsonException ex)
         {

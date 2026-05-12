@@ -573,12 +573,16 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
                             {
                                 type = "integer"
                             },
+                            sourceKey = new
+                            {
+                                type = "string"
+                            },
                             line = new
                             {
                                 type = "string"
                             }
                         },
-                        required = new[] { "position", "line" }
+                        required = new[] { "position", "sourceKey", "line" }
                     }
                 }
             }
@@ -665,11 +669,11 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
                 throw new TranslationException("Failed to deserialize translated subtitles");
             }
 
-            LogMissingBatchPositions(subtitleBatch, translatedItems);
-
-            return translatedItems
-                .GroupBy(item => item.Position)
-                .ToDictionary(group => group.Key, group => group.First().Line);
+            return BatchTranslationResponseMapper.MapAlignedTranslations(
+                subtitleBatch,
+                translatedItems,
+                _logger,
+                ServiceName);
         }
 
         catch (JsonException ex)
@@ -683,11 +687,11 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
                     if (translatedItems != null)
                     {
                         _logger.LogWarning("Successfully repaired the truncated JSON response from Gemini. Please verify the result.");
-                        LogMissingBatchPositions(subtitleBatch, translatedItems);
-
-                        return translatedItems
-                            .GroupBy(item => item.Position)
-                            .ToDictionary(group => group.Key, group => group.First().Line);
+                        return BatchTranslationResponseMapper.MapAlignedTranslations(
+                            subtitleBatch,
+                            translatedItems,
+                            _logger,
+                            ServiceName);
                     }
                 }
             }
@@ -713,35 +717,6 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
             }
         }
         return json;
-    }
-
-    private void LogMissingBatchPositions(
-        List<BatchSubtitleItem> subtitleBatch,
-        List<StructuredBatchResponse> translatedItems)
-    {
-        var requestedPositions = subtitleBatch.Select(item => item.Position).ToHashSet();
-        var receivedPositions = translatedItems.Select(item => item.Position).ToHashSet();
-        var missingPositions = requestedPositions
-            .Except(receivedPositions)
-            .OrderBy(position => position)
-            .ToList();
-
-        if (missingPositions.Count == 0)
-        {
-            return;
-        }
-
-        var sourceSamples = subtitleBatch
-            .Where(item => missingPositions.Contains(item.Position))
-            .Take(5)
-            .Select(item => $"{item.Position}: {item.Line}")
-            .ToList();
-
-        _logger.LogWarning(
-            "Partial Gemini translation received. Missing {MissingCount} item(s) at positions: {Positions}. Samples: {Samples}",
-            missingPositions.Count,
-            string.Join(", ", missingPositions.Take(10)),
-            string.Join(" | ", sourceSamples));
     }
 
     private static TimeSpan? ExtractRetryDelay(string? errorBody)

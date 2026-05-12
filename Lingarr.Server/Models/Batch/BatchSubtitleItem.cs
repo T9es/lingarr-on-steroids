@@ -14,6 +14,13 @@ public class BatchSubtitleItem
     public int Position { get; set; }
 
     /// <summary>
+    /// Short source fingerprint used to validate provider response alignment
+    /// </summary>
+    [JsonPropertyName("sourceKey")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SourceKey { get; set; }
+
+    /// <summary>
     /// Line to translate
     /// </summary>
     [JsonPropertyName("line")]

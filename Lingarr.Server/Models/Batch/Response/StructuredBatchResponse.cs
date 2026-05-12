@@ -9,6 +9,9 @@ public class StructuredBatchResponse
 {
     [JsonPropertyName("line")]
     public string Line { get; set; } = string.Empty;
+
+    [JsonPropertyName("sourceKey")]
+    public string? SourceKey { get; set; }
     
     [JsonPropertyName("position")]
     public int Position { get; set; }

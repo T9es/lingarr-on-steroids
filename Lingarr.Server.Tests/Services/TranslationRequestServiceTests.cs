@@ -510,6 +510,104 @@ public class TranslationRequestServiceTests
         Assert.Equal(2, await context.TranslationRequests.CountAsync());
     }
 
+    [Fact]
+    public async Task CreateRequest_ReturnsExistingCompletedNonSupplementalRequestInsteadOfDuplicate()
+    {
+        await using var context = BuildContext();
+
+        var service = CreateService(context);
+        var createdAt = DateTime.UtcNow;
+        var workloadKey = $"library:{MediaType.Movie}:63";
+        var firstRequest = CreateRequest(
+            1,
+            63,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/movie.en.srt",
+            TranslationStatus.Pending,
+            createdAt);
+        firstRequest.WorkloadItemKey = workloadKey;
+
+        var firstId = await service.CreateRequest(firstRequest);
+        var existing = await context.TranslationRequests.SingleAsync();
+        existing.Status = TranslationStatus.Completed;
+        existing.IsActive = false;
+        existing.CompletedAt = createdAt.AddMinutes(1);
+        await context.SaveChangesAsync();
+
+        var duplicateRequest = CreateRequest(
+            2,
+            63,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/movie.en.srt",
+            TranslationStatus.Pending,
+            createdAt.AddMinutes(2));
+        duplicateRequest.WorkloadItemKey = workloadKey;
+
+        var duplicateId = await service.CreateRequest(duplicateRequest);
+
+        Assert.Equal(firstId, duplicateId);
+        Assert.Equal(1, await context.TranslationRequests.CountAsync());
+        Assert.Equal(TranslationStatus.Completed, existing.Status);
+        Assert.False(existing.IsActive);
+    }
+
+    [Fact]
+    public async Task CreateRequest_ForcePriorityRestartsExistingNonSupplementalRequest()
+    {
+        await using var context = BuildContext();
+
+        var service = CreateService(context);
+        var createdAt = DateTime.UtcNow;
+        var workloadKey = $"library:{MediaType.Movie}:64";
+        var firstRequest = CreateRequest(
+            1,
+            64,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/movie.en.srt",
+            TranslationStatus.Pending,
+            createdAt);
+        firstRequest.WorkloadItemKey = workloadKey;
+
+        var firstId = await service.CreateRequest(firstRequest);
+        var existing = await context.TranslationRequests.SingleAsync();
+        existing.Status = TranslationStatus.Completed;
+        existing.IsActive = false;
+        existing.CompletedAt = createdAt.AddMinutes(1);
+        existing.Progress = 100;
+        await context.SaveChangesAsync();
+
+        var forcedRequest = CreateRequest(
+            2,
+            64,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/movie.en.srt",
+            TranslationStatus.Pending,
+            createdAt.AddMinutes(2));
+        forcedRequest.WorkloadItemKey = workloadKey;
+        forcedRequest.SourceSubtitleEntryCount = 406;
+        forcedRequest.SelectedStreamTitle = "English (SDH)";
+
+        var forcedId = await service.CreateRequest(forcedRequest, forcePriority: true);
+
+        Assert.Equal(firstId, forcedId);
+        Assert.Equal(1, await context.TranslationRequests.CountAsync());
+        Assert.Equal(TranslationStatus.Pending, existing.Status);
+        Assert.True(existing.IsActive);
+        Assert.True(existing.IsPriority);
+        Assert.Null(existing.CompletedAt);
+        Assert.Equal(0, existing.Progress);
+        Assert.Equal(406, existing.SourceSubtitleEntryCount);
+        Assert.Equal("English (SDH)", existing.SelectedStreamTitle);
+    }
+
     [Theory]
     [InlineData("srt-only", ".srt")]
     [InlineData("both", ".ass,.srt")]
