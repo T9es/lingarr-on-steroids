@@ -101,7 +101,7 @@ public interface ITranslationRequestService
     /// Retrieves a paginated list of translation requests with optional filtering and sorting.
     /// </summary>
     /// <param name="searchQuery">Optional search term to filter requests by title</param>
-    /// <param name="orderBy">Property to sort by: "Title", "CreatedAt", or "CompletedAt"</param>
+    /// <param name="orderBy">Property to sort by: "Queue", "Title", "CreatedAt", or "CompletedAt"</param>
     /// <param name="ascending">Sort direction</param>
     /// <param name="pageNumber">Page number for pagination (1-based)</param>
     /// <param name="pageSize">Number of items per page</param>
@@ -119,7 +119,7 @@ public interface ITranslationRequestService
     /// Retrieves the active count plus bounded pending, failed, and in-progress request sections.
     /// </summary>
     /// <param name="searchQuery">Optional search term to filter pending requests by title</param>
-    /// <param name="orderBy">Property to sort pending requests by: "Title", "CreatedAt", or "CompletedAt"</param>
+    /// <param name="orderBy">Property to sort pending requests by: "Queue", "Title", "CreatedAt", or "CompletedAt"</param>
     /// <param name="ascending">Sort direction for pending requests</param>
     /// <param name="pageNumber">Pending request page number</param>
     /// <param name="pageSize">Number of pending requests per page</param>

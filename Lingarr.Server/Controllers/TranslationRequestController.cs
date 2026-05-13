@@ -61,7 +61,7 @@ public class TranslationRequestController : ControllerBase
     /// Gets a bounded overview of translation request sections for the translations page.
     /// </summary>
     /// <param name="searchQuery">Optional pending-request search term</param>
-    /// <param name="orderBy">Pending-request sort field</param>
+    /// <param name="orderBy">Pending-request sort field: "Queue", "Title", "CreatedAt", or "CompletedAt"</param>
     /// <param name="ascending">Pending-request sort direction</param>
     /// <param name="pageSize">Pending-request page size</param>
     /// <param name="pageNumber">Pending-request page number</param>
@@ -120,7 +120,7 @@ public class TranslationRequestController : ControllerBase
     /// Retrieves a paginated list of translation requests with optional filtering and sorting
     /// </summary>
     /// <param name="searchQuery">Optional search term to filter requests</param>
-    /// <param name="orderBy">Property name to sort the results by</param>
+    /// <param name="orderBy">Property name to sort by: "Queue", "Title", "CreatedAt", or "CompletedAt"</param>
     /// <param name="ascending">Sort direction; true for ascending, false for descending</param>
     /// <param name="pageSize">Number of items per page</param>
     /// <param name="pageNumber">Page number to retrieve</param>

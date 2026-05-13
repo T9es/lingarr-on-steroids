@@ -343,6 +343,7 @@
     "showMore": "显示更多",
     "sortByAdded": "按添加排序",
     "sortByCompleted": "按完成排序",
+    "sortByQueue": "按队列优先级排序",
     "sortByTitle": "按标题排序",
     "statusCancelled": "已取消",
     "statusCompleted": "已完成",

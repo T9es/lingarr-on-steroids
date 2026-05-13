@@ -314,6 +314,140 @@ public class TranslationRequestServiceTests
     }
 
     [Fact]
+    public async Task GetTranslationRequests_DefaultQueueOrder_UsesCurrentMediaPriorityBeforeStaleRequestPriority()
+    {
+        await using var connection = new SqliteConnection("Filename=:memory:");
+        await connection.OpenAsync();
+        await using var context = BuildSqliteContext(connection);
+
+        var now = DateTime.UtcNow;
+        var priorityShow = CreateShowWithEpisodes(130, "Priority Show", true, now, 231);
+        var nonPriorityShow = CreateShowWithEpisodes(131, "Non Priority Show", false, now, 232);
+        context.Shows.AddRange(priorityShow, nonPriorityShow);
+
+        var priorityRequest = CreateRequest(
+            1,
+            231,
+            MediaType.Episode,
+            "en",
+            "pl",
+            "/shows/priority/s01e01.en.srt",
+            TranslationStatus.Pending,
+            now.AddMinutes(-10));
+        priorityRequest.IsPriority = true;
+
+        var stalePriorityRequest = CreateRequest(
+            2,
+            232,
+            MediaType.Episode,
+            "en",
+            "pl",
+            "/shows/non-priority/s01e01.en.srt",
+            TranslationStatus.Pending,
+            now);
+        stalePriorityRequest.IsPriority = true;
+
+        context.TranslationRequests.AddRange(priorityRequest, stalePriorityRequest);
+        await context.SaveChangesAsync();
+        await SetRequestCreatedAtAsync(context, priorityRequest.Id, now.AddMinutes(-10));
+        await SetRequestCreatedAtAsync(context, stalePriorityRequest.Id, now);
+
+        var service = CreateService(context);
+        var result = await service.GetTranslationRequests(null, null, true, 1, 10);
+
+        Assert.Equal(new[] { priorityRequest.Id, stalePriorityRequest.Id }, result.Items.Select(request => request.Id));
+    }
+
+    [Fact]
+    public async Task GetTranslationRequests_QueueOrder_UsesNewestPriorityDateBeforeOlderPriorityDate()
+    {
+        await using var connection = new SqliteConnection("Filename=:memory:");
+        await connection.OpenAsync();
+        await using var context = BuildSqliteContext(connection);
+
+        var now = DateTime.UtcNow;
+        var olderPriorityShow = CreateShowWithEpisodes(140, "Older Priority Show", true, now.AddDays(-2), 241);
+        var newerPriorityShow = CreateShowWithEpisodes(141, "Newer Priority Show", true, now.AddDays(-1), 242);
+        context.Shows.AddRange(olderPriorityShow, newerPriorityShow);
+
+        var olderPriorityRequest = CreateRequest(
+            1,
+            241,
+            MediaType.Episode,
+            "en",
+            "pl",
+            "/shows/older/s01e01.en.srt",
+            TranslationStatus.Pending,
+            now);
+        olderPriorityRequest.IsPriority = true;
+
+        var newerPriorityRequest = CreateRequest(
+            2,
+            242,
+            MediaType.Episode,
+            "en",
+            "pl",
+            "/shows/newer/s01e01.en.srt",
+            TranslationStatus.Pending,
+            now.AddMinutes(-10));
+        newerPriorityRequest.IsPriority = true;
+
+        context.TranslationRequests.AddRange(olderPriorityRequest, newerPriorityRequest);
+        await context.SaveChangesAsync();
+        await SetRequestCreatedAtAsync(context, olderPriorityRequest.Id, now);
+        await SetRequestCreatedAtAsync(context, newerPriorityRequest.Id, now.AddMinutes(-10));
+
+        var service = CreateService(context);
+        var result = await service.GetTranslationRequests(null, "Queue", true, 1, 10);
+
+        Assert.Equal(new[] { newerPriorityRequest.Id, olderPriorityRequest.Id }, result.Items.Select(request => request.Id));
+    }
+
+    [Fact]
+    public async Task GetTranslationRequests_QueueOrder_UsesCreatedAtWithinSamePriorityMedia()
+    {
+        await using var connection = new SqliteConnection("Filename=:memory:");
+        await connection.OpenAsync();
+        await using var context = BuildSqliteContext(connection);
+
+        var now = DateTime.UtcNow;
+        var priorityShow = CreateShowWithEpisodes(150, "Priority Show", true, now, 251, 252);
+        context.Shows.Add(priorityShow);
+
+        var firstRequest = CreateRequest(
+            1,
+            251,
+            MediaType.Episode,
+            "en",
+            "pl",
+            "/shows/priority/s01e01.en.srt",
+            TranslationStatus.Pending,
+            now.AddMinutes(-10));
+        firstRequest.IsPriority = true;
+
+        var secondRequest = CreateRequest(
+            2,
+            252,
+            MediaType.Episode,
+            "en",
+            "pl",
+            "/shows/priority/s01e02.en.srt",
+            TranslationStatus.Pending,
+            now);
+        secondRequest.IsPriority = true;
+
+        context.TranslationRequests.AddRange(secondRequest, firstRequest);
+        await context.SaveChangesAsync();
+        await SetRequestCreatedAtAsync(context, firstRequest.Id, now.AddMinutes(-10));
+        await SetRequestCreatedAtAsync(context, secondRequest.Id, now);
+
+        var service = CreateService(context);
+        var result = await service.GetTranslationRequests(null, "Queue", true, 1, 10);
+
+        Assert.Equal(new[] { firstRequest.Id, secondRequest.Id }, result.Items.Select(request => request.Id));
+    }
+
+    [Fact]
     public async Task InterruptActiveRequestsForMedia_MarksRequestsInterruptedAndClearsMediaHash()
     {
         await using var context = BuildContext();
@@ -1762,6 +1896,19 @@ public class TranslationRequestServiceTests
             CreatedAt = createdAt,
             UpdatedAt = createdAt
         };
+    }
+
+    private static Task SetRequestCreatedAtAsync(
+        LingarrDbContext context,
+        int requestId,
+        DateTime createdAt)
+    {
+        context.ChangeTracker.Clear();
+        return context.TranslationRequests
+            .Where(request => request.Id == requestId)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(request => request.CreatedAt, createdAt)
+                .SetProperty(request => request.UpdatedAt, createdAt));
     }
 
     private static Show CreateShowWithEpisodes(

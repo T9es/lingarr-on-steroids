@@ -343,6 +343,7 @@
     "showMore": "Afficher plus",
     "sortByAdded": "Trier par ajout",
     "sortByCompleted": "Trier par achèvement",
+    "sortByQueue": "Trier par priorité de file",
     "sortByTitle": "Trier par titre",
     "statusCancelled": "Annulé",
     "statusCompleted": "Terminé",

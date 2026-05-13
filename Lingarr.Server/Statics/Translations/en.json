@@ -343,6 +343,7 @@
     "showMore": "Show More",
     "sortByAdded": "Sort by Added",
     "sortByCompleted": "Sort by Completed",
+    "sortByQueue": "Sort by Queue Priority",
     "sortByTitle": "Sort by Title",
     "statusCancelled": "Cancelled",
     "statusCompleted": "Completed",

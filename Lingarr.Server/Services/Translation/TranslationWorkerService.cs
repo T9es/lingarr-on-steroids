@@ -384,8 +384,7 @@ public class TranslationWorkerService : BackgroundService, ITranslationWorkerSer
                 (claimUploadWork.Value
                     ? request.WorkloadKind == TranslationWorkloadKind.Upload
                     : request.WorkloadKind != TranslationWorkloadKind.Upload))
-            .OrderByDescending(request => request.IsPriority)
-            .ThenBy(request => request.CreatedAt)
+            .OrderByEffectiveQueuePriority(dbContext)
             .Select(request => new { request.Id, request.WorkloadKind })
             .FirstOrDefaultAsync(stoppingToken);
 

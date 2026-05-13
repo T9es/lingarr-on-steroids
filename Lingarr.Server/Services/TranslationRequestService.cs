@@ -12,6 +12,7 @@ using Lingarr.Server.Models.Api;
 using Lingarr.Server.Models.Batch.Response;
 using Lingarr.Server.Models.FileSystem;
 using Lingarr.Server.Services.Subtitle;
+using Lingarr.Server.Services.Translation;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 
@@ -1501,6 +1502,12 @@ public class TranslationRequestService : ITranslationRequestService
             var normalizedSearchQuery = searchQuery.ToLower();
             query = query.Where(translationRequest =>
                 translationRequest.Title.ToLower().Contains(normalizedSearchQuery));
+        }
+
+        if (string.IsNullOrWhiteSpace(orderBy) ||
+            orderBy.Equals(TranslationRequestQueueOrdering.QueueSort, StringComparison.OrdinalIgnoreCase))
+        {
+            return query.OrderByEffectiveQueuePriority(_dbContext);
         }
 
         return orderBy switch

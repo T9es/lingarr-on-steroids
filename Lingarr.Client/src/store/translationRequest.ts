@@ -69,7 +69,7 @@ export const useTranslationRequestStore = defineStore('translateRequest', {
         overviewInFlight: false,
         filter: {
             searchQuery: '',
-            sortBy: 'CreatedAt',
+            sortBy: 'Queue',
             isAscending: true,
             pageNumber: 1
         },

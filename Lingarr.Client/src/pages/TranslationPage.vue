@@ -52,6 +52,10 @@
                             v-model="filter"
                             :options="[
                                 {
+                                    label: translate('common.sortByQueue'),
+                                    value: 'Queue'
+                                },
+                                {
                                     label: translate('common.sortByAdded'),
                                     value: 'CreatedAt'
                                 },
