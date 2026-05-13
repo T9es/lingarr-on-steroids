@@ -2,6 +2,7 @@
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
+using Lingarr.Server.Services.Subtitle;
 using Microsoft.EntityFrameworkCore;
 
 namespace Lingarr.Server.Services;
@@ -156,6 +157,7 @@ public class StartupService : IHostedService
         
         // Auto-recover media stuck in AwaitingSource due to previous indexing bug
         await FixStuckAwaitingSourceMedia(dbContext);
+        await RecoverStaleOcrStates(dbContext);
 
         // Ensure service_type is not empty
         var serviceType = await dbContext.Settings.FirstOrDefaultAsync(s => s.Key == SettingKeys.Translation.ServiceType);
@@ -477,6 +479,88 @@ public class StartupService : IHostedService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error during AwaitingSource stuck media recovery. Continuing startup...");
+        }
+    }
+
+    private async Task RecoverStaleOcrStates(LingarrDbContext dbContext)
+    {
+        try
+        {
+            var now = DateTime.UtcNow;
+            var transientSubtitles = await dbContext.EmbeddedSubtitles
+                .Where(subtitle => subtitle.OcrStatus == SubtitleOcrStatus.Queued ||
+                                   subtitle.OcrStatus == SubtitleOcrStatus.Processing)
+                .ToListAsync();
+            var staleSubtitles = transientSubtitles
+                .Where(subtitle => SubtitleOcrStatePolicy.IsStaleTransient(subtitle, now))
+                .Where(subtitle =>
+                {
+                    if (subtitle.MovieId.HasValue)
+                    {
+                        return !SubtitleOcrJobActivity.HasActiveJob(
+                            subtitle.MovieId.Value,
+                            MediaType.Movie,
+                            subtitle.StreamIndex);
+                    }
+
+                    return subtitle.EpisodeId.HasValue &&
+                           !SubtitleOcrJobActivity.HasActiveJob(
+                               subtitle.EpisodeId.Value,
+                               MediaType.Episode,
+                               subtitle.StreamIndex);
+                })
+                .ToList();
+
+            if (staleSubtitles.Count == 0)
+            {
+                return;
+            }
+
+            var episodeIds = staleSubtitles
+                .Where(subtitle => subtitle.EpisodeId.HasValue)
+                .Select(subtitle => subtitle.EpisodeId!.Value)
+                .Distinct()
+                .ToList();
+            var movieIds = staleSubtitles
+                .Where(subtitle => subtitle.MovieId.HasValue)
+                .Select(subtitle => subtitle.MovieId!.Value)
+                .Distinct()
+                .ToList();
+
+            foreach (var subtitle in staleSubtitles)
+            {
+                SubtitleOcrStatePolicy.ResetStaleTransient(subtitle);
+            }
+
+            await dbContext.SaveChangesAsync();
+
+            if (episodeIds.Count > 0)
+            {
+                await dbContext.Episodes
+                    .Where(episode => episodeIds.Contains(episode.Id))
+                    .ExecuteUpdateAsync(setters => setters.SetProperty(
+                        episode => episode.TranslationState,
+                        TranslationState.Unknown));
+            }
+
+            if (movieIds.Count > 0)
+            {
+                await dbContext.Movies
+                    .Where(movie => movieIds.Contains(movie.Id))
+                    .ExecuteUpdateAsync(setters => setters.SetProperty(
+                        movie => movie.TranslationState,
+                        TranslationState.Unknown));
+            }
+
+            _logger.LogWarning(
+                "Recovered {Count} stale OCR transient subtitle state(s) across {EpisodeCount} episode(s) and {MovieCount} movie(s).",
+                staleSubtitles.Count,
+                episodeIds.Count,
+                movieIds.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during stale OCR state recovery. Continuing startup...");
         }
     }
 }

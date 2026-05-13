@@ -260,6 +260,39 @@ public class SubtitleExtractionServiceTests : IDisposable
         Assert.Single(_dbContext.ChangeTracker.Entries<EmbeddedSubtitle>());
     }
 
+    [Fact]
+    public void CopyOcrMetadataIfSameStream_DoesNotPreserveStaleProcessingState()
+    {
+        var existingSubtitle = new EmbeddedSubtitle
+        {
+            StreamIndex = 0,
+            Language = "eng",
+            Title = "English PGS",
+            CodecName = "hdmv_pgs_subtitle",
+            IsTextBased = false,
+            OcrStatus = SubtitleOcrStatus.Processing,
+            OcrAttemptedAt = DateTime.UtcNow.AddDays(-1)
+        };
+        var newSubtitle = new EmbeddedSubtitle
+        {
+            StreamIndex = 0,
+            Language = "eng",
+            Title = "English PGS",
+            CodecName = "hdmv_pgs_subtitle",
+            IsTextBased = false
+        };
+
+        var method = typeof(SubtitleExtractionService).GetMethod(
+            "CopyOcrMetadataIfSameStream",
+            BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.NotNull(method);
+        method.Invoke(null, [new[] { existingSubtitle }, newSubtitle]);
+
+        Assert.Equal(SubtitleOcrStatus.NotStarted, newSubtitle.OcrStatus);
+        Assert.Null(newSubtitle.OcrAttemptedAt);
+    }
+
     public void Dispose()
     {
         var mediaDirectories = _dbContext.Movies

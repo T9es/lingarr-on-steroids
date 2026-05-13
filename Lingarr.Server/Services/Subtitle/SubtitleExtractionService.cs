@@ -1606,6 +1606,12 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             return;
         }
 
+        if (SubtitleOcrStatePolicy.IsStaleTransient(existing, DateTime.UtcNow))
+        {
+            SubtitleOcrStatePolicy.ResetStaleTransient(newSubtitle);
+            return;
+        }
+
         newSubtitle.OcrStatus = existing.OcrStatus;
         newSubtitle.OcrExtractedPath = existing.OcrExtractedPath;
         newSubtitle.OcrError = existing.OcrError;

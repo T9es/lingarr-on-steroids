@@ -1622,6 +1622,27 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             return false;
         }
 
+        if (SubtitleOcrStatePolicy.IsStaleTransient(candidate, DateTime.UtcNow))
+        {
+            if (SubtitleOcrJobActivity.HasActiveJob(media.Id, mediaType, candidate.StreamIndex))
+            {
+                _logger.LogInformation(
+                    "OCR is stale by timestamp but still active in Hangfire for {FileName} stream {StreamIndex}; waiting for the active job.",
+                    media.FileName,
+                    candidate.StreamIndex);
+                return true;
+            }
+
+            _logger.LogWarning(
+                "Resetting stale OCR {Status} state for {FileName} stream {StreamIndex}; last attempt was {AttemptedAt}.",
+                candidate.OcrStatus,
+                media.FileName,
+                candidate.StreamIndex,
+                candidate.OcrAttemptedAt);
+            SubtitleOcrStatePolicy.ResetStaleTransient(candidate);
+            await _dbContext.SaveChangesAsync();
+        }
+
         if (candidate.OcrStatus is SubtitleOcrStatus.Queued or SubtitleOcrStatus.Processing)
         {
             _logger.LogInformation(

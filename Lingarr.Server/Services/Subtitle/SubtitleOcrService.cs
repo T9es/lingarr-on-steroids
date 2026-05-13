@@ -103,8 +103,8 @@ public class SubtitleOcrService : ISubtitleOcrService
         var validationError = await ValidateCanQueueAsync(context.Subtitle, cancellationToken);
         if (validationError != null)
         {
-            await MarkFailedAsync(context, validationError, cancellationToken);
-            return Fail(SubtitleOcrStatus.Failed, validationError);
+            var failedSubtitle = await MarkFailedAsync(context, validationError, cancellationToken);
+            return FromSubtitle(failedSubtitle, success: false);
         }
 
         context.Subtitle.OcrStatus = SubtitleOcrStatus.Processing;
@@ -127,11 +127,11 @@ public class SubtitleOcrService : ISubtitleOcrService
             cancellationToken);
         if (!engineResult.Success || string.IsNullOrWhiteSpace(engineResult.OutputPath))
         {
-            await MarkFailedAsync(
+            var failedSubtitle = await MarkFailedAsync(
                 context,
                 engineResult.Error ?? "OCR engine did not produce output.",
                 cancellationToken);
-            return FromSubtitle(context.Subtitle, success: false);
+            return FromSubtitle(failedSubtitle, success: false);
         }
 
         try
@@ -144,17 +144,22 @@ public class SubtitleOcrService : ISubtitleOcrService
                 manual && SubtitleLanguageHelper.IsSupplementalSubtitleType(
                     SubtitleLanguageHelper.DetermineSubtitleType(context.Subtitle)));
 
-            context.Subtitle.OcrExtractedPath = engineResult.OutputPath;
-            context.Subtitle.OcrCueCount = quality.CueCount;
-            context.Subtitle.OcrQualityScore = quality.QualityScore;
-            context.Subtitle.OcrIssueSummary = quality.IssueSummary;
-            context.Subtitle.OcrCompletedAt = DateTime.UtcNow;
-            context.Subtitle.OcrError = quality.Accepted ? null : quality.IssueSummary;
-            context.Subtitle.OcrStatus = quality.Accepted
-                ? SubtitleOcrStatus.Succeeded
-                : SubtitleOcrStatus.BlockedLowQuality;
-
-            await _dbContext.SaveChangesAsync(cancellationToken);
+            var completedSubtitle = await SaveCurrentSubtitleStateAsync(
+                context,
+                streamIndex,
+                subtitle =>
+                {
+                    subtitle.OcrExtractedPath = engineResult.OutputPath;
+                    subtitle.OcrCueCount = quality.CueCount;
+                    subtitle.OcrQualityScore = quality.QualityScore;
+                    subtitle.OcrIssueSummary = quality.IssueSummary;
+                    subtitle.OcrCompletedAt = DateTime.UtcNow;
+                    subtitle.OcrError = quality.Accepted ? null : quality.IssueSummary;
+                    subtitle.OcrStatus = quality.Accepted
+                        ? SubtitleOcrStatus.Succeeded
+                        : SubtitleOcrStatus.BlockedLowQuality;
+                },
+                cancellationToken);
             await _mediaStateService.UpdateStateAsync(context.Media, mediaType);
 
             _logger.LogInformation(
@@ -162,9 +167,9 @@ public class SubtitleOcrService : ISubtitleOcrService
                 mediaType,
                 mediaId,
                 streamIndex,
-                context.Subtitle.OcrStatus,
-                context.Subtitle.OcrCueCount,
-                context.Subtitle.OcrQualityScore);
+                completedSubtitle.OcrStatus,
+                completedSubtitle.OcrCueCount,
+                completedSubtitle.OcrQualityScore);
 
             if (!quality.Accepted)
             {
@@ -206,7 +211,7 @@ public class SubtitleOcrService : ISubtitleOcrService
                 }
             }
 
-            return FromSubtitle(context.Subtitle, success: quality.Accepted);
+            return FromSubtitle(completedSubtitle, success: quality.Accepted);
         }
         catch (OperationCanceledException)
         {
@@ -214,8 +219,11 @@ public class SubtitleOcrService : ISubtitleOcrService
         }
         catch (Exception ex)
         {
-            await MarkFailedAsync(context, $"OCR output could not be parsed: {ex.Message}", cancellationToken);
-            return FromSubtitle(context.Subtitle, success: false);
+            var failedSubtitle = await MarkFailedAsync(
+                context,
+                $"OCR output could not be parsed: {ex.Message}",
+                cancellationToken);
+            return FromSubtitle(failedSubtitle, success: false);
         }
     }
 
@@ -388,16 +396,82 @@ public class SubtitleOcrService : ISubtitleOcrService
         return SubtitleOcrLanguageMapper.MapToTesseractLanguage(subtitle.Language);
     }
 
-    private async Task MarkFailedAsync(
+    private async Task<EmbeddedSubtitle> MarkFailedAsync(
         OcrMediaContext context,
         string error,
         CancellationToken cancellationToken)
     {
-        context.Subtitle.OcrStatus = SubtitleOcrStatus.Failed;
-        context.Subtitle.OcrError = error;
-        context.Subtitle.OcrCompletedAt = DateTime.UtcNow;
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        var subtitle = await SaveCurrentSubtitleStateAsync(
+            context,
+            context.Subtitle.StreamIndex,
+            subtitle =>
+            {
+                subtitle.OcrStatus = SubtitleOcrStatus.Failed;
+                subtitle.OcrError = error;
+                subtitle.OcrCompletedAt = DateTime.UtcNow;
+            },
+            cancellationToken);
         await _mediaStateService.UpdateStateAsync(context.Media, context.MediaType);
+        return subtitle;
+    }
+
+    private async Task<EmbeddedSubtitle> SaveCurrentSubtitleStateAsync(
+        OcrMediaContext context,
+        int streamIndex,
+        Action<EmbeddedSubtitle> apply,
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            var subtitle = await LoadCurrentSubtitleAsync(context, streamIndex, cancellationToken)
+                           ?? context.Subtitle;
+            if (!ReferenceEquals(subtitle, context.Subtitle) &&
+                _dbContext.Entry(context.Subtitle).State != EntityState.Detached)
+            {
+                _dbContext.Entry(context.Subtitle).State = EntityState.Detached;
+            }
+
+            apply(subtitle);
+
+            try
+            {
+                await _dbContext.SaveChangesAsync(cancellationToken);
+                return subtitle;
+            }
+            catch (DbUpdateConcurrencyException ex) when (attempt == 0)
+            {
+                foreach (var entry in ex.Entries)
+                {
+                    entry.State = EntityState.Detached;
+                }
+            }
+        }
+
+        var currentSubtitle = await LoadCurrentSubtitleAsync(context, streamIndex, cancellationToken);
+        if (currentSubtitle == null)
+        {
+            throw new DbUpdateConcurrencyException(
+                $"Embedded subtitle stream {streamIndex} was replaced during OCR and no current row exists.");
+        }
+
+        apply(currentSubtitle);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return currentSubtitle;
+    }
+
+    private async Task<EmbeddedSubtitle?> LoadCurrentSubtitleAsync(
+        OcrMediaContext context,
+        int streamIndex,
+        CancellationToken cancellationToken)
+    {
+        var query = _dbContext.EmbeddedSubtitles
+            .Where(subtitle => subtitle.StreamIndex == streamIndex);
+
+        query = context.MediaType == MediaType.Movie
+            ? query.Where(subtitle => subtitle.MovieId == context.Media.Id)
+            : query.Where(subtitle => subtitle.EpisodeId == context.Media.Id);
+
+        return await query.FirstOrDefaultAsync(cancellationToken);
     }
 
     private async Task<OcrMediaContext?> LoadContextAsync(
