@@ -453,6 +453,28 @@ When adding a new language:
 - Check for invalid JSON, duplicate keys, missing frontend-used keys, and suspicious untranslated values by running: `python scripts/verify_translations.py`
 - Frontend will log warnings for missing translation keys in the browser console
 
+## Codesight MCP Tools (Repository Mapping)
+
+This project has Codesight MCP tools available for repository navigation. Use them for initial orientation, but **always read actual source files before making behavioral claims or editing**.
+
+**Available tools and their reliability:**
+
+| Tool | Reliable for | Notes |
+|---|---|---|
+| `codesight_get_summary` | Quick stack/route/component counts, high-impact files | Good first call |
+| `codesight_get_wiki_index` | Article listing for navigation | Read before deep-diving |
+| `codesight_get_routes` | Route inventory (methods, paths, handler files) | Complete listing |
+| `codesight_get_env` | Required env vars | Accurate for static analysis |
+| `codesight_get_blast_radius` | Import-based dependency chains | May miss runtime/dynamic deps |
+| `codesight_get_schema` | Model names only | **No field detail** — read the actual entity files |
+| `codesight_get_wiki_article` | Article index and structure | **Content may be stub/empty** — always verify against source |
+
+**Workflow:**
+1. Start with `codesight_get_summary` or `codesight_get_wiki_index` for orientation
+2. Read the relevant wiki article via `codesight_get_wiki_article` (~500 tokens)
+3. **Read the actual source files** before implementing — the wiki is a navigation aid, not source of truth
+4. If Codesight output seems stale, run `npx -y codesight --wiki` from repo root
+
 ## Diagnostics
 
 When debugging any kind of issue, check `~/.codex/skills/` for available

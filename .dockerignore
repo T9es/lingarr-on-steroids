@@ -38,6 +38,7 @@ CODE_OF_CONDUCT.md
 .idea/
 .fleet/
 .cr/
+.codesight/
 *.swp
 *.*~
 

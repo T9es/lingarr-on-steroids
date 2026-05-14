@@ -200,6 +200,23 @@ Lingarr.Client/src/
 
 Frontend composables: `useSignalR`, `useDashboardSignalR` handle connection lifecycle.
 
+## Codesight MCP (Repository Navigation)
+
+Codesight MCP tools are available for fast repo orientation. These are a **navigation aid** — always read actual source files before editing or making behavioral claims.
+
+- `codesight_get_summary` — quick stack/route/component/env overview (first call)
+- `codesight_get_routes` — full route inventory (methods, paths, handler files)
+- `codesight_get_wiki_index` / `codesight_get_wiki_article` — wiki-based domain orientation
+- `codesight_get_schema` — model names only (**no field details** — read entity files)
+- `codesight_get_blast_radius` — import-based dependency chains
+- `codesight_get_env` — required env vars
+
+If output seems stale, regenerate: `npx -y codesight --wiki` from repo root.
+
+### Codesight ignore files
+
+`.codesight/` is gitignored and dockerignored — never committed to the repository.
+
 ## Key conventions
 
 ### C# backend

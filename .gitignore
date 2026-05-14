@@ -23,6 +23,9 @@ nupkg/
 # Code Rush
 .cr/
 
+# Codesight
+.codesight/
+
 # User-specific files
 *.suo
 *.user
