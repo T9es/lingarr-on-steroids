@@ -158,15 +158,19 @@ public class MediaStateService : IMediaStateService
 
         // 5. Get external subtitles
         var externalSubtitles = new List<Subtitles>();
+        var knownForcedDialogueGeneratedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (!string.IsNullOrEmpty(media.Path))
         {
             try
             {
                 var allSubs = await _subtitleService.GetAllSubtitles(media.Path);
+                var knownGeneratedPaths = await GetKnownGeneratedSubtitlePathsAsync(media.Id, mediaType);
+                knownForcedDialogueGeneratedPaths =
+                    await GetKnownForcedDialogueGeneratedSubtitlePathsAsync(media.Id, mediaType);
                 externalSubtitles = MediaSubtitleMatcher.FilterMatchingSubtitles(
                     media.FileName,
                     allSubs,
-                    await GetKnownGeneratedSubtitlePathsAsync(media.Id, mediaType));
+                    knownGeneratedPaths);
             }
             catch (Exception ex)
             {
@@ -248,7 +252,8 @@ public class MediaStateService : IMediaStateService
             externalSubtitles,
             embeddedSubtitles,
             targetLanguages,
-            skipWhenTargetEmbedded);
+            skipWhenTargetEmbedded,
+            knownForcedDialogueGeneratedPaths);
 
         var missingTargets = targetLanguages
             .Where(targetLanguage =>
@@ -538,13 +543,14 @@ public class MediaStateService : IMediaStateService
         IReadOnlyCollection<Subtitles> externalSubtitles,
         IReadOnlyCollection<EmbeddedSubtitle> embeddedSubtitles,
         IReadOnlyCollection<string> targetLanguages,
-        bool includeEmbeddedTargets)
+        bool includeEmbeddedTargets,
+        IReadOnlySet<string>? knownGeneratedPrimaryTargetPaths = null)
     {
         var existingTargetFormats = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var externalSubtitle in externalSubtitles)
         {
-            if (ExternalSubtitleCandidateHelper.ShouldSkipAsMainTarget(externalSubtitle))
+            if (ShouldSkipAsMainTarget(externalSubtitle, knownGeneratedPrimaryTargetPaths))
             {
                 continue;
             }
@@ -615,6 +621,23 @@ public class MediaStateService : IMediaStateService
         return existingTargetFormats;
     }
 
+    private static bool ShouldSkipAsMainTarget(
+        Subtitles subtitle,
+        IReadOnlySet<string>? knownGeneratedPrimaryTargetPaths)
+    {
+        return ExternalSubtitleCandidateHelper.ShouldSkipAsMainTarget(subtitle) &&
+               !IsKnownGeneratedPrimaryTarget(subtitle, knownGeneratedPrimaryTargetPaths);
+    }
+
+    private static bool IsKnownGeneratedPrimaryTarget(
+        Subtitles subtitle,
+        IReadOnlySet<string>? knownGeneratedPrimaryTargetPaths)
+    {
+        return !string.IsNullOrWhiteSpace(subtitle.Path) &&
+               knownGeneratedPrimaryTargetPaths?.Contains(
+                   MediaSubtitleMatcher.NormalizePath(subtitle.Path)) == true;
+    }
+
     private async Task<HashSet<string>> GetKnownGeneratedSubtitlePathsAsync(
         int mediaId,
         MediaType mediaType)
@@ -628,6 +651,36 @@ public class MediaStateService : IMediaStateService
             .ToListAsync();
 
         return MediaSubtitleMatcher.ExtractGeneratedPaths(requests);
+    }
+
+    private async Task<HashSet<string>> GetKnownForcedDialogueGeneratedSubtitlePathsAsync(
+        int mediaId,
+        MediaType mediaType)
+    {
+        var requests = await _dbContext.TranslationRequests
+            .AsNoTracking()
+            .Where(request => request.WorkloadKind == TranslationWorkloadKind.Library)
+            .Where(request => request.MediaId == mediaId && request.MediaType == mediaType)
+            .Where(request => request.Status == TranslationStatus.Completed)
+            .Where(request => request.SourceSubtitleType == SubtitleLanguageHelper.TypeForcedDialogue)
+            .Where(request =>
+                (request.GeneratedSubtitlePaths != null && request.GeneratedSubtitlePaths != string.Empty) ||
+                (request.TranslatedSubtitle != null && request.TranslatedSubtitle != string.Empty))
+            .ToListAsync();
+
+        var paths = MediaSubtitleMatcher.ExtractGeneratedPaths(requests)
+            .Select(MediaSubtitleMatcher.NormalizePath)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var request in requests)
+        {
+            if (!string.IsNullOrWhiteSpace(request.TranslatedSubtitle))
+            {
+                paths.Add(MediaSubtitleMatcher.NormalizePath(request.TranslatedSubtitle));
+            }
+        }
+
+        return paths;
     }
 
     private static bool HasOcrPendingSourceCandidate(

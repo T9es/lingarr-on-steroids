@@ -412,11 +412,11 @@ public class SourceSubtitleSnapshotService : ISourceSubtitleSnapshotService
                          && tr.MediaId == mediaId
                          && tr.MediaType == mediaType
                          && tr.Status == TranslationStatus.Completed
-                         && tr.SourceDedupeKey == "primary"
-                         && (tr.SourceSubtitleType == null ||
-                             (tr.SourceSubtitleType != SubtitleLanguageHelper.TypeForced &&
-                              tr.SourceSubtitleType != SubtitleLanguageHelper.TypeSignsSongs &&
-                              tr.SourceSubtitleType != SubtitleLanguageHelper.TypeForcedDialogue)))
+                         && ((tr.SourceDedupeKey == "primary" &&
+                              (tr.SourceSubtitleType == null ||
+                               (tr.SourceSubtitleType != SubtitleLanguageHelper.TypeForced &&
+                                tr.SourceSubtitleType != SubtitleLanguageHelper.TypeSignsSongs))) ||
+                             tr.SourceSubtitleType == SubtitleLanguageHelper.TypeForcedDialogue))
             .OrderByDescending(tr => tr.CompletedAt)
             .ThenByDescending(tr => tr.Id)
             .ToListAsync(cancellationToken);

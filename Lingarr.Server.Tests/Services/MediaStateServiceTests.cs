@@ -259,6 +259,90 @@ public class MediaStateServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ComputeStateAsync_WithHistoricalForcedDialogueGeneratedForcedPath_CountsAsComplete()
+    {
+        var movie = new Movie
+        {
+            Id = 11,
+            RadarrId = 11,
+            Title = "Forced Dialogue Generated Target",
+            Path = "/movies/forced-dialogue.mkv",
+            FileName = "forced-dialogue.mkv",
+            DateAdded = DateTime.UtcNow
+        };
+
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = 11,
+            Language = "eng",
+            Title = "Full Subtitle",
+            IsTextBased = true,
+            IsForced = true,
+            CodecName = "subrip",
+            StreamIndex = 0
+        });
+
+        var targetPath = "/movies/forced-dialogue.pl.forced.-ai-.srt";
+        _context.Movies.Add(movie);
+        _context.TranslationRequests.Add(new TranslationRequest
+        {
+            Id = 911,
+            WorkloadKind = TranslationWorkloadKind.Library,
+            WorkloadItemKey = $"library:{MediaType.Movie}:{movie.Id}",
+            MediaId = movie.Id,
+            MediaType = MediaType.Movie,
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = "/movies/forced-dialogue.en.srt",
+            TranslatedSubtitle = targetPath,
+            SourceSubtitleFormat = ".srt",
+            RequiredOutputFormats = ".srt",
+            GeneratedOutputFormats = ".srt",
+            GeneratedSubtitlePaths = System.Text.Json.JsonSerializer.Serialize(new[] { targetPath }),
+            SourceSubtitleType = SubtitleLanguageHelper.TypeForcedDialogue,
+            IsForcedSubtitle = true,
+            SourceDedupeKey = "supplemental:forced:embedded|en|stream:0",
+            Status = TranslationStatus.Completed,
+            IsActive = false,
+            CompletedAt = DateTime.UtcNow
+        });
+        await _context.SaveChangesAsync();
+
+        _settingServiceMock
+            .SetupSequence(s => s.GetSettingAsJson<SourceLanguage>(It.IsAny<string>()))
+            .ReturnsAsync(new List<SourceLanguage> { new() { Name = "English", Code = "en" } })
+            .ReturnsAsync(new List<SourceLanguage> { new() { Name = "Polish", Code = "pl" } });
+        _settingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.SubtitleValidation.SkipWhenTargetEmbedded))
+            .ReturnsAsync("true");
+        _subtitleServiceMock
+            .Setup(s => s.GetAllSubtitles(It.IsAny<string>()))
+            .ReturnsAsync(new List<Models.FileSystem.Subtitles>
+            {
+                new()
+                {
+                    Path = targetPath,
+                    FileName = "forced-dialogue.pl.forced.-ai-",
+                    Language = "pl",
+                    Caption = "forced",
+                    Format = ".srt"
+                }
+            });
+
+        var service = new MediaStateService(
+            _context,
+            _settingServiceMock.Object,
+            _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
+            NullLogger<MediaStateService>.Instance);
+
+        var state = await service.UpdateStateAsync(movie, MediaType.Movie);
+
+        Assert.Equal(TranslationState.Complete, state);
+    }
+
+    [Fact]
     public async Task ComputeStateAsync_ShouldReturnPending_WhenOnlySparseEmbeddedTargetExists()
     {
         var movie = new Movie

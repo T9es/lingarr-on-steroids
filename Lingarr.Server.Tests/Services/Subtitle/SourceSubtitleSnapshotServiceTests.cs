@@ -283,6 +283,49 @@ public class SourceSubtitleSnapshotServiceTests
     }
 
     [Fact]
+    public async Task GetStaleTargetLanguagesAsync_IncludesForcedDialoguePrimaryRequestWithLegacySupplementalKey()
+    {
+        var dbContext = CreateDbContext();
+        dbContext.TranslationRequests.Add(new TranslationRequest
+        {
+            Id = 32,
+            MediaId = 105,
+            Title = "Movie",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaType = MediaType.Movie,
+            WorkloadKind = TranslationWorkloadKind.Library,
+            Status = TranslationStatus.Completed,
+            CompletedAt = DateTime.UtcNow.AddHours(-1),
+            SourceSubtitleFormat = ".srt",
+            RequiredOutputFormats = ".srt",
+            GeneratedOutputFormats = ".srt",
+            SourceSubtitleType = SubtitleLanguageHelper.TypeForcedDialogue,
+            SourceDedupeKey = "supplemental:forced:stream:2",
+            SourceSnapshotVersion = SourceSubtitleSnapshot.CurrentVersion,
+            SourceSnapshotFingerprint = "OLD-FORCED-DIALOGUE"
+        });
+        await dbContext.SaveChangesAsync();
+
+        var service = CreateService(dbContext);
+        var currentSnapshot = new SourceSubtitleSnapshot
+        {
+            SourceType = SourceSubtitleSnapshot.EmbeddedType,
+            SourceLanguage = "en",
+            Identity = "embedded|en|stream:2",
+            Fingerprint = "CURRENT"
+        };
+
+        var stale = await service.GetStaleTargetLanguagesAsync(
+            105,
+            MediaType.Movie,
+            ["pl"],
+            currentSnapshot);
+
+        Assert.Contains("pl", stale);
+    }
+
+    [Fact]
     public async Task ResolveCurrentSnapshotAsync_ShouldIgnoreTemporaryExternalSourceAndUseEmbedded()
     {
         var dbContext = CreateDbContext();

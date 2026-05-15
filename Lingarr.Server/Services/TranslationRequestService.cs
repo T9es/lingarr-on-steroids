@@ -915,8 +915,7 @@ public class TranslationRequestService : ITranslationRequestService
         query = isSupplemental
             ? query.Where(tr =>
                 (tr.SourceSubtitleType == SubtitleLanguageHelper.TypeForced ||
-                 tr.SourceSubtitleType == SubtitleLanguageHelper.TypeSignsSongs ||
-                 tr.SourceSubtitleType == SubtitleLanguageHelper.TypeForcedDialogue) &&
+                 tr.SourceSubtitleType == SubtitleLanguageHelper.TypeSignsSongs) &&
                 (!hasSourceType ||
                  tr.SourceSubtitleType == translationRequest.SourceSubtitleType) &&
                 (!translationRequest.SourceSnapshotStreamIndex.HasValue ||
@@ -925,8 +924,7 @@ public class TranslationRequestService : ITranslationRequestService
                  tr.SourceSnapshotIdentity == translationRequest.SourceSnapshotIdentity))
             : query.Where(tr =>
                 tr.SourceSubtitleType != SubtitleLanguageHelper.TypeForced &&
-                tr.SourceSubtitleType != SubtitleLanguageHelper.TypeSignsSongs &&
-                tr.SourceSubtitleType != SubtitleLanguageHelper.TypeForcedDialogue);
+                tr.SourceSubtitleType != SubtitleLanguageHelper.TypeSignsSongs);
 
         var activeRequestIds = await query
             .Select(tr => tr.Id)
@@ -955,8 +953,7 @@ public class TranslationRequestService : ITranslationRequestService
                 tr.SourceDedupeKey == translationRequest.SourceDedupeKey &&
                 (tr.SourceSubtitleType == null ||
                  (tr.SourceSubtitleType != SubtitleLanguageHelper.TypeForced &&
-                  tr.SourceSubtitleType != SubtitleLanguageHelper.TypeSignsSongs &&
-                  tr.SourceSubtitleType != SubtitleLanguageHelper.TypeForcedDialogue)))
+                  tr.SourceSubtitleType != SubtitleLanguageHelper.TypeSignsSongs)))
             .OrderByDescending(tr => tr.Id)
             .Select(tr => tr.Id)
             .FirstOrDefaultAsync();
@@ -2227,9 +2224,11 @@ public class TranslationRequestService : ITranslationRequestService
         int? sourceSnapshotStreamIndex,
         string? subtitlePath)
     {
+        var isForcedDialogue =
+            SubtitleLanguageHelper.IsForcedDialogueType(sourceSubtitleType);
         var isSupplemental =
             SubtitleLanguageHelper.IsSupplementalSubtitleType(sourceSubtitleType) ||
-            isForcedSubtitle;
+            (isForcedSubtitle && !isForcedDialogue);
         if (!isSupplemental)
         {
             return "primary";

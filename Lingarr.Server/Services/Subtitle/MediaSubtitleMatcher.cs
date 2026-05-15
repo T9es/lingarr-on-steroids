@@ -71,7 +71,7 @@ public static class MediaSubtitleMatcher
             .ToList();
     }
 
-    private static string NormalizePath(string? path)
+    public static string NormalizePath(string? path)
     {
         if (string.IsNullOrWhiteSpace(path))
         {

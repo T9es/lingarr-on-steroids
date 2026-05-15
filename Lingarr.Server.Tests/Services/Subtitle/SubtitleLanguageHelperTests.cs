@@ -8,6 +8,18 @@ namespace Lingarr.Server.Tests.Services.Subtitle;
 public class SubtitleLanguageHelperTests
 {
     [Fact]
+    public void GetSupplementalOutputCaption_ShouldNotMarkForcedDialogueAsForced()
+    {
+        Assert.Null(SubtitleLanguageHelper.GetSupplementalOutputCaption(SubtitleLanguageHelper.TypeForcedDialogue));
+        Assert.Equal(
+            "forced",
+            SubtitleLanguageHelper.GetSupplementalOutputCaption(SubtitleLanguageHelper.TypeForced));
+        Assert.Equal(
+            "signs",
+            SubtitleLanguageHelper.GetSupplementalOutputCaption(SubtitleLanguageHelper.TypeSignsSongs));
+    }
+
+    [Fact]
     public void FindBestMatch_ShouldPreferGoodLowerPriority_OverGarbageHigherPriority()
     {
         // Arrange: English "Signs & Songs" vs Japanese "Full"

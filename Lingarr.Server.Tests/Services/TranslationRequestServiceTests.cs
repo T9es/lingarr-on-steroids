@@ -690,6 +690,58 @@ public class TranslationRequestServiceTests
     }
 
     [Fact]
+    public async Task CreateRequest_ForcedDialogueWithForcedFlagDedupesAsPrimary()
+    {
+        await using var context = BuildContext();
+
+        var service = CreateService(context);
+        var createdAt = DateTime.UtcNow;
+        var workloadKey = $"library:{MediaType.Movie}:163";
+        var firstRequest = CreateRequest(
+            1,
+            163,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/movie.en.srt",
+            TranslationStatus.Pending,
+            createdAt);
+        firstRequest.WorkloadItemKey = workloadKey;
+        firstRequest.SourceSubtitleType = SubtitleLanguageHelper.TypeForcedDialogue;
+        firstRequest.IsForcedSubtitle = true;
+        firstRequest.SourceSnapshotIdentity = "embedded|en|stream:0";
+        firstRequest.SourceSnapshotStreamIndex = 0;
+
+        var firstId = await service.CreateRequest(firstRequest);
+        var existing = await context.TranslationRequests.SingleAsync();
+        existing.Status = TranslationStatus.Completed;
+        existing.IsActive = false;
+        existing.CompletedAt = createdAt.AddMinutes(1);
+        await context.SaveChangesAsync();
+
+        var duplicateRequest = CreateRequest(
+            2,
+            163,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/movie.en.srt",
+            TranslationStatus.Pending,
+            createdAt.AddMinutes(2));
+        duplicateRequest.WorkloadItemKey = workloadKey;
+        duplicateRequest.SourceSubtitleType = SubtitleLanguageHelper.TypeForcedDialogue;
+        duplicateRequest.IsForcedSubtitle = true;
+        duplicateRequest.SourceSnapshotIdentity = "embedded|en|stream:0";
+        duplicateRequest.SourceSnapshotStreamIndex = 0;
+
+        var duplicateId = await service.CreateRequest(duplicateRequest);
+
+        Assert.Equal(firstId, duplicateId);
+        Assert.Equal("primary", existing.SourceDedupeKey);
+        Assert.Equal(1, await context.TranslationRequests.CountAsync());
+    }
+
+    [Fact]
     public async Task CreateRequest_ForcePriorityRestartsExistingNonSupplementalRequest()
     {
         await using var context = BuildContext();

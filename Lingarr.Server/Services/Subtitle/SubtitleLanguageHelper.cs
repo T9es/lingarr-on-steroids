@@ -455,8 +455,7 @@ public static class SubtitleLanguageHelper
 
     public static string? GetSupplementalOutputCaption(string? subtitleType)
     {
-        if (string.Equals(subtitleType, TypeForced, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(subtitleType, TypeForcedDialogue, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(subtitleType, TypeForced, StringComparison.OrdinalIgnoreCase))
         {
             return "forced";
         }

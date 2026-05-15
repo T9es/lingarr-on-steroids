@@ -1446,6 +1446,118 @@ public class TranslationJobTests : IDisposable
     }
 
     [Fact]
+    public async Task ExecuteAsync_WithForcedDialogueSource_DoesNotRequestForcedOutputCaption()
+    {
+        var sourceSubtitlePath = Path.Combine(_tempDirectory, "source.en.srt");
+        await File.WriteAllTextAsync(sourceSubtitlePath, "1\n00:00:01,000 --> 00:00:02,000\nHello\n");
+
+        var movie = CreateMovie(90);
+        movie.Path = _tempDirectory;
+        var request = new TranslationRequest
+        {
+            MediaId = movie.Id,
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Pending,
+            SubtitleToTranslate = sourceSubtitlePath,
+            SourceSubtitleFormat = ".srt",
+            SubtitleOutputMode = "match-source",
+            RequiredOutputFormats = ".srt",
+            SourceSubtitleType = SubtitleLanguageHelper.TypeForcedDialogue,
+            IsForcedSubtitle = true,
+            IsActive = true
+        };
+
+        _dbContext.Movies.Add(movie);
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var finalPath = Path.Combine(_tempDirectory, "source.pl.-ai-.srt");
+        var forcedPath = Path.Combine(_tempDirectory, "source.pl.forced.-ai-.srt");
+
+        var subtitleServiceMock = new Mock<ISubtitleService>();
+        subtitleServiceMock
+            .Setup(service => service.ReadSubtitles(sourceSubtitlePath))
+            .ReturnsAsync(BuildSubtitleItems(50));
+        subtitleServiceMock
+            .Setup(service => service.WriteSubtitles(
+                It.IsAny<string>(),
+                It.IsAny<List<SubtitleItem>>(),
+                It.IsAny<bool>()))
+            .Returns((string path, List<SubtitleItem> subtitles, bool _) =>
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                return File.WriteAllTextAsync(path, string.Join(Environment.NewLine, subtitles.SelectMany(item => item.TranslatedLines)));
+            });
+        subtitleServiceMock
+            .Setup(service => service.CreateFallbackPaths(
+                sourceSubtitlePath,
+                "pl",
+                "lingarr",
+                "-ai-",
+                ".srt",
+                null))
+            .Returns([finalPath]);
+        subtitleServiceMock
+            .Setup(service => service.CreateFallbackPaths(
+                sourceSubtitlePath,
+                "pl",
+                "lingarr",
+                "-ai-",
+                ".srt",
+                "forced"))
+            .Returns([forcedPath]);
+
+        var translationServiceMock = new Mock<ITranslationService>();
+        translationServiceMock
+            .Setup(service => service.TranslateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync("Czesc");
+
+        var qualityServiceMock = new Mock<ISubtitleQualityValidatorService>();
+        qualityServiceMock
+            .Setup(service => service.ValidateAsync(
+                It.IsAny<SubtitleQualityValidationRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SubtitleQualityValidationResult
+            {
+                IsValid = true,
+                Summary = "ok",
+                SourceEntryCount = 50,
+                TargetEntryCount = 50,
+                MinimumTargetEntryCount = 45
+            });
+
+        var job = BuildExecutableJob(
+            subtitleServiceMock.Object,
+            Mock.Of<ISubtitleExtractionService>(),
+            translationServiceMock.Object,
+            qualityServiceMock.Object);
+
+        await job.ExecuteAsync(request.Id, CancellationToken.None);
+
+        var updatedRequest = await _dbContext.TranslationRequests.SingleAsync(item => item.Id == request.Id);
+        Assert.Equal(TranslationStatus.Completed, updatedRequest.Status);
+        Assert.Equal(finalPath, updatedRequest.TranslatedSubtitle);
+        subtitleServiceMock.Verify(
+            service => service.CreateFallbackPaths(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                "forced"),
+            Times.Never);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_WhenPublishingTaggedOutput_RemovesStaleTaggedFallbackSiblings()
     {
         var sourceSubtitlePath = Path.Combine(_tempDirectory, "source.en.srt");
