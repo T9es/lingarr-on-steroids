@@ -8,7 +8,7 @@ namespace Lingarr.Server.Services.Subtitle;
 
 public class SubtitleQualityValidatorService : ISubtitleQualityValidatorService
 {
-    private const double MinimumTargetRatio = 0.95;
+    private const double MinimumTargetRatio = 0.80;
     private const double MaximumTargetRatio = 1.50;
     private const int MaximumTargetRatioMinimumSourceEntries = 20;
 

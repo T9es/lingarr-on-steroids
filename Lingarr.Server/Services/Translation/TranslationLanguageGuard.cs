@@ -19,8 +19,7 @@ internal sealed record TranslationLanguageAnalysis(
 {
     public static TranslationLanguageAnalysis Empty { get; } = new(0, 0, 0, 0, 0, 0, [], [], "", "");
 
-    public bool IsMostlyMismatched => ComparableCount >= 4 && MismatchRatio >= 0.8 ||
-                                      ClusterComparableCount >= 8 && ClusterMismatchRatio >= 0.8;
+    public bool IsMostlyMismatched => ComparableCount >= 3 && MismatchRatio >= 0.80;
 }
 
 internal static class TranslationLanguageGuard

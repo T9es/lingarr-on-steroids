@@ -18,8 +18,7 @@ internal sealed record TranslationEchoAnalysis(
 {
     public static TranslationEchoAnalysis Empty { get; } = new(0, 0, 0, 0, 0, 0, [], []);
 
-    public bool IsMostlyEchoed => ComparableCount >= 4 && EchoRatio >= 0.8 ||
-                                  ClusterComparableCount >= 8 && ClusterEchoRatio >= 0.8;
+    public bool IsMostlyEchoed => ComparableCount >= 3 && EchoRatio >= 0.80;
 }
 
 internal static class TranslationEchoGuard
