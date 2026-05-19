@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using System.Text.RegularExpressions;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 
 namespace Lingarr.Server.Services.Subtitle;
@@ -69,9 +70,11 @@ public class MkvEmbeddingService : IMkvEmbeddingService
         var extension = Path.GetExtension(subtitlePath).ToLowerInvariant();
         var isAss = extension is ".ass" or ".ssa";
 
+        var existingTrackIds = await GetExistingLanguageTrackIds(mkvPath, languageCode);
+
         var tempOutputPath = CreateTempOutputPath(mkvPath);
 
-        var arguments = BuildMkvMergeArguments(mkvPath, subtitlePath, languageCode, trackName, isAss, tempOutputPath);
+        var arguments = BuildMkvMergeArguments(mkvPath, subtitlePath, languageCode, trackName, isAss, tempOutputPath, existingTrackIds);
 
         _logger.LogInformation(
             "Embedding subtitle into MKV container. MKV: |Green|{MkvPath}|/Green|, Subtitle: {SubtitlePath}, Language: {LanguageCode}",
@@ -151,10 +154,21 @@ public class MkvEmbeddingService : IMkvEmbeddingService
         string languageCode,
         string? trackName,
         bool isAss,
-        string tempOutputPath)
+        string tempOutputPath,
+        List<int> excludeTrackIds)
     {
         var args = new StringBuilder();
         args.Append($"-o \"{tempOutputPath}\"");
+
+        if (excludeTrackIds.Count > 0)
+        {
+            args.Append(" --subtitle-tracks");
+            foreach (var id in excludeTrackIds)
+            {
+                args.Append($" !{id}");
+            }
+        }
+
         args.Append($" --language 0:{languageCode}");
 
         if (!string.IsNullOrEmpty(trackName))
@@ -173,19 +187,46 @@ public class MkvEmbeddingService : IMkvEmbeddingService
         return args.ToString();
     }
 
+    private async Task<List<int>> GetExistingLanguageTrackIds(string mkvPath, string languageCode)
+    {
+        try
+        {
+            var result = await RunProcessAsync(MkvMergeBinary, $"-i \"{mkvPath}\"", CancellationToken.None);
+            var tracks = new List<int>();
+            foreach (var line in result.Output.Split('\n'))
+            {
+                if (line.Contains("subtitles") && line.Contains($"language: {languageCode}"))
+                {
+                    var match = Regex.Match(line, @"Track ID (\d+)");
+                    if (match.Success)
+                    {
+                        tracks.Add(int.Parse(match.Groups[1].Value));
+                    }
+                }
+            }
+            return tracks;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to query existing tracks for {MkvPath}", mkvPath);
+            return new List<int>();
+        }
+    }
+
     private async Task<MkvEmbedResult> SwapWithOriginalAsync(
         string originalPath,
         string tempPath,
         CancellationToken ct)
     {
+        string? backupPath = null;
         try
         {
             ct.ThrowIfCancellationRequested();
 
-            var backupPath = originalPath + ".lingarr_backup";
+            var dir = Path.GetDirectoryName(originalPath)!;
+            backupPath = Path.Combine(dir, $".lingarr_swap_backup_{Guid.NewGuid():N}");
             File.Move(originalPath, backupPath, overwrite: true);
             File.Move(tempPath, originalPath, overwrite: true);
-
             File.Delete(backupPath);
 
             _logger.LogInformation("Successfully swapped merged MKV with original: {MkvPath}", originalPath);
@@ -195,11 +236,11 @@ public class MkvEmbeddingService : IMkvEmbeddingService
         {
             _logger.LogError(ex, "Failed to swap merged MKV with original: {OriginalPath}", originalPath);
 
-            if (File.Exists(originalPath + ".lingarr_backup") && !File.Exists(originalPath))
+            if (File.Exists(backupPath) && !File.Exists(originalPath))
             {
                 try
                 {
-                    File.Move(originalPath + ".lingarr_backup", originalPath);
+                    File.Move(backupPath, originalPath);
                     _logger.LogInformation("Restored original MKV from backup: {MkvPath}", originalPath);
                 }
                 catch (Exception restoreEx)

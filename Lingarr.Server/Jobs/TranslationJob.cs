@@ -1012,10 +1012,10 @@ SettingKeys.Translation.BatchContextAfter,
 Exception? lastException = null;
                 bool success = false;
                 bool allPathsTooLong = true;
+                var anyPathExceedsLimit = paths.Any(p => _mkvEmbeddingService.WouldExceedPathLimit(p));
 
-                if (embedInContainer)
+                if (embedInContainer || anyPathExceedsLimit)
                 {
-                    var anyPathExceedsLimit = paths.Any(p => _mkvEmbeddingService.WouldExceedPathLimit(p));
                     if (anyPathExceedsLimit)
                     {
                         var embeddedPath = await TryEmbedInMkvContainerAsync(
@@ -1119,7 +1119,7 @@ Exception? lastException = null;
                     }
                 }
 
-                if (!success && embedInContainer && allPathsTooLong)
+                if (!success && (embedInContainer || allPathsTooLong))
                 {
                     var embeddedPath = await TryEmbedInMkvContainerAsync(
                         translationRequest,
@@ -1138,6 +1138,14 @@ Exception? lastException = null;
 
                 if (!success)
                 {
+                    if (lastException is PathTooLongException)
+                    {
+                        throw new PathTooLongException(
+                            $"The subtitle filename exceeds the filesystem limit (255 bytes). " +
+                            "Enable 'Embed subtitles in media container' in Settings, " +
+                            "or rename the media file to be shorter.");
+                    }
+
                     if (lastException != null)
                     {
                         throw lastException;
