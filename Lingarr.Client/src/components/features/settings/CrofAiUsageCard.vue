@@ -28,11 +28,11 @@
                     {{ translate('settings.services.requestsToday') }}
                 </span>
                 <div class="mt-1">
-                    <span v-if="usage?.usableRequests !== undefined" class="text-xl font-bold">
+                    <span v-if="usage?.usableRequests != null" class="text-xl font-bold">
                         {{ usage.usableRequests }}
                     </span>
                     <span v-else class="text-xl font-bold">
-                        {{ translate('common.loading') }}
+                        —
                     </span>
                 </div>
             </div>
@@ -41,11 +41,11 @@
                     {{ translate('settings.services.credits') }}
                 </span>
                 <div class="mt-1">
-                    <span v-if="usage?.credits !== undefined" class="text-xl font-bold">
+                    <span v-if="usage?.credits != null" class="text-xl font-bold">
                         {{ formatCredits(usage.credits) }}
                     </span>
                     <span v-else class="text-xl font-bold">
-                        {{ translate('common.loading') }}
+                        —
                     </span>
                 </div>
             </div>
