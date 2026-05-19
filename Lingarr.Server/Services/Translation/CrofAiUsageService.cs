@@ -133,18 +133,18 @@ public class CrofAiUsageService : ICrofAiUsageService
                 return errorSnapshot;
             }
 
-            int? usableRequests = null;
+            decimal? usableRequests = null;
             if (usageData.ValueKind == JsonValueKind.Object &&
                 usageData.TryGetProperty("usable_requests", out var requestsElement) &&
                 requestsElement.ValueKind == JsonValueKind.Number)
             {
-                if (requestsElement.TryGetInt32(out var parsedRequests))
+                if (requestsElement.TryGetDecimal(out var parsedRequests))
                 {
                     usableRequests = parsedRequests;
                 }
                 else
                 {
-                    _logger.LogWarning("CrofAI usable_requests value is not a valid integer. Raw: {Raw}", requestsElement.GetRawText());
+                    _logger.LogWarning("CrofAI usable_requests value is not a valid number. Raw: {Raw}", requestsElement.GetRawText());
                 }
             }
 

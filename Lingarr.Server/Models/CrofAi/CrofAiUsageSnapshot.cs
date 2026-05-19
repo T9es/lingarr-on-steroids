@@ -6,7 +6,7 @@ public class CrofAiUsageSnapshot
 {
     public bool HasApiKey { get; set; }
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public int? UsableRequests { get; set; }
+    public decimal? UsableRequests { get; set; }
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public decimal? Credits { get; set; }
     public DateTime LastSyncedUtc { get; set; }
