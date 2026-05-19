@@ -1,4 +1,4 @@
-﻿<template>
+<template>
     <CardComponent :title="translate('settings.translation.title')">
         <template #description>
             {{ translate('settings.translation.description') }}
@@ -163,6 +163,22 @@
                 :placeholder="'1'"
                 :max="maxConcurrentLimit"
                 @update:validation="(val) => (isValid.maxParallelTranslations = val)" />
+            <!-- Post-Translation Quality Gate toggle -->
+            <div class="flex flex-col space-x-2">
+                <span class="font-semibold">
+                    {{ translate('settings.translation.enablePostTranslationQualityGate') }}
+                </span>
+                {{ translate('settings.translation.enablePostTranslationQualityGateDescription') }}
+            </div>
+            <ToggleButton v-model="enablePostTranslationQualityGate">
+                <span class="text-primary-content text-sm font-medium">
+                    {{
+                        enablePostTranslationQualityGate == 'true'
+                            ? translate('common.enabled')
+                            : translate('common.disabled')
+                    }}
+                </span>
+            </ToggleButton>
         </template>
     </CardComponent>
 </template>
@@ -272,6 +288,15 @@ const maxParallelTranslations = computed({
             newValue,
             isValid.maxParallelTranslations
         )
+        saveNotification.value?.show()
+    }
+})
+
+const enablePostTranslationQualityGate = computed({
+    get: (): string =>
+        (settingsStore.getSetting(SETTINGS.ENABLE_POST_TRANSLATION_QUALITY_GATE) as string) ?? 'false',
+    set: (newValue: string): void => {
+        settingsStore.updateSetting(SETTINGS.ENABLE_POST_TRANSLATION_QUALITY_GATE, newValue, true)
         saveNotification.value?.show()
     }
 })

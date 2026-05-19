@@ -527,7 +527,9 @@
       "repairContextRadius": "Context radius:",
       "repairContextRadiusDescription": "Number of surrounding lines to include with each failed line for better translation quality (deferred mode only).",
       "repairMaxRetries": "Repair retries:",
-      "repairMaxRetriesDescription": "How many times to retry the repair batch if it fails (deferred mode only)."
+      "repairMaxRetriesDescription": "How many times to retry the repair batch if it fails (deferred mode only).",
+      "enablePostTranslationQualityGate": "Post-translation quality gate:",
+      "enablePostTranslationQualityGateDescription": "When enabled, translation quality validation failures block publication. When disabled, failures log a warning and the translation publishes anyway."
     },
     "subtitle": {
       "title": "Subtitle",

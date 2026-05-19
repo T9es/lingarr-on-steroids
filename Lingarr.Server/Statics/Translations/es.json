@@ -527,7 +527,9 @@
       "repairContextRadius": "Radio de contexto:",
       "repairContextRadiusDescription": "Número de líneas circundantes para incluir con cada línea fallida para mejor calidad de traducción (solo modo diferido).",
       "repairMaxRetries": "Reintentos de reparación:",
-      "repairMaxRetriesDescription": "Cuántas veces reintentar el lote de reparación si falla (solo modo diferido)."
+      "repairMaxRetriesDescription": "Cuántas veces reintentar el lote de reparación si falla (solo modo diferido).",
+      "enablePostTranslationQualityGate": "Control de calidad posterior a la traducción:",
+      "enablePostTranslationQualityGateDescription": "Cuando está activado, los fallos de validación de calidad bloquean la publicación. Cuando está desactivado, se registra una advertencia y la traducción se publica de todos modos."
     },
     "subtitle": {
       "title": "Subtítulos",

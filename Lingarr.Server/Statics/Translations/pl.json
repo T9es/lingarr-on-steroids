@@ -527,7 +527,9 @@
       "repairContextRadius": "Promień kontekstu:",
       "repairContextRadiusDescription": "Liczba otaczających linii do uwzględnienia z każdą nieudaną linią dla lepszej jakości tłumaczenia (tylko tryb odroczony).",
       "repairMaxRetries": "Ponowne próby naprawy:",
-      "repairMaxRetriesDescription": "Ile razy ponowić partię naprawy, jeśli się nie powiedzie (tylko tryb odroczony)."
+      "repairMaxRetriesDescription": "Ile razy ponowić partię naprawy, jeśli się nie powiedzie (tylko tryb odroczony).",
+      "enablePostTranslationQualityGate": "Bramka jakości po tłumaczeniu:",
+      "enablePostTranslationQualityGateDescription": "Po włączeniu, błędy walidacji jakości blokują publikację. Po wyłączeniu, błędy są tylko logowane, a tłumaczenie jest publikowane."
     },
     "subtitle": {
       "title": "Napisy",

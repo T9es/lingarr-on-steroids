@@ -527,7 +527,9 @@
       "repairContextRadius": "上下文半径：",
       "repairContextRadiusDescription": "为每个失败行包含的周围行数，以获得更好的翻译质量（仅限延迟模式）。",
       "repairMaxRetries": "修复重试：",
-      "repairMaxRetriesDescription": "如果修复批次失败，重试多少次（仅限延迟模式）。"
+      "repairMaxRetriesDescription": "如果修复批次失败，重试多少次（仅限延迟模式）。",
+      "enablePostTranslationQualityGate": "翻译后质量检查：",
+      "enablePostTranslationQualityGateDescription": "启用时，翻译质量验证失败将阻止发布。禁用时，失败仅记录警告，翻译仍会发布。"
     },
     "subtitle": {
       "title": "字幕",

@@ -527,7 +527,9 @@
       "repairContextRadius": "Contekstradius:",
       "repairContextRadiusDescription": "Aantal omliggende regels om toe te voegen aan elke mislukte regel voor betere vertaalkwaliteit (alleen uitgestelde modus).",
       "repairMaxRetries": "Reparatie retries:",
-      "repairMaxRetriesDescription": "Hoe vaak de reparatiebatch opnieuw proberen als deze mislukt (alleen uitgestelde modus)."
+      "repairMaxRetriesDescription": "Hoe vaak de reparatiebatch opnieuw proberen als deze mislukt (alleen uitgestelde modus).",
+      "enablePostTranslationQualityGate": "Kwaliteitscontrole na vertaling:",
+      "enablePostTranslationQualityGateDescription": "Wanneer ingeschakeld, blokkeren kwaliteitsvalidatiefouten de publicatie. Wanneer uitgeschakeld, wordt er een waarschuwing gelogd en wordt de vertaling toch gepubliceerd."
     },
     "subtitle": {
       "title": "Ondertitel",

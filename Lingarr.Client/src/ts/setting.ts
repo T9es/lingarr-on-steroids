@@ -98,6 +98,7 @@ export const SETTINGS = {
     BATCH_CONTEXT_ENABLED: 'batch_context_enabled',
     BATCH_CONTEXT_BEFORE: 'batch_context_before',
     BATCH_CONTEXT_AFTER: 'batch_context_after',
+    ENABLE_POST_TRANSLATION_QUALITY_GATE: 'enable_post_translation_quality_gate',
     SKIP_WHEN_TARGET_EMBEDDED: 'skip_when_target_embedded',
     SUBTITLE_OCR_ENABLED: 'subtitle_ocr_enabled',
     SUBTITLE_OCR_AUTO_QUEUE: 'subtitle_ocr_auto_queue',
@@ -240,6 +241,7 @@ export interface ISettings {
     batch_context_enabled: string
     batch_context_before: string
     batch_context_after: string
+    enable_post_translation_quality_gate: string
     skip_when_target_embedded: string
     subtitle_ocr_enabled: string
     subtitle_ocr_auto_queue: string

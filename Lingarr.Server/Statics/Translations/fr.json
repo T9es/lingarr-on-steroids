@@ -527,7 +527,9 @@
       "repairContextRadius": "Rayon de contexte :",
       "repairContextRadiusDescription": "Nombre de lignes environnantes à inclure avec chaque ligne échouée pour une meilleure qualité de traduction (mode différé uniquement).",
       "repairMaxRetries": "Tentatives de réparation :",
-      "repairMaxRetriesDescription": "Combien de fois réessayer le lot de réparation s'il échoue (mode différé uniquement)."
+      "repairMaxRetriesDescription": "Combien de fois réessayer le lot de réparation s'il échoue (mode différé uniquement).",
+      "enablePostTranslationQualityGate": "Contrôle qualité post-traduction :",
+      "enablePostTranslationQualityGateDescription": "Lorsqu'activé, les échecs de validation qualité bloquent la publication. Lorsque désactivé, un avertissement est journalisé et la traduction est publiée quand même."
     },
     "subtitle": {
       "title": "Sous-titres",

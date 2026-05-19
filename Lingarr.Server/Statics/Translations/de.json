@@ -527,7 +527,9 @@
       "repairContextRadius": "Kontextradius:",
       "repairContextRadiusDescription": "Anzahl der umgebenden Zeilen, die mit jeder fehlgeschlagenen Zeile für bessere Übersetzungsqualität einbezogen werden (nur verzögerter Modus).",
       "repairMaxRetries": "Reparatur-Wiederholungen:",
-      "repairMaxRetriesDescription": "Wie oft den Reparatur-Batch erneut versuchen, wenn er fehlschlägt (nur verzögerter Modus)."
+      "repairMaxRetriesDescription": "Wie oft den Reparatur-Batch erneut versuchen, wenn er fehlschlägt (nur verzögerter Modus).",
+      "enablePostTranslationQualityGate": "Qualitätskontrolle nach Übersetzung:",
+      "enablePostTranslationQualityGateDescription": "Wenn aktiviert, blockieren Fehler bei der Qualitätsprüfung die Veröffentlichung. Wenn deaktiviert, wird nur eine Warnung protokolliert und die Übersetzung trotzdem veröffentlicht."
     },
     "subtitle": {
       "title": "Untertitel",
