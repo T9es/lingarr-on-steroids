@@ -582,7 +582,6 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
                             }
                         },
                         required = new[] { "position", "sourceKey", "line" },
-                        additionalProperties = false
                     }
                 }
             }

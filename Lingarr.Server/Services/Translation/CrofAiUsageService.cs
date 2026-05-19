@@ -138,7 +138,14 @@ public class CrofAiUsageService : ICrofAiUsageService
                 usageData.TryGetProperty("usable_requests", out var requestsElement) &&
                 requestsElement.ValueKind == JsonValueKind.Number)
             {
-                usableRequests = requestsElement.GetInt32();
+                if (requestsElement.TryGetInt32(out var parsedRequests))
+                {
+                    usableRequests = parsedRequests;
+                }
+                else
+                {
+                    _logger.LogWarning("CrofAI usable_requests value is not a valid integer. Raw: {Raw}", requestsElement.GetRawText());
+                }
             }
 
             decimal? credits = null;
