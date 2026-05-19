@@ -441,7 +441,7 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
         {
             try
             {
-                var result = await TranslateBatchWithGeminiApi(subtitleBatch, preContext, postContext, linked.Token);
+                var result = await TranslateBatchWithGeminiApi(subtitleBatch, preContext, postContext, targetLanguage, linked.Token);
                 _circuitBreaker?.RecordSuccess(ServiceName);
                 return result;
             }
@@ -521,6 +521,7 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
         List<BatchSubtitleItem> subtitleBatch,
         List<string>? preContext,
         List<string>? postContext,
+        string targetLanguage,
         CancellationToken cancellationToken)
     {
         // Build user content with context wrapper
@@ -574,9 +575,14 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
                             line = new
                             {
                                 type = "string"
+                            },
+                            language = new
+                            {
+                                type = "string"
                             }
                         },
-                        required = new[] { "position", "sourceKey", "line" }
+                        required = new[] { "position", "sourceKey", "line" },
+                        additionalProperties = false
                     }
                 }
             }
@@ -662,6 +668,18 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
             {
                 throw new TranslationException("Failed to deserialize translated subtitles");
             }
+            // Log warning if language field doesn't match target
+            foreach (var item in translatedItems)
+            {
+                if (!string.IsNullOrWhiteSpace(item.Language) &&
+                    !string.Equals(item.Language, targetLanguage, StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogWarning(
+                        "Gemini reported language '{ReportedLanguage}' for position {Position}, " +
+                        "but target language is '{TargetLanguage}'. This may indicate a translation quality issue.",
+                        item.Language, item.Position, targetLanguage);
+                }
+            }
 
             return BatchTranslationResponseMapper.MapAlignedTranslations(
                 subtitleBatch,
@@ -680,6 +698,17 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
                     var translatedItems = JsonSerializer.Deserialize<List<StructuredBatchResponse>>(repairedJson);
                     if (translatedItems != null)
                     {
+                        foreach (var item in translatedItems)
+                        {
+                            if (!string.IsNullOrWhiteSpace(item.Language) &&
+                                !string.Equals(item.Language, targetLanguage, StringComparison.OrdinalIgnoreCase))
+                            {
+                                _logger.LogWarning(
+                                    "Gemini reported language '{ReportedLanguage}' for position {Position} " +
+                                    "(repaired response), but target language is '{TargetLanguage}'.",
+                                    item.Language, item.Position, targetLanguage);
+                            }
+                        }
                         _logger.LogWarning("Successfully repaired the truncated JSON response from Gemini. Please verify the result.");
                         return BatchTranslationResponseMapper.MapAlignedTranslations(
                             subtitleBatch,
