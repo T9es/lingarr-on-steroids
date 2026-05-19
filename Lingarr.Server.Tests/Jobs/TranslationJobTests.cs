@@ -1117,8 +1117,12 @@ public class TranslationJobTests : IDisposable
                     settings[SettingKeys.Translation.StripAssDrawingCommands] = "false";
                     settings[SettingKeys.Translation.CleanSourceAssDrawings] = "false";
                     settings[SettingKeys.Translation.BatchContextEnabled] = "false";
+                    settings[SettingKeys.Translation.EnablePostTranslationQualityGate] = "true";
                     return settings;
                 });
+            settingServiceMock
+                .Setup(service => service.GetSetting(SettingKeys.Translation.EnablePostTranslationQualityGate))
+                .ReturnsAsync("true");
 
             var subtitleService = new SubtitleService(NullLogger<SubtitleService>.Instance);
             var translationServiceMock = new Mock<ITranslationService>();

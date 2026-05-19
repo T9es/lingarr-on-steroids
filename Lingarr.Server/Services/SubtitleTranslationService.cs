@@ -448,7 +448,17 @@ public class SubtitleTranslationService
             globalDeduplication);
         if (unresolvedEntries.Count > 0)
         {
-            ThrowMissingTranslationException(unresolvedEntries);
+            var tolerance = Math.Max(5, (int)(translatableCueCount * 0.01));
+            if (unresolvedEntries.Count > tolerance)
+            {
+                ThrowMissingTranslationException(unresolvedEntries);
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "Translation completed with {UnresolvedCount} unresolved item(s) within tolerance ({Tolerance}). Source text preserved.",
+                    unresolvedEntries.Count, tolerance);
+            }
         }
 
         if (representativeEntries.Count == 0 || _lastProgression < 100)

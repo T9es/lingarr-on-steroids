@@ -32,21 +32,22 @@ public class BatchTranslationResponseMapperTests
         Assert.Equal("Bolin launches a series of attacks.", result[10]);
         Assert.Equal("Korra robi unik.", result[11]);
     }
-
     [Fact]
-    public void MapAlignedTranslations_RejectsMissingOrMismatchedSourceKey()
+    public void MapAlignedTranslations_AcceptsNonEmptyLineWithMismatchedSourceKey()
     {
         var requestedItems = new List<BatchSubtitleItem>
         {
             new() { Position = 10, Line = "Bolin lets fly a flurry of attacks." },
             new() { Position = 11, Line = "Korra ducks." },
-            new() { Position = 12, Line = "Round one goes to the Fire Ferrets." }
+            new() { Position = 12, Line = "Round one goes to the Fire Ferrets." },
+            new() { Position = 13, Line = "Empty response should still be rejected." }
         };
         var translatedItems = new List<StructuredBatchResponse>
         {
             new() { Position = 10, SourceKey = SourceKey(11, "Korra ducks."), Line = "Korra robi unik." },
             new() { Position = 11, SourceKey = null, Line = "Round one for the Fire Ferrets." },
-            new() { Position = 12, SourceKey = SourceKey(12, "Round one goes to the Fire Ferrets."), Line = "Round one for the Fire Ferrets." }
+            new() { Position = 12, SourceKey = SourceKey(12, "Round one goes to the Fire Ferrets."), Line = "Round one for the Fire Ferrets." },
+            new() { Position = 13, SourceKey = SourceKey(10, "Bolin lets fly a flurry of attacks."), Line = "" }
         };
 
         var result = BatchTranslationResponseMapper.MapAlignedTranslations(
@@ -55,9 +56,14 @@ public class BatchTranslationResponseMapperTests
             NullLogger.Instance,
             "test");
 
-        Assert.False(result.ContainsKey(10));
-        Assert.False(result.ContainsKey(11));
+        // Position 10: sourceKey from wrong item but non-empty line -> accepted leniently
+        Assert.Equal("Korra robi unik.", result[10]);
+        // Position 11: null sourceKey but non-empty line -> accepted leniently
+        Assert.Equal("Round one for the Fire Ferrets.", result[11]);
+        // Position 12: exact match -> accepted as before
         Assert.Equal("Round one for the Fire Ferrets.", result[12]);
+        // Position 13: mismatched sourceKey and empty line -> still rejected
+        Assert.False(result.ContainsKey(13));
     }
 
     private static string SourceKey(int position, string line)

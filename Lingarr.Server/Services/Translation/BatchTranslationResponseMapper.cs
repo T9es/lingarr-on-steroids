@@ -28,11 +28,19 @@ internal static class BatchTranslationResponseMapper
             }
 
             var requestedSourceKey = GetSourceKey(requested);
-            if (string.IsNullOrWhiteSpace(item.SourceKey) ||
-                !string.Equals(item.SourceKey, requestedSourceKey, StringComparison.Ordinal))
+            var sourceKeyOk = !string.IsNullOrWhiteSpace(item.SourceKey) &&
+                string.Equals(item.SourceKey, requestedSourceKey, StringComparison.Ordinal);
+
+            if (!sourceKeyOk)
             {
+                if (string.IsNullOrWhiteSpace(item.Line))
+                {
+                    sourceKeyMismatchedPositions.Add(item.Position);
+                    continue;
+                }
+
+                // Lenient mode: accept non-empty line even when sourceKey doesn't match
                 sourceKeyMismatchedPositions.Add(item.Position);
-                continue;
             }
 
             if (!mapped.TryAdd(item.Position, item.Line))

@@ -1,4 +1,4 @@
-﻿namespace Lingarr.Core.Configuration;
+namespace Lingarr.Core.Configuration;
 
 public static class SettingKeys
 {
@@ -188,6 +188,11 @@ public static class SettingKeys
         /// the output file path would exceed filesystem limits. Default: true
         /// </summary>
         public const string EmbedInContainer = "embed_in_container";
+        /// <summary>
+        /// When enabled, quality validation failures block publication. When disabled (default),
+        /// failures log a warning instead. Default: false (disabled).
+        /// </summary>
+        public const string EnablePostTranslationQualityGate = "enable_post_translation_quality_gate";
     }
 
     public static class Automation

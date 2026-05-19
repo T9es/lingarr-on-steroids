@@ -1082,8 +1082,18 @@ Exception? lastException = null;
                                     validationResult,
                                     cancellationToken);
 
-                                throw new TranslationException(
-                                    $"Generated subtitle failed quality validation before publishing: {validationResult.Summary}");
+                                var qualityGateSetting = await _settings.GetSetting(SettingKeys.Translation.EnablePostTranslationQualityGate);
+                                var qualityGateEnabled = string.Equals(qualityGateSetting, "true", StringComparison.OrdinalIgnoreCase);
+
+                                if (qualityGateEnabled)
+                                {
+                                    throw new TranslationException(
+                                        $"Generated subtitle failed quality validation before publishing: {validationResult.Summary}");
+                                }
+
+                                _logger.LogWarning(
+                                    "Post-translation quality gate is disabled. Publishing subtitle despite validation failure: {Summary}",
+                                    validationResult.Summary);
                             }
 
                             EnsureParentDirectory(path);

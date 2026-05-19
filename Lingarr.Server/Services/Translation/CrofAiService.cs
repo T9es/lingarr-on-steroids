@@ -262,7 +262,8 @@ public class CrofAiService : OpenAiService
                            "  ]\n" +
                            "}\n" +
                            "The 'position' and 'sourceKey' fields must match the input item. " +
-                           "The 'line' field contains the translated text.";
+                           "The 'line' field contains the translated text. " +
+                           "If you cannot translate a line, output it exactly as-is in the original language. Do NOT skip any position.";
 
         // Build user content with optional batch context wrapper
         var userContent = BuildBatchUserContent(subtitleBatch, preContext, postContext);
