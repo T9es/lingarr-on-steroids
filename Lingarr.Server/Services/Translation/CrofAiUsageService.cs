@@ -115,19 +115,35 @@ public class CrofAiUsageService : ICrofAiUsageService
                 CacheSnapshot(fallback);
                 return fallback;
             }
-
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
             var usageData = JsonSerializer.Deserialize<JsonElement>(content);
 
+            // Check for API-level error responses first
+            var errorMessage = ExtractErrorMessage(usageData);
+            if (errorMessage != null)
+            {
+                _logger.LogWarning("CrofAI usage API returned an error: {Error}", errorMessage);
+                var errorSnapshot = new CrofAiUsageSnapshot
+                {
+                    HasApiKey = true,
+                    LastSyncedUtc = DateTime.UtcNow,
+                    Message = errorMessage
+                };
+                CacheSnapshot(errorSnapshot);
+                return errorSnapshot;
+            }
+
             int? usableRequests = null;
-            if (usageData.TryGetProperty("usable_requests", out var requestsElement) &&
+            if (usageData.ValueKind == JsonValueKind.Object &&
+                usageData.TryGetProperty("usable_requests", out var requestsElement) &&
                 requestsElement.ValueKind == JsonValueKind.Number)
             {
                 usableRequests = requestsElement.GetInt32();
             }
 
             decimal? credits = null;
-            if (usageData.TryGetProperty("credits", out var creditsElement) &&
+            if (usageData.ValueKind == JsonValueKind.Object &&
+                usageData.TryGetProperty("credits", out var creditsElement) &&
                 creditsElement.ValueKind == JsonValueKind.Number)
             {
                 credits = creditsElement.GetDecimal();
@@ -140,6 +156,11 @@ public class CrofAiUsageService : ICrofAiUsageService
                 Credits = credits,
                 LastSyncedUtc = DateTime.UtcNow
             };
+
+            if (usableRequests == null && credits == null && usageData.ValueKind != JsonValueKind.Object)
+            {
+                snapshot.Message = "Unexpected response format from CrofAI usage API.";
+            }
 
             CacheSnapshot(snapshot);
             return snapshot;
@@ -185,6 +206,34 @@ public class CrofAiUsageService : ICrofAiUsageService
         }
     }
 
+    private static string? ExtractErrorMessage(JsonElement element)
+    {
+        if (element.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        if (element.TryGetProperty("error", out var errorProp) &&
+            errorProp.ValueKind == JsonValueKind.Object &&
+            errorProp.TryGetProperty("message", out var msgProp) &&
+            msgProp.ValueKind == JsonValueKind.String)
+        {
+            return msgProp.GetString();
+        }
+
+        if (errorProp.ValueKind == JsonValueKind.String)
+        {
+            return errorProp.GetString();
+        }
+
+        if (element.TryGetProperty("message", out var messageProp) &&
+            messageProp.ValueKind == JsonValueKind.String)
+        {
+            return messageProp.GetString();
+        }
+
+        return null;
+    }
     private void CacheSnapshot(CrofAiUsageSnapshot snapshot)
     {
         _cache.Set(CacheKey, snapshot, CacheLifetime);
