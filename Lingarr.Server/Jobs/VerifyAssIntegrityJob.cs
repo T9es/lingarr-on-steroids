@@ -26,6 +26,7 @@ public class VerifyAssIntegrityJob
     private readonly ISubtitleOutputBackfillService _subtitleOutputBackfillService;
     private readonly ISourceSubtitleResolver _sourceSubtitleResolver;
     private readonly ILogger<VerifyAssIntegrityJob> _logger;
+    private readonly ITranslationSubtitleRepairService _repairService;
 
     public VerifyAssIntegrityJob(
         ISubtitleService subtitleService,
@@ -34,6 +35,7 @@ public class VerifyAssIntegrityJob
         IHubContext<JobProgressHub> hubContext,
         ISubtitleOutputBackfillService subtitleOutputBackfillService,
         ISourceSubtitleResolver sourceSubtitleResolver,
+        ITranslationSubtitleRepairService repairService,
         ILogger<VerifyAssIntegrityJob> logger)
     {
         _subtitleService = subtitleService;
@@ -42,6 +44,7 @@ public class VerifyAssIntegrityJob
         _hubContext = hubContext;
         _subtitleOutputBackfillService = subtitleOutputBackfillService;
         _sourceSubtitleResolver = sourceSubtitleResolver;
+        _repairService = repairService;
         _logger = logger;
     }
 
@@ -349,6 +352,7 @@ public class VerifyAssIntegrityJob
             _logger.LogInformation(
                 "ASS Integrity verification complete: Scanned {Total}, Found {Flagged}",
                 result.TotalFilesScanned, result.FilesWithDrawings);
+            await _repairService.RepairOrphanedRecordsAsync();
         }
         catch (Exception ex)
         {
