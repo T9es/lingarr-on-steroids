@@ -15,6 +15,7 @@ using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models.Batch;
 using Lingarr.Server.Models.NanoGpt;
 using Lingarr.Server.Services.Translation;
+using Lingarr.Server.Tests.Data;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -786,30 +787,12 @@ public class NanoGptServiceTests
                             new { position = 2, sourceKey = SourceKey(2, "World"), line = "Mundo" }
                         }
                     });
-                var chatResponse = JsonSerializer.Serialize(new
+                var sseContent = SseTestHelper.CreateOpenAiSseResponse(translatedContent,
+                    promptTokens: 12, completionTokens: 8, totalTokens: 20);
+                return new HttpResponseMessage(HttpStatusCode.OK)
                 {
-                    choices = new[]
-                    {
-                        new
-                        {
-                            index = 0,
-                            message = new
-                            {
-                                role = "assistant",
-                                content = translatedContent
-                            },
-                            finish_reason = "stop"
-                        }
-                    },
-                    usage = new
-                    {
-                        prompt_tokens = 12,
-                        completion_tokens = 8,
-                        total_tokens = 20
-                    }
-                });
-
-                return JsonResponse(chatResponse);
+                    Content = new StringContent(sseContent, Encoding.UTF8, "text/event-stream")
+                };
             }
 
             return new HttpResponseMessage(HttpStatusCode.NotFound)

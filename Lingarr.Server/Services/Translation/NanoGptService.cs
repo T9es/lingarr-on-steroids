@@ -13,6 +13,7 @@ using Lingarr.Server.Models;
 using Lingarr.Server.Models.Batch;
 using Lingarr.Server.Models.Batch.Response;
 using Microsoft.Extensions.Caching.Memory;
+using Lingarr.Server.Services.Translation.Streaming;
 
 namespace Lingarr.Server.Services.Translation;
 
@@ -315,6 +316,12 @@ public class NanoGptService : OpenAiService
 
         requestBody["response_format"] = new { type = "json_object" };
         requestBody["reasoning"] = new { exclude = true };
+        // Add streaming params — these MUST NOT be overridden by custom parameters
+        requestBody["stream"] = true;
+        requestBody["stream_options"] = new Dictionary<string, object>
+        {
+            ["include_usage"] = true
+        };
 
         await EnrichChatCompletionRequestAsync(requestBody, cancellationToken);
 
@@ -324,7 +331,8 @@ public class NanoGptService : OpenAiService
             "application/json");
 
         var stopwatch = Stopwatch.StartNew();
-        var response = await _httpClient.PostAsync(requestUrl, requestContent, cancellationToken);
+        var request = new HttpRequestMessage(HttpMethod.Post, requestUrl) { Content = requestContent };
+        var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         stopwatch.Stop();
 
         if (!response.IsSuccessStatusCode)
@@ -359,29 +367,26 @@ public class NanoGptService : OpenAiService
             throw new TranslationException($"Batch translation using NanoGPT API failed. Status: {response.StatusCode}");
         }
 
-        var completionResponse = await response.Content.ReadFromJsonAsync<ChatCompletionResponse>(cancellationToken);
-        if (completionResponse?.Choices == null || completionResponse.Choices.Count == 0)
+        var (accumulatedJson, promptTokens, completionTokens, totalTokens) =
+            await OpenAiStreamAccumulator.AccumulateAsync(response, cancellationToken);
+
+        if (string.IsNullOrEmpty(accumulatedJson))
         {
-            throw new TranslationException("No completion choices returned from NanoGPT");
+            throw new TranslationException("Empty response received from streaming API");
         }
 
         if (_dashboardService != null)
         {
             await _dashboardService.LogApiUsage(
                 ServiceName,
-                completionResponse.Usage?.TotalTokens,
+                totalTokens,
                 stopwatch.ElapsedMilliseconds,
                 success: true,
-                promptTokens: completionResponse.Usage?.PromptTokens,
-                completionTokens: completionResponse.Usage?.CompletionTokens);
+                promptTokens: promptTokens,
+                completionTokens: completionTokens);
         }
 
-        var message = completionResponse.Choices[0].Message;
-        var translatedJson = FirstNonEmpty(message.Content, message.Reasoning, message.ReasoningContent);
-        if (string.IsNullOrWhiteSpace(translatedJson))
-        {
-            throw new TranslationException("NanoGPT returned an empty batch translation response");
-        }
+        var translatedJson = accumulatedJson;
 
         try
         {

@@ -12,6 +12,7 @@ using Lingarr.Server.Services.Translation.Base;
 using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models.Batch;
 using Lingarr.Server.Models.Batch.Response;
+using Lingarr.Server.Services.Translation.Streaming;
 
 namespace Lingarr.Server.Services.Translation;
 
@@ -473,6 +474,8 @@ if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var us
                 }
             }
         }
+        // Add streaming — this MUST NOT be overridden by custom parameters
+        requestBody["stream"] = true;
 
         var content = new StringContent(
             JsonSerializer.Serialize(requestBody),
@@ -480,7 +483,8 @@ if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var us
             "application/json");
 
         var stopwatch = Stopwatch.StartNew();
-        var response = await _httpClient.PostAsync($"{_endpoint}/messages", content, cancellationToken);
+        var request = new HttpRequestMessage(HttpMethod.Post, $"{_endpoint}/messages") { Content = content };
+        var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         stopwatch.Stop();
 
         if (!response.IsSuccessStatusCode)
@@ -496,54 +500,32 @@ if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var us
             throw new TranslationException("Batch translation using Anthropic failed.");
         }
 
-        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-        var jsonResponse = JsonSerializer.Deserialize<JsonElement>(responseBody);
+        var (accumulatedJson, inputTokens, outputTokens, totalTokens) =
+            await AnthropicStreamAccumulator.AccumulateAsync(response, cancellationToken);
 
-if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var usageProp))
+        if (string.IsNullOrEmpty(accumulatedJson))
         {
-            int inputTokens = 0;
-            int outputTokens = 0;
-            if (usageProp.TryGetProperty("input_tokens", out var inputTokensProp)) inputTokens = inputTokensProp.GetInt32();
-            if (usageProp.TryGetProperty("output_tokens", out var outputTokensProp)) outputTokens = outputTokensProp.GetInt32();
-            int totalTokens = inputTokens + outputTokens;
-            
+            throw new TranslationException("Empty response received from streaming API");
+        }
+
+        // Log API usage from streaming accumulator
+        if (_dashboardService != null)
+        {
             await _dashboardService.LogApiUsage(
-                ServiceName, 
-                totalTokens > 0 ? totalTokens : null, 
-                stopwatch.ElapsedMilliseconds, 
-                true, 
-                null, 
-                inputTokens > 0 ? inputTokens : null, 
-                outputTokens > 0 ? outputTokens : null);
-        }
-        else if (_dashboardService != null)
-        {
-            await _dashboardService.LogApiUsage(ServiceName, null, stopwatch.ElapsedMilliseconds, true);
+                ServiceName,
+                totalTokens,
+                stopwatch.ElapsedMilliseconds,
+                true,
+                null,
+                inputTokens,
+                outputTokens);
         }
 
-        // Extract tool use result from Anthropic response
-        if (!jsonResponse.TryGetProperty("content", out var contentArray) || 
-            contentArray.GetArrayLength() == 0)
+        // Parse the accumulated tool_use input JSON
+        var inputJson = JsonSerializer.Deserialize<JsonElement>(accumulatedJson);
+        if (!inputJson.TryGetProperty("translations", out var translationsProperty))
         {
-            throw new TranslationException("Invalid response format from Anthropic API.");
-        }
-
-        JsonElement? toolUseContent = null;
-        foreach (var contentItem in contentArray.EnumerateArray())
-        {
-            if (contentItem.TryGetProperty("type", out var typeProperty) && 
-                typeProperty.GetString() == "tool_use")
-            {
-                toolUseContent = contentItem;
-                break;
-            }
-        }
-
-        if (!toolUseContent.HasValue || 
-            !toolUseContent.Value.TryGetProperty("input", out var inputProperty) ||
-            !inputProperty.TryGetProperty("translations", out var translationsProperty))
-        {
-            throw new TranslationException("Tool use result not found or invalid in Anthropic response.");
+            throw new TranslationException("Tool use result does not contain 'translations' property in streaming response.");
         }
 
         try

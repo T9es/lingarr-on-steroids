@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Lingarr.Server.Tests.Data;
 using Lingarr.Core.Configuration;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Translation;
@@ -63,8 +64,7 @@ public class CrofAiServiceTests
                 null,
                 CancellationToken.None));
 
-        Assert.Contains("CrofAI returned the response in the reasoning field", ex.Message);
-        Assert.Contains("deepseek-v4-flash", ex.Message);
+        Assert.Contains("Empty response received from streaming API", ex.Message);
     }
 
     [Fact]
@@ -191,33 +191,12 @@ public class CrofAiServiceTests
                     }
                 });
 
-            var chatResponse = JsonSerializer.Serialize(new
-            {
-                id = "chatcmpl-123",
-                choices = new[]
-                {
-                    new
-                    {
-                        index = 0,
-                        message = new
-                        {
-                            role = "assistant",
-                            content = content
-                        },
-                        finish_reason = "stop"
-                    }
-                },
-                usage = new
-                {
-                    prompt_tokens = 12,
-                    completion_tokens = 8,
-                    total_tokens = 20
-                }
-            });
+            var sseContent = SseTestHelper.CreateOpenAiSseResponse(content,
+                promptTokens: 12, completionTokens: 8, totalTokens: 20);
 
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = new StringContent(chatResponse, Encoding.UTF8, "application/json")
+                Content = new StringContent(sseContent, Encoding.UTF8, "text/event-stream")
             };
         }
     }

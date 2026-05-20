@@ -13,6 +13,7 @@ using Lingarr.Server.Models.Batch;
 using Lingarr.Server.Models.Batch.Response;
 using Lingarr.Server.Models.Integrations.Translation;
 using Lingarr.Server.Services.Translation.Base;
+using Lingarr.Server.Services.Translation.Streaming;
 
 namespace Lingarr.Server.Services.Translation;
 
@@ -424,6 +425,12 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
                 }
             }
         }
+        // Add streaming params — these MUST NOT be overridden by custom parameters
+        requestBody["stream"] = true;
+        requestBody["stream_options"] = new Dictionary<string, object>
+        {
+            ["include_usage"] = true
+        };
 
         var requestContent = new StringContent(
             JsonSerializer.Serialize(requestBody),
@@ -431,7 +438,8 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
             "application/json");
 
         var stopwatch = Stopwatch.StartNew();
-        var response = await _httpClient.PostAsync(_endpoint, requestContent, cancellationToken);
+        var request = new HttpRequestMessage(HttpMethod.Post, _endpoint) { Content = requestContent };
+        var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         stopwatch.Stop();
         
         if (!response.IsSuccessStatusCode)
@@ -447,27 +455,25 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
             throw new TranslationException("Batch translation using LocalAI structured output failed.");
         }
 
-        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-        var chatResponse = JsonSerializer.Deserialize<ChatResponse>(responseBody);
-        
+        var (translatedJson, promptTokens, completionTokens, totalTokens) =
+            await OpenAiStreamAccumulator.AccumulateAsync(response, cancellationToken);
+
+        if (string.IsNullOrEmpty(translatedJson))
+        {
+            throw new TranslationException("Empty response received from streaming LocalAI API");
+        }
+
         if (_dashboardService != null)
         {
             await _dashboardService.LogApiUsage(
-                ServiceName, 
-                chatResponse?.Usage?.TotalTokens, 
-                stopwatch.ElapsedMilliseconds, 
-                true,
+                ServiceName,
+                totalTokens,
+                stopwatch.ElapsedMilliseconds,
+                success: true,
                 null,
-                chatResponse?.Usage?.PromptTokens,
-                chatResponse?.Usage?.CompletionTokens);
+                promptTokens,
+                completionTokens);
         }
-
-        if (chatResponse?.Choices == null || chatResponse.Choices.Count == 0)
-        {
-            throw new TranslationException("No completion choices returned from LocalAI");
-        }
-
-        var translatedJson = chatResponse.Choices[0].Message.Content;
 
         try
         {
@@ -536,13 +542,20 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
         };
 
         requestBody = AddCustomParameters(requestBody);
+        // Add streaming params — these MUST NOT be overridden by custom parameters
+        requestBody["stream"] = true;
+        requestBody["stream_options"] = new Dictionary<string, object>
+        {
+            ["include_usage"] = true
+        };
         var requestContent = new StringContent(
             JsonSerializer.Serialize(requestBody),
             Encoding.UTF8,
             "application/json");
 
         var stopwatch = Stopwatch.StartNew();
-        var response = await _httpClient.PostAsync(_endpoint, requestContent, cancellationToken);
+        var request = new HttpRequestMessage(HttpMethod.Post, _endpoint) { Content = requestContent };
+        var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         stopwatch.Stop();
         
         if (!response.IsSuccessStatusCode)
@@ -558,28 +571,27 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
             throw new TranslationException("Batch translation using LocalAI JSON parsing failed.");
         }
 
-        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-        var chatResponse = JsonSerializer.Deserialize<ChatResponse>(responseBody);
+        var (translatedJson, promptTokens, completionTokens, totalTokens) =
+            await OpenAiStreamAccumulator.AccumulateAsync(response, cancellationToken);
+
+        if (string.IsNullOrEmpty(translatedJson))
+        {
+            throw new TranslationException("Empty response received from streaming LocalAI API");
+        }
 
         if (_dashboardService != null)
         {
             await _dashboardService.LogApiUsage(
-                ServiceName, 
-                chatResponse?.Usage?.TotalTokens, 
-                stopwatch.ElapsedMilliseconds, 
-                true,
+                ServiceName,
+                totalTokens,
+                stopwatch.ElapsedMilliseconds,
+                success: true,
                 null,
-                chatResponse?.Usage?.PromptTokens,
-                chatResponse?.Usage?.CompletionTokens);
-        }
-
-        if (chatResponse?.Choices == null || chatResponse.Choices.Count == 0)
-        {
-            throw new TranslationException("No completion choices returned from LocalAI");
+                promptTokens,
+                completionTokens);
         }
 
         // Try to extract JSON
-        var translatedJson = chatResponse.Choices[0].Message.Content;
         var jsonStart = translatedJson.IndexOf('[');
         var jsonEnd = translatedJson.LastIndexOf(']');
         if (jsonStart != -1 && jsonEnd != -1 && jsonEnd > jsonStart)

@@ -15,6 +15,7 @@ using Lingarr.Server.Services.Translation.Base;
 using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models.Batch;
 using Lingarr.Server.Models.Batch.Response;
+using Lingarr.Server.Services.Translation.Streaming;
 
 namespace Lingarr.Server.Services.Translation;
 
@@ -527,7 +528,7 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
         // Build user content with context wrapper
         var userContent = BuildBatchUserContent(subtitleBatch, preContext, postContext);
 
-        var endpoint = $"{_endpoint}/models/{_model}:generateContent?key={_apiKey}";
+        var endpoint = $"{_endpoint}/models/{_model}:streamGenerateContent?alt=sse&key={_apiKey}";
         var requestBody = new Dictionary<string, object>
         {
             ["systemInstruction"] = new
@@ -605,7 +606,8 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
             "application/json");
 
         var stopwatch = Stopwatch.StartNew();
-        var response = await _httpClient.PostAsync(endpoint, content, cancellationToken);
+        var request = new HttpRequestMessage(HttpMethod.Post, endpoint) { Content = content };
+        var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         stopwatch.Stop();
         
         if (!response.IsSuccessStatusCode)
@@ -635,31 +637,26 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
             throw new TranslationException(failureMessage);
         }
 
-        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-        var geminiResponse = JsonSerializer.Deserialize<GeminiResponse>(responseBody);
-        
+        var (translatedJson, promptTokens, completionTokens, totalTokens) =
+            await GeminiStreamAccumulator.AccumulateAsync(response, cancellationToken);
+
+        if (string.IsNullOrEmpty(translatedJson))
+        {
+            throw new TranslationException("Empty response received from streaming Gemini API");
+        }
+
+        // Log token usage from streaming accumulator
         if (_dashboardService != null)
         {
-            int? tokensUsed = null;
-            int? promptTokens = null;
-            int? completionTokens = null;
-            if (geminiResponse?.UsageMetadata != null)
-            {
-                promptTokens = geminiResponse.UsageMetadata.PromptTokenCount;
-                completionTokens = geminiResponse.UsageMetadata.CandidatesTokenCount;
-                tokensUsed = promptTokens + completionTokens;
-            }
-            await _dashboardService.LogApiUsage(ServiceName, tokensUsed, stopwatch.ElapsedMilliseconds, true, null, promptTokens, completionTokens);
+            await _dashboardService.LogApiUsage(
+                ServiceName,
+                totalTokens,
+                stopwatch.ElapsedMilliseconds,
+                true,
+                null,
+                promptTokens,
+                completionTokens);
         }
-
-        if (geminiResponse?.Candidates == null || geminiResponse.Candidates.Count == 0 ||
-            geminiResponse.Candidates[0].Content?.Parts == null ||
-            geminiResponse.Candidates[0].Content?.Parts.Count == 0)
-        {
-            throw new TranslationException("Invalid or empty response from Gemini API.");
-        }
-
-        var translatedJson = geminiResponse.Candidates[0].Content?.Parts[0].Text ?? string.Empty;
         try
         {
             var translatedItems = JsonSerializer.Deserialize<List<StructuredBatchResponse>>(translatedJson);

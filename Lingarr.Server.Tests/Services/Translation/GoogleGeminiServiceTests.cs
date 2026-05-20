@@ -11,6 +11,7 @@ using Lingarr.Core.Configuration;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models.Batch;
+using Lingarr.Server.Tests.Data;
 using Lingarr.Server.Services;
 using Lingarr.Server.Services.Translation;
 using Microsoft.Extensions.Logging;
@@ -81,25 +82,9 @@ public class GoogleGeminiServiceTests
         var truncatedJson =
             $"[{{\"position\":1,\"sourceKey\":\"{helloKey}\",\"line\":\"Hola\"}},{{\"position\":2,\"sourceKey\":\"{worldKey}\",\"line\":\"Mun";
         
-        var geminiResponse = new
-        {
-            candidates = new[]
-            {
-                new
-                {
-                    content = new
-                    {
-                        parts = new[]
-                        {
-                            new { text = truncatedJson }
-                        }
-                    }
-                }
-            }
-        };
+        var sseContent = SseTestHelper.CreateGeminiSseResponse(truncatedJson,
+            promptTokens: 12, completionTokens: 8, totalTokens: 20);
 
-        var responseContent = JsonSerializer.Serialize(geminiResponse);
-        
         _httpMessageHandlerMock
             .Protected()
             .Setup<Task<HttpResponseMessage>>(
@@ -110,7 +95,7 @@ public class GoogleGeminiServiceTests
             .ReturnsAsync(new HttpResponseMessage
             {
                 StatusCode = HttpStatusCode.OK,
-                Content = new StringContent(responseContent, Encoding.UTF8, "application/json")
+                Content = new StringContent(sseContent, Encoding.UTF8, "text/event-stream")
             });
 
         // Act
@@ -164,25 +149,9 @@ public class GoogleGeminiServiceTests
         var lineKey = SourceKey(1, "Line 1");
         var truncatedJson = $"[{{\"position\":1,\"sourceKey\":\"{lineKey}\",\"line\":\"Line 1\"}},{{\"position\":2";
         
-        var geminiResponse = new
-        {
-            candidates = new[]
-            {
-                new
-                {
-                    content = new
-                    {
-                        parts = new[]
-                        {
-                            new { text = truncatedJson }
-                        }
-                    }
-                }
-            }
-        };
+        var sseContent = SseTestHelper.CreateGeminiSseResponse(truncatedJson,
+            promptTokens: 12, completionTokens: 8, totalTokens: 20);
 
-        var responseContent = JsonSerializer.Serialize(geminiResponse);
-        
         _httpMessageHandlerMock
             .Protected()
             .Setup<Task<HttpResponseMessage>>(
@@ -193,7 +162,7 @@ public class GoogleGeminiServiceTests
             .ReturnsAsync(new HttpResponseMessage
             {
                 StatusCode = HttpStatusCode.OK,
-                Content = new StringContent(responseContent, Encoding.UTF8, "application/json")
+                Content = new StringContent(sseContent, Encoding.UTF8, "text/event-stream")
             });
 
         // Act
@@ -319,24 +288,9 @@ public class GoogleGeminiServiceTests
               }
             }
             """;
-
         var helloKey = SourceKey(1, "Hello");
-        var successBody = JsonSerializer.Serialize(new
-        {
-            candidates = new[]
-            {
-                new
-                {
-                    content = new
-                    {
-                        parts = new[]
-                        {
-                            new { text = $"[{{\"position\":1,\"sourceKey\":\"{helloKey}\",\"line\":\"Hola\"}}]" }
-                        }
-                    }
-                }
-            }
-        });
+
+        var successJson = $"[{{\"position\":1,\"sourceKey\":\"{helloKey}\",\"line\":\"Hola\"}}]";
 
         _httpMessageHandlerMock
             .Protected()
@@ -352,7 +306,11 @@ public class GoogleGeminiServiceTests
             .ReturnsAsync(new HttpResponseMessage
             {
                 StatusCode = HttpStatusCode.OK,
-                Content = new StringContent(successBody, Encoding.UTF8, "application/json")
+                Content = new StringContent(
+                    SseTestHelper.CreateGeminiSseResponse(successJson,
+                        promptTokens: 12, completionTokens: 8, totalTokens: 20),
+                    Encoding.UTF8,
+                    "text/event-stream")
             });
 
         var result = await _service.TranslateBatchAsync(batch, "en", "es", null, null, CancellationToken.None);

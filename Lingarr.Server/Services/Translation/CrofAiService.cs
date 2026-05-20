@@ -12,6 +12,7 @@ using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models;
 using Lingarr.Server.Models.Batch;
 using Lingarr.Server.Models.Batch.Response;
+using Lingarr.Server.Services.Translation.Streaming;
 
 namespace Lingarr.Server.Services.Translation;
 
@@ -298,6 +299,12 @@ public class CrofAiService : OpenAiService
                 }
             }
         }
+        // Add streaming params — these MUST NOT be overridden by custom parameters
+        requestBody["stream"] = true;
+        requestBody["stream_options"] = new Dictionary<string, object>
+        {
+            ["include_usage"] = true
+        };
 
         await EnrichChatCompletionRequestAsync(requestBody, cancellationToken);
 
@@ -307,7 +314,8 @@ public class CrofAiService : OpenAiService
             "application/json");
 
         var stopwatch = Stopwatch.StartNew();
-        var response = await _httpClient.PostAsync(requestUrl, requestContent, cancellationToken);
+        var request = new HttpRequestMessage(HttpMethod.Post, requestUrl) { Content = requestContent };
+        var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         stopwatch.Stop();
 
         if (!response.IsSuccessStatusCode)
@@ -342,10 +350,12 @@ public class CrofAiService : OpenAiService
             throw new TranslationException($"Batch translation using CrofAI API failed. Status: {response.StatusCode}");
         }
 
-        var completionResponse = await response.Content.ReadFromJsonAsync<ChatCompletionResponse>(cancellationToken);
-        if (completionResponse?.Choices == null || completionResponse.Choices.Count == 0)
+        var (translatedJson, promptTokens, completionTokens, totalTokens) =
+            await OpenAiStreamAccumulator.AccumulateAsync(response, cancellationToken);
+
+        if (string.IsNullOrEmpty(translatedJson))
         {
-            throw new TranslationException("No completion choices returned from CrofAI");
+            throw new TranslationException("Empty response received from streaming API");
         }
 
         // Log API usage for batch
@@ -353,24 +363,11 @@ public class CrofAiService : OpenAiService
         {
             await _dashboardService.LogApiUsage(
                 ServiceName,
-                completionResponse.Usage?.TotalTokens,
+                totalTokens,
                 stopwatch.ElapsedMilliseconds,
                 success: true,
-                promptTokens: completionResponse.Usage?.PromptTokens,
-                completionTokens: completionResponse.Usage?.CompletionTokens);
-        }
-
-        // Read ONLY from Message.Content — never touch reasoning_content
-        var translatedJson = completionResponse.Choices[0].Message.Content;
-
-        // Some CrofAI models (glm-4.7-flash, gemma-4-31b-it) route output to
-        // reasoning_content instead of content — that's a CrofAI proxy bug.
-        if (string.IsNullOrWhiteSpace(translatedJson))
-        {
-            throw new TranslationException(
-                "CrofAI returned the response in the reasoning field instead of content. " +
-                "This is a CrofAI server issue. " +
-                "Try switching to deepseek-v4-flash, deepseek-v4-pro, or kimi-k2.6.");
+                promptTokens: promptTokens,
+                completionTokens: completionTokens);
         }
 
         try
