@@ -749,6 +749,17 @@ SettingKeys.Translation.BatchContextAfter,
                 embedInContainer,
                 effectiveCancellationToken);
             request.TranslatedSubtitle = writtenOutput.PrimaryPath;
+            // Guard: TranslatedSubtitle should never equal SubtitleToTranslate
+            if (string.Equals(request.TranslatedSubtitle, request.SubtitleToTranslate, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning(
+                    "TranslatedSubtitle was set to SubtitleToTranslate path for request {RequestId}. " +
+                    "This indicates the translation output was not properly recorded. " +
+                    "PrimaryPath={PrimaryPath}, OutputPaths={OutputPaths}",
+                    translationRequest.Id,
+                    writtenOutput.PrimaryPath,
+                    string.Join(", ", writtenOutput.OutputPaths));
+            }
             request.GeneratedOutputFormats = writtenOutput.GeneratedFormats;
             request.GeneratedSubtitlePaths = JsonSerializer.Serialize(writtenOutput.OutputPaths);
             AddRequestLog(
@@ -1172,6 +1183,7 @@ Exception? lastException = null;
                         SubtitleOutputModeHelper.NormalizeFormat(output.Format),
                         SubtitleOutputModeHelper.NormalizeFormat(translationRequest.SourceSubtitleFormat),
                         StringComparison.OrdinalIgnoreCase))
+                .ThenByDescending(output => output.Path.StartsWith("mkv-embedded:", StringComparison.OrdinalIgnoreCase))
                 .Select(output => output.Path)
                 .First();
 
