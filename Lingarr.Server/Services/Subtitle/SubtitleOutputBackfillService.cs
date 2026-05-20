@@ -886,6 +886,7 @@ public class SubtitleOutputBackfillService : ISubtitleOutputBackfillService
 
         var targetLanguage = SubtitleLanguageHelper.NormalizeLanguageCode(request.TargetLanguage);
         return matchingSubtitles
+            .Where(subtitle => !IsSourcePath(subtitle.Path, request.SubtitleToTranslate))
             .Where(subtitle => SubtitleLanguageHelper.LanguageMatches(
                 SubtitleLanguageHelper.NormalizeLanguageCode(subtitle.Language),
                 targetLanguage))
@@ -903,6 +904,11 @@ public class SubtitleOutputBackfillService : ISubtitleOutputBackfillService
         string subtitleTag,
         string subtitleTagShort)
     {
+        if (IsSourcePath(path, request.SubtitleToTranslate))
+        {
+            return false;
+        }
+
         return GetKnownGeneratedPaths(request).Contains(path, StringComparer.OrdinalIgnoreCase) ||
                HasLingarrTag(path, subtitleTag, subtitleTagShort);
     }
@@ -967,7 +973,8 @@ public class SubtitleOutputBackfillService : ISubtitleOutputBackfillService
 
         return paths
             .Where(path => !string.IsNullOrWhiteSpace(path)
-                && !path.StartsWith("mkv-embedded:", StringComparison.OrdinalIgnoreCase))
+                && !path.StartsWith("mkv-embedded:", StringComparison.OrdinalIgnoreCase)
+                && !IsSourcePath(path, request.SubtitleToTranslate))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
     }

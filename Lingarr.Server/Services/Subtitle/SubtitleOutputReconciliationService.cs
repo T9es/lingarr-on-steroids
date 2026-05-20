@@ -530,6 +530,11 @@ public class SubtitleOutputReconciliationService : ISubtitleOutputReconciliation
 
         foreach (var path in GetKnownGeneratedPaths(request))
         {
+            if (IsSourcePath(path, request.SubtitleToTranslate))
+            {
+                continue;
+            }
+
             var pathFormat = SubtitleOutputModeHelper.NormalizeFormat(Path.GetExtension(path));
             if (!string.Equals(pathFormat, normalizedDesiredFormat, StringComparison.OrdinalIgnoreCase))
             {
@@ -544,6 +549,11 @@ public class SubtitleOutputReconciliationService : ISubtitleOutputReconciliation
 
         return matchingSubtitles.Any(subtitle =>
         {
+            if (IsSourcePath(subtitle.Path, request.SubtitleToTranslate))
+            {
+                return false;
+            }
+
             var subtitleLanguage = SubtitleLanguageHelper.NormalizeLanguageCode(subtitle.Language);
             if (!SubtitleLanguageHelper.LanguageMatches(subtitleLanguage, targetLanguage))
             {

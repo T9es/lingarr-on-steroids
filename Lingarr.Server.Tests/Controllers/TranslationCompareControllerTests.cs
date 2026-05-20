@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System;
 using System.IO;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Lingarr.Core.Configuration;
@@ -186,6 +187,136 @@ public class TranslationCompareControllerTests : IDisposable
     }
 
     [Fact]
+    public async Task GetCompletedTranslationCompare_DoesNotCompareSourcePathAsTranslatedOutput()
+    {
+        var sourcePath = Path.Combine(_tempDirectory, "source.jpn.ass");
+
+        await File.WriteAllTextAsync(
+            sourcePath,
+            "1\n00:00:01,000 --> 00:00:02,000\nJapanese source\n");
+
+        var request = new TranslationRequest
+        {
+            Title = "Bad Legacy Request",
+            SourceLanguage = "ja",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = sourcePath,
+            TranslatedSubtitle = sourcePath,
+            MediaType = MediaType.Episode,
+            Status = TranslationStatus.Completed,
+            CompletedAt = DateTime.UtcNow
+        };
+
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var controller = CreateController();
+
+        var actionResult = await controller.GetCompletedTranslationCompare(request.Id);
+
+        Assert.IsType<NotFoundObjectResult>(actionResult.Result);
+    }
+
+    [Fact]
+    public async Task GetCompletedTranslationCompare_UsesGeneratedSubtitlePathWhenPrimaryPathIsSource()
+    {
+        var sourcePath = Path.Combine(_tempDirectory, "generated-source.jpn.srt");
+        var generatedPath = Path.Combine(_tempDirectory, "generated-source.pl.srt");
+
+        await File.WriteAllTextAsync(
+            sourcePath,
+            "1\n00:00:01,000 --> 00:00:02,000\nJapanese source\n");
+        await File.WriteAllTextAsync(
+            generatedPath,
+            "1\n00:00:01,000 --> 00:00:02,000\nPolski tekst\n");
+
+        var request = new TranslationRequest
+        {
+            Title = "Recoverable Legacy Request",
+            SourceLanguage = "ja",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = sourcePath,
+            TranslatedSubtitle = sourcePath,
+            GeneratedSubtitlePaths = JsonSerializer.Serialize(new[] { generatedPath }),
+            MediaType = MediaType.Episode,
+            Status = TranslationStatus.Completed,
+            CompletedAt = DateTime.UtcNow
+        };
+
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var controller = CreateController();
+
+        var actionResult = await controller.GetCompletedTranslationCompare(request.Id);
+        var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
+        var payload = Assert.IsType<CompletedTranslationCompareResponse>(okResult.Value);
+
+        Assert.Equal(generatedPath, payload.TranslatedSubtitlePath);
+        Assert.Equal("Polski tekst", payload.Lines[0].Translated);
+
+        var persistedRequest = await _dbContext.TranslationRequests.FindAsync(request.Id);
+        Assert.NotNull(persistedRequest);
+        Assert.Equal(generatedPath, persistedRequest!.TranslatedSubtitle);
+    }
+
+    [Fact]
+    public async Task GetCompletedTranslationCompare_EmbeddedMarkerUsesLingarrTrackBeforeBuiltinTargetTrack()
+    {
+        var sourcePath = Path.Combine(_tempDirectory, "embedded-source.jpn.srt");
+        var mediaPath = Path.Combine(_tempDirectory, "movie.mkv");
+
+        await File.WriteAllTextAsync(
+            sourcePath,
+            "1\n00:00:01,000 --> 00:00:02,000\nJapanese source\n");
+        await File.WriteAllTextAsync(mediaPath, string.Empty);
+
+        var request = new TranslationRequest
+        {
+            Title = "Embedded Recoverable Request",
+            SourceLanguage = "ja",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = sourcePath,
+            TranslatedSubtitle = $"mkv-embedded:stream0|{mediaPath}",
+            MediaType = MediaType.Episode,
+            Status = TranslationStatus.Completed,
+            CompletedAt = DateTime.UtcNow
+        };
+
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var extractionService = new FakeSubtitleExtractionService(
+            _tempDirectory,
+            [
+                new EmbeddedSubtitle
+                {
+                    StreamIndex = 10,
+                    Language = "pol",
+                    Title = "Polish [Full]",
+                    CodecName = "subrip",
+                    IsTextBased = true
+                },
+                new EmbeddedSubtitle
+                {
+                    StreamIndex = 11,
+                    Language = null,
+                    Title = "pl (Lingarr)",
+                    CodecName = "subrip",
+                    IsTextBased = true
+                }
+            ]);
+        var controller = CreateController(extractionService: extractionService);
+
+        var actionResult = await controller.GetCompletedTranslationCompare(request.Id);
+        var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
+        var payload = Assert.IsType<CompletedTranslationCompareResponse>(okResult.Value);
+
+        Assert.Equal(11, extractionService.LastExtractedStreamIndex);
+        Assert.Equal("Extracted stream 11", payload.Lines[0].Translated);
+    }
+
+    [Fact]
     public async Task GetCompletedTranslationCompare_ResolvesMissingSourceSubtitleThroughSharedResolver()
     {
         var missingSourcePath = Path.Combine(_tempDirectory, "missing-source.en.srt");
@@ -248,14 +379,23 @@ public class TranslationCompareControllerTests : IDisposable
 
     private sealed class FakeSubtitleExtractionService : ISubtitleExtractionService
     {
-        public FakeSubtitleExtractionService(string tempDirectory) { }
+        private readonly List<EmbeddedSubtitle> _embeddedSubtitles;
+
+        public FakeSubtitleExtractionService(
+            string tempDirectory,
+            List<EmbeddedSubtitle>? embeddedSubtitles = null)
+        {
+            _embeddedSubtitles = embeddedSubtitles ?? [];
+        }
 
         public int ExtractCalls { get; private set; }
 
         public string? LastExtractedPath { get; private set; }
 
+        public int? LastExtractedStreamIndex { get; private set; }
+
         public Task<List<EmbeddedSubtitle>> ProbeEmbeddedSubtitles(string mediaFilePath)
-            => Task.FromResult(new List<EmbeddedSubtitle>());
+            => Task.FromResult(_embeddedSubtitles);
 
         public Task<List<AvailableSubtitleResponse>> ListAvailableSubtitlesAsync(
             int mediaId,
@@ -291,11 +431,12 @@ public class TranslationCompareControllerTests : IDisposable
             string codecName)
         {
             ExtractCalls++;
+            LastExtractedStreamIndex = streamIndex;
             var dir = Path.GetDirectoryName(outputPath);
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
             await File.WriteAllTextAsync(
                 outputPath,
-                "1\n00:00:01,000 --> 00:00:02,000\nRecovered source line\n");
+                $"1\n00:00:01,000 --> 00:00:02,000\nExtracted stream {streamIndex}\n");
             LastExtractedPath = outputPath;
             return outputPath;
         }

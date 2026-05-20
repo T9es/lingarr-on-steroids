@@ -9,6 +9,7 @@ using Lingarr.Server.Models.FileSystem;
 using Lingarr.Server.Services.Subtitle;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace Lingarr.Server.Controllers;
 
@@ -96,8 +97,9 @@ public class TranslationCompareController : ControllerBase
                 });
             }
 
-            var translatedSubtitlePath =
-                await ResolveTranslatedSubtitlePathAsync(request, cancellationToken);
+            var translatedSubtitle =
+                await ResolveTranslatedSubtitlePathAsync(request, originalSubtitle.Path, cancellationToken);
+            var translatedSubtitlePath = translatedSubtitle?.Path;
 
             if (string.IsNullOrWhiteSpace(translatedSubtitlePath))
             {
@@ -151,46 +153,73 @@ public class TranslationCompareController : ControllerBase
             _logger.LogError(ex, "Failed to build compare payload for translation request {RequestId}", requestId);
             return StatusCode(500, new { message = "Failed to load subtitle compare data." });
         }
-    finally
-    {
-        CleanupTemporarySubtitle(originalSubtitle);
-
-        if (!string.IsNullOrWhiteSpace(_tempTranslatedComparePath) &&
-            System.IO.File.Exists(_tempTranslatedComparePath))
+        finally
         {
-            try
+            CleanupTemporarySubtitle(originalSubtitle);
+
+            if (!string.IsNullOrWhiteSpace(_tempTranslatedComparePath) &&
+                System.IO.File.Exists(_tempTranslatedComparePath))
             {
-                System.IO.File.Delete(_tempTranslatedComparePath);
-                _tempTranslatedComparePath = null;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to delete temporary translated compare subtitle: {Path}", _tempTranslatedComparePath);
+                try
+                {
+                    System.IO.File.Delete(_tempTranslatedComparePath);
+                    _tempTranslatedComparePath = null;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(
+                        ex,
+                        "Failed to delete temporary translated compare subtitle: {Path}",
+                        _tempTranslatedComparePath);
+                }
             }
         }
     }
-    }
 
-    private async Task<string?> ResolveTranslatedSubtitlePathAsync(
-        Core.Entities.TranslationRequest request,
+    private async Task<ResolvedTranslatedSubtitlePath?> ResolveTranslatedSubtitlePathAsync(
+        TranslationRequest request,
+        string sourcePath,
         CancellationToken cancellationToken)
     {
         if (!string.IsNullOrWhiteSpace(request.TranslatedSubtitle) &&
+            !request.TranslatedSubtitle.StartsWith("mkv-embedded:", StringComparison.OrdinalIgnoreCase) &&
+            !IsSamePath(request.TranslatedSubtitle, sourcePath) &&
             System.IO.File.Exists(request.TranslatedSubtitle))
         {
-            return request.TranslatedSubtitle;
+            return new ResolvedTranslatedSubtitlePath(
+                request.TranslatedSubtitle,
+                request.TranslatedSubtitle);
         }
         // Check for mkv-embedded marker — the subtitle was embedded into the MKV
         // container rather than written as a standalone file
         if (request.TranslatedSubtitle?.StartsWith("mkv-embedded:", StringComparison.OrdinalIgnoreCase) == true)
         {
-            return await ExtractTranslatedSubtitleFromMkvAsync(
+            var extractedPath = await ExtractTranslatedSubtitleFromMkvAsync(
                 request.TranslatedSubtitle, request, cancellationToken);
+            return string.IsNullOrWhiteSpace(extractedPath)
+                ? null
+                : new ResolvedTranslatedSubtitlePath(
+                    extractedPath,
+                    request.TranslatedSubtitle);
         }
 
         if (string.IsNullOrWhiteSpace(request.SubtitleToTranslate))
         {
             return null;
+        }
+
+        foreach (var generatedPath in GetGeneratedSubtitlePaths(request))
+        {
+            var generated = await TryResolveTranslatedCandidateAsync(
+                generatedPath,
+                sourcePath,
+                request,
+                cancellationToken);
+            if (generated != null)
+            {
+                await PersistResolvedTranslatedPathAsync(request, generated.PersistentPath, cancellationToken);
+                return generated;
+            }
         }
 
         var settings = await _settingService.GetSettings([
@@ -215,7 +244,9 @@ public class TranslationCompareController : ControllerBase
 
         var candidatePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        if (!string.IsNullOrWhiteSpace(request.TranslatedSubtitle))
+        if (!string.IsNullOrWhiteSpace(request.TranslatedSubtitle) &&
+            !request.TranslatedSubtitle.StartsWith("mkv-embedded:", StringComparison.OrdinalIgnoreCase) &&
+            !IsSamePath(request.TranslatedSubtitle, sourcePath))
         {
             candidatePaths.Add(request.TranslatedSubtitle);
         }
@@ -244,7 +275,10 @@ public class TranslationCompareController : ControllerBase
                              tag,
                              shortTag))
                 {
-                    candidatePaths.Add(candidatePath);
+                    if (!IsSamePath(candidatePath, sourcePath))
+                    {
+                        candidatePaths.Add(candidatePath);
+                    }
                 }
             }
         }
@@ -255,14 +289,73 @@ public class TranslationCompareController : ControllerBase
             return null;
         }
 
-        if (!string.Equals(request.TranslatedSubtitle, resolvedPath, StringComparison.OrdinalIgnoreCase))
+        await PersistResolvedTranslatedPathAsync(request, resolvedPath, cancellationToken);
+
+        return new ResolvedTranslatedSubtitlePath(resolvedPath, resolvedPath);
+    }
+
+    private async Task<ResolvedTranslatedSubtitlePath?> TryResolveTranslatedCandidateAsync(
+        string? candidate,
+        string sourcePath,
+        TranslationRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(candidate))
         {
-            request.TranslatedSubtitle = resolvedPath;
-            await _dbContext.SaveChangesAsync(cancellationToken);
+            return null;
         }
 
-        return resolvedPath;
+        if (candidate.StartsWith("mkv-embedded:", StringComparison.OrdinalIgnoreCase))
+        {
+            var extractedPath = await ExtractTranslatedSubtitleFromMkvAsync(candidate, request, cancellationToken);
+            return string.IsNullOrWhiteSpace(extractedPath)
+                ? null
+                : new ResolvedTranslatedSubtitlePath(extractedPath, candidate);
+        }
+
+        if (IsSamePath(candidate, sourcePath) || !System.IO.File.Exists(candidate))
+        {
+            return null;
+        }
+
+        return new ResolvedTranslatedSubtitlePath(candidate, candidate);
     }
+
+    private async Task PersistResolvedTranslatedPathAsync(
+        TranslationRequest request,
+        string? persistentPath,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(persistentPath) ||
+            string.Equals(request.TranslatedSubtitle, persistentPath, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        request.TranslatedSubtitle = persistentPath;
+        await _dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private static List<string> GetGeneratedSubtitlePaths(TranslationRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.GeneratedSubtitlePaths))
+        {
+            return [];
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<string>>(request.GeneratedSubtitlePaths) ?? [];
+        }
+        catch
+        {
+            return request.GeneratedSubtitlePaths.Split(
+                    '|',
+                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList();
+        }
+    }
+
     /// <summary>
     /// Extracts a translated subtitle that was embedded in an MKV container to a temporary file.
     /// Used when the translated subtitle path is an mkv-embedded: marker rather than a real file path.
@@ -299,20 +392,15 @@ public class TranslationCompareController : ControllerBase
 
         var targetLanguage = SubtitleLanguageHelper.NormalizeLanguageCode(request.TargetLanguage);
 
-        // Priority 1: stream whose title contains "Lingarr" AND language matches target
-        var selected = embeddedSubtitles.FirstOrDefault(s =>
-            s.Title?.Contains("Lingarr", StringComparison.OrdinalIgnoreCase) == true &&
+        var lingarrSubtitles = embeddedSubtitles
+            .Where(s => s.IsTextBased &&
+                        s.Title?.Contains("Lingarr", StringComparison.OrdinalIgnoreCase) == true)
+            .ToList();
+
+        var selected = lingarrSubtitles.FirstOrDefault(s =>
             SubtitleLanguageHelper.LanguageMatches(s.Language, targetLanguage));
 
-        // Priority 2: any text-based stream whose language matches target
-        selected ??= embeddedSubtitles.FirstOrDefault(s =>
-            s.IsTextBased &&
-            SubtitleLanguageHelper.LanguageMatches(s.Language, targetLanguage));
-
-        // Priority 3: any text-based stream containing "Lingarr" in the title
-        selected ??= embeddedSubtitles.FirstOrDefault(s =>
-            s.IsTextBased &&
-            s.Title?.Contains("Lingarr", StringComparison.OrdinalIgnoreCase) == true);
+        selected ??= lingarrSubtitles.FirstOrDefault(HasMissingLanguage);
 
         if (selected == null)
         {
@@ -337,7 +425,7 @@ public class TranslationCompareController : ControllerBase
             mkvPath,
             selected.StreamIndex,
             outputPath,
-            selected.CodecName);
+            selected.CodecName ?? string.Empty);
 
         if (string.IsNullOrWhiteSpace(extractedPath) || !System.IO.File.Exists(extractedPath))
         {
@@ -503,7 +591,7 @@ public class TranslationCompareController : ControllerBase
         return string.Equals(left.Trim(), right.Trim(), StringComparison.OrdinalIgnoreCase);
     }
 
-private static string DetermineSubtitleType(EmbeddedSubtitle subtitle)
+    private static string DetermineSubtitleType(EmbeddedSubtitle subtitle)
     {
         var title = (subtitle.Title ?? string.Empty).ToLowerInvariant();
 
@@ -533,6 +621,17 @@ private static string DetermineSubtitleType(EmbeddedSubtitle subtitle)
         }
 
         return "Unknown";
+    }
+
+    private static bool HasMissingLanguage(EmbeddedSubtitle subtitle)
+    {
+        if (string.IsNullOrWhiteSpace(subtitle.Language))
+        {
+            return true;
+        }
+
+        return subtitle.Language.Equals("und", StringComparison.OrdinalIgnoreCase) ||
+               subtitle.Language.Equals("unknown", StringComparison.OrdinalIgnoreCase);
     }
 
     private void CleanupTemporarySubtitle(ResolvedSubtitlePath? subtitle)
@@ -623,5 +722,16 @@ private static string DetermineSubtitleType(EmbeddedSubtitle subtitle)
 
     private sealed record ResolvedSubtitlePath(string Path, bool CleanupAfterRead);
 
+    private sealed record ResolvedTranslatedSubtitlePath(string Path, string? PersistentPath);
+
     private sealed record SourceExtractionCandidate(string MediaPath, EmbeddedSubtitle Subtitle);
+
+    private static bool IsSamePath(string path, string? otherPath)
+    {
+        return !string.IsNullOrWhiteSpace(otherPath) &&
+               string.Equals(
+                   Path.GetFullPath(path),
+                   Path.GetFullPath(otherPath),
+                   StringComparison.OrdinalIgnoreCase);
+    }
 }

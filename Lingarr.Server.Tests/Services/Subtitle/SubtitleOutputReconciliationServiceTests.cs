@@ -112,6 +112,68 @@ public class SubtitleOutputReconciliationServiceTests
     }
 
     [Fact]
+    public async Task ReconcileLibraryOutputsAsync_QueuesCompletedRequestWhoseTranslatedPathIsSourcePath()
+    {
+        await using var context = BuildContext();
+        using var tempDirectory = new TemporaryDirectory();
+        var movie = AddMovie(context, tempDirectory.Path);
+        var sourcePath = Path.Combine(tempDirectory.Path, "movie.jpn.ass");
+        await File.WriteAllTextAsync(sourcePath, "source");
+        AddCompletedRequest(
+            context,
+            movie.Id,
+            ".ass",
+            ".ass",
+            sourcePath,
+            JsonSerializer.Serialize(new[] { sourcePath }),
+            sourcePath);
+        await context.SaveChangesAsync();
+
+        var service = BuildService(
+            context,
+            subtitleOutputMode: "match-source",
+            subtitles: [],
+            queuedTranslations: 1);
+
+        var result = await service.ReconcileLibraryOutputsAsync();
+
+        Assert.Equal(1, result.QueuedTranslations);
+        Assert.Equal(1, result.QueuedForRetranslation);
+    }
+
+    [Fact]
+    public async Task ReconcileLibraryOutputsAsync_DoesNotBackfillFromSourceAsTranslatedPath()
+    {
+        await using var context = BuildContext();
+        using var tempDirectory = new TemporaryDirectory();
+        var movie = AddMovie(context, tempDirectory.Path);
+        var sourcePath = Path.Combine(tempDirectory.Path, "movie.jpn.ass");
+        var generatedSrtPath = Path.Combine(tempDirectory.Path, "movie.pl.lingarr.srt");
+        await File.WriteAllTextAsync(sourcePath, BuildAssContent("Japanese source"));
+        AddCompletedRequest(
+            context,
+            movie.Id,
+            ".ass",
+            ".ass",
+            sourcePath,
+            JsonSerializer.Serialize(new[] { sourcePath }),
+            sourcePath);
+        await context.SaveChangesAsync();
+
+        var service = BuildServiceWithRealSubtitleService(
+            context,
+            subtitleOutputMode: "both",
+            queuedTranslations: 1);
+
+        var result = await service.ReconcileLibraryOutputsAsync();
+
+        Assert.Equal(0, result.BackfilledFiles);
+        Assert.False(File.Exists(generatedSrtPath));
+        Assert.Equal(1, result.QueuedTranslations);
+        Assert.Equal(1, result.QueuedForRetranslation);
+    }
+
+    [Fact]
     public async Task ReconcileMediaOutputsAsync_OnlyProcessesRequestedMovie()
     {
         await using var context = BuildContext();

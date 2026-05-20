@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using System.Text;
 using Lingarr.Server.Services.Subtitle;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -89,5 +91,36 @@ public class MkvEmbeddingServiceTests
         Assert.True(
             Encoding.UTF8.GetByteCount(Path.GetFileName(path)) <= 255,
             "Temporary merged MKV filename should stay within the ext4 filename byte limit.");
+    }
+
+    [Fact]
+    public void BuildMkvMergeArguments_AppliesLanguageAndTrackNameToAppendedSubtitleInput()
+    {
+        var method = typeof(MkvEmbeddingService).GetMethod(
+            "BuildMkvMergeArguments",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var arguments = Assert.IsType<string>(method!.Invoke(
+            null,
+            [
+                "/media/movie.mkv",
+                "/tmp/translated.ass",
+                "pol",
+                "pol (Lingarr)",
+                true,
+                "/media/out.mkv",
+                new List<int> { 10 }
+            ]));
+
+        var mkvInputIndex = arguments.IndexOf("\"/media/movie.mkv\"", StringComparison.Ordinal);
+        var subtitleInputIndex = arguments.IndexOf("\"/tmp/translated.ass\"", StringComparison.Ordinal);
+        var languageIndex = arguments.IndexOf("--language 0:pol", StringComparison.Ordinal);
+        var trackNameIndex = arguments.IndexOf("--track-name \"0:pol (Lingarr)\"", StringComparison.Ordinal);
+
+        Assert.True(mkvInputIndex >= 0);
+        Assert.True(subtitleInputIndex > mkvInputIndex);
+        Assert.True(languageIndex > mkvInputIndex && languageIndex < subtitleInputIndex);
+        Assert.True(trackNameIndex > mkvInputIndex && trackNameIndex < subtitleInputIndex);
     }
 }

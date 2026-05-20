@@ -169,6 +169,7 @@ public class MkvEmbeddingService : IMkvEmbeddingService
             }
         }
 
+        args.Append($" \"{mkvPath}\"");
         args.Append($" --language 0:{languageCode}");
 
         if (!string.IsNullOrEmpty(trackName))
@@ -181,7 +182,6 @@ public class MkvEmbeddingService : IMkvEmbeddingService
             args.Append(" --default-track-flag 0:no");
         }
 
-        args.Append($" \"{mkvPath}\"");
         args.Append($" \"{subtitlePath}\"");
 
         return args.ToString();

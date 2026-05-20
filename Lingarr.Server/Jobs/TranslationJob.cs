@@ -1018,6 +1018,7 @@ SettingKeys.Translation.BatchContextAfter,
                         outputFormat,
                         SubtitleLanguageHelper.GetSupplementalOutputCaption(
                             translationRequest.SourceSubtitleType)))
+                    .Where(path => !IsSamePath(path, translationRequest.SubtitleToTranslate))
                     .ToList();
 
 Exception? lastException = null;
@@ -1034,7 +1035,7 @@ Exception? lastException = null;
                             renderSubtitles,
                             outputFormat,
                             outputStripFormatting,
-                            targetLanguage,
+                            translationRequest.TargetLanguage,
                             cancellationToken);
 
                         if (embeddedPath != null)
@@ -1147,7 +1148,7 @@ Exception? lastException = null;
                         renderSubtitles,
                         outputFormat,
                         outputStripFormatting,
-                        targetLanguage,
+                        translationRequest.TargetLanguage,
                         cancellationToken);
 
                     if (embeddedPath != null)
