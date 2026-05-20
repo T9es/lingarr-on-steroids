@@ -24,6 +24,7 @@ public class TranslationCompareController : ControllerBase
     private readonly ISourceSubtitleResolver _sourceSubtitleResolver;
     private readonly ISubtitleService _subtitleService;
     private readonly ILogger<TranslationCompareController> _logger;
+    private string? _tempTranslatedComparePath;
 
     public TranslationCompareController(
         LingarrDbContext dbContext,
@@ -150,10 +151,24 @@ public class TranslationCompareController : ControllerBase
             _logger.LogError(ex, "Failed to build compare payload for translation request {RequestId}", requestId);
             return StatusCode(500, new { message = "Failed to load subtitle compare data." });
         }
-        finally
+    finally
+    {
+        CleanupTemporarySubtitle(originalSubtitle);
+
+        if (!string.IsNullOrWhiteSpace(_tempTranslatedComparePath) &&
+            System.IO.File.Exists(_tempTranslatedComparePath))
         {
-            CleanupTemporarySubtitle(originalSubtitle);
+            try
+            {
+                System.IO.File.Delete(_tempTranslatedComparePath);
+                _tempTranslatedComparePath = null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to delete temporary translated compare subtitle: {Path}", _tempTranslatedComparePath);
+            }
         }
+    }
     }
 
     private async Task<string?> ResolveTranslatedSubtitlePathAsync(
@@ -164,6 +179,13 @@ public class TranslationCompareController : ControllerBase
             System.IO.File.Exists(request.TranslatedSubtitle))
         {
             return request.TranslatedSubtitle;
+        }
+        // Check for mkv-embedded marker — the subtitle was embedded into the MKV
+        // container rather than written as a standalone file
+        if (request.TranslatedSubtitle?.StartsWith("mkv-embedded:", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            return await ExtractTranslatedSubtitleFromMkvAsync(
+                request.TranslatedSubtitle, request, cancellationToken);
         }
 
         if (string.IsNullOrWhiteSpace(request.SubtitleToTranslate))
@@ -241,6 +263,92 @@ public class TranslationCompareController : ControllerBase
 
         return resolvedPath;
     }
+    /// <summary>
+    /// Extracts a translated subtitle that was embedded in an MKV container to a temporary file.
+    /// Used when the translated subtitle path is an mkv-embedded: marker rather than a real file path.
+    /// </summary>
+    private async Task<string?> ExtractTranslatedSubtitleFromMkvAsync(
+        string translatedSubtitle,
+        TranslationRequest request,
+        CancellationToken cancellationToken)
+    {
+        // Parse "mkv-embedded:streamN|MKV_PATH" to extract the MKV file path
+        var pipeIndex = translatedSubtitle.IndexOf('|', StringComparison.Ordinal);
+        if (pipeIndex < 0 || pipeIndex >= translatedSubtitle.Length - 1)
+        {
+            return null;
+        }
+
+        var mkvPath = translatedSubtitle[(pipeIndex + 1)..];
+        if (!System.IO.File.Exists(mkvPath))
+        {
+            _logger.LogWarning(
+                "MKV file for embedded translated subtitle not found: {MkvPath}", mkvPath);
+            return null;
+        }
+
+        // Probe to find the Lingarr track (don't rely on the stream index in the marker —
+        // the actual FFprobe stream index may differ due to other embedded subtitle tracks)
+        var embeddedSubtitles = await _extractionService.ProbeEmbeddedSubtitles(mkvPath);
+        if (embeddedSubtitles.Count == 0)
+        {
+            _logger.LogWarning(
+                "No embedded subtitles found in MKV: {MkvPath}", mkvPath);
+            return null;
+        }
+
+        var targetLanguage = SubtitleLanguageHelper.NormalizeLanguageCode(request.TargetLanguage);
+
+        // Priority 1: stream whose title contains "Lingarr" AND language matches target
+        var selected = embeddedSubtitles.FirstOrDefault(s =>
+            s.Title?.Contains("Lingarr", StringComparison.OrdinalIgnoreCase) == true &&
+            SubtitleLanguageHelper.LanguageMatches(s.Language, targetLanguage));
+
+        // Priority 2: any text-based stream whose language matches target
+        selected ??= embeddedSubtitles.FirstOrDefault(s =>
+            s.IsTextBased &&
+            SubtitleLanguageHelper.LanguageMatches(s.Language, targetLanguage));
+
+        // Priority 3: any text-based stream containing "Lingarr" in the title
+        selected ??= embeddedSubtitles.FirstOrDefault(s =>
+            s.IsTextBased &&
+            s.Title?.Contains("Lingarr", StringComparison.OrdinalIgnoreCase) == true);
+
+        if (selected == null)
+        {
+            _logger.LogWarning(
+                "No matching Lingarr translated subtitle stream found in MKV: {MkvPath} (target language: {TargetLanguage})",
+                mkvPath,
+                request.TargetLanguage);
+            return null;
+        }
+
+        // Extract to a temporary directory for compare
+        var tempDir = Path.Combine(Path.GetTempPath(), "lingarr_translated_compare");
+        var extractedPath = await _extractionService.ExtractSubtitle(
+            mkvPath,
+            selected.StreamIndex,
+            tempDir,
+            selected.CodecName,
+            targetLanguage);
+
+        if (string.IsNullOrWhiteSpace(extractedPath) || !System.IO.File.Exists(extractedPath))
+        {
+            _logger.LogWarning(
+                "Failed to extract translated subtitle from MKV: {MkvPath} (stream {StreamIndex})",
+                mkvPath,
+                selected.StreamIndex);
+            return null;
+        }
+
+        _tempTranslatedComparePath = extractedPath;
+        _logger.LogInformation(
+            "Extracted embedded translated subtitle for compare: {Path} (stream {StreamIndex})",
+            extractedPath,
+            selected.StreamIndex);
+        return extractedPath;
+    }
+
 
     private async Task<ResolvedSubtitlePath?> ResolveSourceSubtitlePathAsync(
         TranslationRequest request,
