@@ -284,6 +284,22 @@ public class TranslationCompareControllerTests : IDisposable
             return extractedPath;
         }
 
+        public async Task<string?> ExtractSubtitleToFile(
+            string mediaFilePath,
+            int streamIndex,
+            string outputPath,
+            string codecName)
+        {
+            ExtractCalls++;
+            var dir = Path.GetDirectoryName(outputPath);
+            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+            await File.WriteAllTextAsync(
+                outputPath,
+                "1\n00:00:01,000 --> 00:00:02,000\nRecovered source line\n");
+            LastExtractedPath = outputPath;
+            return outputPath;
+        }
+
         public Task SyncEmbeddedSubtitles(Episode episode) => Task.CompletedTask;
 
         public Task<string?> TryExtractEmbeddedSubtitle(

@@ -244,7 +244,8 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             useInternalCache: true);
     }
 
-    private async Task<string?> ExtractSubtitleToPathInternalAsync(
+    /// <inheritdoc />
+    public async Task<string?> ExtractSubtitleToFile(
         string mediaFilePath,
         int streamIndex,
         string outputPath,
@@ -334,6 +335,14 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 streamIndex, mediaFilePath);
             return null;
         }
+    }
+    private async Task<string?> ExtractSubtitleToPathInternalAsync(
+        string mediaFilePath,
+        int streamIndex,
+        string outputPath,
+        string codecName)
+    {
+        return await ExtractSubtitleToFile(mediaFilePath, streamIndex, outputPath, codecName);
     }
 
     /// <inheritdoc />

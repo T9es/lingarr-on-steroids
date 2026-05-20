@@ -323,14 +323,21 @@ public class TranslationCompareController : ControllerBase
             return null;
         }
 
-        // Extract to a temporary directory for compare
+        // Extract to a temporary directory for compare using a short filename
+        // to avoid "File name too long" errors when MKV filenames approach the 255-char limit
         var tempDir = Path.Combine(Path.GetTempPath(), "lingarr_translated_compare");
-        var extractedPath = await _extractionService.ExtractSubtitle(
+        var extension = selected.CodecName?.ToLowerInvariant() switch
+        {
+            "ass" or "ssa" => ".ass",
+            "webvtt" or "vtt" => ".vtt",
+            _ => ".srt"
+        };
+        var outputPath = Path.Combine(tempDir, $"lingarr_compare_{request.Id}_{selected.StreamIndex}{extension}");
+        var extractedPath = await _extractionService.ExtractSubtitleToFile(
             mkvPath,
             selected.StreamIndex,
-            tempDir,
-            selected.CodecName,
-            targetLanguage);
+            outputPath,
+            selected.CodecName);
 
         if (string.IsNullOrWhiteSpace(extractedPath) || !System.IO.File.Exists(extractedPath))
         {
