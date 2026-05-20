@@ -177,6 +177,7 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<ISourceSubtitleResolver, SourceSubtitleResolver>();
         builder.Services.AddScoped<IOrphanSubtitleCleanupService, OrphanSubtitleCleanupService>();
         builder.Services.AddScoped<ISubtitleOutputBackfillService, SubtitleOutputBackfillService>();
+        builder.Services.AddScoped<ITranslationSubtitleRepairService, TranslationSubtitleRepairService>();
         builder.Services.AddScoped<ISubtitleOutputReconciliationService, SubtitleOutputReconciliationService>();
         builder.Services.AddScoped<IMkvEmbeddingService, MkvEmbeddingService>();
         builder.Services.AddSingleton<ITranslationQualityScorer, TranslationQualityScorer>();

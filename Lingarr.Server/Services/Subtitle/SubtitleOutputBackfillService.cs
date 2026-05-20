@@ -388,10 +388,13 @@ public class SubtitleOutputBackfillService : ISubtitleOutputBackfillService
             MarkRequiresRetranslation(result);
             return;
         }
+        var basePathForOutput = sourceResolution.SourceKind == BackfillSourceKind.Embedded
+            ? Path.Combine(media.Path ?? string.Empty, media.FileName ?? string.Empty)
+            : sourceResolution.Path;
 
         if (!TrySelectWritableOutputPath(
                 request,
-                sourceResolution.Path,
+                basePathForOutput,
                 sourceFormat,
                 subtitleTag,
                 subtitleTagShort,
@@ -474,9 +477,6 @@ public class SubtitleOutputBackfillService : ISubtitleOutputBackfillService
         {
             return null;
         }
-
-        request.SubtitleToTranslate = resolvedPath;
-        request.SourceSubtitleFormat = SubtitleOutputModeHelper.NormalizeFormat(Path.GetExtension(resolvedPath));
         _logger.LogInformation(
             "Resolved embedded source subtitle for local output backfill of request {RequestId}: {Path}",
             request.Id,
@@ -1006,7 +1006,7 @@ public class SubtitleOutputBackfillService : ISubtitleOutputBackfillService
 
         request.GeneratedSubtitlePaths = JsonSerializer.Serialize(paths);
         request.GeneratedOutputFormats = SubtitleOutputModeHelper.SerializeFormats(formats);
-        if (preferAsPrimary)
+        if (preferAsPrimary && string.IsNullOrWhiteSpace(request.TranslatedSubtitle))
         {
             request.TranslatedSubtitle = outputPath;
         }
