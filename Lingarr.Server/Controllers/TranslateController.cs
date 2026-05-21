@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Enum;
@@ -297,6 +297,75 @@ public class TranslateController : ControllerBase
             return StatusCode(500, new TranslateMediaResponse { Message = "Failed to queue translations" });
         }
     }
+    /// <summary>
+    /// Batch-queues translation jobs for multiple media items.
+    /// Iterates items and queues new translations where none exist.
+    /// </summary>
+    /// <param name="request">The batch request containing media items to process.</param>
+    /// <returns>Aggregate counts of queued translations vs total requested.</returns>
+    [HttpPost("media/batch")]
+    public async Task<ActionResult<TranslateMediaBatchResponse>> TranslateMediaBatch(
+        [FromBody] TranslateMediaBatchRequest request)
+    {
+        var translationsQueued = 0;
+        var totalRequested = 0;
+        var seen = new HashSet<string>();
+
+        foreach (var item in request.Items)
+        {
+            var key = $"{item.MediaType}:{item.MediaId}";
+            if (!seen.Add(key))
+            {
+                continue; // deduplicate
+            }
+            totalRequested++;
+
+            try
+            {
+                switch (item.MediaType)
+                {
+                    case MediaType.Movie:
+                        var movie = await _dbContext.Movies.FindAsync(item.MediaId);
+                        if (movie != null)
+                        {
+                            translationsQueued += await _mediaSubtitleProcessor.ProcessMediaForceAsync(
+                                movie,
+                                MediaType.Movie,
+                                forceProcess: true,
+                                forceTranslation: false,
+                                forcePriority: true);
+                        }
+                        break;
+
+                    case MediaType.Episode:
+                        var episode = await _dbContext.Episodes.FindAsync(item.MediaId);
+                        if (episode != null)
+                        {
+                            translationsQueued += await _mediaSubtitleProcessor.ProcessMediaForceAsync(
+                                episode,
+                                MediaType.Episode,
+                                forceProcess: true,
+                                forceTranslation: false,
+                                forcePriority: true);
+                        }
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Error processing batch item {MediaType}/{MediaId}",
+                    item.MediaType, item.MediaId);
+            }
+        }
+
+        return Ok(new TranslateMediaBatchResponse
+        {
+            TranslationsQueued = translationsQueued,
+            TotalRequested = totalRequested
+        });
+    }
+
 
     /// <summary>
     /// Queues translation jobs using a specific embedded subtitle stream.

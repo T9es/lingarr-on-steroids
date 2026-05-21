@@ -1,4 +1,4 @@
-﻿using DeepL;
+using DeepL;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Models;
@@ -242,4 +242,14 @@ public interface ITranslationRequestService
     Task<(List<TranslationRequest> Requests, int TotalCount)> GetRecentCompletedRequests(
         int offset = 0,
         int limit = 10);
+    /// <summary>
+    /// Checks if a non-supplemental translation request already exists for the given media/language pair,
+    /// regardless of its status (including completed requests).
+    /// </summary>
+    /// <param name="mediaId">The media item ID</param>
+    /// <param name="mediaType">The media type (Movie/Episode)</param>
+    /// <param name="sourceLanguage">Source language code</param>
+    /// <param name="targetLanguage">Target language code</param>
+    /// <returns>True if a non-supplemental request already exists</returns>
+    Task<bool> HasExistingNonSupplementalRequestAsync(int mediaId, MediaType mediaType, string sourceLanguage, string targetLanguage);
 }
