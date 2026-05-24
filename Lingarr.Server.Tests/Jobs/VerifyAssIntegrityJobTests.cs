@@ -97,7 +97,6 @@ public class VerifyAssIntegrityJobTests
             backfillService,
             Mock.Of<ISourceSubtitleResolver>(),
             Mock.Of<ITranslationSubtitleRepairService>(),
-
             NullLogger<VerifyAssIntegrityJob>.Instance);
 
         await job.Execute();
