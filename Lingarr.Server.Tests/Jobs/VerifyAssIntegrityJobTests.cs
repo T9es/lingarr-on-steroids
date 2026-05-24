@@ -96,6 +96,7 @@ public class VerifyAssIntegrityJobTests
             Mock.Of<IHubContext<JobProgressHub>>(),
             backfillService,
             Mock.Of<ISourceSubtitleResolver>(),
+            Mock.Of<ITranslationSubtitleRepairService>(),
             NullLogger<VerifyAssIntegrityJob>.Instance);
 
         await job.Execute();
