@@ -250,6 +250,20 @@ public class TranslationRequestService : ITranslationRequestService
 
         return translationRequestCopy.Id;
     }
+    /// <inheritdoc />
+    public async Task<bool> HasExistingNonSupplementalRequestAsync(int mediaId, MediaType mediaType, string sourceLanguage, string targetLanguage)
+    {
+        var workloadItemKey = $"library:{mediaType}:{mediaId}";
+        return await _dbContext.TranslationRequests
+            .AnyAsync(tr =>
+                tr.WorkloadItemKey == workloadItemKey &&
+                tr.SourceLanguage == sourceLanguage &&
+                tr.TargetLanguage == targetLanguage &&
+                tr.SourceDedupeKey == "primary" &&
+                tr.SourceSubtitleType != SubtitleLanguageHelper.TypeForced &&
+                tr.SourceSubtitleType != SubtitleLanguageHelper.TypeSignsSongs);
+    }
+
     
     /// <inheritdoc />
     public async Task<int> GetActiveCount()

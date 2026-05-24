@@ -145,10 +145,13 @@
                             <div class="flex items-center justify-between gap-3">
                                 <h4 class="font-semibold">Detected Subtitle Findings</h4>
                                 <button
-                                    class="bg-accent hover:bg-accent/80 text-primary-content rounded px-4 py-2 text-sm font-semibold"
+                                    class="bg-accent hover:bg-accent/80 text-primary-content rounded px-4 py-2 text-sm font-semibold disabled:opacity-50"
+                                    :disabled="isRequeueing"
                                     @click="requeueAllIntegrityFindings">
-                                    Queue All Repairs
+                                    <span v-if="isRequeueing" class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                                    <span v-else>Queue All Repairs</span>
                                 </button>
+
                             </div>
                             <div class="bg-secondary/30 max-h-96 w-full overflow-y-auto rounded">
                                 <div
@@ -840,6 +843,8 @@ const stats = reactive<BulkIntegrityStats>({
 })
 const expandedIntegrityFindings = ref<string[]>([])
 const bulkStatusPoll = ref<number | null>(null)
+const isRequeueing = ref(false)
+
 
 interface SubtitleQualityAuditFinding {
     id: string
@@ -1282,9 +1287,28 @@ const requeueIntegrityFinding = async (item: SubtitleIntegrityFinding) => {
 }
 
 const requeueAllIntegrityFindings = async () => {
-    const itemsToRequeue = visibleIntegrityFindings.value.filter((item) => !item.isQueued)
-    for (const item of itemsToRequeue) {
-        await requeueIntegrityFinding(item)
+    const itemsToRequeue = visibleIntegrityFindings.value
+    if (itemsToRequeue.length === 0) return
+
+    isRequeueing.value = true
+    try {
+        // Build unique media items for batch request
+        const seen = new Set<string>()
+        const items = itemsToRequeue
+            .filter(i => seen.has(`${i.mediaType}:${i.mediaId}`) ? false : seen.add(`${i.mediaType}:${i.mediaId}`))
+            .map(i => ({ mediaId: i.mediaId, mediaType: i.mediaType }))
+
+        const response = await axios.post('/api/translate/media/batch', { items })
+        const data = response.data
+
+        if (data.translationsQueued > 0) {
+            itemsToRequeue.forEach(item => { item.isQueued = true })
+            await persistBulkIntegrityResult()
+        }
+    } catch (error) {
+        console.error('Failed to requeue integrity findings:', error)
+    } finally {
+        isRequeueing.value = false
     }
 }
 

@@ -1,4 +1,4 @@
-﻿using System.Security.Cryptography;
+using System.Security.Cryptography;
 using Hangfire;
 using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
@@ -906,6 +906,18 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                         MarkIntegrityFindingQueued(integrityFindings, media, mediaType, targetLanguage);
                         continue;
                     }
+                    if (!forcePriority &&
+                        await _translationRequestService.HasExistingNonSupplementalRequestAsync(
+                            media.Id, mediaType, sourceLanguage, targetLanguage))
+                    {
+                        _logger.LogInformation(
+                            "Skipping enqueue for {FileName} {Source}->{Target}: completed translation request already exists and forcePriority is not set.",
+                            media.FileName, sourceLanguage, targetLanguage);
+                        MarkIntegrityFindingQueued(integrityFindings, media, mediaType, targetLanguage);
+                        continue;
+                    }
+
+
 
                     await _translationRequestService.CreateRequest(new TranslateAbleSubtitle
                     {
@@ -1520,6 +1532,18 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                     MarkIntegrityFindingQueued(integrityFindings, media, mediaType, targetLanguage);
                     continue;
                 }
+                if (!forcePriority &&
+                    await _translationRequestService.HasExistingNonSupplementalRequestAsync(
+                        media.Id, mediaType, selectedSourceLanguage, targetLanguage))
+                {
+                    _logger.LogInformation(
+                        "Skipping embedded enqueue for {FileName} {Source}->{Target}: completed translation request already exists and forcePriority is not set.",
+                        media.FileName, selectedSourceLanguage, targetLanguage);
+                    MarkIntegrityFindingQueued(integrityFindings, media, mediaType, targetLanguage);
+                    continue;
+                }
+
+
 
                 await _translationRequestService.CreateRequest(new TranslateAbleSubtitle
                 {
