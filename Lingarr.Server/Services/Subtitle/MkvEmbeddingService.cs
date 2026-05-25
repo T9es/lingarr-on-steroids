@@ -148,7 +148,7 @@ public class MkvEmbeddingService : IMkvEmbeddingService
         }
     }
 
-    private static string BuildMkvMergeArguments(
+    internal static List<string> BuildMkvMergeArguments(
         string mkvPath,
         string subtitlePath,
         string languageCode,
@@ -157,41 +157,45 @@ public class MkvEmbeddingService : IMkvEmbeddingService
         string tempOutputPath,
         List<int> excludeTrackIds)
     {
-        var args = new StringBuilder();
-        args.Append($"-o \"{tempOutputPath}\"");
+        var args = new List<string>();
+        args.Add("-o");
+        args.Add(tempOutputPath);
 
         if (excludeTrackIds.Count > 0)
         {
-            args.Append(" --subtitle-tracks");
+            args.Add("--subtitle-tracks");
             foreach (var id in excludeTrackIds)
             {
-                args.Append($" !{id}");
+                args.Add($"!{id}");
             }
         }
 
-        args.Append($" \"{mkvPath}\"");
-        args.Append($" --language 0:{languageCode}");
+        args.Add(mkvPath);
+        args.Add("--language");
+        args.Add($"0:{languageCode}");
 
         if (!string.IsNullOrEmpty(trackName))
         {
-            args.Append($" --track-name \"0:{trackName}\"");
+            args.Add("--track-name");
+            args.Add($"0:{trackName}");
         }
 
         if (isAss)
         {
-            args.Append(" --default-track-flag 0:no");
+            args.Add("--default-track-flag");
+            args.Add("0:no");
         }
 
-        args.Append($" \"{subtitlePath}\"");
+        args.Add(subtitlePath);
 
-        return args.ToString();
+        return args;
     }
 
     private async Task<List<int>> GetExistingLanguageTrackIds(string mkvPath, string languageCode)
     {
         try
         {
-            var result = await RunProcessAsync(MkvMergeBinary, $"-i \"{mkvPath}\"", CancellationToken.None);
+            var result = await RunProcessAsync(MkvMergeBinary, new List<string> { "-i", mkvPath }, CancellationToken.None);
             var tracks = new List<int>();
             foreach (var line in result.Output.Split('\n'))
             {
@@ -212,7 +216,6 @@ public class MkvEmbeddingService : IMkvEmbeddingService
             return new List<int>();
         }
     }
-
     private async Task<MkvEmbedResult> SwapWithOriginalAsync(
         string originalPath,
         string tempPath,
@@ -261,7 +264,7 @@ public class MkvEmbeddingService : IMkvEmbeddingService
         {
             var result = await RunProcessAsync(
                 MkvPropEditBinary,
-                $"\"{mkvPath}\" --dry-run",
+                new List<string> { mkvPath, "--dry-run" },
                 ct);
 
             if (result.ExitCode == 0)
@@ -285,22 +288,27 @@ public class MkvEmbeddingService : IMkvEmbeddingService
 
     private async Task<(int ExitCode, string Output)> RunProcessAsync(
         string fileName,
-        string arguments,
+        List<string> argumentList,
         CancellationToken ct)
     {
         using var process = new Process();
         process.StartInfo = new ProcessStartInfo
         {
             FileName = fileName,
-            Arguments = arguments,
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             CreateNoWindow = true
         };
 
+        process.StartInfo.ArgumentList.Clear();
+        foreach (var arg in argumentList)
+        {
+            process.StartInfo.ArgumentList.Add(arg);
+        }
+
         process.Start();
-        _logger.LogDebug("Started process: {FileName} {Arguments}", fileName, TruncateOutput(arguments, 200));
+        _logger.LogDebug("Started process: {FileName} with {Count} arguments", fileName, argumentList.Count);
 
         var outputBuilder = new StringBuilder();
         var errorBuilder = new StringBuilder();
@@ -320,7 +328,6 @@ public class MkvEmbeddingService : IMkvEmbeddingService
 
         return (process.ExitCode, combinedOutput);
     }
-
     private void CleanupTempFile(string tempPath)
     {
         try

@@ -1028,115 +1028,116 @@ Exception? lastException = null;
 
                 if (embedInContainer || anyPathExceedsLimit)
                 {
-                    if (anyPathExceedsLimit)
-                    {
-                        var embeddedPath = await TryEmbedInMkvContainerAsync(
-                            translationRequest,
-                            renderSubtitles,
-                            outputFormat,
-                            outputStripFormatting,
-                            translationRequest.TargetLanguage,
-                            cancellationToken);
+                    var embeddedPath = await TryEmbedInMkvContainerAsync(
+                        translationRequest,
+                        renderSubtitles,
+                        outputFormat,
+                        outputStripFormatting,
+                        translationRequest.TargetLanguage,
+                        cancellationToken);
 
-                        if (embeddedPath != null)
-                        {
-                            success = true;
-                            allPathsTooLong = false;
-                            writtenOutputs.Add((outputFormat, embeddedPath));
-                        }
-                        else
-                        {
-                            lastException = new PathTooLongException(
-                                $"All output file paths exceed filesystem limits for format {outputFormat}, " +
-                                "and MKV embedding was not possible.");
-                            _logger.LogWarning(
-                                "Path exceeds filesystem limit and MKV embedding failed for format {Format} on request {RequestId}. Falling back to path write attempts.",
-                                outputFormat,
-                                translationRequest.Id);
-                        }
+                    if (embeddedPath != null)
+                    {
+                        success = true;
+                        allPathsTooLong = false;
+                        writtenOutputs.Add((outputFormat, embeddedPath));
+                    }
+                    else
+                    {
+                        lastException = new PathTooLongException(
+                            $"All output file paths exceed filesystem limits for format {outputFormat}, " +
+                            "and MKV embedding was not possible.");
+
+                        _logger.LogWarning(
+                            "Path exceeds filesystem limit and MKV embedding failed for format {Format} on request {RequestId}. Falling back to path write attempts.",
+                            outputFormat,
+                            translationRequest.Id);
                     }
                 }
 
                 if (!success)
                 {
-                    foreach (var path in paths)
+                    if (!anyPathExceedsLimit)
                     {
-                        try
+                        foreach (var path in paths)
                         {
-                            var stagingPath = _translationDiagnosticsService.CreateQuarantinePath(
-                                translationRequest.Id,
-                                path);
-
-                            EnsureParentDirectory(stagingPath);
-                            await _subtitleService.WriteSubtitles(
-                                stagingPath,
-                                renderSubtitles,
-                                outputStripFormatting);
-
-                            var validationResult = await _subtitleQualityValidatorService.ValidateAsync(
-                                new SubtitleQualityValidationRequest
-                                {
-                                    SourcePath = translationRequest.SubtitleToTranslate!,
-                                    TargetPath = stagingPath,
-                                    SourceLanguage = translationRequest.SourceLanguage,
-                                    TargetLanguage = translationRequest.TargetLanguage,
-                                    OutputFormat = outputFormat
-                                },
-                                cancellationToken);
-
-                            if (!validationResult.IsValid)
+                            try
                             {
-                                await RecordOutputValidationFailureAsync(
-                                    translationRequest,
-                                    path,
+                                var stagingPath = _translationDiagnosticsService.CreateQuarantinePath(
+                                    translationRequest.Id,
+                                    path);
+
+                                EnsureParentDirectory(stagingPath);
+                                await _subtitleService.WriteSubtitles(
                                     stagingPath,
-                                    outputFormat,
-                                    validationResult,
+                                    renderSubtitles,
+                                    outputStripFormatting);
+
+                                var validationResult = await _subtitleQualityValidatorService.ValidateAsync(
+                                    new SubtitleQualityValidationRequest
+                                    {
+                                        SourcePath = translationRequest.SubtitleToTranslate!,
+                                        TargetPath = stagingPath,
+                                        SourceLanguage = translationRequest.SourceLanguage,
+                                        TargetLanguage = translationRequest.TargetLanguage,
+                                        OutputFormat = outputFormat
+                                    },
                                     cancellationToken);
 
-                                var qualityGateSetting = await _settings.GetSetting(SettingKeys.Translation.EnablePostTranslationQualityGate);
-                                var qualityGateEnabled = string.Equals(qualityGateSetting, "true", StringComparison.OrdinalIgnoreCase);
-
-                                if (qualityGateEnabled)
+                                if (!validationResult.IsValid)
                                 {
-                                    throw new TranslationException(
-                                        $"Generated subtitle failed quality validation before publishing: {validationResult.Summary}");
+                                    await RecordOutputValidationFailureAsync(
+                                        translationRequest,
+                                        path,
+                                        stagingPath,
+                                        outputFormat,
+                                        validationResult,
+                                        cancellationToken);
+
+                                    var qualityGateSetting = await _settings.GetSetting(SettingKeys.Translation.EnablePostTranslationQualityGate);
+                                    var qualityGateEnabled = string.Equals(qualityGateSetting, "true", StringComparison.OrdinalIgnoreCase);
+
+                                    if (qualityGateEnabled)
+                                    {
+                                        throw new TranslationException(
+                                            $"Generated subtitle failed quality validation before publishing: {validationResult.Summary}");
+                                    }
+
+                                    _logger.LogWarning(
+                                        "Post-translation quality gate is disabled. Publishing subtitle despite validation failure: {Summary}",
+                                        validationResult.Summary);
                                 }
 
-                                _logger.LogWarning(
-                                    "Post-translation quality gate is disabled. Publishing subtitle despite validation failure: {Summary}",
-                                    validationResult.Summary);
+                                EnsureParentDirectory(path);
+                                File.Copy(stagingPath, path, true);
+                                File.Delete(stagingPath);
+                                DeleteStaleTaggedFallbackSiblings(
+                                    paths,
+                                    path,
+                                    translationRequest.SubtitleToTranslate,
+                                    subtitleTag,
+                                    subtitleTagShort);
+
+                                success = true;
+                                allPathsTooLong = false;
+                                writtenOutputs.Add((outputFormat, path));
+                                break;
                             }
-
-                            EnsureParentDirectory(path);
-                            File.Copy(stagingPath, path, true);
-                            File.Delete(stagingPath);
-                            DeleteStaleTaggedFallbackSiblings(
-                                paths,
-                                path,
-                                translationRequest.SubtitleToTranslate,
-                                subtitleTag,
-                                subtitleTagShort);
-
-                            success = true;
-                            allPathsTooLong = false;
-                            writtenOutputs.Add((outputFormat, path));
-                            break;
-                        }
-                        catch (TranslationException)
-                        {
-                            throw;
-                        }
-                        catch (PathTooLongException ex)
-                        {
-                            _logger.LogWarning("Path too long: {Path}. Trying fallback...", path);
-                            lastException = ex;
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogWarning(ex, "Failed to write subtitle to {Path}. Trying fallback...", path);
-                            lastException = ex;
-                            allPathsTooLong = false;
+                            catch (TranslationException)
+                            {
+                                throw;
+                            }
+                            catch (PathTooLongException ex)
+                            {
+                                _logger.LogWarning("Path too long: {Path}. Trying fallback...", path);
+                                lastException = ex;
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning(ex, "Failed to write subtitle to {Path}. Trying fallback...", path);
+                                lastException = ex;
+                                allPathsTooLong = false;
+                            }
                         }
                     }
                 }

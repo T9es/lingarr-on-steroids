@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Reflection;
 using System.Text;
 using Lingarr.Server.Services.Subtitle;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -96,31 +95,31 @@ public class MkvEmbeddingServiceTests
     [Fact]
     public void BuildMkvMergeArguments_AppliesLanguageAndTrackNameToAppendedSubtitleInput()
     {
-        var method = typeof(MkvEmbeddingService).GetMethod(
-            "BuildMkvMergeArguments",
-            BindingFlags.NonPublic | BindingFlags.Static);
-        Assert.NotNull(method);
+        var args = MkvEmbeddingService.BuildMkvMergeArguments(
+            "/media/movie.mkv",
+            "/tmp/translated.ass",
+            "pol",
+            "pol (Lingarr)",
+            true,
+            "/media/out.mkv",
+            new List<int> { 10 });
 
-        var arguments = Assert.IsType<string>(method!.Invoke(
-            null,
-            [
-                "/media/movie.mkv",
-                "/tmp/translated.ass",
-                "pol",
-                "pol (Lingarr)",
-                true,
-                "/media/out.mkv",
-                new List<int> { 10 }
-            ]));
+        var argsString = string.Join(" ", args);
+        Assert.Contains("/media/movie.mkv", argsString);
+        Assert.Contains("/tmp/translated.ass", argsString);
+        Assert.Contains("--language 0:pol", argsString);
+        Assert.Contains("--track-name 0:pol (Lingarr)", argsString);
 
-        var mkvInputIndex = arguments.IndexOf("\"/media/movie.mkv\"", StringComparison.Ordinal);
-        var subtitleInputIndex = arguments.IndexOf("\"/tmp/translated.ass\"", StringComparison.Ordinal);
-        var languageIndex = arguments.IndexOf("--language 0:pol", StringComparison.Ordinal);
-        var trackNameIndex = arguments.IndexOf("--track-name \"0:pol (Lingarr)\"", StringComparison.Ordinal);
+        var mkvIndex = args.IndexOf("/media/movie.mkv");
+        var subtitleIndex = args.IndexOf("/tmp/translated.ass");
+        var languageIndex = args.IndexOf("--language");
+        var trackNameIndex = args.IndexOf("--track-name");
 
-        Assert.True(mkvInputIndex >= 0);
-        Assert.True(subtitleInputIndex > mkvInputIndex);
-        Assert.True(languageIndex > mkvInputIndex && languageIndex < subtitleInputIndex);
-        Assert.True(trackNameIndex > mkvInputIndex && trackNameIndex < subtitleInputIndex);
+        Assert.True(mkvIndex >= 0, "MKV path should be present");
+        Assert.True(subtitleIndex > mkvIndex, "Subtitle path should come after MKV path");
+        Assert.True(languageIndex > mkvIndex && languageIndex < subtitleIndex,
+            "Language flag should be between MKV and subtitle");
+        Assert.True(trackNameIndex > mkvIndex && trackNameIndex < subtitleIndex,
+            "Track name flag should be between MKV and subtitle");
     }
 }
