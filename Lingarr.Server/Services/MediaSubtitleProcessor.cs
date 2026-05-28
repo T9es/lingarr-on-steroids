@@ -1161,6 +1161,54 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 return 0;
             }
 
+            // Check if OCR has already completed successfully on any embedded subtitle stream.
+            // When OCR status is Succeeded or Approved, the extracted SRT file should be used
+            // as the translation source rather than re-queuing OCR.
+            var ocrCompleted = embeddedSubtitles
+                .FirstOrDefault(s => !s.IsTextBased
+                    && _subtitleOcrService.IsSupportedCodec(s.CodecName)
+                    && s.OcrStatus is SubtitleOcrStatus.Succeeded or SubtitleOcrStatus.Approved
+                    && !string.IsNullOrWhiteSpace(s.OcrExtractedPath)
+                    && File.Exists(s.OcrExtractedPath));
+
+            if (ocrCompleted != null)
+            {
+                _logger.LogInformation(
+                    "OCR already completed for {FileName} stream {StreamIndex}. Queuing translation from OCR output at {OcrPath}.",
+                    media.FileName,
+                    ocrCompleted.StreamIndex,
+                    ocrCompleted.OcrExtractedPath);
+
+                var ocrSubtitles = new List<Subtitles>
+                {
+                    new()
+                    {
+                        Path = ocrCompleted.OcrExtractedPath,
+                        FileName = Path.GetFileName(ocrCompleted.OcrExtractedPath),
+                        Language = SubtitleLanguageHelper.NormalizeLanguageCode(
+                            ocrCompleted.Language ?? "eng") ?? "eng",
+                        Format = ".srt"
+                    }
+                };
+
+                var ignoreCaptionsVal =
+                    await _settingService.GetSetting(SettingKeys.Translation.IgnoreCaptions) ?? "";
+
+                return await ProcessSubtitlesWithCount(
+                    media,
+                    mediaType,
+                    ocrSubtitles,
+                    [..configuredSourceLanguages],
+                    targetLanguages,
+                    ignoreCaptionsVal,
+                    forceTranslation,
+                    forceProcess,
+                    forcePriority,
+                    queueTranslations,
+                    maxTranslationsToQueue,
+                    integrityFindings);
+            }
+
             _logger.LogWarning(
                 "No readable embedded subtitles found for {FileName}. Only unsupported or unprocessed image-based subtitles are available.",
                 media.FileName);
