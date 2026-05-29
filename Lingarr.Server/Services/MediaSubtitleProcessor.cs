@@ -1209,6 +1209,44 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                     integrityFindings);
             }
 
+            // Check if OCR status says completed but the output file is missing from disk
+            // (e.g., cache was cleared during container restart or volume migration).
+            // In this case, reset OCR status so the pipeline re-processes the image-based subtitles.
+            var staleOcr = embeddedSubtitles
+                .FirstOrDefault(s => !s.IsTextBased
+                    && _subtitleOcrService.IsSupportedCodec(s.CodecName)
+                    && s.OcrStatus is SubtitleOcrStatus.Succeeded or SubtitleOcrStatus.Approved
+                    && !string.IsNullOrWhiteSpace(s.OcrExtractedPath)
+                    && !File.Exists(s.OcrExtractedPath));
+
+            if (staleOcr != null)
+            {
+                _logger.LogWarning(
+                    "OCR output file missing for {FileName} stream {StreamIndex} at {OcrPath}. " +
+                    "Resetting OCR status to re-process image-based subtitles.",
+                    media.FileName,
+                    staleOcr.StreamIndex,
+                    staleOcr.OcrExtractedPath);
+
+                staleOcr.OcrStatus = SubtitleOcrStatus.NotStarted;
+                staleOcr.OcrExtractedPath = null;
+                staleOcr.OcrCueCount = null;
+                staleOcr.OcrQualityScore = null;
+                await _dbContext.SaveChangesAsync();
+
+                var retryOcr = await TryQueueEmbeddedSubtitleOcrAsync(
+                    media,
+                    mediaType,
+                    embeddedSubtitles,
+                    configuredSourceLanguages,
+                    targetLanguages);
+
+                if (retryOcr)
+                {
+                    return 0;
+                }
+            }
+
             _logger.LogWarning(
                 "No readable embedded subtitles found for {FileName}. Only unsupported or unprocessed image-based subtitles are available.",
                 media.FileName);
