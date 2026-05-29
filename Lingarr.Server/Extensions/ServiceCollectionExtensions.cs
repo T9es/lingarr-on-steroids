@@ -170,6 +170,7 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<ISubtitleOcrService, SubtitleOcrService>();
         builder.Services.AddScoped<ISubtitleOcrEngine, ExternalSubtitleOcrEngine>();
         builder.Services.AddScoped<ISubtitleIntegrityService, SubtitleIntegrityService>();
+        builder.Services.AddScoped<ISubtitleAlignmentCheckService, SubtitleAlignmentCheckService>();
         builder.Services.AddScoped<ISubtitleQualityValidatorService, SubtitleQualityValidatorService>();
         builder.Services.AddScoped<ITranslationDiagnosticsService, TranslationDiagnosticsService>();
         builder.Services.AddScoped<ISubtitleSourceSelectionService, SubtitleSourceSelectionService>();

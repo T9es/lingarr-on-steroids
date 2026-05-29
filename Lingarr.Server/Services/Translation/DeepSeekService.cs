@@ -351,11 +351,33 @@ public class DeepSeekService : OpenAiService
                 "Batch translation successful. Requested: {RequestedCount}, Received: {ReceivedCount}",
                 subtitleBatch.Count, translatedItems.Count);
 
-            return BatchTranslationResponseMapper.MapAlignedTranslations(
+            // Use strict mapper: reject sourceKey mismatches instead of lenient accept.
+            // SourceKey mismatches indicate the model returned content for the wrong
+            // position (common with json_object mode). We preserve source text for
+            // those positions instead of silently applying shifted translations.
+            var mappingResult = BatchTranslationResponseMapper.MapAlignedTranslationsSafe(
                 subtitleBatch,
                 translatedItems,
                 _logger,
                 ServiceName);
+
+            // For sourceKey failures: returned content doesn't match the source at this
+            // position. Instead of applying wrong translations (which causes drift),
+            // return the original source text so the caller preserves it.
+            var result = new Dictionary<int, string>(mappingResult.ValidTranslations);
+            var subtitleByPosition = subtitleBatch.ToDictionary(item => item.Position);
+            foreach (var failedPosition in mappingResult.SourceKeyFailures)
+            {
+                if (subtitleByPosition.TryGetValue(failedPosition, out var originalItem))
+                {
+                    result[failedPosition] = originalItem.Line;
+                    _logger.LogWarning(
+                        "DeepSeek sourceKey mismatch at position {Position}: preserving source text.",
+                        failedPosition);
+                }
+            }
+
+            return result;
         }
         catch (JsonException ex)
         {
