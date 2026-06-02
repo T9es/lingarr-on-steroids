@@ -5,7 +5,7 @@ namespace Lingarr.Server.Services.Subtitle;
 
 public class EmbeddedSubtitleCacheService : IEmbeddedSubtitleCacheService
 {
-    private static readonly TimeSpan DefaultRetention = TimeSpan.FromHours(24);
+    private static readonly TimeSpan DefaultRetention = TimeSpan.FromDays(30);
 
     private readonly ILogger<EmbeddedSubtitleCacheService> _logger;
 

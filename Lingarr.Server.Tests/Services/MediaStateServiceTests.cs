@@ -28,6 +28,7 @@ public class MediaStateServiceTests : IDisposable
     private readonly Mock<ISettingService> _settingServiceMock;
     private readonly Mock<ISubtitleService> _subtitleServiceMock;
     private readonly Mock<ISourceSubtitleSnapshotService> _sourceSubtitleSnapshotServiceMock;
+    private readonly Mock<IEmbeddedSubtitleCacheService> _cacheServiceMock;
     private readonly DbConnection _connection;
 
     public MediaStateServiceTests()
@@ -45,6 +46,7 @@ public class MediaStateServiceTests : IDisposable
         _settingServiceMock = new Mock<ISettingService>();
         _subtitleServiceMock = new Mock<ISubtitleService>();
         _sourceSubtitleSnapshotServiceMock = new Mock<ISourceSubtitleSnapshotService>();
+        _cacheServiceMock = new Mock<IEmbeddedSubtitleCacheService>();
 
         _sourceSubtitleSnapshotServiceMock
             .Setup(s => s.ResolveCurrentSnapshotAsync(
@@ -93,6 +95,7 @@ public class MediaStateServiceTests : IDisposable
             _settingServiceMock.Object,
             _subtitleServiceMock.Object,
             _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
             NullLogger<MediaStateService>.Instance);
 
         var hasActive = await service.HasActiveTranslationRequestAsync(77, MediaType.Movie);
@@ -121,6 +124,7 @@ public class MediaStateServiceTests : IDisposable
             _settingServiceMock.Object,
             _subtitleServiceMock.Object,
             _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
             NullLogger<MediaStateService>.Instance);
 
         var hasFailed = await service.HasFailedTranslationRequestAsync(78, MediaType.Movie);
@@ -183,6 +187,7 @@ public class MediaStateServiceTests : IDisposable
             _settingServiceMock.Object,
             _subtitleServiceMock.Object,
             _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
             NullLogger<MediaStateService>.Instance);
 
         // Act
@@ -251,6 +256,7 @@ public class MediaStateServiceTests : IDisposable
             _settingServiceMock.Object,
             _subtitleServiceMock.Object,
             _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
             NullLogger<MediaStateService>.Instance);
 
         var state = await service.UpdateStateAsync(movie, MediaType.Movie);
@@ -335,6 +341,7 @@ public class MediaStateServiceTests : IDisposable
             _settingServiceMock.Object,
             _subtitleServiceMock.Object,
             _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
             NullLogger<MediaStateService>.Instance);
 
         var state = await service.UpdateStateAsync(movie, MediaType.Movie);
@@ -394,6 +401,7 @@ public class MediaStateServiceTests : IDisposable
             _settingServiceMock.Object,
             _subtitleServiceMock.Object,
             _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
             NullLogger<MediaStateService>.Instance);
 
         var state = await service.UpdateStateAsync(movie, MediaType.Movie);
@@ -444,6 +452,7 @@ public class MediaStateServiceTests : IDisposable
             _settingServiceMock.Object,
             _subtitleServiceMock.Object,
             _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
             NullLogger<MediaStateService>.Instance);
 
         // Act
@@ -530,6 +539,7 @@ public class MediaStateServiceTests : IDisposable
                 _settingServiceMock.Object,
                 _subtitleServiceMock.Object,
                 _sourceSubtitleSnapshotServiceMock.Object,
+                _cacheServiceMock.Object,
                 NullLogger<MediaStateService>.Instance);
 
             var state = await service.UpdateStateAsync(movie, MediaType.Movie);
@@ -610,6 +620,7 @@ public class MediaStateServiceTests : IDisposable
             _settingServiceMock.Object,
             _subtitleServiceMock.Object,
             _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
             NullLogger<MediaStateService>.Instance);
 
         var state = await service.UpdateStateAsync(movie, MediaType.Movie);
@@ -675,6 +686,7 @@ public class MediaStateServiceTests : IDisposable
             _settingServiceMock.Object,
             _subtitleServiceMock.Object,
             _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
             NullLogger<MediaStateService>.Instance);
 
         // Act
@@ -750,6 +762,7 @@ public class MediaStateServiceTests : IDisposable
             _settingServiceMock.Object,
             _subtitleServiceMock.Object,
             _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
             NullLogger<MediaStateService>.Instance);
 
         var state = await service.UpdateStateAsync(movie, MediaType.Movie);
@@ -823,6 +836,7 @@ public class MediaStateServiceTests : IDisposable
             _settingServiceMock.Object,
             _subtitleServiceMock.Object,
             _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
             NullLogger<MediaStateService>.Instance);
 
         var state = await service.UpdateStateAsync(movie, MediaType.Movie);
@@ -875,6 +889,7 @@ public class MediaStateServiceTests : IDisposable
             _settingServiceMock.Object,
             _subtitleServiceMock.Object,
             _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
             NullLogger<MediaStateService>.Instance);
 
         // Act
@@ -949,6 +964,7 @@ public class MediaStateServiceTests : IDisposable
             _settingServiceMock.Object,
             _subtitleServiceMock.Object,
             _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
             NullLogger<MediaStateService>.Instance);
 
         // Act
@@ -1004,6 +1020,7 @@ public class MediaStateServiceTests : IDisposable
             _settingServiceMock.Object,
             _subtitleServiceMock.Object,
             _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
             NullLogger<MediaStateService>.Instance);
 
         var state = await service.UpdateStateAsync(movie, MediaType.Movie);
@@ -1049,6 +1066,7 @@ public class MediaStateServiceTests : IDisposable
             _settingServiceMock.Object,
             _subtitleServiceMock.Object,
             _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
             NullLogger<MediaStateService>.Instance);
 
         var state = await service.UpdateStateAsync(movie, MediaType.Movie);
@@ -1114,6 +1132,7 @@ public class MediaStateServiceTests : IDisposable
             _settingServiceMock.Object,
             _subtitleServiceMock.Object,
             _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
             NullLogger<MediaStateService>.Instance);
 
         var state = await service.UpdateStateAsync(movie, MediaType.Movie);
@@ -1163,6 +1182,7 @@ public class MediaStateServiceTests : IDisposable
             _settingServiceMock.Object,
             _subtitleServiceMock.Object,
             _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
             NullLogger<MediaStateService>.Instance);
 
         var state = await service.UpdateStateAsync(movie, MediaType.Movie);

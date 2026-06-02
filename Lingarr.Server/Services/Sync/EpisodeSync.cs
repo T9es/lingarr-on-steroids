@@ -236,6 +236,11 @@ public class EpisodeSync : IEpisodeSync
             oldPath != episodeEntity.Path ||
             oldFileName != episodeEntity.FileName);
 
+        if (fileChanged)
+        {
+            episodeEntity.MediaHash = string.Empty;
+        }
+
         var needsIndexing = isNew || fileChanged || episodeEntity.IndexedAt == null;
         
         // Return old values only if file actually changed

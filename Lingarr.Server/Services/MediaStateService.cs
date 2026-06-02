@@ -26,6 +26,7 @@ public class MediaStateService : IMediaStateService
     private readonly ISourceSubtitleSnapshotService _sourceSubtitleSnapshotService;
     private readonly ISubtitleSourceSelectionService _subtitleSourceSelectionService;
     private readonly ITranslationQualityScorer? _qualityScorer;
+    private readonly IEmbeddedSubtitleCacheService _embeddedSubtitleCacheService;
     private readonly ILogger<MediaStateService> _logger;
 
     public MediaStateService(
@@ -33,6 +34,7 @@ public class MediaStateService : IMediaStateService
         ISettingService settingService,
         ISubtitleService subtitleService,
         ISourceSubtitleSnapshotService sourceSubtitleSnapshotService,
+        IEmbeddedSubtitleCacheService embeddedSubtitleCacheService,
         ILogger<MediaStateService> logger,
         ISubtitleSourceSelectionService? subtitleSourceSelectionService = null,
         ITranslationQualityScorer? qualityScorer = null)
@@ -41,6 +43,7 @@ public class MediaStateService : IMediaStateService
         _settingService = settingService;
         _subtitleService = subtitleService;
         _sourceSubtitleSnapshotService = sourceSubtitleSnapshotService;
+        _embeddedSubtitleCacheService = embeddedSubtitleCacheService;
         _subtitleSourceSelectionService = subtitleSourceSelectionService ??
             new SubtitleSourceSelectionService(
                 subtitleService,
@@ -286,6 +289,15 @@ public class MediaStateService : IMediaStateService
                     media.Title,
                     string.Join(", ", staleTargets));
                 return TranslationState.Stale;
+            }
+
+            // Touch OCR cache files so they don't expire and trigger wasteful re-OCR
+            foreach (var subtitle in embeddedSubtitles)
+            {
+                if (subtitle.HasUsableOcr())
+                {
+                    _embeddedSubtitleCacheService.Touch(subtitle.OcrExtractedPath!);
+                }
             }
 
             return TranslationState.Complete;

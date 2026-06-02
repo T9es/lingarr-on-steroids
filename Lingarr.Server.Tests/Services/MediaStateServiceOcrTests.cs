@@ -192,6 +192,7 @@ public class MediaStateServiceOcrTests
             settingService.Object,
             subtitleService.Object,
             snapshotService.Object,
+            new Mock<IEmbeddedSubtitleCacheService>().Object,
             NullLogger<MediaStateService>.Instance);
     }
 }
