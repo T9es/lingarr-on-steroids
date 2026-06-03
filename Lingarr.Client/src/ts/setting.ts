@@ -106,6 +106,7 @@ export const SETTINGS = {
     SUBTITLE_OCR_LANGUAGES: 'subtitle_ocr_languages',
     SUBTITLE_OCR_TRANSLATION_PROMPT_ENABLED: 'subtitle_ocr_translation_prompt_enabled',
     EMBED_IN_CONTAINER: 'embed_in_container',
+    EMBED_WHEN_PATH_TOO_LONG: 'embed_when_path_too_long',
     DETECT_UNKNOWN_LANGUAGES: 'detect_unknown_languages',
     DETECT_UNKNOWN_LANGUAGES_SCHEDULE: 'detect_unknown_languages_schedule',
     MAX_REQUEST_RETRIES: 'max_request_retries',
@@ -249,6 +250,7 @@ export interface ISettings {
     subtitle_ocr_languages: string
     subtitle_ocr_translation_prompt_enabled: string
     embed_in_container: string
+    embed_when_path_too_long: string
     detect_unknown_languages: string
     detect_unknown_languages_schedule: string
     max_request_retries: string

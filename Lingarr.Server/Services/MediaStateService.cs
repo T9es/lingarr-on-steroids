@@ -183,6 +183,29 @@ public class MediaStateService : IMediaStateService
 
         bool hasExternalSource, hasEmbeddedSource;
 
+        // Resolve target format requirements before source check
+        // so we can short-circuit if targets are already satisfied
+        var formatSourceLanguages = isAutoMode ? [] : sourceLanguages;
+        var requiredOutputFormats = await ResolveRequiredOutputFormatsAsync(
+            externalSubtitles,
+            embeddedSubtitles,
+            formatSourceLanguages,
+            ignoreCaptions,
+            subtitleOutputMode);
+
+        var existingTargetFormats = BuildExistingTargetFormats(
+            externalSubtitles,
+            embeddedSubtitles,
+            targetLanguages,
+            skipWhenTargetEmbedded,
+            knownForcedDialogueGeneratedPaths);
+
+        var missingTargets = targetLanguages
+            .Where(targetLanguage =>
+                !existingTargetFormats.TryGetValue(targetLanguage, out var formats) ||
+                requiredOutputFormats.Any(requiredFormat => !formats.Contains(requiredFormat)))
+            .ToList();
+
         if (isAutoMode)
         {
             // Auto mode: use quality scorer to find best source from ALL streams
@@ -198,6 +221,11 @@ public class MediaStateService : IMediaStateService
             }
             else
             {
+                if (missingTargets.Count == 0)
+                {
+                    return TranslationState.Complete;
+                }
+
                 // Check if OCR is needed for image-based subtitles (any language)
                 if (ocrEnabled && HasOcrBlockedSourceCandidate(embeddedSubtitles, [], ignoreCaptions))
                 {
@@ -228,6 +256,11 @@ public class MediaStateService : IMediaStateService
 
             if (!hasExternalSource && !hasEmbeddedSource)
             {
+                if (missingTargets.Count == 0)
+                {
+                    return TranslationState.Complete;
+                }
+
                 if (ocrEnabled && HasOcrBlockedSourceCandidate(embeddedSubtitles, sourceLanguages, ignoreCaptions))
                 {
                     return TranslationState.OcrBlocked;
@@ -244,26 +277,6 @@ public class MediaStateService : IMediaStateService
 
         // 6. Check which targets are satisfied
         // In auto mode, use empty source languages for required format resolution (accept all)
-        var requiredOutputFormats = await ResolveRequiredOutputFormatsAsync(
-            externalSubtitles,
-            embeddedSubtitles,
-            isAutoMode ? [] : sourceLanguages,
-            ignoreCaptions,
-            subtitleOutputMode);
-
-        var existingTargetFormats = BuildExistingTargetFormats(
-            externalSubtitles,
-            embeddedSubtitles,
-            targetLanguages,
-            skipWhenTargetEmbedded,
-            knownForcedDialogueGeneratedPaths);
-
-        var missingTargets = targetLanguages
-            .Where(targetLanguage =>
-                !existingTargetFormats.TryGetValue(targetLanguage, out var formats) ||
-                requiredOutputFormats.Any(requiredFormat => !formats.Contains(requiredFormat)))
-            .ToList();
-
         var sourceSnapshot = await _sourceSubtitleSnapshotService.ResolveCurrentSnapshotWithAutoAsync(
             media,
             mediaType,
@@ -703,7 +716,8 @@ public class MediaStateService : IMediaStateService
         return GetOcrSourceCandidates(embeddedSubtitles, sourceLanguages, ignoreCaptions)
             .Any(subtitle => subtitle.OcrStatus is SubtitleOcrStatus.NotStarted
                 or SubtitleOcrStatus.Queued
-                or SubtitleOcrStatus.Processing);
+                or SubtitleOcrStatus.Processing
+                || (subtitle.OcrStatus == SubtitleOcrStatus.Succeeded && !subtitle.HasUsableOcr()));
     }
 
     private static bool HasOcrBlockedSourceCandidate(

@@ -189,6 +189,11 @@ public static class SettingKeys
         /// </summary>
         public const string EmbedInContainer = "embed_in_container";
         /// <summary>
+        /// When enabled, subtitles are embedded in the MKV container only when
+        /// the output file path would exceed filesystem limits.
+        /// </summary>
+        public const string EmbedWhenPathTooLong = "embed_when_path_too_long";
+        /// <summary>
         /// When enabled, quality validation failures block publication. When disabled (default),
         /// failures log a warning instead. Default: false (disabled).
         /// </summary>

@@ -250,6 +250,22 @@
                     </span>
                 </ToggleButton>
 
+                <div v-if="embedInContainer != 'true'" class="ml-4 flex flex-col space-x-2">
+                    <span class="font-semibold">
+                        {{ translate('settings.subtitle.embedWhenPathTooLong') }}
+                    </span>
+                    {{ translate('settings.subtitle.embedWhenPathTooLongDescription') }}
+                </div>
+                <ToggleButton v-if="embedInContainer != 'true'" v-model="embedWhenPathTooLong">
+                    <span class="text-primary-content text-sm font-medium">
+                        {{
+                            embedWhenPathTooLong == 'true'
+                                ? translate('common.enabled')
+                                : translate('common.disabled')
+                        }}
+                    </span>
+                </ToggleButton>
+
                 <!-- Detect unknown languages -->
                 <div class="flex flex-col space-x-2">
                     <span class="font-semibold">
@@ -533,6 +549,17 @@ const embedInContainer = computed({
     get: (): string => settingsStore.getSetting(SETTINGS.EMBED_IN_CONTAINER) as string,
     set: (newValue: string): void => {
         settingsStore.updateSetting(SETTINGS.EMBED_IN_CONTAINER, newValue, true)
+        // If enabling always-embed, disable the path-too-long sub-option
+        if (newValue === 'true') {
+            settingsStore.updateSetting(SETTINGS.EMBED_WHEN_PATH_TOO_LONG, 'false', true)
+        }
+        saveNotification.value?.show()
+    }
+})
+const embedWhenPathTooLong = computed({
+    get: (): string => settingsStore.getSetting(SETTINGS.EMBED_WHEN_PATH_TOO_LONG) as string,
+    set: (newValue: string): void => {
+        settingsStore.updateSetting(SETTINGS.EMBED_WHEN_PATH_TOO_LONG, newValue, true)
         saveNotification.value?.show()
     }
 })

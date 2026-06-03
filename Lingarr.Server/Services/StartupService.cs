@@ -89,6 +89,7 @@ public class StartupService : IHostedService
 
             // MKV Container Embedding
             { SettingKeys.Translation.EmbedInContainer, "true" },
+            { SettingKeys.Translation.EmbedWhenPathTooLong, "true" },
 
             // Provider specific defaults
             { SettingKeys.Translation.Chutes.RequestBuffer, "50" },

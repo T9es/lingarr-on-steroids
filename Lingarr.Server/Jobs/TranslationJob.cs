@@ -1025,8 +1025,10 @@ Exception? lastException = null;
                 bool success = false;
                 bool allPathsTooLong = true;
                 var anyPathExceedsLimit = paths.Any(p => _mkvEmbeddingService.WouldExceedPathLimit(p));
+                var embedWhenPathTooLong = settings.TryGetValue(SettingKeys.Translation.EmbedWhenPathTooLong, out var tooLongVal)
+                    && string.Equals(tooLongVal, "true", StringComparison.OrdinalIgnoreCase);
 
-                if (embedInContainer || anyPathExceedsLimit)
+                if (embedInContainer || (embedWhenPathTooLong && anyPathExceedsLimit))
                 {
                     var embeddedPath = await TryEmbedInMkvContainerAsync(
                         translationRequest,
