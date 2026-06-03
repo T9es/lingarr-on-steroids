@@ -1,4 +1,4 @@
-﻿using Lingarr.Core.Configuration;
+using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
@@ -512,23 +512,47 @@ public class StartupService : IHostedService
                 })
                 .ToList();
 
-            if (staleSubtitles.Count == 0)
+            var neverAttempted = transientSubtitles
+                .Where(subtitle => !subtitle.OcrAttemptedAt.HasValue)
+                .Where(subtitle =>
+                {
+                    if (subtitle.MovieId.HasValue)
+                    {
+                        return !SubtitleOcrJobActivity.HasActiveJob(
+                            subtitle.MovieId.Value,
+                            MediaType.Movie,
+                            subtitle.StreamIndex);
+                    }
+
+                    return subtitle.EpisodeId.HasValue &&
+                           !SubtitleOcrJobActivity.HasActiveJob(
+                               subtitle.EpisodeId.Value,
+                               MediaType.Episode,
+                               subtitle.StreamIndex);
+                })
+                .ToList();
+
+            var allToRecover = staleSubtitles
+                .Union(neverAttempted)
+                .ToList();
+
+            if (allToRecover.Count == 0)
             {
                 return;
             }
 
-            var episodeIds = staleSubtitles
+            var episodeIds = allToRecover
                 .Where(subtitle => subtitle.EpisodeId.HasValue)
                 .Select(subtitle => subtitle.EpisodeId!.Value)
                 .Distinct()
                 .ToList();
-            var movieIds = staleSubtitles
+            var movieIds = allToRecover
                 .Where(subtitle => subtitle.MovieId.HasValue)
                 .Select(subtitle => subtitle.MovieId!.Value)
                 .Distinct()
                 .ToList();
 
-            foreach (var subtitle in staleSubtitles)
+            foreach (var subtitle in allToRecover)
             {
                 SubtitleOcrStatePolicy.ResetStaleTransient(subtitle);
             }
@@ -554,8 +578,10 @@ public class StartupService : IHostedService
             }
 
             _logger.LogWarning(
-                "Recovered {Count} stale OCR transient subtitle state(s) across {EpisodeCount} episode(s) and {MovieCount} movie(s).",
+                "Recovered {Count} stale OCR transient subtitle state(s) ({StaleFromTimeout} from timeout, {NeverAttempted} never attempted) across {EpisodeCount} episode(s) and {MovieCount} movie(s).",
+                allToRecover.Count,
                 staleSubtitles.Count,
+                neverAttempted.Count,
                 episodeIds.Count,
                 movieIds.Count);
         }

@@ -1330,6 +1330,82 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 }
             }
 
+            // Before giving up, check if OCR has already completed successfully
+            // on any image-based embedded subtitle stream. The OCR output can be
+            // used as the translation source even when no text-based subtitle
+            // matches the configured source languages.
+            if (_subtitleOcrService != null)
+            {
+                var ocrCompleted = embeddedSubtitles
+                    .FirstOrDefault(s => !s.IsTextBased
+                        && _subtitleOcrService.IsSupportedCodec(s.CodecName)
+                        && s.OcrStatus is SubtitleOcrStatus.Succeeded or SubtitleOcrStatus.Approved
+                        && !string.IsNullOrWhiteSpace(s.OcrExtractedPath)
+                        && File.Exists(s.OcrExtractedPath));
+
+                if (ocrCompleted != null)
+                {
+                    _logger.LogInformation(
+                        "OCR already completed for {FileName} stream {StreamIndex}. Queuing translation from OCR output at {OcrPath}.",
+                        media.FileName,
+                        ocrCompleted.StreamIndex,
+                        ocrCompleted.OcrExtractedPath);
+
+                    var ocrSubtitles = new List<Subtitles>
+                    {
+                        new()
+                        {
+                            Path = ocrCompleted.OcrExtractedPath,
+                            FileName = Path.GetFileName(ocrCompleted.OcrExtractedPath),
+                            Language = SubtitleLanguageHelper.NormalizeLanguageCode(
+                                ocrCompleted.Language ?? "eng") ?? "eng",
+                            Format = ".srt"
+                        }
+                    };
+
+                    var ignoreCaptionsVal =
+                        await _settingService.GetSetting(SettingKeys.Translation.IgnoreCaptions) ?? "";
+
+                    return await ProcessSubtitlesWithCount(
+                        media,
+                        mediaType,
+                        ocrSubtitles,
+                        [..configuredSourceLanguages],
+                        targetLanguages,
+                        ignoreCaptionsVal,
+                        forceTranslation,
+                        forceProcess,
+                        forcePriority,
+                        queueTranslations,
+                        maxTranslationsToQueue,
+                        integrityFindings);
+                }
+
+                // Check if OCR status says completed but the output file is missing from disk
+                var staleOcr = embeddedSubtitles
+                    .FirstOrDefault(s => !s.IsTextBased
+                        && _subtitleOcrService.IsSupportedCodec(s.CodecName)
+                        && s.OcrStatus is SubtitleOcrStatus.Succeeded or SubtitleOcrStatus.Approved
+                        && !string.IsNullOrWhiteSpace(s.OcrExtractedPath)
+                        && !File.Exists(s.OcrExtractedPath));
+
+                if (staleOcr != null)
+                {
+                    _logger.LogWarning(
+                        "OCR output file missing for {FileName} stream {StreamIndex} at {OcrPath}. " +
+                        "Resetting OCR status to re-process image-based subtitles.",
+                        media.FileName,
+                        staleOcr.StreamIndex,
+                        staleOcr.OcrExtractedPath);
+
+                    staleOcr.OcrStatus = SubtitleOcrStatus.NotStarted;
+                    staleOcr.OcrExtractedPath = null;
+                    staleOcr.OcrCueCount = null;
+                    staleOcr.OcrQualityScore = null;
+                    await _dbContext.SaveChangesAsync();
+                }
+            }
+
             await UpdateHash();
             return 0;
         }

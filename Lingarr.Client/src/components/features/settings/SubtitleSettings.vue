@@ -1,4 +1,4 @@
-﻿<template>
+<template>
     <CardComponent :title="translate('settings.subtitle.title')">
         <template #description>
             {{ translate('settings.subtitle.description') }}
@@ -233,38 +233,14 @@
                     </span>
                 </ToggleButton>
 
-                <!-- Embed in container -->
+                <!-- Embed subtitle mode -->
                 <div class="flex flex-col space-x-2">
                     <span class="font-semibold">
-                        {{ translate('settings.subtitle.embedInContainer') }}
+                        {{ translate('settings.subtitle.embedMode') }}
                     </span>
-                    {{ translate('settings.subtitle.embedInContainerDescription') }}
+                    {{ translate('settings.subtitle.embedModeDescription') }}
                 </div>
-                <ToggleButton v-model="embedInContainer">
-                    <span class="text-primary-content text-sm font-medium">
-                        {{
-                            embedInContainer == 'true'
-                                ? translate('common.enabled')
-                                : translate('common.disabled')
-                        }}
-                    </span>
-                </ToggleButton>
-
-                <div v-if="embedInContainer != 'true'" class="ml-4 flex flex-col space-x-2">
-                    <span class="font-semibold">
-                        {{ translate('settings.subtitle.embedWhenPathTooLong') }}
-                    </span>
-                    {{ translate('settings.subtitle.embedWhenPathTooLongDescription') }}
-                </div>
-                <ToggleButton v-if="embedInContainer != 'true'" v-model="embedWhenPathTooLong">
-                    <span class="text-primary-content text-sm font-medium">
-                        {{
-                            embedWhenPathTooLong == 'true'
-                                ? translate('common.enabled')
-                                : translate('common.disabled')
-                        }}
-                    </span>
-                </ToggleButton>
+                <SelectComponent v-model:selected="embedMode" :options="embedOptions" />
 
                 <!-- Detect unknown languages -->
                 <div class="flex flex-col space-x-2">
@@ -379,6 +355,7 @@ import CardComponent from '@/components/common/CardComponent.vue'
 import SaveNotification from '@/components/common/SaveNotification.vue'
 import ToggleButton from '@/components/common/ToggleButton.vue'
 import InputComponent from '@/components/common/InputComponent.vue'
+import SelectComponent from '@/components/common/SelectComponent.vue'
 
 const { translate } = useI18n()
 const saveNotification = ref<InstanceType<typeof SaveNotification> | null>(null)
@@ -545,24 +522,33 @@ const cleanupOrphanedSubtitles = computed({
     }
 })
 
-const embedInContainer = computed({
-    get: (): string => settingsStore.getSetting(SETTINGS.EMBED_IN_CONTAINER) as string,
+const embedMode = computed({
+    get: (): string => {
+        const always = settingsStore.getSetting(SETTINGS.EMBED_IN_CONTAINER) as string
+        const whenTooLong = settingsStore.getSetting(SETTINGS.EMBED_WHEN_PATH_TOO_LONG) as string
+        if (always === 'true') return 'always'
+        if (whenTooLong === 'true') return 'when_too_long'
+        return 'never'
+    },
     set: (newValue: string): void => {
-        settingsStore.updateSetting(SETTINGS.EMBED_IN_CONTAINER, newValue, true)
-        // If enabling always-embed, disable the path-too-long sub-option
-        if (newValue === 'true') {
+        if (newValue === 'always') {
+            settingsStore.updateSetting(SETTINGS.EMBED_IN_CONTAINER, 'true', true)
+            settingsStore.updateSetting(SETTINGS.EMBED_WHEN_PATH_TOO_LONG, 'false', true)
+        } else if (newValue === 'when_too_long') {
+            settingsStore.updateSetting(SETTINGS.EMBED_IN_CONTAINER, 'false', true)
+            settingsStore.updateSetting(SETTINGS.EMBED_WHEN_PATH_TOO_LONG, 'true', true)
+        } else {
+            settingsStore.updateSetting(SETTINGS.EMBED_IN_CONTAINER, 'false', true)
             settingsStore.updateSetting(SETTINGS.EMBED_WHEN_PATH_TOO_LONG, 'false', true)
         }
         saveNotification.value?.show()
     }
 })
-const embedWhenPathTooLong = computed({
-    get: (): string => settingsStore.getSetting(SETTINGS.EMBED_WHEN_PATH_TOO_LONG) as string,
-    set: (newValue: string): void => {
-        settingsStore.updateSetting(SETTINGS.EMBED_WHEN_PATH_TOO_LONG, newValue, true)
-        saveNotification.value?.show()
-    }
-})
+const embedOptions = computed(() => [
+    { value: 'always' as const, label: translate('settings.subtitle.embedModeAlways') },
+    { value: 'when_too_long' as const, label: translate('settings.subtitle.embedModeWhenTooLong') },
+    { value: 'never' as const, label: translate('settings.subtitle.embedModeNever') }
+])
 
 const detectUnknownLanguages = computed({
     get: (): string => settingsStore.getSetting(SETTINGS.DETECT_UNKNOWN_LANGUAGES) as string,

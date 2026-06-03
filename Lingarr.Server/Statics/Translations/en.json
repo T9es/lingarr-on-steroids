@@ -548,10 +548,13 @@
       "outputModeSrtOnly": "SRT only",
       "skipWhenTargetEmbedded": "Skip translation when target language is already embedded:",
                     "skipWhenTargetEmbeddedDescription": "When enabled, skip translation if the media file already contains an embedded subtitle track in your target language. This saves API costs and processing time.",
-                    "embedInContainer": "Embed subtitles in media container:",
-                    "embedInContainerDescription": "When enabled, translated subtitles are embedded directly into the MKV container when the output file path would exceed filesystem limits. This preserves media server detection.",
-                    "embedWhenPathTooLong": "Embed only when path exceeds limits:",
-                    "embedWhenPathTooLongDescription": "When enabled, translated subtitles are only embedded in the MKV container when the output file path would exceed filesystem limits. Otherwise, sidecar subtitle files are created.",
+                    "embedMode": "Subtitle embedding mode:",
+                    "embedModeDescription": "Controls whether translated subtitles are written as sidecar files or embedded into the MKV container.",
+                    "embedModeAlways": "Always embed in MKV",
+                    "embedModeWhenTooLong": "Only when path exceeds limits",
+                    "embedModeNever": "Never embed (sidecar files)",
+                    
+                    
                     "detectUnknownLanguages": "Detect unknown subtitle languages:",
                     "detectUnknownLanguagesDescription": "Use AI to automatically detect the language of embedded subtitle streams that have no language tag. Detected languages are stored in the database for use during source selection.",
                     "fixOverlappingSubtitles": "Fix overlapping subtitles:",
