@@ -1843,6 +1843,153 @@ public class TranslationJobTests : IDisposable
         Assert.NotEqual(sourceSubtitlePath, updatedRequest.TranslatedSubtitle);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_WhenEmbeddingInMkv_RefreshesEmbeddedSubtitleIndexBeforeStateRefresh()
+    {
+        var mediaPath = Path.Combine(_tempDirectory, "movie-20.mkv");
+        await File.WriteAllTextAsync(mediaPath, "fake mkv");
+
+        var movie = CreateMovie(20);
+        movie.Path = _tempDirectory;
+        movie.FileName = Path.GetFileName(mediaPath);
+
+        var sourceSubtitlePath = _embeddedSubtitleCacheService.GetCachePath(
+            movie.Id,
+            MediaType.Movie,
+            streamIndex: 0,
+            codecName: "subrip",
+            language: "eng");
+        await File.WriteAllTextAsync(sourceSubtitlePath, BuildSrtContent(50));
+
+        var request = new TranslationRequest
+        {
+            MediaId = movie.Id,
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaType = MediaType.Movie,
+            WorkloadKind = TranslationWorkloadKind.Library,
+            WorkloadItemKey = "library:Movie:20",
+            Status = TranslationStatus.Pending,
+            SubtitleToTranslate = sourceSubtitlePath,
+            SourceSubtitleFormat = ".srt",
+            SubtitleOutputMode = "match-source",
+            RequiredOutputFormats = ".srt",
+            IsActive = true
+        };
+
+        _dbContext.Movies.Add(movie);
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var subtitleService = new SubtitleService(NullLogger<SubtitleService>.Instance);
+        var extractionServiceMock = new Mock<ISubtitleExtractionService>();
+        extractionServiceMock
+            .Setup(service => service.SyncEmbeddedSubtitles(It.IsAny<Movie>()))
+            .Returns(Task.CompletedTask);
+
+        var translationServiceMock = new Mock<ITranslationService>();
+        translationServiceMock
+            .Setup(service => service.TranslateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync("Czesc");
+
+        var mkvEmbeddingServiceMock = new Mock<IMkvEmbeddingService>();
+        mkvEmbeddingServiceMock
+            .Setup(service => service.WouldExceedPathLimit(It.IsAny<string>()))
+            .Returns(false);
+        mkvEmbeddingServiceMock
+            .Setup(service => service.EmbedSubtitleAsync(
+                mediaPath,
+                It.IsAny<string>(),
+                "pl",
+                "pl (Lingarr)",
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MkvEmbedResult(true, mediaPath));
+
+        var qualityServiceMock = CreatePassingQualityValidator();
+        var job = BuildExecutableJob(
+            subtitleService,
+            extractionServiceMock.Object,
+            translationServiceMock.Object,
+            qualityServiceMock.Object,
+            new Dictionary<string, string>
+            {
+                [SettingKeys.Translation.EmbedInContainer] = "true"
+            },
+            mkvEmbeddingServiceMock.Object);
+
+        await job.ExecuteAsync(request.Id, CancellationToken.None);
+
+        extractionServiceMock.Verify(
+            service => service.SyncEmbeddedSubtitles(It.Is<Movie>(item => item.Id == movie.Id)),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenWritingSidecar_DoesNotRefreshEmbeddedSubtitleIndex()
+    {
+        var sourceSubtitlePath = Path.Combine(_tempDirectory, "movie-21.en.srt");
+        await File.WriteAllTextAsync(sourceSubtitlePath, BuildSrtContent(50));
+
+        var movie = CreateMovie(21);
+        movie.Path = _tempDirectory;
+        var request = new TranslationRequest
+        {
+            MediaId = movie.Id,
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaType = MediaType.Movie,
+            WorkloadKind = TranslationWorkloadKind.Library,
+            WorkloadItemKey = "library:Movie:21",
+            Status = TranslationStatus.Pending,
+            SubtitleToTranslate = sourceSubtitlePath,
+            SourceSubtitleFormat = ".srt",
+            SubtitleOutputMode = "match-source",
+            RequiredOutputFormats = ".srt",
+            IsActive = true
+        };
+
+        _dbContext.Movies.Add(movie);
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var subtitleService = new SubtitleService(NullLogger<SubtitleService>.Instance);
+        var extractionServiceMock = new Mock<ISubtitleExtractionService>();
+        var translationServiceMock = new Mock<ITranslationService>();
+        translationServiceMock
+            .Setup(service => service.TranslateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync("Czesc");
+
+        var qualityServiceMock = CreatePassingQualityValidator();
+        var job = BuildExecutableJob(
+            subtitleService,
+            extractionServiceMock.Object,
+            translationServiceMock.Object,
+            qualityServiceMock.Object);
+
+        await job.ExecuteAsync(request.Id, CancellationToken.None);
+
+        extractionServiceMock.Verify(
+            service => service.SyncEmbeddedSubtitles(It.IsAny<Movie>()),
+            Times.Never);
+        extractionServiceMock.Verify(
+            service => service.SyncEmbeddedSubtitles(It.IsAny<Episode>()),
+            Times.Never);
+    }
+
     private static List<SubtitleItem> BuildSubtitleItems(int count)
     {
         return Enumerable.Range(1, count)
@@ -1862,7 +2009,9 @@ public class TranslationJobTests : IDisposable
         ISubtitleService subtitleService,
         ISubtitleExtractionService extractionService,
         ITranslationService translationService,
-        ISubtitleQualityValidatorService? qualityValidatorService = null)
+        ISubtitleQualityValidatorService? qualityValidatorService = null,
+        IReadOnlyDictionary<string, string>? settingOverrides = null,
+        IMkvEmbeddingService? mkvEmbeddingService = null)
     {
         var settingServiceMock = new Mock<ISettingService>();
         settingServiceMock
@@ -1889,6 +2038,14 @@ public class TranslationJobTests : IDisposable
                 settings[SettingKeys.Translation.StripAssDrawingCommands] = "false";
                 settings[SettingKeys.Translation.CleanSourceAssDrawings] = "false";
                 settings[SettingKeys.Translation.BatchContextEnabled] = "false";
+                if (settingOverrides != null)
+                {
+                    foreach (var (key, value) in settingOverrides)
+                    {
+                        settings[key] = value;
+                    }
+                }
+
                 return settings;
             });
 
@@ -1999,7 +2156,41 @@ public class TranslationJobTests : IDisposable
             Mock.Of<IUploadWorkspaceService>(),
             null,
             null,
-            qualityValidatorService);
+            qualityValidatorService,
+            null,
+            null,
+            mkvEmbeddingService);
+    }
+
+    private static Mock<ISubtitleQualityValidatorService> CreatePassingQualityValidator()
+    {
+        var qualityServiceMock = new Mock<ISubtitleQualityValidatorService>();
+        qualityServiceMock
+            .Setup(service => service.ValidateAsync(
+                It.IsAny<SubtitleQualityValidationRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SubtitleQualityValidationResult
+            {
+                IsValid = true,
+                Summary = "ok",
+                SourceEntryCount = 50,
+                TargetEntryCount = 50,
+                MinimumTargetEntryCount = 45
+            });
+
+        return qualityServiceMock;
+    }
+
+    private static string BuildSrtContent(int count)
+    {
+        return string.Join(
+            Environment.NewLine + Environment.NewLine,
+            Enumerable.Range(1, count).Select(index =>
+            {
+                var start = TimeSpan.FromSeconds(index);
+                var end = TimeSpan.FromSeconds(index + 1);
+                return $"{index}{Environment.NewLine}{start:hh\\:mm\\:ss},000 --> {end:hh\\:mm\\:ss},000{Environment.NewLine}Hello {index}";
+            }));
     }
 
     private static string BuildExtractedAssContent(int streamIndex, int entries)

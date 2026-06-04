@@ -122,4 +122,126 @@ public class MkvEmbeddingServiceTests
         Assert.True(trackNameIndex > mkvIndex && trackNameIndex < subtitleIndex,
             "Track name flag should be between MKV and subtitle");
     }
+
+    [Fact]
+    public void BuildMkvMergeArguments_UsesSingleNegatedCommaSeparatedSubtitleTrackList()
+    {
+        var args = MkvEmbeddingService.BuildMkvMergeArguments(
+            "/media/movie.mkv",
+            "/tmp/translated.srt",
+            "pl",
+            "pl (Lingarr)",
+            false,
+            "/media/out.mkv",
+            new List<int> { 5, 7 });
+
+        var subtitleTracksIndex = args.IndexOf("--subtitle-tracks");
+
+        Assert.True(subtitleTracksIndex >= 0);
+        Assert.Equal("!5,7", args[subtitleTracksIndex + 1]);
+        Assert.DoesNotContain("!5", args);
+        Assert.DoesNotContain("!7", args);
+    }
+
+    [Fact]
+    public void FindLingarrTrackIdsToReplace_MatchesIso639TwoAndThreeLetterCodes()
+    {
+        var ids = MkvEmbeddingService.FindLingarrTrackIdsToReplace(
+            BuildIdentifyJson(
+                Track(2, "subtitles", "pol", null, "pl (Lingarr)", "S_TEXT/UTF8", "SubRip/SRT")),
+            "pl",
+            ".srt",
+            "pl (Lingarr)");
+
+        Assert.Equal([2], ids);
+    }
+
+    [Fact]
+    public void FindLingarrTrackIdsToReplace_UsesTitleFallbackWhenLanguageMissing()
+    {
+        var ids = MkvEmbeddingService.FindLingarrTrackIdsToReplace(
+            BuildIdentifyJson(
+                Track(3, "subtitles", "und", null, "pl (Lingarr)", "S_TEXT/UTF8", "SubRip/SRT")),
+            "pl",
+            ".srt",
+            "pl (Lingarr)");
+
+        Assert.Equal([3], ids);
+    }
+
+    [Fact]
+    public void FindLingarrTrackIdsToReplace_DoesNotRemoveNonLingarrTargetTracks()
+    {
+        var ids = MkvEmbeddingService.FindLingarrTrackIdsToReplace(
+            BuildIdentifyJson(
+                Track(4, "subtitles", "pol", null, "Polish Full", "S_TEXT/UTF8", "SubRip/SRT"),
+                Track(5, "subtitles", "pol", null, "pl (Lingarr)", "S_TEXT/UTF8", "SubRip/SRT")),
+            "pl",
+            ".srt",
+            "pl (Lingarr)");
+
+        Assert.Equal([5], ids);
+    }
+
+    [Fact]
+    public void FindLingarrTrackIdsToReplace_KeepsDifferentEmbeddedFormats()
+    {
+        var identifyJson = BuildIdentifyJson(
+            Track(6, "subtitles", "pol", null, "pl (Lingarr)", "S_TEXT/UTF8", "SubRip/SRT"),
+            Track(7, "subtitles", "pol", null, "pl (Lingarr)", "S_TEXT/ASS", "SubStationAlpha"));
+
+        var srtIds = MkvEmbeddingService.FindLingarrTrackIdsToReplace(
+            identifyJson,
+            "pl",
+            ".srt",
+            "pl (Lingarr)");
+        var assIds = MkvEmbeddingService.FindLingarrTrackIdsToReplace(
+            identifyJson,
+            "pl",
+            ".ass",
+            "pl (Lingarr)");
+
+        Assert.Equal([6], srtIds);
+        Assert.Equal([7], assIds);
+    }
+
+    private static string BuildIdentifyJson(params string[] tracks)
+    {
+        return $$"""
+            {
+              "tracks": [
+                {{string.Join($",{Environment.NewLine}", tracks)}}
+              ]
+            }
+            """;
+    }
+
+    private static string Track(
+        int id,
+        string type,
+        string? language,
+        string? languageIetf,
+        string? title,
+        string? codecId,
+        string? codec)
+    {
+        return $$"""
+                {
+                  "id": {{id}},
+                  "type": "{{type}}",
+                  "codec": {{JsonString(codec)}},
+                  "properties": {
+                    "language": {{JsonString(language)}},
+                    "language_ietf": {{JsonString(languageIetf)}},
+                    "track_name": {{JsonString(title)}},
+                    "codec_id": {{JsonString(codecId)}}
+                  }
+                }
+            """;
+    }
+
+    private static string JsonString(string? value)
+    {
+        return value == null ? "null" : $"\"{value}\"";
+    }
 }

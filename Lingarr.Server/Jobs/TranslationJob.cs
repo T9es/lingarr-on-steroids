@@ -1694,11 +1694,58 @@ Exception? lastException = null;
 
         try
         {
+            await RefreshEmbeddedSubtitleIndexAfterEmbeddedOutputAsync(
+                translationRequest,
+                outputPaths,
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Failed to refresh embedded subtitle index after MKV embedding for request {RequestId}",
+                translationRequest.Id);
+        }
+
+        try
+        {
             await RefreshTranslationStateAsync(translationRequest, cancellationToken);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to update translation state after completion");
+        }
+    }
+
+    private async Task RefreshEmbeddedSubtitleIndexAfterEmbeddedOutputAsync(
+        TranslationRequest request,
+        IReadOnlyCollection<string> outputPaths,
+        CancellationToken cancellationToken)
+    {
+        if (request.WorkloadKind != TranslationWorkloadKind.Library ||
+            !request.MediaId.HasValue ||
+            !outputPaths.Any(path => path.StartsWith("mkv-embedded:", StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        if (request.MediaType == MediaType.Movie)
+        {
+            var movie = await _dbContext.Movies
+                .FirstOrDefaultAsync(item => item.Id == request.MediaId.Value, cancellationToken);
+            if (movie != null)
+            {
+                await _extractionService.SyncEmbeddedSubtitles(movie);
+            }
+
+            return;
+        }
+
+        var episode = await _dbContext.Episodes
+            .FirstOrDefaultAsync(item => item.Id == request.MediaId.Value, cancellationToken);
+        if (episode != null)
+        {
+            await _extractionService.SyncEmbeddedSubtitles(episode);
         }
     }
 

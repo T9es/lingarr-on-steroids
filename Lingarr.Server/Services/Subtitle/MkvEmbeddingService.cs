@@ -1,6 +1,6 @@
 using System.Diagnostics;
 using System.Text;
-using System.Text.RegularExpressions;
+using System.Text.Json;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 
 namespace Lingarr.Server.Services.Subtitle;
@@ -70,20 +70,27 @@ public class MkvEmbeddingService : IMkvEmbeddingService
         var extension = Path.GetExtension(subtitlePath).ToLowerInvariant();
         var isAss = extension is ".ass" or ".ssa";
 
-        var existingTrackIds = await GetExistingLanguageTrackIds(mkvPath, languageCode);
-
-        var tempOutputPath = CreateTempOutputPath(mkvPath);
-
-        var arguments = BuildMkvMergeArguments(mkvPath, subtitlePath, languageCode, trackName, isAss, tempOutputPath, existingTrackIds);
-
-        _logger.LogInformation(
-            "Embedding subtitle into MKV container. MKV: |Green|{MkvPath}|/Green|, Subtitle: {SubtitlePath}, Language: {LanguageCode}",
-            mkvPath,
-            subtitlePath,
-            languageCode);
-
+        string? tempOutputPath = null;
         try
         {
+            var targetFormat = SubtitleOutputModeHelper.NormalizeFormat(extension);
+            var existingTrackIds = await GetLingarrTrackIdsToReplaceAsync(
+                mkvPath,
+                languageCode,
+                targetFormat,
+                trackName,
+                ct);
+
+            tempOutputPath = CreateTempOutputPath(mkvPath);
+
+            var arguments = BuildMkvMergeArguments(mkvPath, subtitlePath, languageCode, trackName, isAss, tempOutputPath, existingTrackIds);
+
+            _logger.LogInformation(
+                "Embedding subtitle into MKV container. MKV: |Green|{MkvPath}|/Green|, Subtitle: {SubtitlePath}, Language: {LanguageCode}",
+                mkvPath,
+                subtitlePath,
+                languageCode);
+
             var result = await RunProcessAsync(MkvMergeBinary, arguments, ct);
 
             if (result.ExitCode == 0 || result.ExitCode == 1)
@@ -129,7 +136,10 @@ public class MkvEmbeddingService : IMkvEmbeddingService
                 result.ExitCode,
                 TruncateOutput(result.Output));
 
-            CleanupTempFile(tempOutputPath);
+            if (tempOutputPath != null)
+            {
+                CleanupTempFile(tempOutputPath);
+            }
 
             return new MkvEmbedResult(
                 Success: false,
@@ -137,13 +147,21 @@ public class MkvEmbeddingService : IMkvEmbeddingService
         }
         catch (OperationCanceledException)
         {
-            CleanupTempFile(tempOutputPath);
+            if (tempOutputPath != null)
+            {
+                CleanupTempFile(tempOutputPath);
+            }
+
             throw;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Exception during MKV embedding for {MkvPath}", mkvPath);
-            CleanupTempFile(tempOutputPath);
+            if (tempOutputPath != null)
+            {
+                CleanupTempFile(tempOutputPath);
+            }
+
             return new MkvEmbedResult(Success: false, Error: $"Exception during embedding: {ex.Message}");
         }
     }
@@ -155,7 +173,7 @@ public class MkvEmbeddingService : IMkvEmbeddingService
         string? trackName,
         bool isAss,
         string tempOutputPath,
-        List<int> excludeTrackIds)
+        IReadOnlyCollection<int> excludeTrackIds)
     {
         var args = new List<string>();
         args.Add("-o");
@@ -164,10 +182,7 @@ public class MkvEmbeddingService : IMkvEmbeddingService
         if (excludeTrackIds.Count > 0)
         {
             args.Add("--subtitle-tracks");
-            foreach (var id in excludeTrackIds)
-            {
-                args.Add($"!{id}");
-            }
+            args.Add($"!{string.Join(",", excludeTrackIds)}");
         }
 
         args.Add(mkvPath);
@@ -191,31 +206,175 @@ public class MkvEmbeddingService : IMkvEmbeddingService
         return args;
     }
 
-    private async Task<List<int>> GetExistingLanguageTrackIds(string mkvPath, string languageCode)
+    internal static IReadOnlyList<int> FindLingarrTrackIdsToReplace(
+        string identifyJson,
+        string targetLanguage,
+        string targetFormat,
+        string? trackName)
     {
-        try
+        var normalizedFormat = SubtitleOutputModeHelper.NormalizeFormat(targetFormat);
+        if (string.IsNullOrWhiteSpace(identifyJson) ||
+            string.IsNullOrWhiteSpace(targetLanguage) ||
+            string.IsNullOrWhiteSpace(normalizedFormat))
         {
-            var result = await RunProcessAsync(MkvMergeBinary, new List<string> { "-i", mkvPath }, CancellationToken.None);
-            var tracks = new List<int>();
-            foreach (var line in result.Output.Split('\n'))
+            return [];
+        }
+
+        var ids = new List<int>();
+        foreach (var track in ParseSubtitleTracks(identifyJson))
+        {
+            if (!IsLingarrOwnedTrack(track) ||
+                !TrackLanguageMatches(track, targetLanguage) ||
+                !string.Equals(MapMkvSubtitleFormat(track), normalizedFormat, StringComparison.OrdinalIgnoreCase))
             {
-                if (line.Contains("subtitles") && line.Contains($"language: {languageCode}"))
-                {
-                    var match = Regex.Match(line, @"Track ID (\d+)");
-                    if (match.Success)
-                    {
-                        tracks.Add(int.Parse(match.Groups[1].Value));
-                    }
-                }
+                continue;
             }
-            return tracks;
+
+            ids.Add(track.Id);
         }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to query existing tracks for {MkvPath}", mkvPath);
-            return new List<int>();
-        }
+
+        return ids;
     }
+
+    private async Task<IReadOnlyList<int>> GetLingarrTrackIdsToReplaceAsync(
+        string mkvPath,
+        string languageCode,
+        string targetFormat,
+        string? trackName,
+        CancellationToken ct)
+    {
+        var result = await RunProcessAsync(MkvMergeBinary, new List<string> { "-J", mkvPath }, ct);
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidOperationException(
+                $"mkvmerge JSON identification failed with exit code {result.ExitCode}: {TruncateOutput(result.Output)}");
+        }
+
+        return FindLingarrTrackIdsToReplace(result.Output, languageCode, targetFormat, trackName);
+    }
+
+    private static IReadOnlyList<MkvSubtitleTrack> ParseSubtitleTracks(string identifyJson)
+    {
+        using var document = JsonDocument.Parse(identifyJson);
+        if (!document.RootElement.TryGetProperty("tracks", out var tracksElement) ||
+            tracksElement.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var tracks = new List<MkvSubtitleTrack>();
+        foreach (var trackElement in tracksElement.EnumerateArray())
+        {
+            if (!TryGetInt(trackElement, "id", out var id) ||
+                !string.Equals(GetString(trackElement, "type"), "subtitles", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            trackElement.TryGetProperty("properties", out var properties);
+            tracks.Add(new MkvSubtitleTrack(
+                id,
+                GetString(properties, "language"),
+                GetString(properties, "language_ietf"),
+                GetString(properties, "track_name"),
+                GetString(properties, "codec_id"),
+                GetString(trackElement, "codec")));
+        }
+
+        return tracks;
+    }
+
+    private static bool IsLingarrOwnedTrack(MkvSubtitleTrack track)
+    {
+        return ContainsLingarrMarker(track.Title);
+    }
+
+    private static bool ContainsLingarrMarker(string? value)
+    {
+        return value?.Contains("(Lingarr)", StringComparison.OrdinalIgnoreCase) == true;
+    }
+
+    private static bool TrackLanguageMatches(MkvSubtitleTrack track, string targetLanguage)
+    {
+        return SubtitleLanguageHelper.LanguageMatches(track.Language, targetLanguage) ||
+               SubtitleLanguageHelper.LanguageMatches(track.LanguageIetf, targetLanguage) ||
+               SubtitleLanguageHelper.LanguageMatches(GetLingarrTitleLanguagePrefix(track.Title), targetLanguage);
+    }
+
+    private static string? GetLingarrTitleLanguagePrefix(string? title)
+    {
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            return null;
+        }
+
+        var markerIndex = title.IndexOf("(Lingarr)", StringComparison.OrdinalIgnoreCase);
+        if (markerIndex < 0)
+        {
+            return null;
+        }
+
+        var prefix = title[..markerIndex].Trim();
+        return string.IsNullOrWhiteSpace(prefix) ? null : prefix;
+    }
+
+    private static string MapMkvSubtitleFormat(MkvSubtitleTrack track)
+    {
+        var codecValues = new[] { track.CodecId, track.Codec };
+        foreach (var codecValue in codecValues)
+        {
+            var normalized = NormalizeCodecValue(codecValue);
+            if (normalized is "s_text/utf8" or "subrip" or "subrip/srt" or "srt")
+            {
+                return ".srt";
+            }
+
+            if (normalized is "s_text/ass" or "ass" or "substationalpha")
+            {
+                return ".ass";
+            }
+
+            if (normalized is "s_text/ssa" or "ssa" or "substationalpha/ssa")
+            {
+                return ".ssa";
+            }
+
+            if (normalized is "s_text/webvtt" or "webvtt" or "vtt")
+            {
+                return ".vtt";
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private static string NormalizeCodecValue(string? value)
+    {
+        return value?.Trim().ToLowerInvariant().Replace(" ", string.Empty, StringComparison.Ordinal) ?? string.Empty;
+    }
+
+    private static string? GetString(JsonElement element, string propertyName)
+    {
+        if (element.ValueKind != JsonValueKind.Object ||
+            !element.TryGetProperty(propertyName, out var property) ||
+            property.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        return property.ValueKind == JsonValueKind.String
+            ? property.GetString()
+            : property.ToString();
+    }
+
+    private static bool TryGetInt(JsonElement element, string propertyName, out int value)
+    {
+        value = 0;
+        return element.ValueKind == JsonValueKind.Object &&
+               element.TryGetProperty(propertyName, out var property) &&
+               property.TryGetInt32(out value);
+    }
+
     private async Task<MkvEmbedResult> SwapWithOriginalAsync(
         string originalPath,
         string tempPath,
@@ -354,3 +513,11 @@ public class MkvEmbeddingService : IMkvEmbeddingService
         return output.Length <= maxLength ? output : output[..maxLength] + "...";
     }
 }
+
+internal sealed record MkvSubtitleTrack(
+    int Id,
+    string? Language,
+    string? LanguageIetf,
+    string? Title,
+    string? CodecId,
+    string? Codec);
