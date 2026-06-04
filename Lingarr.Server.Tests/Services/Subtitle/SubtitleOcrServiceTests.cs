@@ -92,6 +92,79 @@ public class SubtitleOcrServiceTests
     }
 
     [Fact]
+    public async Task QueueOcrAsync_WithBlockedLowQualityOutputAboveCurrentThreshold_PromotesOcr()
+    {
+        var tempDirectory = Directory.CreateTempSubdirectory();
+        try
+        {
+            var fileName = "korra.s04e12.mkv";
+            var mediaPath = Path.Combine(tempDirectory.FullName, fileName);
+            var ocrPath = Path.Combine(tempDirectory.FullName, "korra.s04e12.eng.ocr.srt");
+            await File.WriteAllTextAsync(mediaPath, "media");
+            await File.WriteAllTextAsync(ocrPath, "1\n00:00:01,000 --> 00:00:02,000\nHello\n");
+
+            await using var context = BuildContext();
+            var movie = new Movie
+            {
+                RadarrId = 12,
+                Title = "Korra S04E12",
+                Path = tempDirectory.FullName,
+                FileName = fileName,
+                DateAdded = DateTime.UtcNow
+            };
+            movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+            {
+                StreamIndex = 2,
+                Language = "eng",
+                Title = "English PGS",
+                CodecName = "hdmv_pgs_subtitle",
+                IsTextBased = false,
+                OcrStatus = SubtitleOcrStatus.BlockedLowQuality,
+                OcrExtractedPath = ocrPath,
+                OcrQualityScore = 75,
+                OcrIssueSummary = "15 % of cues are empty",
+                OcrError = "15 % of cues are empty",
+                Movie = movie
+            });
+
+            context.Movies.Add(movie);
+            await context.SaveChangesAsync();
+
+            var mediaState = new Mock<IMediaStateService>();
+            mediaState
+                .Setup(service => service.UpdateStateAsync(movie, MediaType.Movie, true))
+                .ReturnsAsync(TranslationState.OcrPending);
+
+            var service = BuildService(
+                context,
+                Mock.Of<ISubtitleService>(),
+                Mock.Of<IEmbeddedSubtitleCacheService>(),
+                Mock.Of<ISubtitleOcrEngine>(),
+                ocrMinQualityScore: "70",
+                mediaStateService: mediaState.Object);
+
+            var result = await service.QueueOcrAsync(movie.Id, MediaType.Movie, 2, manual: false);
+
+            Assert.True(result.Success);
+            Assert.Equal(SubtitleOcrStatus.Succeeded, result.Status);
+            Assert.Equal(ocrPath, result.ExtractedPath);
+            Assert.Equal(75, result.QualityScore);
+
+            var updatedSubtitle = await context.EmbeddedSubtitles.SingleAsync();
+            Assert.Equal(SubtitleOcrStatus.Succeeded, updatedSubtitle.OcrStatus);
+            Assert.Null(updatedSubtitle.OcrError);
+            Assert.NotNull(updatedSubtitle.OcrCompletedAt);
+            mediaState.Verify(
+                service => service.UpdateStateAsync(movie, MediaType.Movie, true),
+                Times.Once);
+        }
+        finally
+        {
+            tempDirectory.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task RunOcrAsync_WhenEmbeddedSubtitleRowIsReplaced_CompletesCurrentRow()
     {
         var tempDirectory = Directory.CreateTempSubdirectory();
@@ -260,7 +333,9 @@ public class SubtitleOcrServiceTests
         LingarrDbContext context,
         ISubtitleService subtitleService,
         IEmbeddedSubtitleCacheService cacheService,
-        ISubtitleOcrEngine ocrEngine)
+        ISubtitleOcrEngine ocrEngine,
+        string ocrMinQualityScore = "80",
+        IMediaStateService? mediaStateService = null)
     {
         var settings = new Mock<ISettingService>();
         settings
@@ -268,7 +343,7 @@ public class SubtitleOcrServiceTests
             .ReturnsAsync("true");
         settings
             .Setup(service => service.GetSetting(SettingKeys.SubtitleExtraction.OcrMinQualityScore))
-            .ReturnsAsync("80");
+            .ReturnsAsync(ocrMinQualityScore);
         settings
             .Setup(service => service.GetSetting(SettingKeys.SubtitleExtraction.OcrLanguages))
             .ReturnsAsync("auto");
@@ -279,7 +354,7 @@ public class SubtitleOcrServiceTests
             subtitleService,
             cacheService,
             ocrEngine,
-            Mock.Of<IMediaStateService>(),
+            mediaStateService ?? Mock.Of<IMediaStateService>(),
             NullLogger<SubtitleOcrService>.Instance);
     }
 }

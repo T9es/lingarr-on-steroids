@@ -367,7 +367,11 @@ public class SubtitleExtractionController : ControllerBase
             return BadRequest(SubtitleOcrResponse.FromResult(result));
         }
 
-        BackgroundJob.Enqueue<SubtitleOcrJob>(job => job.Execute(id, mediaType, streamIndex, manual));
+        if (result.Status == SubtitleOcrStatus.Queued)
+        {
+            BackgroundJob.Enqueue<SubtitleOcrJob>(job => job.Execute(id, mediaType, streamIndex, manual));
+        }
+
         return Ok(SubtitleOcrResponse.FromResult(result));
     }
 

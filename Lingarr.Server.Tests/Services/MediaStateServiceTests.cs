@@ -410,6 +410,66 @@ public class MediaStateServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ComputeStateAsync_ShouldCountForcedLingarrGeneratedEmbeddedTarget()
+    {
+        var movie = new Movie
+        {
+            Id = 12,
+            RadarrId = 12,
+            Title = "Korra Generated Embedded Target",
+            Path = "/movies/korra-generated.mkv",
+            FileName = "korra-generated.mkv",
+            DateAdded = DateTime.UtcNow
+        };
+
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = 12,
+            Language = "eng",
+            Title = "English Full",
+            IsTextBased = true,
+            CodecName = "subrip",
+            StreamIndex = 0
+        });
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = 12,
+            Language = "pol",
+            Title = "pl (Lingarr)",
+            IsTextBased = true,
+            IsForced = true,
+            CodecName = "subrip",
+            StreamIndex = 1
+        });
+
+        _context.Movies.Add(movie);
+        await _context.SaveChangesAsync();
+
+        _settingServiceMock
+            .SetupSequence(s => s.GetSettingAsJson<SourceLanguage>(It.IsAny<string>()))
+            .ReturnsAsync(new List<SourceLanguage> { new() { Name = "English", Code = "en" } })
+            .ReturnsAsync(new List<SourceLanguage> { new() { Name = "Polish", Code = "pl" } });
+        _settingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.SubtitleValidation.SkipWhenTargetEmbedded))
+            .ReturnsAsync("true");
+        _subtitleServiceMock
+            .Setup(s => s.GetAllSubtitles(It.IsAny<string>()))
+            .ReturnsAsync(new List<Models.FileSystem.Subtitles>());
+
+        var service = new MediaStateService(
+            _context,
+            _settingServiceMock.Object,
+            _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
+            NullLogger<MediaStateService>.Instance);
+
+        var state = await service.UpdateStateAsync(movie, MediaType.Movie);
+
+        Assert.Equal(TranslationState.Complete, state);
+    }
+
+    [Fact]
     public async Task ComputeStateAsync_ShouldReturnPending_WhenEmbeddedTargetLanguageMissing()
     {
         // Arrange - Movie with embedded English subtitle (source), but no Dutch (target)

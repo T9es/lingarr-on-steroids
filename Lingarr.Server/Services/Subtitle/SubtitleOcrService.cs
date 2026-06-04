@@ -79,6 +79,15 @@ public class SubtitleOcrService : ISubtitleOcrService
             return Fail(SubtitleOcrStatus.Failed, validationError);
         }
 
+        var reEvaluatedResult = await TryReEvaluateBlockedLowQualityOcrAsync(
+            context,
+            manual,
+            cancellationToken);
+        if (reEvaluatedResult != null)
+        {
+            return reEvaluatedResult;
+        }
+
         context.Subtitle.OcrStatus = SubtitleOcrStatus.Queued;
         context.Subtitle.OcrError = null;
         context.Subtitle.OcrAttemptedAt = DateTime.UtcNow;
@@ -348,6 +357,48 @@ public class SubtitleOcrService : ISubtitleOcrService
         }
 
         return null;
+    }
+
+    private async Task<SubtitleOcrResult?> TryReEvaluateBlockedLowQualityOcrAsync(
+        OcrMediaContext context,
+        bool manual,
+        CancellationToken cancellationToken)
+    {
+        var subtitle = context.Subtitle;
+        if (subtitle.OcrStatus != SubtitleOcrStatus.BlockedLowQuality ||
+            string.IsNullOrWhiteSpace(subtitle.OcrExtractedPath) ||
+            !subtitle.OcrQualityScore.HasValue ||
+            !File.Exists(subtitle.OcrExtractedPath))
+        {
+            return null;
+        }
+
+        var minimumQualityScore = await GetMinimumQualityScoreAsync(cancellationToken);
+        if (subtitle.OcrQualityScore.Value < minimumQualityScore)
+        {
+            if (manual)
+            {
+                return null;
+            }
+
+            return FromSubtitle(subtitle, success: false);
+        }
+
+        subtitle.OcrStatus = SubtitleOcrStatus.Succeeded;
+        subtitle.OcrError = null;
+        subtitle.OcrCompletedAt ??= DateTime.UtcNow;
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        await _mediaStateService.UpdateStateAsync(context.Media, context.MediaType);
+
+        _logger.LogInformation(
+            "Promoted previously blocked OCR for {MediaType} {MediaId} stream {StreamIndex}: quality={QualityScore}, currentThreshold={Threshold}",
+            context.MediaType,
+            context.Media.Id,
+            subtitle.StreamIndex,
+            subtitle.OcrQualityScore,
+            minimumQualityScore);
+
+        return FromSubtitle(subtitle, success: true);
     }
 
     private static void NormalizeOcrOutputFile(string outputPath)

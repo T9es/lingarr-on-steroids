@@ -621,7 +621,9 @@ public class MediaStateService : IMediaStateService
                     continue;
                 }
 
-                if (SubtitleLanguageHelper.ScoreSubtitleCandidate(embedded, targetLanguage) < 30)
+                var isLingarrGeneratedTarget = IsLingarrGeneratedEmbeddedTarget(embedded);
+                if (!isLingarrGeneratedTarget &&
+                    SubtitleLanguageHelper.ScoreSubtitleCandidate(embedded, targetLanguage) < 30)
                 {
                     break;
                 }
@@ -644,6 +646,11 @@ public class MediaStateService : IMediaStateService
         }
 
         return existingTargetFormats;
+    }
+
+    private static bool IsLingarrGeneratedEmbeddedTarget(EmbeddedSubtitle embedded)
+    {
+        return embedded.Title?.Contains("(Lingarr)", StringComparison.OrdinalIgnoreCase) == true;
     }
 
     private static bool ShouldSkipAsMainTarget(

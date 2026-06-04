@@ -1404,6 +1404,18 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                     staleOcr.OcrQualityScore = null;
                     await _dbContext.SaveChangesAsync();
                 }
+
+                var queuedOcr = await TryQueueEmbeddedSubtitleOcrAsync(
+                    media,
+                    mediaType,
+                    embeddedSubtitles,
+                    configuredSourceLanguages,
+                    targetLanguages);
+
+                if (queuedOcr)
+                {
+                    return 0;
+                }
             }
 
             await UpdateHash();
@@ -1811,9 +1823,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         var candidate = embeddedSubtitles
             .Where(subtitle => !subtitle.IsTextBased)
             .Where(subtitle => _subtitleOcrService.IsSupportedCodec(subtitle.CodecName))
-            .Where(subtitle => subtitle.OcrStatus is SubtitleOcrStatus.NotStarted
-                or SubtitleOcrStatus.Queued
-                or SubtitleOcrStatus.Processing)
+            .Where(IsQueueableOcrCandidate)
             .Where(subtitle => isAutoMode ||
                 configuredSourceLanguages.Any(language =>
                     SubtitleLanguageHelper.LanguageMatches(subtitle.Language, language)))
@@ -1880,6 +1890,20 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             return false;
         }
 
+        if (result.Status is SubtitleOcrStatus.Succeeded or SubtitleOcrStatus.Approved)
+        {
+            _logger.LogInformation(
+                "OCR for {FileName} stream {StreamIndex} is already usable after queue re-evaluation. Reconsidering translation now.",
+                media.FileName,
+                candidate.StreamIndex);
+            await ProcessMediaForceAsync(
+                media,
+                mediaType,
+                forceProcess: true,
+                forceTranslation: false);
+            return true;
+        }
+
         if (_backgroundJobClient != null)
         {
             _backgroundJobClient.Enqueue<SubtitleOcrJob>(job => job.Execute(
@@ -1901,6 +1925,21 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             media.FileName,
             candidate.StreamIndex);
         return true;
+    }
+
+    private static bool IsQueueableOcrCandidate(EmbeddedSubtitle subtitle)
+    {
+        if (subtitle.OcrStatus is SubtitleOcrStatus.NotStarted
+            or SubtitleOcrStatus.Queued
+            or SubtitleOcrStatus.Processing)
+        {
+            return true;
+        }
+
+        return subtitle.OcrStatus == SubtitleOcrStatus.BlockedLowQuality &&
+               subtitle.OcrQualityScore.HasValue &&
+               !string.IsNullOrWhiteSpace(subtitle.OcrExtractedPath) &&
+               File.Exists(subtitle.OcrExtractedPath);
     }
 
     private static void AddIntegrityFinding(
