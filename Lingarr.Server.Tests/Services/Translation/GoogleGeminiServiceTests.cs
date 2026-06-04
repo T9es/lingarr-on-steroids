@@ -175,6 +175,70 @@ public class GoogleGeminiServiceTests
     }
 
     [Fact]
+    public async Task TranslateBatchAsync_RejectsShiftedSourceKeysInsteadOfApplyingWrongText()
+    {
+        var settings = new Dictionary<string, string>
+        {
+            { SettingKeys.Translation.Gemini.ApiKey, "test-api-key" },
+            { SettingKeys.Translation.Gemini.Model, "gemini-pro" },
+            { SettingKeys.Translation.AiPrompt, "Translate this." },
+            { SettingKeys.Translation.AiContextPrompt, "Context." },
+            { SettingKeys.Translation.AiContextPromptEnabled, "false" },
+            { SettingKeys.Translation.CustomAiParameters, "[]" },
+            { SettingKeys.Translation.RequestTimeout, "30" },
+            { SettingKeys.Translation.MaxRetries, "3" },
+            { SettingKeys.Translation.RetryDelay, "1000" },
+            { SettingKeys.Translation.RetryDelayMultiplier, "2" }
+        };
+
+        _settingsMock.Setup(s => s.GetSettings(It.IsAny<IEnumerable<string>>()))
+            .ReturnsAsync(settings);
+
+        var batch = new List<BatchSubtitleItem>
+        {
+            new() { Position = 1, Line = "LISTEN, EVERYONE." },
+            new() { Position = 2, Line = "I SEE THEM." }
+        };
+        var shiftedJson = JsonSerializer.Serialize(new[]
+        {
+            new
+            {
+                position = 1,
+                sourceKey = SourceKey(2, "I SEE THEM."),
+                line = "WIDZE ICH."
+            },
+            new
+            {
+                position = 2,
+                sourceKey = SourceKey(2, "I SEE THEM."),
+                line = "WIDZE ICH."
+            }
+        });
+        var sseContent = SseTestHelper.CreateGeminiSseResponse(
+            shiftedJson,
+            promptTokens: 12,
+            completionTokens: 8,
+            totalTokens: 20);
+
+        _httpMessageHandlerMock
+            .Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(new HttpResponseMessage
+            {
+                StatusCode = HttpStatusCode.OK,
+                Content = new StringContent(sseContent, Encoding.UTF8, "text/event-stream")
+            });
+
+        var result = await _service.TranslateBatchAsync(batch, "en", "pl", null, null, CancellationToken.None);
+
+        Assert.False(result.ContainsKey(1));
+        Assert.Equal("WIDZE ICH.", result[2]);
+    }
+
+    [Fact]
     public async Task TranslateAsync_ShouldRetryOnServiceUnavailableAndEventuallySucceed()
     {
         var settings = new Dictionary<string, string>

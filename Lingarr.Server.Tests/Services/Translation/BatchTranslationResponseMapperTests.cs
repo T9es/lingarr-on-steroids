@@ -66,6 +66,34 @@ public class BatchTranslationResponseMapperTests
         Assert.False(result.ContainsKey(13));
     }
 
+    [Fact]
+    public void MapAlignedTranslationsSafe_RejectsNonEmptyLineWithMismatchedSourceKey()
+    {
+        var requestedItems = new List<BatchSubtitleItem>
+        {
+            new() { Position = 10, Line = "Bolin lets fly a flurry of attacks." },
+            new() { Position = 11, Line = "Korra ducks." },
+            new() { Position = 12, Line = "Round one goes to the Fire Ferrets." }
+        };
+        var translatedItems = new List<StructuredBatchResponse>
+        {
+            new() { Position = 10, SourceKey = SourceKey(11, "Korra ducks."), Line = "Korra robi unik." },
+            new() { Position = 11, SourceKey = null, Line = "Runda dla Fire Ferrets." },
+            new() { Position = 12, SourceKey = SourceKey(12, "Round one goes to the Fire Ferrets."), Line = "Pierwsza runda dla Fire Ferrets." }
+        };
+
+        var result = BatchTranslationResponseMapper.MapAlignedTranslationsSafe(
+            requestedItems,
+            translatedItems,
+            NullLogger.Instance,
+            "test");
+
+        Assert.False(result.ValidTranslations.ContainsKey(10));
+        Assert.False(result.ValidTranslations.ContainsKey(11));
+        Assert.Equal("Pierwsza runda dla Fire Ferrets.", result.ValidTranslations[12]);
+        Assert.Equal([10, 11], result.SourceKeyFailures);
+    }
+
     private static string SourceKey(int position, string line)
     {
         return BatchTranslationResponseMapper.GetSourceKey(new BatchSubtitleItem

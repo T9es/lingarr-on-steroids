@@ -471,11 +471,12 @@ public class NanoGptService : OpenAiService
                     string.Join(", ", unexpectedPositions.Take(10)));
             }
 
-            var validTranslations = BatchTranslationResponseMapper.MapAlignedTranslations(
+            var mappingResult = BatchTranslationResponseMapper.MapAlignedTranslationsSafe(
                 subtitleBatch,
                 translatedItems,
                 _logger,
                 ServiceName);
+            var validTranslations = mappingResult.ValidTranslations;
 
             if (validTranslations.Count == 0 && subtitleBatch.Count > 0)
             {

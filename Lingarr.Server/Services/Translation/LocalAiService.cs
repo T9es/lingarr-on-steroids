@@ -500,11 +500,11 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
                 throw new TranslationException("Failed to deserialize translated subtitles");
             }
 
-            return BatchTranslationResponseMapper.MapAlignedTranslations(
+            return BatchTranslationResponseMapper.MapAlignedTranslationsSafe(
                 subtitleBatch,
                 translatedItems,
                 _logger,
-                ServiceName);
+                ServiceName).ValidTranslations;
         }
         catch (JsonException ex)
         {
@@ -612,11 +612,11 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
                 throw new TranslationException("Failed to deserialize translated subtitles from JSON parsing");
             }
 
-            return BatchTranslationResponseMapper.MapAlignedTranslations(
+            return BatchTranslationResponseMapper.MapAlignedTranslationsSafe(
                 subtitleBatch,
                 translatedItems,
                 _logger,
-                ServiceName);
+                ServiceName).ValidTranslations;
         }
         catch (JsonException ex)
         {
@@ -698,11 +698,11 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
                 throw new TranslationException("Failed to deserialize translated subtitles from generate API");
             }
 
-            return BatchTranslationResponseMapper.MapAlignedTranslations(
+            return BatchTranslationResponseMapper.MapAlignedTranslationsSafe(
                 subtitleBatch,
                 translatedItems,
                 _logger,
-                ServiceName);
+                ServiceName).ValidTranslations;
         }
         catch (JsonException ex)
         {

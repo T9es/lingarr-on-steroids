@@ -290,7 +290,8 @@ public abstract class BaseLanguageService : BaseTranslationService
         return
             "Translate every subtitle item exactly once. Do not omit, merge, split, reorder, or renumber items. " +
             "For each output object, keep position and sourceKey unchanged; put only the translated text in line. " +
-            "If you cannot translate a line, output it exactly as-is in the original language. Do NOT skip any position." +
+            "Every translatable item must receive target-language translated text. " +
+            "Do not copy source text as a fallback. Do NOT skip any position." +
             Environment.NewLine +
             subtitlePayload;
     }

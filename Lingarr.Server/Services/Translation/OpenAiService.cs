@@ -579,11 +579,11 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
                 "Batch translation successful. Requested: {RequestedCount}, Received: {ReceivedCount}",
                 subtitleBatch.Count, translatedItems.Count);
 
-            return BatchTranslationResponseMapper.MapAlignedTranslations(
+            return BatchTranslationResponseMapper.MapAlignedTranslationsSafe(
                 subtitleBatch,
                 translatedItems,
                 _logger,
-                ServiceName);
+                ServiceName).ValidTranslations;
         }
         catch (JsonException ex)
         {

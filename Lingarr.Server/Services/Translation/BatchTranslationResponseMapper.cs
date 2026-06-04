@@ -121,8 +121,8 @@ internal static class BatchTranslationResponseMapper
     /// Maps translated items back to request items with STRICT sourceKey validation.
     /// Unlike MapAlignedTranslations, this REJECTS items whose sourceKey doesn't match
     /// the requested sourceKey. SourceKey mismatch indicates the model returned content
-    /// for the wrong position (a shift/misalignment). These are NOT transient errors
-    /// and should NOT be retried -- callers should preserve the original source text.
+    /// for the wrong position (a shift/misalignment). Callers should treat rejected
+    /// items as missing translations so the repair/failure path handles them.
     /// </summary>
     /// <param name="requestedItems">The items sent to the provider.</param>
     /// <param name="translatedItems">The items returned by the provider.</param>
@@ -173,6 +173,7 @@ internal static class BatchTranslationResponseMapper
             if (!valid.TryAdd(item.Position, item.Line))
             {
                 duplicatePositions.Add(item.Position);
+                valid.Remove(item.Position);
             }
         }
 
@@ -234,7 +235,7 @@ internal static class BatchTranslationResponseMapper
             "Source text: \"{SourceText}\". " +
             "Provider returned: \"{ReturnedText}\". " +
             "This indicates the model returned content for the wrong position. " +
-            "Source text will be preserved for this position.",
+            "This position will be treated as a missing translation.",
             providerName,
             position,
             expectedKey,

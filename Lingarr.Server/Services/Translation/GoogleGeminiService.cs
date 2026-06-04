@@ -677,11 +677,11 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
                 }
             }
 
-            return BatchTranslationResponseMapper.MapAlignedTranslations(
+            return BatchTranslationResponseMapper.MapAlignedTranslationsSafe(
                 subtitleBatch,
                 translatedItems,
                 _logger,
-                ServiceName);
+                ServiceName).ValidTranslations;
         }
 
         catch (JsonException ex)
@@ -706,11 +706,11 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
                             }
                         }
                         _logger.LogWarning("Successfully repaired the truncated JSON response from Gemini. Please verify the result.");
-                        return BatchTranslationResponseMapper.MapAlignedTranslations(
+                        return BatchTranslationResponseMapper.MapAlignedTranslationsSafe(
                             subtitleBatch,
                             translatedItems,
                             _logger,
-                            ServiceName);
+                            ServiceName).ValidTranslations;
                     }
                 }
             }

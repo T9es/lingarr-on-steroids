@@ -12,6 +12,7 @@ namespace Lingarr.Server.Services;
 public class SubtitleTranslationService
 {
     private const int ProviderVisibleCharBudgetPerBatch = 20_000;
+    private const int MaxBatchContextLines = 10;
     private int _lastProgression = -1;
     private readonly ITranslationService _translationService;
     private readonly IProgressService? _progressService;
@@ -267,8 +268,16 @@ public class SubtitleTranslationService
             List<string>? postContext = null;
             if (batchContextEnabled)
             {
-                preContext = BuildBatchContext(structureEntries, batch.StartIndex, batchContextBefore, true);
-                postContext = BuildBatchContext(structureEntries, batch.EndIndex, batchContextAfter, false);
+                preContext = BuildBatchContext(
+                    structureEntries,
+                    batch.StartIndex,
+                    ClampBatchContextCount(batchContextBefore),
+                    true);
+                postContext = BuildBatchContext(
+                    structureEntries,
+                    batch.EndIndex,
+                    ClampBatchContextCount(batchContextAfter),
+                    false);
             }
 
             var batchResult = await ProcessSubtitleBatchInternal(
@@ -448,17 +457,7 @@ public class SubtitleTranslationService
             globalDeduplication);
         if (unresolvedEntries.Count > 0)
         {
-            var tolerance = Math.Max(5, (int)(translatableCueCount * 0.01));
-            if (unresolvedEntries.Count > tolerance)
-            {
-                ThrowMissingTranslationException(unresolvedEntries);
-            }
-            else
-            {
-                _logger.LogWarning(
-                    "Translation completed with {UnresolvedCount} unresolved item(s) within tolerance ({Tolerance}). Source text preserved.",
-                    unresolvedEntries.Count, tolerance);
-            }
+            ThrowMissingTranslationException(unresolvedEntries);
         }
 
         if (representativeEntries.Count == 0 || _lastProgression < 100)
@@ -894,6 +893,11 @@ public class SubtitleTranslationService
         }
 
         return context;
+    }
+
+    private static int ClampBatchContextCount(int count)
+    {
+        return Math.Clamp(count, 0, MaxBatchContextLines);
     }
 
     private static List<string> BuildContext(

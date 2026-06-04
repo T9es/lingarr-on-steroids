@@ -264,7 +264,8 @@ public class CrofAiService : OpenAiService
                            "}\n" +
                            "The 'position' and 'sourceKey' fields must match the input item. " +
                            "The 'line' field contains the translated text. " +
-                           "If you cannot translate a line, output it exactly as-is in the original language. Do NOT skip any position.";
+                           "Every translatable line must contain target-language translated text. " +
+                           "Do not copy source text as a fallback. Do NOT skip any position.";
 
         // Build user content with optional batch context wrapper
         var userContent = BuildBatchUserContent(subtitleBatch, preContext, postContext);
@@ -410,11 +411,11 @@ public class CrofAiService : OpenAiService
                 "Batch translation successful. Requested: {RequestedCount}, Received: {ReceivedCount}",
                 subtitleBatch.Count, translatedItems.Count);
 
-            return BatchTranslationResponseMapper.MapAlignedTranslations(
+            return BatchTranslationResponseMapper.MapAlignedTranslationsSafe(
                 subtitleBatch,
                 translatedItems,
                 _logger,
-                ServiceName);
+                ServiceName).ValidTranslations;
         }
         catch (JsonException ex)
         {

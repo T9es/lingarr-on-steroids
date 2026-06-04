@@ -402,7 +402,7 @@ if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var us
         var requestBody = new Dictionary<string, object>
         {
             ["model"] = _model!,
-            ["max_tokens"] = 1024,
+            ["max_tokens"] = 8192,
             ["system"] = _prompt!,
             ["tools"] = new[]
             {
@@ -545,11 +545,11 @@ if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var us
                 });
             }
 
-            return BatchTranslationResponseMapper.MapAlignedTranslations(
+            return BatchTranslationResponseMapper.MapAlignedTranslationsSafe(
                 subtitleBatch,
                 translatedItems,
                 _logger,
-                ServiceName);
+                ServiceName).ValidTranslations;
         }
         catch (Exception ex)
         {
