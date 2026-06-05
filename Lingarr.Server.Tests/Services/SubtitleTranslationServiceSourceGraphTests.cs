@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
+using Lingarr.Server.Exceptions;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models.Batch;
@@ -264,5 +265,146 @@ public class SubtitleTranslationServiceSourceGraphTests
         Assert.Equal(["Rent-a-Girlfriend"], result[1].TranslatedLines);
         Assert.Equal(["Noho i ka lipo"], result[2].TranslatedLines);
         Assert.Equal(["Musimy wyjsc natychmiast."], result[3].TranslatedLines);
+    }
+
+    [Fact]
+    public async Task TranslateSubtitlesBatch_WhenOcrDamagedDialogueExists_SendsItToProvider()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var batchServiceMock = translationServiceMock.As<IBatchTranslationService>();
+        var progressServiceMock = new Mock<IProgressService>();
+        var capturedBatches = new List<List<BatchSubtitleItem>>();
+
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+
+        batchServiceMock
+            .Setup(service => service.TranslateBatchAsync(
+                It.IsAny<List<BatchSubtitleItem>>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .Callback((List<BatchSubtitleItem> batch, string _, string _, List<string>? _, List<string>? _, CancellationToken _) =>
+            {
+                capturedBatches.Add(batch.Select(item => new BatchSubtitleItem
+                {
+                    Position = item.Position,
+                    Line = item.Line
+                }).ToList());
+            })
+            .ReturnsAsync(new Dictionary<int, string>
+            {
+                [40] = "- Nie odpowiadam przed zadnym mezczyzna",
+                [291] = "- Przepraszam, Ikki,\nale zgadzam sie z Meelo."
+            });
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            Mock.Of<ILogger>(),
+            progressServiceMock.Object);
+
+        var subtitles = new List<SubtitleItem>
+        {
+            new()
+            {
+                Position = 40,
+                Lines = ["- [ANSWER TO NO MAN"],
+                PlaintextLines = ["- [ANSWER TO NO MAN"]
+            },
+            new()
+            {
+                Position = 291,
+                Lines = ["- I'M SORRY, IKK],", "BUT I'M WITH MEELO ON THIS."],
+                PlaintextLines = ["- I'M SORRY, IKK],", "BUT I'M WITH MEELO ON THIS."]
+            }
+        };
+
+        var result = await service.TranslateSubtitlesBatch(
+            subtitles,
+            new TranslationRequest
+            {
+                Id = 204,
+                Title = "Episode",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                MediaType = MediaType.Show,
+                Status = TranslationStatus.Pending
+            },
+            stripSubtitleFormatting: false,
+            preserveAssFormatting: false,
+            batchSize: 50,
+            batchRetryMode: "immediate",
+            cancellationToken: CancellationToken.None);
+
+        var sentBatch = Assert.Single(capturedBatches);
+        Assert.Equal([40, 291], sentBatch.Select(item => item.Position));
+        Assert.Equal("- [ANSWER TO NO MAN", sentBatch[0].Line);
+        Assert.Equal("- I'M SORRY, IKK],\nBUT I'M WITH MEELO ON THIS.", sentBatch[1].Line);
+        Assert.Equal(["- Nie odpowiadam przed zadnym mezczyzna"], result[0].TranslatedLines);
+        Assert.Equal(["- Przepraszam, Ikki,", "ale zgadzam sie z Meelo."], result[1].TranslatedLines);
+    }
+
+    [Fact]
+    public async Task TranslateSubtitlesBatch_WhenProviderEchoesSubstantialDialogue_TreatsItAsMissing()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var batchServiceMock = translationServiceMock.As<IBatchTranslationService>();
+        var progressServiceMock = new Mock<IProgressService>();
+
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+
+        batchServiceMock
+            .Setup(service => service.TranslateBatchAsync(
+                It.IsAny<List<BatchSubtitleItem>>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<int, string>
+            {
+                [291] = "- I'M SORRY, IKK],\nBUT I'M WITH MEELO ON THIS."
+            });
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            Mock.Of<ILogger>(),
+            progressServiceMock.Object);
+
+        var subtitles = new List<SubtitleItem>
+        {
+            new()
+            {
+                Position = 291,
+                Lines = ["- I'M SORRY, IKK],", "BUT I'M WITH MEELO ON THIS."],
+                PlaintextLines = ["- I'M SORRY, IKK],", "BUT I'M WITH MEELO ON THIS."]
+            }
+        };
+
+        var exception = await Assert.ThrowsAsync<TranslationException>(() =>
+            service.TranslateSubtitlesBatch(
+                subtitles,
+                new TranslationRequest
+                {
+                    Id = 205,
+                    Title = "Episode",
+                    SourceLanguage = "en",
+                    TargetLanguage = "pl",
+                    MediaType = MediaType.Show,
+                    Status = TranslationStatus.Pending
+                },
+                stripSubtitleFormatting: false,
+                preserveAssFormatting: false,
+                batchSize: 50,
+                batchRetryMode: "immediate",
+                cancellationToken: CancellationToken.None));
+
+        Assert.Contains("Translation failed", exception.Message);
+        Assert.DoesNotContain("- I'M SORRY, IKK],", subtitles[0].TranslatedLines);
     }
 }

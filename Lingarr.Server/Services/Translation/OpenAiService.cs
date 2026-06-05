@@ -561,6 +561,11 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
         }
         try
         {
+            translatedJson = StructuredJsonResponseSanitizer.SanitizeInvalidEscapes(
+                translatedJson,
+                _logger,
+                ServiceName);
+
             var responseWrapper = JsonSerializer.Deserialize<JsonElement>(translatedJson);
             if (!responseWrapper.TryGetProperty("translations", out var translationsElement))
             {

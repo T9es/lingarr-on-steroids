@@ -73,8 +73,8 @@ internal static class SubtitleSemanticClassifier
         {
             return new SubtitleSemanticClassification(
                 SubtitleSemanticKind.CorruptText,
-                false,
                 true,
+                false,
                 ToReason(SubtitleSemanticKind.CorruptText));
         }
 

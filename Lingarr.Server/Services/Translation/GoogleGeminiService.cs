@@ -659,6 +659,11 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
         }
         try
         {
+            translatedJson = StructuredJsonResponseSanitizer.SanitizeInvalidEscapes(
+                translatedJson,
+                _logger,
+                ServiceName);
+
             var translatedItems = JsonSerializer.Deserialize<List<StructuredBatchResponse>>(translatedJson);
             if (translatedItems == null)
             {
@@ -691,6 +696,11 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
                 var repairedJson = TryRepairJson(translatedJson);
                 if (repairedJson != translatedJson)
                 {
+                    repairedJson = StructuredJsonResponseSanitizer.SanitizeInvalidEscapes(
+                        repairedJson,
+                        _logger,
+                        ServiceName);
+
                     var translatedItems = JsonSerializer.Deserialize<List<StructuredBatchResponse>>(repairedJson);
                     if (translatedItems != null)
                     {

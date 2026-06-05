@@ -770,21 +770,33 @@ public class SubtitleTranslationService
             translations,
             sourceLanguage,
             targetLanguage);
-        if (!analysis.IsMostlyEchoed)
+        if (analysis.EchoedCount == 0)
         {
             return [];
         }
 
-        _logger.LogWarning(
-            "[{FileId}] {Phase}: provider output appears to echo source text. Unchanged comparable cues: {Echoed}/{Comparable} ({Ratio:P0}); strongest unchanged cluster: {ClusterEchoed}/{ClusterComparable} ({ClusterRatio:P0}). Treating affected items as missing translations.",
-            fileIdentifier,
-            phase,
-            analysis.EchoedCount,
-            analysis.ComparableCount,
-            analysis.EchoRatio,
-            analysis.ClusterEchoedCount,
-            analysis.ClusterComparableCount,
-            analysis.ClusterEchoRatio);
+        if (analysis.IsMostlyEchoed)
+        {
+            _logger.LogWarning(
+                "[{FileId}] {Phase}: provider output appears to echo source text. Unchanged comparable cues: {Echoed}/{Comparable} ({Ratio:P0}); strongest unchanged cluster: {ClusterEchoed}/{ClusterComparable} ({ClusterRatio:P0}). Treating affected items as missing translations.",
+                fileIdentifier,
+                phase,
+                analysis.EchoedCount,
+                analysis.ComparableCount,
+                analysis.EchoRatio,
+                analysis.ClusterEchoedCount,
+                analysis.ClusterComparableCount,
+                analysis.ClusterEchoRatio);
+        }
+        else
+        {
+            _logger.LogWarning(
+                "[{FileId}] {Phase}: provider echoed {Echoed} substantial dialogue cue(s) at positions [{Positions}]. Treating affected items as missing translations.",
+                fileIdentifier,
+                phase,
+                analysis.EchoedCount,
+                string.Join(", ", analysis.EchoedPositions.Take(10)));
+        }
 
         return analysis.EchoedPositions.ToHashSet();
     }

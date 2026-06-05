@@ -477,6 +477,11 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
 
         try
         {
+            translatedJson = StructuredJsonResponseSanitizer.SanitizeInvalidEscapes(
+                translatedJson,
+                _logger,
+                ServiceName);
+
             // Parse the wrapper object first, extract the translations array
             var responseWrapper = JsonSerializer.Deserialize<JsonElement>(translatedJson);
             if (!responseWrapper.TryGetProperty("translations", out var translationsElement))
@@ -601,6 +606,11 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
 
         try
         {
+            translatedJson = StructuredJsonResponseSanitizer.SanitizeInvalidEscapes(
+                translatedJson,
+                _logger,
+                ServiceName);
+
             var translatedItems = JsonSerializer.Deserialize<List<StructuredBatchResponse>>(translatedJson,
                 new JsonSerializerOptions
                 {
@@ -691,6 +701,11 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
 
         try
         {
+            translatedJson = StructuredJsonResponseSanitizer.SanitizeInvalidEscapes(
+                translatedJson,
+                _logger,
+                ServiceName);
+
             var translatedItems = JsonSerializer.Deserialize<List<StructuredBatchResponse>>(translatedJson);
 
             if (translatedItems == null)

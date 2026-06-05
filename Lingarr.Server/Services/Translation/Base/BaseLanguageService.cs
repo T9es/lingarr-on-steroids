@@ -291,7 +291,10 @@ public abstract class BaseLanguageService : BaseTranslationService
             "Translate every subtitle item exactly once. Do not omit, merge, split, reorder, or renumber items. " +
             "For each output object, keep position and sourceKey unchanged; put only the translated text in line. " +
             "Every translatable item must receive target-language translated text. " +
-            "Do not copy source text as a fallback. Do NOT skip any position." +
+            "Do not copy source text as a fallback. Do NOT skip any position. " +
+            "Some source lines may contain OCR errors from bitmap subtitles; silently repair obvious OCR noise while translating the dialogue. " +
+            "Return valid JSON only. Inside JSON string values, use JSON \\n for line breaks. " +
+            "Never use raw ASS/SSA \\N or any invalid backslash escape in JSON output." +
             Environment.NewLine +
             subtitlePayload;
     }

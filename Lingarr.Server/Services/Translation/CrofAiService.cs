@@ -383,6 +383,11 @@ public class CrofAiService : OpenAiService
                 translatedJson = translatedJson.Replace("```", "").Trim();
             }
 
+            translatedJson = StructuredJsonResponseSanitizer.SanitizeInvalidEscapes(
+                translatedJson,
+                _logger,
+                ServiceName);
+
             var responseWrapper = JsonSerializer.Deserialize<JsonElement>(translatedJson);
             JsonElement translationsElement;
             if (responseWrapper.ValueKind == JsonValueKind.Array)

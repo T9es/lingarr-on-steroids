@@ -391,6 +391,11 @@ public class NanoGptService : OpenAiService
         try
         {
             translatedJson = ExtractJsonPayload(translatedJson);
+            translatedJson = StructuredJsonResponseSanitizer.SanitizeInvalidEscapes(
+                translatedJson,
+                _logger,
+                ServiceName);
+
             var responseWrapper = JsonSerializer.Deserialize<JsonElement>(translatedJson);
             JsonElement translationsElement;
             if (responseWrapper.ValueKind == JsonValueKind.Array)

@@ -521,6 +521,11 @@ if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var us
                 outputTokens);
         }
 
+        accumulatedJson = StructuredJsonResponseSanitizer.SanitizeInvalidEscapes(
+            accumulatedJson,
+            _logger,
+            ServiceName);
+
         // Parse the accumulated tool_use input JSON
         var inputJson = JsonSerializer.Deserialize<JsonElement>(accumulatedJson);
         if (!inputJson.TryGetProperty("translations", out var translationsProperty))

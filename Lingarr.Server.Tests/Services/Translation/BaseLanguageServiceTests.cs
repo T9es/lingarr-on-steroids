@@ -24,6 +24,9 @@ public class BaseLanguageServiceTests
 
         Assert.Contains("must receive target-language translated text", content);
         Assert.Contains("Do not copy source text as a fallback", content);
+        Assert.Contains("OCR errors from bitmap subtitles", content);
+        Assert.Contains("use JSON \\n for line breaks", content);
+        Assert.Contains("Never use raw ASS/SSA \\N", content);
         Assert.DoesNotContain("If you cannot translate a line", content);
         Assert.DoesNotContain("output it exactly as-is", content);
     }

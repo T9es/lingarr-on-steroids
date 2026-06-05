@@ -117,4 +117,39 @@ public class SubtitleTranslationNodePlannerTests
         Assert.True(plan.Nodes[2].CanPreserveSourceWhenProviderMissing);
         Assert.False(plan.Nodes[3].CanPreserveSourceWhenProviderMissing);
     }
+
+    [Fact]
+    public void Plan_OcrDamagedDialogue_RemainsTranslatable()
+    {
+        var subtitles = new List<SubtitleItem>
+        {
+            new()
+            {
+                Position = 40,
+                Lines = ["- [ANSWER TO NO MAN"],
+                PlaintextLines = ["- [ANSWER TO NO MAN"]
+            },
+            new()
+            {
+                Position = 291,
+                Lines = ["- I'M SORRY, IKK],", "BUT I'M WITH MEELO ON THIS."],
+                PlaintextLines = ["- I'M SORRY, IKK],", "BUT I'M WITH MEELO ON THIS."]
+            }
+        };
+
+        var plan = SubtitleTranslationNodePlanner.Plan(
+            subtitles,
+            stripSubtitleFormatting: false,
+            preserveAssFormatting: false);
+
+        Assert.All(plan.Nodes, node =>
+        {
+            Assert.Equal(SubtitleTranslationNodeKind.Representative, node.Kind);
+            Assert.Equal(SubtitleSemanticKind.CorruptText, node.SemanticKind);
+            Assert.True(node.IsTranslatable);
+            Assert.False(node.CanPreserveSourceWhenProviderMissing);
+            Assert.Null(node.PassThroughReason);
+        });
+        Assert.Equal([40, 291], plan.RepresentativeNodes.Select(node => node.Subtitle.Position));
+    }
 }
