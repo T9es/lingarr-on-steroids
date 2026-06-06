@@ -47,6 +47,11 @@ public interface IScheduleService
     /// Synchronizes recurring indexer job registrations with current settings.
     /// </summary>
     Task SyncIndexerJobsAsync();
+
+    /// <summary>
+    /// Synchronizes recurring maintenance job registrations with current settings.
+    /// </summary>
+    Task SyncMaintenanceJobsAsync();
     
     /// <summary>
     /// Gets the current state of a specific job.

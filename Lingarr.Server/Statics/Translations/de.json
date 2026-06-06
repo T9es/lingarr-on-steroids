@@ -300,7 +300,20 @@
     "processing": "Verarbeitung",
     "succeeded": "Erfolgreich",
     "cancelled": "Abgebrochen",
-    "failed": "Fehlgeschlagen"
+    "failed": "Fehlgeschlagen",
+    "running": "Aktiv",
+    "cronLabel": "Zeitplan",
+    "jobDisplay": {
+      "automatedTranslation": "Automatische Übersetzung",
+      "customSources": "Benutzerdefinierte Quellensuche",
+      "syncMovies": "Filme Synchronisieren",
+      "syncShows": "Serien Synchronisieren",
+      "cleanup": "Bereinigung",
+      "uploadCleanup": "Upload-Bereinigung",
+      "statistics": "Statistiken",
+      "retryFailed": "Fehlgeschlagene Wiederholen",
+      "languageDetection": "Spracherkennung"
+    }
   },
   "common": {
     "addNew": "Neu hinzufügen",

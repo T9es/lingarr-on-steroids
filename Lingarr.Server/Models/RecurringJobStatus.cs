@@ -9,6 +9,7 @@ public class RecurringJobStatus
     public string DisplayNameKey { get; set; } = string.Empty;
     public string Cron { get; set; } = string.Empty;
     public string Queue { get; set; } = string.Empty;
+    public string? EnabledSettingKey { get; set; }
     public string? ScheduleSettingKey { get; set; }
     public bool IsEditable { get; set; }
     

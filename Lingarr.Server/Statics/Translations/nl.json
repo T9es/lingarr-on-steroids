@@ -300,7 +300,20 @@
     "processing": "Verwerken",
     "succeeded": "Geslaagd",
     "cancelled": "Geannuleerd",
-    "failed": "Mislukt"
+    "failed": "Mislukt",
+    "running": "Actief",
+    "cronLabel": "Schema",
+    "jobDisplay": {
+      "automatedTranslation": "Automatische Vertaling",
+      "customSources": "Aangepaste Bron Scan",
+      "syncMovies": "Films Synchroniseren",
+      "syncShows": "Series Synchroniseren",
+      "cleanup": "Opschonen",
+      "uploadCleanup": "Upload Werkruimte Opschonen",
+      "statistics": "Statistieken",
+      "retryFailed": "Mislukte Verzoeken Opnieuw",
+      "languageDetection": "Taaldetectie"
+    }
   },
   "common": {
     "addNew": "Toevoegen",

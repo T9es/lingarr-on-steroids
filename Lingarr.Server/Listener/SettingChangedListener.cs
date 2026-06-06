@@ -64,7 +64,22 @@ public class SettingChangedListener
             {
                 "schedule", ("Action", "Schedule", [
                     SettingKeys.Automation.MovieSchedule,
-                    SettingKeys.Automation.ShowSchedule
+                    SettingKeys.Automation.ShowSchedule,
+                    SettingKeys.Automation.MovieSyncEnabled,
+                    SettingKeys.Automation.ShowSyncEnabled,
+                    SettingKeys.Automation.CustomSourceScanEnabled
+                ])
+            },
+            {
+                "maintenanceSchedule", ("Action", "MaintenanceSchedule", [
+                    SettingKeys.Maintenance.CleanupEnabled,
+                    SettingKeys.Maintenance.CleanupSchedule,
+                    SettingKeys.Maintenance.UploadCleanupEnabled,
+                    SettingKeys.Maintenance.UploadCleanupSchedule,
+                    SettingKeys.Maintenance.StatisticsEnabled,
+                    SettingKeys.Maintenance.StatisticsSchedule,
+                    SettingKeys.Maintenance.RetryFailedEnabled,
+                    SettingKeys.Maintenance.RetryFailedSchedule
                 ])
             },
             {
@@ -253,6 +268,10 @@ public class SettingChangedListener
 
                 case "CustomSourceSchedule":
                     await _scheduleService.SyncCustomSourceScanJobAsync();
+                    break;
+
+                case "MaintenanceSchedule":
+                    await _scheduleService.SyncMaintenanceJobsAsync();
                     break;
 
                 case "SyncUnknownLanguageDetection":

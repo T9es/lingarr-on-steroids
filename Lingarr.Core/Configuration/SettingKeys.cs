@@ -205,12 +205,27 @@ public static class SettingKeys
         public const string AutomationEnabled = "automation_enabled";
         public const string TranslationSchedule = "translation_schedule";
         public const string CustomSourceScanSchedule = "custom_source_scan_schedule";
+        public const string CustomSourceScanEnabled = "custom_source_scan_enabled";
         public const string MaxTranslationsPerRun = "max_translations_per_run";
         public const string TranslationCycle = "translation_cycle";
         public const string MovieSchedule = "movie_schedule";
+        public const string MovieSyncEnabled = "movie_sync_enabled";
         public const string ShowSchedule = "show_schedule";
+        public const string ShowSyncEnabled = "show_sync_enabled";
         public const string MovieAgeThreshold = "movie_age_threshold";
         public const string ShowAgeThreshold = "show_age_threshold";
+    }
+
+    public static class Maintenance
+    {
+        public const string CleanupEnabled = "maintenance_cleanup_enabled";
+        public const string CleanupSchedule = "maintenance_cleanup_schedule";
+        public const string UploadCleanupEnabled = "maintenance_upload_cleanup_enabled";
+        public const string UploadCleanupSchedule = "maintenance_upload_cleanup_schedule";
+        public const string StatisticsEnabled = "maintenance_statistics_enabled";
+        public const string StatisticsSchedule = "maintenance_statistics_schedule";
+        public const string RetryFailedEnabled = "maintenance_retry_failed_enabled";
+        public const string RetryFailedSchedule = "maintenance_retry_failed_schedule";
     }
 
     public static class UploadWorkspace

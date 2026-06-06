@@ -109,6 +109,18 @@ export const SETTINGS = {
     EMBED_WHEN_PATH_TOO_LONG: 'embed_when_path_too_long',
     DETECT_UNKNOWN_LANGUAGES: 'detect_unknown_languages',
     DETECT_UNKNOWN_LANGUAGES_SCHEDULE: 'detect_unknown_languages_schedule',
+    MOVIE_SYNC_ENABLED: 'movie_sync_enabled',
+    SHOW_SYNC_ENABLED: 'show_sync_enabled',
+    CUSTOM_SOURCE_SCAN_ENABLED: 'custom_source_scan_enabled',
+    CUSTOM_SOURCE_SCAN_SCHEDULE: 'custom_source_scan_schedule',
+    MAINTENANCE_CLEANUP_ENABLED: 'maintenance_cleanup_enabled',
+    MAINTENANCE_CLEANUP_SCHEDULE: 'maintenance_cleanup_schedule',
+    MAINTENANCE_UPLOAD_CLEANUP_ENABLED: 'maintenance_upload_cleanup_enabled',
+    MAINTENANCE_UPLOAD_CLEANUP_SCHEDULE: 'maintenance_upload_cleanup_schedule',
+    MAINTENANCE_STATISTICS_ENABLED: 'maintenance_statistics_enabled',
+    MAINTENANCE_STATISTICS_SCHEDULE: 'maintenance_statistics_schedule',
+    MAINTENANCE_RETRY_FAILED_ENABLED: 'maintenance_retry_failed_enabled',
+    MAINTENANCE_RETRY_FAILED_SCHEDULE: 'maintenance_retry_failed_schedule',
     MAX_REQUEST_RETRIES: 'max_request_retries',
     RADARR_INSTANCES: 'radarr_instances',
     SONARR_INSTANCES: 'sonarr_instances',
@@ -253,6 +265,18 @@ export interface ISettings {
     embed_when_path_too_long: string
     detect_unknown_languages: string
     detect_unknown_languages_schedule: string
+    movie_sync_enabled: string
+    show_sync_enabled: string
+    custom_source_scan_enabled: string
+    custom_source_scan_schedule: string
+    maintenance_cleanup_enabled: string
+    maintenance_cleanup_schedule: string
+    maintenance_upload_cleanup_enabled: string
+    maintenance_upload_cleanup_schedule: string
+    maintenance_statistics_enabled: string
+    maintenance_statistics_schedule: string
+    maintenance_retry_failed_enabled: string
+    maintenance_retry_failed_schedule: string
     max_request_retries: string
     radarr_instances: string | IInstance[]
     sonarr_instances: string | IInstance[]

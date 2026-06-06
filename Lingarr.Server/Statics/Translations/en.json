@@ -294,13 +294,26 @@
     "nextExecution": "Next Execution",
     "actions": "Actions",
     "run": "Run",
+    "running": "Running",
+    "cronLabel": "Schedule",
     "enqueued": "Enqueued",
     "planned": "Planned",
     "scheduled": "Scheduled",
     "processing": "Processing",
     "succeeded": "Succeeded",
     "cancelled": "Cancelled",
-    "failed": "Failed"
+    "failed": "Failed",
+    "jobDisplay": {
+      "automatedTranslation": "Automated Translation",
+      "customSources": "Custom Source Scan",
+      "syncMovies": "Sync Movies",
+      "syncShows": "Sync Shows",
+      "cleanup": "Cleanup",
+      "uploadCleanup": "Upload Workspace Cleanup",
+      "statistics": "Statistics",
+      "retryFailed": "Retry Failed Requests",
+      "languageDetection": "Language Detection"
+    }
   },
   "common": {
     "addNew": "Add new",

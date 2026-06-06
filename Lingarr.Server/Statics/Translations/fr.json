@@ -300,7 +300,20 @@
     "processing": "En cours",
     "succeeded": "Réussi",
     "cancelled": "Annulé",
-    "failed": "Échoué"
+    "failed": "Échoué",
+    "running": "En cours",
+    "cronLabel": "Planification",
+    "jobDisplay": {
+      "automatedTranslation": "Traduction Automatique",
+      "customSources": "Analyse des Sources Personnalisées",
+      "syncMovies": "Synchroniser les Films",
+      "syncShows": "Synchroniser les Séries",
+      "cleanup": "Nettoyage",
+      "uploadCleanup": "Nettoyage de l'Espace de Téléchargement",
+      "statistics": "Statistiques",
+      "retryFailed": "Réessayer les Demandes Échouées",
+      "languageDetection": "Détection de Langue"
+    }
   },
   "common": {
     "addNew": "Ajouter une nouvelle",

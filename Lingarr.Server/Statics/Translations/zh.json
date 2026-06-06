@@ -300,7 +300,20 @@
     "processing": "处理中",
     "succeeded": "成功",
     "cancelled": "已取消",
-    "failed": "失败"
+    "failed": "失败",
+    "running": "运行中",
+    "cronLabel": "计划",
+    "jobDisplay": {
+      "automatedTranslation": "自动翻译",
+      "customSources": "自定义来源扫描",
+      "syncMovies": "同步电影",
+      "syncShows": "同步剧集",
+      "cleanup": "清理",
+      "uploadCleanup": "上传空间清理",
+      "statistics": "统计",
+      "retryFailed": "重试失败的请求",
+      "languageDetection": "语言检测"
+    }
   },
   "common": {
     "addNew": "新增",

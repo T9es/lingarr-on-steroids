@@ -13,20 +13,25 @@ namespace Lingarr.Server.Services;
 
 public class ScheduleService : IScheduleService
 {
-    private sealed record JobMetadata(string DisplayNameKey, string? ScheduleSettingKey, bool IsEditable);
+    private sealed record JobMetadata(
+        string DisplayNameKey,
+        string? EnabledSettingKey,
+        string? ScheduleSettingKey,
+        string? DefaultSchedule,
+        bool IsEditable);
 
-private static readonly IReadOnlyDictionary<string, JobMetadata> JobMetadataMap =
+    private static readonly IReadOnlyDictionary<string, JobMetadata> JobMetadataMap =
         new Dictionary<string, JobMetadata>(StringComparer.OrdinalIgnoreCase)
         {
-            ["AutomatedTranslationJob"] = new("schedule.jobDisplay.automatedTranslation", SettingKeys.Automation.TranslationSchedule, true),
-            ["CustomSourceScanJob"] = new("schedule.jobDisplay.customSources", SettingKeys.Automation.CustomSourceScanSchedule, true),
-            ["SyncMovieJob"] = new("schedule.jobDisplay.syncMovies", SettingKeys.Automation.MovieSchedule, true),
-            ["SyncShowJob"] = new("schedule.jobDisplay.syncShows", SettingKeys.Automation.ShowSchedule, true),
-            ["CleanupJob"] = new("schedule.jobDisplay.cleanup", null, false),
-            ["UploadWorkspaceCleanupJob"] = new("schedule.jobDisplay.cleanup", null, false),
-            ["StatisticsJob"] = new("schedule.jobDisplay.statistics", null, false),
-            ["RetryFailedRequestsJob"] = new("schedule.jobDisplay.retryFailed", null, false),
-            ["UnknownLanguageDetectionJob"] = new("schedule.jobDisplay.languageDetection", SettingKeys.SubtitleExtraction.DetectUnknownLanguagesSchedule, true)
+            ["AutomatedTranslationJob"] = new("schedule.jobDisplay.automatedTranslation", SettingKeys.Automation.AutomationEnabled, SettingKeys.Automation.TranslationSchedule, null, true),
+            ["CustomSourceScanJob"] = new("schedule.jobDisplay.customSources", SettingKeys.Automation.CustomSourceScanEnabled, SettingKeys.Automation.CustomSourceScanSchedule, null, true),
+            ["SyncMovieJob"] = new("schedule.jobDisplay.syncMovies", SettingKeys.Automation.MovieSyncEnabled, SettingKeys.Automation.MovieSchedule, null, true),
+            ["SyncShowJob"] = new("schedule.jobDisplay.syncShows", SettingKeys.Automation.ShowSyncEnabled, SettingKeys.Automation.ShowSchedule, null, true),
+            ["CleanupJob"] = new("schedule.jobDisplay.cleanup", SettingKeys.Maintenance.CleanupEnabled, SettingKeys.Maintenance.CleanupSchedule, "0 0 * * 0", true),
+            ["UploadWorkspaceCleanupJob"] = new("schedule.jobDisplay.uploadCleanup", SettingKeys.Maintenance.UploadCleanupEnabled, SettingKeys.Maintenance.UploadCleanupSchedule, "0 * * * *", true),
+            ["StatisticsJob"] = new("schedule.jobDisplay.statistics", SettingKeys.Maintenance.StatisticsEnabled, SettingKeys.Maintenance.StatisticsSchedule, "0 0 * * *", true),
+            ["RetryFailedRequestsJob"] = new("schedule.jobDisplay.retryFailed", SettingKeys.Maintenance.RetryFailedEnabled, SettingKeys.Maintenance.RetryFailedSchedule, "0 22 * * *", true),
+            ["UnknownLanguageDetectionJob"] = new("schedule.jobDisplay.languageDetection", SettingKeys.SubtitleExtraction.DetectUnknownLanguages, SettingKeys.SubtitleExtraction.DetectUnknownLanguagesSchedule, null, true)
         };
 
     private readonly IHubContext<JobProgressHub> _hubContext;
@@ -50,35 +55,12 @@ private static readonly IReadOnlyDictionary<string, JobMetadata> JobMetadataMap 
         var settingService = scope.ServiceProvider.GetRequiredService<ISettingService>();
         var translationRequestService = scope.ServiceProvider.GetRequiredService<ITranslationRequestService>();
 
-        _logger.LogInformation("Configuring media indexers.");
-        await SyncIndexerJobsAsync();
+        _logger.LogInformation("Synchronizing all recurring jobs with configured settings.");
+
         await SyncAutomationJobAsync();
         await SyncCustomSourceScanJobAsync();
-
-        RecurringJob.AddOrUpdate<CleanupJob>(
-            "CleanupJob",
-            job => job.Execute(),
-            Cron.Weekly,
-            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
-        
-        RecurringJob.AddOrUpdate<UploadWorkspaceCleanupJob>(
-            "UploadWorkspaceCleanupJob",
-            job => job.Execute(),
-            Cron.Hourly,
-            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
-
-        RecurringJob.AddOrUpdate<StatisticsJob>(
-            "StatisticsJob",
-            job => job.Execute(),
-            Cron.Daily,
-            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
-
-        RecurringJob.AddOrUpdate<RetryFailedRequestsJob>(
-            "RetryFailedRequestsJob",
-            job => job.Execute(),
-            Cron.Daily(22),
-            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
-
+        await SyncIndexerJobsAsync();
+        await SyncMaintenanceJobsAsync();
         await SyncUnknownLanguageDetectionJobAsync();
 
         _logger.LogInformation("Starting pending translation requests.");
@@ -120,30 +102,37 @@ private static readonly IReadOnlyDictionary<string, JobMetadata> JobMetadataMap 
                 job => job.Execute(),
                 translationSchedule,
                 new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
-            return;
         }
-
-        RecurringJob.RemoveIfExists("AutomatedTranslationJob");
+        else
+        {
+            RecurringJob.RemoveIfExists("AutomatedTranslationJob");
+        }
     }
 
-/// <inheritdoc />
+    /// <inheritdoc />
     public async Task SyncCustomSourceScanJobAsync()
     {
         using var scope = _serviceProvider.CreateScope();
         var settingService = scope.ServiceProvider.GetRequiredService<ISettingService>();
 
-        var scanSchedule = await settingService.GetSetting(SettingKeys.Automation.CustomSourceScanSchedule);
-        if (!string.IsNullOrWhiteSpace(scanSchedule))
+        var (enabled, schedule) = await IsJobEnabled(
+            SettingKeys.Automation.CustomSourceScanEnabled,
+            SettingKeys.Automation.CustomSourceScanSchedule,
+            null,
+            settingService);
+
+        if (enabled)
         {
             RecurringJob.AddOrUpdate<CustomSourceScanJob>(
                 "CustomSourceScanJob",
                 job => job.Execute(),
-                scanSchedule,
+                schedule!,
                 new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
-            return;
         }
-
-        RecurringJob.RemoveIfExists("CustomSourceScanJob");
+        else
+        {
+            RecurringJob.RemoveIfExists("CustomSourceScanJob");
+        }
     }
 
     /// <inheritdoc />
@@ -170,10 +159,11 @@ private static readonly IReadOnlyDictionary<string, JobMetadata> JobMetadataMap 
                 job => job.Execute(),
                 schedule,
                 new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
-            return;
         }
-
-        RecurringJob.RemoveIfExists("UnknownLanguageDetectionJob");
+        else
+        {
+            RecurringJob.RemoveIfExists("UnknownLanguageDetectionJob");
+        }
     }
 
     /// <inheritdoc />
@@ -182,35 +172,157 @@ private static readonly IReadOnlyDictionary<string, JobMetadata> JobMetadataMap 
         using var scope = _serviceProvider.CreateScope();
         var settingService = scope.ServiceProvider.GetRequiredService<ISettingService>();
 
-        var settings = await settingService.GetSettings([
+        var (movieEnabled, movieSchedule) = await IsJobEnabled(
+            SettingKeys.Automation.MovieSyncEnabled,
             SettingKeys.Automation.MovieSchedule,
-            SettingKeys.Automation.ShowSchedule
-        ]);
+            null,
+            settingService);
 
-        var movieSchedule = settings.GetValueOrDefault(SettingKeys.Automation.MovieSchedule);
-        if (!string.IsNullOrWhiteSpace(movieSchedule))
+        if (movieEnabled)
         {
             RecurringJob.AddOrUpdate<SyncMovieJob>(
                 "SyncMovieJob",
                 job => job.Execute(),
-                movieSchedule);
+                movieSchedule!);
+        }
+        else
+        {
+            RecurringJob.RemoveIfExists("SyncMovieJob");
         }
 
-        var showSchedule = settings.GetValueOrDefault(SettingKeys.Automation.ShowSchedule);
-        if (!string.IsNullOrWhiteSpace(showSchedule))
+        var (showEnabled, showSchedule) = await IsJobEnabled(
+            SettingKeys.Automation.ShowSyncEnabled,
+            SettingKeys.Automation.ShowSchedule,
+            null,
+            settingService);
+
+        if (showEnabled)
         {
             RecurringJob.AddOrUpdate<SyncShowJob>(
                 "SyncShowJob",
                 job => job.Execute(),
-                showSchedule);
+                showSchedule!);
         }
+        else
+        {
+            RecurringJob.RemoveIfExists("SyncShowJob");
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task SyncMaintenanceJobsAsync()
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var settingService = scope.ServiceProvider.GetRequiredService<ISettingService>();
+
+        var (cleanupEnabled, cleanupSchedule) = await IsJobEnabled(
+            SettingKeys.Maintenance.CleanupEnabled,
+            SettingKeys.Maintenance.CleanupSchedule,
+            "0 0 * * 0",
+            settingService);
+
+        if (cleanupEnabled)
+        {
+            RecurringJob.AddOrUpdate<CleanupJob>(
+                "CleanupJob",
+                job => job.Execute(),
+                cleanupSchedule!,
+                new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+        }
+        else
+        {
+            RecurringJob.RemoveIfExists("CleanupJob");
+        }
+
+        var (uploadEnabled, uploadSchedule) = await IsJobEnabled(
+            SettingKeys.Maintenance.UploadCleanupEnabled,
+            SettingKeys.Maintenance.UploadCleanupSchedule,
+            "0 * * * *",
+            settingService);
+
+        if (uploadEnabled)
+        {
+            RecurringJob.AddOrUpdate<UploadWorkspaceCleanupJob>(
+                "UploadWorkspaceCleanupJob",
+                job => job.Execute(),
+                uploadSchedule!,
+                new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+        }
+        else
+        {
+            RecurringJob.RemoveIfExists("UploadWorkspaceCleanupJob");
+        }
+
+        var (statsEnabled, statsSchedule) = await IsJobEnabled(
+            SettingKeys.Maintenance.StatisticsEnabled,
+            SettingKeys.Maintenance.StatisticsSchedule,
+            "0 0 * * *",
+            settingService);
+
+        if (statsEnabled)
+        {
+            RecurringJob.AddOrUpdate<StatisticsJob>(
+                "StatisticsJob",
+                job => job.Execute(),
+                statsSchedule!,
+                new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+        }
+        else
+        {
+            RecurringJob.RemoveIfExists("StatisticsJob");
+        }
+
+        var (retryEnabled, retrySchedule) = await IsJobEnabled(
+            SettingKeys.Maintenance.RetryFailedEnabled,
+            SettingKeys.Maintenance.RetryFailedSchedule,
+            "0 22 * * *",
+            settingService);
+
+        if (retryEnabled)
+        {
+            RecurringJob.AddOrUpdate<RetryFailedRequestsJob>(
+                "RetryFailedRequestsJob",
+                job => job.Execute(),
+                retrySchedule!,
+                new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+        }
+        else
+        {
+            RecurringJob.RemoveIfExists("RetryFailedRequestsJob");
+        }
+    }
+
+    /// <summary>
+    /// Checks if a job is enabled and has a valid schedule.
+    /// </summary>
+    private async Task<(bool enabled, string? schedule)> IsJobEnabled(
+        string? enabledKey,
+        string scheduleKey,
+        string? defaultSchedule,
+        ISettingService settingService)
+    {
+        if (enabledKey != null)
+        {
+            var enabledValue = await settingService.GetSetting(enabledKey);
+            if (enabledValue != "true")
+            {
+                return (false, null);
+            }
+        }
+
+        var schedule = await settingService.GetSetting(scheduleKey);
+        if (string.IsNullOrWhiteSpace(schedule))
+        {
+            schedule = defaultSchedule;
+        }
+
+        return (!string.IsNullOrWhiteSpace(schedule), schedule);
     }
 
     public string GetJobState(string jobId)
     {
         var monitor = JobStorage.Current.GetMonitoringApi();
 
-        // Check each possible state
         if (monitor.SucceededJobs(0, 1).Any(j => j.Key == jobId))
             return JobStatus.Succeeded.GetDisplayName();
         if (monitor.FailedJobs(0, 1).Any(j => j.Key == jobId))
@@ -241,7 +353,7 @@ private static readonly IReadOnlyDictionary<string, JobMetadata> JobMetadataMap 
     {
         var metadata = JobMetadataMap.TryGetValue(dto.Id, out var jobMetadata)
             ? jobMetadata
-            : new JobMetadata("schedule.jobDisplay.custom", null, false);
+            : new JobMetadata("schedule.jobDisplay.custom", null, null, null, false);
 
         var status = new RecurringJobStatus
         {
@@ -249,6 +361,7 @@ private static readonly IReadOnlyDictionary<string, JobMetadata> JobMetadataMap 
             DisplayNameKey = metadata.DisplayNameKey,
             Cron = dto.Cron,
             Queue = dto.Queue,
+            EnabledSettingKey = metadata.EnabledSettingKey,
             ScheduleSettingKey = metadata.ScheduleSettingKey,
             IsEditable = metadata.IsEditable,
             JobMethod = dto.Job?.Method?.Name ?? string.Empty,
@@ -260,7 +373,6 @@ private static readonly IReadOnlyDictionary<string, JobMetadata> JobMetadataMap 
             TimeZoneId = dto.TimeZoneId
         };
 
-        // Check if there's a currently running job for this recurring job
         if (!string.IsNullOrEmpty(dto.LastJobId))
         {
             var processingJobs = monitor.ProcessingJobs(0, int.MaxValue);
@@ -276,7 +388,6 @@ private static readonly IReadOnlyDictionary<string, JobMetadata> JobMetadataMap 
             }
             else
             {
-                // Check other states if not processing
                 status.CurrentState = GetJobState(dto.LastJobId);
             }
         }
