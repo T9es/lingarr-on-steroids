@@ -4,7 +4,73 @@
             <ReloadComponent @toggle:update="fetchJobs" />
         </div>
 
-        <div class="w-full space-y-2 px-4">
+        <div class="w-full space-y-4 px-4 pb-4">
+            <!-- Automation Settings Card -->
+            <div class="bg-primary border-secondary rounded-md border p-4 shadow-sm">
+                <h2 class="text-primary-content mb-1 text-lg font-semibold">
+                    {{ translate('settings.automation.title') }}
+                </h2>
+                <p class="text-secondary-content mb-4 text-sm">
+                    {{ translate('settings.automation.description') }}
+                    <a
+                        class="cursor-pointer underline"
+                        @click="router.push({ name: 'services-settings' })">
+                        {{ translate('settings.automation.descriptionLink') }}
+                    </a>.
+                </p>
+                <div class="space-y-4">
+                    <div class="flex items-center space-x-2">
+                        <span>{{ translate('settings.automation.enableAutomatedTranslation') }}</span>
+                        <ToggleButton
+                            :model-value="automationEnabled"
+                            @update:model-value="setAutomationEnabled">
+                            <span class="text-primary-content text-sm font-medium">
+                                {{ automationEnabled === 'true' ? translate('common.enabled') : translate('common.disabled') }}
+                            </span>
+                        </ToggleButton>
+                    </div>
+
+                    <ScheduleSelector
+                        :model-value="translationSchedule"
+                        :label="translate('settings.automation.translationScheduleLabel')"
+                        @update:model-value="setTranslationSchedule"
+                        @update:validation="() => void 0" />
+
+                    <span class="font-semibold">
+                        {{ translate('settings.automation.limitsHeader') }}
+                    </span>
+                    <InputComponent
+                        :model-value="maxTranslationsPerRun"
+                        input-type="number"
+                        validation-type="number"
+                        :min-length="0"
+                        :label="translate('settings.automation.scheduleLimitLabel')"
+                        @update:model-value="setMaxTranslationsPerRun"
+                        @update:validation="() => void 0" />
+
+                    <span class="font-semibold">
+                        {{ translate('settings.automation.defaultAgeThresholdLabel') }}
+                    </span>
+                    <InputComponent
+                        :model-value="movieAgeThreshold"
+                        input-type="number"
+                        validation-type="number"
+                        :min-length="0"
+                        :label="translate('settings.automation.movieAgeThresholdLabel')"
+                        @update:value="setMovieAgeThreshold"
+                        @update:validation="() => void 0" />
+                    <InputComponent
+                        :model-value="showAgeThreshold"
+                        input-type="number"
+                        validation-type="number"
+                        :min-length="0"
+                        :label="translate('settings.automation.showAgeThresholdLabel')"
+                        @update:value="setShowAgeThreshold"
+                        @update:validation="() => void 0" />
+                </div>
+            </div>
+
+            <!-- Job Cards -->
             <div
                 v-for="job in jobs"
                 :key="job.id"
@@ -70,7 +136,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { Hub } from '@/ts'
 import { formatDateTime } from '@/utils/date'
 import { useSignalR } from '@/composables/useSignalR'
@@ -81,12 +148,14 @@ import ReloadComponent from '@/components/common/ReloadComponent.vue'
 import TriggerJob from '@/components/common/TriggerJob.vue'
 import ToggleButton from '@/components/common/ToggleButton.vue'
 import ScheduleSelector from '@/components/common/ScheduleSelector.vue'
+import InputComponent from '@/components/common/InputComponent.vue'
 import { useI18n } from '@/plugins/i18n'
 import type { IRecurringJob } from '@/ts'
 
 const scheduleStore = useScheduleStore()
 const signalR = useSignalR()
 const hubConnection = ref<Hub>()
+const router = useRouter()
 const { translate } = useI18n()
 
 const jobs = ref<IRecurringJob[]>([])
@@ -128,6 +197,13 @@ const cronSettingMap: Record<string, string> = {
     UnknownLanguageDetectionJob: SETTINGS.DETECT_UNKNOWN_LANGUAGES_SCHEDULE
 }
 
+// Computed automation settings
+const automationEnabled = computed((): string => settingsCache.value[SETTINGS.AUTOMATION_ENABLED] || 'false')
+const translationSchedule = computed((): string => settingsCache.value[SETTINGS.TRANSLATION_SCHEDULE] || '')
+const maxTranslationsPerRun = computed((): string => settingsCache.value[SETTINGS.MAX_TRANSLATIONS_PER_RUN] || '10')
+const movieAgeThreshold = computed((): string => settingsCache.value[SETTINGS.MOVIE_AGE_THRESHOLD] || '172800')
+const showAgeThreshold = computed((): string => settingsCache.value[SETTINGS.SHOW_AGE_THRESHOLD] || '172800')
+
 function getJobDisplayName(job: IRecurringJob): string {
     const key = jobDisplayNames[job.id]
     return key ? translate(key) : job.id
@@ -158,6 +234,32 @@ async function setSchedule(job: IRecurringJob, value: string): Promise<void> {
     if (!key) return
     settingsCache.value[key] = value
     await services.setting.setSetting(key, value)
+}
+
+async function setAutomationEnabled(value: string | boolean): Promise<void> {
+    const strValue = value === true ? 'true' : value === false ? 'false' : (value as string)
+    settingsCache.value[SETTINGS.AUTOMATION_ENABLED] = strValue
+    await services.setting.setSetting(SETTINGS.AUTOMATION_ENABLED, strValue)
+}
+
+async function setTranslationSchedule(value: string): Promise<void> {
+    settingsCache.value[SETTINGS.TRANSLATION_SCHEDULE] = value
+    await services.setting.setSetting(SETTINGS.TRANSLATION_SCHEDULE, value)
+}
+
+async function setMaxTranslationsPerRun(value: string): Promise<void> {
+    settingsCache.value[SETTINGS.MAX_TRANSLATIONS_PER_RUN] = value
+    await services.setting.setSetting(SETTINGS.MAX_TRANSLATIONS_PER_RUN, value)
+}
+
+async function setMovieAgeThreshold(value: string): Promise<void> {
+    settingsCache.value[SETTINGS.MOVIE_AGE_THRESHOLD] = value
+    await services.setting.setSetting(SETTINGS.MOVIE_AGE_THRESHOLD, value)
+}
+
+async function setShowAgeThreshold(value: string): Promise<void> {
+    settingsCache.value[SETTINGS.SHOW_AGE_THRESHOLD] = value
+    await services.setting.setSetting(SETTINGS.SHOW_AGE_THRESHOLD, value)
 }
 
 async function fetchJobs(): Promise<void> {

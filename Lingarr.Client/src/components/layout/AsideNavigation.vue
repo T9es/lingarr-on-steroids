@@ -182,7 +182,6 @@ const menuItems = computed<MenuItem[]>(() => [
             'services-settings',
             'subtitle-settings',
             'integrity-settings',
-            'automation-settings',
             'custom-sources-settings',
             'upload-workspace-settings',
             'tasks-settings',

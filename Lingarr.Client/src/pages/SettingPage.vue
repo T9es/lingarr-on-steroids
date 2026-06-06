@@ -35,7 +35,6 @@ import { MenuItem } from '@/ts'
 import PageLayout from '@/components/layout/PageLayout.vue'
 import IntegrationIcon from '@/components/icons/IntegrationIcon.vue'
 import SettingIcon from '@/components/icons/SettingIcon.vue'
-import AutomationIcon from '@/components/icons/AutomationIcon.vue'
 import TaskIcon from '@/components/icons/TaskIcon.vue'
 import LanguageIcon from '@/components/icons/LanguageIcon.vue'
 import LogIcon from '@/components/icons/LogIcon.vue'
@@ -68,12 +67,6 @@ const menuItems = computed<MenuItem[]>(() => [
         label: translate('navigation.integrity'),
         icon: CheckMarkIcon,
         route: 'integrity-settings',
-        children: []
-    },
-    {
-        label: translate('navigation.automation'),
-        icon: AutomationIcon,
-        route: 'automation-settings',
         children: []
     },
     {

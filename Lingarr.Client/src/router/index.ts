@@ -52,11 +52,6 @@ const routes: RouteRecordRaw[] = [
                 component: () => import('@/pages/settings/IntegrityCheckPage.vue')
             },
             {
-                name: 'automation-settings',
-                path: 'automation',
-                component: () => import('@/pages/settings/AutomationPage.vue')
-            },
-            {
                 name: 'mapping-settings',
                 path: 'mapping',
                 component: () => import('@/pages/settings/MappingPage.vue')

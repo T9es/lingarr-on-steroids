@@ -57,6 +57,7 @@ public class ScheduleService : IScheduleService
 
         _logger.LogInformation("Synchronizing all recurring jobs with configured settings.");
 
+        await SeedDefaultSettings(settingService);
         await SyncAutomationJobAsync();
         await SyncCustomSourceScanJobAsync();
         await SyncIndexerJobsAsync();
@@ -289,6 +290,41 @@ public class ScheduleService : IScheduleService
         else
         {
             RecurringJob.RemoveIfExists("RetryFailedRequestsJob");
+        }
+    }
+
+    /// <summary>
+    /// Seeds default values for new setting keys that may not exist in the database yet.
+    /// Only sets values for keys that are not already present.
+    /// </summary>
+    private async Task SeedDefaultSettings(ISettingService settingService)
+    {
+        var defaults = new Dictionary<string, string>
+        {
+            [SettingKeys.Automation.MovieSyncEnabled] = "true",
+            [SettingKeys.Automation.ShowSyncEnabled] = "true",
+            [SettingKeys.Automation.CustomSourceScanEnabled] = "true",
+            [SettingKeys.Maintenance.CleanupEnabled] = "true",
+            [SettingKeys.Maintenance.UploadCleanupEnabled] = "true",
+            [SettingKeys.Maintenance.StatisticsEnabled] = "true",
+            [SettingKeys.Maintenance.RetryFailedEnabled] = "true"
+        };
+
+        var settings = await settingService.GetSettings(defaults.Keys);
+        var toSet = new Dictionary<string, string>();
+        foreach (var (key, defaultValue) in defaults)
+        {
+            if (!settings.ContainsKey(key))
+            {
+                toSet[key] = defaultValue;
+            }
+        }
+
+        if (toSet.Count > 0)
+        {
+            _logger.LogInformation("Seeding {Count} default setting(s): {Keys}",
+                toSet.Count, string.Join(", ", toSet.Keys));
+            await settingService.SetSettings(toSet);
         }
     }
 
