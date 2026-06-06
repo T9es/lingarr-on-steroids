@@ -29,9 +29,9 @@ public class ScheduleController : ControllerBase
     /// </summary>
     /// <returns>A list of job information including status, progress, and other details.</returns>
     [HttpGet("jobs")]
-    public IActionResult RecurringJobs()
+    public async Task<IActionResult> RecurringJobs()
     {
-        var jobs = _scheduleService.GetRecurringJobs();
+        var jobs = await _scheduleService.GetRecurringJobs();
         return Ok(jobs);
     }
 

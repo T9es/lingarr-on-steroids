@@ -12,6 +12,7 @@ public class RecurringJobStatus
     public string? EnabledSettingKey { get; set; }
     public string? ScheduleSettingKey { get; set; }
     public bool IsEditable { get; set; }
+    public bool IsEnabled { get; set; }
     
     public string JobMethod { get; set; } = string.Empty;
     

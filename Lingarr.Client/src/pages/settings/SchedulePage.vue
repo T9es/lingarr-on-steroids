@@ -180,7 +180,11 @@ function getJobDisplayName(job: IRecurringJob): string {
 function getEnabledValue(job: IRecurringJob): boolean {
     const key = enabledSettingMap[job.id]
     if (!key) return true
-    return settingsCache.value[key] === 'true'
+    // Prefer the live settings cache (e.g., after toggling). Fall back to API-provided isEnabled.
+    if (key in settingsCache.value) {
+        return settingsCache.value[key] === 'true'
+    }
+    return job.isEnabled ?? true
 }
 
 function getScheduleValue(job: IRecurringJob): string {

@@ -21,10 +21,11 @@ public interface IScheduleService
     
     
     /// <summary>
-    /// Gets a list of recurring jobs with their current status.
+    /// Gets a list of recurring jobs with their current status and
+    /// whether each job is currently enabled by its settings.
     /// </summary>
     /// <returns>A list of recurring job statuses</returns>
-    List<RecurringJobStatus> GetRecurringJobs();
+    Task<List<RecurringJobStatus>> GetRecurringJobs();
 
     /// <summary>
     /// Synchronizes recurring automation job registration with current settings.

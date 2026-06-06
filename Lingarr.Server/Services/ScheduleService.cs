@@ -68,15 +68,53 @@ public class ScheduleService : IScheduleService
         await translationRequestService.ResumeTranslationRequests();
     }
 
-    public List<RecurringJobStatus> GetRecurringJobs()
+    public async Task<List<RecurringJobStatus>> GetRecurringJobs()
     {
+        using var scope = _serviceProvider.CreateScope();
+        var settingService = scope.ServiceProvider.GetRequiredService<ISettingService>();
         var monitor = JobStorage.Current.GetMonitoringApi();
         var recurringJobs = JobStorage.Current.GetConnection().GetRecurringJobs();
+        var hangfireJobs = recurringJobs.ToDictionary(j => j.Id, StringComparer.OrdinalIgnoreCase);
 
-        return recurringJobs
-            .Select(job => MapToJobStatus(job, monitor))
-            .OrderBy(j => j.Id)
+        var allEnabledKeys = JobMetadataMap.Values
+            .Where(m => m.EnabledSettingKey != null)
+            .Select(m => m.EnabledSettingKey!)
+            .Distinct()
             .ToList();
+        var enabledSettings = allEnabledKeys.Count > 0
+            ? await settingService.GetSettings(allEnabledKeys)
+            : new Dictionary<string, string>();
+
+        var result = new List<RecurringJobStatus>();
+        foreach (var (jobId, metadata) in JobMetadataMap)
+        {
+            var isEnabled = metadata.EnabledSettingKey == null ||
+                            enabledSettings.GetValueOrDefault(metadata.EnabledSettingKey) == "true";
+
+            if (hangfireJobs.TryGetValue(jobId, out var hfJob))
+            {
+                var status = MapToJobStatus(hfJob, monitor, metadata, isEnabled);
+                result.Add(status);
+            }
+            else
+            {
+                result.Add(new RecurringJobStatus
+                {
+                    Id = jobId,
+                    DisplayNameKey = metadata.DisplayNameKey,
+                    Cron = string.Empty,
+                    Queue = string.Empty,
+                    EnabledSettingKey = metadata.EnabledSettingKey,
+                    ScheduleSettingKey = metadata.ScheduleSettingKey,
+                    IsEditable = metadata.IsEditable,
+                    IsEnabled = isEnabled,
+                    CurrentState = isEnabled ? JobStatus.Planned.GetDisplayName() : "Disabled",
+                    IsCurrentlyRunning = false
+                });
+            }
+        }
+
+        return result.OrderBy(j => j.Id).ToList();
     }
 
     /// <inheritdoc />
@@ -304,6 +342,8 @@ public class ScheduleService : IScheduleService
             [SettingKeys.Automation.MovieSyncEnabled] = "true",
             [SettingKeys.Automation.ShowSyncEnabled] = "true",
             [SettingKeys.Automation.CustomSourceScanEnabled] = "true",
+            [SettingKeys.Automation.MovieSchedule] = "0 */6 * * *",
+            [SettingKeys.Automation.ShowSchedule] = "0 */6 * * *",
             [SettingKeys.Maintenance.CleanupEnabled] = "true",
             [SettingKeys.Maintenance.UploadCleanupEnabled] = "true",
             [SettingKeys.Maintenance.StatisticsEnabled] = "true",
@@ -385,12 +425,8 @@ public class ScheduleService : IScheduleService
         }
     }
 
-    private RecurringJobStatus MapToJobStatus(RecurringJobDto dto, IMonitoringApi monitor)
+    private RecurringJobStatus MapToJobStatus(RecurringJobDto dto, IMonitoringApi monitor, JobMetadata metadata, bool isEnabled)
     {
-        var metadata = JobMetadataMap.TryGetValue(dto.Id, out var jobMetadata)
-            ? jobMetadata
-            : new JobMetadata("schedule.jobDisplay.custom", null, null, null, false);
-
         var status = new RecurringJobStatus
         {
             Id = dto.Id,
@@ -400,6 +436,7 @@ public class ScheduleService : IScheduleService
             EnabledSettingKey = metadata.EnabledSettingKey,
             ScheduleSettingKey = metadata.ScheduleSettingKey,
             IsEditable = metadata.IsEditable,
+            IsEnabled = isEnabled,
             JobMethod = dto.Job?.Method?.Name ?? string.Empty,
             NextExecution = dto.NextExecution,
             LastJobId = dto.LastJobId,
