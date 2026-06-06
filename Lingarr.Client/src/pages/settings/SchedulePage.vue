@@ -5,40 +5,12 @@
         </div>
 
         <div class="w-full space-y-4 px-4 pb-4">
-            <!-- Automation Settings Card -->
+            <!-- Translation Limits Card -->
             <div class="bg-primary border-secondary rounded-md border p-4 shadow-sm">
                 <h2 class="text-primary-content mb-1 text-lg font-semibold">
-                    {{ translate('settings.automation.title') }}
+                    {{ translate('settings.automation.limitsHeader') }}
                 </h2>
-                <p class="text-secondary-content mb-4 text-sm">
-                    {{ translate('settings.automation.description') }}
-                    <a
-                        class="cursor-pointer underline"
-                        @click="router.push({ name: 'services-settings' })">
-                        {{ translate('settings.automation.descriptionLink') }}
-                    </a>.
-                </p>
                 <div class="space-y-4">
-                    <div class="flex items-center space-x-2">
-                        <span>{{ translate('settings.automation.enableAutomatedTranslation') }}</span>
-                        <ToggleButton
-                            :model-value="automationEnabled"
-                            @update:model-value="setAutomationEnabled">
-                            <span class="text-primary-content text-sm font-medium">
-                                {{ automationEnabled === 'true' ? translate('common.enabled') : translate('common.disabled') }}
-                            </span>
-                        </ToggleButton>
-                    </div>
-
-                    <ScheduleSelector
-                        :model-value="translationSchedule"
-                        :label="translate('settings.automation.translationScheduleLabel')"
-                        @update:model-value="setTranslationSchedule"
-                        @update:validation="() => void 0" />
-
-                    <span class="font-semibold">
-                        {{ translate('settings.automation.limitsHeader') }}
-                    </span>
                     <InputComponent
                         :model-value="maxTranslationsPerRun"
                         input-type="number"
@@ -137,7 +109,6 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
 import { Hub } from '@/ts'
 import { formatDateTime } from '@/utils/date'
 import { useSignalR } from '@/composables/useSignalR'
@@ -155,7 +126,6 @@ import type { IRecurringJob } from '@/ts'
 const scheduleStore = useScheduleStore()
 const signalR = useSignalR()
 const hubConnection = ref<Hub>()
-const router = useRouter()
 const { translate } = useI18n()
 
 const jobs = ref<IRecurringJob[]>([])
@@ -197,9 +167,7 @@ const cronSettingMap: Record<string, string> = {
     UnknownLanguageDetectionJob: SETTINGS.DETECT_UNKNOWN_LANGUAGES_SCHEDULE
 }
 
-// Computed automation settings
-const automationEnabled = computed((): string => settingsCache.value[SETTINGS.AUTOMATION_ENABLED] || 'false')
-const translationSchedule = computed((): string => settingsCache.value[SETTINGS.TRANSLATION_SCHEDULE] || '')
+// Computed settings for limits card
 const maxTranslationsPerRun = computed((): string => settingsCache.value[SETTINGS.MAX_TRANSLATIONS_PER_RUN] || '10')
 const movieAgeThreshold = computed((): string => settingsCache.value[SETTINGS.MOVIE_AGE_THRESHOLD] || '172800')
 const showAgeThreshold = computed((): string => settingsCache.value[SETTINGS.SHOW_AGE_THRESHOLD] || '172800')
@@ -234,17 +202,6 @@ async function setSchedule(job: IRecurringJob, value: string): Promise<void> {
     if (!key) return
     settingsCache.value[key] = value
     await services.setting.setSetting(key, value)
-}
-
-async function setAutomationEnabled(value: string | boolean): Promise<void> {
-    const strValue = value === true ? 'true' : value === false ? 'false' : (value as string)
-    settingsCache.value[SETTINGS.AUTOMATION_ENABLED] = strValue
-    await services.setting.setSetting(SETTINGS.AUTOMATION_ENABLED, strValue)
-}
-
-async function setTranslationSchedule(value: string): Promise<void> {
-    settingsCache.value[SETTINGS.TRANSLATION_SCHEDULE] = value
-    await services.setting.setSetting(SETTINGS.TRANSLATION_SCHEDULE, value)
 }
 
 async function setMaxTranslationsPerRun(value: string): Promise<void> {
