@@ -729,9 +729,8 @@ public class SubtitleOutputBackfillService : ISubtitleOutputBackfillService
             var translatedText = subtitle.TranslatedLines.Count > 0
                 ? string.Join("\\N", subtitle.TranslatedLines)
                 : string.Join("\\N", subtitle.Lines);
-            var plainTextLines = ConvertToPlainTextLines(translatedText);
-            if (plainTextLines.Count == 0 ||
-                plainTextLines.All(SubtitleFormatterService.IsAssDrawingCommand))
+            var plainTextLines = PlainTextSubtitleOutputRenderer.ConvertToPlainTextLines(translatedText);
+            if (PlainTextSubtitleOutputRenderer.ShouldSkipSubtitle(plainTextLines))
             {
                 continue;
             }
@@ -750,32 +749,6 @@ public class SubtitleOutputBackfillService : ISubtitleOutputBackfillService
         }
 
         return renderedSubtitles;
-    }
-
-    private static List<string> ConvertToPlainTextLines(string translatedText)
-    {
-        if (string.IsNullOrWhiteSpace(translatedText))
-        {
-            return [];
-        }
-
-        var normalized = SubtitleFormatterService.NormalizeLineBreaks(translatedText)
-            .Replace("\\n", "\\N", StringComparison.Ordinal);
-        var segments = normalized.Split("\\N", StringSplitOptions.None);
-        var lines = new List<string>();
-
-        foreach (var segment in segments)
-        {
-            var plainText = SubtitleFormatterService.RemoveMarkup(segment);
-            if (string.IsNullOrWhiteSpace(plainText))
-            {
-                continue;
-            }
-
-            lines.AddRange(plainText.SplitIntoLines(42));
-        }
-
-        return lines;
     }
 
     private static bool TryResolveExistingSourceFile(TranslationRequest request, out string sourcePath)

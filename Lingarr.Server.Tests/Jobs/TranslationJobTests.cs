@@ -190,6 +190,76 @@ public class TranslationJobTests : IDisposable
     }
 
     [Fact]
+    public async Task ExecuteAsync_WhenSrtContainsDashOnlyCue_PreservesCueInOutput()
+    {
+        var sourceSubtitlePath = Path.Combine(_tempDirectory, "dash-cue.en.srt");
+        await File.WriteAllTextAsync(
+            sourceSubtitlePath,
+            string.Join(
+                Environment.NewLine + Environment.NewLine,
+                Enumerable.Range(1, SubtitleExtractionService.MinimumDialogueEntries)
+                    .Select(index =>
+                    {
+                        var start = TimeSpan.FromSeconds(index);
+                        var end = TimeSpan.FromSeconds(index + 1);
+                        var text = index == 25 ? $"-{Environment.NewLine}-" : $"Hello {index}";
+                        return $"{index}{Environment.NewLine}{start:hh\\:mm\\:ss},000 --> {end:hh\\:mm\\:ss},000{Environment.NewLine}{text}";
+                    })));
+
+        var movie = CreateMovie(30);
+        movie.Path = _tempDirectory;
+        var request = new TranslationRequest
+        {
+            MediaId = movie.Id,
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Pending,
+            SubtitleToTranslate = sourceSubtitlePath,
+            SourceSubtitleFormat = ".srt",
+            SubtitleOutputMode = "match-source",
+            RequiredOutputFormats = ".srt",
+            IsActive = true
+        };
+
+        _dbContext.Movies.Add(movie);
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var subtitleService = new SubtitleService(NullLogger<SubtitleService>.Instance);
+        var translationServiceMock = new Mock<ITranslationService>();
+        translationServiceMock
+            .Setup(service => service.TranslateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string text, string _, string _, List<string>? _, List<string>? _, CancellationToken _) =>
+                text.Replace("Hello", "Czesc", StringComparison.Ordinal));
+
+        var job = BuildExecutableJob(
+            subtitleService,
+            Mock.Of<ISubtitleExtractionService>(),
+            translationServiceMock.Object,
+            CreatePassingQualityValidator().Object);
+
+        await job.ExecuteAsync(request.Id, CancellationToken.None);
+
+        var updatedRequest = await _dbContext.TranslationRequests.SingleAsync(item => item.Id == request.Id);
+        Assert.NotNull(updatedRequest.TranslatedSubtitle);
+
+        var outputSubtitles = await subtitleService.ReadSubtitles(updatedRequest.TranslatedSubtitle!);
+        Assert.Equal(SubtitleExtractionService.MinimumDialogueEntries, outputSubtitles.Count);
+        Assert.Equal(
+            Enumerable.Range(1, SubtitleExtractionService.MinimumDialogueEntries).ToList(),
+            outputSubtitles.Select(item => item.Position).ToList());
+        Assert.Equal(["-", "-"], outputSubtitles.Single(item => item.Position == 25).Lines);
+    }
+
+    [Fact]
     public async Task BuildOcrTranslationPromptContextAsync_ForEpisode_DoesNotFollowAutoIncludeCycles()
     {
         var show = new Show

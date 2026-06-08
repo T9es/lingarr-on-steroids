@@ -671,6 +671,20 @@ public class TranslationCompareController : ControllerBase
         List<SubtitleItem> originalSubtitles,
         List<SubtitleItem> translatedSubtitles)
     {
+        translatedSubtitles = NormalizeTranslatedPositionsForComparison(originalSubtitles, translatedSubtitles);
+
+        if (CanCompareByPosition(originalSubtitles, translatedSubtitles))
+        {
+            return BuildPositionComparison(originalSubtitles, translatedSubtitles);
+        }
+
+        return BuildIndexComparison(originalSubtitles, translatedSubtitles);
+    }
+
+    private static List<TranslationCompareLineDto> BuildIndexComparison(
+        List<SubtitleItem> originalSubtitles,
+        List<SubtitleItem> translatedSubtitles)
+    {
         var lineCount = Math.Max(originalSubtitles.Count, translatedSubtitles.Count);
         var result = new List<TranslationCompareLineDto>(lineCount);
 
@@ -703,6 +717,120 @@ public class TranslationCompareController : ControllerBase
         }
 
         return result;
+    }
+
+    private static List<TranslationCompareLineDto> BuildPositionComparison(
+        List<SubtitleItem> originalSubtitles,
+        List<SubtitleItem> translatedSubtitles)
+    {
+        var originalByPosition = originalSubtitles.ToDictionary(subtitle => subtitle.Position);
+        var translatedByPosition = translatedSubtitles.ToDictionary(subtitle => subtitle.Position);
+        var positions = originalByPosition.Keys
+            .Union(translatedByPosition.Keys)
+            .Order()
+            .ToList();
+        var result = new List<TranslationCompareLineDto>(positions.Count);
+
+        foreach (var position in positions)
+        {
+            originalByPosition.TryGetValue(position, out var original);
+            translatedByPosition.TryGetValue(position, out var translated);
+
+            result.Add(BuildCompareLine(position, original, translated));
+        }
+
+        return result;
+    }
+
+    private static TranslationCompareLineDto BuildCompareLine(
+        int position,
+        SubtitleItem? original,
+        SubtitleItem? translated)
+    {
+        var originalText = original != null ? CombineSubtitleLines(original) : string.Empty;
+        var translatedText = translated != null ? CombineSubtitleLines(translated) : string.Empty;
+
+        var startTime = original?.StartTime ?? translated?.StartTime;
+        var endTime = original?.EndTime ?? translated?.EndTime;
+        int? duration = null;
+        if (startTime.HasValue && endTime.HasValue)
+        {
+            duration = Math.Max(0, endTime.Value - startTime.Value);
+        }
+
+        return new TranslationCompareLineDto
+        {
+            Position = position,
+            Original = originalText,
+            Translated = string.IsNullOrWhiteSpace(translatedText) ? null : translatedText,
+            Success = !string.IsNullOrWhiteSpace(translatedText),
+            DurationMs = duration,
+            StartTimeMs = startTime,
+            EndTimeMs = endTime
+        };
+    }
+
+    private static bool CanCompareByPosition(
+        IReadOnlyCollection<SubtitleItem> originalSubtitles,
+        IReadOnlyCollection<SubtitleItem> translatedSubtitles)
+    {
+        return HasUniquePositions(originalSubtitles) && HasUniquePositions(translatedSubtitles);
+    }
+
+    private static bool HasUniquePositions(IReadOnlyCollection<SubtitleItem> subtitles)
+    {
+        return subtitles.Select(subtitle => subtitle.Position).Distinct().Count() == subtitles.Count;
+    }
+
+    private static List<SubtitleItem> NormalizeTranslatedPositionsForComparison(
+        IReadOnlyList<SubtitleItem> originalSubtitles,
+        IReadOnlyList<SubtitleItem> translatedSubtitles)
+    {
+        if (originalSubtitles.Count == 0 ||
+            originalSubtitles.Count != translatedSubtitles.Count ||
+            PositionsMatchByIndex(originalSubtitles, translatedSubtitles) ||
+            !HasConstantPositionOffset(originalSubtitles, translatedSubtitles))
+        {
+            return translatedSubtitles.ToList();
+        }
+
+        return translatedSubtitles
+            .Select((subtitle, index) => CloneWithPosition(subtitle, originalSubtitles[index].Position))
+            .ToList();
+    }
+
+    private static bool PositionsMatchByIndex(
+        IReadOnlyList<SubtitleItem> originalSubtitles,
+        IReadOnlyList<SubtitleItem> translatedSubtitles)
+    {
+        return originalSubtitles
+            .Select((subtitle, index) => subtitle.Position == translatedSubtitles[index].Position)
+            .All(matches => matches);
+    }
+
+    private static bool HasConstantPositionOffset(
+        IReadOnlyList<SubtitleItem> originalSubtitles,
+        IReadOnlyList<SubtitleItem> translatedSubtitles)
+    {
+        var offset = translatedSubtitles[0].Position - originalSubtitles[0].Position;
+        return originalSubtitles
+            .Select((subtitle, index) => translatedSubtitles[index].Position - subtitle.Position == offset)
+            .All(matches => matches);
+    }
+
+    private static SubtitleItem CloneWithPosition(SubtitleItem subtitle, int position)
+    {
+        return new SubtitleItem
+        {
+            Position = position,
+            StartTime = subtitle.StartTime,
+            EndTime = subtitle.EndTime,
+            Lines = [.. subtitle.Lines],
+            PlaintextLines = [.. subtitle.PlaintextLines],
+            TranslatedLines = [.. subtitle.TranslatedLines],
+            SsaDialogue = subtitle.SsaDialogue,
+            SsaFormat = subtitle.SsaFormat
+        };
     }
 
     private static string CombineSubtitleLines(SubtitleItem subtitle)

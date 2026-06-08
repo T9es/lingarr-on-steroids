@@ -93,6 +93,55 @@ public class TranslationCompareControllerTests : IDisposable
     }
 
     [Fact]
+    public async Task GetCompletedTranslationCompare_WhenTranslatedCueIsMissing_AlignsBySubtitlePosition()
+    {
+        var sourcePath = Path.Combine(_tempDirectory, "missing-cue-source.en.srt");
+        var translatedPath = Path.Combine(_tempDirectory, "missing-cue-source.pl.srt");
+
+        await File.WriteAllTextAsync(
+            sourcePath,
+            "1\n00:00:01,000 --> 00:00:02,000\nHello\n\n" +
+            "2\n00:00:03,000 --> 00:00:04,000\n-\n-\n\n" +
+            "3\n00:00:05,000 --> 00:00:06,000\nGoodbye\n");
+
+        await File.WriteAllTextAsync(
+            translatedPath,
+            "1\n00:00:01,000 --> 00:00:02,000\nCzesc\n\n" +
+            "3\n00:00:05,000 --> 00:00:06,000\nDo widzenia\n");
+
+        var request = new TranslationRequest
+        {
+            Title = "Missing Cue Movie",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = sourcePath,
+            TranslatedSubtitle = translatedPath,
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Completed,
+            CompletedAt = DateTime.UtcNow
+        };
+
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var controller = CreateController();
+
+        var actionResult = await controller.GetCompletedTranslationCompare(request.Id);
+        var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
+        var payload = Assert.IsType<CompletedTranslationCompareResponse>(okResult.Value);
+
+        Assert.Equal(3, payload.Lines.Count);
+        Assert.Equal(1, payload.Lines[0].Position);
+        Assert.Equal("Czesc", payload.Lines[0].Translated);
+        Assert.Equal(2, payload.Lines[1].Position);
+        Assert.Equal("- -", payload.Lines[1].Original);
+        Assert.Null(payload.Lines[1].Translated);
+        Assert.False(payload.Lines[1].Success);
+        Assert.Equal(3, payload.Lines[2].Position);
+        Assert.Equal("Do widzenia", payload.Lines[2].Translated);
+    }
+
+    [Fact]
     public async Task GetCompletedTranslationCompare_ReturnsBadRequestWhenRequestIsNotCompleted()
     {
         var sourcePath = Path.Combine(_tempDirectory, "pending.en.srt");
