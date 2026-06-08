@@ -8,6 +8,7 @@ internal enum SubtitleSemanticKind
     SdhSoundEffect,
     SignOrTitle,
     LyricOrChant,
+    ProperNameOnly,
     DrawingOnly,
     SymbolOnly,
     CorruptText
@@ -37,6 +38,13 @@ internal static class SubtitleSemanticClassifier
     private static readonly HashSet<string> SignStyleTerms = new(StringComparer.OrdinalIgnoreCase)
     {
         "sign", "title", "text", "onscreen", "on-screen"
+    };
+
+    private static readonly HashSet<string> NonNameUnchangedTerms = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "ah", "bye", "go", "ha", "hey", "hi", "hmm", "hello", "help", "nah", "no",
+        "oh", "ok", "okay", "please", "run", "shh", "sorry", "stop", "thanks", "thank",
+        "uh", "um", "wait", "whoa", "yeah", "yep", "yes"
     };
 
     private static readonly HashSet<string> LyricStyleTerms = new(StringComparer.OrdinalIgnoreCase)
@@ -105,6 +113,15 @@ internal static class SubtitleSemanticClassifier
                 ToReason(SubtitleSemanticKind.SignOrTitle));
         }
 
+        if (IsLikelyProperNameOnlyCue(text))
+        {
+            return new SubtitleSemanticClassification(
+                SubtitleSemanticKind.ProperNameOnly,
+                true,
+                true,
+                ToReason(SubtitleSemanticKind.ProperNameOnly));
+        }
+
         return new SubtitleSemanticClassification(
             SubtitleSemanticKind.Dialogue,
             true,
@@ -117,7 +134,8 @@ internal static class SubtitleSemanticClassifier
         var classification = Classify(null, text);
         return classification.Kind is SubtitleSemanticKind.SdhSoundEffect
             or SubtitleSemanticKind.LyricOrChant
-            or SubtitleSemanticKind.SignOrTitle;
+            or SubtitleSemanticKind.SignOrTitle
+            or SubtitleSemanticKind.ProperNameOnly;
     }
 
     public static bool IsLikelyCorruptText(string text)
@@ -263,6 +281,7 @@ internal static class SubtitleSemanticClassifier
             SubtitleSemanticKind.SdhSoundEffect => "sdh-sound-effect",
             SubtitleSemanticKind.SignOrTitle => "sign-or-title",
             SubtitleSemanticKind.LyricOrChant => "lyric-or-chant",
+            SubtitleSemanticKind.ProperNameOnly => "proper-name-only",
             SubtitleSemanticKind.DrawingOnly => "drawing-only",
             SubtitleSemanticKind.SymbolOnly => "symbol-only",
             SubtitleSemanticKind.CorruptText => "corrupt-text",
@@ -336,6 +355,127 @@ internal static class SubtitleSemanticClassifier
 
         return text.Contains("fond embrace", StringComparison.OrdinalIgnoreCase) ||
                text.Contains("nani", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsLikelyProperNameOnlyCue(string text)
+    {
+        var candidate = StripSpeakerPrefix(text);
+        var tokens = GetOriginalWordTokens(candidate).ToList();
+        if (tokens.Count == 0 || tokens.Count > 12)
+        {
+            return false;
+        }
+
+        var distinctTokens = tokens
+            .Select(token => token.ToLowerInvariant())
+            .Distinct(StringComparer.Ordinal)
+            .Count();
+        if (tokens.Count > 8 && distinctTokens > 3)
+        {
+            return false;
+        }
+
+        return tokens.All(token => IsNameLikeToken(token, allowLongUppercase: false));
+    }
+
+    private static string StripSpeakerPrefix(string text)
+    {
+        var normalized = SubtitleTextStructure.NormalizeProviderTranslationText(text)
+            .Replace("\\N", " ", StringComparison.Ordinal)
+            .Replace("\\n", " ", StringComparison.Ordinal)
+            .Replace('\n', ' ')
+            .Trim();
+        var trimmed = TrimLeadingCueMarkers(normalized);
+        var colonIndex = trimmed.IndexOf(':', StringComparison.Ordinal);
+        if (colonIndex <= 0 || colonIndex > 40)
+        {
+            return trimmed;
+        }
+
+        var prefix = trimmed[..colonIndex];
+        var suffix = trimmed[(colonIndex + 1)..].Trim();
+        if (suffix.Length == 0 || !LooksLikeSpeakerLabel(prefix))
+        {
+            return trimmed;
+        }
+
+        return TrimLeadingCueMarkers(suffix);
+    }
+
+    private static string TrimLeadingCueMarkers(string text)
+    {
+        return text.Trim().TrimStart('-').Trim();
+    }
+
+    private static bool LooksLikeSpeakerLabel(string text)
+    {
+        var tokens = GetOriginalWordTokens(text).ToList();
+        return tokens.Count is >= 1 and <= 4 &&
+               tokens.All(token => IsNameLikeToken(token, allowLongUppercase: true));
+    }
+
+    private static bool IsNameLikeToken(string token, bool allowLongUppercase)
+    {
+        var trimmed = token.Trim('\'', '-');
+        if (trimmed.Length < 2 || trimmed.All(char.IsDigit))
+        {
+            return false;
+        }
+
+        if (NonNameUnchangedTerms.Contains(trimmed))
+        {
+            return false;
+        }
+
+        if (trimmed.Contains('-', StringComparison.Ordinal))
+        {
+            var parts = trimmed.Split('-', StringSplitOptions.RemoveEmptyEntries);
+            return parts.Length > 1 && parts.All(part => IsNameLikeToken(part, allowLongUppercase));
+        }
+
+        if (trimmed.All(c => !char.IsLetter(c) || char.IsUpper(c)))
+        {
+            return allowLongUppercase || trimmed.Length <= 5;
+        }
+
+        return char.IsUpper(trimmed[0]) && trimmed.Skip(1).Any(char.IsLower);
+    }
+
+    private static IEnumerable<string> GetOriginalWordTokens(string text)
+    {
+        var start = -1;
+        for (var index = 0; index < text.Length; index++)
+        {
+            if (char.IsLetterOrDigit(text[index]) || text[index] is '\'' or '-')
+            {
+                if (start < 0)
+                {
+                    start = index;
+                }
+
+                continue;
+            }
+
+            if (start >= 0)
+            {
+                var token = text[start..index].Trim('\'', '-');
+                if (token.Length > 0)
+                {
+                    yield return token;
+                }
+
+                start = -1;
+            }
+        }
+
+        if (start >= 0)
+        {
+            var token = text[start..].Trim('\'', '-');
+            if (token.Length > 0)
+            {
+                yield return token;
+            }
+        }
     }
 
     private static bool ContainsStyleTerm(string? style, HashSet<string> terms)

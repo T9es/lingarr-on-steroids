@@ -13,6 +13,8 @@ public class SubtitleTranslationService
 {
     private const int ProviderVisibleCharBudgetPerBatch = 20_000;
     private const int MaxBatchContextLines = 10;
+    private const double ResidualEchoToleranceRatio = 0.02;
+    private const int ResidualEchoToleranceCap = 25;
     private int _lastProgression = -1;
     private readonly ITranslationService _translationService;
     private readonly IProgressService? _progressService;
@@ -455,6 +457,13 @@ public class SubtitleTranslationService
             structureEntries,
             representativeProviderTranslations,
             globalDeduplication);
+        unresolvedEntries = ApplyResidualEchoTolerance(
+            structureEntries,
+            unresolvedEntries,
+            globalDeduplication,
+            echoedRepresentativePositions,
+            translatableCueCount,
+            fileIdentifier);
         if (unresolvedEntries.Count > 0)
         {
             ThrowMissingTranslationException(unresolvedEntries);
@@ -1124,6 +1133,63 @@ public class SubtitleTranslationService
                 fileIdentifier,
                 fallbackCount);
         }
+    }
+
+    private List<BatchSubtitleItem> ApplyResidualEchoTolerance(
+        IReadOnlyList<SubtitleTranslationNode> structureEntries,
+        List<BatchSubtitleItem> unresolvedEntries,
+        ProviderTextDeduplicationResult deduplication,
+        IReadOnlySet<int> echoedRepresentativePositions,
+        int totalTranslatableCueCount,
+        string fileIdentifier)
+    {
+        if (unresolvedEntries.Count == 0 || echoedRepresentativePositions.Count == 0)
+        {
+            return unresolvedEntries;
+        }
+
+        var allUnresolvedWereFinalEchoes = unresolvedEntries.All(item =>
+            echoedRepresentativePositions.Contains(deduplication.GetRepresentativePosition(item.Position)));
+        if (!allUnresolvedWereFinalEchoes)
+        {
+            return unresolvedEntries;
+        }
+
+        var toleranceLimit = CalculateResidualEchoTolerance(totalTranslatableCueCount);
+        if (unresolvedEntries.Count > toleranceLimit)
+        {
+            return unresolvedEntries;
+        }
+
+        var entriesByPosition = structureEntries.ToDictionary(entry => entry.Subtitle.Position);
+        foreach (var item in unresolvedEntries)
+        {
+            if (entriesByPosition.TryGetValue(item.Position, out var entry))
+            {
+                ApplyTranslationToNode(entry, entry.ProviderText);
+            }
+        }
+
+        _logger.LogWarning(
+            "[{FileId}] Preserved {Count} residual unchanged subtitle cue(s) within the {Ratio:P0} final echo tolerance (limit {Limit}/{Total}).",
+            fileIdentifier,
+            unresolvedEntries.Count,
+            ResidualEchoToleranceRatio,
+            toleranceLimit,
+            totalTranslatableCueCount);
+
+        return [];
+    }
+
+    private static int CalculateResidualEchoTolerance(int totalTranslatableCueCount)
+    {
+        if (totalTranslatableCueCount <= 0)
+        {
+            return 0;
+        }
+
+        var ratioLimit = (int)Math.Ceiling(totalTranslatableCueCount * ResidualEchoToleranceRatio);
+        return Math.Min(ResidualEchoToleranceCap, Math.Max(1, ratioLimit));
     }
 
     private static List<BatchSubtitleItem> ExpandFailures(

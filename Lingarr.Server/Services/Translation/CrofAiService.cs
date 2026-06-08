@@ -265,7 +265,7 @@ public class CrofAiService : OpenAiService
                            "The 'position' and 'sourceKey' fields must match the input item. " +
                            "The 'line' field contains the translated text. " +
                            "Every translatable line must contain target-language translated text. " +
-                           "Do not copy source text as a fallback. Do NOT skip any position.";
+                           "Do not copy source text as a fallback; proper names may remain unchanged when that is correct. Do NOT skip any position.";
 
         // Build user content with optional batch context wrapper
         var userContent = BuildBatchUserContent(subtitleBatch, preContext, postContext);

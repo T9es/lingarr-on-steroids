@@ -119,6 +119,42 @@ public class SubtitleTranslationNodePlannerTests
     }
 
     [Fact]
+    public void Plan_SemanticPolicy_MarksProperNameOnlyCuesAsProviderOptional()
+    {
+        var subtitles = new List<SubtitleItem>
+        {
+            new()
+            {
+                Position = 1,
+                Lines = ["Michael! Michael! Michael!"],
+                PlaintextLines = ["Michael! Michael! Michael!"]
+            },
+            new()
+            {
+                Position = 2,
+                Lines = ["- Bolin: ASAMI! KORRA!"],
+                PlaintextLines = ["- Bolin: ASAMI! KORRA!"]
+            },
+            new()
+            {
+                Position = 3,
+                Lines = ["We need to leave right now."],
+                PlaintextLines = ["We need to leave right now."]
+            }
+        };
+
+        var plan = SubtitleTranslationNodePlanner.Plan(
+            subtitles,
+            stripSubtitleFormatting: false,
+            preserveAssFormatting: false);
+
+        Assert.All(plan.Nodes, node => Assert.True(node.IsTranslatable));
+        Assert.True(plan.Nodes[0].CanPreserveSourceWhenProviderMissing);
+        Assert.True(plan.Nodes[1].CanPreserveSourceWhenProviderMissing);
+        Assert.False(plan.Nodes[2].CanPreserveSourceWhenProviderMissing);
+    }
+
+    [Fact]
     public void Plan_OcrDamagedDialogue_RemainsTranslatable()
     {
         var subtitles = new List<SubtitleItem>
