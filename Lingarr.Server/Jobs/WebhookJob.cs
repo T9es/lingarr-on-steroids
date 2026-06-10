@@ -69,6 +69,12 @@ public class WebhookJob
                 return;
             }
 
+            // Interrupt any active translation requests for this movie since
+            // a Radarr Download event always means the file was added or upgraded
+            await _translationRequestService.InterruptActiveRequestsForMedia(
+                MediaType.Movie,
+                internalMovieId);
+
             var processed = await _automationService.ProcessSingleMediaForAutomationAsync(
                 internalMovieId,
                 MediaType.Movie,

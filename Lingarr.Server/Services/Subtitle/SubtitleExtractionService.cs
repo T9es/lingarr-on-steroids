@@ -360,6 +360,16 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             _logger.LogWarning(
                 "Could not find media file for {Type}: {FileName} in {Path}. Directory exists: {DirExists}",
                 "episode", episode.FileName, episode.Path, Directory.Exists(episode.Path));
+            
+            // Clear stale embedded subtitle records since the media file is no longer accessible
+            await _dbContext.EmbeddedSubtitles
+                .Where(e => e.EpisodeId == episode.Id && e.MovieId == null)
+                .ExecuteDeleteAsync();
+            DetachTrackedEmbeddedSubtitlesForMedia(_dbContext, episode.Id, null);
+            _logger.LogInformation(
+                "Cleared stale embedded subtitle records for episode {EpisodeId} - media file not found",
+                episode.Id);
+            
             return;
         }
         
@@ -381,6 +391,16 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             _logger.LogWarning(
                 "Could not find media file for {Type}: {FileName} in {Path}. Directory exists: {DirExists}",
                 "movie", movie.FileName, movie.Path, Directory.Exists(movie.Path));
+            
+            // Clear stale embedded subtitle records since the media file is no longer accessible
+            await _dbContext.EmbeddedSubtitles
+                .Where(e => e.MovieId == movie.Id && e.EpisodeId == null)
+                .ExecuteDeleteAsync();
+            DetachTrackedEmbeddedSubtitlesForMedia(_dbContext, null, movie.Id);
+            _logger.LogInformation(
+                "Cleared stale embedded subtitle records for movie {MovieId} - media file not found",
+                movie.Id);
+            
             return;
         }
         
