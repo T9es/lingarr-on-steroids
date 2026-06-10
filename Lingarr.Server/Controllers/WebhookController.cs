@@ -34,21 +34,22 @@ public class WebhookController : ControllerBase
     {
         instanceId ??= "default";
 
-        if (payload.Movie == null || payload.Movie.Id <= 0)
-        {
-            _logger.LogWarning("Invalid Radarr webhook payload: missing or invalid movie data");
-            return BadRequest(new { message = "Invalid webhook payload: missing movie data" });
-        }
-
+        // Check event type before validating payload structure,
+        // so non-Download events (Test, Rename, etc.) return 200 OK instead of 400.
         if (!IsAllowedEventType(payload.EventType))
         {
             var eventType = payload.EventType ?? "Unknown";
             _logger.LogInformation(
-                "Ignoring Radarr webhook event {EventType} for movie '{Title}' from instance '{InstanceId}'",
+                "Ignoring Radarr webhook event {EventType} from instance '{InstanceId}'",
                 eventType,
-                payload.Movie.Title,
                 instanceId);
             return Ok(new { message = $"Ignored webhook event type '{eventType}'" });
+        }
+
+        if (payload.Movie == null || payload.Movie.Id <= 0)
+        {
+            _logger.LogWarning("Invalid Radarr webhook payload: missing or invalid movie data");
+            return BadRequest(new { message = "Invalid webhook payload: missing movie data" });
         }
 
         _backgroundJobClient.Enqueue<WebhookJob>(job =>
@@ -79,12 +80,9 @@ public class WebhookController : ControllerBase
             return BadRequest(new { message = "Invalid webhook payload: missing series data" });
         }
 
-        if (payload.Episodes == null || payload.Episodes.Count == 0)
-        {
-            _logger.LogWarning("Invalid Sonarr webhook payload: missing episode data");
-            return BadRequest(new { message = "Invalid webhook payload: missing episode data" });
-        }
-
+        // Check event type before validating episodes, because some non-Download
+        // events (SeriesAdd, Rename, etc.) don't include episode data. Returning
+        // 400 for those would make Sonarr treat the webhook as broken.
         if (!IsAllowedEventType(payload.EventType))
         {
             var eventType = payload.EventType ?? "Unknown";
@@ -94,6 +92,12 @@ public class WebhookController : ControllerBase
                 payload.Series.Title,
                 instanceId);
             return Ok(new { message = $"Ignored webhook event type '{eventType}'" });
+        }
+
+        if (payload.Episodes == null || payload.Episodes.Count == 0)
+        {
+            _logger.LogWarning("Invalid Sonarr webhook payload: missing episode data");
+            return BadRequest(new { message = "Invalid webhook payload: missing episode data" });
         }
 
         _backgroundJobClient.Enqueue<WebhookJob>(job =>
