@@ -93,6 +93,16 @@ public interface IMediaService
     Task<EpisodeRefreshResult?> RefreshEpisodeFromSonarrEpisodeId(int sonarrEpisodeId, string? sourceInstanceId = null);
 
     /// <summary>
+    /// Refreshes a single movie from Radarr for webhook processing.
+    /// Always fetches fresh upstream state instead of reusing cached local metadata.
+    /// Returns null when the movie does not exist, has no file, or cannot be refreshed.
+    /// </summary>
+    /// <param name="radarrMovieId">The Radarr movie id to refresh</param>
+    /// <param name="sourceInstanceId">Optional source instance ID to filter by in multi-instance setups</param>
+    /// <returns>The targeted refresh result or null if refresh could not complete</returns>
+    Task<MovieRefreshResult?> RefreshMovieFromRadarrMovieId(int radarrMovieId, string? sourceInstanceId = null);
+
+    /// <summary>
     /// Toggles the exclusion status of a media item from translation.
     /// </summary>
     /// <param name="mediaType">The type of media (Movie, Show, Season, or Episode).</param>
