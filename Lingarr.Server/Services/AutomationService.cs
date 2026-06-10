@@ -164,7 +164,8 @@ public class AutomationService : IAutomationService
             media,
             mediaType,
             forceProcess: forceProcess,
-            forceTranslation: false);
+            forceTranslation: false,
+            forcePriority: forceProcess);
 
         if (queuedCount > 0)
         {

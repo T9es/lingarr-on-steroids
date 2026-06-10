@@ -53,7 +53,7 @@ public class AutomationServiceTests
                 MediaType.Movie,
                 true,
                 false,
-                false,
+                true,
                 true,
                 null))
             .ReturnsAsync(1);
@@ -92,7 +92,7 @@ public class AutomationServiceTests
             MediaType.Movie,
             true,
             false,
-            false,
+            true,
             true,
             null), Times.Once);
     }

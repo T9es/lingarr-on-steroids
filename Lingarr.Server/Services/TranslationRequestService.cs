@@ -261,7 +261,10 @@ public class TranslationRequestService : ITranslationRequestService
                 tr.TargetLanguage == targetLanguage &&
                 tr.SourceDedupeKey == "primary" &&
                 tr.SourceSubtitleType != SubtitleLanguageHelper.TypeForced &&
-                tr.SourceSubtitleType != SubtitleLanguageHelper.TypeSignsSongs);
+                tr.SourceSubtitleType != SubtitleLanguageHelper.TypeSignsSongs &&
+                tr.Status != TranslationStatus.Cancelled &&
+                tr.Status != TranslationStatus.Failed &&
+                tr.Status != TranslationStatus.Interrupted);
     }
 
     
@@ -965,6 +968,9 @@ public class TranslationRequestService : ITranslationRequestService
                 tr.SourceLanguage == translationRequest.SourceLanguage &&
                 tr.TargetLanguage == translationRequest.TargetLanguage &&
                 tr.SourceDedupeKey == translationRequest.SourceDedupeKey &&
+                tr.Status != TranslationStatus.Cancelled &&
+                tr.Status != TranslationStatus.Failed &&
+                tr.Status != TranslationStatus.Interrupted &&
                 (tr.SourceSubtitleType == null ||
                  (tr.SourceSubtitleType != SubtitleLanguageHelper.TypeForced &&
                   tr.SourceSubtitleType != SubtitleLanguageHelper.TypeSignsSongs)))

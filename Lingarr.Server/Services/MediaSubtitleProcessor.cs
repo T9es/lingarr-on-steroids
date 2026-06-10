@@ -906,7 +906,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                         MarkIntegrityFindingQueued(integrityFindings, media, mediaType, targetLanguage);
                         continue;
                     }
-                    if (!forcePriority &&
+                    if (!forcePriority && !forceProcess &&
                         await _translationRequestService.HasExistingNonSupplementalRequestAsync(
                             media.Id, mediaType, sourceLanguage, targetLanguage))
                     {
@@ -1706,7 +1706,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                     MarkIntegrityFindingQueued(integrityFindings, media, mediaType, targetLanguage);
                     continue;
                 }
-                if (!forcePriority &&
+                if (!forcePriority && !forceProcess &&
                     await _translationRequestService.HasExistingNonSupplementalRequestAsync(
                         media.Id, mediaType, selectedSourceLanguage, targetLanguage))
                 {
