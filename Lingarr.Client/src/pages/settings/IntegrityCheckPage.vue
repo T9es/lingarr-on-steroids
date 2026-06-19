@@ -324,9 +324,24 @@
                         <div
                             v-if="visibleQualityAuditFindings.length > 0"
                             class="w-full space-y-3">
-                            <div class="flex items-center justify-between">
+                            <div class="flex items-center justify-between gap-3">
                                 <h4 class="font-semibold">Quality Findings</h4>
-                                <span class="text-sm opacity-70">Report only</span>
+                                <div class="flex gap-2">
+                                    <button
+                                        class="bg-accent hover:bg-accent/80 text-primary-content rounded px-4 py-2 text-sm font-semibold disabled:opacity-50"
+                                        :disabled="isRequeuingAllQuality || visibleQualityAuditFindings.length === 0"
+                                        @click="requeueAllQualityAuditFindings">
+                                        <span v-if="isRequeuingAllQuality" class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                                        <span v-else>Requeue All</span>
+                                    </button>
+                                    <button
+                                        class="bg-secondary-content/20 text-secondary-content/70 hover:bg-secondary-content/30 rounded px-4 py-2 text-sm font-semibold disabled:opacity-50"
+                                        :disabled="isDismissingAllQuality || visibleQualityAuditFindings.length === 0"
+                                        @click="dismissAllQualityAuditFindings">
+                                        <span v-if="isDismissingAllQuality" class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                                        <span v-else>Dismiss All</span>
+                                    </button>
+                                </div>
                             </div>
                             <div class="bg-secondary/30 max-h-96 w-full overflow-y-auto rounded">
                                 <div
@@ -1529,6 +1544,37 @@ const requeueQualityAuditFinding = async (item: SubtitleQualityAuditFinding) => 
         qualityAuditResult.value = response.data
     } catch (error) {
         console.error('Failed to requeue subtitle quality finding:', error)
+    }
+}
+
+const isRequeuingAllQuality = ref(false)
+const isDismissingAllQuality = ref(false)
+
+const requeueAllQualityAuditFindings = async () => {
+    if (visibleQualityAuditFindings.value.length === 0) return
+
+    isRequeuingAllQuality.value = true
+    try {
+        const response = await axios.post('/api/subtitle/quality-audit/findings/requeue-all')
+        qualityAuditResult.value = response.data
+    } catch (error) {
+        console.error('Failed to requeue all quality audit findings:', error)
+    } finally {
+        isRequeuingAllQuality.value = false
+    }
+}
+
+const dismissAllQualityAuditFindings = async () => {
+    if (visibleQualityAuditFindings.value.length === 0) return
+
+    isDismissingAllQuality.value = true
+    try {
+        const response = await axios.post('/api/subtitle/quality-audit/findings/dismiss-all')
+        qualityAuditResult.value = response.data
+    } catch (error) {
+        console.error('Failed to dismiss all quality audit findings:', error)
+    } finally {
+        isDismissingAllQuality.value = false
     }
 }
 

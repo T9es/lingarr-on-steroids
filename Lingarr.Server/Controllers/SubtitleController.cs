@@ -1,4 +1,4 @@
-using Hangfire;
+﻿using Hangfire;
 using System.Text.Json;
 using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
@@ -246,50 +246,51 @@ public class SubtitleController : ControllerBase
             return NotFound();
         }
 
-        var mediaType = Enum.TryParse<MediaType>(
-            finding.MediaType,
-            true,
-            out var parsedMediaType)
-            ? parsedMediaType
-            : MediaType.Movie;
-
-        IMedia? media = mediaType switch
-        {
-            MediaType.Movie => await _dbContext.Movies.FindAsync(finding.MediaId),
-            MediaType.Episode => await _dbContext.Episodes.FindAsync(finding.MediaId),
-            _ => null
-        };
-
-        if (media == null)
+        if (!await RequeueFindingAsync(finding))
         {
             return NotFound();
         }
 
-        if (!string.IsNullOrWhiteSpace(finding.TargetLanguage))
+        await SaveQualityAuditResult(result);
+        return Ok(result);
+    }
+
+    [HttpPost("quality-audit/findings/requeue-all")]
+    public async Task<ActionResult<SubtitleQualityAuditResult>> RequeueAllQualityAuditFindings(
+        [FromBody] RequeueAllQualityAuditFindingsRequest request)
+    {
+        var result = await LoadQualityAuditResult();
+        var findingsToRequeue = result.Findings
+            .Where(f => !f.IsQueued && !f.Dismissed)
+            .Where(f => request.IssueTypes == null || !request.IssueTypes.Any()
+                        || request.IssueTypes.Any(filterIssue => f.IssueTypes.Contains(filterIssue)))
+            .ToList();
+
+        foreach (var finding in findingsToRequeue)
         {
-            await _mediaSubtitleProcessor.ProcessMediaForceTargetAsync(
-                media,
-                mediaType,
-                finding.TargetLanguage,
-                forceProcess: true,
-                forceTranslation: true,
-                forcePriority: true,
-                queueTranslations: true,
-                maxTranslationsToQueue: 1);
-        }
-        else
-        {
-            await _mediaSubtitleProcessor.ProcessMediaForceAsync(
-                media,
-                mediaType,
-                forceProcess: true,
-                forceTranslation: true,
-                forcePriority: true,
-                queueTranslations: true,
-                maxTranslationsToQueue: 1);
+            await RequeueFindingAsync(finding);
         }
 
-        finding.IsQueued = true;
+        await SaveQualityAuditResult(result);
+        return Ok(result);
+    }
+
+    [HttpPost("quality-audit/findings/dismiss-all")]
+    public async Task<ActionResult<SubtitleQualityAuditResult>> DismissAllQualityAuditFindings(
+        [FromBody] DismissAllQualityAuditFindingsRequest request)
+    {
+        var result = await LoadQualityAuditResult();
+        var findingsToDismiss = result.Findings
+            .Where(f => !f.IsQueued && !f.Dismissed)
+            .Where(f => request.IssueTypes == null || !request.IssueTypes.Any()
+                        || request.IssueTypes.Any(filterIssue => f.IssueTypes.Contains(filterIssue)))
+            .ToList();
+
+        foreach (var finding in findingsToDismiss)
+        {
+            finding.Dismissed = true;
+        }
+
         await SaveQualityAuditResult(result);
         return Ok(result);
     }
@@ -374,5 +375,53 @@ public class SubtitleController : ControllerBase
         await _settingService.SetSetting(
             SettingKeys.SubtitleValidation.LastQualityAuditResult,
             JsonSerializer.Serialize(result, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+    }
+    private async Task<bool> RequeueFindingAsync(SubtitleQualityAuditFinding finding)
+    {
+        var mediaType = Enum.TryParse<MediaType>(
+            finding.MediaType,
+            true,
+            out var parsedMediaType)
+            ? parsedMediaType
+            : MediaType.Movie;
+
+        IMedia? media = mediaType switch
+        {
+            MediaType.Movie => await _dbContext.Movies.FindAsync(finding.MediaId),
+            MediaType.Episode => await _dbContext.Episodes.FindAsync(finding.MediaId),
+            _ => null
+        };
+
+        if (media == null)
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(finding.TargetLanguage))
+        {
+            await _mediaSubtitleProcessor.ProcessMediaForceTargetAsync(
+                media,
+                mediaType,
+                finding.TargetLanguage,
+                forceProcess: true,
+                forceTranslation: true,
+                forcePriority: true,
+                queueTranslations: true,
+                maxTranslationsToQueue: 1);
+        }
+        else
+        {
+            await _mediaSubtitleProcessor.ProcessMediaForceAsync(
+                media,
+                mediaType,
+                forceProcess: true,
+                forceTranslation: true,
+                forcePriority: true,
+                queueTranslations: true,
+                maxTranslationsToQueue: 1);
+        }
+
+        finding.IsQueued = true;
+        return true;
     }
 }
