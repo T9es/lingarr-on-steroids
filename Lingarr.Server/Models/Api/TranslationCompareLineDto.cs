@@ -9,4 +9,6 @@ public class TranslationCompareLineDto
     public int? DurationMs { get; set; }
     public int? StartTimeMs { get; set; }
     public int? EndTimeMs { get; set; }
+    public bool IsMissing { get; set; }
+    public bool CanEdit { get; set; }
 }

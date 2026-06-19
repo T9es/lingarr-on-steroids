@@ -17,3 +17,14 @@ public class DismissAllQualityAuditFindingsRequest
     /// </summary>
     public List<string>? IssueTypes { get; set; }
 }
+
+public class TranslationCompareEditRequest
+{
+    public List<TranslationCompareEdit> Edits { get; set; } = [];
+}
+
+public class TranslationCompareEdit
+{
+    public int Position { get; set; }
+    public string TranslatedText { get; set; } = string.Empty;
+}

@@ -11,7 +11,9 @@ using Lingarr.Core.Enum;
 using Lingarr.Server.Controllers;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
+using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models.Api;
+using Lingarr.Server.Models.Translation;
 using Lingarr.Server.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.Sqlite;
@@ -423,6 +425,7 @@ public class TranslationCompareControllerTests : IDisposable
             extractionService ?? new FakeSubtitleExtractionService(_tempDirectory),
             sourceSubtitleResolver ?? new FakeSourceSubtitleResolver(null),
             new SubtitleService(NullLogger<SubtitleService>.Instance),
+            new FakeTranslationCheckpointService(),
             NullLogger<TranslationCompareController>.Instance);
     }
 
@@ -594,6 +597,46 @@ public class TranslationCompareControllerTests : IDisposable
         public Task<List<T>> GetSettingAsJson<T>(string key) where T : class
         {
             throw new NotImplementedException();
+        }
+    }
+
+    private sealed class FakeTranslationCheckpointService : ITranslationCheckpointService
+    {
+        public Task<TranslationCheckpoint?> LoadAsync(
+            int translationRequestId,
+            string sourceFingerprint,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult<TranslationCheckpoint?>(null);
+        }
+
+        public Task<TranslationCheckpoint?> LoadByRequestIdAsync(
+            int translationRequestId,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult<TranslationCheckpoint?>(null);
+        }
+
+        public Task SaveCheckpointAsync(
+            TranslationCheckpoint checkpoint,
+            CancellationToken cancellationToken)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task SaveTranslationAsync(
+            int translationRequestId,
+            string sourceFingerprint,
+            int position,
+            string translatedText,
+            CancellationToken cancellationToken)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task DeleteAsync(int translationRequestId, CancellationToken cancellationToken)
+        {
+            return Task.CompletedTask;
         }
     }
 

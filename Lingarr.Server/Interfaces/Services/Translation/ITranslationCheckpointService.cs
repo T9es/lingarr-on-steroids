@@ -9,6 +9,22 @@ public interface ITranslationCheckpointService
         string sourceFingerprint,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Loads a checkpoint by request ID without fingerprint validation.
+    /// Used by the compare controller to read partial translations for failed requests.
+    /// </summary>
+    Task<TranslationCheckpoint?> LoadByRequestIdAsync(
+        int translationRequestId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Saves a full checkpoint to disk. Used by the compare controller when
+    /// the user edits translations for a failed request.
+    /// </summary>
+    Task SaveCheckpointAsync(
+        TranslationCheckpoint checkpoint,
+        CancellationToken cancellationToken);
+
     Task SaveTranslationAsync(
         int translationRequestId,
         string sourceFingerprint,

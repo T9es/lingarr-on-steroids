@@ -13,6 +13,9 @@
                         )
                     }}
                 </span>
+                <span v-if="missingCount > 0" class="text-secondary-content text-sm">
+                    {{ missingCount }} missing
+                </span>
                 <span class="text-secondary-content text-xs">
                     {{
                         t(
@@ -23,6 +26,12 @@
                 </span>
             </div>
             <div class="flex items-center gap-2">
+                <button
+                    v-if="missingCount > 0"
+                    @click="jumpToNextMissing"
+                    class="rounded bg-yellow-500/15 px-2 py-1 text-xs text-yellow-400 hover:bg-yellow-500/25">
+                    {{ t('translationTest.nextMissing', 'Next Missing') }}
+                </button>
                 <button
                     @click="clearSelection"
                     class="text-secondary-content text-sm hover:underline">
@@ -76,10 +85,12 @@
             <div
                 v-for="(line, index) in visibleLines"
                 :key="`${line.position}-${pageStartIndex + index}`"
+                :ref="(el) => setRowRef(line.position, el)"
                 @click="toggleLine(line.position, $event)"
                 :class="{
                     'bg-accent/20': isSelected(line.position),
-                    'hover:bg-tertiary/70': !isSelected(line.position)
+                    'bg-yellow-500/10': isMissing(line.position),
+                    'hover:bg-tertiary/70': !isSelected(line.position) && !isMissing(line.position)
                 }"
                 class="border-secondary/10 grid cursor-pointer grid-cols-[4rem_7rem_minmax(0,1fr)_minmax(0,1fr)_5rem] gap-3 border-b px-4 py-2 transition">
                 <span class="text-secondary-content/70 text-right">
@@ -94,7 +105,33 @@
                 <span
                     class="break-words whitespace-pre-wrap"
                     :class="line.success ? 'text-primary-content' : 'text-error'">
-                    {{ line.translated || line.error || '-' }}
+                    <template v-if="editingPosition === line.position">
+                        <textarea
+                            v-model="editingText"
+                            @blur="finishEditing"
+                            @keydown.ctrl.enter="finishEditing"
+                            @keydown.escape="cancelEditing"
+                            @click.stop
+                            class="w-full resize-none bg-transparent font-mono text-xs focus:outline-none"
+                            rows="2"
+                        />
+                    </template>
+                    <template v-else>
+                        <span
+                            v-if="props.editable && line.canEdit"
+                            @click.stop="startEditing(line)"
+                            class="cursor-pointer hover:underline">
+                            {{ line.translated || line.error || '-' }}
+                        </span>
+                        <span v-else>
+                            {{ line.translated || line.error || '-' }}
+                        </span>
+                    </template>
+                    <span
+                        v-if="isMissing(line.position)"
+                        class="ml-2 inline-block rounded bg-yellow-500/15 px-2 py-0.5 text-xs text-yellow-400">
+                        Missing
+                    </span>
                 </span>
                 <span class="text-secondary-content/70 text-right">
                     {{ line.durationMs?.toFixed(0) ?? '-' }}
@@ -105,12 +142,23 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, nextTick } from 'vue'
 import { useI18n } from '@/plugins/i18n'
 import type { TranslationCompareLine } from '@/ts/translationCompare'
 
-const props = defineProps<{
+interface Props {
     lines: TranslationCompareLine[]
+    editable?: boolean        // default false — enable inline editing
+    missingPositions?: number[]  // positions flagged as missing/untranslated
+}
+
+const props = withDefaults(defineProps<Props>(), {
+    editable: false,
+    missingPositions: () => []
+})
+
+const emit = defineEmits<{
+    'edit-line': [payload: { position: number; translatedText: string }]
 }>()
 
 const { translate } = useI18n()
@@ -124,6 +172,18 @@ function t(key: string, fallback: string, params?: Record<string, string | numbe
 const selectedPositions = ref<Set<number>>(new Set())
 const lastClicked = ref<number | null>(null)
 const currentPage = ref(1)
+const editingPosition = ref<number | null>(null)
+const editingText = ref('')
+const missingPositions = ref<Set<number>>(new Set())
+const rowRefs = ref<Map<number, HTMLElement>>(new Map())
+
+watch(
+    () => props.missingPositions,
+    (positions) => {
+        missingPositions.value = new Set(positions ?? [])
+    },
+    { immediate: true }
+)
 
 const orderedPositions = computed(() => props.lines.map((line) => line.position))
 const pageCount = computed(() => Math.max(1, Math.ceil(props.lines.length / pageSize)))
@@ -152,9 +212,22 @@ watch(pageCount, (count) => {
 })
 
 const selectedCount = computed(() => selectedPositions.value.size)
+const missingCount = computed(() => missingPositions.value.size)
 
 function isSelected(position: number): boolean {
     return selectedPositions.value.has(position)
+}
+
+function isMissing(position: number): boolean {
+    return missingPositions.value.has(position)
+}
+
+function setRowRef(position: number, el: unknown) {
+    if (el) {
+        rowRefs.value.set(position, el as HTMLElement)
+    } else {
+        rowRefs.value.delete(position)
+    }
 }
 
 function toggleLine(position: number, event: MouseEvent) {
@@ -190,6 +263,58 @@ function toggleLine(position: number, event: MouseEvent) {
 function clearSelection() {
     selectedPositions.value = new Set()
     lastClicked.value = null
+}
+
+function startEditing(line: TranslationCompareLine) {
+    if (!props.editable || !line.canEdit) return
+    editingPosition.value = line.position
+    editingText.value = line.translated || ''
+}
+
+function finishEditing() {
+    if (editingPosition.value === null) return
+    emit('edit-line', {
+        position: editingPosition.value,
+        translatedText: editingText.value
+    })
+    editingPosition.value = null
+    editingText.value = ''
+}
+
+function cancelEditing() {
+    editingPosition.value = null
+    editingText.value = ''
+}
+
+function jumpToNextMissing() {
+    if (missingPositions.value.size === 0) return
+
+    const sortedMissing = Array.from(missingPositions.value).sort((a, b) => a - b)
+    const lastPos = lastClicked.value ?? -1
+
+    let nextPos = sortedMissing.find((pos) => pos > lastPos)
+    if (nextPos === undefined) {
+        nextPos = sortedMissing[0] // wrap around
+    }
+
+    // Find the page for this position
+    const lineIndex = props.lines.findIndex((line) => line.position === nextPos)
+    if (lineIndex === -1) return
+
+    const targetPage = Math.floor(lineIndex / pageSize) + 1
+    currentPage.value = targetPage
+
+    // Scroll into view after nextTick
+    nextTick(() => {
+        const rowEl = rowRefs.value.get(nextPos!)
+        if (rowEl) {
+            rowEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }
+    })
+
+    // Update selection
+    selectedPositions.value = new Set([nextPos])
+    lastClicked.value = nextPos
 }
 
 function selectAll() {

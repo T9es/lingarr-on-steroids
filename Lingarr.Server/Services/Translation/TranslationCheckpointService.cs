@@ -61,6 +61,48 @@ public class TranslationCheckpointService : ITranslationCheckpointService
         }
     }
 
+    /// <inheritdoc />
+    public async Task<TranslationCheckpoint?> LoadByRequestIdAsync(
+        int translationRequestId,
+        CancellationToken cancellationToken)
+    {
+        var path = GetCheckpointPath(translationRequestId);
+        if (!File.Exists(path))
+        {
+            return null;
+        }
+
+        try
+        {
+            await using var stream = File.OpenRead(path);
+            return await JsonSerializer.DeserializeAsync<TranslationCheckpoint>(
+                stream,
+                _jsonOptions,
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load translation checkpoint for request {RequestId}", translationRequestId);
+            return null;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task SaveCheckpointAsync(
+        TranslationCheckpoint checkpoint,
+        CancellationToken cancellationToken)
+    {
+        Directory.CreateDirectory(_checkpointRoot);
+        var path = GetCheckpointPath(checkpoint.TranslationRequestId);
+        var tempPath = $"{path}.tmp";
+        await using (var stream = File.Create(tempPath))
+        {
+            await JsonSerializer.SerializeAsync(stream, checkpoint, _jsonOptions, cancellationToken);
+        }
+
+        File.Move(tempPath, path, overwrite: true);
+    }
+
     public async Task SaveTranslationAsync(
         int translationRequestId,
         string sourceFingerprint,

@@ -13,4 +13,7 @@ public class CompletedTranslationCompareResponse
     public int OriginalLineCount { get; set; }
     public int TranslatedLineCount { get; set; }
     public List<TranslationCompareLineDto> Lines { get; set; } = [];
+    public bool IsPartialFailure { get; set; }
+    public List<int> MissingPositions { get; set; } = [];
+    public bool CanAccept { get; set; }
 }

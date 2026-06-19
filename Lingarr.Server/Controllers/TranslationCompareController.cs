@@ -4,12 +4,15 @@ using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
+using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models.Api;
 using Lingarr.Server.Models.FileSystem;
+using Lingarr.Server.Models.Translation;
 using Lingarr.Server.Services.Subtitle;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace Lingarr.Server.Controllers;
 
@@ -24,6 +27,7 @@ public class TranslationCompareController : ControllerBase
     private readonly ISubtitleExtractionService _extractionService;
     private readonly ISourceSubtitleResolver _sourceSubtitleResolver;
     private readonly ISubtitleService _subtitleService;
+    private readonly ITranslationCheckpointService _checkpointService;
     private readonly ILogger<TranslationCompareController> _logger;
     private string? _tempTranslatedComparePath;
 
@@ -33,6 +37,7 @@ public class TranslationCompareController : ControllerBase
         ISubtitleExtractionService extractionService,
         ISourceSubtitleResolver sourceSubtitleResolver,
         ISubtitleService subtitleService,
+        ITranslationCheckpointService checkpointService,
         ILogger<TranslationCompareController> logger)
     {
         _dbContext = dbContext;
@@ -40,6 +45,7 @@ public class TranslationCompareController : ControllerBase
         _extractionService = extractionService;
         _sourceSubtitleResolver = sourceSubtitleResolver;
         _subtitleService = subtitleService;
+        _checkpointService = checkpointService;
         _logger = logger;
     }
 
@@ -56,12 +62,13 @@ public class TranslationCompareController : ControllerBase
             return NotFound(new { message = $"Translation request {requestId} was not found." });
         }
 
-        if (request.Status != TranslationStatus.Completed)
+        if (request.Status != TranslationStatus.Completed &&
+            request.Status != TranslationStatus.Failed)
         {
             return BadRequest(new
             {
                 message =
-                    $"Translation request {requestId} is not completed. Current status: {request.Status}."
+                    $"Translation request {requestId} is not completed or failed. Current status: {request.Status}."
             });
         }
 
@@ -97,32 +104,91 @@ public class TranslationCompareController : ControllerBase
                 });
             }
 
-            var translatedSubtitle =
-                await ResolveTranslatedSubtitlePathAsync(request, originalSubtitle.Path, cancellationToken);
-            var translatedSubtitlePath = translatedSubtitle?.Path;
-
-            if (string.IsNullOrWhiteSpace(translatedSubtitlePath))
-            {
-                return NotFound(new
-                {
-                    message =
-                        $"Translation request {requestId} does not contain a translated subtitle path, and no translated subtitle file could be resolved on disk."
-                });
-            }
-
-            if (!System.IO.File.Exists(translatedSubtitlePath))
-            {
-                return NotFound(new
-                {
-                    message =
-                        $"Translated subtitle file does not exist on disk: {translatedSubtitlePath}"
-                });
-            }
-
             var originalSubtitles = await _subtitleService.ReadSubtitles(originalSubtitle.Path);
-            var translatedSubtitles = await _subtitleService.ReadSubtitles(translatedSubtitlePath);
-            var filteredTranslatedSubtitles = RemoveTranslatorInfoLines(translatedSubtitles);
+
+            List<SubtitleItem> filteredTranslatedSubtitles;
+            string? translatedSubtitlePath;
+            bool isPartialFailure = false;
+            List<int> missingPositions = [];
+
+            if (request.Status == TranslationStatus.Failed)
+            {
+                var checkpoint = await _checkpointService.LoadByRequestIdAsync(
+                    request.Id, cancellationToken);
+
+                if (checkpoint == null || checkpoint.Translations.Count == 0)
+                {
+                    return NotFound(new
+                    {
+                        message =
+                            $"No translation checkpoint found for failed request {requestId}. Cannot build comparison."
+                    });
+                }
+
+                missingPositions = ParseMissingPositions(request.Id);
+                isPartialFailure = missingPositions.Count > 0;
+
+                filteredTranslatedSubtitles = BuildFailedComparisonSubtitles(
+                    originalSubtitles,
+                    checkpoint.Translations,
+                    missingPositions);
+                translatedSubtitlePath = request.SubtitleToTranslate ?? originalSubtitle.Path;
+            }
+            else
+            {
+                var translatedSubtitle =
+                    await ResolveTranslatedSubtitlePathAsync(request, originalSubtitle.Path, cancellationToken);
+                translatedSubtitlePath = translatedSubtitle?.Path;
+
+                if (string.IsNullOrWhiteSpace(translatedSubtitlePath))
+                {
+                    return NotFound(new
+                    {
+                        message =
+                            $"Translation request {requestId} does not contain a translated subtitle path, and no translated subtitle file could be resolved on disk."
+                    });
+                }
+
+                if (!System.IO.File.Exists(translatedSubtitlePath))
+                {
+                    return NotFound(new
+                    {
+                        message =
+                            $"Translated subtitle file does not exist on disk: {translatedSubtitlePath}"
+                    });
+                }
+
+                var translatedSubtitles = await _subtitleService.ReadSubtitles(translatedSubtitlePath);
+                filteredTranslatedSubtitles = RemoveTranslatorInfoLines(translatedSubtitles);
+            }
+
             var lines = BuildLineComparison(originalSubtitles, filteredTranslatedSubtitles);
+
+            if (isPartialFailure)
+            {
+                var missingSet = new HashSet<int>(missingPositions);
+                foreach (var line in lines)
+                {
+                    if (missingSet.Contains(line.Position))
+                    {
+                        line.IsMissing = true;
+                        line.CanEdit = true;
+                        line.Translated = null;
+                        line.Success = false;
+                    }
+                    else
+                    {
+                        line.CanEdit = true;
+                    }
+                }
+            }
+            else if (request.Status == TranslationStatus.Completed)
+            {
+                foreach (var line in lines)
+                {
+                    line.CanEdit = true;
+                }
+            }
 
             var response = new CompletedTranslationCompareResponse
             {
@@ -133,10 +199,13 @@ public class TranslationCompareController : ControllerBase
                 MediaType = request.MediaType.ToString(),
                 CompletedAt = request.CompletedAt,
                 OriginalSubtitlePath = originalSubtitle.Path,
-                TranslatedSubtitlePath = translatedSubtitlePath,
+                TranslatedSubtitlePath = translatedSubtitlePath ?? originalSubtitle.Path,
                 OriginalLineCount = originalSubtitles.Count,
                 TranslatedLineCount = filteredTranslatedSubtitles.Count,
-                Lines = lines
+                Lines = lines,
+                IsPartialFailure = isPartialFailure,
+                MissingPositions = missingPositions,
+                CanAccept = request.Status == TranslationStatus.Failed
             };
 
             if (ControllerContext.HttpContext != null)
@@ -174,6 +243,465 @@ public class TranslationCompareController : ControllerBase
                 }
             }
         }
+    }
+
+    [HttpPost("{requestId:int}/accept")]
+    public async Task<ActionResult<CompletedTranslationCompareResponse>> AcceptTranslation(
+        int requestId,
+        [FromBody] TranslationCompareEditRequest? editRequest,
+        CancellationToken cancellationToken = default)
+    {
+        var request = await _dbContext.TranslationRequests
+            .FirstOrDefaultAsync(r => r.Id == requestId, cancellationToken);
+
+        if (request == null)
+        {
+            return NotFound(new { message = $"Translation request {requestId} was not found." });
+        }
+
+        if (request.Status != TranslationStatus.Failed)
+        {
+            return BadRequest(new
+            {
+                message =
+                    $"Translation request {requestId} is not in Failed status. Current status: {request.Status}."
+            });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.SubtitleToTranslate))
+        {
+            return NotFound(new
+            {
+                message =
+                    $"Translation request {requestId} does not contain a source subtitle path."
+            });
+        }
+
+        ResolvedSubtitlePath? originalSubtitle = null;
+
+        try
+        {
+            originalSubtitle = await ResolveSourceSubtitlePathAsync(request, cancellationToken);
+            if (originalSubtitle == null || !System.IO.File.Exists(originalSubtitle.Path))
+            {
+                return NotFound(new
+                {
+                    message =
+                        $"Source subtitle file does not exist on disk: {request.SubtitleToTranslate}"
+                });
+            }
+
+            var checkpoint = await _checkpointService.LoadByRequestIdAsync(
+                request.Id, cancellationToken);
+
+            if (checkpoint == null || checkpoint.Translations.Count == 0)
+            {
+                return NotFound(new
+                {
+                    message =
+                        $"No translation checkpoint found for failed request {requestId}."
+                });
+            }
+
+            var missingPositions = ParseMissingPositions(request.Id);
+            var originalSubtitles = await _subtitleService.ReadSubtitles(originalSubtitle.Path);
+
+            var edits = editRequest?.Edits
+                ?.ToDictionary(e => e.Position, e => e.TranslatedText)
+                ?? new Dictionary<int, string>();
+
+            var outputSubtitles = new List<SubtitleItem>();
+            foreach (var original in originalSubtitles)
+            {
+                var item = new SubtitleItem
+                {
+                    Position = original.Position,
+                    StartTime = original.StartTime,
+                    EndTime = original.EndTime,
+                    Lines = [.. original.Lines],
+                    PlaintextLines = [.. original.PlaintextLines],
+                    TranslatedLines = [.. original.TranslatedLines],
+                    SsaDialogue = original.SsaDialogue,
+                    SsaFormat = original.SsaFormat
+                };
+
+                if (edits.TryGetValue(original.Position, out var editText))
+                {
+                    item.TranslatedLines = [editText];
+                }
+                else if (checkpoint.Translations.TryGetValue(original.Position, out var translated))
+                {
+                    item.TranslatedLines = [translated];
+                }
+                else if (missingPositions.Contains(original.Position))
+                {
+                    item.TranslatedLines = [.. original.Lines];
+                }
+
+                outputSubtitles.Add(item);
+            }
+
+            var settings = await _settingService.GetSettings([
+                SettingKeys.Translation.UseSubtitleTagging,
+                SettingKeys.Translation.RemoveLanguageTag,
+                SettingKeys.Translation.SubtitleTag,
+                SettingKeys.Translation.SubtitleTagShort
+            ]);
+
+            var useSubtitleTagging =
+                settings.TryGetValue(SettingKeys.Translation.UseSubtitleTagging, out var useTaggingValue) &&
+                string.Equals(useTaggingValue, "true", StringComparison.OrdinalIgnoreCase);
+            var removeLanguageTag =
+                settings.TryGetValue(SettingKeys.Translation.RemoveLanguageTag, out var removeLanguageTagValue) &&
+                string.Equals(removeLanguageTagValue, "true", StringComparison.OrdinalIgnoreCase);
+            var subtitleTag = useSubtitleTagging
+                ? settings.GetValueOrDefault(SettingKeys.Translation.SubtitleTag) ?? string.Empty
+                : string.Empty;
+            var subtitleTagShort = useSubtitleTagging
+                ? settings.GetValueOrDefault(SettingKeys.Translation.SubtitleTagShort) ?? string.Empty
+                : string.Empty;
+
+            var targetLanguage = removeLanguageTag ? string.Empty : request.TargetLanguage;
+            var outputPath = _subtitleService.CreateFilePath(
+                request.SubtitleToTranslate,
+                targetLanguage,
+                subtitleTag);
+
+            var stripFormatting =
+                settings.TryGetValue(SettingKeys.Translation.StripSubtitleFormatting, out var stripVal) &&
+                string.Equals(stripVal, "true", StringComparison.OrdinalIgnoreCase);
+
+            await _subtitleService.WriteSubtitles(outputPath, outputSubtitles, stripFormatting);
+
+            request.Status = TranslationStatus.Completed;
+            request.CompletedAt = DateTime.UtcNow;
+            request.TranslatedSubtitle = outputPath;
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
+            await _checkpointService.DeleteAsync(request.Id, cancellationToken);
+
+            _logger.LogInformation(
+                "Accepted failed translation request {RequestId} with {EditCount} edits",
+                requestId,
+                edits.Count);
+
+            var response = BuildCompareResponse(
+                request,
+                originalSubtitle.Path,
+                outputPath,
+                originalSubtitles,
+                outputSubtitles,
+                missingPositions,
+                isPartialFailure: false);
+
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to accept translation for request {RequestId}", requestId);
+            return StatusCode(500, new { message = "Failed to accept translation." });
+        }
+        finally
+        {
+            CleanupTemporarySubtitle(originalSubtitle);
+        }
+    }
+
+    [HttpPost("{requestId:int}/save")]
+    public async Task<ActionResult<CompletedTranslationCompareResponse>> SaveTranslation(
+        int requestId,
+        [FromBody] TranslationCompareEditRequest editRequest,
+        CancellationToken cancellationToken = default)
+    {
+        if (editRequest?.Edits == null || editRequest.Edits.Count == 0)
+        {
+            return BadRequest(new { message = "At least one edit is required." });
+        }
+
+        var request = await _dbContext.TranslationRequests
+            .FirstOrDefaultAsync(r => r.Id == requestId, cancellationToken);
+
+        if (request == null)
+        {
+            return NotFound(new { message = $"Translation request {requestId} was not found." });
+        }
+
+        if (request.Status != TranslationStatus.Completed &&
+            request.Status != TranslationStatus.Failed)
+        {
+            return BadRequest(new
+            {
+                message =
+                    $"Translation request {requestId} is not completed or failed. Current status: {request.Status}."
+            });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.SubtitleToTranslate))
+        {
+            return NotFound(new
+            {
+                message =
+                    $"Translation request {requestId} does not contain a source subtitle path."
+            });
+        }
+
+        ResolvedSubtitlePath? originalSubtitle = null;
+
+        try
+        {
+            originalSubtitle = await ResolveSourceSubtitlePathAsync(request, cancellationToken);
+            if (originalSubtitle == null || !System.IO.File.Exists(originalSubtitle.Path))
+            {
+                return NotFound(new
+                {
+                    message =
+                        $"Source subtitle file does not exist on disk: {request.SubtitleToTranslate}"
+                });
+            }
+
+            var originalSubtitles = await _subtitleService.ReadSubtitles(originalSubtitle.Path);
+            var edits = editRequest.Edits.ToDictionary(e => e.Position, e => e.TranslatedText);
+
+            if (request.Status == TranslationStatus.Failed)
+            {
+                var checkpoint = await _checkpointService.LoadByRequestIdAsync(
+                    request.Id, cancellationToken);
+
+                if (checkpoint == null)
+                {
+                    return NotFound(new
+                    {
+                        message =
+                            $"No translation checkpoint found for failed request {requestId}."
+                    });
+                }
+
+                foreach (var edit in edits)
+                {
+                    checkpoint.Translations[edit.Key] = edit.Value;
+                }
+
+                checkpoint.UpdatedAtUtc = DateTime.UtcNow;
+                await _checkpointService.SaveCheckpointAsync(checkpoint, cancellationToken);
+
+                var missingPositions = ParseMissingPositions(request.Id);
+                var filteredSubtitles = BuildFailedComparisonSubtitles(
+                    originalSubtitles,
+                    checkpoint.Translations,
+                    missingPositions);
+
+                var response = BuildCompareResponse(
+                    request,
+                    originalSubtitle.Path,
+                    request.SubtitleToTranslate ?? originalSubtitle.Path,
+                    originalSubtitles,
+                    filteredSubtitles,
+                    missingPositions,
+                    isPartialFailure: missingPositions.Count > 0);
+
+                return Ok(response);
+            }
+
+            var translatedSubtitle =
+                await ResolveTranslatedSubtitlePathAsync(request, originalSubtitle.Path, cancellationToken);
+            var translatedSubtitlePath = translatedSubtitle?.Path;
+
+            if (string.IsNullOrWhiteSpace(translatedSubtitlePath) ||
+                !System.IO.File.Exists(translatedSubtitlePath))
+            {
+                return NotFound(new
+                {
+                    message =
+                        $"Translated subtitle file not found for request {requestId}."
+                });
+            }
+
+            var translatedSubtitles = await _subtitleService.ReadSubtitles(translatedSubtitlePath);
+            var filteredTranslatedSubtitles = RemoveTranslatorInfoLines(translatedSubtitles);
+
+            foreach (var subtitle in filteredTranslatedSubtitles)
+            {
+                if (edits.TryGetValue(subtitle.Position, out var editText))
+                {
+                    subtitle.TranslatedLines = [editText];
+                }
+            }
+
+            var saveSettings = await _settingService.GetSettings([
+                SettingKeys.Translation.StripSubtitleFormatting
+            ]);
+
+            var stripFormatting =
+                saveSettings.TryGetValue(SettingKeys.Translation.StripSubtitleFormatting, out var stripVal) &&
+                string.Equals(stripVal, "true", StringComparison.OrdinalIgnoreCase);
+
+            await _subtitleService.WriteSubtitles(translatedSubtitlePath, filteredTranslatedSubtitles, stripFormatting);
+
+            _logger.LogInformation(
+                "Saved edits for translation request {RequestId} with {EditCount} edits",
+                requestId,
+                edits.Count);
+
+            var saveResponse = BuildCompareResponse(
+                request,
+                originalSubtitle.Path,
+                translatedSubtitlePath,
+                originalSubtitles,
+                filteredTranslatedSubtitles,
+                [],
+                isPartialFailure: false);
+
+            return Ok(saveResponse);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to save translation for request {RequestId}", requestId);
+            return StatusCode(500, new { message = "Failed to save translation." });
+        }
+        finally
+        {
+            CleanupTemporarySubtitle(originalSubtitle);
+        }
+    }
+
+    /// <summary>
+    /// Parses missing positions from the latest Error-level log entry for a failed translation request.
+    /// </summary>
+    private List<int> ParseMissingPositions(int requestId)
+    {
+        var latestErrorLog = _dbContext.TranslationRequestLogs
+            .Where(l => l.TranslationRequestId == requestId && l.Level == "Error")
+            .OrderByDescending(l => l.Id)
+            .FirstOrDefault();
+
+        if (string.IsNullOrWhiteSpace(latestErrorLog?.Details))
+        {
+            return [];
+        }
+
+        var positions = new HashSet<int>();
+
+        var positionRangeMatch = Regex.Match(
+            latestErrorLog.Details,
+            @"missing at positions:\s*([\d,\s]+)");
+        if (positionRangeMatch.Success)
+        {
+            var positionList = positionRangeMatch.Groups[1].Value;
+            foreach (var part in positionList.Split(',', StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (int.TryParse(part.Trim(), out var pos))
+                {
+                    positions.Add(pos);
+                }
+            }
+        }
+
+        var posMatches = Regex.Matches(latestErrorLog.Details, @"pos (\d+):");
+        foreach (Match m in posMatches)
+        {
+            if (int.TryParse(m.Groups[1].Value, out var pos))
+            {
+                positions.Add(pos);
+            }
+        }
+
+        return positions.Order().ToList();
+    }
+
+    /// <summary>
+    /// Builds subtitle items for a failed request by filling translated positions from the checkpoint
+    /// and missing positions from the source.
+    /// </summary>
+    private static List<SubtitleItem> BuildFailedComparisonSubtitles(
+        List<SubtitleItem> originalSubtitles,
+        Dictionary<int, string> checkpointTranslations,
+        List<int> missingPositions)
+    {
+        var missingSet = new HashSet<int>(missingPositions);
+        return originalSubtitles.Select(original =>
+        {
+            var item = new SubtitleItem
+            {
+                Position = original.Position,
+                StartTime = original.StartTime,
+                EndTime = original.EndTime,
+                Lines = [.. original.Lines],
+                PlaintextLines = [.. original.PlaintextLines],
+                TranslatedLines = [.. original.TranslatedLines],
+                SsaDialogue = original.SsaDialogue,
+                SsaFormat = original.SsaFormat
+            };
+
+            if (checkpointTranslations.TryGetValue(original.Position, out var translated))
+            {
+                item.TranslatedLines = [translated];
+            }
+            else if (missingSet.Contains(original.Position))
+            {
+                item.TranslatedLines = [string.Empty];
+            }
+
+            return item;
+        }).ToList();
+    }
+
+    /// <summary>
+    /// Builds a compare response from source, translated subtitles, and metadata.
+    /// </summary>
+    private CompletedTranslationCompareResponse BuildCompareResponse(
+        TranslationRequest request,
+        string originalPath,
+        string translatedPath,
+        List<SubtitleItem> originalSubtitles,
+        List<SubtitleItem> translatedSubtitles,
+        List<int> missingPositions,
+        bool isPartialFailure)
+    {
+        var lines = BuildLineComparison(originalSubtitles, translatedSubtitles);
+
+        if (missingPositions.Count > 0)
+        {
+            var missingSet = new HashSet<int>(missingPositions);
+            foreach (var line in lines)
+            {
+                if (missingSet.Contains(line.Position))
+                {
+                    line.IsMissing = true;
+                    line.CanEdit = true;
+                    line.Translated = null;
+                    line.Success = false;
+                }
+                else
+                {
+                    line.CanEdit = true;
+                }
+            }
+        }
+        else
+        {
+            foreach (var line in lines)
+            {
+                line.CanEdit = true;
+            }
+        }
+
+        return new CompletedTranslationCompareResponse
+        {
+            TranslationRequestId = request.Id,
+            Title = request.Title,
+            SourceLanguage = request.SourceLanguage,
+            TargetLanguage = request.TargetLanguage,
+            MediaType = request.MediaType.ToString(),
+            CompletedAt = request.CompletedAt,
+            OriginalSubtitlePath = originalPath,
+            TranslatedSubtitlePath = translatedPath,
+            OriginalLineCount = originalSubtitles.Count,
+            TranslatedLineCount = translatedSubtitles.Count,
+            Lines = lines,
+            IsPartialFailure = isPartialFailure,
+            MissingPositions = missingPositions,
+            CanAccept = request.Status == TranslationStatus.Failed
+        };
     }
 
     private async Task<ResolvedTranslatedSubtitlePath?> ResolveTranslatedSubtitlePathAsync(

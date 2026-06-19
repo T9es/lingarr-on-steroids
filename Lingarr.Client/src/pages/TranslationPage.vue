@@ -263,6 +263,13 @@
                                 </div>
                                 <div class="flex items-center gap-2">
                                     <button
+                                        v-if="item.status === TRANSLATION_STATUS.FAILED"
+                                        class="border-accent hover:bg-accent cursor-pointer rounded border px-2 py-1 text-xs transition-colors"
+                                        :title="translate('translations.reviewMissing')"
+                                        @click.stop="openCompareForFailed(item)">
+                                        Review
+                                    </button>
+                                    <button
                                         class="border-accent hover:bg-accent cursor-pointer rounded border px-2 py-1 text-xs transition-colors"
                                         :title="translate('translations.viewLogs')"
                                         @click.stop="openLogs(item)">
@@ -569,6 +576,13 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Failed Translation Compare Modal -->
+            <CompletedTranslationCompareModal
+                :is-open="failedCompareModalOpen"
+                :translation-request-id="selectedFailedRequestId"
+                @close="closeFailedCompareModal"
+                @accepted="handleFailedCompareAccepted" />
         </div>
     </PageLayout>
 </template>
@@ -603,6 +617,7 @@ import PageLayout from '@/components/layout/PageLayout.vue'
 import CheckboxComponent from '@/components/common/CheckboxComponent.vue'
 import TestIcon from '@/components/icons/TestIcon.vue'
 import UploadWorkspaceTab from '@/components/features/upload-workspace/UploadWorkspaceTab.vue'
+import CompletedTranslationCompareModal from '@/components/features/translation-compare/CompletedTranslationCompareModal.vue'
 import { useRouter } from 'vue-router'
 
 const { translate } = useI18n()
@@ -622,6 +637,8 @@ const showRemoveConfirm = ref(false)
 const reenqueuingQueued = ref(false)
 const cancellingQueued = ref(false)
 const retryResultBanner = ref<{ retried: number; blocked: number } | null>(null)
+const failedCompareModalOpen = ref(false)
+const selectedFailedRequestId = ref<number | null>(null)
 
 type TranslationTab = 'list' | 'uploadWorkspace'
 
@@ -720,6 +737,21 @@ function closeLogs() {
     logsError.value = null
     activeLogRequest.value = null
     requestLogs.value = []
+}
+
+const openCompareForFailed = (item: ITranslationRequest) => {
+    selectedFailedRequestId.value = item.id
+    failedCompareModalOpen.value = true
+}
+
+const closeFailedCompareModal = () => {
+    failedCompareModalOpen.value = false
+    selectedFailedRequestId.value = null
+}
+
+const handleFailedCompareAccepted = async () => {
+    closeFailedCompareModal()
+    await translationRequestStore.forceRefreshSections()
 }
 
 const retryAllFailed = async () => {
