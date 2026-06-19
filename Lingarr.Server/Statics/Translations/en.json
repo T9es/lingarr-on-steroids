@@ -133,7 +133,12 @@
     "clearSelection": "Clear selection",
     "episodesWithSubtitles": "episodes with subtitles",
     "season": "Season",
-    "episodes": "episodes"
+    "episodes": "episodes",
+    "nextMissing": "Next Missing",
+    "errors": {
+      "saveFailed": "Failed to save edits.",
+      "acceptFailed": "Failed to accept translation."
+    }
   },
   "statistics": {
     "notAvailable": "Not available",
@@ -263,6 +268,7 @@
     "priority": "Priority media",
     "progress": "Progress",
     "completed": "Completed",
+    "acceptTranslation": "Accept Translation",
     "cancel": "Cancel",
     "delete": "Delete",
     "select": "Select",
@@ -290,6 +296,7 @@
     "cancelAll": "Cancel All",
     "removeAllFailed": "Remove All Failed",
     "removeAllFailedConfirm": "Are you sure you want to remove all failed translation requests? This cannot be undone.",
+    "reviewMissing": "Review missing translations",
     "retryResultSummary": "Retry result: retried {retried}, blocked {blocked}."
   },
     "schedule": {
@@ -357,8 +364,9 @@
     "refresh": "Refresh",
     "recreate": "Recreate",
     "retry": "Retry",
-    "saved": "saved",
+    "saved": "Saved!",
     "saveChanges": "Save Changes",
+    "saveEdits": "Save Edits",
     "saving": "Saving...",
     "searchMedia": "Search media...",
     "selectItems": "Select items...",
@@ -446,7 +454,7 @@
       "chutesUsageTitle": "Chutes usage",
       "chutesPlan": "Plan: {plan}",
       "crofaiUsageTitle": "CrofAI usage",
-      "crofaiUsageDescription": "Check your remaining credits and daily request limits",
+      "crofaiUsageDescription": "Check your remaining credits",
       "credits": "Credits",
       "crofaiMissingApiKey": "CrofAI API key is not configured.",
       "chutesPlanUnknown": "Plan information unavailable.",

@@ -376,6 +376,19 @@ public class TranslationCompareController : ControllerBase
             request.Status = TranslationStatus.Completed;
             request.CompletedAt = DateTime.UtcNow;
             request.TranslatedSubtitle = outputPath;
+            request.IsActive = null;
+            request.NextRetryAt = null;
+            request.PausedAt = null;
+            request.PauseReason = null;
+            request.PausedProvider = null;
+
+            _dbContext.TranslationRequestLogs.Add(new TranslationRequestLog
+            {
+                TranslationRequestId = request.Id,
+                Level = "Information",
+                Message = $"Translation accepted with {edits.Count} manual edit(s). Untranslated position(s) preserved as source text."
+            });
+
             await _dbContext.SaveChangesAsync(cancellationToken);
 
             await _checkpointService.DeleteAsync(request.Id, cancellationToken);

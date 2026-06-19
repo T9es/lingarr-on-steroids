@@ -133,7 +133,12 @@
     "clearSelection": "清除选择",
     "episodesWithSubtitles": "有字幕的剧集",
     "season": "季",
-    "episodes": "集"
+    "episodes": "集",
+    "nextMissing": "下一个缺失",
+    "errors": {
+      "saveFailed": "保存编辑失败。",
+      "acceptFailed": "接受翻译失败。"
+    }
   },
   "statistics": {
     "notAvailable": "不可用",
@@ -263,6 +268,7 @@
     "priority": "优先媒体",
     "progress": "进度",
     "completed": "已完成",
+    "acceptTranslation": "接受翻译",
     "cancel": "取消",
     "delete": "删除",
     "select": "选择",
@@ -290,6 +296,7 @@
     "cancelAll": "全部取消",
     "removeAllFailed": "删除所有失败",
     "removeAllFailedConfirm": "确定要删除所有失败的翻译请求吗？此操作无法撤销。",
+    "reviewMissing": "检查缺失翻译",
     "retryResultSummary": "重试结果：已重试 {retried} 条，阻塞 {blocked} 条。"
   },
     "schedule": {
@@ -357,8 +364,9 @@
     "refresh": "刷新",
     "recreate": "重新生成",
     "retry": "重试",
-    "saved": "已保存",
+    "saved": "已保存！",
     "saveChanges": "保存更改",
+    "saveEdits": "保存编辑",
     "saving": "保存中...",
     "searchMedia": "搜索媒体...",
     "selectItems": "选择项目...",
@@ -447,7 +455,7 @@
       "chutesPlan": "计划：{plan}",
       "credits": "积分",
       "crofaiMissingApiKey": "未配置CrofAI API密钥。",
-      "crofaiUsageDescription": "查看您的剩余积分和每日请求限制",
+      "crofaiUsageDescription": "查看您的剩余积分",
       "crofaiUsageTitle": "CrofAI使用情况",
       "chutesPlanUnknown": "计划信息不可用。",
       "refreshUsage": "刷新",

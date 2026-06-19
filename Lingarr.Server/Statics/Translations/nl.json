@@ -133,7 +133,12 @@
     "clearSelection": "Selectie wissen",
     "episodesWithSubtitles": "afleveringen met ondertitels",
     "season": "Seizoen",
-    "episodes": "afleveringen"
+    "episodes": "afleveringen",
+    "nextMissing": "Volgende ontbrekende",
+    "errors": {
+      "saveFailed": "Fout bij het opslaan van bewerkingen.",
+      "acceptFailed": "Fout bij het accepteren van de vertaling."
+    }
   },
   "statistics": {
     "notAvailable": "Niet beschikbaar",
@@ -263,6 +268,7 @@
     "priority": "Prioriteitsmedia",
     "progress": "Voortgang",
     "completed": "Voltooid",
+    "acceptTranslation": "Vertaling accepteren",
     "cancel": "Annuleren",
     "delete": "Verwijder",
     "select": "Selecteren",
@@ -290,6 +296,7 @@
     "cancelAll": "Alles annuleren",
     "removeAllFailed": "Verwijder alle mislukte",
     "removeAllFailedConfirm": "Weet u zeker dat u alle mislukte vertaalaanvragen wilt verwijderen? Dit kan niet ongedaan worden gemaakt.",
+    "reviewMissing": "Ontbrekende vertalingen beoordelen",
     "retryResultSummary": "Resultaat opnieuw proberen: {retried} opnieuw gestart, {blocked} geblokkeerd."
   },
     "schedule": {
@@ -357,8 +364,9 @@
     "refresh": "Vernieuwen",
     "recreate": "Opnieuw maken",
     "retry": "Opnieuw proberen",
-    "saved": "opgeslagen",
+    "saved": "Opgeslagen!",
     "saveChanges": "Wijzigingen opslaan",
+    "saveEdits": "Bewerkingen opslaan",
     "saving": "Opslaan...",
     "searchMedia": "Media zoeken...",
     "selectItems": "Selecteer items...",
@@ -447,7 +455,7 @@
       "chutesPlan": "Abonnement: {plan}",
       "credits": "Tegoeden",
       "crofaiMissingApiKey": "CrofAI API-sleutel is niet geconfigureerd.",
-      "crofaiUsageDescription": "Controleer uw resterende credits en dagelijkse aanvraaglimieten",
+      "crofaiUsageDescription": "Controleer uw resterende credits",
       "crofaiUsageTitle": "CrofAI-gebruik",
       "chutesPlanUnknown": "Abonnementsinformatie niet beschikbaar.",
       "refreshUsage": "Vernieuwen",

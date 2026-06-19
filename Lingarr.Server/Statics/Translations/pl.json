@@ -133,7 +133,12 @@
     "clearSelection": "Wyczyść zaznaczenie",
     "episodesWithSubtitles": "odcinków z napisami",
     "season": "Sezon",
-    "episodes": "odcinków"
+    "episodes": "odcinków",
+    "nextMissing": "Następny brakujący",
+    "errors": {
+      "saveFailed": "Nie udało się zapisać edycji.",
+      "acceptFailed": "Nie udało się zaakceptować tłumaczenia."
+    }
   },
   "statistics": {
     "notAvailable": "Niedostępne",
@@ -263,6 +268,7 @@
     "priority": "Media priorytetowe",
     "progress": "Postęp",
     "completed": "Ukończone",
+    "acceptTranslation": "Zaakceptuj tłumaczenie",
     "cancel": "Anuluj",
     "delete": "Usuń",
     "select": "Wybierz",
@@ -290,6 +296,7 @@
     "cancelAll": "Anuluj wszystko",
     "removeAllFailed": "Usuń wszystkie nieudane",
     "removeAllFailedConfirm": "Czy na pewno chcesz usunąć wszystkie nieudane żądania tłumaczenia? Tej operacji nie można cofnąć.",
+    "reviewMissing": "Przeglądaj brakujące tłumaczenia",
     "retryResultSummary": "Wynik ponowienia: wznowiono {retried}, zablokowano {blocked}."
   },
     "schedule": {
@@ -357,8 +364,9 @@
     "refresh": "Odśwież",
     "recreate": "Odtwórz ponownie",
     "retry": "Ponów",
-    "saved": "zapisane",
+    "saved": "Zapisano!",
     "saveChanges": "Zapisz zmiany",
+    "saveEdits": "Zapisz edycje",
     "saving": "Zapisywanie...",
     "searchMedia": "Szukaj mediów...",
     "selectItems": "Wybierz elementy...",
@@ -447,7 +455,7 @@
       "chutesPlan": "Plan taryfowy: {plan}",
       "credits": "Kredyty",
       "crofaiMissingApiKey": "Klucz API CrofAI nie jest skonfigurowany.",
-      "crofaiUsageDescription": "Sprawdź pozostałe kredyty i dzienne limity żądań",
+      "crofaiUsageDescription": "Sprawdź pozostałe kredyty",
       "crofaiUsageTitle": "Użycie CrofAI",
       "chutesPlanUnknown": "Informacje o planie niedostępne.",
       "refreshUsage": "Odśwież",

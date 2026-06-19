@@ -1,4 +1,4 @@
-﻿using Hangfire;
+using Hangfire;
 using System.Text.Json;
 using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
@@ -257,13 +257,14 @@ public class SubtitleController : ControllerBase
 
     [HttpPost("quality-audit/findings/requeue-all")]
     public async Task<ActionResult<SubtitleQualityAuditResult>> RequeueAllQualityAuditFindings(
-        [FromBody] RequeueAllQualityAuditFindingsRequest request)
+        [FromBody] RequeueAllQualityAuditFindingsRequest? request = null)
     {
         var result = await LoadQualityAuditResult();
+        var filterIssueTypes = request?.IssueTypes;
         var findingsToRequeue = result.Findings
             .Where(f => !f.IsQueued && !f.Dismissed)
-            .Where(f => request.IssueTypes == null || !request.IssueTypes.Any()
-                        || request.IssueTypes.Any(filterIssue => f.IssueTypes.Contains(filterIssue)))
+            .Where(f => filterIssueTypes == null || filterIssueTypes.Count == 0
+                        || f.IssueTypes.Any(t => filterIssueTypes.Contains(t)))
             .ToList();
 
         foreach (var finding in findingsToRequeue)
@@ -277,13 +278,14 @@ public class SubtitleController : ControllerBase
 
     [HttpPost("quality-audit/findings/dismiss-all")]
     public async Task<ActionResult<SubtitleQualityAuditResult>> DismissAllQualityAuditFindings(
-        [FromBody] DismissAllQualityAuditFindingsRequest request)
+        [FromBody] DismissAllQualityAuditFindingsRequest? request = null)
     {
         var result = await LoadQualityAuditResult();
+        var filterIssueTypes = request?.IssueTypes;
         var findingsToDismiss = result.Findings
             .Where(f => !f.IsQueued && !f.Dismissed)
-            .Where(f => request.IssueTypes == null || !request.IssueTypes.Any()
-                        || request.IssueTypes.Any(filterIssue => f.IssueTypes.Contains(filterIssue)))
+            .Where(f => filterIssueTypes == null || filterIssueTypes.Count == 0
+                        || f.IssueTypes.Any(t => filterIssueTypes.Contains(t)))
             .ToList();
 
         foreach (var finding in findingsToDismiss)

@@ -133,7 +133,12 @@
     "clearSelection": "Auswahl löschen",
     "episodesWithSubtitles": "Episoden mit Untertiteln",
     "season": "Staffel",
-    "episodes": "Episoden"
+    "episodes": "Episoden",
+    "nextMissing": "Nächste fehlende",
+    "errors": {
+      "saveFailed": "Fehler beim Speichern der Änderungen.",
+      "acceptFailed": "Fehler beim Akzeptieren der Übersetzung."
+    }
   },
   "statistics": {
     "notAvailable": "Nicht verfügbar",
@@ -263,6 +268,7 @@
     "priority": "Prioritätsmedien",
     "progress": "Fortschritt",
     "completed": "Abgeschlossen",
+    "acceptTranslation": "Übersetzung akzeptieren",
     "cancel": "Abbrechen",
     "delete": "Löschen",
     "select": "Auswählen",
@@ -290,6 +296,7 @@
     "cancelAll": "Alle abbrechen",
     "removeAllFailed": "Alle fehlgeschlagenen entfernen",
     "removeAllFailedConfirm": "Sind Sie sicher, dass Sie alle fehlgeschlagenen Übersetzungsanfragen entfernen möchten? Dies kann nicht rückgängig gemacht werden.",
+    "reviewMissing": "Fehlende Übersetzungen überprüfen",
     "retryResultSummary": "Ergebnis des erneuten Versuchs: {retried} erneut gestartet, {blocked} blockiert."
   },
     "schedule": {
@@ -357,8 +364,9 @@
     "refresh": "Aktualisieren",
     "recreate": "Neu erstellen",
     "retry": "Erneut versuchen",
-    "saved": "gespeichert",
+    "saved": "Gespeichert!",
     "saveChanges": "Änderungen speichern",
+    "saveEdits": "Bearbeitungen speichern",
     "saving": "Speichern...",
     "searchMedia": "Medien suchen...",
     "selectItems": "Elemente auswählen...",
@@ -447,7 +455,7 @@
       "chutesPlan": "Tarif: {plan}",
       "credits": "Guthaben",
       "crofaiMissingApiKey": "CrofAI-API-Schlüssel ist nicht konfiguriert.",
-      "crofaiUsageDescription": "Überprüfen Sie Ihr verbleibendes Guthaben und tägliche Anfragelimit",
+      "crofaiUsageDescription": "Überprüfen Sie Ihr verbleibendes Guthaben",
       "crofaiUsageTitle": "CrofAI-Nutzung",
       "chutesPlanUnknown": "Plan-Informationen nicht verfügbar.",
       "refreshUsage": "Aktualisieren",

@@ -43,6 +43,7 @@
             <TranslationCompareTable
                 :lines="compareData.lines"
                 :editable="true"
+                :missing-positions="compareData.missingPositions ?? []"
                 @edit-line="handleEditLine" />
         </template>
 

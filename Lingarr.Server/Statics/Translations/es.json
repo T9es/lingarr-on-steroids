@@ -133,7 +133,12 @@
     "clearSelection": "Limpiar selección",
     "episodesWithSubtitles": "episodios con subtítulos",
     "season": "Temporada",
-    "episodes": "episodios"
+    "episodes": "episodios",
+    "nextMissing": "Siguiente faltante",
+    "errors": {
+      "saveFailed": "Error al guardar los cambios.",
+      "acceptFailed": "Error al aceptar la traducción."
+    }
   },
   "statistics": {
     "notAvailable": "No disponible",
@@ -263,6 +268,7 @@
     "priority": "Medios prioritarios",
     "progress": "Progreso",
     "completed": "Completado",
+    "acceptTranslation": "Aceptar traducción",
     "cancel": "Cancelar",
     "delete": "Eliminar",
     "select": "Seleccionar",
@@ -290,6 +296,7 @@
     "cancelAll": "Cancelar todo",
     "removeAllFailed": "Eliminar todos los fallidos",
     "removeAllFailedConfirm": "¿Estás seguro de que quieres eliminar todas las solicitudes de traducción fallidas? Esto no se puede deshacer.",
+    "reviewMissing": "Revisar traducciones faltantes",
     "retryResultSummary": "Resultado del reintento: {retried} reintentadas, {blocked} bloqueadas."
   },
     "schedule": {
@@ -357,8 +364,9 @@
     "refresh": "Actualizar",
     "recreate": "Recrear",
     "retry": "Reintentar",
-    "saved": "guardado",
+    "saved": "¡Guardado!",
     "saveChanges": "Guardar cambios",
+    "saveEdits": "Guardar ediciones",
     "saving": "Guardando...",
     "searchMedia": "Buscar medios...",
     "selectItems": "Seleccionar elementos...",
@@ -447,7 +455,7 @@
       "chutesPlan": "Plan contratado: {plan}",
       "credits": "Créditos",
       "crofaiMissingApiKey": "La clave API de CrofAI no está configurada.",
-      "crofaiUsageDescription": "Verifique sus créditos restantes y límites de solicitudes diarias",
+      "crofaiUsageDescription": "Verifique sus créditos restantes",
       "crofaiUsageTitle": "Uso de CrofAI",
       "chutesPlanUnknown": "Información del plan no disponible.",
       "refreshUsage": "Actualizar",
