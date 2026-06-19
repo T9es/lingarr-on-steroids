@@ -22,7 +22,8 @@
             {{ errorMessage }}
         </div>
 
-        <div v-else class="mt-4 grid gap-4 md:grid-cols-2">
+        <div v-else class="mt-4 grid gap-4 md:grid-cols-1">
+            <!-- Subscription daily quota removed — crof.ai no longer offers subscriptions.
             <div class="border-secondary flex flex-col rounded-md border p-3">
                 <span class="text-secondary-content text-xs">
                     {{ translate('settings.services.requestsToday') }}
@@ -36,6 +37,7 @@
                     </span>
                 </div>
             </div>
+            -->
             <div class="border-secondary flex flex-col rounded-md border p-3">
                 <span class="text-secondary-content text-xs">
                     {{ translate('settings.services.credits') }}

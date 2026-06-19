@@ -14,7 +14,8 @@ export interface TranslateModelsResponse {
 
 export interface CrofAiUsageSnapshot {
     hasApiKey: boolean
-    usableRequests?: number
+    // Subscription daily quota removed — crof.ai no longer offers subscriptions.
+    // usableRequests?: number
     credits?: number
     lastSyncedUtc: string
     message?: string

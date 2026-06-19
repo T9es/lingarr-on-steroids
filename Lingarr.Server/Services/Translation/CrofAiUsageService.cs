@@ -20,8 +20,9 @@ public class CrofAiUsageService : ICrofAiUsageService
     private readonly ILogger<CrofAiUsageService> _logger;
     private readonly IMemoryCache _cache;
 
-    private static int _requestsUsed;
-    private static readonly object _counterLock = new();
+    // Subscription daily quota removed — crof.ai no longer offers subscriptions.
+    // private static int _requestsUsed;
+    // private static readonly object _counterLock = new();
 
     public CrofAiUsageService(
         ISettingService settings,
@@ -44,23 +45,9 @@ public class CrofAiUsageService : ICrofAiUsageService
             return;
         }
 
-        var currentRequestsUsed = Volatile.Read(ref _requestsUsed);
-
-        if (snapshot.UsableRequests.HasValue)
-        {
-            if (currentRequestsUsed >= snapshot.UsableRequests.Value)
-            {
-                _logger.LogWarning("CrofAI daily request limit reached ({Used}/{Total}). Checking credits fallback.",
-                    currentRequestsUsed, snapshot.UsableRequests.Value);
-                if (snapshot.Credits.HasValue && snapshot.Credits.Value > 0)
-                {
-                    _logger.LogInformation("CrofAI falling back to credits ({Credits} remaining).", snapshot.Credits.Value);
-                    return;
-                }
-                throw new InvalidOperationException("CrofAI daily request limit reached and no credits available. Please wait for subscription reset or add more credits.");
-            }
-        }
-        else if (snapshot.Credits.HasValue && snapshot.Credits.Value <= 0)
+        // Subscription daily quota check removed — crof.ai no longer offers subscriptions.
+        // Credits (PAYG) balance check only:
+        if (snapshot.Credits.HasValue && snapshot.Credits.Value <= 0)
         {
             _logger.LogWarning("CrofAI credits exhausted ({Credits}). Cannot translate.", snapshot.Credits.Value);
             throw new InvalidOperationException("CrofAI credits exhausted. Please add more credits to continue.");
@@ -69,7 +56,8 @@ public class CrofAiUsageService : ICrofAiUsageService
 
     public Task RecordRequestAsync(CancellationToken cancellationToken)
     {
-        Interlocked.Increment(ref _requestsUsed);
+        // Subscription daily quota removed — no-op for credits-only billing.
+        // Interlocked.Increment(ref _requestsUsed);
         return Task.CompletedTask;
     }
 
@@ -133,20 +121,21 @@ public class CrofAiUsageService : ICrofAiUsageService
                 return errorSnapshot;
             }
 
-            decimal? usableRequests = null;
-            if (usageData.ValueKind == JsonValueKind.Object &&
-                usageData.TryGetProperty("usable_requests", out var requestsElement) &&
-                requestsElement.ValueKind == JsonValueKind.Number)
-            {
-                if (requestsElement.TryGetDecimal(out var parsedRequests))
-                {
-                    usableRequests = parsedRequests;
-                }
-                else
-                {
-                    _logger.LogWarning("CrofAI usable_requests value is not a valid number. Raw: {Raw}", requestsElement.GetRawText());
-                }
-            }
+            // Subscription daily quota removed — crof.ai no longer offers subscriptions.
+            // decimal? usableRequests = null;
+            // if (usageData.ValueKind == JsonValueKind.Object &&
+            //     usageData.TryGetProperty("usable_requests", out var requestsElement) &&
+            //     requestsElement.ValueKind == JsonValueKind.Number)
+            // {
+            //     if (requestsElement.TryGetDecimal(out var parsedRequests))
+            //     {
+            //         usableRequests = parsedRequests;
+            //     }
+            //     else
+            //     {
+            //         _logger.LogWarning("CrofAI usable_requests value is not a valid number. Raw: {Raw}", requestsElement.GetRawText());
+            //     }
+            // }
 
             decimal? credits = null;
             if (usageData.ValueKind == JsonValueKind.Object &&
@@ -159,12 +148,15 @@ public class CrofAiUsageService : ICrofAiUsageService
             var snapshot = new CrofAiUsageSnapshot
             {
                 HasApiKey = true,
-                UsableRequests = usableRequests,
+                // Subscription daily quota removed — crof.ai no longer offers subscriptions.
+                // UsableRequests = usableRequests,
                 Credits = credits,
                 LastSyncedUtc = DateTime.UtcNow
             };
 
-            if (usableRequests == null && credits == null && usageData.ValueKind != JsonValueKind.Object)
+            // Subscription daily quota removed — crof.ai no longer offers subscriptions.
+            // if (usableRequests == null && credits == null && usageData.ValueKind != JsonValueKind.Object)
+            if (credits == null && usageData.ValueKind != JsonValueKind.Object)
             {
                 snapshot.Message = "Unexpected response format from CrofAI usage API.";
             }

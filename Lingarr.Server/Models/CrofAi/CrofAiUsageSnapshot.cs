@@ -5,8 +5,9 @@ namespace Lingarr.Server.Models.CrofAi;
 public class CrofAiUsageSnapshot
 {
     public bool HasApiKey { get; set; }
-    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public decimal? UsableRequests { get; set; }
+    // Subscription daily quota removed — crof.ai no longer offers subscriptions.
+    // [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    // public decimal? UsableRequests { get; set; }
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public decimal? Credits { get; set; }
     public DateTime LastSyncedUtc { get; set; }
