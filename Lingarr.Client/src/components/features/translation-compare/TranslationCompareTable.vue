@@ -121,7 +121,12 @@
                             v-if="props.editable && line.canEdit"
                             @click.stop="startEditing(line)"
                             class="cursor-pointer hover:underline">
-                            {{ line.translated || line.error || '-' }}
+                            <template v-if="isMissing(line.position)">
+                                <span class="text-secondary-content/50 italic">Click to edit</span>
+                            </template>
+                            <template v-else>
+                                {{ line.translated || line.error || '-' }}
+                            </template>
                         </span>
                         <span v-else>
                             {{ line.translated || line.error || '-' }}
