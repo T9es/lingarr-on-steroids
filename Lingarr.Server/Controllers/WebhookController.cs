@@ -74,12 +74,6 @@ public class WebhookController : ControllerBase
     {
         instanceId ??= "default";
 
-        if (payload.Series == null || payload.Series.Id <= 0)
-        {
-            _logger.LogWarning("Invalid Sonarr webhook payload: missing series data");
-            return BadRequest(new { message = "Invalid webhook payload: missing series data" });
-        }
-
         // Check event type before validating episodes, because some non-Download
         // events (SeriesAdd, Rename, etc.) don't include episode data. Returning
         // 400 for those would make Sonarr treat the webhook as broken.
@@ -89,9 +83,15 @@ public class WebhookController : ControllerBase
             _logger.LogInformation(
                 "Ignoring Sonarr webhook event {EventType} for series '{Title}' from instance '{InstanceId}'",
                 eventType,
-                payload.Series.Title,
+                payload.Series?.Title ?? "Unknown",
                 instanceId);
             return Ok(new { message = $"Ignored webhook event type '{eventType}'" });
+        }
+
+        if (payload.Series == null || payload.Series.Id <= 0)
+        {
+            _logger.LogWarning("Invalid Sonarr webhook payload: missing series data");
+            return BadRequest(new { message = "Invalid webhook payload: missing series data" });
         }
 
         if (payload.Episodes == null || payload.Episodes.Count == 0)

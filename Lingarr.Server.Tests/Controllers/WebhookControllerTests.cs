@@ -35,6 +35,25 @@ public class WebhookControllerTests
     }
 
     [Fact]
+    public void SonarrWebhook_IgnoresUnsupportedEventTypeWithoutSeriesData()
+    {
+        var backgroundJobClientMock = new Mock<IBackgroundJobClient>();
+        var controller = new WebhookController(backgroundJobClientMock.Object, NullLogger<WebhookController>.Instance);
+
+        var payload = new SonarrWebhookPayload
+        {
+            EventType = "HealthRestored"
+        };
+
+        var result = controller.SonarrWebhook(payload, "default");
+
+        Assert.IsType<OkObjectResult>(result);
+        backgroundJobClientMock.Verify(
+            c => c.Create(It.IsAny<Job>(), It.IsAny<IState>()),
+            Times.Never);
+    }
+
+    [Fact]
     public void SonarrWebhook_QueuesDownloadEvent()
     {
         var backgroundJobClientMock = new Mock<IBackgroundJobClient>();
