@@ -103,7 +103,7 @@ const fetchJobs = async () => {
 
         await fetchFailedJobs(0, 10)
     } catch (e) {
-        error.value = 'Failed to fetch job queue'
+        error.value = errorFetchingJobs.value
         console.error('Failed to fetch job queue:', e)
     } finally {
         isLoading.value = false
@@ -152,6 +152,8 @@ const loadMoreFailedJobs = async () => {
     }
 }
 
+const errorFetchingJobs = computed(() => i18n.translate('statistics.fetchFailed'))
+
 const clearFailedJobs = async () => {
     isClearingFailed.value = true
     try {
@@ -189,13 +191,34 @@ onUnmounted(() => {
 
 const runningJobs = computed(() => jobs.value.filter((j) => j.state === 'running'))
 
+const jobDisplayNames: Record<string, string> = {
+    AutomatedTranslationJob: 'schedule.jobDisplay.automatedTranslation',
+    CustomSourceScanJob: 'schedule.jobDisplay.customSources',
+    SyncMovieJob: 'schedule.jobDisplay.syncMovies',
+    SyncShowJob: 'schedule.jobDisplay.syncShows',
+    CleanupJob: 'schedule.jobDisplay.cleanup',
+    UploadWorkspaceCleanupJob: 'schedule.jobDisplay.uploadCleanup',
+    StatisticsJob: 'schedule.jobDisplay.statistics',
+    RetryFailedRequestsJob: 'schedule.jobDisplay.retryFailed',
+    UnknownLanguageDetectionJob: 'schedule.jobDisplay.languageDetection',
+    SubtitleOcrJob: 'schedule.jobDisplay.subtitleOcr',
+    BulkIntegrityCheckJob: 'schedule.jobDisplay.bulkIntegrityCheck',
+    VerifyAssIntegrityJob: 'schedule.jobDisplay.verifyAssIntegrity',
+    SubtitleTypeValidationJob: 'schedule.jobDisplay.subtitleTypeValidation',
+    SubtitleQualityAuditJob: 'schedule.jobDisplay.subtitleQualityAudit',
+    WebhookJob: 'schedule.jobDisplay.webhook'
+}
+
 const jobPriority = (jobName: string): number => {
     if (jobName === 'SyncShowJob') return 1
     if (jobName === 'SyncMovieJob') return 2
     if (jobName === 'AutomatedTranslationJob') return 3
-    if (jobName === 'CleanupJob') return 4
-    if (jobName === 'StatisticsJob') return 5
-    if (jobName === 'RetryFailedRequestsJob') return 6
+    if (jobName === 'CustomSourceScanJob') return 4
+    if (jobName === 'CleanupJob') return 5
+    if (jobName === 'UploadWorkspaceCleanupJob') return 6
+    if (jobName === 'StatisticsJob') return 7
+    if (jobName === 'RetryFailedRequestsJob') return 8
+    if (jobName === 'UnknownLanguageDetectionJob') return 9
     return 99
 }
 
@@ -216,7 +239,7 @@ const getCountdown = (dateStr?: string): { text: string; seconds: number } => {
     const diff = target - now.value
     const seconds = Math.floor(diff / 1000)
 
-    if (diff <= 0) return { text: 'now', seconds: 0 }
+    if (diff <= 0) return { text: i18n.translate('statistics.now'), seconds: 0 }
 
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
@@ -243,7 +266,7 @@ const formatDuration = (dateStr?: string): string => {
     const minutes = Math.floor(diff / 60000)
     const hours = Math.floor(diff / 3600000)
 
-    if (minutes < 1) return 'just started'
+    if (minutes < 1) return i18n.translate('statistics.justStarted')
     if (minutes < 60) return `${minutes}m`
     return `${hours}h ${minutes % 60}m`
 }
@@ -260,13 +283,8 @@ const formatCron = (cron?: string): string => {
 
 const getJobDisplayName = (job: JobInfo): string => {
     const id = job.jobName || job.name
-    if (id === 'AutomatedTranslationJob') return i18n.translate('statistics.autoTranslation')
-    if (id === 'CleanupJob') return i18n.translate('statistics.cleanup')
-    if (id === 'RetryFailedRequestsJob') return i18n.translate('statistics.retryFailed')
-    if (id === 'StatisticsJob') return i18n.translate('statistics.statistics')
-    if (id === 'SyncMovieJob') return i18n.translate('statistics.syncMovies')
-    if (id === 'SyncShowJob') return i18n.translate('statistics.syncShows')
-    return id
+    const key = jobDisplayNames[id]
+    return key ? i18n.translate(key) : id
 }
 
 const triggerJob = async (jobName: string) => {
@@ -310,7 +328,7 @@ const triggerJob = async (jobName: string) => {
             <div v-if="runningJobs.length > 0">
                 <h4 class="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-green-400/80">
                     <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-green-400"></span>
-                    Running ({{ runningJobs.length }})
+                    {{ i18n.translate('statistics.running') }} ({{ runningJobs.length }})
                 </h4>
                 <div class="space-y-1.5">
                     <div
@@ -323,7 +341,7 @@ const triggerJob = async (jobName: string) => {
                             </div>
                         </div>
                         <div class="text-primary-content/50 mt-0.5 text-xs">
-                            Running for {{ formatDuration(job.startedAt) }}
+                            {{ i18n.translate('statistics.runningFor') }} {{ formatDuration(job.startedAt) }}
                         </div>
                     </div>
                 </div>
@@ -332,7 +350,7 @@ const triggerJob = async (jobName: string) => {
             <!-- Scheduled Jobs -->
             <div v-if="scheduledJobs.length > 0">
                 <h4 class="text-primary-content/50 mb-1.5 text-xs font-medium">
-                    Scheduled ({{ scheduledJobs.length }})
+                    {{ i18n.translate('statistics.scheduled') }} ({{ scheduledJobs.length }})
                 </h4>
                 <div class="space-y-1.5">
                     <div
@@ -354,10 +372,10 @@ const triggerJob = async (jobName: string) => {
                         </div>
                         <div class="text-primary-content/50 mt-0.5 text-xs">
                             <span v-if="job.nextExecution" class="text-accent font-medium">
-                                In {{ getCountdown(job.nextExecution).text }}
+                                {{ i18n.translate('statistics.inLabel') }} {{ getCountdown(job.nextExecution).text }}
                             </span>
                             <span v-else-if="job.lastExecution">
-                                Last: {{ formatDuration(job.lastExecution) }} ago
+                                {{ i18n.translate('statistics.lastLabel') }} {{ formatDuration(job.lastExecution) }} {{ i18n.translate('statistics.ago') }}
                             </span>
                         </div>
                     </div>
@@ -369,13 +387,13 @@ const triggerJob = async (jobName: string) => {
                 <div class="mb-1.5 flex items-center justify-between">
                     <h4 class="flex items-center gap-1.5 text-xs font-medium text-red-400/80">
                         <span class="text-red-400">⚠</span>
-                        Failed ({{ failedJobsTotal }})
+                        {{ i18n.translate('statistics.failedJobs') }} ({{ failedJobsTotal }})
                     </h4>
                     <button
                         @click="clearFailedJobs"
                         :disabled="isClearingFailed"
                         class="text-xs text-red-400/70 hover:text-red-400 disabled:opacity-50">
-                        {{ isClearingFailed ? 'Clearing...' : 'Clear All' }}
+                        {{ isClearingFailed ? i18n.translate('statistics.clearing') : i18n.translate('statistics.clearAll') }}
                     </button>
                 </div>
                 <div class="space-y-1.5">
@@ -393,7 +411,7 @@ const triggerJob = async (jobName: string) => {
                             {{ job.error }}
                         </div>
                         <div v-if="job.failedAt" class="text-primary-content/40 mt-0.5 text-xs">
-                            {{ formatDuration(job.failedAt) }} ago
+                            {{ formatDuration(job.failedAt) }} {{ i18n.translate('statistics.ago') }}
                         </div>
                     </div>
                 </div>
@@ -402,7 +420,7 @@ const triggerJob = async (jobName: string) => {
                     @click="loadMoreFailedJobs"
                     :disabled="isLoadingMoreFailed"
                     class="mt-2 w-full rounded-md border border-red-500/20 py-1.5 text-xs text-red-400/70 hover:bg-red-500/5 hover:text-red-400 disabled:opacity-50">
-                    {{ isLoadingMoreFailed ? 'Loading...' : 'Show More' }}
+                    {{ isLoadingMoreFailed ? i18n.translate('statistics.loading') : i18n.translate('statistics.showMore') }}
                 </button>
             </div>
         </div>
