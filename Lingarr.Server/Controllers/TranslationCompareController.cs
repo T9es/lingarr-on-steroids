@@ -345,7 +345,8 @@ public class TranslationCompareController : ControllerBase
                 SettingKeys.Translation.UseSubtitleTagging,
                 SettingKeys.Translation.RemoveLanguageTag,
                 SettingKeys.Translation.SubtitleTag,
-                SettingKeys.Translation.SubtitleTagShort
+                SettingKeys.Translation.SubtitleTagShort,
+                SettingKeys.Translation.StripSubtitleFormatting
             ]);
 
             var useSubtitleTagging =
@@ -532,6 +533,14 @@ public class TranslationCompareController : ControllerBase
             var translatedSubtitles = await _subtitleService.ReadSubtitles(translatedSubtitlePath);
             var filteredTranslatedSubtitles = RemoveTranslatorInfoLines(translatedSubtitles);
 
+            // Apply edits to both the full list (for disk write) and filtered list (for response)
+            foreach (var subtitle in translatedSubtitles)
+            {
+                if (edits.TryGetValue(subtitle.Position, out var editText))
+                {
+                    subtitle.TranslatedLines = [editText];
+                }
+            }
             foreach (var subtitle in filteredTranslatedSubtitles)
             {
                 if (edits.TryGetValue(subtitle.Position, out var editText))
@@ -548,13 +557,15 @@ public class TranslationCompareController : ControllerBase
                 saveSettings.TryGetValue(SettingKeys.Translation.StripSubtitleFormatting, out var stripVal) &&
                 string.Equals(stripVal, "true", StringComparison.OrdinalIgnoreCase);
 
-            await _subtitleService.WriteSubtitles(translatedSubtitlePath, filteredTranslatedSubtitles, stripFormatting);
+            // Write full subtitles (with translator info preserved) to disk
+            await _subtitleService.WriteSubtitles(translatedSubtitlePath, translatedSubtitles, stripFormatting);
 
             _logger.LogInformation(
                 "Saved edits for translation request {RequestId} with {EditCount} edits",
                 requestId,
                 edits.Count);
 
+            // Use filtered subtitles (without translator info) for the compare response
             var saveResponse = BuildCompareResponse(
                 request,
                 originalSubtitle.Path,
