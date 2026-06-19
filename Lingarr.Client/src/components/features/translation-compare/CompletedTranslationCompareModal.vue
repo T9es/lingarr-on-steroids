@@ -30,8 +30,7 @@
         <template v-else-if="compareData">
             <div v-if="compareData.isPartialFailure" class="border-yellow-500/30 bg-yellow-500/10 border rounded p-3 text-sm text-yellow-300 mb-3 mx-4 mt-4">
                 This translation failed with {{ compareData.missingPositions?.length }} untranslated position(s).
-                Click any missing line to provide a translation, or click Accept to finalize as-is —
-                untranslated positions will keep the original source text.
+                Click any missing line to provide a translation, or click Accept to finalize as-is. Untranslated positions will keep the original source text.
             </div>
             <div class="border-secondary/30 bg-primary/40 border-b px-4 py-2 text-xs">
                 <span class="text-secondary-content">
