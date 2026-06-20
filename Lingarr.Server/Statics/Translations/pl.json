@@ -623,7 +623,12 @@
       "ocrLanguages": "Tryb jezyka OCR",
       "ocrLanguagesDescription": "Uzyj auto, aby mapowac jezyk napisow na jezyk Tesseract, albo wpisz kod, np. eng, jpn, fra, spa, deu lub pol.",
       "ocrTranslationPrompt": "Uzywaj promptu tlumaczenia swiadomego OCR",
-      "ocrTranslationPromptDescription": "Podczas tlumaczenia napisow po OCR dodaje ostrozne wskazowki korekty OCR i kontekst materialu do promptow AI."
+      "ocrTranslationPromptDescription": "Podczas tlumaczenia napisow po OCR dodaje ostrozne wskazowki korekty OCR i kontekst materialu do promptow AI.",
+      "groupSourceSelection": "Wybor zrodla",
+      "groupOcr": "OCR (Napisy bitmapowe)",
+      "groupFormatCleaning": "Format i Czyszczenie",
+      "groupTagging": "Tagowanie i Identyfikacja",
+      "groupOutputEmbedding": "Wyjscie i Osadzanie"
     },
     "indexing": {
       "title": "Indeksowanie",
@@ -820,6 +825,9 @@
       "translationService": "Usługa tłumaczeń:",
       "sourceLanguages": "Języki źródłowe:",
       "targetLanguages": "Języki docelowe:",
+      "subtitleTagging": "Tagowanie napisów:",
+      "ocrEnabled": "OCR włączone:",
+      "embedMode": "Tryb osadzania:",
       "startTranslating": "Zacznij tłumaczyć",
       "goToSettings": "Przejdź do ustawień, aby uzyskać więcej konfiguracji"
     },
@@ -846,7 +854,9 @@
       "taggingTitle": "Tagowanie napisów",
       "taggingDescription": "Oznacz przetłumaczone napisy, aby zidentyfikować je w odtwarzaczu multimedialnym.",
       "retries": "prób",
-      "concurrent": "jednoczesnych"
+      "concurrent": "jednoczesnych",
+      "smartDefaultsApplied": "Zastosowano zalecane wartosci domyslne. Dostosuj te kluczowe ustawienia teraz lub zmien je pozniej w Ustawieniach.",
+      "advancedAvailable": "Wszystkie pozostale ustawienia (tlumaczenie wsadowe, powtorzenia, formatowanie, walidacja) sa wstepnie skonfigurowane. Dostosuj je pozniej w Ustawieniach."
     },
     "integration": {
       "radarr": "Radarr",

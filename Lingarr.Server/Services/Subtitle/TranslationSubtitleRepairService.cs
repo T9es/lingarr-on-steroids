@@ -213,6 +213,7 @@ public class TranslationSubtitleRepairService : ITranslationSubtitleRepairServic
         {
             (subtitleTag, subtitleTagShort),
             ("[Lingarr]", "-ai-"),
+            ("-AI-TRANSLATED-", "-ai-"),
             (string.Empty, string.Empty)
         };
 

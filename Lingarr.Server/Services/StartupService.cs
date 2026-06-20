@@ -43,7 +43,7 @@ public class StartupService : IHostedService
             { SettingKeys.Translation.SourceLanguages, "[]" },
             { SettingKeys.Translation.TargetLanguages, "[]" },
             { SettingKeys.Translation.FixOverlappingSubtitles, "false" },
-            { SettingKeys.Translation.SubtitleOutputMode, "match-source" },
+            { SettingKeys.Translation.SubtitleOutputMode, "both" },
             { SettingKeys.Translation.StripSubtitleFormatting, "false" },
             { SettingKeys.Translation.AddTranslatorInfo, "false" },
             { SettingKeys.Translation.IgnoreCaptions, "false" },
@@ -59,11 +59,11 @@ public class StartupService : IHostedService
             { SettingKeys.Translation.RepairMaxRetries, "1" },
 
             // Tagging
-            { SettingKeys.Translation.UseSubtitleTagging, "false" },
+            { SettingKeys.Translation.UseSubtitleTagging, "true" },
             { SettingKeys.Translation.RemoveLanguageTag, "false" },
-            { SettingKeys.Translation.SubtitleTag, "[Lingarr]" },
+            { SettingKeys.Translation.SubtitleTag, "-AI-TRANSLATED-" },
             { SettingKeys.Translation.SubtitleTagShort, "-ai-" },
-            { SettingKeys.Translation.CleanupOrphanedSubtitles, "false" },
+            { SettingKeys.Translation.CleanupOrphanedSubtitles, "true" },
             { SettingKeys.Translation.TranslateSupplementalSubtitles, "false" },
 
             // Request/Retry
@@ -79,8 +79,8 @@ public class StartupService : IHostedService
             { SettingKeys.Translation.AiContextAfter, "2" },
 
             // ASS/SSA Drawing cleanup
-            { SettingKeys.Translation.StripAssDrawingCommands, "false" },
-            { SettingKeys.Translation.CleanSourceAssDrawings, "false" },
+            { SettingKeys.Translation.StripAssDrawingCommands, "true" },
+            { SettingKeys.Translation.CleanSourceAssDrawings, "true" },
 
             // Batch Context Wrapper
             { SettingKeys.Translation.BatchContextEnabled, "false" },
@@ -88,7 +88,7 @@ public class StartupService : IHostedService
             { SettingKeys.Translation.BatchContextAfter, "3" },
 
             // MKV Container Embedding
-            { SettingKeys.Translation.EmbedInContainer, "true" },
+            { SettingKeys.Translation.EmbedInContainer, "false" },
             { SettingKeys.Translation.EmbedWhenPathTooLong, "true" },
 
             // Provider specific defaults
@@ -121,10 +121,10 @@ public class StartupService : IHostedService
             { SettingKeys.SubtitleExtraction.ExtractionMode, "on_demand" },
             { SettingKeys.SubtitleExtraction.OcrEnabled, "true" },
             { SettingKeys.SubtitleExtraction.OcrAutoQueue, "true" },
-            { SettingKeys.SubtitleExtraction.OcrMinQualityScore, "80" },
+            { SettingKeys.SubtitleExtraction.OcrMinQualityScore, "70" },
             { SettingKeys.SubtitleExtraction.OcrLanguages, "auto" },
             { SettingKeys.SubtitleExtraction.OcrTranslationPromptEnabled, "true" },
-            { SettingKeys.SubtitleExtraction.DetectUnknownLanguages, "false" },
+            { SettingKeys.SubtitleExtraction.DetectUnknownLanguages, "true" },
             { SettingKeys.SubtitleExtraction.DetectUnknownLanguagesSchedule, "0 3 * * *" },
 
             // Validation

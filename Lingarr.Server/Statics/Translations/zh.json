@@ -623,7 +623,12 @@
       "ocrLanguages": "OCR yuyan moshi",
       "ocrLanguagesDescription": "Shi yong auto jiang zimu yuyan ying she dao Tesseract, huo shuru eng, jpn, fra, spa, deu, pol deng daima.",
       "ocrTranslationPrompt": "Shiyong OCR gan zhi fanyi tishi",
-      "ocrTranslationPromptDescription": "Fanyi OCR laiyuan zimu shi, xiang AI tishi tianjia baoshou de OCR xiuzheng zhidao he meiti beijing."
+      "ocrTranslationPromptDescription": "Fanyi OCR laiyuan zimu shi, xiang AI tishi tianjia baoshou de OCR xiuzheng zhidao he meiti beijing.",
+      "groupSourceSelection": "Ziyuan xuanze",
+      "groupOcr": "OCR (Weitu zimu)",
+      "groupFormatCleaning": "Geshi yu qingli",
+      "groupTagging": "Biaoqian yu shibie",
+      "groupOutputEmbedding": "Shuchu yu qiantao"
     },
     "indexing": {
       "title": "索引",
@@ -820,6 +825,9 @@
       "translationService": "翻译服务：",
       "sourceLanguages": "源语言：",
       "targetLanguages": "目标语言：",
+      "subtitleTagging": "字幕标签：",
+      "ocrEnabled": "OCR 已启用：",
+      "embedMode": "嵌入模式：",
       "startTranslating": "开始翻译",
       "goToSettings": "转到设置进行更多配置"
     },
@@ -846,7 +854,9 @@
       "taggingTitle": "字幕标记",
       "taggingDescription": "标记翻译的字幕，以便在媒体播放器中识别它们。",
       "retries": "次重试",
-      "concurrent": "并发"
+      "concurrent": "并发",
+      "smartDefaultsApplied": "推荐的默认设置已应用。现在可以调整这些关键设置，也可以稍后在设置中更改。",
+      "advancedAvailable": "所有其他设置（批量翻译、重试、格式化、验证）已预配置。稍后可在设置中自定义。"
     },
     "integration": {
       "radarr": "Radarr",

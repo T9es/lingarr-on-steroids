@@ -623,7 +623,12 @@
       "ocrLanguages": "Modo de idioma OCR",
       "ocrLanguagesDescription": "Usa auto para mapear etiquetas de idioma a Tesseract, o introduce un codigo como eng, jpn, fra, spa, deu o pol.",
       "ocrTranslationPrompt": "Usar prompt de traduccion consciente de OCR",
-      "ocrTranslationPromptDescription": "Al traducir subtitulos derivados de OCR, agrega indicaciones conservadoras de correccion OCR y contexto del medio a los prompts de IA."
+      "ocrTranslationPromptDescription": "Al traducir subtitulos derivados de OCR, agrega indicaciones conservadoras de correccion OCR y contexto del medio a los prompts de IA.",
+      "groupSourceSelection": "Seleccion de fuente",
+      "groupOcr": "OCR (Subtitulos de mapa de bits)",
+      "groupFormatCleaning": "Formato y Limpieza",
+      "groupTagging": "Etiquetado e Identificacion",
+      "groupOutputEmbedding": "Salida e Incrustacion"
     },
     "indexing": {
       "title": "Indexación",
@@ -820,6 +825,9 @@
       "translationService": "Servicio de traducción:",
       "sourceLanguages": "Idiomas de origen:",
       "targetLanguages": "Idiomas de destino:",
+      "subtitleTagging": "Etiquetado de subtítulos:",
+      "ocrEnabled": "OCR habilitado:",
+      "embedMode": "Modo de incrustación:",
       "startTranslating": "Comenzar a traducir",
       "goToSettings": "Ir a configuración para más opciones"
     },
@@ -846,7 +854,9 @@
       "taggingTitle": "Etiquetado de subtítulos",
       "taggingDescription": "Etiqueta los subtítulos traducidos para identificarlos en tu reproductor multimedia.",
       "retries": "reintentos",
-      "concurrent": "simultáneas"
+      "concurrent": "simultáneas",
+      "smartDefaultsApplied": "Se han aplicado los valores predeterminados recomendados. Ajusta estos ajustes clave ahora o cambialos mas tarde en Configuracion.",
+      "advancedAvailable": "Todos los demas ajustes (traduccion por lotes, reintentos, formato, validacion) estan preconfigurados. Personalizalos mas tarde en Configuracion."
     },
     "integration": {
       "radarr": "Radarr",

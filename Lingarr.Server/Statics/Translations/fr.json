@@ -623,7 +623,12 @@
       "ocrLanguages": "Mode de langue OCR",
       "ocrLanguagesDescription": "Utilisez auto pour mapper les langues des sous-titres vers Tesseract, ou entrez un code comme eng, jpn, fra, spa, deu ou pol.",
       "ocrTranslationPrompt": "Utiliser une invite de traduction sensible a l OCR",
-      "ocrTranslationPromptDescription": "Lors de la traduction de sous-titres issus de l OCR, ajoute des consignes prudentes de correction OCR et le contexte du media aux invites IA."
+      "ocrTranslationPromptDescription": "Lors de la traduction de sous-titres issus de l OCR, ajoute des consignes prudentes de correction OCR et le contexte du media aux invites IA.",
+      "groupSourceSelection": "Selection de la source",
+      "groupOcr": "OCR (Sous-titres bitmap)",
+      "groupFormatCleaning": "Format et Nettoyage",
+      "groupTagging": "Balisage et Identification",
+      "groupOutputEmbedding": "Sortie et Integration"
     },
     "indexing": {
       "title": "Indexation",
@@ -820,6 +825,9 @@
       "translationService": "Service de traduction :",
       "sourceLanguages": "Langues sources :",
       "targetLanguages": "Langues cibles :",
+      "subtitleTagging": "Balisage des sous-titres :",
+      "ocrEnabled": "OCR active :",
+      "embedMode": "Mode d'intégration :",
       "startTranslating": "Commencer à traduire",
       "goToSettings": "Aller aux paramètres pour plus de configuration"
     },
@@ -846,7 +854,9 @@
       "taggingTitle": "Balisage de sous-titres",
       "taggingDescription": "Marquez les sous-titres traduits pour les identifier dans votre lecteur multimédia.",
       "retries": "tentatives",
-      "concurrent": "simultanées"
+      "concurrent": "simultanées",
+      "smartDefaultsApplied": "Les valeurs par defaut recommandees ont ete appliquees. Ajustez ces parametres cles maintenant ou modifiez-les plus tard dans Parametres.",
+      "advancedAvailable": "Tous les autres parametres (traduction par lots, tentatives, mise en forme, validation) sont preconfigures. Personnalisez-les plus tard dans Parametres."
     },
     "integration": {
       "radarr": "Radarr",

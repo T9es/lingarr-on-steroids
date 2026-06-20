@@ -623,7 +623,12 @@
       "ocrLanguages": "OCR-Sprachmodus",
       "ocrLanguagesDescription": "auto ordnet Untertitelsprachen Tesseract-Sprachen zu. Alternativ kann ein Code wie eng, jpn, fra, spa, deu oder pol eingegeben werden.",
       "ocrTranslationPrompt": "OCR-bewussten Uebersetzungsprompt verwenden",
-      "ocrTranslationPromptDescription": "Fuegt bei OCR-abgeleiteten Untertiteln konservative OCR-Korrekturhinweise und Medienkontext zu KI-Prompts hinzu."
+      "ocrTranslationPromptDescription": "Fuegt bei OCR-abgeleiteten Untertiteln konservative OCR-Korrekturhinweise und Medienkontext zu KI-Prompts hinzu.",
+      "groupSourceSelection": "Quellauswahl",
+      "groupOcr": "OCR (Bitmap-Untertitel)",
+      "groupFormatCleaning": "Format & Bereinigung",
+      "groupTagging": "Tagging & Identifikation",
+      "groupOutputEmbedding": "Ausgabe & Einbettung"
     },
     "indexing": {
       "title": "Indizierung",
@@ -820,6 +825,9 @@
       "translationService": "Übersetzungsdienst:",
       "sourceLanguages": "Quellsprachen:",
       "targetLanguages": "Zielsprachen:",
+      "subtitleTagging": "Untertitel-Tagging:",
+      "ocrEnabled": "OCR aktiviert:",
+      "embedMode": "Einbettungsmodus:",
       "startTranslating": "Mit Übersetzung beginnen",
       "goToSettings": "Zu den Einstellungen für weitere Konfiguration"
     },
@@ -846,7 +854,9 @@
       "taggingTitle": "Untertitel-Tagging",
       "taggingDescription": "Taggen Sie übersetzte Untertitel, um sie in Ihrem Mediaplayer zu identifizieren.",
       "retries": "Wiederholungen",
-      "concurrent": "parallele"
+      "concurrent": "parallele",
+      "smartDefaultsApplied": "Empfohlene Standardwerte wurden angewendet. Passen Sie diese wichtigen Einstellungen jetzt an oder aendern Sie sie spaeter in den Einstellungen.",
+      "advancedAvailable": "Alle anderen Einstellungen (Batch-Uebersetzung, Wiederholungen, Formatierung, Validierung) sind vorkonfiguriert. Passen Sie sie spaeter in den Einstellungen an."
     },
     "integration": {
       "radarr": "Radarr",

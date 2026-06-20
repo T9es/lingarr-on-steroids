@@ -623,7 +623,12 @@
       "ocrLanguages": "OCR-taalmodus",
       "ocrLanguagesDescription": "Gebruik auto om ondertiteltalen naar Tesseract-talen te mappen, of voer een Tesseract-code in zoals eng, jpn, fra, spa, deu of pol.",
       "ocrTranslationPrompt": "OCR-bewuste vertaalprompt gebruiken",
-      "ocrTranslationPromptDescription": "Voeg bij OCR-afgeleide ondertitels conservatieve OCR-correctie-instructies en mediacontext toe aan AI-prompts."
+      "ocrTranslationPromptDescription": "Voeg bij OCR-afgeleide ondertitels conservatieve OCR-correctie-instructies en mediacontext toe aan AI-prompts.",
+      "groupSourceSelection": "Bronselectie",
+      "groupOcr": "OCR (Bitmap-ondertitels)",
+      "groupFormatCleaning": "Formaat & Reiniging",
+      "groupTagging": "Tagging & Identificatie",
+      "groupOutputEmbedding": "Output & Insluiting"
     },
     "indexing": {
       "title": "Indexering",
@@ -820,6 +825,9 @@
       "translationService": "Vertaalservice:",
       "sourceLanguages": "Brontalen:",
       "targetLanguages": "Doeltalen:",
+      "subtitleTagging": "Ondertitel tagging:",
+      "ocrEnabled": "OCR ingeschakeld:",
+      "embedMode": "Insluitingsmodus:",
       "startTranslating": "Begin met vertalen",
       "goToSettings": "Ga naar instellingen voor meer configuratie"
     },
@@ -846,7 +854,9 @@
       "taggingTitle": "Ondertitel tagging",
       "taggingDescription": "Tag vertaalde ondertitels om ze te identificeren in je mediaspeler.",
       "retries": "herhalingen",
-      "concurrent": "gelijktijdig"
+      "concurrent": "gelijktijdig",
+      "smartDefaultsApplied": "Aanbevolen standaardinstellingen zijn toegepast. Pas deze belangrijke instellingen nu aan of wijzig ze later in Instellingen.",
+      "advancedAvailable": "Alle overige instellingen (batchvertaling, herhalingen, opmaak, validatie) zijn voorgeconfigureerd. Pas ze later aan in Instellingen."
     },
     "integration": {
       "radarr": "Radarr",

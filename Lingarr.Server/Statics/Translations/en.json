@@ -625,7 +625,12 @@
       "ocrLanguages": "OCR language mode",
       "ocrLanguagesDescription": "Use auto to map subtitle language tags to Tesseract languages, or enter a Tesseract code like eng, jpn, fra, spa, deu, or pol.",
       "ocrTranslationPrompt": "Use OCR-aware translation prompt",
-      "ocrTranslationPromptDescription": "When translating OCR-derived subtitles, add conservative OCR correction guidance and media context to AI prompts."
+      "ocrTranslationPromptDescription": "When translating OCR-derived subtitles, add conservative OCR correction guidance and media context to AI prompts.",
+      "groupSourceSelection": "Source Selection",
+      "groupOcr": "OCR (Bitmap Subtitles)",
+      "groupFormatCleaning": "Format & Cleaning",
+      "groupTagging": "Tagging & Identification",
+      "groupOutputEmbedding": "Output & Embedding"
     },
     "indexing": {
       "title": "Indexing",
@@ -822,6 +827,9 @@
       "translationService": "Translation service:",
       "sourceLanguages": "Source languages:",
       "targetLanguages": "Target languages:",
+      "subtitleTagging": "Subtitle tagging:",
+      "ocrEnabled": "OCR enabled:",
+      "embedMode": "Embedding mode:",
       "startTranslating": "Start Translating",
       "goToSettings": "Go to Settings for more configuration"
     },
@@ -848,7 +856,9 @@
       "taggingTitle": "Subtitle Tagging",
       "taggingDescription": "Tag translated subtitles to identify them in your media player.",
       "retries": "retries",
-      "concurrent": "concurrent"
+      "concurrent": "concurrent",
+      "smartDefaultsApplied": "Recommended defaults have been applied. Adjust these key settings now or change them later in Settings.",
+      "advancedAvailable": "All other settings (batch translation, retries, formatting, validation) are pre-configured. Customize them later in Settings."
     },
     "integration": {
       "radarr": "Radarr",
