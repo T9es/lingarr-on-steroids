@@ -436,11 +436,44 @@ public class TranslationWorkerService : BackgroundService, ITranslationWorkerSer
     {
         try
         {
-            using var scope = _serviceProvider.CreateScope();
-            var translationJob = scope.ServiceProvider.GetRequiredService<TranslationJob>();
-            
-            // Execute the translation job
-            await translationJob.ExecuteAsync(requestId, stoppingToken);
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var translationJob = scope.ServiceProvider.GetRequiredService<TranslationJob>();
+
+                await translationJob.ExecuteAsync(requestId, stoppingToken);
+
+                // Check if the request was paused (e.g. Gemini 429 rate limit)
+                var dbContext = scope.ServiceProvider.GetRequiredService<LingarrDbContext>();
+                var request = await dbContext.TranslationRequests
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(r => r.Id == requestId, stoppingToken);
+
+                if (request?.Status != TranslationStatus.Paused || request.NextRetryAt == null)
+                    break;
+
+                // Hold the slot: wait until the resume time
+                var delay = request.NextRetryAt.Value - DateTime.UtcNow;
+                if (delay > TimeSpan.Zero)
+                {
+                    _logger.LogInformation(
+                        "Worker holding slot for paused request {RequestId}, waiting {Delay:g} before retry",
+                        requestId, delay);
+                    await Task.Delay(delay, stoppingToken);
+                }
+
+                // Resume: set back to InProgress directly
+                // (UpdateTranslationRequest blocks Paused to InProgress)
+                await dbContext.TranslationRequests
+                    .Where(r => r.Id == requestId && r.Status == TranslationStatus.Paused)
+                    .ExecuteUpdateAsync(s => s
+                        .SetProperty(r => r.Status, TranslationStatus.InProgress)
+                        .SetProperty(r => r.PausedAt, (DateTime?)null)
+                        .SetProperty(r => r.PauseReason, (string?)null)
+                        .SetProperty(r => r.PausedProvider, (string?)null)
+                        .SetProperty(r => r.NextRetryAt, (DateTime?)null),
+                        stoppingToken);
+            }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
