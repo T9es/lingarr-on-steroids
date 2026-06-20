@@ -4,7 +4,7 @@
             {{ label }}
         </label>
         <div
-            ref="excludeClickOutside"
+            ref="triggerRef"
             class="border-accent flex h-12 cursor-pointer items-center justify-between rounded-md border px-4 py-2"
             @click="toggleDropdown">
             <span v-if="!selected" class="!text-secondary-content">{{ displayPlaceholder }}</span>
@@ -21,29 +21,37 @@
                     class="arrow-right text-primary-content h-5 w-5 transition-transform duration-200" />
             </div>
         </div>
-        <ul
-            v-show="isOpen"
-            ref="clickOutside"
-            class="border-accent bg-primary absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md border shadow-lg">
-            <li v-if="enableSearch" class="border-secondary border-b p-2">
-                <input
-                    v-model="searchQuery"
-                    type="text"
-                    class="border-secondary text-primary-content focus:ring-accent w-full rounded border bg-transparent px-2 py-1 text-sm outline-hidden focus:border-transparent focus:ring-2"
-                    :placeholder="translate('settings.services.modelSearchPlaceholder')" />
-            </li>
-            <li v-if="!filteredOptions.length" class="text-primary-content p-3">
-                {{ displayNoOptions }}
-            </li>
-            <li
-                v-for="(option, index) in filteredOptions"
-                :key="`${option.value}-${index}`"
-                class="text-primary-content hover:bg-accent/20 cursor-pointer px-4 py-2"
-                :class="{ 'bg-accent/20': isSelected(option.value) }"
-                @click="selectOption(option)">
-                {{ option.label }}
-            </li>
-        </ul>
+        <Teleport to="body">
+            <ul
+                v-show="isOpen"
+                ref="dropdownRef"
+                class="border-accent bg-primary z-[100] max-h-60 overflow-auto rounded-md border shadow-lg"
+                :style="{
+                    position: 'fixed',
+                    top: dropdownPosition.top + 'px',
+                    left: dropdownPosition.left + 'px',
+                    width: dropdownPosition.width + 'px'
+                }">
+                <li v-if="enableSearch" class="border-secondary border-b p-2">
+                    <input
+                        v-model="searchQuery"
+                        type="text"
+                        class="border-secondary text-primary-content focus:ring-accent w-full rounded border bg-transparent px-2 py-1 text-sm outline-hidden focus:border-transparent focus:ring-2"
+                        :placeholder="translate('settings.services.modelSearchPlaceholder')" />
+                </li>
+                <li v-if="!filteredOptions.length" class="text-primary-content p-3">
+                    {{ displayNoOptions }}
+                </li>
+                <li
+                    v-for="(option, index) in filteredOptions"
+                    :key="`${option.value}-${index}`"
+                    class="text-primary-content hover:bg-accent/20 cursor-pointer px-4 py-2"
+                    :class="{ 'bg-accent/20': isSelected(option.value) }"
+                    @click="selectOption(option)">
+                    {{ option.label }}
+                </li>
+            </ul>
+        </Teleport>
     </div>
 </template>
 
@@ -94,9 +102,10 @@ const displayNoOptions = computed(
 
 const isOpen: Ref<boolean> = ref(false)
 const isLoading: Ref<boolean> = ref(false)
-const clickOutside: Ref<HTMLElement | undefined> = ref()
-const excludeClickOutside: Ref<HTMLElement | undefined> = ref()
+const triggerRef: Ref<HTMLElement | undefined> = ref()
+const dropdownRef: Ref<HTMLElement | undefined> = ref()
 const searchQuery = ref('')
+const dropdownPosition = ref({ top: 0, left: 0, width: 0 })
 
 const sortedOptions = computed(() => {
     return [...props.options].sort((a, b) => a.label.localeCompare(b.label))
@@ -124,13 +133,24 @@ const toggleDropdown = async () => {
 
     isOpen.value = !isOpen.value
 
-    if (isOpen.value && props.loadOnOpen) {
-        isLoading.value = true
-        emit('fetch-options')
-    }
+    if (isOpen.value) {
+        const rect = triggerRef.value?.getBoundingClientRect()
+        if (rect) {
+            dropdownPosition.value = {
+                top: rect.bottom + window.scrollY,
+                left: rect.left + window.scrollX,
+                width: rect.width
+            }
+        }
 
-    if (isOpen.value && props.enableSearch) {
-        searchQuery.value = ''
+        if (props.loadOnOpen) {
+            isLoading.value = true
+            emit('fetch-options')
+        }
+
+        if (props.enableSearch) {
+            searchQuery.value = ''
+        }
     }
 
     await nextTick()
@@ -151,12 +171,12 @@ const isSelected = (option: string) => {
 }
 
 useClickOutside(
-    clickOutside,
+    dropdownRef,
     () => {
         isOpen.value = false
         searchQuery.value = ''
     },
-    excludeClickOutside
+    triggerRef
 )
 
 defineExpose({

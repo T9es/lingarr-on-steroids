@@ -844,7 +844,8 @@
       "sourceTitle": "Języki źródłowe",
       "sourceDescription": "Z jakiego języka chcesz tłumaczyć swoje media?",
       "targetTitle": "Języki docelowe",
-      "targetDescription": "Wybierz języki, na które chcesz tłumaczyć."
+      "targetDescription": "Wybierz języki, na które chcesz tłumaczyć.",
+      "autoModeRecommendation": "Zalecamy pozostawienie trybu automatycznego włączonego. Lingarr automatycznie wykryje najlepszy język źródłowy dla każdego pliku."
     },
     "settings": {
       "retryTitle": "Ustawienia ponownych prób",

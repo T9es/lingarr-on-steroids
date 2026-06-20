@@ -846,7 +846,8 @@
       "sourceTitle": "Source Languages",
       "sourceDescription": "What language would you like to translate from your media?",
       "targetTitle": "Target Languages",
-      "targetDescription": "Select the languages you want to translate to."
+      "targetDescription": "Select the languages you want to translate to.",
+      "autoModeRecommendation": "We recommend leaving auto mode enabled. Lingarr will detect the best source language for each file automatically."
     },
     "settings": {
       "retryTitle": "Retry Settings",

@@ -3,7 +3,7 @@
         <!-- Source Language Mode Toggle -->
         <div class="border-accent bg-secondary rounded-md border p-4">
             <div class="mb-3 flex flex-col space-x-2">
-                <span class="font-semibold">
+                <span class="text-primary-content font-semibold">
                     {{ translate('settings.translate.sourceLanguageModeTitle') }}
                 </span>
                 <span class="text-secondary-content text-sm">
@@ -23,6 +23,13 @@
                 v-if="isAutoMode"
                 class="bg-accent/10 text-accent mt-3 inline-flex items-center rounded-md px-3 py-1 text-xs font-medium">
                 {{ translate('settings.translate.sourceLanguageModeAutoBadge') }}
+            </div>
+            <div
+                v-else
+                class="border-accent bg-accent/5 mt-3 rounded-md border border-dashed px-3 py-2">
+                <span class="text-secondary-content text-xs leading-5">
+                    {{ translate('onboarding.language.autoModeRecommendation') }}
+                </span>
             </div>
         </div>
 

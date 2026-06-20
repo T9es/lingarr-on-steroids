@@ -99,6 +99,44 @@
             </div>
         </div>
 
+        <!-- Strip ASS Drawing Commands -->
+        <div class="bg-primary/35 border-secondary/30 overflow-hidden rounded-2xl border p-4 sm:p-5">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div class="min-w-0">
+                    <span class="text-primary-content block font-semibold">
+                        {{ translate('settings.subtitle.stripAssDrawingCommands') }}
+                    </span>
+                    <p class="text-secondary-content text-xs leading-5">
+                        {{ translate('settings.subtitle.stripAssDrawingCommandsDescription') }}
+                    </p>
+                </div>
+                <ToggleButton v-model="stripAssDrawingCommands">
+                    <span class="text-primary-content text-sm font-medium">
+                        {{ translateBoolean(stripAssDrawingCommands) }}
+                    </span>
+                </ToggleButton>
+            </div>
+        </div>
+
+        <!-- Cleanup Orphaned Subtitles -->
+        <div class="bg-primary/35 border-secondary/30 overflow-hidden rounded-2xl border p-4 sm:p-5">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div class="min-w-0">
+                    <span class="text-primary-content block font-semibold">
+                        {{ translate('settings.subtitle.cleanupOrphanedSubtitles') }}
+                    </span>
+                    <p class="text-secondary-content text-xs leading-5">
+                        {{ translate('settings.subtitle.cleanupOrphanedSubtitlesDescription') }}
+                    </p>
+                </div>
+                <ToggleButton v-model="cleanupOrphanedSubtitles">
+                    <span class="text-primary-content text-sm font-medium">
+                        {{ translateBoolean(cleanupOrphanedSubtitles) }}
+                    </span>
+                </ToggleButton>
+            </div>
+        </div>
+
         <!-- Advanced note -->
         <p class="text-secondary-content/60 text-xs leading-5">
             {{ translate('onboarding.settings.advancedAvailable') }}
@@ -158,6 +196,24 @@ const subtitleOcrEnabled = computed({
         (settingsStore.getSetting(SETTINGS.SUBTITLE_OCR_ENABLED) as string) ?? 'true',
     set: (newValue: string): void => {
         settingsStore.updateSetting(SETTINGS.SUBTITLE_OCR_ENABLED, newValue, true)
+    }
+})
+
+// Strip ASS Drawing Commands
+const stripAssDrawingCommands = computed({
+    get: (): string =>
+        (settingsStore.getSetting(SETTINGS.STRIP_ASS_DRAWING_COMMANDS) as string) ?? 'true',
+    set: (newValue: string): void => {
+        settingsStore.updateSetting(SETTINGS.STRIP_ASS_DRAWING_COMMANDS, newValue, true)
+    }
+})
+
+// Cleanup Orphaned Subtitles
+const cleanupOrphanedSubtitles = computed({
+    get: (): string =>
+        (settingsStore.getSetting(SETTINGS.CLEANUP_ORPHANED_SUBTITLES) as string) ?? 'true',
+    set: (newValue: string): void => {
+        settingsStore.updateSetting(SETTINGS.CLEANUP_ORPHANED_SUBTITLES, newValue, true)
     }
 })
 

@@ -844,7 +844,8 @@
       "sourceTitle": "Brontalen",
       "sourceDescription": "Welke taal wil je vertalen vanuit je media?",
       "targetTitle": "Doeltalen",
-      "targetDescription": "Selecteer de talen waarnaar je wilt vertalen."
+      "targetDescription": "Selecteer de talen waarnaar je wilt vertalen.",
+      "autoModeRecommendation": "We raden aan de automatische modus ingeschakeld te laten. Lingarr detecteert automatisch de beste bronntaal voor elk bestand."
     },
     "settings": {
       "retryTitle": "Instellingen voor opnieuw proberen",

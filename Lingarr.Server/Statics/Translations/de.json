@@ -844,7 +844,8 @@
       "sourceTitle": "Quellsprachen",
       "sourceDescription": "Welche Sprache möchten Sie aus Ihren Medien übersetzen?",
       "targetTitle": "Zielsprachen",
-      "targetDescription": "Wählen Sie die Sprachen aus, in die Sie übersetzen möchten."
+      "targetDescription": "Wählen Sie die Sprachen aus, in die Sie übersetzen möchten.",
+      "autoModeRecommendation": "Wir empfehlen, den automatischen Modus aktiviert zu lassen. Lingarr erkennt automatisch die beste Quellsprache für jede Datei."
     },
     "settings": {
       "retryTitle": "Wiederholungseinstellungen",

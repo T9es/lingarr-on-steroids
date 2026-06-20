@@ -844,7 +844,8 @@
       "sourceTitle": "Idiomas de origen",
       "sourceDescription": "¿Qué idioma te gustaría traducir de tus medios?",
       "targetTitle": "Idiomas de destino",
-      "targetDescription": "Selecciona los idiomas a los que quieres traducir."
+      "targetDescription": "Selecciona los idiomas a los que quieres traducir.",
+      "autoModeRecommendation": "Recomendamos dejar el modo automático activado. Lingarr detectará automáticamente el mejor idioma de origen para cada archivo."
     },
     "settings": {
       "retryTitle": "Configuración de reintentos",

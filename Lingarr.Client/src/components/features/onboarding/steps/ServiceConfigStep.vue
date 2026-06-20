@@ -71,6 +71,7 @@ import GeminiConfig from '@/components/features/settings/services/GeminiConfig.v
 import DeepSeekConfig from '@/components/features/settings/services/DeepSeekConfig.vue'
 import ChutesConfig from '@/components/features/settings/services/ChutesConfig.vue'
 import NanoGptConfig from '@/components/features/settings/services/NanoGptConfig.vue'
+import CrofAiConfig from '@/components/features/settings/services/CrofAiConfig.vue'
 
 const emit = defineEmits<{
     save: []
@@ -93,6 +94,7 @@ const serviceName = computed(() => {
         [SERVICE_TYPE.DEEPSEEK]: 'services.serviceNames.deepseek',
         [SERVICE_TYPE.NANOGPT]: 'services.serviceNames.nanogpt',
         [SERVICE_TYPE.CHUTES]: 'services.serviceNames.chutes',
+        [SERVICE_TYPE.CROFAI]: 'services.serviceNames.crofai',
         [SERVICE_TYPE.GOOGLE]: 'services.serviceNames.google',
         [SERVICE_TYPE.BING]: 'services.serviceNames.bing',
         [SERVICE_TYPE.MICROSOFT]: 'services.serviceNames.microsoft',
@@ -121,6 +123,8 @@ const serviceConfigComponent = computed(() => {
             return DeepSeekConfig
         case SERVICE_TYPE.CHUTES:
             return ChutesConfig
+        case SERVICE_TYPE.CROFAI:
+            return CrofAiConfig
         case SERVICE_TYPE.NANOGPT:
             return NanoGptConfig
         case SERVICE_TYPE.GOOGLE:

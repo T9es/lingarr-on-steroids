@@ -844,7 +844,8 @@
       "sourceTitle": "源语言",
       "sourceDescription": "您想从媒体中翻译什么语言？",
       "targetTitle": "目标语言",
-      "targetDescription": "选择您想翻译成的语言。"
+      "targetDescription": "选择您想翻译成的语言。",
+      "autoModeRecommendation": "我们建议保持自动模式开启。Lingarr 将自动检测每个文件的最佳源语言。"
     },
     "settings": {
       "retryTitle": "重试设置",
