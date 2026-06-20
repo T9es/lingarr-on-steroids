@@ -85,13 +85,6 @@ public class SubtitleQualityValidatorService : ISubtitleQualityValidatorService
                 summaries.Add($"Target has {targetCount} entries but selected source has {sourceCount}; this is suspiciously high.");
             }
 
-            var echoScan = DetectUnchangedSourceText(
-                sourceSubtitles,
-                targetSubtitles,
-                request.SourceLanguage,
-                request.TargetLanguage);
-            MergeScan(issueTypes, summaries, samples, echoScan);
-
             var languageScan = DetectWrongTargetLanguage(
                 sourceSubtitles,
                 targetSubtitles,
@@ -143,34 +136,6 @@ public class SubtitleQualityValidatorService : ISubtitleQualityValidatorService
                 SubtitleQualityIssueCodes.ValidationError,
                 $"Subtitle quality validation failed unexpectedly: {ex.Message}");
         }
-    }
-
-    private static AssArtifactScanResult DetectUnchangedSourceText(
-        IReadOnlyList<SubtitleItem> sourceSubtitles,
-        IReadOnlyList<SubtitleItem> targetSubtitles,
-        string? sourceLanguage,
-        string? targetLanguage)
-    {
-        var analysis = TranslationEchoGuard.AnalyzeSubtitles(
-            sourceSubtitles,
-            targetSubtitles,
-            sourceLanguage,
-            targetLanguage);
-        if (!analysis.IsMostlyEchoed)
-        {
-            return new AssArtifactScanResult();
-        }
-
-        return new AssArtifactScanResult
-        {
-            SuspiciousLineCount = analysis.EchoedCount,
-            SuspiciousLines = analysis.Samples.ToList(),
-            IssueTypes = [SubtitleQualityIssueCodes.UnchangedSourceText],
-            IssueSummaries =
-            [
-                $"Found mostly unchanged source text in translated output ({analysis.EchoedCount}/{analysis.ComparableCount} comparable cues; strongest cluster {analysis.ClusterEchoedCount}/{analysis.ClusterComparableCount})."
-            ]
-        };
     }
 
     private static AssArtifactScanResult DetectWrongTargetLanguage(

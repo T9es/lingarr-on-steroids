@@ -1120,7 +1120,7 @@ public class TranslationJobTests : IDisposable
     }
 
     [Fact]
-    public async Task ExecuteAsync_WhenTranslatedOutputEchoesSource_QuarantinesOutputAndFailsRequest()
+    public async Task ExecuteAsync_WhenQualityGateRejectsOutput_QuarantinesOutputAndFailsRequest()
     {
         var sourceSubtitlePath = Path.Combine(_tempDirectory, "cars.en.srt");
         await File.WriteAllTextAsync(
@@ -1283,12 +1283,12 @@ public class TranslationJobTests : IDisposable
                 .ReturnsAsync(new SubtitleQualityValidationResult
                 {
                     IsValid = false,
-                    Summary = "Found mostly unchanged source text in translated output.",
+                    Summary = "Target has significantly fewer entries than the source.",
                     SourceEntryCount = SubtitleExtractionService.MinimumDialogueEntries,
-                    TargetEntryCount = SubtitleExtractionService.MinimumDialogueEntries,
+                    TargetEntryCount = SubtitleExtractionService.MinimumDialogueEntries - 20,
                     MinimumTargetEntryCount = SubtitleExtractionService.MinimumDialogueEntries - 10,
-                    IssueTypes = [SubtitleQualityIssueCodes.UnchangedSourceText],
-                    SampleLines = ["English source line 1"]
+                    IssueTypes = [SubtitleQualityIssueCodes.TooShort],
+                    SampleLines = ["1: English source line 1"]
                 });
             var job = new TranslationJob(
                 NullLogger<TranslationJob>.Instance,
@@ -1326,7 +1326,7 @@ public class TranslationJobTests : IDisposable
             Assert.False(File.Exists(finalPath));
             Assert.NotNull(diagnostic.QuarantinePath);
             Assert.True(File.Exists(diagnostic.QuarantinePath));
-            Assert.Equal(SubtitleQualityIssueCodes.UnchangedSourceText, diagnostic.ReasonCode);
+            Assert.Equal(SubtitleQualityIssueCodes.TooShort, diagnostic.ReasonCode);
         }
         finally
         {
