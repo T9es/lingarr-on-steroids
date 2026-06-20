@@ -118,6 +118,10 @@ public class BatchFallbackService : IBatchFallbackService
                 }
                 catch (TranslationException ex)
                 {
+                    if (ex is ProviderPauseException)
+                    {
+                        throw;
+                    }
                     if (TranslationFailureClassifier.IsNonRepairableProviderConfigurationFailure(ex))
                     {
                         _logger.LogError(

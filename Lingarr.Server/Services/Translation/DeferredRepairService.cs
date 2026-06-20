@@ -236,6 +236,10 @@ public class DeferredRepairService : IDeferredRepairService
             }
             catch (Exception ex)
             {
+                if (ex is ProviderPauseException)
+                {
+                    throw;
+                }
                 if (TranslationFailureClassifier.IsNonRepairableProviderConfigurationFailure(ex))
                 {
                     _logger.LogError(

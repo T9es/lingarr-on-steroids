@@ -1575,7 +1575,6 @@ Exception? lastException = null;
         CancellationToken cancellationToken)
     {
         var now = DateTime.UtcNow;
-        var resumeAt = exception.ResumeAt ?? now.AddMinutes(15);
         var reason = string.IsNullOrWhiteSpace(exception.Reason)
             ? "Translation provider paused the request."
             : exception.Reason;
@@ -1592,6 +1591,17 @@ Exception? lastException = null;
                 request.Id);
             return;
         }
+
+        var apiDelay = (exception.ResumeAt ?? now.AddSeconds(60)) - now;
+        var pauseDelay = translationRequest.RetryCount switch
+        {
+            0 => apiDelay,
+            1 => TimeSpan.FromSeconds(120),
+            2 => TimeSpan.FromSeconds(240),
+            _ => TimeSpan.FromSeconds(300)
+        };
+        var resumeAt = now + pauseDelay;
+        translationRequest.RetryCount++;
 
         translationRequest.Status = TranslationStatus.Paused;
         translationRequest.IsActive = true;
@@ -1647,6 +1657,7 @@ Exception? lastException = null;
         translationRequest.PausedAt = null;
         translationRequest.PauseReason = null;
         translationRequest.PausedProvider = null;
+        translationRequest.RetryCount = 0;
         translationRequest.NextRetryAt = null;
         await _dbContext.SaveChangesAsync(cancellationToken);
 

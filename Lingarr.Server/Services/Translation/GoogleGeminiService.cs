@@ -169,7 +169,13 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
                 if (attempt >= quotaRetryLimit)
                 {
                     _logger.LogError(ex, "Too many requests. Max retries exhausted for text: {Text}", text);
-                    throw new TranslationException("Too many requests. Retry limit reached.", ex);
+                    var resumeDelay = _apiSuggestedRetryDelay ?? TimeSpan.FromSeconds(60);
+                    _apiSuggestedRetryDelay = null;
+                    throw new ProviderPauseException(
+                        ServiceName,
+                        "Gemini rate limit exceeded (429). Translation paused to avoid further rate limit errors.",
+                        DateTime.UtcNow.Add(resumeDelay),
+                        ex);
                 }
 
                 var effectiveDelay = BuildQuotaRetryDelay(delay);
@@ -452,7 +458,13 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
                 if (attempt >= quotaRetryLimit)
                 {
                     _logger.LogError(ex, "Too many requests. Max retries exhausted for batch translation");
-                    throw new TranslationException("Too many requests. Retry limit reached.", ex);
+                    var resumeDelay = _apiSuggestedRetryDelay ?? TimeSpan.FromSeconds(60);
+                    _apiSuggestedRetryDelay = null;
+                    throw new ProviderPauseException(
+                        ServiceName,
+                        "Gemini rate limit exceeded (429). Translation paused to avoid further rate limit errors.",
+                        DateTime.UtcNow.Add(resumeDelay),
+                        ex);
                 }
 
                 var effectiveDelay = BuildQuotaRetryDelay(delay);
