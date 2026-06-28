@@ -315,6 +315,7 @@
     "failed": "Mislukt",
     "running": "Actief",
     "cronLabel": "Schema",
+    "noJobs": "No tasks scheduled yet",
     "jobDisplay": {
       "automatedTranslation": "Automatische Vertaling",
       "customSources": "Aangepaste Bron Scan",
@@ -644,6 +645,7 @@
       "enableAutomatedTranslation": "Geautomatiseerde vertaling:",
       "translationScheduleLabel": "Stel vertaalschema in:",
       "limitsHeader": "Limieten:",
+      "limitsDescription": "Limits applied to automated translation runs and to which media is considered new enough to be picked up by the sync jobs.",
       "scheduleLimitLabel": "Beperk het aantal vertalingen per schema",
       "defaultAgeThresholdLabel": "Standaard bestandsleeftijd vertraging voor vertaling:",
       "movieAgeThresholdLabel": "Film bestandsleeftijd vertraging in 'uren'",

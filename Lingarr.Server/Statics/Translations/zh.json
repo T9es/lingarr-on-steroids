@@ -315,6 +315,7 @@
     "failed": "失败",
     "running": "运行中",
     "cronLabel": "计划",
+    "noJobs": "No tasks scheduled yet",
     "jobDisplay": {
       "automatedTranslation": "自动翻译",
       "customSources": "自定义来源扫描",
@@ -644,6 +645,7 @@
       "enableAutomatedTranslation": "自动翻译：",
       "translationScheduleLabel": "设置翻译计划：",
       "limitsHeader": "限制：",
+      "limitsDescription": "Limits applied to automated translation runs and to which media is considered new enough to be picked up by the sync jobs.",
       "scheduleLimitLabel": "限制每个计划的翻译数量",
       "defaultAgeThresholdLabel": "翻译的默认文件年龄延迟：",
       "movieAgeThresholdLabel": "电影文件年龄延迟（小时）",

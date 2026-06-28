@@ -315,6 +315,7 @@
     "failed": "Fallido",
     "running": "Ejecutando",
     "cronLabel": "Programación",
+    "noJobs": "No tasks scheduled yet",
     "jobDisplay": {
       "automatedTranslation": "Traducción Automática",
       "customSources": "Escaneo de Fuentes Personalizadas",
@@ -644,6 +645,7 @@
       "enableAutomatedTranslation": "Traducción automatizada:",
       "translationScheduleLabel": "Establecer programa de traducción:",
       "limitsHeader": "Límites:",
+      "limitsDescription": "Limits applied to automated translation runs and to which media is considered new enough to be picked up by the sync jobs.",
       "scheduleLimitLabel": "Limitar la cantidad de traducciones por programa",
       "defaultAgeThresholdLabel": "Retraso predeterminado de antigüedad de archivo para traducción:",
       "movieAgeThresholdLabel": "Retraso de antigüedad de archivo de película en 'horas'",

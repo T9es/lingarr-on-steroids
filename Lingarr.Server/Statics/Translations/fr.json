@@ -315,6 +315,7 @@
     "failed": "Échoué",
     "running": "En cours",
     "cronLabel": "Planification",
+    "noJobs": "No tasks scheduled yet",
     "jobDisplay": {
       "automatedTranslation": "Traduction Automatique",
       "customSources": "Analyse des Sources Personnalisées",
@@ -644,6 +645,7 @@
       "enableAutomatedTranslation": "Traduction automatisée :",
       "translationScheduleLabel": "Définir le planning de traduction :",
       "limitsHeader": "Limites :",
+      "limitsDescription": "Limits applied to automated translation runs and to which media is considered new enough to be picked up by the sync jobs.",
       "scheduleLimitLabel": "Limiter le nombre de traductions par planning",
       "defaultAgeThresholdLabel": "Délai par défaut pour l'âge des fichiers pour la traduction :",
       "movieAgeThresholdLabel": "Délai pour l'âge des fichiers de films en 'heures'",

@@ -315,6 +315,7 @@
     "failed": "Nieudane",
     "running": "Uruchomione",
     "cronLabel": "Harmonogram",
+    "noJobs": "No tasks scheduled yet",
     "jobDisplay": {
       "automatedTranslation": "Automatyczne Tłumaczenie",
       "customSources": "Skanowanie Źródeł Niestandardowych",
@@ -644,6 +645,7 @@
       "enableAutomatedTranslation": "Automatyczne tłumaczenie:",
       "translationScheduleLabel": "Ustaw harmonogram tłumaczeń:",
       "limitsHeader": "Limity:",
+      "limitsDescription": "Limits applied to automated translation runs and to which media is considered new enough to be picked up by the sync jobs.",
       "scheduleLimitLabel": "Ogranicz liczbę tłumaczeń na harmonogram",
       "defaultAgeThresholdLabel": "Domyślne opóźnienie wieku pliku dla tłumaczenia:",
       "movieAgeThresholdLabel": "Opóźnienie wieku pliku filmowego w 'godzinach'",

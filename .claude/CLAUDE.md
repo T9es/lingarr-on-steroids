@@ -166,7 +166,7 @@ Lingarr.Client/src/
 │   │   ├── settings/MappingPage.vue
 │   │   ├── settings/CustomSourcesPage.vue
 │   │   ├── settings/UploadWorkspacePage.vue
-│   │   ├── settings/SchedulePage.vue
+│   │   ├── settings/TasksPage.vue
 │   │   └── settings/LogsPage.vue
 │   └── HelpPage.vue              # With help/onboarding, help/about children
 ├── components/
