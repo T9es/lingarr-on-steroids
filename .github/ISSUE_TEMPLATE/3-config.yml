@@ -1,0 +1,136 @@
+name: Setup / Configuration
+description: Help installing, configuring, or connecting Lingarr on Steroids
+title: '[CONFIG] '
+labels:
+  - question
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for problems installing, configuring, or connecting Lingarr.
+        For crashes, wrong output, or unexpected behavior, use the Bug Report template instead.
+        For missing features, use the Feature Request template instead.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Before submitting
+      options:
+        - label: I have searched existing issues and Discussions for this problem
+          required: true
+        - label: I have redacted any secrets from configuration snippets (API keys, tokens, passwords)
+          required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment mode
+      options:
+        - Docker (compose)
+        - Docker (manual run)
+        - Bare metal / local build
+        - Kubernetes / Helm
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: database
+    attributes:
+      label: Database backend
+      options:
+        - PostgreSQL
+        - SQLite
+        - Not yet configured
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where are you stuck?
+      options:
+        - Translating subtitles (no output / wrong output)
+        - Translating subtitles (rate limit / quota error)
+        - Radarr / Sonarr connection
+        - Multi-instance setup
+        - Translation service API key / model
+        - Docker permissions, volumes, networking
+        - Database connection / migration
+        - Hangfire / scheduled jobs not running
+        - Web UI / dashboard
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: service
+    attributes:
+      label: Translation service involved
+      description: 'If your problem is about a specific provider, pick it here.'
+      options:
+        - None / not applicable
+        - OpenAI
+        - Anthropic
+        - Gemini
+        - DeepSeek
+        - Chutes.ai
+        - LocalAI
+        - DeepL
+        - LibreTranslate
+        - Google Translate
+        - Bing Translator
+        - Yandex Translate
+        - Azure Translator
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Lingarr version
+      placeholder: 'e.g. v2.3.1 or commit hash'
+    validations:
+      required: false
+
+  - type: textarea
+    id: describe
+    attributes:
+      label: Describe what you are trying to set up
+      description: 'In one or two paragraphs: what is the goal and where you got stuck.'
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Relevant configuration
+      description: 'Paste the docker-compose, environment variables, hangfire settings, or YAML that is in scope.'
+      render: yaml
+      placeholder: |
+        ```yaml
+        # redacted compose / env block
+        ```
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or error output
+      description: 'Container stdout / stderr, Hangfire failure page, browser console output.'
+      render: bash
+      placeholder: |
+        ```
+        paste logs here
+        ```
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: 'Optional: screenshots, steps already tried, links to docs you followed.'

@@ -1,0 +1,87 @@
+name: Feature Request
+description: Suggest a new feature or improvement for Lingarr on Steroids
+title: '[FEATURE] '
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template to suggest something missing from Lingarr.
+        If you hit a bug or can't figure out how to set something up, please use the Bug Report or Setup / Configuration templates instead.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Before submitting
+      options:
+        - label: I have searched existing issues and Discussions for this feature
+          required: true
+        - label: This is NOT a bug report and NOT a setup question
+          required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area of the app
+      description: Where would this change live? Best-guess is fine.
+      options:
+        - Translation pipeline
+        - Subtitle handling / parsing / writing
+        - Translation services (providers / models)
+        - Radarr / Sonarr integration / multi-instance
+        - Dashboard / API / web UI
+        - Hangfire / jobs / scheduling
+        - Database / migrations
+        - Docker / deployment
+        - Documentation
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: size
+    attributes:
+      label: Estimated size
+      description: 'A rough sense of the change so maintainers can prioritize.'
+      options:
+        - 'Small (one screen or a single setting)'
+        - 'Medium (touches a few components)'
+        - 'Large (cross-cutting or new subsystem)'
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: 'Describe the underlying need. Why is this worth building?'
+      placeholder: 'As a [role], I want [capability], because [reason]...'
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Describe your ideal solution
+      description: 'How would you like this to work? Describe the outcome, not the UI buttons.'
+      placeholder: 'Anything from a one-liner to a detailed flow is fine.'
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: 'What have you tried or considered so far? Workarounds? Other apps that already do this?'
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: help
+    attributes:
+      label: I can help with...
+      options:
+        - label: Submitting a pull request
+        - label: Testing the change on my own setup
+        - label: Translating the docs or UI strings
