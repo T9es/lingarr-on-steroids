@@ -59,4 +59,23 @@ public class LingarrVersionTests
         Assert.NotNull(info!.InformationalVersion);
         Assert.NotEmpty(info.InformationalVersion);
     }
+    [Theory]
+    [InlineData("3.0.0+03abed7a0b8c6a0f20d0cd206e0ac403ba94e8e9", "3.0.0+03abed7a")]
+    [InlineData("v3.0.0+03abed7a0b8c6a0f20d0cd206e0ac403ba94e8e9", "v3.0.0+03abed7a")]
+    [InlineData("2.5.0-222-g03abed7a", "2.5.0-222-g03abed7a")]
+    [InlineData("03abed7a0b8c6a0f20d0cd206e0ac403ba94e8e9", "03abed7a")]
+    [InlineData("v03abed7a0b8c6a0f20d0cd206e0ac403ba94e8e9", "v03abed7a")]
+    [InlineData("12345678", "12345678")]
+    [InlineData("1234567890abcdef", "12345678")]
+    [InlineData("3.0.0+abc1234", "3.0.0+abc1234")]
+    [InlineData("3.0.0+abc12345", "3.0.0+abc12345")]
+    [InlineData("3.0.0", "3.0.0")]
+    [InlineData("3.0.0+build.42", "3.0.0+build.42")]
+    [InlineData("3.0.0+", "3.0.0+")]
+    [InlineData("", "")]
+    [InlineData(null, null)]
+    public void ShortenBuildMetadata_trims_full_sha_and_leaves_other_inputs_untouched(string? input, string? expected)
+    {
+        Assert.Equal(expected, LingarrVersion.ShortenBuildMetadata(input!));
+    }
 }

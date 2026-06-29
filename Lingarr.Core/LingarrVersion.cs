@@ -135,7 +135,7 @@ public static class LingarrVersion
 
         if (!string.IsNullOrWhiteSpace(gitDescribe))
         {
-            displayVersion = gitDescribe;
+            displayVersion = ShortenBuildMetadata(gitDescribe);
 
             var describeMatch = GitDescribeRegex.Match(gitDescribe);
             if (describeMatch.Success)
@@ -170,12 +170,12 @@ public static class LingarrVersion
             !string.IsNullOrWhiteSpace(informationalVersion) &&
             HasDevelopmentMarker(informationalVersion, releaseVersion))
         {
-            displayVersion = informationalVersion;
+            displayVersion = ShortenBuildMetadata(informationalVersion);
         }
 
         if (string.IsNullOrWhiteSpace(displayVersion) && !string.IsNullOrWhiteSpace(informationalVersion))
         {
-            displayVersion = informationalVersion;
+            displayVersion = ShortenBuildMetadata(informationalVersion);
         }
 
         if (string.IsNullOrWhiteSpace(displayVersion))
@@ -273,6 +273,78 @@ public static class LingarrVersion
         }
 
         return metadata.Length <= 7 ? metadata : metadata[..7];
+    }
+
+    /// <summary>
+    /// Trims SemVer build metadata (<c>+<value></c>) to at most 8 hex
+    /// characters so dev-build badges stay readable when an assembly
+    /// has been stamped with a full 40-character commit SHA. Non-hex
+    /// metadata (e.g. <c>+build.42</c>) is left untouched, and a
+    /// version that is already 8 chars or shorter is returned as-is.
+    /// </summary>
+    internal static string ShortenBuildMetadata(string version)
+    {
+        if (string.IsNullOrWhiteSpace(version))
+        {
+            return version;
+        }
+
+        // Case 1: SemVer build-metadata form "<version>+<metadata>".
+        // The AssemblyInformationalVersionAttribute may include a
+        // full 40-character SHA here.
+        var separatorIndex = version.IndexOf('+');
+        if (separatorIndex >= 0 && separatorIndex < version.Length - 1)
+        {
+            return ShortenAfterSeparator(version, separatorIndex);
+        }
+
+        // Case 2: bare 40-char SHA from `git describe --always` when
+        // no tag is reachable. Allow a leading "v" for the
+        // `--tags --long` style.
+        var shaStart = 0;
+        if (version.Length > 0 && version[0] == 'v' && IsHex(version[1..]))
+        {
+            shaStart = 1;
+        }
+        if (shaStart < version.Length && IsHex(version[shaStart..]))
+        {
+            var sha = version[shaStart..];
+            if (sha.Length > 8)
+            {
+                return version[..shaStart] + sha[..8];
+            }
+        }
+
+        return version;
+    }
+
+    private static string ShortenAfterSeparator(string version, int separatorIndex)
+    {
+        var prefix = version[..(separatorIndex + 1)];
+        var metadata = version[(separatorIndex + 1)..];
+
+        if (metadata.Length <= 8)
+        {
+            return version;
+        }
+
+        var candidate = metadata[..8];
+        return IsHex(candidate) ? prefix + candidate : version;
+    }
+
+    private static bool IsHex(string value)
+    {
+        foreach (var c in value)
+        {
+            var isHexDigit = (c >= '0' && c <= '9') ||
+                              (c >= 'a' && c <= 'f') ||
+                              (c >= 'A' && c <= 'F');
+            if (!isHexDigit)
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static string? TryGetGitOutput(string arguments)
