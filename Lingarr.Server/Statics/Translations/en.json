@@ -633,7 +633,8 @@
       "groupOcr": "OCR (Bitmap Subtitles)",
       "groupFormatCleaning": "Format & Cleaning",
       "groupTagging": "Tagging & Identification",
-      "groupOutputEmbedding": "Output & Embedding"
+      "groupOutputEmbedding": "Output & Embedding",
+      "groupValidation": "Validation"
     },
     "indexing": {
       "title": "Indexing",

@@ -4,293 +4,266 @@
             {{ translate('settings.subtitle.description') }}
         </template>
         <template #content>
-            <div class="flex flex-col space-y-4">
+            <div class="flex flex-col space-y-8">
                 <SaveNotification ref="saveNotification" />
 
-                <!-- Group 1: Source Selection -->
-                <div>
-                    <h3 class="text-primary-content mb-2 text-sm font-semibold uppercase tracking-wider opacity-70">
+                <!-- Group: Source Selection -->
+                <section>
+                    <h3
+                        class="text-primary-content mb-3 text-sm font-semibold uppercase tracking-wider opacity-70">
                         {{ translate('settings.subtitle.groupSourceSelection') }}
                     </h3>
-                    <div class="flex flex-col space-y-4">
-
-                        <!-- Skip when target embedded -->
-                        <div class="flex flex-col space-x-2">
-                            <span class="font-semibold">
-                                {{ translate('settings.subtitle.skipWhenTargetEmbedded') }}
-                            </span>
-                            {{ translate('settings.subtitle.skipWhenTargetEmbeddedDescription') }}
-                        </div>
-                        <ToggleButton v-model="skipWhenTargetEmbedded">
-                            <span class="text-primary-content text-sm font-medium">
-                                {{
-                                    skipWhenTargetEmbedded == 'true'
-                                        ? translate('common.enabled')
-                                        : translate('common.disabled')
-                                }}
-                            </span>
-                        </ToggleButton>
-
-                        <div class="flex flex-col space-x-2">
-                            <span class="font-semibold">
-                                {{ translate('settings.subtitle.ignoreCaptions') }}
-                            </span>
-                            {{ translate('settings.subtitle.ignoreCaptionsDescription') }}
-                        </div>
-                        <ToggleButton v-model="ignoreCaptions">
-                            <span class="text-primary-content text-sm font-medium">
-                                {{
-                                    ignoreCaptions == 'true'
-                                        ? translate('common.enabled')
-                                        : translate('common.disabled')
-                                }}
-                            </span>
-                        </ToggleButton>
-
-                        <div class="flex flex-col space-x-2">
-                            <span class="font-semibold">
-                                {{ translate('settings.subtitle.translateSupplementalSubtitles') }}
-                            </span>
-                            {{ translate('settings.subtitle.translateSupplementalSubtitlesDescription') }}
-                        </div>
-                        <ToggleButton v-model="translateSupplementalSubtitles">
-                            <span class="text-primary-content text-sm font-medium">
-                                {{
-                                    translateSupplementalSubtitles == 'true'
-                                        ? translate('common.enabled')
-                                        : translate('common.disabled')
-                                }}
-                            </span>
-                        </ToggleButton>
-
-                        <div class="flex flex-col space-x-2">
-                            <span class="font-semibold">
-                                {{ translate('settings.subtitle.detectUnknownLanguages') }}
-                            </span>
-                            {{ translate('settings.subtitle.detectUnknownLanguagesDescription') }}
-                        </div>
-                        <ToggleButton v-model="detectUnknownLanguages">
-                            <span class="text-primary-content text-sm font-medium">
-                                {{
-                                    detectUnknownLanguages == 'true'
-                                        ? translate('common.enabled')
-                                        : translate('common.disabled')
-                                }}
-                            </span>
-                        </ToggleButton>
-
+                    <div class="flex flex-col">
+                        <SettingRow
+                            :label="translate('settings.subtitle.skipWhenTargetEmbedded')"
+                            :description="
+                                translate('settings.subtitle.skipWhenTargetEmbeddedDescription')
+                            ">
+                            <ToggleButton v-model="skipWhenTargetEmbedded">
+                                <span class="text-primary-content text-sm font-medium">
+                                    {{
+                                        skipWhenTargetEmbedded == 'true'
+                                            ? translate('common.enabled')
+                                            : translate('common.disabled')
+                                    }}
+                                </span>
+                            </ToggleButton>
+                        </SettingRow>
+                        <SettingRow
+                            :label="translate('settings.subtitle.ignoreCaptions')"
+                            :description="translate('settings.subtitle.ignoreCaptionsDescription')">
+                            <ToggleButton v-model="ignoreCaptions">
+                                <span class="text-primary-content text-sm font-medium">
+                                    {{
+                                        ignoreCaptions == 'true'
+                                            ? translate('common.enabled')
+                                            : translate('common.disabled')
+                                    }}
+                                </span>
+                            </ToggleButton>
+                        </SettingRow>
+                        <SettingRow
+                            :label="translate('settings.subtitle.translateSupplementalSubtitles')"
+                            :description="
+                                translate('settings.subtitle.translateSupplementalSubtitlesDescription')
+                            ">
+                            <ToggleButton v-model="translateSupplementalSubtitles">
+                                <span class="text-primary-content text-sm font-medium">
+                                    {{
+                                        translateSupplementalSubtitles == 'true'
+                                            ? translate('common.enabled')
+                                            : translate('common.disabled')
+                                    }}
+                                </span>
+                            </ToggleButton>
+                        </SettingRow>
+                        <SettingRow
+                            :label="translate('settings.subtitle.detectUnknownLanguages')"
+                            :description="
+                                translate('settings.subtitle.detectUnknownLanguagesDescription')
+                            ">
+                            <ToggleButton v-model="detectUnknownLanguages">
+                                <span class="text-primary-content text-sm font-medium">
+                                    {{
+                                        detectUnknownLanguages == 'true'
+                                            ? translate('common.enabled')
+                                            : translate('common.disabled')
+                                    }}
+                                </span>
+                            </ToggleButton>
+                        </SettingRow>
                     </div>
-                </div>
+                </section>
 
-                <!-- Group 2: OCR (Bitmap Subtitles) -->
-                <div>
-                    <h3 class="text-primary-content mb-2 text-sm font-semibold uppercase tracking-wider opacity-70">
+                <!-- Group: OCR (Bitmap Subtitles) -->
+                <section>
+                    <h3
+                        class="text-primary-content mb-3 text-sm font-semibold uppercase tracking-wider opacity-70">
                         {{ translate('settings.subtitle.groupOcr') }}
                     </h3>
-                    <div class="flex flex-col space-y-4">
-
-                        <div class="flex flex-col space-x-2">
-                            <span class="font-semibold">
-                                {{ translate('settings.subtitle.ocrEnabled') }}
-                            </span>
-                            {{ translate('settings.subtitle.ocrEnabledDescription') }}
-                        </div>
-                        <ToggleButton v-model="subtitleOcrEnabled">
-                            <span class="text-primary-content text-sm font-medium">
-                                {{
-                                    subtitleOcrEnabled == 'true'
-                                        ? translate('common.enabled')
-                                        : translate('common.disabled')
-                                }}
-                            </span>
-                        </ToggleButton>
-
-                        <div class="flex flex-col space-x-2">
-                            <span class="font-semibold">
-                                {{ translate('settings.subtitle.ocrAutoQueue') }}
-                            </span>
-                            {{ translate('settings.subtitle.ocrAutoQueueDescription') }}
-                        </div>
-                        <ToggleButton v-model="subtitleOcrAutoQueue">
-                            <span class="text-primary-content text-sm font-medium">
-                                {{
-                                    subtitleOcrAutoQueue == 'true'
-                                        ? translate('common.enabled')
-                                        : translate('common.disabled')
-                                }}
-                            </span>
-                        </ToggleButton>
-
-                        <div class="flex flex-col space-x-2">
-                            <span class="font-semibold">
-                                {{ translate('settings.subtitle.ocrTranslationPrompt') }}
-                            </span>
-                            {{ translate('settings.subtitle.ocrTranslationPromptDescription') }}
-                        </div>
-                        <ToggleButton v-model="subtitleOcrTranslationPromptEnabled">
-                            <span class="text-primary-content text-sm font-medium">
-                                {{
-                                    subtitleOcrTranslationPromptEnabled == 'true'
-                                        ? translate('common.enabled')
-                                        : translate('common.disabled')
-                                }}
-                            </span>
-                        </ToggleButton>
-
+                    <div class="flex flex-col">
+                        <SettingRow
+                            :label="translate('settings.subtitle.ocrEnabled')"
+                            :description="translate('settings.subtitle.ocrEnabledDescription')">
+                            <ToggleButton v-model="subtitleOcrEnabled">
+                                <span class="text-primary-content text-sm font-medium">
+                                    {{
+                                        subtitleOcrEnabled == 'true'
+                                            ? translate('common.enabled')
+                                            : translate('common.disabled')
+                                    }}
+                                </span>
+                            </ToggleButton>
+                        </SettingRow>
+                        <SettingRow
+                            :label="translate('settings.subtitle.ocrAutoQueue')"
+                            :description="translate('settings.subtitle.ocrAutoQueueDescription')">
+                            <ToggleButton v-model="subtitleOcrAutoQueue">
+                                <span class="text-primary-content text-sm font-medium">
+                                    {{
+                                        subtitleOcrAutoQueue == 'true'
+                                            ? translate('common.enabled')
+                                            : translate('common.disabled')
+                                    }}
+                                </span>
+                            </ToggleButton>
+                        </SettingRow>
+                        <SettingRow
+                            :label="translate('settings.subtitle.ocrTranslationPrompt')"
+                            :description="
+                                translate('settings.subtitle.ocrTranslationPromptDescription')
+                            ">
+                            <ToggleButton v-model="subtitleOcrTranslationPromptEnabled">
+                                <span class="text-primary-content text-sm font-medium">
+                                    {{
+                                        subtitleOcrTranslationPromptEnabled == 'true'
+                                            ? translate('common.enabled')
+                                            : translate('common.disabled')
+                                    }}
+                                </span>
+                            </ToggleButton>
+                        </SettingRow>
+                    </div>
+                    <div class="mt-4 flex flex-col gap-4">
                         <InputComponent
                             v-model="subtitleOcrMinQualityScore"
                             validation-type="number"
                             :label="translate('settings.subtitle.ocrMinQualityScore')"
                             :description="translate('settings.subtitle.ocrMinQualityScoreDescription')"
-                            @update:validation="(val) => (isValid.subtitleOcrMinQualityScore = val)" />
-
+                            @update:validation="
+                                (val) => (isValid.subtitleOcrMinQualityScore = val)
+                            " />
                         <InputComponent
                             v-model="subtitleOcrLanguages"
                             validation-type="string"
                             :label="translate('settings.subtitle.ocrLanguages')"
                             :description="translate('settings.subtitle.ocrLanguagesDescription')" />
-
                     </div>
-                </div>
+                </section>
 
-                <!-- Group 3: Format & Cleaning -->
-                <div>
-                    <h3 class="text-primary-content mb-2 text-sm font-semibold uppercase tracking-wider opacity-70">
+                <!-- Group: Format & Cleaning -->
+                <section>
+                    <h3
+                        class="text-primary-content mb-3 text-sm font-semibold uppercase tracking-wider opacity-70">
                         {{ translate('settings.subtitle.groupFormatCleaning') }}
                     </h3>
-                    <div class="flex flex-col space-y-4">
-
-                        <div class="flex flex-col space-x-2">
-                            <span class="font-semibold">
-                                {{ translate('settings.subtitle.keepAssSsaWithSrt') }}
-                            </span>
-                            {{ translate('settings.subtitle.keepAssSsaWithSrtDescription') }}
-                        </div>
-                        <ToggleButton v-model="keepAssSsaWithSrt">
-                            <span class="text-primary-content text-sm font-medium">
-                                {{
-                                    keepAssSsaWithSrt == 'true'
-                                        ? translate('common.enabled')
-                                        : translate('common.disabled')
-                                }}
-                            </span>
-                        </ToggleButton>
-
-                        <div class="flex flex-col space-x-2">
-                            <span class="font-semibold">
-                                {{ translate('settings.subtitle.fixOverlappingSubtitles') }}
-                            </span>
-                            {{ translate('settings.subtitle.fixOverlappingSubtitlesDescription') }}
-                        </div>
-                        <ToggleButton v-model="fixOverlappingSubtitles">
-                            <span class="text-primary-content text-sm font-medium">
-                                {{
-                                    fixOverlappingSubtitles == 'true'
-                                        ? translate('common.enabled')
-                                        : translate('common.disabled')
-                                }}
-                            </span>
-                        </ToggleButton>
-
-                        <div class="flex flex-col space-x-2">
-                            <span class="font-semibold">
-                                {{ translate('settings.subtitle.stripSubtitleFormatting') }}
-                            </span>
-                            {{ translate('settings.subtitle.stripSubtitleFormattingDescription') }}
-                        </div>
-                        <ToggleButton v-model="stripSubtitleFormatting">
-                            <span class="text-primary-content text-sm font-medium">
-                                {{
-                                    stripSubtitleFormatting == 'true'
-                                        ? translate('common.enabled')
-                                        : translate('common.disabled')
-                                }}
-                            </span>
-                        </ToggleButton>
-
-                        <div class="flex flex-col space-x-2">
-                            <span class="font-semibold">
-                                {{ translate('settings.subtitle.addTranslatorInfo') }}
-                            </span>
-                            {{ translate('settings.subtitle.addTranslatorInfoDescription') }}
-                        </div>
-                        <ToggleButton v-model="addTranslatorInfo">
-                            <span class="text-primary-content text-sm font-medium">
-                                {{
-                                    addTranslatorInfo == 'true'
-                                        ? translate('common.enabled')
-                                        : translate('common.disabled')
-                                }}
-                            </span>
-                        </ToggleButton>
-
-                        <div class="flex flex-col space-x-2">
-                            <span class="font-semibold">
-                                {{ translate('settings.subtitle.stripAssDrawingCommands') }}
-                            </span>
-                            {{ translate('settings.subtitle.stripAssDrawingCommandsDescription') }}
-                        </div>
-                        <ToggleButton v-model="stripAssDrawingCommands">
-                            <span class="text-primary-content text-sm font-medium">
-                                {{
-                                    stripAssDrawingCommands == 'true'
-                                        ? translate('common.enabled')
-                                        : translate('common.disabled')
-                                }}
-                            </span>
-                        </ToggleButton>
-
-                        <div v-if="stripAssDrawingCommands == 'true'" class="ml-4 flex flex-col space-x-2">
-                            <span class="font-semibold">
-                                {{ translate('settings.subtitle.cleanSourceAssDrawings') }}
-                            </span>
-                            {{ translate('settings.subtitle.cleanSourceAssDrawingsDescription') }}
-                        </div>
-                        <ToggleButton
+                    <div class="flex flex-col">
+                        <SettingRow
+                            :label="translate('settings.subtitle.keepAssSsaWithSrt')"
+                            :description="translate('settings.subtitle.keepAssSsaWithSrtDescription')">
+                            <ToggleButton v-model="keepAssSsaWithSrt">
+                                <span class="text-primary-content text-sm font-medium">
+                                    {{
+                                        keepAssSsaWithSrt == 'true'
+                                            ? translate('common.enabled')
+                                            : translate('common.disabled')
+                                    }}
+                                </span>
+                            </ToggleButton>
+                        </SettingRow>
+                        <SettingRow
+                            :label="translate('settings.subtitle.fixOverlappingSubtitles')"
+                            :description="
+                                translate('settings.subtitle.fixOverlappingSubtitlesDescription')
+                            ">
+                            <ToggleButton v-model="fixOverlappingSubtitles">
+                                <span class="text-primary-content text-sm font-medium">
+                                    {{
+                                        fixOverlappingSubtitles == 'true'
+                                            ? translate('common.enabled')
+                                            : translate('common.disabled')
+                                    }}
+                                </span>
+                            </ToggleButton>
+                        </SettingRow>
+                        <SettingRow
+                            :label="translate('settings.subtitle.stripSubtitleFormatting')"
+                            :description="
+                                translate('settings.subtitle.stripSubtitleFormattingDescription')
+                            ">
+                            <ToggleButton v-model="stripSubtitleFormatting">
+                                <span class="text-primary-content text-sm font-medium">
+                                    {{
+                                        stripSubtitleFormatting == 'true'
+                                            ? translate('common.enabled')
+                                            : translate('common.disabled')
+                                    }}
+                                </span>
+                            </ToggleButton>
+                        </SettingRow>
+                        <SettingRow
+                            :label="translate('settings.subtitle.addTranslatorInfo')"
+                            :description="translate('settings.subtitle.addTranslatorInfoDescription')">
+                            <ToggleButton v-model="addTranslatorInfo">
+                                <span class="text-primary-content text-sm font-medium">
+                                    {{
+                                        addTranslatorInfo == 'true'
+                                            ? translate('common.enabled')
+                                            : translate('common.disabled')
+                                    }}
+                                </span>
+                            </ToggleButton>
+                        </SettingRow>
+                        <SettingRow
+                            :label="translate('settings.subtitle.stripAssDrawingCommands')"
+                            :description="
+                                translate('settings.subtitle.stripAssDrawingCommandsDescription')
+                            ">
+                            <ToggleButton v-model="stripAssDrawingCommands">
+                                <span class="text-primary-content text-sm font-medium">
+                                    {{
+                                        stripAssDrawingCommands == 'true'
+                                            ? translate('common.enabled')
+                                            : translate('common.disabled')
+                                    }}
+                                </span>
+                            </ToggleButton>
+                        </SettingRow>
+                        <SettingRow
                             v-if="stripAssDrawingCommands == 'true'"
-                            v-model="cleanSourceAssDrawings">
-                            <span class="text-primary-content text-sm font-medium">
-                                {{
-                                    cleanSourceAssDrawings == 'true'
-                                        ? translate('common.enabled')
-                                        : translate('common.disabled')
-                                }}
-                            </span>
-                        </ToggleButton>
-
-                        <div class="flex flex-col space-x-2">
-                            <span class="font-semibold">
-                                {{ translate('settings.subtitle.removeLanguageTag') }}
-                            </span>
-                            {{ translate('settings.subtitle.removeLanguageTagDescription') }}
-                        </div>
-                        <ToggleButton v-model="removeLanguageTag">
-                            <span class="text-primary-content text-sm font-medium">
-                                {{
-                                    removeLanguageTag == 'true'
-                                        ? translate('common.enabled')
-                                        : translate('common.disabled')
-                                }}
-                            </span>
-                        </ToggleButton>
-
+                            :label="translate('settings.subtitle.cleanSourceAssDrawings')"
+                            :description="
+                                translate('settings.subtitle.cleanSourceAssDrawingsDescription')
+                            "
+                            nested>
+                            <ToggleButton v-model="cleanSourceAssDrawings">
+                                <span class="text-primary-content text-sm font-medium">
+                                    {{
+                                        cleanSourceAssDrawings == 'true'
+                                            ? translate('common.enabled')
+                                            : translate('common.disabled')
+                                    }}
+                                </span>
+                            </ToggleButton>
+                        </SettingRow>
+                        <SettingRow
+                            :label="translate('settings.subtitle.removeLanguageTag')"
+                            :description="translate('settings.subtitle.removeLanguageTagDescription')">
+                            <ToggleButton v-model="removeLanguageTag">
+                                <span class="text-primary-content text-sm font-medium">
+                                    {{
+                                        removeLanguageTag == 'true'
+                                            ? translate('common.enabled')
+                                            : translate('common.disabled')
+                                    }}
+                                </span>
+                            </ToggleButton>
+                        </SettingRow>
                     </div>
-                </div>
+                </section>
 
-                <!-- Group 4: Tagging & Identification -->
-                <div>
-                    <h3 class="text-primary-content mb-2 text-sm font-semibold uppercase tracking-wider opacity-70">
+                <!-- Group: Tagging & Identification -->
+                <section>
+                    <h3
+                        class="text-primary-content mb-3 text-sm font-semibold uppercase tracking-wider opacity-70">
                         {{ translate('settings.subtitle.groupTagging') }}
                     </h3>
-                    <div class="flex flex-col space-y-4">
-
-                        <div class="flex flex-col space-y-4">
-                            <div class="flex flex-col space-x-2">
-                                <span class="font-semibold">
-                                    {{ translate('settings.subtitle.useSubtitleTagging') }}
-                                </span>
-                                {{ translate('settings.subtitle.useSubtitleTaggingDescription') }}
-                            </div>
+                    <div class="flex flex-col">
+                        <SettingRow
+                            :label="translate('settings.subtitle.useSubtitleTagging')"
+                            :description="
+                                translate('settings.subtitle.useSubtitleTaggingDescription')
+                            ">
                             <ToggleButton v-model="useSubtitleTagging">
                                 <span class="text-primary-content text-sm font-medium">
                                     {{
@@ -300,27 +273,32 @@
                                     }}
                                 </span>
                             </ToggleButton>
-                            <InputComponent
-                                v-if="useSubtitleTagging == 'true'"
-                                v-model="subtitleTag"
-                                validation-type="string"
-                                :label="translate('settings.subtitle.subtitleTag')"
-                                @update:validation="(val) => (isValid.subtitleTag = val)" />
-                            <InputComponent
-                                v-if="useSubtitleTagging == 'true'"
-                                v-model="subtitleTagShort"
-                                validation-type="string"
-                                :label="translate('settings.subtitle.subtitleTagShort')"
-                                :description="translate('settings.subtitle.subtitleTagShortDescription')"
-                                @update:validation="(val) => (isValid.subtitleTagShort = val)" />
-
-                            <!-- Orphan Subtitle Cleanup -->
-                            <div class="mt-4 flex flex-col space-x-2">
-                                <span class="font-semibold">
-                                    {{ translate('settings.subtitle.cleanupOrphanedSubtitles') }}
-                                </span>
-                                {{ translate('settings.subtitle.cleanupOrphanedSubtitlesDescription') }}
-                            </div>
+                        </SettingRow>
+                        <div
+                            v-if="cleanupOrphanedSubtitles == 'true' && useSubtitleTagging != 'true'"
+                            class="bg-warning/20 border-warning text-warning-content mt-2 rounded-md border p-3 text-sm">
+                            ⚠️ {{ translate('settings.subtitle.cleanupRequiresTagging') }}
+                        </div>
+                    </div>
+                    <div v-if="useSubtitleTagging == 'true'" class="mt-4 flex flex-col gap-4">
+                        <InputComponent
+                            v-model="subtitleTag"
+                            validation-type="string"
+                            :label="translate('settings.subtitle.subtitleTag')"
+                            @update:validation="(val) => (isValid.subtitleTag = val)" />
+                        <InputComponent
+                            v-model="subtitleTagShort"
+                            validation-type="string"
+                            :label="translate('settings.subtitle.subtitleTagShort')"
+                            :description="translate('settings.subtitle.subtitleTagShortDescription')"
+                            @update:validation="(val) => (isValid.subtitleTagShort = val)" />
+                    </div>
+                    <div class="mt-6 flex flex-col">
+                        <SettingRow
+                            :label="translate('settings.subtitle.cleanupOrphanedSubtitles')"
+                            :description="
+                                translate('settings.subtitle.cleanupOrphanedSubtitlesDescription')
+                            ">
                             <ToggleButton v-model="cleanupOrphanedSubtitles">
                                 <span class="text-primary-content text-sm font-medium">
                                     {{
@@ -330,63 +308,163 @@
                                     }}
                                 </span>
                             </ToggleButton>
-                            <div
-                                v-if="cleanupOrphanedSubtitles == 'true' && useSubtitleTagging != 'true'"
-                                class="bg-warning/20 border-warning text-warning-content rounded-md border p-3 text-sm">
-                                ⚠️ {{ translate('settings.subtitle.cleanupRequiresTagging') }}
-                            </div>
-                        </div>
-
+                        </SettingRow>
                     </div>
-                </div>
+                </section>
 
-                <!-- Group 5: Output & Embedding -->
-                <div>
-                    <h3 class="text-primary-content mb-2 text-sm font-semibold uppercase tracking-wider opacity-70">
+                <!-- Group: Output & Embedding -->
+                <section>
+                    <h3
+                        class="text-primary-content mb-3 text-sm font-semibold uppercase tracking-wider opacity-70">
                         {{ translate('settings.subtitle.groupOutputEmbedding') }}
                     </h3>
-                    <div class="flex flex-col space-y-4">
-
-                        <!-- Embed subtitle mode -->
-                        <div class="flex flex-col space-x-2">
-                            <span class="font-semibold">
-                                {{ translate('settings.subtitle.embedMode') }}
-                            </span>
-                            {{ translate('settings.subtitle.embedModeDescription') }}
-                        </div>
-                        <SelectComponent v-model:selected="embedMode" :options="embedOptions" />
-
-                        <div class="border-accent mt-2 flex flex-col space-y-3 border-t pt-4">
-                            <div class="flex flex-col space-x-2">
-                                <span class="font-semibold">
-                                    {{ translate('settings.subtitle.reconcileOutputs') }}
-                                </span>
-                                {{ translate('settings.subtitle.reconcileOutputsDescription') }}
-                            </div>
+                    <div class="flex flex-col">
+                        <SettingRow
+                            :label="translate('settings.subtitle.embedMode')"
+                            :description="translate('settings.subtitle.embedModeDescription')">
+                            <SelectComponent v-model:selected="embedMode" :options="embedOptions" />
+                        </SettingRow>
+                    </div>
+                    <div class="border-accent mt-6 flex flex-col gap-4 border-t pt-4">
+                        <SettingRow
+                            :label="translate('settings.subtitle.reconcileOutputs')"
+                            :description="translate('settings.subtitle.reconcileOutputsDescription')">
                             <button
-                                class="border-accent bg-secondary hover:bg-accent/20 inline-flex w-fit items-center rounded-md border px-4 py-2 disabled:cursor-not-allowed disabled:opacity-60"
+                                class="border-accent bg-secondary hover:bg-accent/20 inline-flex items-center rounded-md border px-4 py-2 disabled:cursor-not-allowed disabled:opacity-60"
                                 :disabled="isReconcilingOutputs"
                                 @click="reconcileOutputs">
                                 {{ translate('settings.subtitle.reconcileOutputs') }}
                             </button>
-
-                            <div class="flex flex-col space-x-2">
-                                <span class="font-semibold">
-                                    {{ translate('settings.subtitle.recreateAllOutputs') }}
-                                </span>
-                                {{ translate('settings.subtitle.recreateAllOutputsDescription') }}
-                            </div>
+                        </SettingRow>
+                        <SettingRow
+                            :label="translate('settings.subtitle.recreateAllOutputs')"
+                            :description="translate('settings.subtitle.recreateAllOutputsDescription')">
                             <button
-                                class="border-accent bg-secondary hover:bg-accent/20 inline-flex w-fit items-center rounded-md border px-4 py-2 disabled:cursor-not-allowed disabled:opacity-60"
+                                class="border-accent bg-secondary hover:bg-accent/20 inline-flex items-center rounded-md border px-4 py-2 disabled:cursor-not-allowed disabled:opacity-60"
                                 :disabled="isRecreatingAll"
                                 @click="recreateAllOutputs">
                                 {{ translate('settings.subtitle.recreateAllOutputs') }}
                             </button>
-                        </div>
-
+                        </SettingRow>
                     </div>
-                </div>
+                </section>
 
+                <!-- Group: Validation -->
+                <section>
+                    <h3
+                        class="text-primary-content mb-3 text-sm font-semibold uppercase tracking-wider opacity-70">
+                        {{ translate('settings.subtitle.groupValidation') }}
+                    </h3>
+                    <div class="flex flex-col">
+                        <SettingRow
+                            :label="translate('settings.validation.enabled')"
+                            :description="translate('settings.validation.description')">
+                            <ToggleButton v-model="validationEnabled">
+                                <span class="text-primary-content text-sm font-medium">
+                                    {{
+                                        validationEnabled == 'true'
+                                            ? translate('common.enabled')
+                                            : translate('common.disabled')
+                                    }}
+                                </span>
+                            </ToggleButton>
+                        </SettingRow>
+                        <SettingRow
+                            :label="translate('settings.validation.integrityEnabled')"
+                            :description="translate('settings.validation.integrityDescription')">
+                            <ToggleButton v-model="integrityValidationEnabled">
+                                <span class="text-primary-content text-sm font-medium">
+                                    {{
+                                        integrityValidationEnabled == 'true'
+                                            ? translate('common.enabled')
+                                            : translate('common.disabled')
+                                    }}
+                                </span>
+                            </ToggleButton>
+                        </SettingRow>
+                    </div>
+                    <div v-if="validationEnabled == 'true'" class="mt-4 flex flex-col gap-4">
+                        <InputComponent
+                            v-model="minDurationMs"
+                            validation-type="number"
+                            :label="translate('settings.validation.minDurationMs')"
+                            @update:validation="(val) => (isValid.minDurationMs = val)">
+                            <div class="flex flex-wrap gap-2">
+                                <button
+                                    type="button"
+                                    class="border-accent hover:bg-accent hover:text-primary-content cursor-pointer rounded border px-2 py-1 text-xs transition-colors"
+                                    @click="minDurationMs = '100'">
+                                    0.2s
+                                </button>
+                                <button
+                                    type="button"
+                                    class="border-accent hover:bg-accent hover:text-primary-content cursor-pointer rounded border px-2 py-1 text-xs transition-colors"
+                                    @click="minDurationMs = '500'">
+                                    0.5s
+                                </button>
+                                <button
+                                    type="button"
+                                    class="border-accent hover:bg-accent hover:text-primary-content cursor-pointer rounded border px-2 py-1 text-xs transition-colors"
+                                    @click="minDurationMs = '1000'">
+                                    1s
+                                </button>
+                                <button
+                                    type="button"
+                                    class="border-accent hover:bg-accent hover:text-primary-content cursor-pointer rounded border px-2 py-1 text-xs transition-colors"
+                                    @click="minDurationMs = '1500'">
+                                    1.5s
+                                </button>
+                            </div>
+                        </InputComponent>
+                        <InputComponent
+                            v-model="maxDurationSecs"
+                            validation-type="number"
+                            :label="translate('settings.validation.maxDurationSecs')"
+                            @update:validation="(val) => (isValid.maxDurationSecs = val)" />
+                        <InputComponent
+                            v-model="minSubtitleLength"
+                            validation-type="number"
+                            :label="translate('settings.validation.minSubtitleLength')"
+                            @update:validation="(val) => (isValid.minSubtitleLength = val)" />
+                        <InputComponent
+                            v-model="maxSubtitleLength"
+                            validation-type="number"
+                            :label="translate('settings.validation.maxSubtitleLength')"
+                            @update:validation="(val) => (isValid.maxSubtitleLength = val)" />
+                        <InputComponent
+                            v-model="maxFileSizeBytes"
+                            validation-type="number"
+                            :label="translate('settings.validation.maxFileSizeBytes')"
+                            @update:validation="(val) => (isValid.maxFileSizeBytes = val)">
+                            <div class="flex flex-wrap gap-2">
+                                <button
+                                    type="button"
+                                    class="border-accent hover:bg-accent hover:text-primary-content cursor-pointer rounded border px-2 py-1 text-xs transition-colors"
+                                    @click="maxFileSizeBytes = (512 * 1024).toString()">
+                                    0.5 KB
+                                </button>
+                                <button
+                                    type="button"
+                                    class="border-accent hover:bg-accent hover:text-primary-content cursor-pointer rounded border px-2 py-1 text-xs transition-colors"
+                                    @click="maxFileSizeBytes = (1024 * 1024).toString()">
+                                    1 MB
+                                </button>
+                                <button
+                                    type="button"
+                                    class="border-accent hover:bg-accent hover:text-primary-content cursor-pointer rounded border px-2 py-1 text-xs transition-colors"
+                                    @click="maxFileSizeBytes = (1.5 * 1024 * 1024).toString()">
+                                    1.5 MB
+                                </button>
+                                <button
+                                    type="button"
+                                    class="border-accent hover:bg-accent hover:text-primary-content cursor-pointer rounded border px-2 py-1 text-xs transition-colors"
+                                    @click="maxFileSizeBytes = (2 * 1024 * 1024).toString()">
+                                    2 MB
+                                </button>
+                            </div>
+                        </InputComponent>
+                    </div>
+                </section>
             </div>
         </template>
     </CardComponent>
@@ -404,6 +482,7 @@ import SaveNotification from '@/components/common/SaveNotification.vue'
 import ToggleButton from '@/components/common/ToggleButton.vue'
 import InputComponent from '@/components/common/InputComponent.vue'
 import SelectComponent from '@/components/common/SelectComponent.vue'
+import SettingRow from '@/components/common/SettingRow.vue'
 
 const { translate } = useI18n()
 const saveNotification = ref<InstanceType<typeof SaveNotification> | null>(null)
@@ -413,7 +492,12 @@ const isReconcilingOutputs = ref(false)
 const isValid = reactive({
     subtitleTag: true,
     subtitleTagShort: true,
-    subtitleOcrMinQualityScore: true
+    subtitleOcrMinQualityScore: true,
+    maxDurationSecs: true,
+    minDurationMs: true,
+    minSubtitleLength: true,
+    maxSubtitleLength: true,
+    maxFileSizeBytes: true
 })
 
 const keepAssSsaWithSrt = computed({
@@ -624,6 +708,94 @@ const cleanSourceAssDrawings = computed({
         (settingsStore.getSetting(SETTINGS.CLEAN_SOURCE_ASS_DRAWINGS) as string) ?? 'true',
     set: (newValue: string): void => {
         settingsStore.updateSetting(SETTINGS.CLEAN_SOURCE_ASS_DRAWINGS, newValue, true)
+        saveNotification.value?.show()
+    }
+})
+
+const validationEnabled = computed({
+    get: (): string => settingsStore.getSetting(SETTINGS.SUBTITLE_VALIDATION_ENABLED) as string,
+    set: (newValue: string): void => {
+        settingsStore.updateSetting(SETTINGS.SUBTITLE_VALIDATION_ENABLED, newValue, true)
+        saveNotification.value?.show()
+    }
+})
+
+const maxDurationSecs = computed({
+    get: () => settingsStore.getSetting(SETTINGS.SUBTITLE_VALIDATION_MAXDURATIONSECS) as string,
+    set: (newValue: string) => {
+        settingsStore.updateSetting(
+            SETTINGS.SUBTITLE_VALIDATION_MAXDURATIONSECS,
+            newValue,
+            isValid.maxDurationSecs
+        )
+        if (isValid.maxDurationSecs) {
+            saveNotification.value?.show()
+        }
+    }
+})
+
+const minDurationMs = computed({
+    get: () => settingsStore.getSetting(SETTINGS.SUBTITLE_VALIDATION_MINDURATIONMS) as string,
+    set: (newValue: string) => {
+        settingsStore.updateSetting(
+            SETTINGS.SUBTITLE_VALIDATION_MINDURATIONMS,
+            newValue,
+            isValid.minDurationMs
+        )
+        if (isValid.minDurationMs) {
+            saveNotification.value?.show()
+        }
+    }
+})
+
+const minSubtitleLength = computed({
+    get: () => settingsStore.getSetting(SETTINGS.SUBTITLE_VALIDATION_MINSUBTITLELENGTH) as string,
+    set: (newValue: string) => {
+        settingsStore.updateSetting(
+            SETTINGS.SUBTITLE_VALIDATION_MINSUBTITLELENGTH,
+            newValue,
+            isValid.minSubtitleLength
+        )
+        if (isValid.minSubtitleLength) {
+            saveNotification.value?.show()
+        }
+    }
+})
+
+const maxSubtitleLength = computed({
+    get: () => settingsStore.getSetting(SETTINGS.SUBTITLE_VALIDATION_MAXSUBTITLELENGTH) as string,
+    set: (newValue: string) => {
+        settingsStore.updateSetting(
+            SETTINGS.SUBTITLE_VALIDATION_MAXSUBTITLELENGTH,
+            newValue,
+            isValid.maxSubtitleLength
+        )
+        if (isValid.maxSubtitleLength) {
+            saveNotification.value?.show()
+        }
+    }
+})
+
+const maxFileSizeBytes = computed({
+    get: () => settingsStore.getSetting(SETTINGS.SUBTITLE_VALIDATION_MAXFILESIZEBYTES) as string,
+    set: (newValue: string) => {
+        settingsStore.updateSetting(
+            SETTINGS.SUBTITLE_VALIDATION_MAXFILESIZEBYTES,
+            newValue,
+            isValid.maxFileSizeBytes
+        )
+        if (isValid.maxFileSizeBytes) {
+            saveNotification.value?.show()
+        }
+    }
+})
+
+const integrityValidationEnabled = computed({
+    get: (): string =>
+        (settingsStore.getSetting(SETTINGS.SUBTITLE_INTEGRITY_VALIDATION_ENABLED) as string) ??
+        'false',
+    set: (newValue: string): void => {
+        settingsStore.updateSetting(SETTINGS.SUBTITLE_INTEGRITY_VALIDATION_ENABLED, newValue, true)
         saveNotification.value?.show()
     }
 })
