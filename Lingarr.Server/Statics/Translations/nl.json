@@ -315,7 +315,7 @@
     "failed": "Mislukt",
     "running": "Actief",
     "cronLabel": "Schema",
-    "noJobs": "No tasks scheduled yet",
+    "noJobs": "Nog geen taken gepland",
     "jobDisplay": {
       "automatedTranslation": "Automatische Vertaling",
       "customSources": "Aangepaste Bron Scan",
@@ -347,7 +347,7 @@
     "confirm": "Bevestigen",
     "currentVersion": "Versie: {version}",
     "devBuild": "Ontwikkelversie",
-    "devBuildWithVersion": "Dev · {version}",
+    "devBuildWithVersion": "Ontwikkel · {version}",
     "disable": "Uitschakelen",
     "discard": "Negeren",
     "enabled": "Ingeschakeld",
@@ -630,7 +630,8 @@
       "groupOcr": "OCR (Bitmap-ondertitels)",
       "groupFormatCleaning": "Formaat & Reiniging",
       "groupTagging": "Tagging & Identificatie",
-      "groupOutputEmbedding": "Output & Insluiting"
+      "groupOutputEmbedding": "Output & Insluiting",
+      "groupValidation": "Validatie"
     },
     "indexing": {
       "title": "Indexering",
@@ -646,7 +647,7 @@
       "enableAutomatedTranslation": "Geautomatiseerde vertaling:",
       "translationScheduleLabel": "Stel vertaalschema in:",
       "limitsHeader": "Limieten:",
-      "limitsDescription": "Limits applied to automated translation runs and to which media is considered new enough to be picked up by the sync jobs.",
+      "limitsDescription": "Limieten voor geautomatiseerde vertaalroutines en voor welke media als nieuw genoeg worden beschouwd om door de synchronisatietaken te worden opgepikt.",
       "scheduleLimitLabel": "Beperk het aantal vertalingen per schema",
       "defaultAgeThresholdLabel": "Standaard bestandsleeftijd vertraging voor vertaling:",
       "movieAgeThresholdLabel": "Film bestandsleeftijd vertraging in 'uren'",

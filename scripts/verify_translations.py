@@ -24,6 +24,9 @@ ENGLISH_VALUE_ALLOWLIST = {
     'settings.custom.key_placeholder',
     'settings.services.localAiModelPlaceholder',
     'settings.services.localAiPlaceholder',
+    'settings.subtitle.groupValidation',
+    'settings.subtitle.outputModeBoth',
+    'statistics.inLabel',
     'translationState.notApplicable'
 }
 

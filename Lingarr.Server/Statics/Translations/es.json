@@ -315,7 +315,7 @@
     "failed": "Fallido",
     "running": "Ejecutando",
     "cronLabel": "Programación",
-    "noJobs": "No tasks scheduled yet",
+    "noJobs": "Aún no hay tareas programadas",
     "jobDisplay": {
       "automatedTranslation": "Traducción Automática",
       "customSources": "Escaneo de Fuentes Personalizadas",
@@ -347,7 +347,7 @@
     "confirm": "Confirmar",
     "currentVersion": "Versión: {version}",
     "devBuild": "Versión de desarrollo",
-    "devBuildWithVersion": "Dev · {version}",
+    "devBuildWithVersion": "Desarrollo · {version}",
     "disable": "Desactivar",
     "discard": "Descartar",
     "enabled": "Habilitado",
@@ -629,8 +629,9 @@
       "groupSourceSelection": "Seleccion de fuente",
       "groupOcr": "OCR (Subtitulos de mapa de bits)",
       "groupFormatCleaning": "Formato y Limpieza",
-      "groupTagging": "Etiquetado e Identificacion",
-      "groupOutputEmbedding": "Salida e Incrustacion"
+      "groupTagging": "Etiquetado e Identificación",
+      "groupOutputEmbedding": "Salida e Incrustación",
+      "groupValidation": "Validación"
     },
     "indexing": {
       "title": "Indexación",
@@ -646,7 +647,7 @@
       "enableAutomatedTranslation": "Traducción automatizada:",
       "translationScheduleLabel": "Establecer programa de traducción:",
       "limitsHeader": "Límites:",
-      "limitsDescription": "Limits applied to automated translation runs and to which media is considered new enough to be picked up by the sync jobs.",
+      "limitsDescription": "Límites aplicados a las ejecuciones de traducción automatizadas y a qué medios se consideran lo suficientemente nuevos para ser recogidos por las tareas de sincronización.",
       "scheduleLimitLabel": "Limitar la cantidad de traducciones por programa",
       "defaultAgeThresholdLabel": "Retraso predeterminado de antigüedad de archivo para traducción:",
       "movieAgeThresholdLabel": "Retraso de antigüedad de archivo de película en 'horas'",

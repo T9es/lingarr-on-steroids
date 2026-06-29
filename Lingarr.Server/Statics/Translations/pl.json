@@ -315,7 +315,7 @@
     "failed": "Nieudane",
     "running": "Uruchomione",
     "cronLabel": "Harmonogram",
-    "noJobs": "No tasks scheduled yet",
+    "noJobs": "Brak zaplanowanych zadań",
     "jobDisplay": {
       "automatedTranslation": "Automatyczne Tłumaczenie",
       "customSources": "Skanowanie Źródeł Niestandardowych",
@@ -347,7 +347,7 @@
     "confirm": "Potwierdź",
     "currentVersion": "Wersja: {version}",
     "devBuild": "Wersja deweloperska",
-    "devBuildWithVersion": "Dev · {version}",
+    "devBuildWithVersion": "Deweloperska · {version}",
     "disable": "Wyłącz",
     "discard": "Odrzuć",
     "enabled": "Włączone",
@@ -630,7 +630,8 @@
       "groupOcr": "OCR (Napisy bitmapowe)",
       "groupFormatCleaning": "Format i Czyszczenie",
       "groupTagging": "Tagowanie i Identyfikacja",
-      "groupOutputEmbedding": "Wyjscie i Osadzanie"
+      "groupOutputEmbedding": "Wyjście i Osadzanie",
+      "groupValidation": "Walidacja"
     },
     "indexing": {
       "title": "Indeksowanie",
@@ -646,7 +647,7 @@
       "enableAutomatedTranslation": "Automatyczne tłumaczenie:",
       "translationScheduleLabel": "Ustaw harmonogram tłumaczeń:",
       "limitsHeader": "Limity:",
-      "limitsDescription": "Limits applied to automated translation runs and to which media is considered new enough to be picked up by the sync jobs.",
+      "limitsDescription": "Limity stosowane do automatycznych uruchomień tłumaczeń oraz określające, które multimedia są wystarczająco nowe, aby zostać przechwycone przez zadania synchronizacji.",
       "scheduleLimitLabel": "Ogranicz liczbę tłumaczeń na harmonogram",
       "defaultAgeThresholdLabel": "Domyślne opóźnienie wieku pliku dla tłumaczenia:",
       "movieAgeThresholdLabel": "Opóźnienie wieku pliku filmowego w 'godzinach'",

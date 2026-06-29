@@ -315,7 +315,7 @@
     "failed": "Fehlgeschlagen",
     "running": "Aktiv",
     "cronLabel": "Zeitplan",
-    "noJobs": "No tasks scheduled yet",
+    "noJobs": "Noch keine Aufgaben geplant",
     "jobDisplay": {
       "automatedTranslation": "Automatische Übersetzung",
       "customSources": "Benutzerdefinierte Quellensuche",
@@ -347,7 +347,7 @@
     "confirm": "Bestätigen",
     "currentVersion": "Version: {version}",
     "devBuild": "Entwicklungsversion",
-    "devBuildWithVersion": "Dev · {version}",
+    "devBuildWithVersion": "Entwickler · {version}",
     "disable": "Deaktivieren",
     "discard": "Verwerfen",
     "enabled": "Aktiviert",
@@ -576,7 +576,7 @@
       "outputModeDescription": "Wenn aktiviert, behalten übersetzte ASS/SSA-Untertitel ihr Originalformat und erzeugen zusätzlich eine reine SRT-Sidecar-Datei. SRT-Quellen erzeugen weiterhin nur eine SRT.",
       "outputModeAssOnly": "Nur ASS",
       "outputModeBoth": "ASS + SRT",
-      "outputModeMatchSource": "Quelle ?bernehmen",
+      "outputModeMatchSource": "Quelle übernehmen",
       "outputModeSrtOnly": "Nur SRT",
       "skipWhenTargetEmbedded": "Übersetzung überspringen, wenn Zielsprache bereits eingebettet ist:",
                     "skipWhenTargetEmbeddedDescription": "Wenn aktiviert, Übersetzung überspringen, wenn die Mediendatei bereits eine eingebettete Untertitelspur in Ihrer Zielsprache enthält. Dies spart API-Kosten und Verarbeitungszeit.",
@@ -630,7 +630,8 @@
       "groupOcr": "OCR (Bitmap-Untertitel)",
       "groupFormatCleaning": "Format & Bereinigung",
       "groupTagging": "Tagging & Identifikation",
-      "groupOutputEmbedding": "Ausgabe & Einbettung"
+      "groupOutputEmbedding": "Ausgabe & Einbettung",
+      "groupValidation": "Validierung"
     },
     "indexing": {
       "title": "Indizierung",
@@ -646,7 +647,7 @@
       "enableAutomatedTranslation": "Automatisierte Übersetzung:",
       "translationScheduleLabel": "Übersetzungsplan festlegen:",
       "limitsHeader": "Grenzwerte:",
-      "limitsDescription": "Limits applied to automated translation runs and to which media is considered new enough to be picked up by the sync jobs.",
+      "limitsDescription": "Grenzwerte für automatisierte Übersetzungsläufe und dafür, welche Medien als neu genug gelten, um von den Synchronisierungsaufgaben aufgegriffen zu werden.",
       "scheduleLimitLabel": "Begrenzen Sie die Anzahl der Übersetzungen pro Plan",
       "defaultAgeThresholdLabel": "Standard-Dateialter-Verzögerung für Übersetzung:",
       "movieAgeThresholdLabel": "Film-Dateialter-Verzögerung in 'Stunden'",
