@@ -1,0 +1,71 @@
+<Project>
+
+  <!--
+      Single source of truth for the Lingarr assembly version.
+
+      Resolution order:
+        1. MSBuild property "Version" passed via /p:Version=... or via the
+           docker-build CI workflow.
+        2. The local git describe output (abbrev zero, leading v stripped).
+           Used automatically when building from a git checkout.
+        3. Literal fallback (default below).
+
+      This replaces the previously hard-coded value inside
+      Lingarr.Core.csproj so a release can be cut without anyone having to
+      hand-edit the .csproj.
+  -->
+
+  <PropertyGroup>
+    <AssemblyVersion Condition="'$(Version)' == '' AND '$(AssemblyVersion)' == ''">2.5.0</AssemblyVersion>
+    <AssemblyVersion Condition="'$(AssemblyVersion)' == ''">$(Version)</AssemblyVersion>
+
+    <FileVersion Condition="'$(Version)' == '' AND '$(FileVersion)' == ''">2.5.0</FileVersion>
+    <FileVersion Condition="'$(FileVersion)' == ''">$(Version)</FileVersion>
+
+    <Version Condition="'$(Version)' == '' AND '$(GitDescribeVersion)' == ''">2.5.0</Version>
+    <Version Condition="'$(GitDescribeVersion)' != ''">$(GitDescribeVersion)</Version>
+
+    <!-- Internal informational attribute: "<Version>+<short sha>" when
+         we have a git sha, otherwise just "<Version>". -->
+    <InformationalVersion>$(Version)</InformationalVersion>
+    <InformationalVersion Condition="'$(GitShortSha)' != ''">$(Version)+$(GitShortSha)</InformationalVersion>
+  </PropertyGroup>
+
+  <!--
+    Runs git describe (tags, abbrev zero) and git rev-parse short HEAD
+    from the repo root and exposes the results as MSBuild properties.
+    No-ops when git isn't available or the build context isn't a git
+    checkout (typical for docker build without .git shipped in).
+  -->
+  <Target Name="ResolveVersionFromGit"
+          BeforeTargets="GenerateAssemblyInfo"
+          Condition="'$(Version)' == '' AND '$(GitDescribeVersion)' == '' AND Exists('$(MSBuildThisDirectory).git')">
+
+    <PropertyGroup>
+      <_GitOutput></_GitOutput>
+      <_GitShaOutput></_GitShaOutput>
+    </PropertyGroup>
+
+    <Exec Command="git describe --tags --abbrev=0"
+          WorkingDirectory="$(MSBuildThisDirectory)"
+          IgnoreExitCode="true"
+          ConsoleToMSLog="true"
+          ContinueOnError="WarnAndContinue">
+      <Output PropertyName="_GitOutput" TaskParameter="Output" />
+    </Exec>
+
+    <Exec Command="git rev-parse --short HEAD"
+          WorkingDirectory="$(MSBuildThisDirectory)"
+          IgnoreExitCode="true"
+          ConsoleToMSLog="true"
+          ContinueOnError="WarnAndContinue">
+      <Output PropertyName="_GitShaOutput" TaskParameter="Output" />
+    </Exec>
+
+    <PropertyGroup>
+      <GitDescribeVersion Condition="'$(_GitOutput)' != ''">$([System.Text.RegularExpressions.Regex]::Replace($(_GitOutput), '^v', ''))</GitDescribeVersion>
+      <GitShortSha Condition="'$(_GitShaOutput)' != ''">$(_GitShaOutput)</GitShortSha>
+    </PropertyGroup>
+  </Target>
+
+</Project>

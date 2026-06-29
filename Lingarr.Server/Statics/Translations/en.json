@@ -348,6 +348,7 @@
     "confirm": "Confirm",
     "currentVersion": "Version: {version}",
     "devBuild": "Dev Build",
+    "devBuildWithVersion": "Dev · {version}",
     "disable": "Disable",
     "discard": "Discard",
     "enabled": "Enabled",

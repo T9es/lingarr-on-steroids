@@ -19,21 +19,31 @@ WORKDIR /app
 FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 ARG BUILD_CONFIGURATION=Debug
 ARG TARGETARCH=amd64
+# Optional override pushed by .github/workflows/docker-build.yml when a
+# release tag is being packaged. When unset, the build resolves the
+# version from git describe via Directory.Build.props (or falls back to
+# the in-repo default).
+ARG VERSION
 RUN echo "Current BUILD_CONFIGURATION: $BUILD_CONFIGURATION"
+RUN echo "Current VERSION: ${VERSION:-<from-git-or-default>}"
 WORKDIR /src
 COPY ["Lingarr.Server/Lingarr.Server.csproj", "Lingarr.Server/"]
 RUN dotnet restore "./Lingarr.Server/./Lingarr.Server.csproj" --arch $TARGETARCH
 COPY . .
 WORKDIR "/src/Lingarr.Server"
 COPY --from=client /Client/dist/ ./wwwroot
-RUN dotnet build "./Lingarr.Server.csproj" -c $BUILD_CONFIGURATION -o /app/build --arch $TARGETARCH
+RUN dotnet build "./Lingarr.Server.csproj" -c $BUILD_CONFIGURATION -o /app/build --arch $TARGETARCH \
+        ${VERSION:+"/p:Version=$VERSION"}
 
 # Step 4: Publish the application
 FROM --platform=$BUILDPLATFORM build AS publish
 ARG BUILD_CONFIGURATION=Debug
 ARG TARGETARCH=amd64
+# Re-declared: ARGs don't carry across FROM boundaries.
+ARG VERSION
 RUN echo "Current BUILD_CONFIGURATION: $BUILD_CONFIGURATION"
-RUN dotnet publish "./Lingarr.Server.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false --arch $TARGETARCH
+RUN dotnet publish "./Lingarr.Server.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false --arch $TARGETARCH \
+        ${VERSION:+"/p:Version=$VERSION"}
 
 # Step 4b: Build PGS-to-SRT OCR helper
 FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:9.0 AS pgstosrt

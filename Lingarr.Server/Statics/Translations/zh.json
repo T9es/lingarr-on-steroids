@@ -347,6 +347,7 @@
     "confirm": "确认",
     "currentVersion": "版本：{version}",
     "devBuild": "开发版本",
+    "devBuildWithVersion": "Dev · {version}",
     "disable": "禁用",
     "discard": "放弃",
     "enabled": "已启用",

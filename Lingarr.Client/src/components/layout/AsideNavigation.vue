@@ -82,7 +82,7 @@
                     <BadgeComponent
                         v-if="instanceStore.getVersion.isDevBuild"
                         classes="text-primary-content border-purple-300 bg-purple-500/30">
-                        {{ translate('common.devBuild') }}
+                        {{ devBuildLabel }}
                     </BadgeComponent>
                     <!-- Update Available Badge - shown for release builds with updates -->
                     <BadgeComponent
@@ -151,6 +151,14 @@ function closeOnMobile() {
 const activeRequests: ComputedRef<number> = computed(
     () => translationRequestStore.getActiveTranslationRequests
 )
+
+const devBuildLabel = computed(() => {
+    const version = instanceStore.getVersion
+    const display = version.displayVersion || version.currentVersion
+    return display
+        ? translate('common.devBuildWithVersion').format({ version: display })
+        : translate('common.devBuild')
+})
 
 const isOpen = computed({
     get: () => instanceStore.getIsOpen,

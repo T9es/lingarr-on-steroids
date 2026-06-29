@@ -347,6 +347,7 @@
     "confirm": "Potwierdź",
     "currentVersion": "Wersja: {version}",
     "devBuild": "Wersja deweloperska",
+    "devBuildWithVersion": "Dev · {version}",
     "disable": "Wyłącz",
     "discard": "Odrzuć",
     "enabled": "Włączone",

@@ -202,6 +202,17 @@ public static class LingarrVersion
 
     private static bool HasDevelopmentMarker(string? version, string releaseVersion)
     {
+        return IsDevelopmentVersion(version, releaseVersion);
+    }
+
+    /// <summary>
+    /// Internal helper exposed for unit tests. Determines whether the
+    /// supplied informational version string indicates a development
+    /// build rather than a tagged release, taking build metadata into
+    /// account via SemVer parsing.
+    /// </summary>
+    internal static bool IsDevelopmentVersion(string? version, string releaseVersion)
+    {
         if (string.IsNullOrWhiteSpace(version))
         {
             return false;
@@ -211,18 +222,35 @@ public static class LingarrVersion
         var normalizedReleaseVersion = releaseVersion.Trim();
         var lowerVersion = normalizedVersion.ToLowerInvariant();
 
-        return lowerVersion.Contains("-dev") ||
-               lowerVersion.Contains("-alpha") ||
-               lowerVersion.Contains("-beta") ||
-               lowerVersion.Contains("-rc") ||
-               lowerVersion.Contains("+") ||
-               lowerVersion.Contains("commit") ||
-               lowerVersion.Contains("sha") ||
-               !string.Equals(
-                   normalizedVersion.TrimStart('v'),
-                   normalizedReleaseVersion.TrimStart('v'),
-                   StringComparison.OrdinalIgnoreCase
-               );
+        if (lowerVersion.Contains("-dev") ||
+            lowerVersion.Contains("-alpha") ||
+            lowerVersion.Contains("-beta") ||
+            lowerVersion.Contains("-rc") ||
+            lowerVersion.Contains("commit") ||
+            lowerVersion.Contains("sha"))
+        {
+            return true;
+        }
+
+        if (SemVersion.TryParse(normalizedVersion, SemVersionStyles.Any, out var parsed))
+        {
+            if (parsed.IsPrerelease || !string.IsNullOrEmpty(parsed.Metadata))
+            {
+                return true;
+            }
+
+            return !string.Equals(
+                parsed.ToString(),
+                normalizedReleaseVersion.TrimStart('v'),
+                StringComparison.OrdinalIgnoreCase
+            );
+        }
+
+        return !string.Equals(
+            normalizedVersion.TrimStart('v'),
+            normalizedReleaseVersion.TrimStart('v'),
+            StringComparison.OrdinalIgnoreCase
+        );
     }
 
     private static string? ExtractCommitSha(string? informationalVersion)

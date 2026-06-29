@@ -84,3 +84,5 @@ docs/
 !.git/config
 !.git/packed-refs
 !.git/refs/heads/**
+!.git/refs/tags/**
+!.git/description
