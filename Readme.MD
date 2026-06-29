@@ -12,9 +12,34 @@
 
 ---
 
-> This README reflects our fork and the upstream Lingarr project as they looked on March 27, 2026. If upstream changes later, a few details here may drift over time.
+> This README reflects our fork and the upstream Lingarr project as they looked on June 29, 2026. If upstream changes later, a few details here may drift over time.
 >
 > Upgrading from v1.x? Version 2.0.0 has breaking changes. MySQL/MariaDB is no longer supported, settings are not migrated automatically, and a clean start is required.
+>
+> Upgrading from v2.x to v3.0.0? See the [CHANGELOG](CHANGELOG.md) for migration notes. The Schedule page was renamed to Tasks. The onboarding wizard, configurable job scheduling, and post-translation quality gate have changed. CrofAI joined the supported AI providers. The version badge in the bottom-left now shows the real dev-build version instead of "Dev Build".
+
+---
+
+## What's new in v3.0.0
+
+The v3 release is a substantial change over v2.5.0. If you only read one section, read this one.
+
+- **Git-aware release versioning.** The assembly version is now resolved from `git describe` at build time, and the Docker build forwards a `VERSION` build-arg. Cut a release by tagging `v3.0.0` and pushing the tag. No more hand-editing `Lingarr.Core.csproj` for a release.
+- **Dev-build badge shows the real version.** The bottom-left aside badge now reads `Dev <version>` (for example, `Dev 3.0.0-216-g39ae09b2`) instead of the previous generic `Dev Build` text.
+- **CrofAI is now a supported AI provider** with credits-only usage tracking. Translations auto-pause when your CrofAI credits balance hits zero. See the new `CROFAI_*` env vars in [Settings.MD](Settings.MD).
+- **OCR for bitmap subtitles.** DVD/VobSub, PGS, and other image-based subtitle tracks are OCR'd into text and then translated like any other source. Two new media states (`OcrPending`, `OcrBlocked`) cover the OCR lifecycle.
+- **Per-provider circuit breaker.** A provider that starts throwing 5xx errors will trip a circuit and pause requests to it for a while, instead of burning your API quota during a provider outage.
+- **Paused translation recovery.** Provider 429s (for example, Gemini rate limits) no longer kill a translation. The worker holds the slot and resumes when the limit clears.
+- **Post-translation quality gate.** After a batch finishes, surviving paragraphs are scored. The UI lets you review, edit, accept, or reject items that fall outside the tolerance, with a Requeue All / Dismiss All bulk action.
+- **Auto source-language mode.** Source language can be auto-detected per cue using NLLB (FLORES-200 spBLEU), LLM tier scoring, and language-family heuristics. Toggle is in onboarding and in the source-language settings.
+- **Configurable job scheduling on the new Tasks page.** Each Hangfire and translation job has its own enable toggle and a per-job cron expression. The Tasks page is the renamed and redesigned Schedule page, wrapped in shared CardComponent cards with a responsive 1/2/3-column grid, loading and empty states, and a corrected SignalR cleanup. The old automation block on the limits card is gone.
+- **Configurable embedding and language-detection, with new UI.** Frontend settings UI for MKV embedded-subtitle behaviour, untagged-stream language detection, and a request retry cap.
+- **MKV embed fallback for long output paths.** If the translated subtitle path would exceed common filesystem limits (long anime file names are the usual culprit), Lingarr embeds the translation back into the original MKV instead.
+- **Upload workspace moved under translations.** The Upload Workspace now lives as a tab inside the Translations page, so you no longer jump between top-level pages to manage uploads.
+- **Dashboard infinite scroll, completed translation compare viewer, API usage widget enhancements.** Quality-of-life updates that pay off once your library is large.
+- **GitHub issue templates** for bug, feature, and setup questions now sit under `.github/ISSUE_TEMPLATE/`. Please use them when opening issues.
+
+The full migration walkthrough is in [CHANGELOG.md](CHANGELOG.md#migration-notes-for-3x-v300).
 
 ---
 
@@ -34,9 +59,12 @@ It still inherits Lingarr's base workflow: index media through Radarr and Sonarr
 |------|--------------------------|
 | Custom translation worker | Translation jobs run through a custom `BackgroundService` with configurable parallel workers instead of relying only on Hangfire queues. |
 | PostgreSQL-first deployment | PostgreSQL is the default database. SQLite remains supported for smaller installs. |
-| Media translation states | Media uses a 9-state model: `Unknown`, `NotApplicable`, `Pending`, `InProgress`, `Complete`, `Stale`, `AwaitingSource`, `NoSuitableSubtitles`, `Failed`. |
+| 11-state media model | Media track translation status across 11 states including OCR lifecycles: `Unknown`, `NotApplicable`, `Pending`, `InProgress`, `Complete`, `Stale`, `NoSuitableSubtitles`, `Failed`, `AwaitingSource`, `OcrPending`, `OcrBlocked`. Decision logic lives in `MediaStateService`. |
 | Multi-instance support | Movies and shows track `SourceInstanceId`, so one Lingarr install can connect to multiple Radarr and Sonarr instances. |
 | Deferred repair | Failed lines can be retried with surrounding context so repair passes are less brittle and usually translate better. |
+| Per-provider circuit breaker | A singleton circuit breaker tracks failures per translation provider and backs off automatically when error thresholds are crossed, so a flaky Gemini or OpenAI endpoint will not drain your API quota. |
+| Paused translation recovery | Translation requests that hit provider rate limits (for example, Gemini 429) pause into a holding slot instead of failing, and resume automatically once the limit clears. |
+| Post-translation quality gate | After a batch finishes, surviving paragraphs are scored with a configurable tolerance. The UI lets you edit or reject anything that fails the gate. Default is on, with a settings toggle. |
 
 ### Subtitle processing
 
@@ -44,6 +72,9 @@ It still inherits Lingarr's base workflow: index media through Radarr and Sonarr
 - ASS/SSA cleanup strips drawing commands, musical markers, placeholder effects, and URLs before translation.
 - Sparse subtitle tracks with fewer than 50 dialogue entries are skipped.
 - External subtitle discovery picks up subtitle files you add manually and keeps them tracked.
+- Bitmap subtitle tracks (DVD/VobSub, PGS, etc.) can be OCR'd into text and then translated like any other source.
+- ASS integrity checks catch leaked tag fragments so translation prompts do not pick up drawing commands as dialogue.
+- Long translate output paths that would overflow common filesystem limits are embedded back into the original MKV instead of being written next to the media file.
 
 ### UI and operations
 
@@ -51,6 +82,11 @@ It still inherits Lingarr's base workflow: index media through Radarr and Sonarr
 - Dashboard widgets support drag-and-drop layouts and live updates over SignalR.
 - Job queue and translation history widgets add visibility that upstream does not currently ship.
 - The API usage widget tracks usage metrics such as calls, tokens, latency, errors, and success rate.
+- Failures show up in a quality-gate audit where you can inline-edit the offending cue, then accept or reject it. Failed batches can be requeued or dismissed in bulk.
+- A completed translation compare viewer lets you diff source vs translated text side by side after the fact.
+- The dashboard history widget uses infinite scroll instead of paging, which matters once you have a large library.
+- The Upload Workspace now lives as a tab inside the Translations page, so you no longer jump between top-level pages to manage uploads. Custom Sources remains a top-level settings entry.
+- Configurable job scheduling lives on the redesigned Tasks page (formerly Schedule) with per-job enable toggles, cron expressions, shared CardComponent cards, a responsive grid, and explicit loading/empty states.
 - The client includes 11 built-in themes, not just a light/dark toggle.
 - The UI is translated into English, Dutch, German, French, Spanish, Polish, and Simplified Chinese.
 
@@ -60,7 +96,10 @@ It still inherits Lingarr's base workflow: index media through Radarr and Sonarr
 - Bulk integrity checks can validate translated subtitles across the library.
 - Ghost-job protection avoids overwriting terminal request states and cleans up interrupted work after restarts.
 - Exponential backoff and delayed requeue logic reduce pressure on unstable providers.
-- Chutes and NanoGPT integrations include quota-aware usage handling and provider-specific controls in this fork.
+- Paused translation recovery holds worker slots for translations that hit rate limits (for example, Gemini 429) and resumes them automatically once the limit clears, instead of failing the request.
+- Silent token streaming for AI providers reduces first-token latency on long translations.
+- Own translation queues honour media priority and avoid head-of-line blocking when a low-priority translation stalls.
+- Chutes, NanoGPT, and CrofAI integrations each ship with quota-aware usage handling, provider-specific controls, and a UI in this fork.
 
 ---
 
@@ -75,6 +114,7 @@ This is what works in our fork today. Some of these are supported upstream as we
 - [DeepSeek](https://deepseek.com/)
 - [Chutes.ai](https://chutes.ai/) (with quota tracking & auto-pause)
 - [NanoGPT](https://nano-gpt.com/) (with subscription usage, reserves & auto-pause)
+- [CrofAI](https://crof.ai/) (credits-only usage tracking; auto-pauses translations when the credits balance hits zero)
 - LocalAI / Ollama (self-hosted)
 
 **Cloud APIs:**

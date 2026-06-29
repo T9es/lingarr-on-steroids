@@ -1,8 +1,10 @@
 # Settings
 
-These are the environment variables currently read by Lingarr on Steroids as of March 27, 2026.
+These are the environment variables currently read by Lingarr on Steroids as of June 29, 2026.
 
 When a variable maps to an application setting, Lingarr applies it on startup and persists it to the database. Not every UI setting is env-backed: multi-instance arrays, token limits, subtitle validation rules, onboarding progress, dashboard layout, and most automation options are still configured through the UI or API.
+
+The v3.0.0 release also added new database-backed settings that are configured in the UI rather than via env vars, including the per-provider circuit breaker threshold, post-translation quality gate tolerance, OCR detection toggles, configurable job scheduling on the new Tasks page (per-job cron expressions and enable flags), the failed-translation retry cap, and the auto source-language detection mode. Database settings still persist across container restarts as long as `/app/config` and the database volume are preserved. See [CHANGELOG.md](CHANGELOG.md) for a complete list.
 
 ## Container and runtime
 
@@ -65,6 +67,8 @@ Example:
 | `gemini` | Google Gemini |
 | `deepseek` | DeepSeek |
 | `chutes` | Chutes.ai |
+| `nanogpt` | NanoGPT (chat model or subscription) |
+| `crofai` | CrofAI (credits-only) |
 
 ## Provider-specific variables
 
@@ -126,8 +130,32 @@ Example:
 | `CHUTES_API_KEY` | Chutes API key. |
 | `CHUTES_USAGE_LIMIT_OVERRIDE` | Optional daily request limit override used by the quota-aware Chutes integration. |
 
+### NanoGPT
+
+| Environment variable | Description | Default |
+|----------------------|-------------|---------|
+| `NANOGPT_MODEL` | Model ID used for NanoGPT translations. | service-selected default |
+| `NANOGPT_API_KEY` | NanoGPT API key. | - |
+| `NANOGPT_SUBSCRIPTION_MODELS_ONLY` | When truthy (`true` / `1` / `yes`), restrict selectable models to NanoGPT subscription plans. Prevents accidental spend on off-subscription models. | `true` |
+| `NANOGPT_WEEKLY_TOKEN_ALLOWANCE` | Weekly token budget used by the NanoGPT reserve policy in tokens. The policy treats `0` (or unset) as disabled. | `60000000` (60 M) |
+| `NANOGPT_TOKEN_RESERVE` | Tokens held back as a per-window reserve. When remaining weekly tokens drop to or below this value, the worker pauses translations to avoid blowing the budget mid-batch. Set to `0` to disable. | `0` (disabled) |
+| `NANOGPT_DAILY_UNIT_RESERVE` | Daily unit reserve measured in NanoGPT `daily` units, evaluated alongside the weekly reserve. Set to `0` to disable. | `0` (disabled) |
+| `NANOGPT_MONTHLY_UNIT_RESERVE` | Monthly unit reserve measured in NanoGPT `monthly` units, evaluated alongside the daily and weekly reserves. Set to `0` to disable. | `0` (disabled) |
+
+The reserve windows (daily, weekly, monthly) are evaluated independently by `NanoGptReservePolicy`. If any single window's remaining budget falls to or below its reserve, translations pause and the policy reports the earliest reset time.
+
+### CrofAI
+
+| Environment variable | Description |
+|----------------------|-------------|
+| `CROFAI_MODEL` | Model ID used for CrofAI translations. |
+| `CROFAI_API_KEY` | CrofAI API key. |
+
+CrofAI ships with credits-only usage tracking. Translations auto-pause when the credits balance hits zero. Crof.ai no longer offers subscriptions as of the v3.0.0 release, so the previous daily-quota-driven auto-pause hook is no longer relevant. If you want a soft pause to protect a budget, configure the per-provider circuit breaker threshold via the UI instead.
+
 ## Not currently bootstrapped from env
 
 - Multi-instance Radarr and Sonarr definitions are stored as JSON settings in the database and managed through the UI.
 - Token-limit controls, Chutes mode, subtitle validation rules, extraction mode, dashboard layout, and onboarding progress are not imported from environment variables on startup.
+- The v3.0.0 UI-only settings include: per-provider circuit breaker thresholds, post-translation quality gate tolerance and toggle, OCR detection job toggle, configurable scheduling on the Tasks page (per-job cron expressions and enable flags), the failed-translation retry cap, the auto source-language detection mode, and MKV embedding behaviour. None of these are env-backed. Configure them via the UI.
 - If you need those settings to survive reinstalls, keep the application database and `/app/config` volume.
