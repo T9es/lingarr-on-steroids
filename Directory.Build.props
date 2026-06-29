@@ -16,13 +16,13 @@
   -->
 
   <PropertyGroup>
-    <AssemblyVersion Condition="'$(Version)' == '' AND '$(AssemblyVersion)' == ''">2.5.0</AssemblyVersion>
+    <AssemblyVersion Condition="'$(Version)' == '' AND '$(AssemblyVersion)' == ''">3.0.0</AssemblyVersion>
     <AssemblyVersion Condition="'$(AssemblyVersion)' == ''">$(Version)</AssemblyVersion>
 
-    <FileVersion Condition="'$(Version)' == '' AND '$(FileVersion)' == ''">2.5.0</FileVersion>
+    <FileVersion Condition="'$(Version)' == '' AND '$(FileVersion)' == ''">3.0.0</FileVersion>
     <FileVersion Condition="'$(FileVersion)' == ''">$(Version)</FileVersion>
 
-    <Version Condition="'$(Version)' == '' AND '$(GitDescribeVersion)' == ''">2.5.0</Version>
+    <Version Condition="'$(Version)' == '' AND '$(GitDescribeVersion)' == ''">3.0.0</Version>
     <Version Condition="'$(GitDescribeVersion)' != ''">$(GitDescribeVersion)</Version>
 
     <!-- Internal informational attribute: "<Version>+<short sha>" when
