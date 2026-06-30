@@ -214,6 +214,8 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<ICrofAiUsageService, CrofAiUsageService>();
         builder.Services.AddScoped<ITokenUsageService, TokenUsageService>();
         builder.Services.AddScoped<ITranslationCheckpointService, TranslationCheckpointService>();
+        builder.Services.AddScoped<IFailedTranslationCompletionService, FailedTranslationCompletionService>();
+        builder.Services.AddScoped<ITranslationSiblingSequenceApprovalService, TranslationSiblingSequenceApprovalService>();
         builder.Services.AddScoped<IPausedTranslationResumeService, PausedTranslationResumeService>();
         
         // Translation worker service (singleton BackgroundService that manages translation workers)

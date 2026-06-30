@@ -4,6 +4,7 @@ using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models.Batch;
 using Lingarr.Server.Models.FileSystem;
+using Lingarr.Server.Models.Translation;
 using Lingarr.Server.Services.Subtitle;
 using Lingarr.Server.Services.Translation;
 
@@ -466,7 +467,10 @@ public class SubtitleTranslationService
             fileIdentifier);
         if (unresolvedEntries.Count > 0)
         {
-            ThrowMissingTranslationException(unresolvedEntries);
+            ThrowMissingTranslationException(
+                unresolvedEntries,
+                item => echoedRepresentativePositions.Contains(
+                    globalDeduplication.GetRepresentativePosition(item.Position)));
         }
 
         if (representativeEntries.Count == 0 || _lastProgression < 100)
@@ -762,7 +766,9 @@ public class SubtitleTranslationService
             return new BatchProcessingResult(resolvedProviderTranslations, missingEntries);
         }
 
-        ThrowMissingTranslationException(missingEntries);
+        ThrowMissingTranslationException(
+            missingEntries,
+            item => echoedPositions.Contains(deduplication.GetRepresentativePosition(item.Position)));
         return new BatchProcessingResult(resolvedProviderTranslations, []);
     }
 
@@ -857,23 +863,17 @@ public class SubtitleTranslationService
         }
     }
 
-    private static void ThrowMissingTranslationException(List<BatchSubtitleItem> missingItems)
+    private static void ThrowMissingTranslationException(
+        List<BatchSubtitleItem> missingItems,
+        Func<BatchSubtitleItem, bool>? isAutoApprovalEligible = null)
     {
-        var positionRange = missingItems.Count <= 10
-            ? string.Join(", ", missingItems.Select(item => item.Position))
-            : $"{string.Join(", ", missingItems.Take(10).Select(item => item.Position))}... (+{missingItems.Count - 10} more)";
-
-        var examples = missingItems.Take(5)
-            .Select(item =>
-            {
-                var text = item.Line.Length > 120 ? item.Line[..117] + "..." : item.Line;
-                return $"pos {item.Position}: \"{text}\"";
-            });
-        var exampleText = string.Join("; ", examples);
-
-        var message =
-            $"Translation failed: {missingItems.Count} subtitle(s) missing at positions: {positionRange}. First examples: {exampleText}";
-        throw new TranslationException(message);
+        var missingCues = missingItems
+            .Select(item => new MissingTranslationCue(
+                item.Position,
+                item.Line,
+                isAutoApprovalEligible?.Invoke(item) ?? false))
+            .ToList();
+        throw new MissingTranslationException(missingCues);
     }
 
     private static List<string> BuildBatchContext(

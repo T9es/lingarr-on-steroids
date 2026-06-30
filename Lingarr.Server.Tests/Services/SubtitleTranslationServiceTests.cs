@@ -983,7 +983,7 @@ public class SubtitleTranslationServiceTests
             Item(1, "LISTEN, EVERYONE.")
         };
 
-        var exception = await Assert.ThrowsAsync<TranslationException>(() => service.TranslateSubtitlesBatch(
+        var exception = await Assert.ThrowsAsync<MissingTranslationException>(() => service.TranslateSubtitlesBatch(
             subtitles,
             new TranslationRequest
             {
@@ -1001,7 +1001,64 @@ public class SubtitleTranslationServiceTests
             cancellationToken: CancellationToken.None));
 
         Assert.Contains("missing", exception.Message);
+        Assert.All(exception.MissingCues, cue => Assert.False(cue.AutoApprovalEligible));
         Assert.Empty(subtitles[0].TranslatedLines);
+    }
+
+    [Fact]
+    public async Task TranslateSubtitlesBatch_WhenProviderEchoesSource_ThrowsEligibleMissingTranslationException()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var batchServiceMock = translationServiceMock.As<IBatchTranslationService>();
+        var loggerMock = new Mock<ILogger>();
+        var progressServiceMock = new Mock<IProgressService>();
+
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+
+        batchServiceMock
+            .Setup(service => service.TranslateBatchAsync(
+                It.IsAny<List<BatchSubtitleItem>>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((List<BatchSubtitleItem> batch, string _, string _, List<string>? _, List<string>? _, CancellationToken _) =>
+                batch.ToDictionary(item => item.Position, item => item.Line));
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            loggerMock.Object,
+            progressServiceMock.Object);
+
+        var subtitles = new List<SubtitleItem>
+        {
+            Item(1, "Opening line one"),
+            Item(2, "Opening line two"),
+            Item(3, "Opening line three")
+        };
+
+        var exception = await Assert.ThrowsAsync<MissingTranslationException>(() => service.TranslateSubtitlesBatch(
+            subtitles,
+            new TranslationRequest
+            {
+                Id = 106,
+                Title = "Episode",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                MediaType = Lingarr.Core.Enum.MediaType.Show,
+                Status = Lingarr.Core.Enum.TranslationStatus.Pending
+            },
+            stripSubtitleFormatting: false,
+            preserveAssFormatting: false,
+            batchSize: 3,
+            batchRetryMode: "none",
+            cancellationToken: CancellationToken.None));
+
+        Assert.Equal([1, 2, 3], exception.MissingCues.Select(cue => cue.Position));
+        Assert.All(exception.MissingCues, cue => Assert.True(cue.AutoApprovalEligible));
     }
 
     [Fact]

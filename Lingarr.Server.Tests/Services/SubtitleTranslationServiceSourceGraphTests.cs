@@ -386,7 +386,7 @@ public class SubtitleTranslationServiceSourceGraphTests
             }
         };
 
-        var exception = await Assert.ThrowsAsync<TranslationException>(() =>
+        var exception = await Assert.ThrowsAsync<MissingTranslationException>(() =>
             service.TranslateSubtitlesBatch(
                 subtitles,
                 new TranslationRequest
@@ -405,6 +405,7 @@ public class SubtitleTranslationServiceSourceGraphTests
                 cancellationToken: CancellationToken.None));
 
         Assert.Contains("Translation failed", exception.Message);
+        Assert.True(exception.MissingCues.Single().AutoApprovalEligible);
         Assert.DoesNotContain("- I'M SORRY, IKK],", subtitles[0].TranslatedLines);
     }
 }

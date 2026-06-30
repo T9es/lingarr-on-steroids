@@ -62,6 +62,7 @@ public class TranslationJob
     private readonly ITranslationDiagnosticsService _translationDiagnosticsService;
     private readonly ITranslationPromptContextAccessor _translationPromptContextAccessor;
     private readonly IMkvEmbeddingService _mkvEmbeddingService;
+    private readonly ITranslationSiblingSequenceApprovalService? _siblingSequenceApprovalService;
 
     public TranslationJob(
         ILogger<TranslationJob> logger,
@@ -89,7 +90,8 @@ public class TranslationJob
 ISubtitleQualityValidatorService? subtitleQualityValidatorService = null,
         ITranslationDiagnosticsService? translationDiagnosticsService = null,
         ITranslationPromptContextAccessor? translationPromptContextAccessor = null,
-        IMkvEmbeddingService? mkvEmbeddingService = null)
+        IMkvEmbeddingService? mkvEmbeddingService = null,
+        ITranslationSiblingSequenceApprovalService? siblingSequenceApprovalService = null)
     {
         _logger = logger;
         _settings = settings;
@@ -128,6 +130,7 @@ _translationPromptContextAccessor = translationPromptContextAccessor ??
             new Services.Translation.TranslationPromptContextAccessor();
         _mkvEmbeddingService = mkvEmbeddingService ?? new MkvEmbeddingService(
             NullLogger<MkvEmbeddingService>.Instance);
+        _siblingSequenceApprovalService = siblingSequenceApprovalService;
     }
 
     /// <summary>
@@ -792,6 +795,31 @@ SettingKeys.Translation.BatchContextAfter,
         }
         catch (Exception ex)
         {
+            var failureException = ex;
+            if (ex is MissingTranslationException missingTranslationException &&
+                _siblingSequenceApprovalService != null)
+            {
+                var approvalResult = await _siblingSequenceApprovalService.ProcessMissingTranslationAsync(
+                    translationRequest,
+                    missingTranslationException,
+                    effectiveCancellationToken);
+                if (approvalResult.CurrentRequestCompleted)
+                {
+                    if (requestLogs.Count > 0)
+                    {
+                        _dbContext.TranslationRequestLogs.AddRange(requestLogs);
+                        await _dbContext.SaveChangesAsync(effectiveCancellationToken);
+                    }
+
+                    return;
+                }
+
+                if (approvalResult.RemainingException != null)
+                {
+                    failureException = approvalResult.RemainingException;
+                }
+            }
+
             try
             {
                 await _translationRequestService.ClearMediaHash(translationRequest);
@@ -859,12 +887,12 @@ SettingKeys.Translation.BatchContextAfter,
                 }
 
                 // Add the failure entry as the final log message
-                var failureSummary = TranslationFailureClassifier.GetFailureSummary(ex);
+                var failureSummary = TranslationFailureClassifier.GetFailureSummary(failureException);
                 var failureMessage = $"Translation failed: {failureSummary}";
-                var failureDetails = TranslationFailureClassifier.IsProviderUnavailable(ex)
-                    ? $"Root cause: translation provider unavailable.{Environment.NewLine}Summary: {failureSummary}{Environment.NewLine}{Environment.NewLine}{ex}"
-                    : ex.ToString();
-                _logger.LogError(ex, "Translation failed for request {RequestId}", translationRequest.Id);
+                var failureDetails = TranslationFailureClassifier.IsProviderUnavailable(failureException)
+                    ? $"Root cause: translation provider unavailable.{Environment.NewLine}Summary: {failureSummary}{Environment.NewLine}{Environment.NewLine}{failureException}"
+                    : failureException.ToString();
+                _logger.LogError(failureException, "Translation failed for request {RequestId}", translationRequest.Id);
 
                 if (translationRequest.WorkloadKind == TranslationWorkloadKind.Upload)
                 {
@@ -915,7 +943,12 @@ SettingKeys.Translation.BatchContextAfter,
                 _logger.LogError(stateEx, "Error updating job state during failure handling");
             }
             
-            // Re-throw the original exception to ensure Hangfire knows the job failed
+            // Re-throw to ensure Hangfire knows the job failed.
+            if (!ReferenceEquals(failureException, ex))
+            {
+                throw failureException;
+            }
+
             throw;
         }
         finally

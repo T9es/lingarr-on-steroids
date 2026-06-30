@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -409,9 +410,81 @@ public class TranslationCompareControllerTests : IDisposable
         Assert.Equal(1, resolver.ResolveCalls);
     }
 
+    [Fact]
+    public async Task AcceptTranslation_WhenFailedCueRowsExist_PreservesOnlyUnapprovedCueRows()
+    {
+        var sourcePath = Path.Combine(_tempDirectory, "failed-source.en.srt");
+        await File.WriteAllTextAsync(
+            sourcePath,
+            "1\n00:00:01,000 --> 00:00:02,000\nLine one\n\n" +
+            "2\n00:00:03,000 --> 00:00:04,000\nLine two\n\n" +
+            "3\n00:00:05,000 --> 00:00:06,000\nLine three\n");
+
+        var request = new TranslationRequest
+        {
+            Title = "Failed Movie",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = sourcePath,
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Failed
+        };
+
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        _dbContext.TranslationRequestLogs.Add(new TranslationRequestLog
+        {
+            TranslationRequestId = request.Id,
+            Level = "Error",
+            Message = "legacy missing output",
+            Details = "Translation failed: 3 subtitle(s) missing at positions: 1, 2, 3."
+        });
+        _dbContext.TranslationFailedCues.AddRange(
+            new TranslationFailedCue
+            {
+                TranslationRequestId = request.Id,
+                Position = 2,
+                SourceText = "Line two",
+                NormalizedText = "line two",
+                TextHash = "hash-two",
+                AutoApprovalEligible = true
+            },
+            new TranslationFailedCue
+            {
+                TranslationRequestId = request.Id,
+                Position = 3,
+                SourceText = "Line three",
+                NormalizedText = "line three",
+                TextHash = "hash-three",
+                AutoApprovalEligible = true,
+                AutoApprovedAt = DateTime.UtcNow
+            });
+        await _dbContext.SaveChangesAsync();
+
+        var completionService = new RecordingFailedTranslationCompletionService();
+        var controller = CreateController(
+            checkpointService: new StaticTranslationCheckpointService(new TranslationCheckpoint
+            {
+                TranslationRequestId = request.Id,
+                SourceFingerprint = "fingerprint",
+                Translations = { [1] = "Linia jeden" }
+            }),
+            completionService: completionService);
+
+        await controller.AcceptTranslation(
+            request.Id,
+            new TranslationCompareEditRequest(),
+            CancellationToken.None);
+
+        Assert.Equal([2], completionService.SourceTextPositions.Order());
+    }
+
     private TranslationCompareController CreateController(
         ISubtitleExtractionService? extractionService = null,
-        ISourceSubtitleResolver? sourceSubtitleResolver = null)
+        ISourceSubtitleResolver? sourceSubtitleResolver = null,
+        ITranslationCheckpointService? checkpointService = null,
+        IFailedTranslationCompletionService? completionService = null)
     {
         return new TranslationCompareController(
             _dbContext,
@@ -425,7 +498,8 @@ public class TranslationCompareControllerTests : IDisposable
             extractionService ?? new FakeSubtitleExtractionService(_tempDirectory),
             sourceSubtitleResolver ?? new FakeSourceSubtitleResolver(null),
             new SubtitleService(NullLogger<SubtitleService>.Instance),
-            new FakeTranslationCheckpointService(),
+            checkpointService ?? new FakeTranslationCheckpointService(),
+            completionService ?? new FakeFailedTranslationCompletionService(),
             NullLogger<TranslationCompareController>.Instance);
     }
 
@@ -549,7 +623,11 @@ public class TranslationCompareControllerTests : IDisposable
             _settings = settings;
         }
 
-        public event SettingChangedHandler? SettingChanged;
+        public event SettingChangedHandler? SettingChanged
+        {
+            add { }
+            remove { }
+        }
 
         public Task<string?> GetSetting(string key)
         {
@@ -637,6 +715,80 @@ public class TranslationCompareControllerTests : IDisposable
         public Task DeleteAsync(int translationRequestId, CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class StaticTranslationCheckpointService : ITranslationCheckpointService
+    {
+        private readonly TranslationCheckpoint _checkpoint;
+
+        public StaticTranslationCheckpointService(TranslationCheckpoint checkpoint)
+        {
+            _checkpoint = checkpoint;
+        }
+
+        public Task<TranslationCheckpoint?> LoadAsync(
+            int translationRequestId,
+            string sourceFingerprint,
+            CancellationToken cancellationToken)
+            => Task.FromResult<TranslationCheckpoint?>(_checkpoint);
+
+        public Task<TranslationCheckpoint?> LoadByRequestIdAsync(
+            int translationRequestId,
+            CancellationToken cancellationToken)
+            => Task.FromResult<TranslationCheckpoint?>(_checkpoint);
+
+        public Task SaveCheckpointAsync(
+            TranslationCheckpoint checkpoint,
+            CancellationToken cancellationToken)
+            => Task.CompletedTask;
+
+        public Task SaveTranslationAsync(
+            int translationRequestId,
+            string sourceFingerprint,
+            int position,
+            string translatedText,
+            CancellationToken cancellationToken)
+            => Task.CompletedTask;
+
+        public Task DeleteAsync(int translationRequestId, CancellationToken cancellationToken)
+            => Task.CompletedTask;
+    }
+
+    private sealed class FakeFailedTranslationCompletionService : IFailedTranslationCompletionService
+    {
+        public Task<FailedTranslationCompletionResult> CompleteAsync(
+            TranslationRequest request,
+            IReadOnlyDictionary<int, string> edits,
+            IReadOnlySet<int> sourceTextPositions,
+            string logMessage,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult(new FailedTranslationCompletionResult(
+                Completed: false,
+                AlreadyCompleted: false,
+                OutputPath: null,
+                SkippedReason: "Not configured for this test."));
+        }
+    }
+
+    private sealed class RecordingFailedTranslationCompletionService : IFailedTranslationCompletionService
+    {
+        public List<int> SourceTextPositions { get; } = [];
+
+        public Task<FailedTranslationCompletionResult> CompleteAsync(
+            TranslationRequest request,
+            IReadOnlyDictionary<int, string> edits,
+            IReadOnlySet<int> sourceTextPositions,
+            string logMessage,
+            CancellationToken cancellationToken)
+        {
+            SourceTextPositions.AddRange(sourceTextPositions);
+            return Task.FromResult(new FailedTranslationCompletionResult(
+                Completed: false,
+                AlreadyCompleted: false,
+                OutputPath: null,
+                SkippedReason: "Captured for test."));
         }
     }
 

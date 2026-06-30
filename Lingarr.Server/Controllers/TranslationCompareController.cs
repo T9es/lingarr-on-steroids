@@ -28,6 +28,7 @@ public class TranslationCompareController : ControllerBase
     private readonly ISourceSubtitleResolver _sourceSubtitleResolver;
     private readonly ISubtitleService _subtitleService;
     private readonly ITranslationCheckpointService _checkpointService;
+    private readonly IFailedTranslationCompletionService _failedCompletionService;
     private readonly ILogger<TranslationCompareController> _logger;
     private string? _tempTranslatedComparePath;
 
@@ -38,6 +39,7 @@ public class TranslationCompareController : ControllerBase
         ISourceSubtitleResolver sourceSubtitleResolver,
         ISubtitleService subtitleService,
         ITranslationCheckpointService checkpointService,
+        IFailedTranslationCompletionService failedCompletionService,
         ILogger<TranslationCompareController> logger)
     {
         _dbContext = dbContext;
@@ -46,6 +48,7 @@ public class TranslationCompareController : ControllerBase
         _sourceSubtitleResolver = sourceSubtitleResolver;
         _subtitleService = subtitleService;
         _checkpointService = checkpointService;
+        _failedCompletionService = failedCompletionService;
         _logger = logger;
     }
 
@@ -310,105 +313,38 @@ public class TranslationCompareController : ControllerBase
                 ?.ToDictionary(e => e.Position, e => e.TranslatedText)
                 ?? new Dictionary<int, string>();
 
-            var outputSubtitles = new List<SubtitleItem>();
-            foreach (var original in originalSubtitles)
-            {
-                var item = new SubtitleItem
-                {
-                    Position = original.Position,
-                    StartTime = original.StartTime,
-                    EndTime = original.EndTime,
-                    Lines = [.. original.Lines],
-                    PlaintextLines = [.. original.PlaintextLines],
-                    TranslatedLines = [.. original.TranslatedLines],
-                    SsaDialogue = original.SsaDialogue,
-                    SsaFormat = original.SsaFormat
-                };
-
-                if (edits.TryGetValue(original.Position, out var editText))
-                {
-                    item.TranslatedLines = [editText];
-                }
-                else if (checkpoint.Translations.TryGetValue(original.Position, out var translated))
-                {
-                    item.TranslatedLines = [translated];
-                }
-                else if (missingPositions.Contains(original.Position))
-                {
-                    item.TranslatedLines = [.. original.Lines];
-                }
-
-                outputSubtitles.Add(item);
-            }
-
-            var settings = await _settingService.GetSettings([
-                SettingKeys.Translation.UseSubtitleTagging,
-                SettingKeys.Translation.RemoveLanguageTag,
-                SettingKeys.Translation.SubtitleTag,
-                SettingKeys.Translation.SubtitleTagShort,
-                SettingKeys.Translation.StripSubtitleFormatting
-            ]);
-
-            var useSubtitleTagging =
-                settings.TryGetValue(SettingKeys.Translation.UseSubtitleTagging, out var useTaggingValue) &&
-                string.Equals(useTaggingValue, "true", StringComparison.OrdinalIgnoreCase);
-            var removeLanguageTag =
-                settings.TryGetValue(SettingKeys.Translation.RemoveLanguageTag, out var removeLanguageTagValue) &&
-                string.Equals(removeLanguageTagValue, "true", StringComparison.OrdinalIgnoreCase);
-            var subtitleTag = useSubtitleTagging
-                ? settings.GetValueOrDefault(SettingKeys.Translation.SubtitleTag) ?? string.Empty
-                : string.Empty;
-            var subtitleTagShort = useSubtitleTagging
-                ? settings.GetValueOrDefault(SettingKeys.Translation.SubtitleTagShort) ?? string.Empty
-                : string.Empty;
-
-            var targetLanguage = removeLanguageTag ? string.Empty : request.TargetLanguage;
-            var outputPath = _subtitleService.CreateFilePath(
-                request.SubtitleToTranslate,
-                targetLanguage,
-                subtitleTag);
-
-            var stripFormatting =
-                settings.TryGetValue(SettingKeys.Translation.StripSubtitleFormatting, out var stripVal) &&
-                string.Equals(stripVal, "true", StringComparison.OrdinalIgnoreCase);
-
-            await _subtitleService.WriteSubtitles(outputPath, outputSubtitles, stripFormatting);
-
-            request.Status = TranslationStatus.Completed;
-            request.CompletedAt = DateTime.UtcNow;
-            request.TranslatedSubtitle = outputPath;
-            request.IsActive = null;
-            request.NextRetryAt = null;
-            request.PausedAt = null;
-            request.PauseReason = null;
-            request.PausedProvider = null;
-
-            _dbContext.TranslationRequestLogs.Add(new TranslationRequestLog
-            {
-                TranslationRequestId = request.Id,
-                Level = "Information",
-                Message = $"Translation accepted with {edits.Count} manual edit(s). Untranslated position(s) preserved as source text."
-            });
-
-            await _dbContext.SaveChangesAsync(cancellationToken);
-
-            await _checkpointService.DeleteAsync(request.Id, cancellationToken);
-
-            _logger.LogInformation(
-                "Accepted failed translation request {RequestId} with {EditCount} edits",
-                requestId,
-                edits.Count);
-
-            var response = BuildCompareResponse(
-                request,
-                originalSubtitle.Path,
-                outputPath,
-                originalSubtitles,
-                outputSubtitles,
-                missingPositions,
-                isPartialFailure: false);
-
-            return Ok(response);
+            var completion = await _failedCompletionService.CompleteAsync(
+                request,
+                edits,
+                missingPositions.ToHashSet(),
+                $"Translation accepted with {edits.Count} manual edit(s). Untranslated position(s) preserved as source text.",
+                cancellationToken);
+
+            if (!completion.Completed || string.IsNullOrWhiteSpace(completion.OutputPath))
+            {
+                return StatusCode(500, new
+                {
+                    message = completion.SkippedReason ?? "Failed to complete translation."
+                });
+            }
+
+            var completedOutputSubtitles = await _subtitleService.ReadSubtitles(completion.OutputPath);
+
+            _logger.LogInformation(
+                "Accepted failed translation request {RequestId} with {EditCount} edits",
+                requestId,
+                edits.Count);
+
+            var response = BuildCompareResponse(
+                request,
+                originalSubtitle.Path,
+                completion.OutputPath,
+                originalSubtitles,
+                completedOutputSubtitles,
+                missingPositions,
+                isPartialFailure: false);
+
+            return Ok(response);
         }
         catch (Exception ex)
         {
@@ -588,11 +524,19 @@ public class TranslationCompareController : ControllerBase
         }
     }
 
-    /// <summary>
-    /// Parses missing positions from the latest Error-level log entry for a failed translation request.
-    /// </summary>
     private List<int> ParseMissingPositions(int requestId)
     {
+        var failedCuePositions = _dbContext.TranslationFailedCues
+            .Where(c => c.TranslationRequestId == requestId && c.AutoApprovedAt == null)
+            .OrderBy(c => c.Position)
+            .Select(c => c.Position)
+            .ToList();
+
+        if (failedCuePositions.Count > 0)
+        {
+            return failedCuePositions;
+        }
+
         var latestErrorLog = _dbContext.TranslationRequestLogs
             .Where(l => l.TranslationRequestId == requestId && l.Level == "Error")
             .OrderByDescending(l => l.Id)
@@ -632,10 +576,6 @@ public class TranslationCompareController : ControllerBase
         return positions.Order().ToList();
     }
 
-    /// <summary>
-    /// Builds subtitle items for a failed request by filling translated positions from the checkpoint
-    /// and missing positions from the source.
-    /// </summary>
     private static List<SubtitleItem> BuildFailedComparisonSubtitles(
         List<SubtitleItem> originalSubtitles,
         Dictionary<int, string> checkpointTranslations,
@@ -669,9 +609,6 @@ public class TranslationCompareController : ControllerBase
         }).ToList();
     }
 
-    /// <summary>
-    /// Builds a compare response from source, translated subtitles, and metadata.
-    /// </summary>
     private CompletedTranslationCompareResponse BuildCompareResponse(
         TranslationRequest request,
         string originalPath,
@@ -908,10 +845,6 @@ public class TranslationCompareController : ControllerBase
         }
     }
 
-    /// <summary>
-    /// Extracts a translated subtitle that was embedded in an MKV container to a temporary file.
-    /// Used when the translated subtitle path is an mkv-embedded: marker rather than a real file path.
-    /// </summary>
     private async Task<string?> ExtractTranslatedSubtitleFromMkvAsync(
         string translatedSubtitle,
         TranslationRequest request,

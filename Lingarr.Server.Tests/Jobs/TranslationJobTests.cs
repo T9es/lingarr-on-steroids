@@ -15,8 +15,10 @@ using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Jobs;
 using Lingarr.Server.Models;
+using Lingarr.Server.Models.Batch;
 using Lingarr.Server.Models.FileSystem;
 using Lingarr.Server.Models.Subtitle;
+using Lingarr.Server.Models.Translation;
 using Lingarr.Server.Services;
 using Lingarr.Server.Services.Subtitle;
 using Microsoft.Data.Sqlite;
@@ -2060,6 +2062,115 @@ public class TranslationJobTests : IDisposable
             Times.Never);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_WhenMissingTranslationIsFullyAutoCompleted_DoesNotMarkRequestFailed()
+    {
+        var sourceSubtitlePath = Path.Combine(_tempDirectory, "movie-22.en.srt");
+        await File.WriteAllTextAsync(sourceSubtitlePath, BuildSrtContent(50));
+
+        var movie = CreateMovie(22);
+        movie.Path = _tempDirectory;
+        var request = CreatePendingMovieRequest(movie, sourceSubtitlePath);
+
+        _dbContext.Movies.Add(movie);
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var missingException = MissingException((1, "Hello 1", true));
+        var translationService = CreateThrowingBatchTranslationService(missingException);
+        var siblingApprovalMock = new Mock<ITranslationSiblingSequenceApprovalService>();
+        siblingApprovalMock
+            .Setup(service => service.ProcessMissingTranslationAsync(
+                It.IsAny<TranslationRequest>(),
+                missingException,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SiblingSequenceApprovalResult
+            {
+                CurrentRequestCompleted = true,
+                ApprovedPositions = new HashSet<int> { 1 },
+                CompletedRequestIds = [request.Id]
+            });
+
+        var job = BuildExecutableJob(
+            new SubtitleService(NullLogger<SubtitleService>.Instance),
+            Mock.Of<ISubtitleExtractionService>(),
+            translationService,
+            settingOverrides: new Dictionary<string, string>
+            {
+                [SettingKeys.Translation.UseBatchTranslation] = "true",
+                [SettingKeys.Translation.BatchRetryMode] = "none",
+                [SettingKeys.Translation.MaxBatchSize] = "3"
+            },
+            siblingSequenceApprovalService: siblingApprovalMock.Object);
+
+        await job.ExecuteAsync(request.Id, CancellationToken.None);
+
+        Assert.DoesNotContain(
+            _dbContext.TranslationRequestLogs,
+            log => log.TranslationRequestId == request.Id && log.Level == "Error");
+        siblingApprovalMock.Verify(service => service.ProcessMissingTranslationAsync(
+            It.Is<TranslationRequest>(item => item.Id == request.Id),
+            missingException,
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenMissingTranslationIsPartiallyApproved_FailsWithRemainingCues()
+    {
+        var sourceSubtitlePath = Path.Combine(_tempDirectory, "movie-23.en.srt");
+        await File.WriteAllTextAsync(sourceSubtitlePath, BuildSrtContent(50));
+
+        var movie = CreateMovie(23);
+        movie.Path = _tempDirectory;
+        var request = CreatePendingMovieRequest(movie, sourceSubtitlePath);
+
+        _dbContext.Movies.Add(movie);
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var originalException = MissingException(
+            (1, "Hello 1", true),
+            (2, "Hello 2", true),
+            (3, "Hello 3", true));
+        var remainingException = MissingException((3, "Hello 3", true));
+        var translationService = CreateThrowingBatchTranslationService(originalException);
+        var siblingApprovalMock = new Mock<ITranslationSiblingSequenceApprovalService>();
+        siblingApprovalMock
+            .Setup(service => service.ProcessMissingTranslationAsync(
+                It.IsAny<TranslationRequest>(),
+                originalException,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SiblingSequenceApprovalResult
+            {
+                CurrentRequestCompleted = false,
+                ApprovedPositions = new HashSet<int> { 1, 2 },
+                RemainingException = remainingException
+            });
+
+        var job = BuildExecutableJob(
+            new SubtitleService(NullLogger<SubtitleService>.Instance),
+            Mock.Of<ISubtitleExtractionService>(),
+            translationService,
+            settingOverrides: new Dictionary<string, string>
+            {
+                [SettingKeys.Translation.UseBatchTranslation] = "true",
+                [SettingKeys.Translation.BatchRetryMode] = "none",
+                [SettingKeys.Translation.MaxBatchSize] = "3"
+            },
+            siblingSequenceApprovalService: siblingApprovalMock.Object);
+
+        var thrown = await Assert.ThrowsAsync<MissingTranslationException>(
+            () => job.ExecuteAsync(request.Id, CancellationToken.None));
+
+        Assert.Equal([3], thrown.MissingCues.Select(cue => cue.Position));
+        var errorLog = await _dbContext.TranslationRequestLogs
+            .Where(log => log.TranslationRequestId == request.Id && log.Level == "Error")
+            .OrderByDescending(log => log.Id)
+            .FirstAsync();
+        Assert.Contains("positions: 3", errorLog.Details);
+        Assert.DoesNotContain("positions: 1, 2, 3", errorLog.Details);
+    }
+
     private static List<SubtitleItem> BuildSubtitleItems(int count)
     {
         return Enumerable.Range(1, count)
@@ -2075,13 +2186,62 @@ public class TranslationJobTests : IDisposable
             .ToList();
     }
 
+    private static TranslationRequest CreatePendingMovieRequest(Movie movie, string sourceSubtitlePath)
+    {
+        return new TranslationRequest
+        {
+            MediaId = movie.Id,
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaType = MediaType.Movie,
+            WorkloadKind = TranslationWorkloadKind.Library,
+            WorkloadItemKey = $"library:Movie:{movie.Id}",
+            Status = TranslationStatus.Pending,
+            SubtitleToTranslate = sourceSubtitlePath,
+            SourceSubtitleFormat = ".srt",
+            SubtitleOutputMode = "match-source",
+            RequiredOutputFormats = ".srt",
+            IsActive = true
+        };
+    }
+
+    private static MissingTranslationException MissingException(
+        params (int Position, string SourceText, bool Eligible)[] cues)
+    {
+        return new MissingTranslationException(cues
+            .Select(cue => new MissingTranslationCue(cue.Position, cue.SourceText, cue.Eligible))
+            .ToList());
+    }
+
+    private static Mock<ITranslationService> CreateThrowingTranslationService(Exception exception)
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        translationServiceMock
+            .Setup(service => service.TranslateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(exception);
+        return translationServiceMock;
+    }
+
+    private static ITranslationService CreateThrowingBatchTranslationService(Exception exception)
+    {
+        return new ThrowingBatchTranslationService(exception);
+    }
+
     private TranslationJob BuildExecutableJob(
         ISubtitleService subtitleService,
         ISubtitleExtractionService extractionService,
         ITranslationService translationService,
         ISubtitleQualityValidatorService? qualityValidatorService = null,
         IReadOnlyDictionary<string, string>? settingOverrides = null,
-        IMkvEmbeddingService? mkvEmbeddingService = null)
+        IMkvEmbeddingService? mkvEmbeddingService = null,
+        ITranslationSiblingSequenceApprovalService? siblingSequenceApprovalService = null)
     {
         var settingServiceMock = new Mock<ISettingService>();
         settingServiceMock
@@ -2229,7 +2389,8 @@ public class TranslationJobTests : IDisposable
             qualityValidatorService,
             null,
             null,
-            mkvEmbeddingService);
+            mkvEmbeddingService,
+            siblingSequenceApprovalService);
     }
 
     private static Mock<ISubtitleQualityValidatorService> CreatePassingQualityValidator()
@@ -2288,6 +2449,44 @@ public class TranslationJobTests : IDisposable
             Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             {dialogueLines}
             """;
+    }
+
+    private sealed class ThrowingBatchTranslationService : ITranslationService, IBatchTranslationService
+    {
+        private readonly Exception _exception;
+
+        public ThrowingBatchTranslationService(Exception exception)
+        {
+            _exception = exception;
+        }
+
+        public Task<string> TranslateAsync(
+            string text,
+            string sourceLanguage,
+            string targetLanguage,
+            List<string>? contextLinesBefore,
+            List<string>? contextLinesAfter,
+            CancellationToken cancellationToken)
+        {
+            throw new InvalidOperationException("This test service should be used through batch translation.");
+        }
+
+        public Task<Dictionary<int, string>> TranslateBatchAsync(
+            List<BatchSubtitleItem> subtitleBatch,
+            string sourceLanguage,
+            string targetLanguage,
+            List<string>? preContext,
+            List<string>? postContext,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromException<Dictionary<int, string>>(_exception);
+        }
+
+        public Task<List<SourceLanguage>> GetLanguages()
+            => Task.FromResult(new List<SourceLanguage>());
+
+        public Task<ModelsResponse> GetModels()
+            => Task.FromResult(new ModelsResponse());
     }
 
     public void Dispose()

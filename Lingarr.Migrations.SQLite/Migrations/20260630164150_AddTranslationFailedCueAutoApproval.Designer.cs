@@ -3,67 +3,63 @@ using System;
 using Lingarr.Core.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
-namespace Lingarr.Migrations.PostgreSQL.Migrations
+namespace Lingarr.Migrations.SQLite.Migrations
 {
     [DbContext(typeof(LingarrDbContext))]
-    partial class LingarrDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260630164150_AddTranslationFailedCueAutoApproval")]
+    partial class AddTranslationFailedCueAutoApproval
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder
-                .HasAnnotation("ProductVersion", "9.0.14")
-                .HasAnnotation("Relational:MaxIdentifierLength", 63);
-
-            NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+            modelBuilder.HasAnnotation("ProductVersion", "9.0.14");
 
             modelBuilder.Entity("Lingarr.Core.Entities.ApiUsageLog", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("id");
 
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
                     b.Property<int?>("CompletionTokens")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("completion_tokens");
 
                     b.Property<string>("ErrorMessage")
                         .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("error_message");
 
                     b.Property<int?>("PromptTokens")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("prompt_tokens");
 
                     b.Property<long>("ResponseTimeMs")
-                        .HasColumnType("bigint")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("response_time_ms");
 
                     b.Property<string>("Service")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("service");
 
                     b.Property<bool>("Success")
-                        .HasColumnType("boolean")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("success");
 
                     b.Property<DateTime>("Timestamp")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("timestamp");
 
                     b.Property<int?>("TokensUsed")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("tokens_used");
 
                     b.HasKey("Id")
@@ -82,93 +78,91 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("id");
 
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("created_at");
 
                     b.Property<int>("CustomSourceId")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("custom_source_id");
 
                     b.Property<DateTime?>("DateAdded")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("date_added");
 
                     b.Property<int?>("EpisodeNumber")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("episode_number");
 
                     b.Property<bool>("ExcludeFromTranslation")
-                        .HasColumnType("boolean")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("exclude_from_translation");
 
                     b.Property<string>("FileName")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("file_name");
 
                     b.Property<DateTime?>("IndexedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("indexed_at");
 
                     b.Property<bool>("IsPriority")
-                        .HasColumnType("boolean")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("is_priority");
 
                     b.Property<int>("ItemKind")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("item_kind");
 
                     b.Property<DateTime?>("LastSubtitleCheckAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("last_subtitle_check_at");
 
                     b.Property<string>("MediaHash")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("media_hash");
 
                     b.Property<string>("Path")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("path");
 
                     b.Property<DateTime?>("PriorityDate")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("priority_date");
 
                     b.Property<string>("RelativePath")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("relative_path");
 
                     b.Property<int?>("SeasonNumber")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("season_number");
 
                     b.Property<string>("SeriesTitle")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("series_title");
 
                     b.Property<int>("StateSettingsVersion")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("state_settings_version");
 
                     b.Property<string>("Title")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("title");
 
                     b.Property<int>("TranslationState")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("translation_state");
 
                     b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -191,57 +185,55 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("id");
 
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("created_at");
 
                     b.Property<bool>("Enabled")
-                        .HasColumnType("boolean")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("enabled");
 
                     b.Property<bool>("IncludeInAutomation")
-                        .HasColumnType("boolean")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("include_in_automation");
 
                     b.Property<string>("LastScanError")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("last_scan_error");
 
                     b.Property<string>("LastScanResult")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("last_scan_result");
 
                     b.Property<DateTime?>("LastScannedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("last_scanned_at");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("name");
 
                     b.Property<bool>("Recursive")
-                        .HasColumnType("boolean")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("recursive");
 
                     b.Property<string>("RootPath")
                         .IsRequired()
                         .HasMaxLength(1024)
-                        .HasColumnType("character varying(1024)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("root_path");
 
                     b.Property<int>("SourceType")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("source_type");
 
                     b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -261,25 +253,23 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("id");
 
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("created_at");
 
                     b.Property<DateTime>("Date")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("date");
 
                     b.Property<int>("TranslationCount")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("translation_count");
 
                     b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -296,98 +286,96 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<string>("CodecName")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("codec_name");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("created_at");
 
                     b.Property<int?>("EpisodeId")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("episode_id");
 
                     b.Property<string>("ExtractedPath")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("extracted_path");
 
                     b.Property<bool>("IsDefault")
-                        .HasColumnType("boolean")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("is_default");
 
                     b.Property<bool>("IsExtracted")
-                        .HasColumnType("boolean")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("is_extracted");
 
                     b.Property<bool>("IsForced")
-                        .HasColumnType("boolean")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("is_forced");
 
                     b.Property<bool>("IsTextBased")
-                        .HasColumnType("boolean")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("is_text_based");
 
                     b.Property<string>("Language")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("language");
 
                     b.Property<int?>("MovieId")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("movie_id");
 
                     b.Property<DateTime?>("OcrApprovedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("ocr_approved_at");
 
                     b.Property<DateTime?>("OcrAttemptedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("ocr_attempted_at");
 
                     b.Property<DateTime?>("OcrCompletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("ocr_completed_at");
 
                     b.Property<int?>("OcrCueCount")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("ocr_cue_count");
 
                     b.Property<string>("OcrError")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("ocr_error");
 
                     b.Property<string>("OcrExtractedPath")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("ocr_extracted_path");
 
                     b.Property<string>("OcrIssueSummary")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("ocr_issue_summary");
 
                     b.Property<int?>("OcrQualityScore")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("ocr_quality_score");
 
                     b.Property<int>("OcrStatus")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("ocr_status");
 
                     b.Property<int>("StreamIndex")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("stream_index");
 
                     b.Property<string>("Title")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("title");
 
                     b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -418,75 +406,73 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("id");
 
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("created_at");
 
                     b.Property<DateTime?>("DateAdded")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("date_added");
 
                     b.Property<int>("EpisodeNumber")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("episode_number");
 
                     b.Property<bool>("ExcludeFromTranslation")
-                        .HasColumnType("boolean")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("exclude_from_translation");
 
                     b.Property<string>("FileName")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("file_name");
 
                     b.Property<DateTime?>("IndexedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("indexed_at");
 
                     b.Property<DateTime?>("LastSubtitleCheckAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("last_subtitle_check_at");
 
                     b.Property<string>("MediaHash")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("media_hash");
 
                     b.Property<string>("Path")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("path");
 
                     b.Property<int>("SeasonId")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("season_id");
 
                     b.Property<int>("SonarrId")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("sonarr_id");
 
                     b.Property<string>("SourceInstanceId")
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("source_instance_id");
 
                     b.Property<int>("StateSettingsVersion")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("state_settings_version");
 
                     b.Property<string>("Title")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("title");
 
                     b.Property<int>("TranslationState")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("translation_state");
 
                     b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -509,34 +495,32 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<string>("Details")
                         .HasMaxLength(10000)
-                        .HasColumnType("character varying(10000)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("details");
 
                     b.Property<string>("Message")
                         .IsRequired()
                         .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("message");
 
                     b.Property<string>("Source")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("source");
 
                     b.Property<string>("StackTrace")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("stack_trace");
 
                     b.Property<DateTime>("Timestamp")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("timestamp");
 
                     b.HasKey("Id")
@@ -552,27 +536,25 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("id");
 
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
                     b.Property<int?>("MovieId")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("movie_id");
 
                     b.Property<string>("Path")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("path");
 
                     b.Property<int?>("ShowId")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("show_id");
 
                     b.Property<string>("Type")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("type");
 
                     b.HasKey("Id")
@@ -591,78 +573,76 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("id");
 
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("created_at");
 
                     b.Property<DateTime?>("DateAdded")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("date_added");
 
                     b.Property<bool>("ExcludeFromTranslation")
-                        .HasColumnType("boolean")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("exclude_from_translation");
 
                     b.Property<string>("FileName")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("file_name");
 
                     b.Property<DateTime?>("IndexedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("indexed_at");
 
                     b.Property<bool>("IsPriority")
-                        .HasColumnType("boolean")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("is_priority");
 
                     b.Property<DateTime?>("LastSubtitleCheckAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("last_subtitle_check_at");
 
                     b.Property<string>("MediaHash")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("media_hash");
 
                     b.Property<string>("Path")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("path");
 
                     b.Property<DateTime?>("PriorityDate")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("priority_date");
 
                     b.Property<int>("RadarrId")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("radarr_id");
 
                     b.Property<string>("SourceInstanceId")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("source_instance_id");
 
                     b.Property<int>("StateSettingsVersion")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("state_settings_version");
 
                     b.Property<string>("Title")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("title");
 
                     b.Property<int?>("TranslationAgeThreshold")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("translation_age_threshold");
 
                     b.Property<int>("TranslationState")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("translation_state");
 
                     b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -682,31 +662,29 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("id");
 
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("created_at");
 
                     b.Property<string>("DestinationPath")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("destination_path");
 
                     b.Property<int>("MediaType")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("media_type");
 
                     b.Property<string>("SourcePath")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("source_path");
 
                     b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -719,33 +697,31 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("id");
 
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("created_at");
 
                     b.Property<bool>("ExcludeFromTranslation")
-                        .HasColumnType("boolean")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("exclude_from_translation");
 
                     b.Property<string>("Path")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("path");
 
                     b.Property<int>("SeasonNumber")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("season_number");
 
                     b.Property<int>("ShowId")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("show_id");
 
                     b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -764,12 +740,12 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                 {
                     b.Property<string>("Key")
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("key");
 
                     b.Property<string>("Value")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("value");
 
                     b.HasKey("Key")
@@ -782,55 +758,53 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("id");
 
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("created_at");
 
                     b.Property<DateTime?>("DateAdded")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("date_added");
 
                     b.Property<bool>("ExcludeFromTranslation")
-                        .HasColumnType("boolean")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("exclude_from_translation");
 
                     b.Property<bool>("IsPriority")
-                        .HasColumnType("boolean")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("is_priority");
 
                     b.Property<string>("Path")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("path");
 
                     b.Property<DateTime?>("PriorityDate")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("priority_date");
 
                     b.Property<int>("SonarrId")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("sonarr_id");
 
                     b.Property<string>("SourceInstanceId")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("source_instance_id");
 
                     b.Property<string>("Title")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("title");
 
                     b.Property<int?>("TranslationAgeThreshold")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("translation_age_threshold");
 
                     b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -847,56 +821,54 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("id");
 
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("created_at");
 
                     b.Property<string>("SubtitlesByLanguageJson")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("subtitles_by_language_json");
 
                     b.Property<long>("TotalCharactersTranslated")
-                        .HasColumnType("bigint")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("total_characters_translated");
 
                     b.Property<int>("TotalEpisodes")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("total_episodes");
 
                     b.Property<long>("TotalFilesTranslated")
-                        .HasColumnType("bigint")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("total_files_translated");
 
                     b.Property<long>("TotalLinesTranslated")
-                        .HasColumnType("bigint")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("total_lines_translated");
 
                     b.Property<int>("TotalMovies")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("total_movies");
 
                     b.Property<int>("TotalSubtitles")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("total_subtitles");
 
                     b.Property<string>("TranslationsByMediaTypeJson")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("translations_by_media_type_json");
 
                     b.Property<string>("TranslationsByServiceJson")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("translations_by_service_json");
 
                     b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -909,33 +881,31 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("id");
 
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
                     b.Property<DateTime>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("deleted_at");
 
                     b.Property<string>("FilePath")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("file_path");
 
                     b.Property<string>("NewMediaFileName")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("new_media_file_name");
 
                     b.Property<string>("OriginalMediaFileName")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("original_media_file_name");
 
                     b.Property<string>("Reason")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("reason");
 
                     b.HasKey("Id")
@@ -948,93 +918,91 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("id");
 
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
                     b.Property<string>("ApiCallsJson")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("api_calls_json");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("created_at");
 
                     b.Property<double>("DurationSeconds")
-                        .HasColumnType("double precision")
+                        .HasColumnType("REAL")
                         .HasColumnName("duration_seconds");
 
                     b.Property<string>("ErrorMessage")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("error_message");
 
                     b.Property<int>("FailedLines")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("failed_lines");
 
                     b.Property<string>("LineResultsJson")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("line_results_json");
 
                     b.Property<string>("PosterPath")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("poster_path");
 
                     b.Property<string>("PreviewJson")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("preview_json");
 
                     b.Property<string>("SourceLanguage")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("source_language");
 
                     b.Property<string>("SubtitlePath")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("subtitle_path");
 
                     b.Property<bool>("Success")
-                        .HasColumnType("boolean")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("success");
 
                     b.Property<string>("TargetLanguage")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("target_language");
 
                     b.Property<string>("TimingJson")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("timing_json");
 
                     b.Property<string>("Title")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("title");
 
                     b.Property<int?>("TokenUsageCompletion")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("token_usage_completion");
 
                     b.Property<int?>("TokenUsagePrompt")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("token_usage_prompt");
 
                     b.Property<int>("TotalLines")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("total_lines");
 
                     b.Property<int>("TranslatedLines")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("translated_lines");
 
                     b.Property<string>("TranslationService")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("translation_service");
 
                     b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -1047,89 +1015,87 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("id");
 
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("created_at");
 
                     b.Property<string>("DetailsJson")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("details_json");
 
                     b.Property<DateTime>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("expires_at");
 
                     b.Property<int?>("MediaId")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("media_id");
 
                     b.Property<int?>("MediaType")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("media_type");
 
                     b.Property<string>("OutputFormat")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("output_format");
 
                     b.Property<string>("Provider")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("provider");
 
                     b.Property<string>("QuarantinePath")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("quarantine_path");
 
                     b.Property<string>("ReasonCode")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("reason_code");
 
                     b.Property<string>("SampleLinesJson")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("sample_lines_json");
 
                     b.Property<string>("SourcePath")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("source_path");
 
                     b.Property<string>("SourceSnapshotFingerprint")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("source_snapshot_fingerprint");
 
                     b.Property<string>("SourceSnapshotIdentity")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("source_snapshot_identity");
 
                     b.Property<string>("Stage")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("stage");
 
                     b.Property<string>("Summary")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("summary");
 
                     b.Property<string>("TargetPath")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("target_path");
 
                     b.Property<string>("Title")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("title");
 
                     b.Property<int?>("TranslationRequestId")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("translation_request_id");
 
                     b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -1154,56 +1120,54 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<string>("ApprovalSequenceHash")
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("approval_sequence_hash");
 
                     b.Property<bool>("AutoApprovalEligible")
-                        .HasColumnType("boolean")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("auto_approval_eligible");
 
                     b.Property<DateTime?>("AutoApprovedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("auto_approved_at");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("created_at");
 
                     b.Property<string>("NormalizedText")
                         .IsRequired()
                         .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("normalized_text");
 
                     b.Property<int>("Position")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("position");
 
                     b.Property<string>("SourceText")
                         .IsRequired()
                         .HasMaxLength(4000)
-                        .HasColumnType("character varying(4000)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("source_text");
 
                     b.Property<string>("TextHash")
                         .IsRequired()
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("text_hash");
 
                     b.Property<int>("TranslationRequestId")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("translation_request_id");
 
                     b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -1226,193 +1190,191 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("id");
 
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
                     b.Property<DateTime?>("CompletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("completed_at");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("created_at");
 
                     b.Property<int?>("CustomMediaItemId")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("custom_media_item_id");
 
                     b.Property<DateTime?>("FailedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("failed_at");
 
                     b.Property<string>("GeneratedOutputFormats")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("generated_output_formats");
 
                     b.Property<string>("GeneratedSubtitlePaths")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("generated_subtitle_paths");
 
                     b.Property<bool?>("IsActive")
-                        .HasColumnType("boolean")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("is_active");
 
                     b.Property<bool>("IsForcedSubtitle")
-                        .HasColumnType("boolean")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("is_forced_subtitle");
 
                     b.Property<bool>("IsPriority")
-                        .HasColumnType("boolean")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("is_priority");
 
                     b.Property<string>("JobId")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("job_id");
 
                     b.Property<int?>("MediaId")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("media_id");
 
                     b.Property<int>("MediaType")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("media_type");
 
                     b.Property<DateTime?>("NextRetryAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("next_retry_at");
 
                     b.Property<string>("PauseReason")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("pause_reason");
 
                     b.Property<DateTime?>("PausedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("paused_at");
 
                     b.Property<string>("PausedProvider")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("paused_provider");
 
                     b.Property<int>("Progress")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("progress");
 
                     b.Property<string>("RequiredOutputFormats")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("required_output_formats");
 
                     b.Property<int>("RetryCount")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("retry_count");
 
                     b.Property<string>("SelectedStreamTitle")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("selected_stream_title");
 
                     b.Property<string>("SourceDedupeKey")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(512)
-                        .HasColumnType("character varying(512)")
+                        .HasColumnType("TEXT")
                         .HasDefaultValue("primary")
                         .HasColumnName("source_dedupe_key");
 
                     b.Property<string>("SourceLanguage")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("source_language");
 
                     b.Property<long?>("SourceSnapshotFileSizeBytes")
-                        .HasColumnType("bigint")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("source_snapshot_file_size_bytes");
 
                     b.Property<string>("SourceSnapshotFingerprint")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("source_snapshot_fingerprint");
 
                     b.Property<string>("SourceSnapshotIdentity")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("source_snapshot_identity");
 
                     b.Property<DateTime?>("SourceSnapshotLastWriteUtc")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("source_snapshot_last_write_utc");
 
                     b.Property<int?>("SourceSnapshotStreamIndex")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("source_snapshot_stream_index");
 
                     b.Property<string>("SourceSnapshotType")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("source_snapshot_type");
 
                     b.Property<int>("SourceSnapshotVersion")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasDefaultValue(1)
                         .HasColumnName("source_snapshot_version");
 
                     b.Property<int>("SourceSubtitleEntryCount")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("source_subtitle_entry_count");
 
                     b.Property<string>("SourceSubtitleFormat")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("source_subtitle_format");
 
                     b.Property<string>("SourceSubtitleType")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("source_subtitle_type");
 
                     b.Property<DateTime?>("StartedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("started_at");
 
                     b.Property<int>("Status")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("status");
 
                     b.Property<string>("SubtitleOutputMode")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("subtitle_output_mode");
 
                     b.Property<string>("SubtitleToTranslate")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("subtitle_to_translate");
 
                     b.Property<string>("TargetLanguage")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("target_language");
 
                     b.Property<string>("Title")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("title");
 
                     b.Property<string>("TranslatedSubtitle")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("translated_subtitle");
 
                     b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("updated_at");
 
                     b.Property<int?>("UploadBatchFileId")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("upload_batch_file_id");
 
                     b.Property<string>("WorkloadItemKey")
                         .IsRequired()
                         .HasMaxLength(256)
-                        .HasColumnType("character varying(256)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("workload_item_key");
 
                     b.Property<int>("WorkloadKind")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasDefaultValue(0)
                         .HasColumnName("workload_kind");
 
@@ -1451,35 +1413,33 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("id");
 
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("created_at");
 
                     b.Property<string>("Details")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("details");
 
                     b.Property<string>("Level")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("level");
 
                     b.Property<string>("Message")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("message");
 
                     b.Property<int>("TranslationRequestId")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("translation_request_id");
 
                     b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -1498,64 +1458,62 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<string>("ContentType")
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("content_type");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("created_at");
 
                     b.Property<DateTime?>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("expires_at");
 
                     b.Property<string>("FileName")
                         .IsRequired()
                         .HasMaxLength(260)
-                        .HasColumnType("character varying(260)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("file_name");
 
                     b.Property<long>("FileSizeBytes")
-                        .HasColumnType("bigint")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("file_size_bytes");
 
                     b.Property<bool>("IsDownloadable")
-                        .HasColumnType("boolean")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("is_downloadable");
 
                     b.Property<int>("Kind")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("kind");
 
                     b.Property<string>("Path")
                         .IsRequired()
                         .HasMaxLength(2048)
-                        .HasColumnType("character varying(2048)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("path");
 
                     b.Property<string>("RelativePath")
                         .IsRequired()
                         .HasMaxLength(2048)
-                        .HasColumnType("character varying(2048)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("relative_path");
 
                     b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("updated_at");
 
                     b.Property<int?>("UploadBatchFileId")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("upload_batch_file_id");
 
                     b.Property<int>("UploadBatchId")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("upload_batch_id");
 
                     b.HasKey("Id")
@@ -1577,60 +1535,58 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("id");
 
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
                     b.Property<DateTime?>("CompletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("completed_at");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("created_at");
 
                     b.Property<bool>("DefaultRemuxEnabled")
-                        .HasColumnType("boolean")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("default_remux_enabled");
 
                     b.Property<DateTime?>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("expires_at");
 
                     b.Property<string>("FailureReason")
                         .HasMaxLength(4096)
-                        .HasColumnType("character varying(4096)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("failure_reason");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("name");
 
                     b.Property<DateTime?>("StartedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("started_at");
 
                     b.Property<int>("Status")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("status");
 
                     b.Property<string>("StoragePath")
                         .IsRequired()
                         .HasMaxLength(2048)
-                        .HasColumnType("character varying(2048)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("storage_path");
 
                     b.Property<string>("TargetLanguage")
                         .IsRequired()
                         .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("target_language");
 
                     b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
@@ -1649,120 +1605,118 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("id");
 
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
                     b.Property<DateTime?>("CompletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("completed_at");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("created_at");
 
                     b.Property<int?>("CurrentTranslationRequestId")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("current_translation_request_id");
 
                     b.Property<string>("DetectedSourceLanguage")
                         .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("detected_source_language");
 
                     b.Property<bool>("EmbedTranslatedSubtitle")
-                        .HasColumnType("boolean")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("embed_translated_subtitle");
 
                     b.Property<bool>("ExcludeFromTranslation")
-                        .HasColumnType("boolean")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("exclude_from_translation");
 
                     b.Property<int>("FileKind")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("file_kind");
 
                     b.Property<long>("FileSizeBytes")
-                        .HasColumnType("bigint")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("file_size_bytes");
 
                     b.Property<string>("LastError")
                         .HasMaxLength(4096)
-                        .HasColumnType("character varying(4096)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("last_error");
 
                     b.Property<string>("OriginalFileName")
                         .IsRequired()
                         .HasMaxLength(260)
-                        .HasColumnType("character varying(260)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("original_file_name");
 
                     b.Property<DateTime?>("ProbeCompletedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("probe_completed_at");
 
                     b.Property<string>("ProbeError")
                         .HasMaxLength(4096)
-                        .HasColumnType("character varying(4096)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("probe_error");
 
                     b.Property<string>("RelativeStoredPath")
                         .IsRequired()
                         .HasMaxLength(2048)
-                        .HasColumnType("character varying(2048)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("relative_stored_path");
 
                     b.Property<string>("SelectedEmbeddedStreamCodec")
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("selected_embedded_stream_codec");
 
                     b.Property<int?>("SelectedEmbeddedStreamIndex")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("selected_embedded_stream_index");
 
                     b.Property<string>("SelectedEmbeddedStreamLanguage")
                         .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("selected_embedded_stream_language");
 
                     b.Property<string>("SelectedEmbeddedStreamTitle")
                         .HasMaxLength(512)
-                        .HasColumnType("character varying(512)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("selected_embedded_stream_title");
 
                     b.Property<string>("SelectedSourceLanguage")
                         .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("selected_source_language");
 
                     b.Property<DateTime?>("StartedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("started_at");
 
                     b.Property<int>("Status")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("status");
 
                     b.Property<string>("StoredPath")
                         .IsRequired()
                         .HasMaxLength(2048)
-                        .HasColumnType("character varying(2048)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("stored_path");
 
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(300)
-                        .HasColumnType("character varying(300)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("title");
 
                     b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("updated_at");
 
                     b.Property<int>("UploadBatchId")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("upload_batch_id");
 
                     b.HasKey("Id")
@@ -1784,53 +1738,51 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<string>("CodecName")
                         .IsRequired()
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("codec_name");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("created_at");
 
                     b.Property<bool>("IsDefault")
-                        .HasColumnType("boolean")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("is_default");
 
                     b.Property<bool>("IsForced")
-                        .HasColumnType("boolean")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("is_forced");
 
                     b.Property<bool>("IsTextBased")
-                        .HasColumnType("boolean")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("is_text_based");
 
                     b.Property<string>("Language")
                         .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("language");
 
                     b.Property<int>("StreamIndex")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("stream_index");
 
                     b.Property<string>("Title")
                         .HasMaxLength(512)
-                        .HasColumnType("character varying(512)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("title");
 
                     b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("updated_at");
 
                     b.Property<int>("UploadBatchFileId")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("upload_batch_file_id");
 
                     b.HasKey("Id")
@@ -1925,7 +1877,7 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                         .HasForeignKey("TranslationRequestId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
-                        .HasConstraintName("fk_translation_failed_cues_translation_requests_translation_re");
+                        .HasConstraintName("fk_translation_failed_cues_translation_requests_translation_request_id");
 
                     b.Navigation("TranslationRequest");
                 });
@@ -1937,7 +1889,7 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                         .HasForeignKey("TranslationRequestId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
-                        .HasConstraintName("fk_translation_request_logs_translation_requests_translation_r");
+                        .HasConstraintName("fk_translation_request_logs_translation_requests_translation_request_id");
 
                     b.Navigation("TranslationRequest");
                 });
@@ -1981,7 +1933,7 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                         .HasForeignKey("UploadBatchFileId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
-                        .HasConstraintName("fk_upload_batch_file_subtitle_streams_upload_batch_files_uploa");
+                        .HasConstraintName("fk_upload_batch_file_subtitle_streams_upload_batch_files_upload_batch_file_id");
 
                     b.Navigation("UploadBatchFile");
                 });

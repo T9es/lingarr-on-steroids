@@ -1113,6 +1113,76 @@ namespace Lingarr.Migrations.SQLite.Migrations
                     b.ToTable("translation_diagnostic_events", (string)null);
                 });
 
+            modelBuilder.Entity("Lingarr.Core.Entities.TranslationFailedCue", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ApprovalSequenceHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("approval_sequence_hash");
+
+                    b.Property<bool>("AutoApprovalEligible")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("auto_approval_eligible");
+
+                    b.Property<DateTime?>("AutoApprovedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("auto_approved_at");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("NormalizedText")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("normalized_text");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("position");
+
+                    b.Property<string>("SourceText")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("source_text");
+
+                    b.Property<string>("TextHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("text_hash");
+
+                    b.Property<int>("TranslationRequestId")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("translation_request_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_translation_failed_cues");
+
+                    b.HasIndex("TextHash")
+                        .HasDatabaseName("ix_translation_failed_cues_text_hash");
+
+                    b.HasIndex("AutoApprovalEligible", "AutoApprovedAt")
+                        .HasDatabaseName("ix_translation_failed_cues_auto_approval");
+
+                    b.HasIndex("TranslationRequestId", "Position")
+                        .IsUnique()
+                        .HasDatabaseName("ux_translation_failed_cues_request_position");
+
+                    b.ToTable("translation_failed_cues", (string)null);
+                });
+
             modelBuilder.Entity("Lingarr.Core.Entities.TranslationRequest", b =>
                 {
                     b.Property<int>("Id")
@@ -1795,6 +1865,18 @@ namespace Lingarr.Migrations.SQLite.Migrations
                         .HasConstraintName("fk_seasons_shows_show_id");
 
                     b.Navigation("Show");
+                });
+
+            modelBuilder.Entity("Lingarr.Core.Entities.TranslationFailedCue", b =>
+                {
+                    b.HasOne("Lingarr.Core.Entities.TranslationRequest", "TranslationRequest")
+                        .WithMany()
+                        .HasForeignKey("TranslationRequestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_translation_failed_cues_translation_requests_translation_request_id");
+
+                    b.Navigation("TranslationRequest");
                 });
 
             modelBuilder.Entity("Lingarr.Core.Entities.TranslationRequestLog", b =>
