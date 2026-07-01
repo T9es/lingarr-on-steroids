@@ -7,7 +7,9 @@ using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models.FileSystem;
 using Lingarr.Server.Models.Translation;
+using Lingarr.Server.Services.Subtitle;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace Lingarr.Server.Services.Translation;
 
@@ -98,20 +100,21 @@ public class FailedTranslationCompletionService : IFailedTranslationCompletionSe
                 SkippedReason: "No checkpoint translations or source-preserved positions were available.");
         }
 
-        var originalSubtitles = await _subtitleService.ReadSubtitles(sourcePath);
-        var outputSubtitles = BuildOutputSubtitles(
-            originalSubtitles,
-            checkpoint?.Translations ?? new Dictionary<int, string>(),
-            edits,
-            sourceTextPositions);
-
         var settings = await _settingService.GetSettings([
             SettingKeys.Translation.UseSubtitleTagging,
             SettingKeys.Translation.RemoveLanguageTag,
             SettingKeys.Translation.SubtitleTag,
             SettingKeys.Translation.SubtitleTagShort,
-            SettingKeys.Translation.StripSubtitleFormatting
+            SettingKeys.Translation.StripSubtitleFormatting,
+            SettingKeys.Translation.SubtitleOutputMode
         ]);
+
+        var originalSubtitles = await _subtitleService.ReadSubtitles(sourcePath);
+        var translatedSubtitles = BuildTranslatedSubtitles(
+            originalSubtitles,
+            checkpoint?.Translations ?? new Dictionary<int, string>(),
+            edits,
+            sourceTextPositions);
 
         var useSubtitleTagging =
             settings.TryGetValue(SettingKeys.Translation.UseSubtitleTagging, out var useTaggingValue) &&
@@ -122,22 +125,52 @@ public class FailedTranslationCompletionService : IFailedTranslationCompletionSe
         var subtitleTag = useSubtitleTagging
             ? settings.GetValueOrDefault(SettingKeys.Translation.SubtitleTag) ?? string.Empty
             : string.Empty;
+        var subtitleTagShort = useSubtitleTagging
+            ? settings.GetValueOrDefault(SettingKeys.Translation.SubtitleTagShort) ?? string.Empty
+            : string.Empty;
 
         var targetLanguage = removeLanguageTag ? string.Empty : dbRequest.TargetLanguage;
-        var outputPath = _subtitleService.CreateFilePath(
-            dbRequest.SubtitleToTranslate ?? sourcePath,
-            targetLanguage,
-            subtitleTag);
-
         var stripFormatting =
             settings.TryGetValue(SettingKeys.Translation.StripSubtitleFormatting, out var stripValue) &&
             string.Equals(stripValue, "true", StringComparison.OrdinalIgnoreCase);
 
-        await _subtitleService.WriteSubtitles(outputPath, outputSubtitles, stripFormatting);
+        var sourceFormat = SubtitleOutputModeHelper.NormalizeFormat(Path.GetExtension(sourcePath));
+        var subtitleOutputMode = SubtitleOutputModeHelper.Parse(
+            !string.IsNullOrWhiteSpace(dbRequest.SubtitleOutputMode)
+                ? dbRequest.SubtitleOutputMode
+                : settings.GetValueOrDefault(SettingKeys.Translation.SubtitleOutputMode));
+        var requiredOutputFormats = SubtitleOutputModeHelper.DeserializeFormats(dbRequest.RequiredOutputFormats);
+        if (requiredOutputFormats.Count == 0)
+        {
+            requiredOutputFormats = SubtitleOutputModeHelper.GetRequiredOutputFormats(
+                sourceFormat,
+                subtitleOutputMode);
+        }
+
+        var writesPreservedAssOutput =
+            SubtitleOutputModeHelper.IsAssFormat(sourceFormat) &&
+            requiredOutputFormats.Any(SubtitleOutputModeHelper.IsAssFormat);
+        dbRequest.SourceSubtitleFormat = sourceFormat;
+        dbRequest.SubtitleOutputMode = subtitleOutputMode.ToSettingValue();
+        dbRequest.RequiredOutputFormats = SubtitleOutputModeHelper.SerializeFormats(requiredOutputFormats);
+        var writtenOutput = await WriteSubtitleOutputsAsync(
+            dbRequest,
+            sourcePath,
+            translatedSubtitles,
+            requiredOutputFormats,
+            targetLanguage,
+            subtitleTag,
+            subtitleTagShort,
+            stripFormatting,
+            writesPreservedAssOutput,
+            cancellationToken);
 
         dbRequest.Status = TranslationStatus.Completed;
         dbRequest.CompletedAt = DateTime.UtcNow;
-        dbRequest.TranslatedSubtitle = outputPath;
+        dbRequest.SubtitleToTranslate = sourcePath;
+        dbRequest.TranslatedSubtitle = writtenOutput.PrimaryPath;
+        dbRequest.GeneratedOutputFormats = writtenOutput.GeneratedFormats;
+        dbRequest.GeneratedSubtitlePaths = JsonSerializer.Serialize(writtenOutput.OutputPaths);
         dbRequest.IsActive = null;
         dbRequest.NextRetryAt = null;
         dbRequest.PausedAt = null;
@@ -159,10 +192,10 @@ public class FailedTranslationCompletionService : IFailedTranslationCompletionSe
         return new FailedTranslationCompletionResult(
             Completed: true,
             AlreadyCompleted: false,
-            OutputPath: outputPath);
+            OutputPath: writtenOutput.PrimaryPath);
     }
 
-    private static List<SubtitleItem> BuildOutputSubtitles(
+    private static List<SubtitleItem> BuildTranslatedSubtitles(
         IReadOnlyList<SubtitleItem> originalSubtitles,
         IReadOnlyDictionary<int, string> checkpointTranslations,
         IReadOnlyDictionary<int, string> edits,
@@ -201,6 +234,164 @@ public class FailedTranslationCompletionService : IFailedTranslationCompletionSe
 
         return outputSubtitles;
     }
+
+    private async Task<WrittenSubtitleOutput> WriteSubtitleOutputsAsync(
+        TranslationRequest request,
+        string sourcePath,
+        List<SubtitleItem> translatedSubtitles,
+        IReadOnlyList<string> requiredOutputFormats,
+        string targetLanguage,
+        string subtitleTag,
+        string subtitleTagShort,
+        bool stripFormatting,
+        bool writesPreservedAssOutput,
+        CancellationToken cancellationToken)
+    {
+        var writtenOutputs = new List<(string Format, string Path)>();
+        var outputCaption = SubtitleLanguageHelper.GetSupplementalOutputCaption(request.SourceSubtitleType);
+
+        foreach (var outputFormat in requiredOutputFormats)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var renderSubtitles = RenderOutputSubtitles(
+                translatedSubtitles,
+                outputFormat,
+                writesPreservedAssOutput);
+            var outputStripFormatting =
+                stripFormatting &&
+                !(writesPreservedAssOutput && SubtitleOutputModeHelper.IsAssFormat(outputFormat));
+            var candidatePaths = _subtitleService.CreateFallbackPaths(
+                    sourcePath,
+                    targetLanguage,
+                    subtitleTag,
+                    subtitleTagShort,
+                    outputFormat,
+                    outputCaption)
+                .Where(path => !IsSamePath(path, sourcePath))
+                .ToList();
+
+            Exception? lastException = null;
+            foreach (var candidatePath in candidatePaths)
+            {
+                try
+                {
+                    EnsureParentDirectory(candidatePath);
+                    await _subtitleService.WriteSubtitles(
+                        candidatePath,
+                        renderSubtitles,
+                        outputStripFormatting);
+                    writtenOutputs.Add((outputFormat, candidatePath));
+                    lastException = null;
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    lastException = ex;
+                    _logger.LogWarning(
+                        ex,
+                        "Failed to write completed failed-translation output {Path} for request {RequestId}. Trying fallback path.",
+                        candidatePath,
+                        request.Id);
+                }
+            }
+
+            if (lastException != null)
+            {
+                throw lastException;
+            }
+
+            if (!writtenOutputs.Any(output =>
+                    string.Equals(output.Format, outputFormat, StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new InvalidOperationException(
+                    $"Failed to write subtitle output for format {outputFormat}.");
+            }
+        }
+
+        var primaryPath = writtenOutputs
+            .OrderByDescending(output =>
+                string.Equals(
+                    SubtitleOutputModeHelper.NormalizeFormat(output.Format),
+                    SubtitleOutputModeHelper.NormalizeFormat(request.SourceSubtitleFormat),
+                    StringComparison.OrdinalIgnoreCase))
+            .Select(output => output.Path)
+            .First();
+        var generatedFormats = SubtitleOutputModeHelper.SerializeFormats(
+            writtenOutputs.Select(output => output.Format));
+
+        _logger.LogInformation(
+            "Completed failed translation request {RequestId} and created subtitle outputs: {SubtitleOutputs}",
+            request.Id,
+            string.Join(", ", writtenOutputs.Select(output => output.Path)));
+
+        return new WrittenSubtitleOutput(
+            primaryPath,
+            generatedFormats,
+            writtenOutputs.Select(output => output.Path).ToList());
+    }
+
+    private static List<SubtitleItem> RenderOutputSubtitles(
+        List<SubtitleItem> translatedSubtitles,
+        string outputFormat,
+        bool writesPreservedAssOutput)
+    {
+        if (writesPreservedAssOutput && SubtitleOutputModeHelper.IsAssFormat(outputFormat))
+        {
+            return translatedSubtitles;
+        }
+
+        var renderedSubtitles = new List<SubtitleItem>(translatedSubtitles.Count);
+        foreach (var subtitle in translatedSubtitles)
+        {
+            var translatedText = subtitle.TranslatedLines.Count > 0
+                ? string.Join("\\N", subtitle.TranslatedLines)
+                : string.Join("\\N", subtitle.Lines);
+            var plainTextLines = PlainTextSubtitleOutputRenderer.ConvertToPlainTextLines(translatedText);
+
+            if (PlainTextSubtitleOutputRenderer.ShouldSkipSubtitle(plainTextLines))
+            {
+                continue;
+            }
+
+            renderedSubtitles.Add(new SubtitleItem
+            {
+                Position = subtitle.Position,
+                StartTime = subtitle.StartTime,
+                EndTime = subtitle.EndTime,
+                Lines = [.. subtitle.Lines],
+                PlaintextLines = [.. subtitle.PlaintextLines],
+                TranslatedLines = plainTextLines,
+                SsaDialogue = subtitle.SsaDialogue,
+                SsaFormat = subtitle.SsaFormat
+            });
+        }
+
+        return renderedSubtitles;
+    }
+
+    private static void EnsureParentDirectory(string path)
+    {
+        var directory = Path.GetDirectoryName(path);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+    }
+
+    private static bool IsSamePath(string path, string? otherPath)
+    {
+        return !string.IsNullOrWhiteSpace(otherPath) &&
+               string.Equals(
+                   Path.GetFullPath(path),
+                   Path.GetFullPath(otherPath),
+                   StringComparison.OrdinalIgnoreCase);
+    }
+
+    private sealed record WrittenSubtitleOutput(
+        string PrimaryPath,
+        string GeneratedFormats,
+        IReadOnlyCollection<string> OutputPaths);
 
     private async Task NotifyCompletionAsync(
         TranslationRequest request,

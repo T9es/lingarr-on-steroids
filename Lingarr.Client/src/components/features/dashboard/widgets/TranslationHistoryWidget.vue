@@ -33,6 +33,7 @@ const props = defineProps<{
         totalFilesTranslated: number
         totalCharactersTranslated: number
     }
+    refreshKey?: number | null
     isLoading?: boolean
 }>()
 
@@ -125,6 +126,22 @@ watch(customDateRange, async () => {
         chartKey.value++
     }
 })
+
+watch(
+    () => props.refreshKey,
+    async (requestId, previousRequestId) => {
+        if (!requestId || requestId === previousRequestId) {
+            return
+        }
+
+        await fetchRecentTranslations(true)
+        if (selectedFilter.value === '24h') {
+            await fetchHourlyStatistics()
+        }
+        await fetchFilteredStatistics()
+        chartKey.value++
+    }
+)
 
 watch(
     () => [props.isLoading, hourlyLoading.value, filteredLoading.value],

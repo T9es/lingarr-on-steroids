@@ -21,6 +21,7 @@ export interface DashboardRealtimeState {
     activeTranslations: Map<number, ActiveTranslation>
     activeCount: number
     lastUpdate: Date | null
+    lastCompletedRequestId: number | null
 }
 
 export function useDashboardSignalR() {
@@ -31,20 +32,25 @@ export function useDashboardSignalR() {
         isConnected: false,
         activeTranslations: new Map(),
         activeCount: 0,
-        lastUpdate: null
+        lastUpdate: null,
+        lastCompletedRequestId: null
     })
 
     const handleRequestProgress = (progress: IRequestProgress) => {
         const existing = state.value.activeTranslations.get(progress.id)
-
-        if (
-            progress.status === 'Completed' ||
+        const isCompleted = progress.status === 'Completed'
+        const isTerminal =
+            isCompleted ||
             progress.status === 'Failed' ||
             progress.status === 'Cancelled' ||
             progress.status === 'Interrupted'
-        ) {
+
+        if (isTerminal) {
             state.value.activeTranslations.delete(progress.id)
             state.value.activeCount = state.value.activeTranslations.size
+            if (isCompleted) {
+                state.value.lastCompletedRequestId = progress.id
+            }
         } else {
             const translation: ActiveTranslation = {
                 id: progress.id,

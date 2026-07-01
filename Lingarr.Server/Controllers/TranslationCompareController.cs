@@ -670,7 +670,19 @@ public class TranslationCompareController : ControllerBase
         string sourcePath,
         CancellationToken cancellationToken)
     {
-        if (!string.IsNullOrWhiteSpace(request.TranslatedSubtitle) &&
+        var generatedSubtitlePaths = GetGeneratedSubtitlePaths(request);
+        var preferredPlainTextGeneratedPath = await TryResolvePreferredPlainTextGeneratedPathAsync(
+            generatedSubtitlePaths,
+            sourcePath,
+            request,
+            cancellationToken);
+        if (preferredPlainTextGeneratedPath != null &&
+            ShouldPreferPlainTextGeneratedPath(request, sourcePath))
+        {
+            return preferredPlainTextGeneratedPath;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.TranslatedSubtitle) &&
             !request.TranslatedSubtitle.StartsWith("mkv-embedded:", StringComparison.OrdinalIgnoreCase) &&
             !IsSamePath(request.TranslatedSubtitle, sourcePath) &&
             System.IO.File.Exists(request.TranslatedSubtitle))
@@ -697,7 +709,10 @@ public class TranslationCompareController : ControllerBase
             return null;
         }
 
-        foreach (var generatedPath in GetGeneratedSubtitlePaths(request))
+        foreach (var generatedPath in OrderGeneratedSubtitlePathsForCompare(
+                     generatedSubtitlePaths,
+                     request,
+                     sourcePath))
         {
             var generated = await TryResolveTranslatedCandidateAsync(
                 generatedPath,
@@ -783,7 +798,148 @@ public class TranslationCompareController : ControllerBase
         return new ResolvedTranslatedSubtitlePath(resolvedPath, resolvedPath);
     }
 
-    private async Task<ResolvedTranslatedSubtitlePath?> TryResolveTranslatedCandidateAsync(
+    private async Task<ResolvedTranslatedSubtitlePath?> TryResolvePreferredPlainTextGeneratedPathAsync(
+
+        IReadOnlyList<string> generatedSubtitlePaths,
+
+        string sourcePath,
+
+        TranslationRequest request,
+
+        CancellationToken cancellationToken)
+
+    {
+
+        foreach (var generatedPath in OrderGeneratedSubtitlePathsForCompare(
+                     generatedSubtitlePaths,
+                     request,
+                     sourcePath))
+
+        {
+
+            if (!IsPlainTextSubtitlePath(generatedPath))
+
+            {
+
+                continue;
+
+            }
+
+            var generated = await TryResolveTranslatedCandidateAsync(
+
+                generatedPath,
+
+                sourcePath,
+
+                request,
+
+                cancellationToken);
+
+            if (generated != null)
+
+            {
+
+                return generated;
+
+            }
+
+        }
+
+        return null;
+
+    }
+
+
+
+    private static IEnumerable<string> OrderGeneratedSubtitlePathsForCompare(
+
+        IReadOnlyList<string> generatedSubtitlePaths,
+
+        TranslationRequest request,
+
+        string sourcePath)
+
+    {
+
+        if (!ShouldPreferPlainTextGeneratedPath(request, sourcePath))
+
+        {
+
+            return generatedSubtitlePaths;
+
+        }
+
+        return generatedSubtitlePaths
+
+            .OrderByDescending(IsPlainTextSubtitlePath)
+
+            .ThenBy(static path => path, StringComparer.OrdinalIgnoreCase);
+
+    }
+
+
+
+    private static bool ShouldPreferPlainTextGeneratedPath(
+
+        TranslationRequest request,
+
+        string sourcePath)
+
+    {
+
+        var sourceFormat = !string.IsNullOrWhiteSpace(request.SourceSubtitleFormat)
+
+            ? request.SourceSubtitleFormat
+
+            : Path.GetExtension(sourcePath);
+
+        var translatedFormat = GetSubtitlePathFormat(request.TranslatedSubtitle);
+
+        return SubtitleOutputModeHelper.IsAssFormat(sourceFormat) ||
+
+               SubtitleOutputModeHelper.IsAssFormat(translatedFormat);
+
+    }
+
+
+
+    private static bool IsPlainTextSubtitlePath(string? path)
+
+    {
+
+        return string.Equals(
+
+            GetSubtitlePathFormat(path),
+
+            ".srt",
+
+            StringComparison.OrdinalIgnoreCase);
+
+    }
+
+
+
+    private static string GetSubtitlePathFormat(string? path)
+
+    {
+
+        if (string.IsNullOrWhiteSpace(path) ||
+
+            path.StartsWith("mkv-embedded:", StringComparison.OrdinalIgnoreCase))
+
+        {
+
+            return string.Empty;
+
+        }
+
+        return SubtitleOutputModeHelper.NormalizeFormat(Path.GetExtension(path));
+
+    }
+
+
+
+    private async Task<ResolvedTranslatedSubtitlePath?> TryResolveTranslatedCandidateAsync(
         string? candidate,
         string sourcePath,
         TranslationRequest request,

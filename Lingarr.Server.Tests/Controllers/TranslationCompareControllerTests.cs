@@ -313,6 +313,53 @@ public class TranslationCompareControllerTests : IDisposable
     }
 
     [Fact]
+    public async Task GetCompletedTranslationCompare_WhenAssPrimaryHasGeneratedSrt_PrefersSrtForCompare()
+    {
+        var sourcePath = Path.Combine(_tempDirectory, "ass-source.en.ass");
+        var primaryAssPath = Path.Combine(_tempDirectory, "ass-source.pl.ass");
+        var generatedSrtPath = Path.Combine(_tempDirectory, "ass-source.pl.srt");
+
+        await File.WriteAllTextAsync(sourcePath, CreateAssSubtitle("Hello from source"));
+        await File.WriteAllTextAsync(primaryAssPath, CreateAssSubtitle(@"{\pos(200,130)\bord2\fs75}Unison"));
+        await File.WriteAllTextAsync(
+            generatedSrtPath,
+            "1\n00:00:01,000 --> 00:00:02,000\nClean translated text\n");
+
+        var request = new TranslationRequest
+        {
+            Title = "ASS Primary Request",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = sourcePath,
+            TranslatedSubtitle = primaryAssPath,
+            SourceSubtitleFormat = ".ass",
+            SubtitleOutputMode = "both",
+            RequiredOutputFormats = ".ass,.srt",
+            GeneratedOutputFormats = ".ass,.srt",
+            GeneratedSubtitlePaths = JsonSerializer.Serialize(new[] { primaryAssPath, generatedSrtPath }),
+            MediaType = MediaType.Episode,
+            Status = TranslationStatus.Completed,
+            CompletedAt = DateTime.UtcNow
+        };
+
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var controller = CreateController();
+
+        var actionResult = await controller.GetCompletedTranslationCompare(request.Id);
+        var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
+        var payload = Assert.IsType<CompletedTranslationCompareResponse>(okResult.Value);
+
+        Assert.Equal(generatedSrtPath, payload.TranslatedSubtitlePath);
+        Assert.Equal("Clean translated text", payload.Lines[0].Translated);
+
+        var persistedRequest = await _dbContext.TranslationRequests.FindAsync(request.Id);
+        Assert.NotNull(persistedRequest);
+        Assert.Equal(primaryAssPath, persistedRequest!.TranslatedSubtitle);
+    }
+
+    [Fact]
     public async Task GetCompletedTranslationCompare_EmbeddedMarkerUsesLingarrTrackBeforeBuiltinTargetTrack()
     {
         var sourcePath = Path.Combine(_tempDirectory, "embedded-source.jpn.srt");
@@ -501,6 +548,18 @@ public class TranslationCompareControllerTests : IDisposable
             checkpointService ?? new FakeTranslationCheckpointService(),
             completionService ?? new FakeFailedTranslationCompletionService(),
             NullLogger<TranslationCompareController>.Instance);
+    }
+
+    private static string CreateAssSubtitle(string text)
+    {
+        return "[Script Info]\n" +
+               "ScriptType: v4.00+\n\n" +
+               "[V4+ Styles]\n" +
+               "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n" +
+               "Style: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1,0,2,10,10,10,1\n\n" +
+               "[Events]\n" +
+               "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n" +
+               $"Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{text}\n";
     }
 
     private sealed class FakeSubtitleExtractionService : ISubtitleExtractionService

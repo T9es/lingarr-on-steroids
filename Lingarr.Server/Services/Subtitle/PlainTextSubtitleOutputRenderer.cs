@@ -75,6 +75,11 @@ internal static class PlainTextSubtitleOutputRenderer
             return true;
         }
 
+        if (LooksLikeSingleTokenVisualDebris(text))
+        {
+            return true;
+        }
+
         if (HasWordLikeToken(text))
         {
             return false;
@@ -146,6 +151,26 @@ internal static class PlainTextSubtitleOutputRenderer
         return ratio > 0.8;
     }
 
+    private static bool LooksLikeSingleTokenVisualDebris(string text)
+    {
+        var tokens = GetTokens(text).ToList();
+        if (tokens.Count != 1)
+        {
+            return false;
+        }
+
+        var token = tokens[0];
+        if (token.Length >= 4 && token.All(char.IsDigit))
+        {
+            return true;
+        }
+
+        return token.Length >= 5 &&
+               token.All(IsAsciiLetter) &&
+               token.All(character =>
+                   char.ToUpperInvariant(character) == char.ToUpperInvariant(token[0]));
+    }
+
     private static bool IsDrawingToken(string token)
     {
         return DrawingCommands.Contains(token) ||
@@ -159,5 +184,10 @@ internal static class PlainTextSubtitleOutputRenderer
     private static IEnumerable<string> GetTokens(string text)
     {
         return text.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    }
+
+    private static bool IsAsciiLetter(char character)
+    {
+        return character is >= 'A' and <= 'Z' or >= 'a' and <= 'z';
     }
 }

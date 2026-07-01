@@ -98,6 +98,7 @@
                             v-if="item.i === 'translation-history'"
                             :daily-statistics="dailyStats || []"
                             :statistics="statistics"
+                            :refresh-key="realtimeState.lastCompletedRequestId"
                             :is-loading="loading" />
 
                         <!-- Job Queue Widget -->
@@ -283,6 +284,17 @@ const fetchDailyStats = async () => {
         loading.value = false
     }
 }
+
+watch(
+    () => realtimeState.value.lastCompletedRequestId,
+    async (requestId, previousRequestId) => {
+        if (!requestId || requestId === previousRequestId) {
+            return
+        }
+
+        await Promise.all([fetchDailyStats(), fetchStatistics()])
+    }
+)
 
 onMounted(async () => {
     await connectSignalR()
