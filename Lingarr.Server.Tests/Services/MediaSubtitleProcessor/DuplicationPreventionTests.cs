@@ -596,10 +596,9 @@ public class DuplicationPreventionTests : MediaSubtitleProcessorTestBase
     }
 
     [Fact]
-    public async Task ProcessMediaForceAsync_WithEmbeddedAssTargetOnlyAndBothMode_QueuesMissingSrtOutput()
+    public async Task ProcessMediaForceAsync_WithEmbeddedTargetAndBothMode_DoesNotEnqueueMissingOutputFormat()
     {
         var movie = await CreateTestMovie();
-        TranslateAbleSubtitle? capturedRequest = null;
 
         SubtitleServiceMock
             .Setup(s => s.GetAllSubtitles(It.IsAny<string>()))
@@ -665,21 +664,23 @@ public class DuplicationPreventionTests : MediaSubtitleProcessorTestBase
             .Setup(s => s.SyncEmbeddedSubtitles(It.IsAny<Movie>()))
             .Returns(Task.CompletedTask);
 
+        var queuedRequests = new List<TranslateAbleSubtitle>();
         TranslationRequestServiceMock
             .Setup(s => s.CreateRequest(It.IsAny<TranslateAbleSubtitle>(), It.IsAny<bool>()))
-            .Callback<TranslateAbleSubtitle, bool>((request, _) => capturedRequest = request)
-            .ReturnsAsync(456);
+            .Callback<TranslateAbleSubtitle, bool>((request, _) => queuedRequests.Add(request))
+            .ReturnsAsync(123);
 
-        var queued = await Processor.ProcessMediaForceAsync(movie, MediaType.Movie);
+        var queued = await Processor.ProcessMediaForceAsync(
+            movie,
+            MediaType.Movie,
+            forceProcess: true,
+            forceTranslation: false);
 
-        Assert.Equal(1, queued);
-        Assert.NotNull(capturedRequest);
-        Assert.Equal(movie.Id, capturedRequest!.MediaId);
-        Assert.Equal(MediaType.Movie, capturedRequest.MediaType);
-        Assert.Equal(".ass", SubtitleOutputModeHelper.NormalizeFormat(capturedRequest.SubtitleFormat));
-        Assert.Null(capturedRequest.SubtitlePath);
+        Assert.True(
+            queued == 0,
+            $"Expected no queue, but queued {queued}: {string.Join(", ", queuedRequests.Select(request => $"{request.SourceLanguage}->{request.TargetLanguage}; path={request.SubtitlePath ?? "<embedded>"}; type={request.SourceSubtitleType}; title={request.SelectedStreamTitle ?? "<none>"}; format={request.SubtitleFormat}"))}");
         TranslationRequestServiceMock.Verify(
             s => s.CreateRequest(It.IsAny<TranslateAbleSubtitle>(), It.IsAny<bool>()),
-            Times.Once);
+            Times.Never);
     }
 }

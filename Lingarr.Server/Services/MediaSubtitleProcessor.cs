@@ -184,7 +184,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             // Actually, existingLanguages comes from files. So if sourceLanguage != null, the file exists.
             // But if existingLanguages DOES NOT contain sourceLanguage, sourceLanguage is null.
             // So we check if validSource is missing.
-            
+            List<EmbeddedSubtitle>? probedEmbeddedSubtitles = null;
             if (sourceSubtitle == null)
             {
                 _logger.LogInformation("No external source subtitle found for {FileName}. Checking for embedded subtitles for validation...", _media.FileName);
@@ -194,6 +194,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 var configuredSourceLanguages = sourceLanguageModels.Select(lang => lang.Code).Where(c => !string.IsNullOrWhiteSpace(c)).ToList();
 
                 var embeddedSubtitles = await ProbeEmbeddedSubtitlesForCurrentMedia();
+                probedEmbeddedSubtitles = embeddedSubtitles;
                 
                 if (embeddedSubtitles != null && embeddedSubtitles.Any())
                 {
@@ -242,15 +243,27 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                     await GetRequestedRequiredOutputFormatsAsync(sourceSubtitle.Format);
                 var requiredOutputFormats =
                     SubtitleOutputModeHelper.DeserializeFormats(requestedRequiredOutputFormats);
+                var embeddedSatisfiedTargetLanguages =
+                    await GetEmbeddedSatisfiedTargetLanguagesForCurrentMediaAsync(
+                        targetLanguages,
+                        false,
+                        probedEmbeddedSubtitles);
                 var languagesToTranslate = GetLanguagesMissingRequiredOutputFormats(
                         subtitles,
                         targetLanguages,
                         requiredOutputFormats)
+                    .Where(targetLanguage => !EmbeddedTargetSubtitleHelper.IsSatisfiedTargetLanguage(
+                        embeddedSatisfiedTargetLanguages,
+                        targetLanguage))
                     .ToList();
                 
                 // Check integrity of existing target subtitles and add corrupt ones for re-translation
                 var corruptLanguages = new List<string>();
-                foreach (var targetLang in targetLanguages.Intersect(existingLanguages))
+                foreach (var targetLang in targetLanguages
+                    .Intersect(existingLanguages)
+                    .Where(targetLanguage => !EmbeddedTargetSubtitleHelper.IsSatisfiedTargetLanguage(
+                        embeddedSatisfiedTargetLanguages,
+                        targetLanguage)))
                 {
                     var targetSubtitle = SelectMainTargetSubtitle(subtitles, targetLang);
                     if (targetSubtitle != null)
@@ -735,6 +748,8 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                     await GetRequestedRequiredOutputFormatsAsync(sourceSubtitle.Format);
                 var requiredOutputFormats =
                     SubtitleOutputModeHelper.DeserializeFormats(requestedRequiredOutputFormats);
+                var embeddedSatisfiedTargetLanguages =
+                    await GetEmbeddedSatisfiedTargetLanguagesForCurrentMediaAsync(targetLanguages, forceTranslation);
                 // When forceTranslation is true, translate to all target languages even if they exist
                 var languagesToTranslate = forceTranslation 
                     ? targetLanguages.ToList()
@@ -743,6 +758,9 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                             targetLanguages,
                             requiredOutputFormats,
                             knownGeneratedPrimaryTargetPaths: knownForcedDialogueGeneratedPaths)
+                        .Where(targetLanguage => !EmbeddedTargetSubtitleHelper.IsSatisfiedTargetLanguage(
+                            embeddedSatisfiedTargetLanguages,
+                            targetLanguage))
                         .ToList();
 
                 if (!forceTranslation)
@@ -769,10 +787,15 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 var foundCorruption = false;
                 if (!forceTranslation)
                 {
+                    var staleCheckTargetLanguages = targetLanguages
+                        .Where(targetLanguage => !EmbeddedTargetSubtitleHelper.IsSatisfiedTargetLanguage(
+                            embeddedSatisfiedTargetLanguages,
+                            targetLanguage))
+                        .ToList();
                     var staleTargets = await _sourceSubtitleSnapshotService.GetStaleTargetLanguagesAsync(
                         media.Id,
                         mediaType,
-                        targetLanguages,
+                        staleCheckTargetLanguages,
                         resolvedExternalSource.Snapshot);
 
                     if (staleTargets.Count > 0)
@@ -806,12 +829,16 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 if (!forceTranslation)
                 {
                     var corruptLanguages = new List<string>();
-                    foreach (var targetLang in targetLanguages.Intersect(existingLanguages))
+                    foreach (var targetLang in targetLanguages
+                        .Intersect(existingLanguages)
+                        .Where(targetLanguage => !EmbeddedTargetSubtitleHelper.IsSatisfiedTargetLanguage(
+                            embeddedSatisfiedTargetLanguages,
+                            targetLanguage)))
                     {
-                    var targetSubtitle = SelectMainTargetSubtitle(
-                        subtitles,
-                        targetLang,
-                        knownForcedDialogueGeneratedPaths);
+                        var targetSubtitle = SelectMainTargetSubtitle(
+                            subtitles,
+                            targetLang,
+                            knownForcedDialogueGeneratedPaths);
                         if (targetSubtitle != null)
                         {
                             var integrityResult = await _integrityService.ValidateIntegrityDetailedAsync(
@@ -1453,6 +1480,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         var skipWhenTargetEmbedded = await _settingService.GetSetting(
             SettingKeys.SubtitleValidation.SkipWhenTargetEmbedded) ?? "true";
         var qualifyingEmbeddedTargets = new List<Subtitles>();
+        var embeddedSatisfiedTargetLanguages = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         
         if (skipWhenTargetEmbedded.Equals("true", StringComparison.OrdinalIgnoreCase) && !forceTranslation)
         {
@@ -1473,6 +1501,13 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                         var score = SubtitleLanguageHelper.ScoreSubtitleCandidate(subtitle, targetLanguage);
                         if (score >= 30)
                         {
+                            var normalizedTargetLanguage =
+                                SubtitleLanguageHelper.NormalizeLanguageCode(targetLanguage);
+                            if (!string.IsNullOrWhiteSpace(normalizedTargetLanguage))
+                            {
+                                embeddedSatisfiedTargetLanguages.Add(normalizedTargetLanguage);
+                            }
+
                             var embeddedFormat = SubtitleOutputModeHelper.NormalizeFormat(subtitle.CodecName);
                             if (!string.IsNullOrWhiteSpace(embeddedFormat))
                             {
@@ -1485,7 +1520,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                             }
 
                             _logger.LogInformation(
-                                "Found embedded target subtitle for {FileName}: Language={Language}, StreamIndex={StreamIndex}, Score={Score}. Counting it toward existing target outputs.",
+                                "Found embedded target subtitle for {FileName}: Language={Language}, StreamIndex={StreamIndex}, Score={Score}. Counting it as a satisfied target language.",
                                 media.FileName,
                                 targetLanguage,
                                 subtitle.StreamIndex,
@@ -1526,6 +1561,9 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             ? targetLanguages.ToList()
             : targetLanguages
                 .Where(targetLanguage =>
+                    !EmbeddedTargetSubtitleHelper.IsSatisfiedTargetLanguage(
+                        embeddedSatisfiedTargetLanguages,
+                        targetLanguage) &&
                     languagesMissingRequiredFormats.Contains(
                         SubtitleLanguageHelper.NormalizeLanguageCode(targetLanguage)))
                 .ToList();
@@ -1557,10 +1595,15 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
 
         if (!forceTranslation)
         {
+            var staleCheckTargetLanguages = targetLanguages
+                .Where(targetLanguage => !EmbeddedTargetSubtitleHelper.IsSatisfiedTargetLanguage(
+                    embeddedSatisfiedTargetLanguages,
+                    targetLanguage))
+                .ToList();
             var staleTargets = await _sourceSubtitleSnapshotService.GetStaleTargetLanguagesAsync(
                 media.Id,
                 mediaType,
-                targetLanguages,
+                staleCheckTargetLanguages,
                 selectedSourceSnapshot);
 
             if (staleTargets.Count > 0)
@@ -1746,7 +1789,11 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 mediaType,
                 sourceSelection,
                 matchingExternalSubtitles,
-                targetLanguages,
+                targetLanguages
+                    .Where(targetLanguage => !EmbeddedTargetSubtitleHelper.IsSatisfiedTargetLanguage(
+                        embeddedSatisfiedTargetLanguages,
+                        targetLanguage))
+                    .ToList(),
                 forceTranslation,
                 forcePriority,
                 maxTranslationsToQueue.HasValue
@@ -2050,6 +2097,29 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         }
         
         return null;
+    }
+
+    private async Task<HashSet<string>> GetEmbeddedSatisfiedTargetLanguagesForCurrentMediaAsync(
+        IReadOnlyCollection<string> targetLanguages,
+        bool forceTranslation,
+        IReadOnlyCollection<EmbeddedSubtitle>? probedEmbeddedSubtitles = null)
+    {
+        if (forceTranslation)
+        {
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var skipWhenTargetEmbedded =
+            await _settingService.GetSetting(SettingKeys.SubtitleValidation.SkipWhenTargetEmbedded) ?? "true";
+        if (!skipWhenTargetEmbedded.Equals("true", StringComparison.OrdinalIgnoreCase))
+        {
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var embeddedSubtitles = probedEmbeddedSubtitles ?? await ProbeEmbeddedSubtitlesForCurrentMedia();
+        return embeddedSubtitles == null
+            ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            : EmbeddedTargetSubtitleHelper.GetSatisfiedTargetLanguages(embeddedSubtitles, targetLanguages);
     }
 
     private async Task<bool> IsCorruptExternalSourceAsync(Subtitles subtitle)

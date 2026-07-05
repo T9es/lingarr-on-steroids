@@ -237,8 +237,14 @@ public class CustomMediaStateService : ICustomMediaStateService
             embeddedSubtitles,
             targetLanguages,
             skipWhenTargetEmbedded);
+        var embeddedSatisfiedTargetLanguages = skipWhenTargetEmbedded
+            ? EmbeddedTargetSubtitleHelper.GetSatisfiedTargetLanguages(embeddedSubtitles, targetLanguages)
+            : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         var missingTargets = targetLanguages
+            .Where(targetLanguage => !EmbeddedTargetSubtitleHelper.IsSatisfiedTargetLanguage(
+                embeddedSatisfiedTargetLanguages,
+                targetLanguage))
             .Where(targetLanguage =>
                 !existingTargetFormats.TryGetValue(targetLanguage, out var formats) ||
                 requiredOutputFormats.Any(requiredFormat => !formats.Contains(requiredFormat)))
@@ -246,9 +252,14 @@ public class CustomMediaStateService : ICustomMediaStateService
 
         if (missingTargets.Count == 0)
         {
+            var staleCheckTargetLanguages = targetLanguages
+                .Where(targetLanguage => !EmbeddedTargetSubtitleHelper.IsSatisfiedTargetLanguage(
+                    embeddedSatisfiedTargetLanguages,
+                    targetLanguage))
+                .ToList();
             var staleTargets = await GetStaleTargetLanguagesAsync(
                 item.Id,
-                targetLanguages,
+                staleCheckTargetLanguages,
                 sourceSnapshot,
                 requiredOutputFormats);
             if (staleTargets.Count > 0)

@@ -199,8 +199,14 @@ public class MediaStateService : IMediaStateService
             targetLanguages,
             skipWhenTargetEmbedded,
             knownForcedDialogueGeneratedPaths);
+        var embeddedSatisfiedTargetLanguages = skipWhenTargetEmbedded
+            ? EmbeddedTargetSubtitleHelper.GetSatisfiedTargetLanguages(embeddedSubtitles, targetLanguages)
+            : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         var missingTargets = targetLanguages
+            .Where(targetLanguage => !EmbeddedTargetSubtitleHelper.IsSatisfiedTargetLanguage(
+                embeddedSatisfiedTargetLanguages,
+                targetLanguage))
             .Where(targetLanguage =>
                 !existingTargetFormats.TryGetValue(targetLanguage, out var formats) ||
                 requiredOutputFormats.Any(requiredFormat => !formats.Contains(requiredFormat)))
@@ -287,10 +293,15 @@ public class MediaStateService : IMediaStateService
 
         if (missingTargets.Count == 0)
         {
+            var staleCheckTargetLanguages = targetLanguages
+                .Where(targetLanguage => !EmbeddedTargetSubtitleHelper.IsSatisfiedTargetLanguage(
+                    embeddedSatisfiedTargetLanguages,
+                    targetLanguage))
+                .ToList();
             var staleTargets = await _sourceSubtitleSnapshotService.GetStaleTargetLanguagesAsync(
                 media.Id,
                 mediaType,
-                targetLanguages,
+                staleCheckTargetLanguages,
                 sourceSnapshot);
 
             if (staleTargets.Count > 0)

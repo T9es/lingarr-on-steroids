@@ -1135,6 +1135,69 @@ public class MediaStateServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ComputeStateAsync_WithEmbeddedTargetAndBothMode_ReturnsComplete()
+    {
+        var movie = new Movie
+        {
+            Id = 34,
+            RadarrId = 34,
+            Title = "Embedded Target Movie",
+            Path = "/movies/embedded-target",
+            FileName = "embedded-target.mkv",
+            DateAdded = DateTime.UtcNow
+        };
+
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = 34,
+            Language = "eng",
+            IsTextBased = true,
+            CodecName = "ass",
+            StreamIndex = 0
+        });
+
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = 34,
+            Language = "pol",
+            IsTextBased = true,
+            CodecName = "ass",
+            StreamIndex = 1
+        });
+
+        _context.Movies.Add(movie);
+        await _context.SaveChangesAsync();
+
+        _settingServiceMock
+            .SetupSequence(s => s.GetSettingAsJson<SourceLanguage>(It.IsAny<string>()))
+            .ReturnsAsync([new SourceLanguage { Name = "English", Code = "en" }])
+            .ReturnsAsync([new SourceLanguage { Name = "Polish", Code = "pl" }]);
+
+        _settingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.Translation.SubtitleOutputMode))
+            .ReturnsAsync(SubtitleOutputMode.Both.ToSettingValue());
+        _settingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.SubtitleValidation.SkipWhenTargetEmbedded))
+            .ReturnsAsync("true");
+
+        _subtitleServiceMock
+            .Setup(s => s.GetAllSubtitles(It.IsAny<string>()))
+            .ReturnsAsync([]);
+
+        var service = new MediaStateService(
+            _context,
+            _settingServiceMock.Object,
+            _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
+            NullLogger<MediaStateService>.Instance);
+
+        var state = await service.UpdateStateAsync(movie, MediaType.Movie);
+
+        Assert.Equal(TranslationState.Complete, state);
+    }
+
+    [Fact]
     public async Task ComputeStateAsync_ShouldIgnoreTemporaryExternalAssSource_WhenResolvingRequiredFormats()
     {
         var movie = new Movie

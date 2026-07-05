@@ -197,6 +197,70 @@ public class CustomMediaStateServiceTests
     }
 
     [Fact]
+    public async Task UpdateStateAsync_WithEmbeddedTargetAndBothMode_ReturnsComplete()
+    {
+        await using var context = BuildContext();
+        var item = await CreateItemAsync(context, 22);
+
+        var subtitleServiceMock = new Mock<ISubtitleService>();
+        subtitleServiceMock
+            .Setup(service => service.GetAllSubtitles(It.IsAny<string>()))
+            .ReturnsAsync(new List<Subtitles>
+            {
+                new()
+                {
+                    Path = @"C:\media\custom\custom.movie.en.ass",
+                    FileName = "custom.movie.en",
+                    Language = "en",
+                    Caption = string.Empty,
+                    Format = ".ass"
+                }
+            });
+
+        var subtitleExtractionServiceMock = new Mock<ISubtitleExtractionService>();
+        subtitleExtractionServiceMock
+            .Setup(service => service.ProbeEmbeddedSubtitles(item.Path))
+            .ReturnsAsync(new List<EmbeddedSubtitle>
+            {
+                new()
+                {
+                    StreamIndex = 0,
+                    Language = "pol",
+                    Title = string.Empty,
+                    CodecName = "ass",
+                    IsTextBased = true,
+                    IsForced = false
+                }
+            });
+
+        var settingServiceMock = CreateSettingsMock();
+        settingServiceMock
+            .Setup(service => service.GetSetting(SettingKeys.Translation.SubtitleOutputMode))
+            .ReturnsAsync("both");
+        var sourceSubtitleSnapshotServiceMock = new Mock<ISourceSubtitleSnapshotService>();
+        sourceSubtitleSnapshotServiceMock
+            .Setup(service => service.ResolveCurrentSnapshotAsync(
+                It.IsAny<Lingarr.Core.Interfaces.IMedia>(),
+                It.IsAny<MediaType>(),
+                It.IsAny<IReadOnlyCollection<EmbeddedSubtitle>>(),
+                It.IsAny<IReadOnlyCollection<Subtitles>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((SourceSubtitleSnapshot?)null);
+
+        var service = new CustomMediaStateService(
+            context,
+            settingServiceMock.Object,
+            subtitleServiceMock.Object,
+            subtitleExtractionServiceMock.Object,
+            sourceSubtitleSnapshotServiceMock.Object,
+            NullLogger<CustomMediaStateService>.Instance);
+
+        var state = await service.UpdateStateAsync(item, saveChanges: false);
+
+        Assert.Equal(TranslationState.Complete, state);
+    }
+
+    [Fact]
     public async Task UpdateStateAsync_WithStaleCompletedCustomTranslation_ReturnsStale()
     {
         await using var context = BuildContext();

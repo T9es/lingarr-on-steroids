@@ -143,16 +143,25 @@ public class CustomMediaSubtitleProcessor : ICustomMediaSubtitleProcessor
             embeddedSubtitles,
             targetLanguages,
             !forceTranslation && skipWhenTargetEmbedded.Equals("true", StringComparison.OrdinalIgnoreCase));
+        var embeddedSatisfiedTargetLanguages =
+            !forceTranslation && skipWhenTargetEmbedded.Equals("true", StringComparison.OrdinalIgnoreCase)
+                ? EmbeddedTargetSubtitleHelper.GetSatisfiedTargetLanguages(embeddedSubtitles, targetLanguages)
+                : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var currentSnapshot = await _sourceSubtitleSnapshotService.ResolveCurrentSnapshotAsync(
             trackedItem,
             mediaType,
             embeddedSubtitles,
             externalSubtitles);
+        var staleCheckTargetLanguages = targetLanguages
+            .Where(targetLanguage => !EmbeddedTargetSubtitleHelper.IsSatisfiedTargetLanguage(
+                embeddedSatisfiedTargetLanguages,
+                targetLanguage))
+            .ToList();
         var staleTargets = forceTranslation
             ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             : await GetStaleTargetLanguagesAsync(
                 trackedItem.Id,
-                targetLanguages,
+                staleCheckTargetLanguages,
                 currentSnapshot,
                 requiredOutputFormats);
         var translationsQueued = 0;
@@ -160,6 +169,14 @@ public class CustomMediaSubtitleProcessor : ICustomMediaSubtitleProcessor
         foreach (var targetLanguage in targetLanguages)
         {
             var normalizedTargetLanguage = SubtitleLanguageHelper.NormalizeLanguageCode(targetLanguage);
+            if (!forceTranslation &&
+                EmbeddedTargetSubtitleHelper.IsSatisfiedTargetLanguage(
+                    embeddedSatisfiedTargetLanguages,
+                    targetLanguage))
+            {
+                continue;
+            }
+
             if (!forceTranslation &&
                 existingOutputLanguages.TryGetValue(targetLanguage, out var existingFormats) &&
                 requiredOutputFormats.All(existingFormats.Contains) &&
