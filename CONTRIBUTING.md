@@ -14,13 +14,13 @@ This document provides guidelines and instructions for contributing to the proje
 1. Fork the repository on GitHub
 2. Clone your fork locally:
 ```bash
-git clone https://github.com/[USERNAME]/lingarr.git
-cd lingarr
+git clone https://github.com/T9es/lingarr-on-steroids.git
+cd lingarr-on-steroids
 ```
 
 3. Add the upstream repository as a remote:
 ```bash
-git remote add upstream https://github.com/lingarr-translate/lingarr.git
+git remote add upstream https://github.com/T9es/lingarr-on-steroids.git
 ```
 
 4. Create a new branch for your feature or bugfix following [Conventional Commits](https://www.conventionalcommits.org/):
@@ -38,7 +38,6 @@ The project is organized into several key components:
 - `Lingarr.Core/`: Core domain models and interfaces
 - `Lingarr.Client/`: Vue.js frontend application
 - `Lingarr.Migrations.SQLite/`: SQLite database migrations
-- `Lingarr.Migrations.MySQL/`: MySQL database migrations
 
 ## Building and Testing
 
@@ -56,7 +55,6 @@ The frontend supports hot reload while the backend needs to be rebuilt each time
 | Lingarr    | http://localhost:9876                         |
 | Swagger    | http://localhost:9877/swagger/index.html      |
 | Hangfire   | http://localhost:9877/hangfire                |
-| phpmyadmin | http://localhost:9878                         |
 | sonarr     | http://localhost:8989                         |
 | radarr     | http://localhost:7878                         |
 
@@ -109,7 +107,7 @@ Use the provided PowerShell script to create migrations:
 ./create-migrations.ps1 -MigrationName "YourMigrationName"
 ```
 
-This will create migrations for both SQLite and MySQL providers.
+This will create migrations for both SQLite and PostgreSQL providers.
 
 ### Applying Migrations
 Migrations are automatically applied when the application starts.

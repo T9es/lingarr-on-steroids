@@ -76,6 +76,8 @@ body:
         - Gemini
         - DeepSeek
         - Chutes.ai
+        - NanoGPT
+        - CrofAI
         - LocalAI
         - DeepL
         - LibreTranslate
@@ -91,7 +93,7 @@ body:
     id: version
     attributes:
       label: Lingarr version
-      placeholder: 'e.g. v2.3.1 or commit hash'
+      placeholder: 'e.g. v3.0.0 or commit hash'
     validations:
       required: false
 

@@ -12,7 +12,6 @@
 
 ---
 
-> Deze README beschrijft onze fork en de stand van upstream Lingarr op 27 maart 2026. Als upstream daarna verder verandert, kunnen sommige details hier later wat achterlopen.
 >
 > Deze README beschrijft onze fork en de stand van upstream Lingarr op 29 juni 2026. Als upstream daarna verder verandert, kunnen sommige details hier later wat achterlopen.
 >

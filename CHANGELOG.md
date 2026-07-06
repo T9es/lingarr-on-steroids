@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Dates are written in ISO 8601 (`YYYY-MM-DD`).
 
-## [3.0.0] - 2026-06-29
+## [3.0.0] - 2026-07-06
 
 Major release. 33 new features and 102+ fixes since v2.5.0. This is a substantial
 change over v2.5.0 and users upgrading from a v2.x install should read the
@@ -82,6 +82,12 @@ change over v2.5.0 and users upgrading from a v2.x install should read the
   3.2.6, `eslint` 9.x to 10.1.0, `follow-redirects`, `Microsoft.AspNetCore.SpaServices.Extensions`
   9.0.14 to 9.0.15, `DeepL.net` 1.20 to 1.21, `Microsoft.EntityFrameworkCore`
   9.0.11 to 9.0.14, and several Hangfire / EFCore / Npgsql patch bumps.
+- **Auto-approve repeated sibling subtitle cues.** Repeated dialogue cues
+  from the same subtitle track are now auto-approved during comparison,
+  reducing manual review for multi-track sources.
+- **Skip translation queueing for embedded target subtitles.** Subtitles
+  that are already embedded in the target language are no longer queued
+  for re-translation.
 - **Git-aware release versioning.** `Directory.Build.props` now resolves
   the assembly version from `git describe` at build time, the Dockerfile
   forwards a `VERSION` build-arg, and `Lingarr.Core.csproj` no longer
@@ -145,6 +151,10 @@ change over v2.5.0 and users upgrading from a v2.x install should read the
   version (`Dev 3.0.0-216-g39ae09b2`) instead of a generic `Dev Build`
   label. Update-available detection in the badge now triggers correctly
   between consecutive tag releases.
+- **Subtitle settings grouped into a single card with row layout.**
+  The subtitle settings UI was reorganised for clarity.
+- **Tasks page layout redesigned.** The Tasks page (formerly Schedule)
+  was visually redesigned with a cleaner layout.
 
 ### Fixed
 
@@ -172,6 +182,11 @@ change over v2.5.0 and users upgrading from a v2.x install should read the
   - Empty-string prompt instruction removed.
   - `usable_requests` decimal-vs-int mismatch on CrofAI usage API.
   - Provider retry suppression when circuit is open.
+  - ASS compare and auto-complete output alignment fixes.
+  - Dev-build badge SHA trimmed to fit in the sidebar.
+  - Remaining English strings translated and mojibake in JSON fixed.
+  - Diacritics restored in all localized READMEs.
+  - Duplicate keys removed from en.json.
 
 ### Removed
 
@@ -233,7 +248,7 @@ support, network retries, and database indexes.
 Translation queue performance fixes plus embedded-subtitle extraction,
 manual subtitle selection, and the integrity-check system.
 
-[Unreleased]: https://github.com/T9es/lingarr-on-steroids/compare/v3.0.0...HEAD
+[Unreleased]: https://github.com/T9es/lingarr-on-steroids/compare/v2.5.0...HEAD
 [3.0.0]: https://github.com/T9es/lingarr-on-steroids/compare/v2.5.0...v3.0.0
 [2.5.0]: https://github.com/T9es/lingarr-on-steroids/compare/v2.3.0...v2.5.0
 [2.3.0]: https://github.com/T9es/lingarr-on-steroids/releases/tag/v2.3.0

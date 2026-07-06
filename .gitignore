@@ -26,6 +26,15 @@ nupkg/
 # Codesight
 .codesight/
 
+# AI agent directories
+.Jules/
+.agent/
+.jules/
+.mindmodel/
+
+# Dropped database providers
+Lingarr.Migrations.MySQL/
+
 # User-specific files
 *.suo
 *.user

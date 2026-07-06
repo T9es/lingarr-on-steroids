@@ -12,7 +12,6 @@
 
 ---
 
-> To README opisuje nasz fork i stan upstreamowego Lingarra z 27 marca 2026. Jeśli upstream zmieni się później, część szczegółów tutaj może z czasem przestac byc idealnie aktualna.
 >
 > To README opisuje nasz fork i stan upstreamowego Lingarra z 29 czerwca 2026. Jeśli upstream zmieni się później, część szczegółów tutaj może z czasem przestac byc idealnie aktualna.
 >
