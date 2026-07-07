@@ -26,11 +26,14 @@ The v3 release is a substantial change over v2.5.0. If you only read one section
 
 - **Git-aware release versioning.** The assembly version is now resolved from `git describe` at build time, and the Docker build forwards a `VERSION` build-arg. Cut a release by tagging `v3.0.0` and pushing the tag. No more hand-editing `Lingarr.Core.csproj` for a release.
 - **Dev-build badge shows the real version.** The bottom-left aside badge now reads `Dev <version>` (for example, `Dev 3.0.0-216-g39ae09b2`) instead of the previous generic `Dev Build` text.
-- **CrofAI is now a supported AI provider** with credits-only usage tracking. Translations auto-pause when your CrofAI credits balance hits zero. See the new `CROFAI_*` env vars in [Settings.MD](Settings.MD).
+- **CrofAI, NanoGPT, Chutes.ai, and LocalAI** join as new supported translation backends, each with quota tracking.
 - **OCR for bitmap subtitles.** DVD/VobSub, PGS, and other image-based subtitle tracks are OCR'd into text and then translated like any other source. Two new media states (`OcrPending`, `OcrBlocked`) cover the OCR lifecycle.
 - **Per-provider circuit breaker.** A provider that starts throwing 5xx errors will trip a circuit and pause requests to it for a while, instead of burning your API quota during a provider outage.
 - **Paused translation recovery.** Provider 429s (for example, Gemini rate limits) no longer kill a translation. The worker holds the slot and resumes when the limit clears.
 - **Post-translation quality gate.** After a batch finishes, surviving paragraphs are scored. The UI lets you review, edit, accept, or reject items that fall outside the tolerance, with a Requeue All / Dismiss All bulk action.
+- **Inline subtitle comparison and editing.** Compare original and translated subtitles side by side, edit individual lines, and approve or reject directly in the dashboard.
+- **Subtitle integrity checking.** Automated quality verification across your media library with configurable schedules.
+- **Custom translation sources.** Bring your own translation API or self-hosted LLM provider via the Custom Sources settings page.
 - **Auto source-language mode.** Source language can be auto-detected per cue using NLLB (FLORES-200 spBLEU), LLM tier scoring, and language-family heuristics. Toggle is in onboarding and in the source-language settings.
 - **Configurable job scheduling on the new Tasks page.** Each Hangfire and translation job has its own enable toggle and a per-job cron expression. The Tasks page is the renamed and redesigned Schedule page, wrapped in shared CardComponent cards with a responsive 1/2/3-column grid, loading and empty states, and a corrected SignalR cleanup. The old automation block on the limits card is gone.
 - **Configurable embedding and language-detection, with new UI.** Frontend settings UI for MKV embedded-subtitle behaviour, untagged-stream language detection, and a request retry cap.
