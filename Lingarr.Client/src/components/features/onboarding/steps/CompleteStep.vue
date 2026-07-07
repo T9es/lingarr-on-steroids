@@ -46,6 +46,34 @@
                     {{ targetLanguageNames }}
                 </span>
             </div>
+
+            <!-- Subtitle Configuration Summary -->
+            <div class="border-secondary-content/20 mt-2 border-t pt-2">
+                <div v-if="useSubtitleTagging">
+                    <span class="text-secondary-content">
+                        {{ translate('onboarding.completeStep.subtitleTagging') }}
+                    </span>
+                    <span class="text-primary-content ml-2 font-semibold">
+                        {{ translate('common.enabled') }} ({{ subtitleTag }})
+                    </span>
+                </div>
+                <div v-if="ocrEnabled">
+                    <span class="text-secondary-content">
+                        {{ translate('onboarding.completeStep.ocrEnabled') }}
+                    </span>
+                    <span class="text-primary-content ml-2 font-semibold">
+                        {{ translate('common.enabled') }}
+                    </span>
+                </div>
+                <div>
+                    <span class="text-secondary-content">
+                        {{ translate('onboarding.completeStep.embedMode') }}
+                    </span>
+                    <span class="text-primary-content ml-2 font-semibold">
+                        {{ embedModeLabel }}
+                    </span>
+                </div>
+            </div>
         </div>
 
         <!-- Actions -->
@@ -107,6 +135,29 @@ const targetLanguageNames = computed(() => {
     const languages = settingStore.getSetting(SETTINGS.TARGET_LANGUAGES) as ILanguage[] | null
     if (!languages || languages.length === 0) return null
     return languages.map((lang) => lang.name).join(', ')
+})
+
+// Subtitle tagging summary
+const useSubtitleTagging = computed(() => {
+    return (settingStore.getSetting(SETTINGS.USE_SUBTITLE_TAGGING) as string) === 'true'
+})
+
+const subtitleTag = computed(() => {
+    return (settingStore.getSetting(SETTINGS.SUBTITLE_TAG) as string) || '-AI-TRANSLATED-'
+})
+
+// OCR summary
+const ocrEnabled = computed(() => {
+    return (settingStore.getSetting(SETTINGS.SUBTITLE_OCR_ENABLED) as string) === 'true'
+})
+
+// Embedding mode summary
+const embedModeLabel = computed(() => {
+    const always = settingStore.getSetting(SETTINGS.EMBED_IN_CONTAINER) as string
+    const whenTooLong = settingStore.getSetting(SETTINGS.EMBED_WHEN_PATH_TOO_LONG) as string
+    if (always === 'true') return translate('settings.subtitle.embedModeAlways')
+    if (whenTooLong === 'true') return translate('settings.subtitle.embedModeWhenTooLong')
+    return translate('settings.subtitle.embedModeNever')
 })
 
 // Handle complete button click

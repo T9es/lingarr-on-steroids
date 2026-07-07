@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Enum;
@@ -13,6 +13,7 @@ using Lingarr.Server.Models.Api;
 using Lingarr.Server.Models.Batch.Request;
 using Lingarr.Server.Models.Batch.Response;
 using Lingarr.Server.Services;
+using Lingarr.Server.Services.Subtitle;
 
 namespace Lingarr.Server.Controllers;
 
@@ -24,6 +25,8 @@ public class TranslateController : ControllerBase
     private readonly ITranslationRequestService _translationRequestService;
     private readonly IMediaSubtitleProcessor _mediaSubtitleProcessor;
     private readonly ISubtitleExtractionService _extractionService;
+    private readonly ISubtitleService _subtitleService;
+    private readonly ISubtitleOutputReconciliationService _subtitleOutputReconciliationService;
     private readonly LingarrDbContext _dbContext;
     private readonly ISettingService _settings;
     private readonly ILogger<TranslateController> _logger;
@@ -33,6 +36,8 @@ public class TranslateController : ControllerBase
         ITranslationRequestService translationRequestService,
         IMediaSubtitleProcessor mediaSubtitleProcessor,
         ISubtitleExtractionService extractionService,
+        ISubtitleService subtitleService,
+        ISubtitleOutputReconciliationService subtitleOutputReconciliationService,
         LingarrDbContext dbContext,
         ISettingService settings,
         ILogger<TranslateController> logger)
@@ -41,6 +46,8 @@ public class TranslateController : ControllerBase
         _translationRequestService = translationRequestService;
         _mediaSubtitleProcessor = mediaSubtitleProcessor;
         _extractionService = extractionService;
+        _subtitleService = subtitleService;
+        _subtitleOutputReconciliationService = subtitleOutputReconciliationService;
         _dbContext = dbContext;
         _settings = settings;
         _logger = logger;
@@ -162,10 +169,11 @@ public class TranslateController : ControllerBase
         try
         {
             _logger.LogInformation(
-                "TranslateMedia request received: MediaId={MediaId}, MediaType={MediaType}",
-                request.MediaId, request.MediaType);
+                "TranslateMedia request received: MediaId={MediaId}, MediaType={MediaType}, ForceRecreate={ForceRecreate}",
+                request.MediaId, request.MediaType, request.ForceRecreate);
                 
             var translationsQueued = 0;
+            var cleanedOutputs = 0;
             
             switch (request.MediaType)
             {
@@ -173,8 +181,17 @@ public class TranslateController : ControllerBase
                     var movie = await _dbContext.Movies.FindAsync(request.MediaId);
                     if (movie == null)
                         return NotFound(new TranslateMediaResponse { Message = "Movie not found" });
+                    if (request.ForceRecreate)
+                    {
+                        cleanedOutputs += await CleanupLingarrOutputsForMediaAsync(movie.Path, movie.FileName);
+                    }
                     _logger.LogInformation("Processing movie: {Title}, Path: {Path}", movie.Title, movie.Path);
-                    translationsQueued = await _mediaSubtitleProcessor.ProcessMediaForceAsync(movie, MediaType.Movie, forceProcess: true, forcePriority: true);
+                    translationsQueued = await _mediaSubtitleProcessor.ProcessMediaForceAsync(
+                        movie,
+                        MediaType.Movie,
+                        forceProcess: true,
+                        forceTranslation: request.ForceRecreate,
+                        forcePriority: true);
                     _logger.LogInformation("Movie {Title} queued {Count} translations", movie.Title, translationsQueued);
                     break;
                     
@@ -182,7 +199,16 @@ public class TranslateController : ControllerBase
                     var episode = await _dbContext.Episodes.FindAsync(request.MediaId);
                     if (episode == null)
                         return NotFound(new TranslateMediaResponse { Message = "Episode not found" });
-                    translationsQueued = await _mediaSubtitleProcessor.ProcessMediaForceAsync(episode, MediaType.Episode, forceProcess: true, forcePriority: true);
+                    if (request.ForceRecreate)
+                    {
+                        cleanedOutputs += await CleanupLingarrOutputsForMediaAsync(episode.Path, episode.FileName);
+                    }
+                    translationsQueued = await _mediaSubtitleProcessor.ProcessMediaForceAsync(
+                        episode,
+                        MediaType.Episode,
+                        forceProcess: true,
+                        forceTranslation: request.ForceRecreate,
+                        forcePriority: true);
                     break;
                     
                 case MediaType.Season:
@@ -193,7 +219,16 @@ public class TranslateController : ControllerBase
                         return NotFound(new TranslateMediaResponse { Message = "Season not found" });
                     foreach (var ep in season.Episodes.Where(e => !e.ExcludeFromTranslation))
                     {
-                        translationsQueued += await _mediaSubtitleProcessor.ProcessMediaForceAsync(ep, MediaType.Episode, forceProcess: true, forcePriority: true);
+                        if (request.ForceRecreate)
+                        {
+                            cleanedOutputs += await CleanupLingarrOutputsForMediaAsync(ep.Path, ep.FileName);
+                        }
+                        translationsQueued += await _mediaSubtitleProcessor.ProcessMediaForceAsync(
+                            ep,
+                            MediaType.Episode,
+                            forceProcess: true,
+                            forceTranslation: request.ForceRecreate,
+                            forcePriority: true);
                     }
                     break;
                     
@@ -213,7 +248,16 @@ public class TranslateController : ControllerBase
                         foreach (var ep in s.Episodes.Where(e => !e.ExcludeFromTranslation))
                         {
                             totalEpisodes++;
-                            var epCount = await _mediaSubtitleProcessor.ProcessMediaForceAsync(ep, MediaType.Episode, forceProcess: true, forcePriority: true);
+                            if (request.ForceRecreate)
+                            {
+                                cleanedOutputs += await CleanupLingarrOutputsForMediaAsync(ep.Path, ep.FileName);
+                            }
+                            var epCount = await _mediaSubtitleProcessor.ProcessMediaForceAsync(
+                                ep,
+                                MediaType.Episode,
+                                forceProcess: true,
+                                forceTranslation: request.ForceRecreate,
+                                forcePriority: true);
                             translationsQueued += epCount;
                             if (epCount == 0)
                             {
@@ -235,6 +279,11 @@ public class TranslateController : ControllerBase
             var message = translationsQueued > 0 
                 ? $"{translationsQueued} translation(s) queued" 
                 : "No translations needed";
+
+            if (request.ForceRecreate)
+            {
+                message += $". Removed {cleanedOutputs} Lingarr-managed subtitle file(s) before recreate.";
+            }
                 
             return Ok(new TranslateMediaResponse 
             { 
@@ -248,6 +297,75 @@ public class TranslateController : ControllerBase
             return StatusCode(500, new TranslateMediaResponse { Message = "Failed to queue translations" });
         }
     }
+    /// <summary>
+    /// Batch-queues translation jobs for multiple media items.
+    /// Iterates items and queues new translations where none exist.
+    /// </summary>
+    /// <param name="request">The batch request containing media items to process.</param>
+    /// <returns>Aggregate counts of queued translations vs total requested.</returns>
+    [HttpPost("media/batch")]
+    public async Task<ActionResult<TranslateMediaBatchResponse>> TranslateMediaBatch(
+        [FromBody] TranslateMediaBatchRequest request)
+    {
+        var translationsQueued = 0;
+        var totalRequested = 0;
+        var seen = new HashSet<string>();
+
+        foreach (var item in request.Items)
+        {
+            var key = $"{item.MediaType}:{item.MediaId}";
+            if (!seen.Add(key))
+            {
+                continue; // deduplicate
+            }
+            totalRequested++;
+
+            try
+            {
+                switch (item.MediaType)
+                {
+                    case MediaType.Movie:
+                        var movie = await _dbContext.Movies.FindAsync(item.MediaId);
+                        if (movie != null)
+                        {
+                            translationsQueued += await _mediaSubtitleProcessor.ProcessMediaForceAsync(
+                                movie,
+                                MediaType.Movie,
+                                forceProcess: true,
+                                forceTranslation: false,
+                                forcePriority: true);
+                        }
+                        break;
+
+                    case MediaType.Episode:
+                        var episode = await _dbContext.Episodes.FindAsync(item.MediaId);
+                        if (episode != null)
+                        {
+                            translationsQueued += await _mediaSubtitleProcessor.ProcessMediaForceAsync(
+                                episode,
+                                MediaType.Episode,
+                                forceProcess: true,
+                                forceTranslation: false,
+                                forcePriority: true);
+                        }
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Error processing batch item {MediaType}/{MediaId}",
+                    item.MediaType, item.MediaId);
+            }
+        }
+
+        return Ok(new TranslateMediaBatchResponse
+        {
+            TranslationsQueued = translationsQueued,
+            TotalRequested = totalRequested
+        });
+    }
+
 
     /// <summary>
     /// Queues translation jobs using a specific embedded subtitle stream.
@@ -302,34 +420,41 @@ public class TranslateController : ControllerBase
                 });
             }
 
-            if (!selectedSubtitle.IsTextBased)
+            if (!selectedSubtitle.IsTextBased && !selectedSubtitle.IsOcrUsable)
             {
                 return BadRequest(new QueueWithSubtitleResponse 
                 { 
                     Success = false, 
-                    Message = "Cannot use image-based subtitles (PGS/VobSub). Please select a text-based subtitle." 
+                    Message = "Cannot use this image-based subtitle until OCR has succeeded or been approved."
                 });
             }
 
             var sourceLanguage = request.SourceLanguage.ToLowerInvariant();
             var translationsQueued = 0;
+            var workloadItemKey = $"library:{mediaType}:{request.MediaId}";
 
             // Queue translations for each target language
             foreach (var targetLanguage in targetLanguages)
             {
-                // Check for existing active request
-                var hasActiveRequest = await _dbContext.TranslationRequests.AnyAsync(tr =>
-                    tr.MediaId == request.MediaId &&
-                    tr.MediaType == mediaType &&
-                    tr.SourceLanguage == sourceLanguage &&
-                    tr.TargetLanguage == targetLanguage &&
-                    (tr.Status == TranslationStatus.Pending || tr.Status == TranslationStatus.InProgress));
+                var hasActiveRequest = await _dbContext.TranslationRequests
+                    .Where(tr =>
+                        (tr.WorkloadItemKey == workloadItemKey ||
+                         ((tr.WorkloadItemKey == string.Empty || tr.WorkloadItemKey == null) &&
+                           tr.WorkloadKind == TranslationWorkloadKind.Library &&
+                            tr.MediaId == request.MediaId &&
+                            tr.MediaType == mediaType)) &&
+                        tr.SourceLanguage == sourceLanguage &&
+                        tr.TargetLanguage == targetLanguage &&
+                        tr.IsActive == true)
+                    .AnyAsync();
 
                 if (hasActiveRequest)
                 {
                     _logger.LogInformation(
-                        "Skipping enqueue for MediaId={MediaId} {Source}->{Target}: translation request already active.",
-                        request.MediaId, sourceLanguage, targetLanguage);
+                        "Skipping enqueue for workload {WorkloadItemKey} {Source}->{Target}: translation request already active.",
+                        workloadItemKey,
+                        sourceLanguage,
+                        targetLanguage);
                     continue;
                 }
 
@@ -340,7 +465,7 @@ public class TranslateController : ControllerBase
                     SubtitlePath = null, // Will trigger extraction with specific stream index in TranslationJob
                     TargetLanguage = targetLanguage,
                     SourceLanguage = sourceLanguage,
-                    SubtitleFormat = null
+                    SubtitleFormat = selectedSubtitle.IsOcrUsable ? ".srt" : selectedSubtitle.CodecName
                 }, forcePriority: true);
 
                 translationsQueued++;
@@ -375,4 +500,303 @@ public class TranslateController : ControllerBase
             });
         }
     }
+
+    [HttpPost("recreate-all")]
+    public async Task<ActionResult<TranslateMediaResponse>> RecreateAllTranslations()
+    {
+        try
+        {
+            var translationsQueued = 0;
+            var cleanedOutputs = 0;
+
+            var movies = await _dbContext.Movies
+                .Where(movie => !movie.ExcludeFromTranslation)
+                .ToListAsync();
+
+            foreach (var movie in movies)
+            {
+                cleanedOutputs += await CleanupLingarrOutputsForMediaAsync(movie.Path, movie.FileName);
+                translationsQueued += await _mediaSubtitleProcessor.ProcessMediaForceAsync(
+                    movie,
+                    MediaType.Movie,
+                    forceProcess: true,
+                    forceTranslation: true,
+                    forcePriority: true);
+            }
+
+            var episodes = await _dbContext.Episodes
+                .Include(episode => episode.Season)
+                .ThenInclude(season => season.Show)
+                .Where(episode => !episode.ExcludeFromTranslation)
+                .Where(episode => !episode.Season.ExcludeFromTranslation)
+                .Where(episode => !episode.Season.Show.ExcludeFromTranslation)
+                .ToListAsync();
+
+            foreach (var episode in episodes)
+            {
+                cleanedOutputs += await CleanupLingarrOutputsForMediaAsync(episode.Path, episode.FileName);
+                translationsQueued += await _mediaSubtitleProcessor.ProcessMediaForceAsync(
+                    episode,
+                    MediaType.Episode,
+                    forceProcess: true,
+                    forceTranslation: true,
+                    forcePriority: true);
+            }
+
+            return Ok(new TranslateMediaResponse
+            {
+                TranslationsQueued = translationsQueued,
+                Message = $"Queued {translationsQueued} recreate translation(s) after removing {cleanedOutputs} Lingarr-managed subtitle file(s)."
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error recreating all translations");
+            return StatusCode(500, new TranslateMediaResponse { Message = "Failed to recreate translations" });
+        }
+    }
+
+    [HttpPost("reconcile-outputs")]
+    public async Task<ActionResult<SubtitleOutputReconciliationResponse>> ReconcileSubtitleOutputs(
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _subtitleOutputReconciliationService.ReconcileLibraryOutputsAsync(cancellationToken);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error reconciling subtitle outputs");
+            return StatusCode(
+                500,
+                new SubtitleOutputReconciliationResponse
+                {
+                    Errors = ["Failed to reconcile subtitle outputs"]
+                });
+        }
+    }
+
+    [HttpPost("reconcile-outputs/media")]
+    public async Task<ActionResult<SubtitleOutputReconciliationResponse>> ReconcileSubtitleOutputsForMedia(
+        [FromBody] TranslateMediaRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            switch (request.MediaType)
+            {
+                case MediaType.Movie:
+                {
+                    var movie = await _dbContext.Movies
+                        .FirstOrDefaultAsync(item => item.Id == request.MediaId, cancellationToken);
+                    if (movie == null)
+                    {
+                        return NotFound(new SubtitleOutputReconciliationResponse
+                        {
+                            Errors = ["Movie not found"]
+                        });
+                    }
+
+                    return Ok(await _subtitleOutputReconciliationService.ReconcileMediaOutputsAsync(
+                        request.MediaId,
+                        MediaType.Movie,
+                        cancellationToken));
+                }
+                case MediaType.Episode:
+                {
+                    var episode = await _dbContext.Episodes
+                        .FirstOrDefaultAsync(item => item.Id == request.MediaId, cancellationToken);
+                    if (episode == null)
+                    {
+                        return NotFound(new SubtitleOutputReconciliationResponse
+                        {
+                            Errors = ["Episode not found"]
+                        });
+                    }
+
+                    return Ok(await _subtitleOutputReconciliationService.ReconcileMediaOutputsAsync(
+                        request.MediaId,
+                        MediaType.Episode,
+                        cancellationToken));
+                }
+                case MediaType.Season:
+                {
+                    var season = await _dbContext.Seasons
+                        .Include(item => item.Episodes)
+                        .FirstOrDefaultAsync(item => item.Id == request.MediaId, cancellationToken);
+                    if (season == null)
+                    {
+                        return NotFound(new SubtitleOutputReconciliationResponse
+                        {
+                            Errors = ["Season not found"]
+                        });
+                    }
+
+                    var response = new SubtitleOutputReconciliationResponse();
+                    foreach (var episode in season.Episodes.Where(item => !item.ExcludeFromTranslation))
+                    {
+                        MergeReconciliationResponse(
+                            response,
+                            await _subtitleOutputReconciliationService.ReconcileMediaOutputsAsync(
+                                episode.Id,
+                                MediaType.Episode,
+                                cancellationToken));
+                    }
+
+                    return Ok(response);
+                }
+                case MediaType.Show:
+                {
+                    var show = await _dbContext.Shows
+                        .Include(item => item.Seasons)
+                        .ThenInclude(item => item.Episodes)
+                        .FirstOrDefaultAsync(item => item.Id == request.MediaId, cancellationToken);
+                    if (show == null)
+                    {
+                        return NotFound(new SubtitleOutputReconciliationResponse
+                        {
+                            Errors = ["Show not found"]
+                        });
+                    }
+
+                    var response = new SubtitleOutputReconciliationResponse();
+                    foreach (var episode in show.Seasons
+                                 .Where(item => !item.ExcludeFromTranslation)
+                                 .SelectMany(item => item.Episodes)
+                                 .Where(item => !item.ExcludeFromTranslation))
+                    {
+                        MergeReconciliationResponse(
+                            response,
+                            await _subtitleOutputReconciliationService.ReconcileMediaOutputsAsync(
+                                episode.Id,
+                                MediaType.Episode,
+                                cancellationToken));
+                    }
+
+                    return Ok(response);
+                }
+                default:
+                    return BadRequest(new SubtitleOutputReconciliationResponse
+                    {
+                        Errors = ["Unsupported media type for single-item reconciliation"]
+                    });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Error reconciling subtitle outputs for media {MediaId} of type {MediaType}",
+                request.MediaId,
+                request.MediaType);
+            return StatusCode(
+                500,
+                new SubtitleOutputReconciliationResponse
+                {
+                    Errors = ["Failed to reconcile subtitle outputs for the requested media"]
+                });
+        }
+    }
+
+    private static void MergeReconciliationResponse(
+        SubtitleOutputReconciliationResponse target,
+        SubtitleOutputReconciliationResponse source)
+    {
+        target.MediaItemsScanned += source.MediaItemsScanned;
+        target.DeletedFiles += source.DeletedFiles;
+        target.BackfilledFiles += source.BackfilledFiles;
+        target.BackfilledFromExternalSourceFiles += source.BackfilledFromExternalSourceFiles;
+        target.BackfilledFromEmbeddedSourceFiles += source.BackfilledFromEmbeddedSourceFiles;
+        target.BackfillSkippedFiles += source.BackfillSkippedFiles;
+        target.QueuedTranslations += source.QueuedTranslations;
+        target.QueuedForRetranslation += source.QueuedForRetranslation;
+        target.SkippedUnsafeFiles += source.SkippedUnsafeFiles;
+        target.SkippedActiveRequests += source.SkippedActiveRequests;
+        target.Errors.AddRange(source.Errors);
+    }
+
+    private async Task<int> CleanupLingarrOutputsForMediaAsync(string? directoryPath, string? mediaFileName)
+    {
+        if (string.IsNullOrWhiteSpace(directoryPath) || string.IsNullOrWhiteSpace(mediaFileName))
+        {
+            return 0;
+        }
+
+        var taggingEnabled = await _settings.GetSetting(SettingKeys.Translation.UseSubtitleTagging);
+        if (!string.Equals(taggingEnabled, "true", StringComparison.OrdinalIgnoreCase))
+        {
+            return 0;
+        }
+
+        var subtitleTag = await _settings.GetSetting(SettingKeys.Translation.SubtitleTag) ?? string.Empty;
+        var subtitleTagShort = await _settings.GetSetting(SettingKeys.Translation.SubtitleTagShort) ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(subtitleTag) && string.IsNullOrWhiteSpace(subtitleTagShort))
+        {
+            return 0;
+        }
+
+        if (!Directory.Exists(directoryPath))
+        {
+            return 0;
+        }
+
+        var subtitles = await _subtitleService.GetAllSubtitles(directoryPath);
+        var mediaNameNoExt = Path.GetFileNameWithoutExtension(mediaFileName);
+        var matchingSubtitles = subtitles
+            .Where(subtitle =>
+                subtitle.FileName.StartsWith(mediaFileName + ".", StringComparison.OrdinalIgnoreCase)
+                || subtitle.FileName.Equals(mediaFileName, StringComparison.OrdinalIgnoreCase)
+                || (!string.IsNullOrWhiteSpace(mediaNameNoExt)
+                    && subtitle.FileName.StartsWith(mediaNameNoExt + ".", StringComparison.OrdinalIgnoreCase)))
+            .Where(subtitle =>
+                (!string.IsNullOrWhiteSpace(subtitleTag)
+                 && Path.GetFileName(subtitle.Path).Contains(subtitleTag, StringComparison.OrdinalIgnoreCase))
+                || (!string.IsNullOrWhiteSpace(subtitleTagShort)
+                    && Path.GetFileName(subtitle.Path).Contains(subtitleTagShort, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+
+        var deletedCount = 0;
+        foreach (var subtitle in matchingSubtitles)
+        {
+            if (!System.IO.File.Exists(subtitle.Path))
+            {
+                continue;
+            }
+
+            try
+            {
+                System.IO.File.Delete(subtitle.Path);
+                deletedCount++;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to delete Lingarr-managed subtitle during recreate: {SubtitlePath}", subtitle.Path);
+            }
+        }
+
+        return deletedCount;
+    }
+
+    private static string NormalizeRequiredOutputFormats(
+        string? requiredOutputFormats,
+        string? sourceSubtitleFormat,
+        string? subtitleOutputMode = null)
+    {
+        if (!string.IsNullOrWhiteSpace(requiredOutputFormats))
+        {
+            var normalized = SubtitleOutputModeHelper.SerializeFormats(
+                SubtitleOutputModeHelper.DeserializeFormats(requiredOutputFormats));
+            if (!string.IsNullOrWhiteSpace(normalized))
+            {
+                return normalized;
+            }
+        }
+
+        return SubtitleOutputModeHelper.SerializeFormats(
+            SubtitleOutputModeHelper.GetRequiredOutputFormats(
+                sourceSubtitleFormat,
+                SubtitleOutputModeHelper.Parse(subtitleOutputMode)));
+    }
+
 }

@@ -38,6 +38,7 @@ CODE_OF_CONDUCT.md
 .idea/
 .fleet/
 .cr/
+.codesight/
 *.swp
 *.*~
 
@@ -83,3 +84,5 @@ docs/
 !.git/config
 !.git/packed-refs
 !.git/refs/heads/**
+!.git/refs/tags/**
+!.git/description

@@ -9,22 +9,49 @@ namespace Lingarr.Server.Controllers
     [ApiController]
     public class LogsController : ControllerBase
     {
+        [HttpGet("recent")]
+        public ActionResult GetRecentLogs([FromQuery] int take = 1000)
+        {
+            int clampedTake = Math.Clamp(take, 1, 1000);
+            var logs = InMemoryLogSink.GetRecentLogs(clampedTake).Select(log => new
+            {
+                logLevel = log.LogLevelString,
+                message = log.Message,
+                timestamp = log.Timestamp,
+                category = log.Category,
+                formattedTime = log.FormattedTime,
+                formattedDate = log.FormattedDate,
+                formattedSource = log.FormattedSource
+            });
+
+            return Ok(logs);
+        }
+
         [HttpGet("stream")]
-        public async Task GetLogStreamAsync(CancellationToken cancellationToken)
+        public async Task GetLogStreamAsync(
+            [FromQuery] bool includeRecent = true,
+            CancellationToken cancellationToken = default)
         {
             Response.Headers.Append("Content-Type", "text/event-stream");
             Response.Headers.Append("Cache-Control", "no-cache");
             Response.Headers.Append("Connection", "keep-alive");
             
-            // Send initial recent logs
-            foreach (var log in InMemoryLogSink.GetRecentLogs(400))
+            if (includeRecent)
             {
-                string json = JsonSerializer.Serialize(log);
-                await Response.WriteAsync($"data: {json}\n\n", cancellationToken);
+                foreach (var log in InMemoryLogSink.GetRecentLogs(400))
+                {
+                    string json = JsonSerializer.Serialize(log);
+                    await Response.WriteAsync($"data: {json}\n\n", cancellationToken);
+                }
+                await Response.Body.FlushAsync(cancellationToken);
             }
-            await Response.Body.FlushAsync(cancellationToken);
             
-            var channel = Channel.CreateUnbounded<LogEntry>();
+            var channel = Channel.CreateBounded<LogEntry>(new BoundedChannelOptions(1000)
+            {
+                FullMode = BoundedChannelFullMode.DropOldest,
+                SingleReader = true,
+                SingleWriter = false
+            });
             
             void Handler(object? sender, LogEntry log) 
             {

@@ -55,7 +55,7 @@
                     </span>
                 </div>
                 <div
-                    class="col-span-2 flex items-center justify-center px-4 py-2 md:col-span-2"
+                    class="col-span-2 flex items-center justify-center gap-2 px-4 py-2 md:col-span-2"
                     @click.stop>
                     <button
                         class="border-accent hover:bg-accent cursor-pointer rounded border p-1 transition-colors"
@@ -66,6 +66,16 @@
                             v-if="translatingSeason[season.id]"
                             class="h-4 w-4 animate-spin" />
                         <LanguageIcon v-else class="h-4 w-4" />
+                    </button>
+                    <button
+                        class="border-accent hover:bg-accent cursor-pointer rounded border p-1 transition-colors"
+                        :disabled="recreatingSeason[season.id]"
+                        :title="translate('common.recreate')"
+                        @click="recreateSeason(season)">
+                        <LoaderCircleIcon
+                            v-if="recreatingSeason[season.id]"
+                            class="h-4 w-4 animate-spin" />
+                        <ReloadIcon v-else class="h-4 w-4" />
                     </button>
                 </div>
                 <div class="col-span-0 md:col-span-1"></div>
@@ -88,6 +98,7 @@ import CaretButton from '@/components/common/CaretButton.vue'
 import ToggleButton from '@/components/common/ToggleButton.vue'
 import LanguageIcon from '@/components/icons/LanguageIcon.vue'
 import LoaderCircleIcon from '@/components/icons/LoaderCircleIcon.vue'
+import ReloadIcon from '@/components/icons/ReloadIcon.vue'
 import { useShowStore } from '@/store/show'
 
 const { translate } = useI18n()
@@ -100,6 +111,7 @@ const showStore = useShowStore()
 const subtitles: Ref<ISubtitle[]> = ref([])
 const expandedSeason: Ref<ISeason | null> = ref(null)
 const translatingSeason = reactive<Record<number, boolean>>({})
+const recreatingSeason = reactive<Record<number, boolean>>({})
 
 const sortedSeasons = computed(() => {
     return [...props.seasons].sort((a, b) => {
@@ -144,6 +156,22 @@ const translateSeason = async (season: ISeason) => {
         console.error('Failed to translate season:', error)
     } finally {
         translatingSeason[season.id] = false
+    }
+}
+
+const recreateSeason = async (season: ISeason) => {
+    recreatingSeason[season.id] = true
+    try {
+        const response = await services.translate.translateMedia<TranslateMediaResponse>(
+            season.id,
+            MEDIA_TYPE.SEASON,
+            true
+        )
+        console.log(response.message)
+    } catch (error) {
+        console.error('Failed to recreate season:', error)
+    } finally {
+        recreatingSeason[season.id] = false
     }
 }
 </script>

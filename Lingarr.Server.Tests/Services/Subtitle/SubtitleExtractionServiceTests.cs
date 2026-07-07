@@ -1,11 +1,13 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Interfaces.Services;
+using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Services.Subtitle;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -36,7 +38,10 @@ public class SubtitleExtractionServiceTests : IDisposable
         _service = new SubtitleExtractionService(
             NullLogger<SubtitleExtractionService>.Instance,
             _dbContext,
-            Mock.Of<ISettingService>());
+            Mock.Of<ISettingService>(),
+            Mock.Of<ISubtitleService>(),
+            new EmbeddedSubtitleCacheService(NullLogger<EmbeddedSubtitleCacheService>.Instance),
+            Mock.Of<ISubtitleLanguageDetectionService>());
     }
 
     [Fact]
@@ -134,6 +139,158 @@ public class SubtitleExtractionServiceTests : IDisposable
         var dbSubtitle = await _dbContext.EmbeddedSubtitles.SingleAsync(es => es.EpisodeId == episode.Id);
         Assert.False(dbSubtitle.IsExtracted);
         Assert.Null(dbSubtitle.ExtractedPath);
+    }
+
+    [Theory]
+    [InlineData("ass", ".ass")]
+    [InlineData("ssa", ".ssa")]
+    [InlineData("subrip", ".srt")]
+    public void GetExtractedSubtitlePath_UsesNativeTextSubtitleExtension(string codecName, string expectedExtension)
+    {
+        var method = typeof(SubtitleExtractionService).GetMethod(
+            "GetExtractedSubtitlePath",
+            BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.NotNull(method);
+
+        var outputPath = Assert.IsType<string>(method!.Invoke(null, [
+            Path.GetTempPath(),
+            "movie.mkv",
+            codecName,
+            "eng",
+            0
+        ]));
+
+        Assert.EndsWith(expectedExtension, outputPath);
+    }
+
+    [Fact]
+    public void GetExtractedSubtitlePath_WithStreamSpecificLanguageTag_UsesUniqueSubtitlePath()
+    {
+        var tagMethod = typeof(SubtitleExtractionService).GetMethod(
+            "BuildStreamSpecificLanguageTag",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        var pathMethod = typeof(SubtitleExtractionService).GetMethod(
+            "GetExtractedSubtitlePath",
+            BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.NotNull(tagMethod);
+        Assert.NotNull(pathMethod);
+
+        var languageTag = Assert.IsType<string>(tagMethod!.Invoke(null, ["eng", 3]));
+        var outputPath = Assert.IsType<string>(pathMethod!.Invoke(null, [
+            Path.GetTempPath(),
+            "episode.mkv",
+            "ass",
+            languageTag,
+            3
+        ]));
+
+        Assert.EndsWith(".eng.s3.ass", outputPath);
+    }
+
+    [Fact]
+    public async Task EnsureExtractionMarkerAsync_PrependsMarkerToAssFiles()
+    {
+        var filePath = Path.Combine(CreateMediaDirectory(), "movie.eng.ass");
+        await File.WriteAllTextAsync(
+            filePath,
+            """
+            [Script Info]
+            Title: Example
+
+            [Events]
+            Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+            Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,Hello
+            """);
+
+        await SubtitleExtractionService.EnsureExtractionMarkerAsync(filePath);
+
+        var lines = await File.ReadAllLinesAsync(filePath);
+        Assert.StartsWith(SubtitleExtractionService.ExtractionMarkerPrefix, lines[0]);
+        Assert.Contains("[Script Info]", lines);
+        Assert.Contains("Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,Hello", lines);
+    }
+
+    [Fact]
+    public async Task DetachTrackedEmbeddedSubtitlesForMedia_RemovesStaleTrackedRowsBeforeRefresh()
+    {
+        var movie = new Movie
+        {
+            Id = 30,
+            RadarrId = 30,
+            Title = "Movie",
+            FileName = "movie.mkv",
+            Path = CreateMediaDirectory(),
+            DateAdded = DateTime.UtcNow
+        };
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = movie.Id,
+            StreamIndex = 0,
+            Language = "eng",
+            CodecName = "subrip",
+            IsTextBased = true
+        });
+
+        _dbContext.Movies.Add(movie);
+        await _dbContext.SaveChangesAsync();
+        await _dbContext.Entry(movie).Collection(m => m.EmbeddedSubtitles).LoadAsync();
+
+        await _dbContext.EmbeddedSubtitles
+            .Where(subtitle => subtitle.MovieId == movie.Id)
+            .ExecuteDeleteAsync();
+        SubtitleExtractionService.DetachTrackedEmbeddedSubtitlesForMedia(
+            _dbContext,
+            episodeId: null,
+            movieId: movie.Id);
+
+        _dbContext.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = movie.Id,
+            StreamIndex = 0,
+            Language = "eng",
+            CodecName = "subrip",
+            IsTextBased = true
+        });
+        await _dbContext.SaveChangesAsync();
+        await _dbContext.Entry(movie).Collection(m => m.EmbeddedSubtitles).LoadAsync();
+
+        Assert.Single(movie.EmbeddedSubtitles);
+        Assert.Single(_dbContext.ChangeTracker.Entries<EmbeddedSubtitle>());
+    }
+
+    [Fact]
+    public void CopyOcrMetadataIfSameStream_DoesNotPreserveStaleProcessingState()
+    {
+        var existingSubtitle = new EmbeddedSubtitle
+        {
+            StreamIndex = 0,
+            Language = "eng",
+            Title = "English PGS",
+            CodecName = "hdmv_pgs_subtitle",
+            IsTextBased = false,
+            OcrStatus = SubtitleOcrStatus.Processing,
+            OcrAttemptedAt = DateTime.UtcNow.AddDays(-1)
+        };
+        var newSubtitle = new EmbeddedSubtitle
+        {
+            StreamIndex = 0,
+            Language = "eng",
+            Title = "English PGS",
+            CodecName = "hdmv_pgs_subtitle",
+            IsTextBased = false
+        };
+
+        var method = typeof(SubtitleExtractionService).GetMethod(
+            "CopyOcrMetadataIfSameStream",
+            BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.NotNull(method);
+        method.Invoke(null, [new[] { existingSubtitle }, newSubtitle]);
+
+        Assert.Equal(SubtitleOcrStatus.NotStarted, newSubtitle.OcrStatus);
+        Assert.Null(newSubtitle.OcrAttemptedAt);
     }
 
     public void Dispose()

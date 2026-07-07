@@ -10,8 +10,18 @@
                             ? 'border-accent text-accent border-b-2'
                             : 'text-secondary-content hover:text-primary-content'
                     "
-                    @click="activeTab = 'list'">
+                    @click="setActiveTab('list')">
                     {{ translate('translations.tabList') }}
+                </button>
+                <button
+                    class="px-6 py-3 font-medium transition-colors"
+                    :class="
+                        activeTab === 'uploadWorkspace'
+                            ? 'border-accent text-accent border-b-2'
+                            : 'text-secondary-content hover:text-primary-content'
+                    "
+                    @click="setActiveTab('uploadWorkspace')">
+                    {{ translate('navigation.uploadWorkspace') }}
                 </button>
             </div>
 
@@ -42,6 +52,10 @@
                             v-model="filter"
                             :options="[
                                 {
+                                    label: translate('common.sortByQueue'),
+                                    value: 'Queue'
+                                },
+                                {
                                     label: translate('common.sortByAdded'),
                                     value: 'CreatedAt'
                                 },
@@ -65,7 +79,7 @@
                                 {{ translate('common.statusInProgress') }}
                             </h2>
                             <span class="text-secondary-content text-xs">
-                                {{ inProgressRequests.length }}
+                                {{ inProgressTotalCount }}
                                 {{ translate('common.items') }}
                             </span>
                         </div>
@@ -74,24 +88,63 @@
                                 v-for="item in inProgressRequests"
                                 :key="`active-${item.id}`"
                                 class="border-secondary/40 bg-tertiary flex flex-col gap-2 rounded-md border px-3 py-2 md:flex-row md:items-center md:justify-between">
-                                <div class="space-y-1">
-                                    <div class="flex items-center gap-2">
-                                        <span class="font-semibold">
-                                            {{ item.title }}
-                                        </span>
-                                        <BadgeComponent
-                                            v-if="item.isPriority"
-                                            classes="border-accent bg-accent text-xs text-primary-content">
-                                            {{ translate('translations.priority') }}
-                                        </BadgeComponent>
-                                        <BadgeComponent
-                                            classes="text-primary-content border-accent bg-secondary text-xs">
-                                            {{ item.sourceLanguage.toUpperCase() }} →
-                                            {{ item.targetLanguage.toUpperCase() }}
-                                        </BadgeComponent>
+                                <div class="min-w-0 space-y-1">
+                                    <div
+                                        class="flex min-w-0 flex-wrap items-center gap-2 md:flex-nowrap">
+                                        <div class="min-w-0 flex-1 overflow-hidden">
+                                            <span
+                                                v-if="item.mediaType === MEDIA_TYPE.EPISODE"
+                                                v-show-title
+                                                class="block min-w-0 flex-1 cursor-help font-semibold"
+                                                :title="item.title">
+                                                {{ item.title }}
+                                            </span>
+                                            <span
+                                                v-else
+                                                class="block min-w-0 truncate font-semibold"
+                                                :title="item.title">
+                                                {{ item.title }}
+                                            </span>
+                                        </div>
+                                        <div class="flex shrink-0 flex-wrap items-center gap-2">
+                                            <BadgeComponent
+                                                v-if="item.isPriority"
+                                                classes="border-accent bg-accent text-xs text-primary-content">
+                                                {{ translate('translations.priority') }}
+                                            </BadgeComponent>
+                                            <BadgeComponent
+                                                classes="border-accent/30 bg-secondary text-xs text-primary-content/80">
+                                                {{ getWorkloadLabel(item.workloadKind) }}
+                                            </BadgeComponent>
+                                            <BadgeComponent
+                                                v-if="getWorkloadSourceLabel(item)"
+                                                classes="border-accent/20 bg-secondary text-xs text-primary-content/70">
+                                                {{ getWorkloadSourceLabel(item) }}
+                                            </BadgeComponent>
+                                            <BadgeComponent
+                                                classes="text-primary-content border-accent bg-secondary text-xs">
+                                                {{ item.sourceLanguage.toUpperCase() }} →
+                                                {{ item.targetLanguage.toUpperCase() }}
+                                            </BadgeComponent>
+                                        </div>
                                     </div>
                                     <div class="text-secondary-content text-xs">
                                         <TranslationStatus :translation-status="item.status" />
+                                        <span v-if="item.status === TRANSLATION_STATUS.PAUSED">
+                                            <template v-if="item.pauseReason">
+                                                - {{ item.pauseReason }}
+                                            </template>
+                                            <template v-if="item.nextRetryAt">
+                                                -
+                                                {{
+                                                    translate('translations.nextRetryAt', {
+                                                        time: new Date(
+                                                            item.nextRetryAt
+                                                        ).toLocaleString()
+                                                    })
+                                                }}
+                                            </template>
+                                        </span>
                                     </div>
                                 </div>
                                 <div class="flex w-full items-center gap-2 md:w-1/2">
@@ -105,6 +158,12 @@
                                         :on-action="(action) => handleAction(item, action)" />
                                 </div>
                             </div>
+                            <div
+                                v-if="inProgressTotalCount > inProgressRequests.length"
+                                class="text-secondary-content pt-2 text-center text-xs">
+                                {{ inProgressRequests.length }} / {{ inProgressTotalCount }}
+                                {{ translate('common.items') }}
+                            </div>
                         </div>
                         <div v-else class="text-secondary-content py-4 text-center text-sm">
                             {{ translate('translations.noActiveTranslations') }}
@@ -117,25 +176,35 @@
                             <h2 class="text-sm font-semibold tracking-wide uppercase">
                                 {{ translate('common.statusFailed') }}
                             </h2>
-                            <div v-if="failedRequests.length" class="flex gap-2">
+                            <div v-if="failedTotalCount" class="flex gap-2">
                                 <button
                                     class="cursor-pointer rounded-md border border-red-500/50 px-3 py-1 text-xs text-red-400 transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-60"
                                     :disabled="removingFailed || retryingFailed"
                                     @click="showRemoveConfirm = true">
                                     {{ translate('translations.removeAllFailed') }}
-                                    ({{ failedRequests.length }})
+                                    ({{ failedTotalCount }})
                                 </button>
                                 <button
                                     class="border-accent text-primary-content hover:bg-accent cursor-pointer rounded-md border px-3 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                                     :disabled="retryingFailed || removingFailed"
                                     @click="retryAllFailed">
                                     {{ translate('common.retry') }}
-                                    ({{ failedRequests.length }})
+                                    ({{ failedTotalCount }})
                                 </button>
                             </div>
                             <span v-else class="text-secondary-content text-xs">
                                 0 {{ translate('common.items') }}
                             </span>
+                        </div>
+                        <div
+                            v-if="retryResultBanner"
+                            class="border-accent/40 bg-tertiary text-secondary-content mb-3 rounded-md border px-3 py-2 text-xs">
+                            {{
+                                translate('translations.retryResultSummary', {
+                                    retried: retryResultBanner.retried,
+                                    blocked: retryResultBanner.blocked
+                                })
+                            }}
                         </div>
                         <div
                             v-if="failedRequests.length"
@@ -144,16 +213,40 @@
                                 v-for="item in failedRequests"
                                 :key="`failed-${item.id}`"
                                 class="border-secondary/40 bg-tertiary flex flex-col gap-2 rounded-md border px-3 py-2 md:flex-row md:items-center md:justify-between">
-                                <div>
-                                    <div class="flex items-center gap-2">
-                                        <span class="font-semibold">
-                                            {{ item.title }}
-                                        </span>
-                                        <BadgeComponent
-                                            v-if="item.isPriority"
-                                            classes="border-accent bg-accent text-xs text-primary-content">
-                                            {{ translate('translations.priority') }}
-                                        </BadgeComponent>
+                                <div class="min-w-0">
+                                    <div
+                                        class="flex min-w-0 flex-wrap items-center gap-2 md:flex-nowrap">
+                                        <div class="min-w-0 flex-1 overflow-hidden">
+                                            <span
+                                                v-if="item.mediaType === MEDIA_TYPE.EPISODE"
+                                                v-show-title
+                                                class="block min-w-0 flex-1 cursor-help font-semibold"
+                                                :title="item.title">
+                                                {{ item.title }}
+                                            </span>
+                                            <span
+                                                v-else
+                                                class="block min-w-0 truncate font-semibold"
+                                                :title="item.title">
+                                                {{ item.title }}
+                                            </span>
+                                        </div>
+                                        <div class="flex shrink-0 flex-wrap items-center gap-2">
+                                            <BadgeComponent
+                                                v-if="item.isPriority"
+                                                classes="border-accent bg-accent text-xs text-primary-content">
+                                                {{ translate('translations.priority') }}
+                                            </BadgeComponent>
+                                            <BadgeComponent
+                                                classes="border-accent/30 bg-secondary text-xs text-primary-content/80">
+                                                {{ getWorkloadLabel(item.workloadKind) }}
+                                            </BadgeComponent>
+                                            <BadgeComponent
+                                                v-if="getWorkloadSourceLabel(item)"
+                                                classes="border-accent/20 bg-secondary text-xs text-primary-content/70">
+                                                {{ getWorkloadSourceLabel(item) }}
+                                            </BadgeComponent>
+                                        </div>
                                     </div>
                                     <div class="mt-1 flex flex-wrap items-center gap-2 text-xs">
                                         <BadgeComponent
@@ -170,6 +263,13 @@
                                 </div>
                                 <div class="flex items-center gap-2">
                                     <button
+                                        v-if="item.status === TRANSLATION_STATUS.FAILED"
+                                        class="border-accent hover:bg-accent cursor-pointer rounded border px-2 py-1 text-xs transition-colors"
+                                        :title="translate('translations.reviewMissing')"
+                                        @click.stop="openCompareForFailed(item)">
+                                        Review
+                                    </button>
+                                    <button
                                         class="border-accent hover:bg-accent cursor-pointer rounded border px-2 py-1 text-xs transition-colors"
                                         :title="translate('translations.viewLogs')"
                                         @click.stop="openLogs(item)">
@@ -179,6 +279,12 @@
                                         :status="item.status"
                                         :on-action="(action) => handleAction(item, action)" />
                                 </div>
+                            </div>
+                            <div
+                                v-if="failedTotalCount > failedRequests.length"
+                                class="text-secondary-content pt-2 text-center text-xs">
+                                {{ failedRequests.length }} / {{ failedTotalCount }}
+                                {{ translate('common.items') }}
                             </div>
                         </div>
                         <div v-else class="text-secondary-content py-4 text-center text-sm">
@@ -283,26 +389,44 @@
                                         :status="item.status"
                                         :on-action="(action) => handleAction(item, action)" />
                                 </div>
-                                <div class="mb-2 md:col-span-5 md:mb-0 md:px-4 md:py-2">
+                                <div
+                                    class="mb-2 overflow-hidden md:col-span-5 md:mb-0 md:px-4 md:py-2">
                                     <span :id="`deletable-${item.id}`" class="font-bold md:hidden">
                                         {{ translate('translations.title') }}:&nbsp;
                                     </span>
-                                    <div class="flex items-center gap-2">
-                                        <span
-                                            v-if="item.mediaType === MEDIA_TYPE.EPISODE"
-                                            v-show-title
-                                            class="block cursor-help"
-                                            :title="item.title">
-                                            {{ item.title }}
-                                        </span>
-                                        <span v-else>
-                                            {{ item.title }}
-                                        </span>
-                                        <BadgeComponent
-                                            v-if="item.isPriority"
-                                            classes="border-accent bg-accent text-xs text-primary-content">
-                                            {{ translate('translations.priority') }}
-                                        </BadgeComponent>
+                                    <div
+                                        class="flex min-w-0 flex-wrap items-center gap-2 md:flex-nowrap">
+                                        <div class="min-w-0 flex-1 overflow-hidden">
+                                            <span
+                                                v-if="item.mediaType === MEDIA_TYPE.EPISODE"
+                                                v-show-title
+                                                class="block min-w-0 flex-1 cursor-help"
+                                                :title="item.title">
+                                                {{ item.title }}
+                                            </span>
+                                            <span
+                                                v-else
+                                                class="block min-w-0 truncate"
+                                                :title="item.title">
+                                                {{ item.title }}
+                                            </span>
+                                        </div>
+                                        <div class="flex shrink-0 flex-wrap items-center gap-2">
+                                            <BadgeComponent
+                                                v-if="item.isPriority"
+                                                classes="border-accent bg-accent text-xs text-primary-content">
+                                                {{ translate('translations.priority') }}
+                                            </BadgeComponent>
+                                            <BadgeComponent
+                                                classes="border-accent/30 bg-secondary text-xs text-primary-content/80">
+                                                {{ getWorkloadLabel(item.workloadKind) }}
+                                            </BadgeComponent>
+                                            <BadgeComponent
+                                                v-if="getWorkloadSourceLabel(item)"
+                                                classes="border-accent/20 bg-secondary text-xs text-primary-content/70">
+                                                {{ getWorkloadSourceLabel(item) }}
+                                            </BadgeComponent>
+                                        </div>
                                     </div>
                                 </div>
                                 <div class="mb-2 md:col-span-1 md:mb-0 md:px-4 md:py-2">
@@ -389,6 +513,10 @@
                     :page-size="translationRequests.pageSize" />
             </div>
 
+            <div v-if="hasOpenedUploadWorkspaceTab" v-show="activeTab === 'uploadWorkspace'">
+                <UploadWorkspaceTab />
+            </div>
+
             <!-- Logs Modal -->
             <div
                 v-if="logsModalOpen"
@@ -448,6 +576,13 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Failed Translation Compare Modal -->
+            <CompletedTranslationCompareModal
+                :is-open="failedCompareModalOpen"
+                :translation-request-id="selectedFailedRequestId"
+                @close="closeFailedCompareModal"
+                @accepted="handleFailedCompareAccepted" />
         </div>
     </PageLayout>
 </template>
@@ -458,6 +593,7 @@ import {
     Hub,
     IFilter,
     IPagedResult,
+    IRequestProgress,
     ITranslationRequest,
     ITranslationRequestLog,
     MEDIA_TYPE,
@@ -480,6 +616,8 @@ import BadgeComponent from '@/components/common/BadgeComponent.vue'
 import PageLayout from '@/components/layout/PageLayout.vue'
 import CheckboxComponent from '@/components/common/CheckboxComponent.vue'
 import TestIcon from '@/components/icons/TestIcon.vue'
+import UploadWorkspaceTab from '@/components/features/upload-workspace/UploadWorkspaceTab.vue'
+import CompletedTranslationCompareModal from '@/components/features/translation-compare/CompletedTranslationCompareModal.vue'
 import { useRouter } from 'vue-router'
 
 const { translate } = useI18n()
@@ -498,16 +636,24 @@ const removingFailed = ref(false)
 const showRemoveConfirm = ref(false)
 const reenqueuingQueued = ref(false)
 const cancellingQueued = ref(false)
+const retryResultBanner = ref<{ retried: number; blocked: number } | null>(null)
+const failedCompareModalOpen = ref(false)
+const selectedFailedRequestId = ref<number | null>(null)
 
-const activeTab = ref<'list' | 'test'>('list')
+type TranslationTab = 'list' | 'uploadWorkspace'
+
+const activeTab = ref<TranslationTab>('list')
+const hasOpenedUploadWorkspaceTab = ref(false)
 
 const translationRequests: ComputedRef<IPagedResult<ITranslationRequest>> = computed(
     () => translationRequestStore.getTranslationRequests
 )
 
 const inProgressRequests = computed(() => translationRequestStore.inProgressRequests)
+const inProgressTotalCount = computed(() => translationRequestStore.inProgressTotalCount)
 
 const failedRequests = computed(() => translationRequestStore.failedRequests)
+const failedTotalCount = computed(() => translationRequestStore.failedTotalCount)
 
 const queuedRequests = computed(() =>
     translationRequests.value.items.filter(
@@ -522,14 +668,44 @@ const filter: ComputedRef<IFilter> = computed({
     }, 300)
 })
 
+const handleRequestProgress = (requestProgress: IRequestProgress) => {
+    translationRequestStore.queueProgressUpdate(requestProgress)
+}
+
+const handleRequestActive = ({ count }: { count: number }) => {
+    translationRequestStore.handleRequestActive({ count })
+}
+
+const setRetryResultBanner = (retried: number, blocked: number) => {
+    retryResultBanner.value = {
+        retried,
+        blocked
+    }
+}
+
+function setActiveTab(tab: TranslationTab) {
+    activeTab.value = tab
+    if (tab === 'uploadWorkspace') {
+        hasOpenedUploadWorkspaceTab.value = true
+    }
+}
+
 async function handleAction(translationRequest: ITranslationRequest, action: TRANSLATION_ACTIONS) {
     switch (action) {
         case TRANSLATION_ACTIONS.CANCEL:
-            return await translationRequestStore.cancel(translationRequest)
+            await translationRequestStore.cancel(translationRequest)
+            await translationRequestStore.forceRefreshSections()
+            return
         case TRANSLATION_ACTIONS.REMOVE:
-            return await translationRequestStore.remove(translationRequest)
-        case TRANSLATION_ACTIONS.RETRY:
-            return await translationRequestStore.retry(translationRequest)
+            await translationRequestStore.remove(translationRequest)
+            await translationRequestStore.forceRefreshSections()
+            return
+        case TRANSLATION_ACTIONS.RETRY: {
+            const result = await translationRequestStore.retry(translationRequest)
+            setRetryResultBanner(result.retried ? 1 : 0, result.blockedByActiveRequest ? 1 : 0)
+            await translationRequestStore.forceRefreshSections()
+            return
+        }
         default:
             console.error('unknown translation request action: ' + action)
     }
@@ -563,26 +739,42 @@ function closeLogs() {
     requestLogs.value = []
 }
 
+const openCompareForFailed = (item: ITranslationRequest) => {
+    selectedFailedRequestId.value = item.id
+    failedCompareModalOpen.value = true
+}
+
+const closeFailedCompareModal = () => {
+    failedCompareModalOpen.value = false
+    selectedFailedRequestId.value = null
+}
+
+const handleFailedCompareAccepted = async () => {
+    closeFailedCompareModal()
+    await translationRequestStore.forceRefreshSections()
+}
+
 const retryAllFailed = async () => {
-    if (!failedRequests.value.length || retryingFailed.value) return
+    if (!failedTotalCount.value || retryingFailed.value) return
 
     retryingFailed.value = true
     try {
-        await translationRequestStore.retryAllFailed()
-        await translationRequestStore.fetch()
+        const result = await translationRequestStore.retryAllFailed()
+        setRetryResultBanner(result.retried, result.blockedByActiveRequest)
+        await translationRequestStore.forceRefreshSections()
     } finally {
         retryingFailed.value = false
     }
 }
 
 const removeAllFailed = async () => {
-    if (!failedRequests.value.length || removingFailed.value) return
+    if (!failedTotalCount.value || removingFailed.value) return
 
     showRemoveConfirm.value = false
     removingFailed.value = true
     try {
         await translationRequestStore.removeAllFailed()
-        await translationRequestStore.fetch()
+        await translationRequestStore.forceRefreshSections()
     } finally {
         removingFailed.value = false
     }
@@ -640,13 +832,13 @@ onMounted(async () => {
     )
 
     await hubConnection.value.joinGroup({ group: 'TranslationRequests' })
-    hubConnection.value.on('RequestProgress', translationRequestStore.updateProgress)
-    hubConnection.value.on('RequestActive', translationRequestStore.handleRequestActive)
+    hubConnection.value.on('RequestProgress', handleRequestProgress)
+    hubConnection.value.on('RequestActive', handleRequestActive)
 })
 
 onUnmounted(async () => {
-    hubConnection.value?.off('RequestProgress', translationRequestStore.updateProgress)
-    hubConnection.value?.off('RequestActive', translationRequestStore.handleRequestActive)
+    hubConnection.value?.off('RequestProgress', handleRequestProgress)
+    hubConnection.value?.off('RequestActive', handleRequestActive)
 })
 
 const isSelectMode = ref(false)
@@ -663,7 +855,7 @@ const handleDelete = async () => {
         await translationRequestStore.remove(request)
     }
     translationRequestStore.clearSelection()
-    translationRequestStore.fetch()
+    await translationRequestStore.forceRefreshSections()
 }
 
 function getLogLevelClass(level: string): string {
@@ -677,5 +869,60 @@ function getLogLevelClass(level: string): string {
         default:
             return 'text-blue-500'
     }
+}
+
+function getWorkloadLabel(workloadKind?: string): string {
+    switch (workloadKind) {
+        case 'CustomSource':
+            return 'Custom Source'
+        case 'Upload':
+            return 'Upload'
+        default:
+            return 'Library'
+    }
+}
+
+function normalizeWorkloadSourceValue(value?: string): string | null {
+    if (!value) {
+        return null
+    }
+
+    const trimmed = value.trim()
+    if (!trimmed) {
+        return null
+    }
+
+    const prefixedValue = /^(upload|custom):(.+)$/i.exec(trimmed)
+    if (!prefixedValue) {
+        return trimmed
+    }
+
+    const strippedValue = prefixedValue[2]?.trim()
+    return strippedValue || null
+}
+
+function getWorkloadSourceLabel(item: ITranslationRequest): string | null {
+    const sourceValue =
+        normalizeWorkloadSourceValue(item.workloadSourceLabel) ||
+        normalizeWorkloadSourceValue(item.workloadItemKey)
+
+    if (!sourceValue) {
+        return null
+    }
+
+    const isUploadSource =
+        item.workloadKind === 'Upload' || /^upload:/i.test(item.workloadItemKey || '')
+    const isCustomSource =
+        item.workloadKind === 'CustomSource' || /^custom:/i.test(item.workloadItemKey || '')
+
+    if (isUploadSource) {
+        return `Batch ${sourceValue}`
+    }
+
+    if (isCustomSource) {
+        return `Source ${sourceValue}`
+    }
+
+    return null
 }
 </script>

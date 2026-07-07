@@ -49,12 +49,45 @@
         </div>
 
         <template v-else>
-            <div>
+            <!-- Source Language Mode Toggle -->
+            <div class="border-accent bg-secondary mt-4 rounded-md border p-4">
+                <div class="mb-3 flex flex-col space-x-2">
+                    <span class="font-semibold">
+                        {{ translate('settings.translate.sourceLanguageModeTitle') }}
+                    </span>
+                    <span class="text-secondary-content text-sm">
+                        {{ translate('settings.translate.sourceLanguageModeAutoDescription') }}
+                    </span>
+                </div>
+                <ToggleButton v-model="autoModeEnabled">
+                    <span class="text-primary-content text-sm font-medium">
+                        {{
+                            isAutoMode
+                                ? translate('settings.translate.sourceLanguageModeAuto')
+                                : translate('settings.translate.sourceLanguageModeManual')
+                        }}
+                    </span>
+                </ToggleButton>
+                <div
+                    v-if="isAutoMode"
+                    class="bg-accent/10 text-accent mt-3 inline-flex items-center rounded-md px-3 py-1 text-xs font-medium">
+                    {{ translate('settings.translate.sourceLanguageModeAutoBadge') }}
+                </div>
+            </div>
+
+            <div class="mt-4">
                 <span>{{ translate('settings.translate.selectSourceDescription') }}</span>
                 <LanguageSelect
                     v-model:selected="sourceLanguages"
                     class="w-full"
-                    :options="languages" />
+                    :options="languages"
+                    :disabled="isAutoMode" />
+                <div
+                    v-if="isAutoMode"
+                    class="text-secondary-content mt-1 text-xs">
+                    {{ translate('settings.translate.selectSourceDescription') }}
+                    {{ translate('settings.translate.sourceLanguageModeAutoDescription') }}
+                </div>
             </div>
             <div>
                 <span>{{ translate('settings.translate.selectTargetDescription') }}</span>
@@ -70,6 +103,7 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import LanguageSelect from '@/components/features/settings/LanguageSelect.vue'
+import ToggleButton from '@/components/common/ToggleButton.vue'
 import { ILanguage, SETTINGS } from '@/ts'
 import { useTranslateStore } from '@/store/translate'
 import { useSettingStore } from '@/store/setting'
@@ -79,6 +113,23 @@ const settingsStore = useSettingStore()
 const translateStore = useTranslateStore()
 const languages = computed(() => translateStore.getLanguages)
 const emit = defineEmits(['save'])
+
+const autoModeEnabled = computed({
+    get: (): string =>
+        (settingsStore.getSetting(SETTINGS.SOURCE_LANGUAGE_MODE) as string) === 'auto'
+            ? 'true'
+            : 'false',
+    set: (newValue: string): void => {
+        settingsStore.updateSetting(
+            SETTINGS.SOURCE_LANGUAGE_MODE,
+            newValue === 'true' ? 'auto' : 'manual',
+            true
+        )
+        emit('save')
+    }
+})
+
+const isAutoMode = computed((): boolean => autoModeEnabled.value === 'true')
 
 const sourceLanguages = computed({
     get: (): ILanguage[] => settingsStore.getSetting(SETTINGS.SOURCE_LANGUAGES) as ILanguage[],
@@ -97,16 +148,19 @@ const targetLanguages = computed({
 })
 
 const selectedTargetLanguages = computed(() => {
-    if (sourceLanguages.value.length === 0) {
+    const sourceOptions = isAutoMode.value && sourceLanguages.value.length === 0
+        ? languages.value
+        : sourceLanguages.value
+    if (sourceOptions.length === 0) {
         return []
     }
 
-    const allTargets = sourceLanguages.value.flatMap((sourceLanguage) => {
+    const allTargets = sourceOptions.flatMap((sourceLanguage) => {
         const sourceTargetSet = languages.value.find((lang) => lang.code === sourceLanguage.code)
         if (!sourceTargetSet) {
             return []
         }
-        return sourceTargetSet.targets
+        return sourceTargetSet.targets ?? []
     })
 
     const uniqueTargets = [...new Set(allTargets)]

@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 
 namespace Lingarr.Server.Models.Batch.Response;
 
@@ -9,7 +9,13 @@ public class StructuredBatchResponse
 {
     [JsonPropertyName("line")]
     public string Line { get; set; } = string.Empty;
+
+    [JsonPropertyName("sourceKey")]
+    public string? SourceKey { get; set; }
     
     [JsonPropertyName("position")]
     public int Position { get; set; }
+
+    [JsonPropertyName("language")]
+    public string? Language { get; set; }
 }

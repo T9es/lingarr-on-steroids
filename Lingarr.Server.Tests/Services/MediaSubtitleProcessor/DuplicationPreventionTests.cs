@@ -1,10 +1,13 @@
 using System.Collections.Generic;
+using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Lingarr.Core.Configuration;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Models;
 using Lingarr.Server.Models.FileSystem;
+using Lingarr.Server.Services.Subtitle;
 using Moq;
 using Xunit;
 
@@ -38,18 +41,293 @@ public class DuplicationPreventionTests : MediaSubtitleProcessorTestBase
         {
             MediaId = movie.Id,
             MediaType = MediaType.Movie,
+            WorkloadItemKey = $"library:{MediaType.Movie}:{movie.Id}",
             Title = movie.Title,
             SourceLanguage = "en",
             TargetLanguage = "ro",
             SubtitleToTranslate = subtitles[0].Path,
-            Status = TranslationStatus.Pending
+            SourceSubtitleFormat = ".srt",
+            RequiredOutputFormats = ".srt",
+            Status = TranslationStatus.Pending,
+            IsActive = true
         });
         await DbContext.SaveChangesAsync();
 
-        var queued = await Processor.ProcessMediaForceAsync(movie, MediaType.Movie, forceProcess: false);
+        var queued = await Processor.ProcessMediaForceAsync(
+            movie,
+            MediaType.Movie,
+            forceProcess: false,
+            forceTranslation: false);
 
         Assert.Equal(0, queued);
         TranslationRequestServiceMock.Verify(s => s.CreateRequest(It.IsAny<TranslateAbleSubtitle>(), It.IsAny<bool>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ProcessMediaForceAsync_WithCompletedShortenedGeneratedPath_DoesNotRequeue()
+    {
+        var movie = await CreateTestMovie("Very Long Movie Name [Bluray-1080p][DTS 5.1][x264]-Release");
+        SetupStandardSettings();
+
+        var sourcePath = "/movies/test/Very Long Movie Name [Bluray-1080p][DTS 5.1][x264]-Release.en.srt";
+        var shortenedTargetPath = "/movies/test/Very Long Movie Name [Bluray-1080p][DTS 5.ro.-ai-.srt";
+        var subtitles = new List<Subtitles>
+        {
+            new()
+            {
+                Path = sourcePath,
+                FileName = "Very Long Movie Name [Bluray-1080p][DTS 5.1][x264]-Release.en",
+                Language = "en",
+                Caption = "",
+                Format = ".srt"
+            },
+            new()
+            {
+                Path = shortenedTargetPath,
+                FileName = "Very Long Movie Name [Bluray-1080p][DTS 5.ro.-ai-",
+                Language = "ro",
+                Caption = "",
+                Format = ".srt"
+            }
+        };
+
+        SubtitleServiceMock
+            .Setup(s => s.GetAllSubtitles(It.IsAny<string>()))
+            .ReturnsAsync(subtitles);
+
+        DbContext.TranslationRequests.Add(new TranslationRequest
+        {
+            MediaId = movie.Id,
+            MediaType = MediaType.Movie,
+            WorkloadKind = TranslationWorkloadKind.Library,
+            WorkloadItemKey = $"library:{MediaType.Movie}:{movie.Id}",
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "ro",
+            SubtitleToTranslate = sourcePath,
+            TranslatedSubtitle = shortenedTargetPath,
+            SourceSubtitleFormat = ".srt",
+            GeneratedOutputFormats = ".srt",
+            RequiredOutputFormats = ".srt",
+            GeneratedSubtitlePaths = JsonSerializer.Serialize(new[] { shortenedTargetPath }),
+            Status = TranslationStatus.Completed,
+            IsActive = false,
+            CompletedAt = System.DateTime.UtcNow
+        });
+        await DbContext.SaveChangesAsync();
+
+        var queued = await Processor.ProcessMediaForceAsync(
+            movie,
+            MediaType.Movie,
+            forceProcess: true,
+            forceTranslation: false);
+
+        Assert.Equal(0, queued);
+        TranslationRequestServiceMock.Verify(
+            s => s.CreateRequest(It.IsAny<TranslateAbleSubtitle>(), It.IsAny<bool>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task ProcessMediaForceAsync_WithHistoricalForcedDialogueGeneratedForcedPath_DoesNotRequeue()
+    {
+        var movie = await CreateTestMovie("test.movie.mkv");
+        SetupStandardSettings();
+
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = movie.Id,
+            StreamIndex = 0,
+            Language = "eng",
+            Title = "Full Subtitle",
+            CodecName = "subrip",
+            IsTextBased = true,
+            IsForced = true
+        });
+
+        var targetPath = "/movies/test/test.movie.ro.forced.-ai-.srt";
+        var subtitles = new List<Subtitles>
+        {
+            new()
+            {
+                Path = targetPath,
+                FileName = "test.movie.ro.forced.-ai-",
+                Language = "ro",
+                Caption = "forced",
+                Format = ".srt"
+            }
+        };
+
+        SubtitleServiceMock
+            .Setup(s => s.GetAllSubtitles(It.IsAny<string>()))
+            .ReturnsAsync(subtitles);
+
+        DbContext.TranslationRequests.Add(new TranslationRequest
+        {
+            MediaId = movie.Id,
+            MediaType = MediaType.Movie,
+            WorkloadKind = TranslationWorkloadKind.Library,
+            WorkloadItemKey = $"library:{MediaType.Movie}:{movie.Id}",
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "ro",
+            SubtitleToTranslate = "/movies/test/test.movie.en.srt",
+            TranslatedSubtitle = targetPath,
+            SourceSubtitleFormat = ".srt",
+            GeneratedOutputFormats = ".srt",
+            RequiredOutputFormats = ".srt",
+            GeneratedSubtitlePaths = JsonSerializer.Serialize(new[] { targetPath }),
+            SourceSubtitleType = SubtitleLanguageHelper.TypeForcedDialogue,
+            IsForcedSubtitle = true,
+            SourceDedupeKey = "supplemental:forced:embedded|en|stream:0",
+            Status = TranslationStatus.Completed,
+            IsActive = false,
+            CompletedAt = System.DateTime.UtcNow
+        });
+        await DbContext.SaveChangesAsync();
+
+        var queued = await Processor.ProcessMediaForceAsync(
+            movie,
+            MediaType.Movie,
+            forceProcess: true,
+            forceTranslation: false);
+
+        Assert.Equal(0, queued);
+        TranslationRequestServiceMock.Verify(
+            s => s.CreateRequest(It.IsAny<TranslateAbleSubtitle>(), It.IsAny<bool>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task ProcessMediaForceAsync_WithLegacyUploadIdCollision_StillQueuesLibraryRequest()
+    {
+        var movie = await CreateTestMovie();
+        SetupStandardSettings();
+
+        var subtitles = new List<Subtitles>
+        {
+            new()
+            {
+                Path = "/movies/test/test.movie.en.srt",
+                FileName = "test.movie.en",
+                Language = "en",
+                Caption = "",
+                Format = ".srt"
+            }
+        };
+
+        SubtitleServiceMock
+            .Setup(s => s.GetAllSubtitles(It.IsAny<string>()))
+            .ReturnsAsync(subtitles);
+
+        TranslationRequestServiceMock
+            .Setup(s => s.CreateRequest(It.IsAny<TranslateAbleSubtitle>(), It.IsAny<bool>()))
+            .ReturnsAsync(123);
+
+        DbContext.TranslationRequests.Add(new TranslationRequest
+        {
+            MediaId = movie.Id,
+            MediaType = MediaType.Movie,
+            WorkloadKind = TranslationWorkloadKind.Upload,
+            WorkloadItemKey = string.Empty,
+            Title = "Upload file",
+            SourceLanguage = "en",
+            TargetLanguage = "ro",
+            SubtitleToTranslate = "/uploads/batch-1/originals/file.en.srt",
+            SourceSubtitleFormat = ".srt",
+            RequiredOutputFormats = ".srt",
+            Status = TranslationStatus.Pending,
+            IsActive = true
+        });
+        await DbContext.SaveChangesAsync();
+
+        var queued = await Processor.ProcessMediaForceAsync(
+            movie,
+            MediaType.Movie,
+            forceTranslation: true,
+            forceProcess: true);
+
+        Assert.Equal(1, queued);
+        TranslationRequestServiceMock.Verify(s => s.CreateRequest(
+            It.Is<TranslateAbleSubtitle>(request =>
+                request.WorkloadKind == TranslationWorkloadKind.Library &&
+                request.MediaId == movie.Id &&
+                request.MediaType == MediaType.Movie &&
+                request.SourceLanguage == "en" &&
+                request.TargetLanguage == "ro"),
+            It.IsAny<bool>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task ProcessMediaForceAsync_IntegrityValidationUsesFullTargetWhenSparseSupplementalTargetExists()
+    {
+        var movie = await CreateTestMovie();
+        SetupStandardSettings();
+
+        var subtitles = new List<Subtitles>
+        {
+            new()
+            {
+                Path = "/movies/test/test.movie.en.srt",
+                FileName = "test.movie.en.srt",
+                Language = "en",
+                Caption = "",
+                Format = ".srt"
+            },
+            new()
+            {
+                Path = "/movies/test/test.movie.ro.forced.srt",
+                FileName = "test.movie.ro.forced.srt",
+                Language = "ro",
+                Caption = "Forced",
+                Format = ".srt"
+            },
+            new()
+            {
+                Path = "/movies/test/test.movie.ro.srt",
+                FileName = "test.movie.ro.srt",
+                Language = "ro",
+                Caption = "",
+                Format = ".srt"
+            }
+        };
+
+        SubtitleServiceMock
+            .Setup(s => s.GetAllSubtitles(It.IsAny<string>()))
+            .ReturnsAsync(subtitles);
+
+        var validatedTargets = new List<string>();
+        SubtitleIntegrityServiceMock
+            .Setup(s => s.ValidateIntegrityDetailedAsync(It.IsAny<string>(), It.IsAny<string>()))
+            .Callback<string, string>((_, target) => validatedTargets.Add(target))
+            .ReturnsAsync((string _, string target) => new SubtitleIntegrityCheckResult
+            {
+                IsValid = target == subtitles[2].Path,
+                Reason = target == subtitles[2].Path ? "valid" : "invalid"
+            });
+
+        var queuedRequests = new List<TranslateAbleSubtitle>();
+        TranslationRequestServiceMock
+            .Setup(s => s.CreateRequest(It.IsAny<TranslateAbleSubtitle>(), It.IsAny<bool>()))
+            .Callback<TranslateAbleSubtitle, bool>((request, _) => queuedRequests.Add(request))
+            .ReturnsAsync(123);
+
+        var queued = await Processor.ProcessMediaForceAsync(
+            movie,
+            MediaType.Movie,
+            forceProcess: false,
+            forceTranslation: false);
+
+        Assert.True(
+            queued == 0,
+            $"Expected no queue. Validated targets: {string.Join(", ", validatedTargets)}. Queued: {string.Join(", ", queuedRequests.Select(request => $"{request.SourceLanguage}->{request.TargetLanguage}:{request.SubtitlePath ?? "<embedded>"}"))}");
+        TranslationRequestServiceMock.Verify(
+            s => s.CreateRequest(It.IsAny<TranslateAbleSubtitle>(), It.IsAny<bool>()),
+            Times.Never);
+        SubtitleIntegrityServiceMock.Verify(
+            s => s.ValidateIntegrityDetailedAsync(subtitles[0].Path, subtitles[2].Path),
+            Times.Once);
     }
 
     [Fact]
@@ -114,11 +392,15 @@ public class DuplicationPreventionTests : MediaSubtitleProcessorTestBase
         {
             MediaId = movie.Id,
             MediaType = MediaType.Movie,
+            WorkloadItemKey = $"library:{MediaType.Movie}:{movie.Id}",
             Title = movie.Title,
             SourceLanguage = "ja",
             TargetLanguage = "ro",
             SubtitleToTranslate = null,
-            Status = TranslationStatus.Pending
+            SourceSubtitleFormat = ".ass",
+            RequiredOutputFormats = ".ass",
+            Status = TranslationStatus.Pending,
+            IsActive = true
         });
         await DbContext.SaveChangesAsync();
 
@@ -127,5 +409,278 @@ public class DuplicationPreventionTests : MediaSubtitleProcessorTestBase
         Assert.Equal(0, queued);
         TranslationRequestServiceMock.Verify(s => s.CreateRequest(It.IsAny<TranslateAbleSubtitle>(), It.IsAny<bool>()), Times.Never);
     }
-}
 
+    [Fact]
+    public async Task ProcessMediaForceAsync_WithActiveRequestForDifferentOutputFormat_DoesNotEnqueueExternalTranslation()
+    {
+        var movie = await CreateTestMovie();
+        SetupStandardSettings();
+
+        SettingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.Translation.SubtitleOutputMode))
+            .ReturnsAsync("srt-only");
+
+        var subtitles = new List<Subtitles>
+        {
+            new()
+            {
+                Path = "/movies/test/test.movie.en.ass",
+                FileName = "test.movie.en",
+                Language = "en",
+                Caption = "",
+                Format = ".ass"
+            }
+        };
+
+        SubtitleServiceMock
+            .Setup(s => s.GetAllSubtitles(It.IsAny<string>()))
+            .ReturnsAsync(subtitles);
+
+        DbContext.TranslationRequests.Add(new TranslationRequest
+        {
+            MediaId = movie.Id,
+            MediaType = MediaType.Movie,
+            WorkloadItemKey = $"library:{MediaType.Movie}:{movie.Id}",
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "ro",
+            SubtitleToTranslate = subtitles[0].Path,
+            SourceSubtitleFormat = ".ass",
+            RequiredOutputFormats = ".ass",
+            Status = TranslationStatus.Pending,
+            IsActive = true
+        });
+        await DbContext.SaveChangesAsync();
+
+        var queued = await Processor.ProcessMediaForceAsync(movie, MediaType.Movie, forceProcess: true);
+
+        Assert.Equal(0, queued);
+        TranslationRequestServiceMock.Verify(
+            s => s.CreateRequest(It.IsAny<TranslateAbleSubtitle>(), It.IsAny<bool>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task ProcessMediaForceAsync_WithAssSourceAndOnlySrtTarget_QueuesMissingAssOutput()
+    {
+        var movie = await CreateTestMovie();
+        SetupStandardSettings();
+
+        SettingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.Translation.SubtitleOutputMode))
+            .ReturnsAsync("both");
+
+        var subtitles = new List<Subtitles>
+        {
+            new()
+            {
+                Path = "/movies/test/test.movie.en.ass",
+                FileName = "test.movie.en",
+                Language = "en",
+                Caption = "",
+                Format = ".ass"
+            },
+            new()
+            {
+                Path = "/movies/test/test.movie.ro.srt",
+                FileName = "test.movie.ro",
+                Language = "ro",
+                Caption = "",
+                Format = ".srt"
+            }
+        };
+
+        SubtitleServiceMock
+            .Setup(s => s.GetAllSubtitles(It.IsAny<string>()))
+            .ReturnsAsync(subtitles);
+
+        TranslationRequestServiceMock
+            .Setup(s => s.CreateRequest(It.IsAny<TranslateAbleSubtitle>(), It.IsAny<bool>()))
+            .ReturnsAsync(123);
+
+        var queued = await Processor.ProcessMediaForceAsync(movie, MediaType.Movie, forceProcess: true);
+
+        Assert.Equal(1, queued);
+        TranslationRequestServiceMock.Verify(s => s.CreateRequest(
+            It.Is<TranslateAbleSubtitle>(request =>
+                request.MediaId == movie.Id &&
+                request.MediaType == MediaType.Movie &&
+                request.SourceLanguage == "en" &&
+                request.TargetLanguage == "ro" &&
+                request.SubtitlePath == "/movies/test/test.movie.en.ass" &&
+                request.SubtitleFormat == ".ass"),
+            It.IsAny<bool>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task ProcessMediaForceAsync_WithActiveRequestForDifferentOutputFormat_DoesNotEnqueueEmbeddedTranslation()
+    {
+        var movie = await CreateTestMovie();
+
+        SubtitleServiceMock
+            .Setup(s => s.GetAllSubtitles(It.IsAny<string>()))
+            .ReturnsAsync(new List<Subtitles>());
+
+        SettingServiceMock
+            .Setup(s => s.GetSettingAsJson<SourceLanguage>(SettingKeys.Translation.SourceLanguages))
+            .ReturnsAsync(new List<SourceLanguage>
+            {
+                new() { Code = "ja", Name = "Japanese" }
+            });
+
+        SettingServiceMock
+            .Setup(s => s.GetSettingAsJson<TargetLanguage>(SettingKeys.Translation.TargetLanguages))
+            .ReturnsAsync(new List<TargetLanguage>
+            {
+                new() { Code = "ro", Name = "Romanian" }
+            });
+
+        SettingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.Translation.IgnoreCaptions))
+            .ReturnsAsync("true");
+
+        SettingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.SubtitleValidation.SkipWhenTargetEmbedded))
+            .ReturnsAsync("true");
+
+        SettingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.Translation.SubtitleOutputMode))
+            .ReturnsAsync("srt-only");
+
+        var embeddedSubs = new List<EmbeddedSubtitle>
+        {
+            new()
+            {
+                MovieId = movie.Id,
+                StreamIndex = 0,
+                Language = "jpn",
+                Title = "Full Subtitles",
+                CodecName = "ass",
+                IsTextBased = true,
+                IsDefault = true,
+                IsForced = false
+            }
+        };
+
+        movie.EmbeddedSubtitles.AddRange(embeddedSubs);
+        await DbContext.EmbeddedSubtitles.AddRangeAsync(embeddedSubs);
+        await DbContext.SaveChangesAsync();
+
+        SubtitleExtractionServiceMock
+            .Setup(s => s.SyncEmbeddedSubtitles(It.IsAny<Movie>()))
+            .Returns(Task.CompletedTask);
+
+        DbContext.TranslationRequests.Add(new TranslationRequest
+        {
+            MediaId = movie.Id,
+            MediaType = MediaType.Movie,
+            WorkloadItemKey = $"library:{MediaType.Movie}:{movie.Id}",
+            Title = movie.Title,
+            SourceLanguage = "ja",
+            TargetLanguage = "ro",
+            SubtitleToTranslate = null,
+            SourceSubtitleFormat = ".ass",
+            RequiredOutputFormats = ".ass",
+            Status = TranslationStatus.Pending,
+            IsActive = true
+        });
+        await DbContext.SaveChangesAsync();
+
+        var queued = await Processor.ProcessMediaForceAsync(movie, MediaType.Movie, forceProcess: true);
+
+        Assert.Equal(0, queued);
+        TranslationRequestServiceMock.Verify(
+            s => s.CreateRequest(It.IsAny<TranslateAbleSubtitle>(), It.IsAny<bool>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task ProcessMediaForceAsync_WithEmbeddedTargetAndBothMode_DoesNotEnqueueMissingOutputFormat()
+    {
+        var movie = await CreateTestMovie();
+
+        SubtitleServiceMock
+            .Setup(s => s.GetAllSubtitles(It.IsAny<string>()))
+            .ReturnsAsync(new List<Subtitles>());
+
+        SettingServiceMock
+            .Setup(s => s.GetSettingAsJson<SourceLanguage>(SettingKeys.Translation.SourceLanguages))
+            .ReturnsAsync(new List<SourceLanguage>
+            {
+                new() { Code = "ja", Name = "Japanese" }
+            });
+
+        SettingServiceMock
+            .Setup(s => s.GetSettingAsJson<TargetLanguage>(SettingKeys.Translation.TargetLanguages))
+            .ReturnsAsync(new List<TargetLanguage>
+            {
+                new() { Code = "ro", Name = "Romanian" }
+            });
+
+        SettingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.Translation.IgnoreCaptions))
+            .ReturnsAsync("true");
+
+        SettingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.SubtitleValidation.SkipWhenTargetEmbedded))
+            .ReturnsAsync("true");
+
+        SettingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.Translation.SubtitleOutputMode))
+            .ReturnsAsync("both");
+
+        var embeddedSubs = new List<EmbeddedSubtitle>
+        {
+            new()
+            {
+                MovieId = movie.Id,
+                StreamIndex = 0,
+                Language = "jpn",
+                Title = "Full Subtitles",
+                CodecName = "ass",
+                IsTextBased = true,
+                IsDefault = true,
+                IsForced = false
+            },
+            new()
+            {
+                MovieId = movie.Id,
+                StreamIndex = 1,
+                Language = "ron",
+                Title = "Polished Dubtitles",
+                CodecName = "ass",
+                IsTextBased = true,
+                IsDefault = false,
+                IsForced = false
+            }
+        };
+
+        movie.EmbeddedSubtitles.AddRange(embeddedSubs);
+        await DbContext.EmbeddedSubtitles.AddRangeAsync(embeddedSubs);
+        await DbContext.SaveChangesAsync();
+
+        SubtitleExtractionServiceMock
+            .Setup(s => s.SyncEmbeddedSubtitles(It.IsAny<Movie>()))
+            .Returns(Task.CompletedTask);
+
+        var queuedRequests = new List<TranslateAbleSubtitle>();
+        TranslationRequestServiceMock
+            .Setup(s => s.CreateRequest(It.IsAny<TranslateAbleSubtitle>(), It.IsAny<bool>()))
+            .Callback<TranslateAbleSubtitle, bool>((request, _) => queuedRequests.Add(request))
+            .ReturnsAsync(123);
+
+        var queued = await Processor.ProcessMediaForceAsync(
+            movie,
+            MediaType.Movie,
+            forceProcess: true,
+            forceTranslation: false);
+
+        Assert.True(
+            queued == 0,
+            $"Expected no queue, but queued {queued}: {string.Join(", ", queuedRequests.Select(request => $"{request.SourceLanguage}->{request.TargetLanguage}; path={request.SubtitlePath ?? "<embedded>"}; type={request.SourceSubtitleType}; title={request.SelectedStreamTitle ?? "<none>"}; format={request.SubtitleFormat}"))}");
+        TranslationRequestServiceMock.Verify(
+            s => s.CreateRequest(It.IsAny<TranslateAbleSubtitle>(), It.IsAny<bool>()),
+            Times.Never);
+    }
+}

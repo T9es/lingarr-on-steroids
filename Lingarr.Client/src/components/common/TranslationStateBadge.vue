@@ -6,7 +6,11 @@
         <component
             :is="iconComponent"
             class="h-3 w-3"
-            :class="{ 'animate-spin': state === TRANSLATION_STATE.IN_PROGRESS }" />
+            :class="{
+                'animate-spin':
+                    state === TRANSLATION_STATE.IN_PROGRESS ||
+                    state === TRANSLATION_STATE.OCR_PENDING
+            }" />
         <span v-if="showLabel">{{ label }}</span>
     </span>
 </template>
@@ -53,6 +57,10 @@ const badgeClasses = computed(() => {
             return 'bg-red-900/70 text-red-200 border border-red-400/60'
         case TRANSLATION_STATE.AWAITING_SOURCE:
             return 'bg-blue-900/50 text-blue-300 border border-blue-500/50'
+        case TRANSLATION_STATE.OCR_PENDING:
+            return 'bg-blue-900/50 text-blue-200 border border-blue-400/60'
+        case TRANSLATION_STATE.OCR_BLOCKED:
+            return 'bg-red-900/60 text-red-200 border border-red-400/60'
         case TRANSLATION_STATE.UNKNOWN:
         default:
             return 'bg-primary/70 text-primary-content/60 border border-primary-content/30 opacity-60'
@@ -77,6 +85,10 @@ const iconComponent = computed(() => {
             return ExclamationIcon
         case TRANSLATION_STATE.AWAITING_SOURCE:
             return ClockIcon
+        case TRANSLATION_STATE.OCR_PENDING:
+            return LoaderCircleIcon
+        case TRANSLATION_STATE.OCR_BLOCKED:
+            return ExclamationIcon
         case TRANSLATION_STATE.UNKNOWN:
         default:
             return QuestionMarkCircleIcon
@@ -101,6 +113,10 @@ const label = computed(() => {
             return translate('translationState.failed')
         case TRANSLATION_STATE.AWAITING_SOURCE:
             return translate('translationState.awaitingSource')
+        case TRANSLATION_STATE.OCR_PENDING:
+            return translate('translationState.ocrPending')
+        case TRANSLATION_STATE.OCR_BLOCKED:
+            return translate('translationState.ocrBlocked')
         case TRANSLATION_STATE.UNKNOWN:
         default:
             return translate('translationState.unknown')
@@ -125,6 +141,10 @@ const tooltip = computed(() => {
             return translate('translationState.tooltipFailed')
         case TRANSLATION_STATE.AWAITING_SOURCE:
             return translate('translationState.tooltipAwaitingSource')
+        case TRANSLATION_STATE.OCR_PENDING:
+            return translate('translationState.tooltipOcrPending')
+        case TRANSLATION_STATE.OCR_BLOCKED:
+            return translate('translationState.tooltipOcrBlocked')
         case TRANSLATION_STATE.UNKNOWN:
         default:
             return translate('translationState.tooltipUnknown')

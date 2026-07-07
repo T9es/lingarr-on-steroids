@@ -100,13 +100,14 @@ import services from '@/services'
 const { translate } = useI18n()
 const settingsStore = useSettingStore()
 
-type TokenUsageService = 'openai' | 'anthropic' | 'gemini' | 'deepseek' | 'localai'
+type TokenUsageService = 'openai' | 'anthropic' | 'gemini' | 'deepseek' | 'localai' | 'crofai'
 type TokenLimitSettingKey =
     | 'openai_token_limit'
     | 'anthropic_token_limit'
     | 'gemini_token_limit'
     | 'deepseek_token_limit'
     | 'localai_token_limit'
+    | 'crofai_token_limit'
 
 const props = defineProps<{
     service: TokenUsageService
@@ -129,7 +130,8 @@ const tokenLimitSettingKey = computed<TokenLimitSettingKey>(() => {
         anthropic: 'anthropic_token_limit',
         gemini: 'gemini_token_limit',
         deepseek: 'deepseek_token_limit',
-        localai: 'localai_token_limit'
+        localai: 'localai_token_limit',
+        crofai: 'crofai_token_limit'
     }
     return keyMap[props.service]
 })

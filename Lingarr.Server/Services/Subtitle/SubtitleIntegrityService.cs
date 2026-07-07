@@ -4,6 +4,8 @@ using Lingarr.Core.Enum;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Models;
+using Lingarr.Server.Models.FileSystem;
+using Lingarr.Server.Services.Translation;
 using Microsoft.EntityFrameworkCore;
 
 namespace Lingarr.Server.Services.Subtitle;
@@ -17,6 +19,7 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
     private readonly ISettingService _settingService;
     private readonly ISubtitleService _subtitleService;
     private readonly LingarrDbContext _dbContext;
+    private readonly ISourceSubtitleResolver _sourceSubtitleResolver;
     private readonly ILogger<SubtitleIntegrityService> _logger;
 
     /// <summary>
@@ -29,36 +32,47 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
         ISettingService settingService,
         ISubtitleService subtitleService,
         LingarrDbContext dbContext,
+        ISourceSubtitleResolver sourceSubtitleResolver,
         ILogger<SubtitleIntegrityService> logger)
     {
         _settingService = settingService;
         _subtitleService = subtitleService;
         _dbContext = dbContext;
+        _sourceSubtitleResolver = sourceSubtitleResolver;
         _logger = logger;
     }
 
     /// <inheritdoc />
     public async Task<bool> ValidateIntegrityAsync(string sourceSubtitlePath, string targetSubtitlePath)
     {
+        var result = await ValidateIntegrityDetailedAsync(sourceSubtitlePath, targetSubtitlePath);
+        return result.IsValid;
+    }
+
+    /// <inheritdoc />
+    public async Task<SubtitleIntegrityCheckResult> ValidateIntegrityDetailedAsync(
+        string sourceSubtitlePath,
+        string targetSubtitlePath)
+    {
         // Check if integrity validation is enabled
         var enabled = await _settingService.GetSetting(SettingKeys.SubtitleValidation.IntegrityValidationEnabled);
         if (enabled != "true")
         {
             _logger.LogInformation("Integrity validation is disabled (setting={Setting}), skipping check for {TargetPath}", enabled ?? "null", targetSubtitlePath);
-            return true; // Validation disabled, treat as valid
+            return Valid("Integrity validation is disabled.");
         }
 
         // Validate file existence
         if (!File.Exists(sourceSubtitlePath))
         {
             _logger.LogWarning("Source subtitle not found for integrity check: {Path}", sourceSubtitlePath);
-            return true; // Can't validate without source
+            return Valid("Source subtitle was not found, so this target could not be validated.");
         }
 
         if (!File.Exists(targetSubtitlePath))
         {
             _logger.LogInformation("Target subtitle not found for integrity check: {Path}", targetSubtitlePath);
-            return true; // No target to validate
+            return Valid("Target subtitle was not found.");
         }
 
         try
@@ -73,7 +87,7 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
             if (sourceCount == 0)
             {
                 _logger.LogInformation("Source subtitle has no lines, skipping integrity check");
-                return true;
+                return Valid("Source subtitle has no dialogue entries.");
             }
 
             // Calculate minimum acceptable line count (with tolerance)
@@ -85,34 +99,95 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
                     "Subtitle integrity check FAILED: Target has {TargetCount} lines but source has {SourceCount} (minimum acceptable: {Minimum}). " +
                     "File may be corrupted/partial: {TargetPath}",
                     targetCount, sourceCount, minimumAcceptable, targetSubtitlePath);
-                return false;
+                return Invalid(
+                    $"Target has {targetCount} entries but the selected source has {sourceCount}. Minimum acceptable is {minimumAcceptable}.",
+                    sourceCount,
+                    targetCount,
+                    minimumAcceptable);
+            }
+
+            var echoScan = DetectUnchangedSourceText(
+                sourceSubtitles,
+                targetSubtitles,
+                SubtitleLanguageHelper.DetectLanguageFromFileName(sourceSubtitlePath),
+                SubtitleLanguageHelper.DetectLanguageFromFileName(targetSubtitlePath));
+            if (echoScan.HasIssues)
+            {
+                _logger.LogWarning(
+                    "Subtitle integrity check FAILED: target appears to contain mostly unchanged source text. {Summary} File may be untranslated: {TargetPath}",
+                    string.Join(" ", echoScan.IssueSummaries),
+                    targetSubtitlePath);
+                return Invalid(
+                    "Target appears to contain mostly unchanged source text. " +
+                    string.Join(" ", echoScan.IssueSummaries),
+                    sourceCount,
+                    targetCount,
+                    minimumAcceptable);
+            }
+
+            var languageScan = DetectWrongTargetLanguage(
+                sourceSubtitles,
+                targetSubtitles,
+                SubtitleLanguageHelper.DetectLanguageFromFileName(targetSubtitlePath));
+            if (languageScan.HasIssues)
+            {
+                _logger.LogWarning(
+                    "Subtitle integrity check FAILED: target appears to use the wrong language/script. {Summary} File may be mistranslated: {TargetPath}",
+                    string.Join(" ", languageScan.IssueSummaries),
+                    targetSubtitlePath);
+                return Invalid(
+                    "Target appears to use the wrong language/script. " +
+                    string.Join(" ", languageScan.IssueSummaries),
+                    sourceCount,
+                    targetCount,
+                    minimumAcceptable);
             }
 
             _logger.LogInformation(
                 "Subtitle integrity check PASSED: {TargetCount}/{SourceCount} lines in {Path}",
                 targetCount, sourceCount, targetSubtitlePath);
-            return true;
+            return new SubtitleIntegrityCheckResult
+            {
+                IsValid = true,
+                Reason = "Target subtitle passed integrity validation.",
+                SourceEntryCount = sourceCount,
+                TargetEntryCount = targetCount,
+                MinimumTargetEntryCount = minimumAcceptable
+            };
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error during subtitle integrity check for {TargetPath}", targetSubtitlePath);
             // On error, don't block processing - return true
-            return true;
+            return Valid("Integrity validation errored and was treated as inconclusive.");
         }
     }
+
+    private static SubtitleIntegrityCheckResult Valid(string reason) => new()
+    {
+        IsValid = true,
+        Reason = reason
+    };
+
+    private static SubtitleIntegrityCheckResult Invalid(
+        string reason,
+        int sourceCount,
+        int targetCount,
+        int minimumAcceptable) => new()
+    {
+        IsValid = false,
+        Reason = reason,
+        SourceEntryCount = sourceCount,
+        TargetEntryCount = targetCount,
+        MinimumTargetEntryCount = minimumAcceptable
+    };
 
     /// <inheritdoc />
     public async Task<Models.AssVerificationResult> VerifyAssIntegrityAsync(CancellationToken ct)
     {
         var result = new Models.AssVerificationResult();
-        
-        // Pattern to detect ASS drawing commands: lines starting with "m <number> <number>"
-        var drawingPattern = new System.Text.RegularExpressions.Regex(
-            @"^\s*m\s+-?\d+(\.\d+)?\s+-?\d+(\.\d+)?",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-
-        // Minimum suspicious lines to flag a file
-        const int suspiciousThreshold = 2;
+        var flaggedByPath = new Dictionary<string, Models.AssVerificationItem>(StringComparer.OrdinalIgnoreCase);
+        var scannedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         // Get all pending/in-progress translation requests to check if media is already queued
         var queuedRequests = await _dbContext.Set<Lingarr.Core.Entities.TranslationRequest>()
@@ -132,6 +207,12 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
             .Where(r => r.MediaType == Core.Enum.MediaType.Episode)
             .Select(r => r.MediaId!.Value)
             .ToHashSet();
+
+        var completedTranslations = await _dbContext.Set<Lingarr.Core.Entities.TranslationRequest>()
+            .Where(tr => tr.Status == TranslationStatus.Completed)
+            .Where(tr => tr.MediaId != null)
+            .Where(tr => tr.SubtitleToTranslate != null && tr.TranslatedSubtitle != null)
+            .ToListAsync(ct);
 
         // Get all movies and episodes with their subtitle paths
         var movies = await _dbContext.Movies
@@ -159,23 +240,23 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
             var subtitleFiles = await GetTranslatedSubtitlesForMedia(movie.Path!, movie.FileName!);
             foreach (var subPath in subtitleFiles)
             {
-                result.TotalFilesScanned++;
-                var (count, lines) = await GetSuspiciousLines(subPath, drawingPattern);
-                
-                if (count >= suspiciousThreshold)
+                if (scannedPaths.Add(subPath))
                 {
-                    result.FilesWithDrawings++;
-                    result.FlaggedItems.Add(new Models.AssVerificationItem
-                    {
-                        MediaId = movie.Id,
-                        MediaType = "Movie",
-                        MediaTitle = movie.Title ?? "Unknown",
-                        SubtitlePath = subPath,
-                        SuspiciousLineCount = count,
-                        SuspiciousLines = lines,
-                        Dismissed = false,
-                        IsQueued = queuedMovieIds.Contains(movie.Id)
-                    });
+                    result.TotalFilesScanned++;
+                }
+
+                var scan = await GetSuspiciousLines(subPath, ct);
+                
+                if (scan.HasIssues)
+                {
+                    AddOrMergeFinding(
+                        flaggedByPath,
+                        movie.Id,
+                        "Movie",
+                        movie.Title ?? "Unknown",
+                        subPath,
+                        queuedMovieIds.Contains(movie.Id),
+                        scan);
                 }
             }
         }
@@ -188,29 +269,105 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
             var subtitleFiles = await GetTranslatedSubtitlesForMedia(episode.Path!, episode.FileName!);
             foreach (var subPath in subtitleFiles)
             {
-                result.TotalFilesScanned++;
-                var (count, lines) = await GetSuspiciousLines(subPath, drawingPattern);
-                
-                if (count >= suspiciousThreshold)
+                if (scannedPaths.Add(subPath))
                 {
-                    result.FilesWithDrawings++;
-                    result.FlaggedItems.Add(new Models.AssVerificationItem
-                    {
-                        MediaId = episode.Id,
-                        MediaType = "Episode",
-                        MediaTitle = episode.Title,
-                        SubtitlePath = subPath,
-                        SuspiciousLineCount = count,
-                        SuspiciousLines = lines,
-                        Dismissed = false,
-                        IsQueued = queuedEpisodeIds.Contains(episode.Id)
-                    });
+                    result.TotalFilesScanned++;
+                }
+
+                var scan = await GetSuspiciousLines(subPath, ct);
+                
+                if (scan.HasIssues)
+                {
+                    AddOrMergeFinding(
+                        flaggedByPath,
+                        episode.Id,
+                        "Episode",
+                        episode.Title,
+                        subPath,
+                        queuedEpisodeIds.Contains(episode.Id),
+                        scan);
                 }
             }
         }
 
+        foreach (var translation in completedTranslations)
+        {
+            if (ct.IsCancellationRequested) break;
+
+            try
+            {
+                if (translation.MediaId == null ||
+                    string.IsNullOrWhiteSpace(translation.SubtitleToTranslate) ||
+                    string.IsNullOrWhiteSpace(translation.TranslatedSubtitle) ||
+                    !File.Exists(translation.TranslatedSubtitle))
+                {
+                    continue;
+                }
+
+                var sourceSubtitlePath = await _sourceSubtitleResolver.ResolveReadableSourcePathAsync(
+                    translation,
+                    ct);
+                if (string.IsNullOrWhiteSpace(sourceSubtitlePath) || !File.Exists(sourceSubtitlePath))
+                {
+                    continue;
+                }
+
+                if (scannedPaths.Add(translation.TranslatedSubtitle))
+                {
+                    result.TotalFilesScanned++;
+                }
+
+                var sourceSubtitles = await _subtitleService.ReadSubtitles(sourceSubtitlePath);
+                var targetSubtitles = await _subtitleService.ReadSubtitles(translation.TranslatedSubtitle);
+                var scan = DetectFormatArtifacts(
+                    sourceSubtitles,
+                    targetSubtitles,
+                    translation.TranslatedSubtitle);
+                scan.Merge(DetectUnchangedSourceText(
+                    sourceSubtitles,
+                    targetSubtitles,
+                    translation.SourceLanguage,
+                    translation.TargetLanguage));
+                scan.Merge(DetectWrongTargetLanguage(
+                    sourceSubtitles,
+                    targetSubtitles,
+                    translation.TargetLanguage));
+
+                if (!scan.HasIssues)
+                {
+                    continue;
+                }
+
+                var isQueued = translation.MediaType == MediaType.Movie
+                    ? queuedMovieIds.Contains(translation.MediaId.Value)
+                    : queuedEpisodeIds.Contains(translation.MediaId.Value);
+
+                AddOrMergeFinding(
+                    flaggedByPath,
+                    translation.MediaId.Value,
+                    translation.MediaType.ToString(),
+                    translation.Title,
+                    translation.TranslatedSubtitle,
+                    isQueued,
+                    scan);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Error comparing ASS tag structure for translation target {Path}",
+                    translation.TranslatedSubtitle);
+            }
+        }
+
+        result.FlaggedItems = flaggedByPath.Values
+            .OrderBy(item => item.MediaTitle)
+            .ThenBy(item => item.SubtitlePath)
+            .ToList();
+        result.FilesWithDrawings = result.FlaggedItems.Count;
+
         _logger.LogInformation(
-            "ASS Verification complete: Scanned {Total} files, found {Flagged} with drawing artifacts",
+            "ASS Verification complete: Scanned {Total} files, found {Flagged} with ASS/SSA artifacts",
             result.TotalFilesScanned, result.FilesWithDrawings);
 
         return result;
@@ -235,23 +392,150 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
         return subtitleFiles;
     }
 
-    private async Task<(int count, List<string> lines)> GetSuspiciousLines(string subtitlePath, System.Text.RegularExpressions.Regex pattern)
+    private async Task<AssArtifactScanResult> GetSuspiciousLines(string subtitlePath, CancellationToken ct)
     {
         try
         {
-            var lines = await File.ReadAllLinesAsync(subtitlePath);
-            var suspiciousLines = lines
-                .Where(line => pattern.IsMatch(line.Trim()))
-                .Take(10) // Limit to first 10 for performance
-                .Select(line => line.Trim().Length > 80 ? line.Trim().Substring(0, 80) + "..." : line.Trim())
-                .ToList();
-            return (suspiciousLines.Count, suspiciousLines);
+            var lines = await File.ReadAllLinesAsync(subtitlePath, ct);
+            if (SubtitleOutputModeHelper.IsAssFormat(Path.GetExtension(subtitlePath)))
+            {
+                return AssSubtitleArtifactDetector.DetectInlineTagPlacementArtifacts(lines);
+            }
+
+            var scan = AssSubtitleArtifactDetector.DetectDrawingArtifacts(lines, suspiciousThreshold: 1);
+            scan.Merge(AssSubtitleArtifactDetector.DetectUnexpectedAssTagsInPlainTextOutput(lines));
+            return scan;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Error reading subtitle file {Path}", subtitlePath);
-            return (0, new List<string>());
+            return new AssArtifactScanResult();
         }
+    }
+
+    private static AssArtifactScanResult DetectFormatArtifacts(
+        IReadOnlyList<SubtitleItem> sourceSubtitles,
+        IReadOnlyList<SubtitleItem> targetSubtitles,
+        string targetSubtitlePath)
+    {
+        var scan = new AssArtifactScanResult();
+
+        if (SubtitleOutputModeHelper.IsAssFormat(Path.GetExtension(targetSubtitlePath)))
+        {
+            scan.Merge(AssSubtitleArtifactDetector.DetectInlineTagPlacementArtifacts(
+                targetSubtitles.SelectMany(item => item.Lines)));
+            return scan;
+        }
+
+        scan.Merge(AssSubtitleArtifactDetector.DetectUnexpectedAssTagsInPlainTextOutput(
+            targetSubtitles.SelectMany(item => item.Lines)));
+        scan.Merge(AssSubtitleArtifactDetector.DetectDrawingArtifacts(
+            targetSubtitles.SelectMany(item => item.Lines),
+            suspiciousThreshold: 1));
+        return scan;
+    }
+
+    private static AssArtifactScanResult DetectUnchangedSourceText(
+        IReadOnlyList<SubtitleItem> sourceSubtitles,
+        IReadOnlyList<SubtitleItem> targetSubtitles,
+        string? sourceLanguage,
+        string? targetLanguage)
+    {
+        var analysis = TranslationEchoGuard.AnalyzeSubtitles(
+            sourceSubtitles,
+            targetSubtitles,
+            sourceLanguage,
+            targetLanguage);
+        if (!analysis.IsMostlyEchoed)
+        {
+            return new AssArtifactScanResult();
+        }
+
+        return new AssArtifactScanResult
+        {
+            SuspiciousLineCount = analysis.EchoedCount,
+            SuspiciousLines = analysis.Samples.ToList(),
+            IssueTypes = [AssVerificationIssueTypes.UnchangedSourceText],
+            IssueSummaries =
+            [
+                $"Found mostly unchanged source text in translated output ({analysis.EchoedCount}/{analysis.ComparableCount} comparable cues; strongest cluster {analysis.ClusterEchoedCount}/{analysis.ClusterComparableCount})."
+            ]
+        };
+    }
+
+    private static AssArtifactScanResult DetectWrongTargetLanguage(
+        IReadOnlyList<SubtitleItem> sourceSubtitles,
+        IReadOnlyList<SubtitleItem> targetSubtitles,
+        string? targetLanguage)
+    {
+        var analysis = TranslationLanguageGuard.AnalyzeSubtitles(
+            sourceSubtitles,
+            targetSubtitles,
+            targetLanguage);
+        if (!analysis.IsMostlyMismatched)
+        {
+            return new AssArtifactScanResult();
+        }
+
+        return new AssArtifactScanResult
+        {
+            SuspiciousLineCount = analysis.MismatchedCount,
+            SuspiciousLines = analysis.Samples.ToList(),
+            IssueTypes = [AssVerificationIssueTypes.TargetLanguageMismatch],
+            IssueSummaries =
+            [
+                $"Found target-language/script mismatch ({analysis.MismatchedCount}/{analysis.ComparableCount} comparable cues; strongest cluster {analysis.ClusterMismatchedCount}/{analysis.ClusterComparableCount}; expected {analysis.ExpectedDescription}, observed {analysis.ObservedDescription})."
+            ]
+        };
+    }
+
+    private static void AddOrMergeFinding(
+        Dictionary<string, Models.AssVerificationItem> flaggedByPath,
+        int mediaId,
+        string mediaType,
+        string mediaTitle,
+        string subtitlePath,
+        bool isQueued,
+        AssArtifactScanResult scan)
+    {
+        if (!flaggedByPath.TryGetValue(subtitlePath, out var item))
+        {
+            item = new Models.AssVerificationItem
+            {
+                MediaId = mediaId,
+                MediaType = mediaType,
+                MediaTitle = mediaTitle,
+                SubtitlePath = subtitlePath,
+                Dismissed = false,
+                IsQueued = isQueued
+            };
+            flaggedByPath[subtitlePath] = item;
+        }
+
+        item.SuspiciousLineCount += scan.SuspiciousLineCount;
+        item.SuspiciousLines.AddRange(scan.SuspiciousLines);
+        item.SuspiciousLines = item.SuspiciousLines
+            .Distinct(StringComparer.Ordinal)
+            .Take(10)
+            .ToList();
+
+        foreach (var issueType in scan.IssueTypes)
+        {
+            if (!item.IssueTypes.Contains(issueType, StringComparer.Ordinal))
+            {
+                item.IssueTypes.Add(issueType);
+            }
+        }
+
+        var issueSummaries = new List<string>();
+        if (!string.IsNullOrWhiteSpace(item.IssueSummary))
+        {
+            issueSummaries.Add(item.IssueSummary);
+        }
+
+        issueSummaries.AddRange(scan.IssueSummaries);
+        item.IssueSummary = string.Join(" ", issueSummaries.Distinct(StringComparer.Ordinal));
+        item.IsQueued = item.IsQueued || isQueued;
     }
 
     /// <inheritdoc />
@@ -271,7 +555,9 @@ public class SubtitleIntegrityService : ISubtitleIntegrityService
         }
 
         // Get the source subtitle path
-        var sourceSubtitlePath = translationRequest.SubtitleToTranslate;
+        var sourceSubtitlePath = await _sourceSubtitleResolver.ResolveReadableSourcePathAsync(
+            translationRequest,
+            ct);
         if (string.IsNullOrEmpty(sourceSubtitlePath) || !File.Exists(sourceSubtitlePath))
         {
             _logger.LogWarning("Source subtitle not found for translation {TranslationId}: {Path}",

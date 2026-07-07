@@ -63,11 +63,13 @@ public class DashboardController : ControllerBase
     /// Get error log
     /// </summary>
     [HttpGet("errors")]
-    public async Task<ActionResult<List<ErrorLogEntry>>> GetErrorLog([FromQuery] int limit = 50)
+    public async Task<ActionResult<List<ErrorLogEntry>>> GetErrorLog(
+        [FromQuery] int limit = 50,
+        [FromQuery] int offset = 0)
     {
         try
         {
-            var errors = await _dashboardService.GetErrorLog(limit);
+            var errors = await _dashboardService.GetErrorLog(limit, offset);
             return Ok(errors);
         }
         catch (Exception ex)

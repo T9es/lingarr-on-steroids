@@ -1,13 +1,19 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
+using Hangfire;
 using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Models;
+using Lingarr.Server.Models.FileSystem;
+using Lingarr.Server.Models.Subtitle;
 using Lingarr.Server.Services;
+using Lingarr.Server.Services.Subtitle;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -25,6 +31,9 @@ public abstract class MediaSubtitleProcessorTestBase : IDisposable
     protected readonly Mock<ISettingService> SettingServiceMock;
     protected readonly Mock<ISubtitleExtractionService> SubtitleExtractionServiceMock;
     protected readonly Mock<ISubtitleIntegrityService> SubtitleIntegrityServiceMock;
+    protected readonly Mock<ISubtitleOcrService> SubtitleOcrServiceMock;
+    protected readonly Mock<ISourceSubtitleSnapshotService> SourceSubtitleSnapshotServiceMock;
+    protected readonly Mock<IBackgroundJobClient> BackgroundJobClientMock;
     protected readonly LingarrDbContext DbContext;
     protected readonly Lingarr.Server.Services.MediaSubtitleProcessor Processor;
 
@@ -36,11 +45,143 @@ public abstract class MediaSubtitleProcessorTestBase : IDisposable
         SettingServiceMock = new Mock<ISettingService>();
         SubtitleExtractionServiceMock = new Mock<ISubtitleExtractionService>();
         SubtitleIntegrityServiceMock = new Mock<ISubtitleIntegrityService>();
+        SubtitleOcrServiceMock = new Mock<ISubtitleOcrService>();
+        SourceSubtitleSnapshotServiceMock = new Mock<ISourceSubtitleSnapshotService>();
+        BackgroundJobClientMock = new Mock<IBackgroundJobClient>();
         
         // Default behavior: integrity validation returns true (valid)
         SubtitleIntegrityServiceMock
             .Setup(s => s.ValidateIntegrityAsync(It.IsAny<string>(), It.IsAny<string>()))
             .ReturnsAsync(true);
+        SubtitleIntegrityServiceMock
+            .Setup(s => s.ValidateIntegrityDetailedAsync(It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync(new SubtitleIntegrityCheckResult
+            {
+                IsValid = true,
+                Reason = "valid"
+            });
+
+        SourceSubtitleSnapshotServiceMock
+            .Setup(s => s.ResolveExternalSourceAsync(
+                It.IsAny<Lingarr.Core.Interfaces.IMedia>(),
+                It.IsAny<IReadOnlyCollection<Subtitles>>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(async (
+                Lingarr.Core.Interfaces.IMedia media,
+                IReadOnlyCollection<Subtitles>? subtitles,
+                CancellationToken _) =>
+            {
+                var configuredSourceLanguages = await SettingServiceMock.Object
+                    .GetSettingAsJson<SourceLanguage>(SettingKeys.Translation.SourceLanguages);
+                var sourceLanguage = configuredSourceLanguages
+                    .Select(language => language.Code)
+                    .FirstOrDefault(code => subtitles?.Any(subtitle =>
+                        SubtitleLanguageHelper.LanguageMatches(subtitle.Language, code)) == true);
+
+                if (string.IsNullOrWhiteSpace(sourceLanguage))
+                {
+                    return null;
+                }
+
+                var ignoreCaptions = string.Equals(
+                    await SettingServiceMock.Object.GetSetting(SettingKeys.Translation.IgnoreCaptions),
+                    "true",
+                    StringComparison.OrdinalIgnoreCase);
+
+                var subtitle = ignoreCaptions
+                    ? subtitles?.FirstOrDefault(s =>
+                          SubtitleLanguageHelper.LanguageMatches(s.Language, sourceLanguage)
+                          && string.IsNullOrWhiteSpace(s.Caption))
+                      ?? subtitles?.FirstOrDefault(s =>
+                          SubtitleLanguageHelper.LanguageMatches(s.Language, sourceLanguage))
+                    : subtitles?.FirstOrDefault(s =>
+                        SubtitleLanguageHelper.LanguageMatches(s.Language, sourceLanguage));
+
+                if (subtitle == null)
+                {
+                    return null;
+                }
+
+                return new ResolvedExternalSourceSubtitle
+                {
+                    Subtitle = subtitle,
+                    SourceLanguage = sourceLanguage,
+                    Snapshot = new SourceSubtitleSnapshot
+                    {
+                        SourceType = SourceSubtitleSnapshot.ExternalType,
+                        SourceLanguage = sourceLanguage,
+                        SourcePath = subtitle.Path,
+                        Identity = $"external|{sourceLanguage}|{subtitle.Path}",
+                        Fingerprint = $"fp:{subtitle.Path}"
+                    }
+                };
+            });
+
+        SourceSubtitleSnapshotServiceMock
+            .Setup(s => s.ResolveExternalSourceWithAutoAsync(
+                It.IsAny<Lingarr.Core.Interfaces.IMedia>(),
+                It.IsAny<IReadOnlyCollection<Subtitles>>(),
+                It.IsAny<bool>(),
+                It.IsAny<IReadOnlyList<string>>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(async (
+                Lingarr.Core.Interfaces.IMedia _,
+                IReadOnlyCollection<Subtitles>? subtitles,
+                bool _,
+                IReadOnlyList<string>? _,
+                CancellationToken _) =>
+            {
+                var ignoreCaptions = string.Equals(
+                    await SettingServiceMock.Object.GetSetting(SettingKeys.Translation.IgnoreCaptions),
+                    "true",
+                    StringComparison.OrdinalIgnoreCase);
+
+                var subtitle = subtitles?
+                    .Where(s => !string.IsNullOrWhiteSpace(s.Language))
+                    .Where(s => !ignoreCaptions || string.IsNullOrWhiteSpace(s.Caption))
+                    .FirstOrDefault();
+
+                if (subtitle == null || string.IsNullOrWhiteSpace(subtitle.Language))
+                {
+                    return null;
+                }
+
+                return new ResolvedExternalSourceSubtitle
+                {
+                    Subtitle = subtitle,
+                    SourceLanguage = subtitle.Language,
+                    Snapshot = new SourceSubtitleSnapshot
+                    {
+                        SourceType = SourceSubtitleSnapshot.ExternalType,
+                        SourceLanguage = subtitle.Language,
+                        SourcePath = subtitle.Path,
+                        Identity = $"external|{subtitle.Language}|{subtitle.Path}",
+                        Fingerprint = $"fp:{subtitle.Path}"
+                    }
+                };
+            });
+
+        SourceSubtitleSnapshotServiceMock
+            .Setup(s => s.GetStaleTargetLanguagesAsync(
+                It.IsAny<int>(),
+                It.IsAny<Lingarr.Core.Enum.MediaType>(),
+                It.IsAny<IEnumerable<string>>(),
+                It.IsAny<Lingarr.Server.Models.Subtitle.SourceSubtitleSnapshot?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new HashSet<string>());
+
+        SourceSubtitleSnapshotServiceMock
+            .Setup(s => s.CreateEmbeddedSnapshot(
+                It.IsAny<EmbeddedSubtitle>(),
+                It.IsAny<string>()))
+            .Returns((EmbeddedSubtitle subtitle, string sourceLanguage) => new SourceSubtitleSnapshot
+            {
+                SourceType = SourceSubtitleSnapshot.EmbeddedType,
+                SourceLanguage = sourceLanguage,
+                Identity = $"embedded|{sourceLanguage}|stream:{subtitle.StreamIndex}",
+                Fingerprint = $"fp:embedded:{sourceLanguage}:{subtitle.StreamIndex}",
+                StreamIndex = subtitle.StreamIndex
+            });
 
         var options = new DbContextOptionsBuilder<LingarrDbContext>()
             .UseInMemoryDatabase(databaseName: System.Guid.NewGuid().ToString())
@@ -54,7 +195,10 @@ public abstract class MediaSubtitleProcessorTestBase : IDisposable
             SubtitleServiceMock.Object,
             SubtitleExtractionServiceMock.Object,
             SubtitleIntegrityServiceMock.Object,
-            DbContext);
+            SourceSubtitleSnapshotServiceMock.Object,
+            DbContext,
+            subtitleOcrService: SubtitleOcrServiceMock.Object,
+            backgroundJobClient: BackgroundJobClientMock.Object);
     }
 
 

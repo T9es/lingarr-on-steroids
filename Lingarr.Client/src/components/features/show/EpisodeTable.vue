@@ -113,7 +113,7 @@
                     </button>
                 </div>
             </div>
-            <div class="col-span-1 flex items-center justify-center py-2 md:col-span-1">
+            <div class="col-span-1 flex items-center justify-center gap-2 py-2 md:col-span-1">
                 <button
                     class="border-accent hover:bg-accent cursor-pointer rounded border p-1 transition-colors"
                     :disabled="translatingEpisode[episode.id]"
@@ -123,6 +123,16 @@
                         v-if="translatingEpisode[episode.id]"
                         class="h-4 w-4 animate-spin" />
                     <LanguageIcon v-else class="h-4 w-4" />
+                </button>
+                <button
+                    class="border-accent hover:bg-accent cursor-pointer rounded border p-1 transition-colors"
+                    :disabled="recreatingEpisode[episode.id]"
+                    :title="translate('common.recreate')"
+                    @click="recreateEpisode(episode)">
+                    <LoaderCircleIcon
+                        v-if="recreatingEpisode[episode.id]"
+                        class="h-4 w-4 animate-spin" />
+                    <ReloadIcon v-else class="h-4 w-4" />
                 </button>
             </div>
             <div class="col-span-1 flex items-center justify-center py-2 md:col-span-1">
@@ -156,6 +166,7 @@ import ToggleButton from '@/components/common/ToggleButton.vue'
 import LoaderCircleIcon from '@/components/icons/LoaderCircleIcon.vue'
 import LanguageIcon from '@/components/icons/LanguageIcon.vue'
 import CheckMarkCicleIcon from '@/components/icons/CheckMarkCicleIcon.vue'
+import ReloadIcon from '@/components/icons/ReloadIcon.vue'
 import TranslationStateBadge from '@/components/common/TranslationStateBadge.vue'
 import { useShowStore } from '@/store/show'
 import services from '@/services'
@@ -180,6 +191,7 @@ const sortedEpisodes = computed(() => {
 
 // Track which episodes are currently being translated
 const translatingEpisode = reactive<Record<number, boolean>>({})
+const recreatingEpisode = reactive<Record<number, boolean>>({})
 const integrityCheckingEpisode = reactive<Record<number, boolean>>({})
 
 // Subtitle collapse state
@@ -203,6 +215,22 @@ const translateEpisode = async (episode: IEpisode) => {
         console.error('Failed to translate episode:', error)
     } finally {
         translatingEpisode[episode.id] = false
+    }
+}
+
+const recreateEpisode = async (episode: IEpisode) => {
+    recreatingEpisode[episode.id] = true
+    try {
+        const response = await services.translate.translateMedia<TranslateMediaResponse>(
+            episode.id,
+            MEDIA_TYPE.EPISODE,
+            true
+        )
+        console.log(response.message)
+    } catch (error) {
+        console.error('Failed to recreate episode:', error)
+    } finally {
+        recreatingEpisode[episode.id] = false
     }
 }
 
@@ -285,7 +313,18 @@ const truncate = (str: string | null | undefined, len: number): string => {
 
 const getEmbeddedBadgeClasses = (sub: IEmbeddedSubtitle): string => {
     if (!sub.isTextBased) {
-        // Image-based (PGS/VobSub) - gray, non-clickable
+        if (sub.ocrStatus === 'Queued' || sub.ocrStatus === 'Processing') {
+            return 'cursor-pointer text-accent border-accent bg-accent/10'
+        }
+        if (sub.isOcrUsable) {
+            return 'cursor-pointer text-blue-300 border-blue-500 bg-blue-900/30'
+        }
+        if (sub.ocrStatus === 'BlockedLowQuality' || sub.ocrStatus === 'Failed') {
+            return 'cursor-pointer text-red-300 border-red-500 bg-red-900/30'
+        }
+        if (sub.isOcrSupported) {
+            return 'cursor-pointer text-blue-300 border-blue-500 bg-blue-900/20'
+        }
         return 'cursor-not-allowed text-secondary-content/50 border-secondary-content/30 bg-secondary/30 opacity-60'
     }
     if (sub.isExtracted) {

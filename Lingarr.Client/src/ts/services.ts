@@ -1,12 +1,28 @@
 import {
     DirectoryItem,
+    ICustomMediaItem,
+    ICustomSource,
+    ICreateUploadBatchRequest,
+    ICreateUploadChunkSessionRequest,
+    ICreateUploadChunkSessionResponse,
     ILanguage,
     ISettings,
     ISubtitle,
-    ITranslationRequestLog,
     ITranslationRequest,
-    MediaType
+    ITranslationRequestLog,
+    ITranslationRequestsOverview,
+    IRetryFailedRequestsResponse,
+    IRetryTranslationRequestResponse,
+    IUploadChunkResponse,
+    IUpdateUploadBatchFileRequest,
+    IUpdateUploadBatchRequest,
+    IUploadArtifact,
+    IUploadBatch,
+    IUploadBatchFile,
+    MediaType,
+    UploadProgressCallback
 } from '@/ts'
+import { ISubtitleOcrPreview } from '@/ts/media'
 import { IPathMapping } from '@/ts/index'
 
 export interface Services {
@@ -14,13 +30,17 @@ export interface Services {
     subtitle: ISubtitleService
     translate: ITranslateService
     chutes: IChutesService
+    nanoGpt: INanoGptService
+    crofAi: ICrofAiService
     tokenUsage: ITokenUsageService
     translationRequest: ITranslationRequestService
     version: IVersionService
     media: IMediaService
     schedule: IScheduleService
     mapping: IMappingService
+    customSources: ICustomSourceService
     directory: IDirectoryService
+    uploadWorkspace: IUploadWorkspaceService
     statistics: IStatisticsService
     logs: ILogsService
     dashboard: IDashboardService
@@ -70,6 +90,37 @@ export interface ISubtitleService {
         mediaId: number,
         streamIndex: number
     ): Promise<{ success: boolean; extractedPath: string | null; error: string | null }>
+    queueOcr(
+        mediaType: 'movie' | 'episode',
+        mediaId: number,
+        streamIndex: number
+    ): Promise<{
+        success: boolean
+        status: string
+        extractedPath: string | null
+        error: string | null
+        cueCount: number | null
+        qualityScore: number | null
+        issueSummary: string | null
+    }>
+    approveOcr(
+        mediaType: 'movie' | 'episode',
+        mediaId: number,
+        streamIndex: number
+    ): Promise<{
+        success: boolean
+        status: string
+        extractedPath: string | null
+        error: string | null
+        cueCount: number | null
+        qualityScore: number | null
+        issueSummary: string | null
+    }>
+    previewOcr(
+        mediaType: 'movie' | 'episode',
+        mediaId: number,
+        streamIndex: number
+    ): Promise<ISubtitleOcrPreview>
     probeEmbeddedSubtitles<T>(mediaType: 'movie' | 'episode', mediaId: number): Promise<T>
 }
 
@@ -85,12 +136,22 @@ export interface ITranslateService {
         target: ILanguage,
         mediaType: MediaType
     ): Promise<T>
-    translateMedia<T>(mediaId: number, mediaType: MediaType): Promise<T>
+    translateMedia<T>(mediaId: number, mediaType: MediaType, forceRecreate?: boolean): Promise<T>
+    recreateAllMedia<T>(): Promise<T>
+    reconcileOutputs<T>(): Promise<T>
     getLanguages<T>(): Promise<T>
     getModels<T>(): Promise<T>
 }
 
 export interface IChutesService {
+    getUsage<T>(forceRefresh?: boolean): Promise<T>
+}
+
+export interface INanoGptService {
+    getUsage<T>(forceRefresh?: boolean): Promise<T>
+}
+
+export interface ICrofAiService {
     getUsage<T>(forceRefresh?: boolean): Promise<T>
 }
 
@@ -104,7 +165,15 @@ export interface ITranslationRequestService {
     getActiveCount<T>(): Promise<T>
     getFailedRequests<T>(): Promise<T>
     getInProgressRequests<T>(): Promise<T>
-    getRecentCompleted<T>(limit?: number): Promise<T>
+    overview(
+        pageNumber: number,
+        searchQuery: string,
+        sortBy: string,
+        ascending: boolean,
+        pageSize?: number,
+        sectionLimit?: number
+    ): Promise<ITranslationRequestsOverview>
+    getRecentCompleted<T>(offset?: number, limit?: number): Promise<T>
     requests<T>(
         pageNumber: number,
         searchQuery: string,
@@ -113,8 +182,8 @@ export interface ITranslationRequestService {
     ): Promise<T>
     cancel<T>(translationRequest: ITranslationRequest): Promise<T>
     remove<T>(translationRequest: ITranslationRequest): Promise<T>
-    retry<T>(translationRequest: ITranslationRequest): Promise<T>
-    retryAllFailed<T>(): Promise<T>
+    retry(translationRequest: ITranslationRequest): Promise<IRetryTranslationRequestResponse>
+    retryAllFailed(): Promise<IRetryFailedRequestsResponse>
     removeAllFailed<T>(): Promise<T>
     reenqueueQueued<T>(includeInProgress?: boolean): Promise<T>
     cancelAll<T>(includeInProgress?: boolean): Promise<T>
@@ -138,6 +207,60 @@ export interface IDirectoryService {
     get(path: string): Promise<DirectoryItem[]>
 }
 
+export interface ICustomSourceService {
+    getSources(): Promise<ICustomSource[]>
+    getSource<T>(id: number): Promise<T>
+    createSource<T>(source: Partial<ICustomSource>): Promise<T>
+    updateSource<T>(id: number, source: Partial<ICustomSource>): Promise<T>
+    deleteSource(id: number): Promise<void>
+    getItems(id: number): Promise<ICustomMediaItem[]>
+    rescan(id: number): Promise<void>
+    rescanAll(): Promise<void>
+    setExcluded(itemId: number, excluded: boolean): Promise<void>
+    setPriority(itemId: number, priority: boolean): Promise<void>
+    translate(
+        itemId: number,
+        forceRecreate?: boolean
+    ): Promise<{ translationsQueued: number; message: string }>
+}
+
+export interface IUploadWorkspaceService {
+    createBatch(request: ICreateUploadBatchRequest): Promise<IUploadBatch>
+    listBatches(): Promise<IUploadBatch[]>
+    getBatch(batchId: number): Promise<IUploadBatch>
+    updateBatch(batchId: number, request: IUpdateUploadBatchRequest): Promise<IUploadBatch>
+    deleteBatch(batchId: number): Promise<void>
+    createChunkSession(
+        batchId: number,
+        request: ICreateUploadChunkSessionRequest
+    ): Promise<ICreateUploadChunkSessionResponse>
+    uploadChunk(
+        batchId: number,
+        uploadId: string,
+        chunkIndex: number,
+        blob: Blob,
+        onProgress?: UploadProgressCallback
+    ): Promise<IUploadChunkResponse>
+    completeChunkSession(batchId: number, uploadId: string): Promise<IUploadBatch>
+    cancelChunkSession(batchId: number, uploadId: string): Promise<void>
+    uploadFiles(
+        batchId: number,
+        files: File[],
+        onProgress?: UploadProgressCallback
+    ): Promise<IUploadBatch>
+    reprobeFile(batchId: number, fileId: number): Promise<IUploadBatchFile>
+    updateFile(
+        batchId: number,
+        fileId: number,
+        request: IUpdateUploadBatchFileRequest
+    ): Promise<IUploadBatchFile>
+    startBatch<T = number>(batchId: number): Promise<T>
+    cancelBatch<T = boolean>(batchId: number): Promise<T>
+    listArtifacts(batchId: number, fileId?: number): Promise<IUploadArtifact[]>
+    downloadArtifact(artifactId: number): Promise<Blob>
+    deleteArtifact(artifactId: number): Promise<void>
+}
+
 export interface IStatisticsService {
     getStatistics<T>(): Promise<T>
     getDailyStatistics<T>(days?: number): Promise<T>
@@ -145,7 +268,8 @@ export interface IStatisticsService {
 }
 
 export interface ILogsService {
-    getStream(): EventSource
+    getStream(includeRecent?: boolean): EventSource
+    getRecent<T>(take?: number): Promise<T>
 }
 
 export interface IDashboardService {

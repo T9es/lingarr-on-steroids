@@ -184,21 +184,7 @@ public class VttParser : ISubtitleParser
             return false;
         }
 
-        if (timeCodeIndex > 0)
-        {
-            if (int.TryParse(block[0], out var pos))
-            {
-                subtitle.Position = pos;
-            }
-            else
-            {
-                subtitle.Position = ++_positionCounter;
-            }
-        }
-        else
-        {
-            subtitle.Position = ++_positionCounter;
-        }
+        subtitle.Position = ++_positionCounter;
 
         subtitle.StartTime = start;
         subtitle.EndTime = end;

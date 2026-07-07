@@ -112,16 +112,16 @@ const roadmapItems = shallowRef([
         title: 'Dashboard improvements',
         description: 'Statistics and dashboard improvements',
         date: '2024',
-        status: 'In Progress',
-        fade: false
+        status: 'Completed',
+        fade: true
     },
     {
         icon: HomeIcon,
-        title: 'Version 1.0 release',
-        description: 'Production version released with a reduced number of breaking changes.',
-        date: '2024 - 2025',
-        status: 'Planned',
-        fade: false
+        title: 'Version 3.0.0 release',
+        description: 'Major release with OCR, quality gate, circuit breaker, CrofAI, configurable scheduling.',
+        date: '2026',
+        status: 'Completed',
+        fade: true
     }
 ])
 </script>

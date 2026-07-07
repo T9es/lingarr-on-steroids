@@ -1,6 +1,6 @@
 ﻿<template>
     <div class="flex grow flex-col items-center justify-center p-4">
-        <MediaEmojiIcon />
+        <MediaEmojiIcon class="mb-4 h-16 w-16" />
         <h2 class="mb-2 text-xl font-semibold">No Media Found</h2>
         <p class="mb-4 max-w-md text-center text-sm">
             It looks like your media hasn't been collected yet. Don't worry, we can fix that!

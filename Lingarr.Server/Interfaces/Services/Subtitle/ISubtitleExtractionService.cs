@@ -34,6 +34,17 @@ public interface ISubtitleExtractionService
     /// <param name="language">Language code for the subtitle (e.g., "eng", "jpn"). Used in the output filename.</param>
     /// <returns>Path to the extracted file, or null if extraction failed</returns>
     Task<string?> ExtractSubtitle(string mediaFilePath, int streamIndex, string outputDirectory, string codecName, string? language);
+    /// <summary>
+    /// Extracts a subtitle stream to a specific output file path.
+    /// Unlike ExtractSubtitle, this accepts an exact output path instead of constructing one
+    /// from the media filename. Use when the media filename is too long for the filesystem.
+    /// </summary>
+    /// <param name="mediaFilePath">Path to the source media file</param>
+    /// <param name="streamIndex">FFmpeg stream index of the subtitle track</param>
+    /// <param name="outputPath">Exact output path for the extracted file</param>
+    /// <param name="codecName">Codec name to determine output format behavior</param>
+    /// <returns>Path to the extracted file if successful, null if extraction failed</returns>
+    Task<string?> ExtractSubtitleToFile(string mediaFilePath, int streamIndex, string outputPath, string codecName);
 
     /// <summary>
     /// Syncs embedded subtitle information for an episode.
@@ -56,6 +67,23 @@ public interface ISubtitleExtractionService
         MediaType mediaType, 
         string sourceLanguage, 
         List<int>? excludedStreamIndices = null, 
+        int? preferredStreamIndex = null);
+
+    /// <summary>
+    /// Tries to extract the best embedded subtitle for request-time processing into Lingarr's
+    /// internal cache instead of the media directory.
+    /// </summary>
+    /// <param name="mediaId">The media ID</param>
+    /// <param name="mediaType">The type of media (Movie or Episode)</param>
+    /// <param name="sourceLanguage">The source language to extract</param>
+    /// <param name="excludedStreamIndices">Stream indices to skip (already tried/failed)</param>
+    /// <param name="preferredStreamIndex">Optional specific stream to extract first</param>
+    /// <returns>Path to extracted cached subtitle, or null if no suitable subtitle was found</returns>
+    Task<string?> TryExtractEmbeddedSubtitleForRequestAsync(
+        int mediaId,
+        MediaType mediaType,
+        string sourceLanguage,
+        List<int>? excludedStreamIndices = null,
         int? preferredStreamIndex = null);
 
     /// <summary>

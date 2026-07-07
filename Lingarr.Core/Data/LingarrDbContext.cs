@@ -11,10 +11,18 @@ public class LingarrDbContext : DbContext
     public DbSet<Show> Shows { get; set; }
     public DbSet<Season> Seasons { get; set; }
     public DbSet<Episode> Episodes { get; set; }
+    public DbSet<CustomSource> CustomSources { get; set; }
+    public DbSet<CustomMediaItem> CustomMediaItems { get; set; }
+    public DbSet<UploadBatch> UploadBatches { get; set; }
+    public DbSet<UploadBatchFile> UploadBatchFiles { get; set; }
+    public DbSet<UploadBatchFileSubtitleStream> UploadBatchFileSubtitleStreams { get; set; }
+    public DbSet<UploadArtifact> UploadArtifacts { get; set; }
     public DbSet<Image> Images { get; set; }
     public DbSet<Setting> Settings { get; set; }
     public DbSet<TranslationRequest> TranslationRequests { get; set; }
     public DbSet<TranslationRequestLog> TranslationRequestLogs { get; set; }
+    public DbSet<TranslationFailedCue> TranslationFailedCues { get; set; }
+    public DbSet<TranslationDiagnosticEvent> TranslationDiagnosticEvents { get; set; }
     public DbSet<PathMapping> PathMappings { get; set; }
     public DbSet<Statistics> Statistics { get; set; }
     public DbSet<DailyStatistics> DailyStatistics { get; set; }
@@ -65,19 +73,27 @@ public class LingarrDbContext : DbContext
         modelBuilder.ApplyConfiguration(new ShowConfiguration());
         modelBuilder.ApplyConfiguration(new SeasonConfiguration());
         modelBuilder.ApplyConfiguration(new EpisodeConfiguration());
+        modelBuilder.ApplyConfiguration(new CustomSourceConfiguration());
+        modelBuilder.ApplyConfiguration(new CustomMediaItemConfiguration());
+        modelBuilder.ApplyConfiguration(new UploadBatchConfiguration());
+        modelBuilder.ApplyConfiguration(new UploadBatchFileConfiguration());
+        modelBuilder.ApplyConfiguration(new UploadBatchFileSubtitleStreamConfiguration());
+        modelBuilder.ApplyConfiguration(new UploadArtifactConfiguration());
         modelBuilder.ApplyConfiguration(new ImageConfiguration());
         modelBuilder.ApplyConfiguration(new TranslationRequestConfiguration());
         modelBuilder.ApplyConfiguration(new TranslationRequestLogConfiguration());
+        modelBuilder.ApplyConfiguration(new TranslationFailedCueConfiguration());
+        modelBuilder.ApplyConfiguration(new TranslationDiagnosticEventConfiguration());
         modelBuilder.ApplyConfiguration(new EmbeddedSubtitleConfiguration());
 
         modelBuilder.Entity<TranslationRequest>(b =>
         {
             b.HasIndex(tr => new
                 {
-                    tr.MediaId,
-                    tr.MediaType,
+                    tr.WorkloadItemKey,
                     tr.SourceLanguage,
                     tr.TargetLanguage,
+                    tr.SourceDedupeKey,
                     tr.IsActive
                 })
                 .IsUnique()
@@ -88,6 +104,12 @@ public class LingarrDbContext : DbContext
                 .HasDatabaseName("ix_translation_requests_completed_at");
 
             b.Property(tr => tr.IsActive).HasColumnName("is_active");
+            b.Property(tr => tr.SourceDedupeKey)
+                .HasMaxLength(512)
+                .HasDefaultValue("primary")
+                .HasColumnName("source_dedupe_key");
+            b.Property(tr => tr.WorkloadItemKey)
+                .HasMaxLength(256);
         });
 
         // DailyStatistics: unique index on Date to prevent race condition duplicates

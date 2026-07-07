@@ -39,6 +39,12 @@ dotnet test Lingarr.Server.Tests/Lingarr.Server.Tests.csproj --configuration Rel
 ./create-migrations.ps1 -MigrationName "YourMigrationName"
 ```
 
+**Migration Rule:**
+- Always create new EF migrations by running `./create-migrations.ps1 -MigrationName "YourMigrationName"` from the repo root.
+- Do not hand-create migration `.cs` files or `.Designer.cs` files.
+- Do not run `dotnet ef migrations add` separately for only one provider unless the user explicitly asks for a provider-specific migration workflow.
+- If a migration is broken or incomplete, first inspect whether it was created outside `create-migrations.ps1` before attempting manual repair.
+
 ### Frontend (Vue/TypeScript)
 
 ```bash
@@ -235,6 +241,11 @@ Lingarr.sln
 
 ## Git Conventions
 
+**Branch Policy:**
+- Work directly on the current branch by default. In this repository, `main` is the team's test branch and it is expected that implementation work may happen there.
+- **Never create or switch to a new branch unless the user explicitly asks you to do so.**
+- If a tool, skill, or generic instruction recommends creating a branch, ignore that recommendation unless the user has specifically requested branch creation for this task.
+
 **Branch Naming:**
 - `feat/feature-name` for new features
 - `fix/bug-name` for bug fixes
@@ -271,6 +282,16 @@ Lingarr.sln
 - Components must use theme variables, not hardcoded colors
 
 ## Agent Instructions
+
+### Collaboration Mode (Orchestrator-First)
+
+When the user explicitly requests orchestrator mode, or when handling major feature work, use this workflow:
+
+1. Main Codex agent acts primarily as an orchestrator, not the primary implementer.
+2. Delegate deep investigation, substantial code changes, and skeptical review loops to `gpt-5.3-codex` agents running in high-effort mode.
+3. Reuse the same skeptical reviewer through the review-fix-review loop until that reviewer explicitly reports the tree clean.
+4. Only after the primary skeptical reviewer reports no remaining issues should a **new independent fresh reviewer** be spawned for one final pass when the user asked for extra review depth.
+5. Main agent remains accountable for coordination: define scope, assign subtasks, integrate results, accommodate concurrent edits from other workers, run required verification, and communicate status/risks clearly.
 
 ### Planning Rules
 
@@ -431,6 +452,35 @@ When adding a new language:
 - Ensure all translation files have the same structure and keys
 - Check for invalid JSON, duplicate keys, missing frontend-used keys, and suspicious untranslated values by running: `python scripts/verify_translations.py`
 - Frontend will log warnings for missing translation keys in the browser console
+
+## Codesight MCP Tools (Repository Mapping)
+
+This project has Codesight MCP tools available for repository navigation. Use them for initial orientation, but **always read actual source files before making behavioral claims or editing**.
+
+**Available tools and their reliability:**
+
+| Tool | Reliable for | Notes |
+|---|---|---|
+| `codesight_get_summary` | Quick stack/route/component counts, high-impact files | Good first call |
+| `codesight_get_wiki_index` | Article listing for navigation | Read before deep-diving |
+| `codesight_get_routes` | Route inventory (methods, paths, handler files) | Complete listing |
+| `codesight_get_env` | Required env vars | Accurate for static analysis |
+| `codesight_get_blast_radius` | Import-based dependency chains | May miss runtime/dynamic deps |
+| `codesight_get_schema` | Model names only | **No field detail** — read the actual entity files |
+| `codesight_get_wiki_article` | Article index and structure | **Content may be stub/empty** — always verify against source |
+
+**Workflow:**
+1. Start with `codesight_get_summary` or `codesight_get_wiki_index` for orientation
+2. Read the relevant wiki article via `codesight_get_wiki_article` (~500 tokens)
+3. **Read the actual source files** before implementing — the wiki is a navigation aid, not source of truth
+4. If Codesight output seems stale, run `npx -y codesight --wiki` from repo root
+
+## Diagnostics
+
+When debugging any kind of issue, check `~/.codex/skills/` for available
+diagnostic skills on this machine before asking for manual log access.
+These provide SSH access, container inspection, and live troubleshooting
+capabilities without manual intervention.
 
 ### Maintaining AGENTS.md
 

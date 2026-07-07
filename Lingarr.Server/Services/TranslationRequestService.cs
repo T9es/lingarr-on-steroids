@@ -8,8 +8,11 @@ using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Jobs;
 using Lingarr.Server.Models;
+using Lingarr.Server.Models.Api;
 using Lingarr.Server.Models.Batch.Response;
 using Lingarr.Server.Models.FileSystem;
+using Lingarr.Server.Services.Subtitle;
+using Lingarr.Server.Services.Translation;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 
@@ -17,9 +20,12 @@ namespace Lingarr.Server.Services;
 
 public class TranslationRequestService : ITranslationRequestService
 {
+    private const int RetryFailedRequestsBatchSize = 100;
 
     private static bool IsActiveStatus(TranslationStatus status) =>
-        status == TranslationStatus.Pending || status == TranslationStatus.InProgress;
+        status == TranslationStatus.Pending ||
+        status == TranslationStatus.InProgress ||
+        status == TranslationStatus.Paused;
     
     private readonly LingarrDbContext _dbContext;
     private readonly ITranslationWorkerService _workerService;
@@ -33,6 +39,8 @@ public class TranslationRequestService : ITranslationRequestService
     private readonly ILogger<TranslationRequestService> _logger;
     private readonly ITranslationCancellationService _cancellationService;
     private readonly IMediaStateService _mediaStateService;
+    private readonly ICustomMediaStateService _customMediaStateService;
+    private readonly ITranslationCheckpointService? _translationCheckpointService;
     static private Dictionary<int, CancellationTokenSource> _asyncTranslationJobs = new Dictionary<int, CancellationTokenSource>();
 
     public TranslationRequestService(
@@ -47,7 +55,9 @@ public class TranslationRequestService : ITranslationRequestService
         IBatchFallbackService batchFallbackService,
         ILogger<TranslationRequestService> logger,
         ITranslationCancellationService cancellationService,
-        IMediaStateService mediaStateService)
+        IMediaStateService mediaStateService,
+        ICustomMediaStateService customMediaStateService,
+        ITranslationCheckpointService? translationCheckpointService = null)
     {
         _dbContext = dbContext;
         _hubContext = hubContext;
@@ -61,23 +71,53 @@ public class TranslationRequestService : ITranslationRequestService
         _logger = logger;
         _cancellationService = cancellationService;
         _mediaStateService = mediaStateService;
+        _customMediaStateService = customMediaStateService;
+        _translationCheckpointService = translationCheckpointService;
     }
 
     /// <inheritdoc />
     public async Task<int> CreateRequest(TranslateAbleSubtitle translateAbleSubtitle, bool forcePriority = false)
     {
         var mediaTitle = await FormatMediaTitle(translateAbleSubtitle);
+        var sourceSubtitleFormat = SubtitleOutputModeHelper.NormalizeFormat(
+            translateAbleSubtitle.SubtitleFormat ?? Path.GetExtension(translateAbleSubtitle.SubtitlePath));
+        var subtitleOutputMode = SubtitleOutputModeHelper.Parse(
+            await _settingService.GetSetting(SettingKeys.Translation.SubtitleOutputMode));
+        var requiredOutputFormats = SubtitleOutputModeHelper.SerializeFormats(
+            SubtitleOutputModeHelper.GetRequiredOutputFormats(sourceSubtitleFormat, subtitleOutputMode));
+
         var translationRequest = new TranslationRequest
         {
             MediaId = translateAbleSubtitle.MediaId,
+            WorkloadKind = translateAbleSubtitle.WorkloadKind,
+            CustomMediaItemId = translateAbleSubtitle.CustomMediaItemId,
+            UploadBatchFileId = translateAbleSubtitle.UploadBatchFileId,
             Title = mediaTitle,
             SourceLanguage = translateAbleSubtitle.SourceLanguage,
             TargetLanguage = translateAbleSubtitle.TargetLanguage,
             SubtitleToTranslate = translateAbleSubtitle.SubtitlePath,
+            SourceSubtitleFormat = sourceSubtitleFormat,
+            SubtitleOutputMode = subtitleOutputMode.ToSettingValue(),
+            RequiredOutputFormats = requiredOutputFormats,
             MediaType = translateAbleSubtitle.MediaType,
             Status = TranslationStatus.Pending,
-            IsActive = true
+            IsActive = true,
+            SourceSubtitleType = translateAbleSubtitle.SourceSubtitleType,
+            SourceSubtitleEntryCount = translateAbleSubtitle.SourceSubtitleEntryCount,
+            SelectedStreamTitle = translateAbleSubtitle.SelectedStreamTitle,
+            IsForcedSubtitle = translateAbleSubtitle.IsForcedSubtitle
         };
+
+        if (translateAbleSubtitle.SourceSnapshot != null)
+        {
+            translationRequest.SourceSnapshotVersion = translateAbleSubtitle.SourceSnapshot.Version;
+            translationRequest.SourceSnapshotType = translateAbleSubtitle.SourceSnapshot.SourceType;
+            translationRequest.SourceSnapshotIdentity = translateAbleSubtitle.SourceSnapshot.Identity;
+            translationRequest.SourceSnapshotFingerprint = translateAbleSubtitle.SourceSnapshot.Fingerprint;
+            translationRequest.SourceSnapshotFileSizeBytes = translateAbleSubtitle.SourceSnapshot.FileSizeBytes;
+            translationRequest.SourceSnapshotLastWriteUtc = translateAbleSubtitle.SourceSnapshot.LastWriteUtc;
+            translationRequest.SourceSnapshotStreamIndex = translateAbleSubtitle.SourceSnapshot.StreamIndex;
+        }
 
         return await CreateRequest(translationRequest, forcePriority);
     }
@@ -90,23 +130,19 @@ public class TranslationRequestService : ITranslationRequestService
 
     public async Task<int> CreateRequest(TranslationRequest translationRequest, bool forcePriority)
     {
+        NormalizeWorkloadIdentity(translationRequest);
+        PopulateSourceDedupeKey(translationRequest);
+        await PopulateOutputMetadataAsync(translationRequest);
+
         if (!forcePriority)
         {
-            var existingId = await _dbContext.TranslationRequests
-                .Where(tr =>
-                    tr.MediaId == translationRequest.MediaId &&
-                    tr.MediaType == translationRequest.MediaType &&
-                    tr.SourceLanguage == translationRequest.SourceLanguage &&
-                    tr.TargetLanguage == translationRequest.TargetLanguage &&
-                    (tr.Status == TranslationStatus.Pending || tr.Status == TranslationStatus.InProgress))
-                .Select(tr => tr.Id)
-                .FirstOrDefaultAsync();
+            var existingId = await FindMatchingActiveRequestIdAsync(translationRequest);
 
             if (existingId != 0)
             {
                 _logger.LogInformation(
-                    "Skipping duplicate translation request for media {MediaId} {Source}->{Target} (subtitle={SubtitlePath}). Existing request {RequestId} is still active.",
-                    translationRequest.MediaId,
+                    "Skipping duplicate translation request for workload {WorkloadItemKey} {Source}->{Target} (subtitle={SubtitlePath}). Existing request {RequestId} is still active.",
+                    translationRequest.WorkloadItemKey,
                     translationRequest.SourceLanguage,
                     translationRequest.TargetLanguage,
                     translationRequest.SubtitleToTranslate ?? "<embedded>",
@@ -115,21 +151,63 @@ public class TranslationRequestService : ITranslationRequestService
             }
         }
 
+        var existingUniqueNonSupplementalId =
+            await FindMatchingUniqueNonSupplementalRequestIdAsync(translationRequest);
+        if (existingUniqueNonSupplementalId != 0)
+        {
+            if (!forcePriority)
+            {
+                _logger.LogInformation(
+                    "Skipping duplicate non-supplemental translation request for workload {WorkloadItemKey} {Source}->{Target} (subtitle={SubtitlePath}). Existing request {RequestId} already owns this translation slot.",
+                    translationRequest.WorkloadItemKey,
+                    translationRequest.SourceLanguage,
+                    translationRequest.TargetLanguage,
+                    translationRequest.SubtitleToTranslate ?? "<embedded>",
+                    existingUniqueNonSupplementalId);
+                return existingUniqueNonSupplementalId;
+            }
+
+            return await RestartExistingUniqueNonSupplementalRequestAsync(
+                existingUniqueNonSupplementalId,
+                translationRequest);
+        }
+
         // Create a new TranslationRequest to not keep ID and JobID
         // Look up media priority to initialize IsPriority on the request
-        var isPriority = forcePriority || await GetMediaPriorityAsync(translationRequest.MediaId, translationRequest.MediaType);
+        var isPriority = forcePriority || await GetMediaPriorityAsync(translationRequest);
         
         var translationRequestCopy = new TranslationRequest
         {
+            WorkloadKind = translationRequest.WorkloadKind,
+            WorkloadItemKey = translationRequest.WorkloadItemKey,
             MediaId = translationRequest.MediaId,
+            CustomMediaItemId = translationRequest.CustomMediaItemId,
+            UploadBatchFileId = translationRequest.UploadBatchFileId,
             Title = translationRequest.Title,
             SourceLanguage = translationRequest.SourceLanguage,
             TargetLanguage = translationRequest.TargetLanguage,
             SubtitleToTranslate = translationRequest.SubtitleToTranslate,
+            SourceSubtitleFormat = translationRequest.SourceSubtitleFormat,
+            SubtitleOutputMode = translationRequest.SubtitleOutputMode,
+            RequiredOutputFormats = translationRequest.RequiredOutputFormats,
+            GeneratedOutputFormats = translationRequest.GeneratedOutputFormats,
+            GeneratedSubtitlePaths = translationRequest.GeneratedSubtitlePaths,
             MediaType = translationRequest.MediaType,
             Status = TranslationStatus.Pending,
             IsActive = true,
-            IsPriority = isPriority
+            SourceDedupeKey = translationRequest.SourceDedupeKey,
+            IsPriority = isPriority,
+            SourceSubtitleType = translationRequest.SourceSubtitleType,
+            SourceSubtitleEntryCount = translationRequest.SourceSubtitleEntryCount,
+            SelectedStreamTitle = translationRequest.SelectedStreamTitle,
+            IsForcedSubtitle = translationRequest.IsForcedSubtitle,
+            SourceSnapshotVersion = translationRequest.SourceSnapshotVersion,
+            SourceSnapshotType = translationRequest.SourceSnapshotType,
+            SourceSnapshotIdentity = translationRequest.SourceSnapshotIdentity,
+            SourceSnapshotFingerprint = translationRequest.SourceSnapshotFingerprint,
+            SourceSnapshotFileSizeBytes = translationRequest.SourceSnapshotFileSizeBytes,
+            SourceSnapshotLastWriteUtc = translationRequest.SourceSnapshotLastWriteUtc,
+            SourceSnapshotStreamIndex = translationRequest.SourceSnapshotStreamIndex
         };
 
         _dbContext.TranslationRequests.Add(translationRequestCopy);
@@ -143,26 +221,21 @@ public class TranslationRequestService : ITranslationRequestService
             // Race condition: another process created the same request between our check and insert.
             // This is expected behavior - the dedupe constraint did its job. Return the existing request ID.
             _logger.LogDebug(
-                "Race condition avoided: translation request for {Title} ({MediaType} {MediaId}) {Source}->{Target} already created by another process.",
+                "Race condition avoided: translation request for {Title} ({WorkloadItemKey}) {Source}->{Target} already created by another process.",
                 translationRequest.Title,
-                translationRequest.MediaType,
-                translationRequest.MediaId,
+                translationRequest.WorkloadItemKey,
                 translationRequest.SourceLanguage,
                 translationRequest.TargetLanguage);
             
-            // Clear the failed entity from the change tracker
-            _dbContext.ChangeTracker.Clear();
+            // Detach only the failed insert attempt so other tracked entities keep their state.
+            _dbContext.Entry(translationRequestCopy).State = EntityState.Detached;
             
             // Find and return the existing request
-            var existingRequest = await _dbContext.TranslationRequests
-                .Where(tr =>
-                    tr.MediaId == translationRequest.MediaId &&
-                    tr.MediaType == translationRequest.MediaType &&
-                    tr.SourceLanguage == translationRequest.SourceLanguage &&
-                    tr.TargetLanguage == translationRequest.TargetLanguage &&
-                    tr.IsActive == true)
-                .Select(tr => tr.Id)
-                .FirstOrDefaultAsync();
+            var existingRequest = await FindMatchingActiveRequestIdAsync(translationRequest);
+            if (existingRequest == 0)
+            {
+                existingRequest = await FindMatchingUniqueNonSupplementalRequestIdAsync(translationRequest);
+            }
             
             return existingRequest;
         }
@@ -177,6 +250,23 @@ public class TranslationRequestService : ITranslationRequestService
 
         return translationRequestCopy.Id;
     }
+    /// <inheritdoc />
+    public async Task<bool> HasExistingNonSupplementalRequestAsync(int mediaId, MediaType mediaType, string sourceLanguage, string targetLanguage)
+    {
+        var workloadItemKey = $"library:{mediaType}:{mediaId}";
+        return await _dbContext.TranslationRequests
+            .AnyAsync(tr =>
+                tr.WorkloadItemKey == workloadItemKey &&
+                tr.SourceLanguage == sourceLanguage &&
+                tr.TargetLanguage == targetLanguage &&
+                tr.SourceDedupeKey == "primary" &&
+                tr.SourceSubtitleType != SubtitleLanguageHelper.TypeForced &&
+                tr.SourceSubtitleType != SubtitleLanguageHelper.TypeSignsSongs &&
+                tr.Status != TranslationStatus.Cancelled &&
+                tr.Status != TranslationStatus.Failed &&
+                tr.Status != TranslationStatus.Interrupted);
+    }
+
     
     /// <inheritdoc />
     public async Task<int> GetActiveCount()
@@ -214,7 +304,7 @@ public class TranslationRequestService : ITranslationRequestService
     public async Task<List<TranslationRequest>> GetInProgressRequests()
     {
         var requests = await _dbContext.TranslationRequests
-            .Where(tr => tr.Status == TranslationStatus.InProgress)
+            .Where(tr => tr.Status == TranslationStatus.InProgress || tr.Status == TranslationStatus.Paused)
             .OrderByDescending(tr => tr.CreatedAt)
             .ToListAsync();
 
@@ -223,16 +313,90 @@ public class TranslationRequestService : ITranslationRequestService
     }
 
     /// <inheritdoc />
-    public async Task<List<TranslationRequest>> GetRecentCompletedRequests(int limit = 10)
+    public async Task<(List<TranslationRequest> Requests, int TotalCount)> GetRecentCompletedRequests(
+        int offset = 0,
+        int limit = 10)
     {
-        var requests = await _dbContext.TranslationRequests
+        offset = Math.Max(0, offset);
+        limit = Math.Clamp(limit, 1, 100);
+
+        var query = _dbContext.TranslationRequests
             .Where(tr => tr.Status == TranslationStatus.Completed)
-            .OrderByDescending(tr => tr.CompletedAt)
+            .OrderByDescending(tr => tr.CompletedAt);
+
+        var totalCount = await query.CountAsync();
+        var requests = await query
+            .Skip(offset)
             .Take(limit)
             .ToListAsync();
 
         await PopulatePriorityFlagsAsync(requests);
-        return requests;
+        return (requests, totalCount);
+    }
+
+    /// <inheritdoc />
+    public async Task<TranslationRequestsOverviewResponse> GetOverview(
+        string? searchQuery,
+        string? orderBy,
+        bool ascending,
+        int pageNumber,
+        int pageSize,
+        int sectionLimit)
+    {
+        pageNumber = Math.Max(1, pageNumber);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+        sectionLimit = Math.Max(1, sectionLimit);
+
+        var pendingQuery = BuildPendingRequestsQuery(searchQuery, orderBy, ascending, asNoTracking: true);
+        var pendingTotalCount = await pendingQuery.CountAsync();
+        var pendingRequests = await pendingQuery
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
+        var failedQuery = _dbContext.TranslationRequests
+            .AsNoTracking()
+            .Where(tr => tr.Status == TranslationStatus.Failed)
+            .OrderByDescending(tr => tr.CompletedAt);
+        var failedTotalCount = await failedQuery.CountAsync();
+        var failedRequests = await failedQuery
+            .Take(sectionLimit)
+            .ToListAsync();
+
+        var inProgressQuery = _dbContext.TranslationRequests
+            .AsNoTracking()
+            .Where(tr => tr.Status == TranslationStatus.InProgress || tr.Status == TranslationStatus.Paused)
+            .OrderByDescending(tr => tr.CreatedAt);
+        var inProgressTotalCount = await inProgressQuery.CountAsync();
+        var inProgressRequests = await inProgressQuery
+            .Take(sectionLimit)
+            .ToListAsync();
+
+        await PopulatePriorityFlagsAsync(pendingRequests);
+        await PopulatePriorityFlagsAsync(failedRequests);
+        await PopulatePriorityFlagsAsync(inProgressRequests);
+
+        return new TranslationRequestsOverviewResponse
+        {
+            ActiveCount = await GetActiveCount(),
+            Pending = new PagedResult<TranslationRequest>
+            {
+                Items = pendingRequests,
+                TotalCount = pendingTotalCount,
+                PageNumber = pageNumber,
+                PageSize = pageSize
+            },
+            Failed = new TranslationRequestSectionResponse
+            {
+                Items = failedRequests,
+                TotalCount = failedTotalCount
+            },
+            InProgress = new TranslationRequestSectionResponse
+            {
+                Items = inProgressRequests,
+                TotalCount = inProgressTotalCount
+            }
+        };
     }
 
     /// <inheritdoc />
@@ -252,8 +416,11 @@ public class TranslationRequestService : ITranslationRequestService
     {
         var activeRequests = await _dbContext.TranslationRequests
             .Where(tr => tr.MediaType == mediaType &&
+                         tr.WorkloadKind == TranslationWorkloadKind.Library &&
                          tr.MediaId == mediaId &&
-                         (tr.Status == TranslationStatus.Pending || tr.Status == TranslationStatus.InProgress))
+                         (tr.Status == TranslationStatus.Pending ||
+                          tr.Status == TranslationStatus.InProgress ||
+                          tr.Status == TranslationStatus.Paused))
             .ToListAsync();
 
         if (activeRequests.Count == 0)
@@ -275,6 +442,9 @@ public class TranslationRequestService : ITranslationRequestService
             request.CompletedAt = now;
             request.Status = TranslationStatus.Interrupted;
             request.IsActive = null;
+            request.PausedAt = null;
+            request.PauseReason = null;
+            request.PausedProvider = null;
         }
 
         await _dbContext.SaveChangesAsync();
@@ -283,6 +453,10 @@ public class TranslationRequestService : ITranslationRequestService
         {
             await ClearMediaHash(request);
             await _progressService.Emit(request, 0);
+            if (_translationCheckpointService != null)
+            {
+                await _translationCheckpointService.DeleteAsync(request.Id, CancellationToken.None);
+            }
         }
 
         await UpdateActiveCount();
@@ -325,11 +499,18 @@ public class TranslationRequestService : ITranslationRequestService
             translationRequest.CompletedAt = DateTime.UtcNow;
             translationRequest.Status = TranslationStatus.Cancelled;
             translationRequest.IsActive = null;
+            translationRequest.PausedAt = null;
+            translationRequest.PauseReason = null;
+            translationRequest.PausedProvider = null;
             await _dbContext.SaveChangesAsync();
             await ClearMediaHash(translationRequest);
             await UpdateActiveCount();
             await UpdateMediaState(translationRequest);
             await _progressService.Emit(translationRequest, 0);
+            if (_translationCheckpointService != null)
+            {
+                await _translationCheckpointService.DeleteAsync(translationRequest.Id, CancellationToken.None);
+            }
         }
 
         return $"Translation request with id {cancelRequest.Id} has been cancelled";
@@ -347,6 +528,10 @@ public class TranslationRequestService : ITranslationRequestService
         
         _dbContext.TranslationRequests.Remove(translationRequest);
         await _dbContext.SaveChangesAsync();
+        if (_translationCheckpointService != null)
+        {
+            await _translationCheckpointService.DeleteAsync(translationRequest.Id, CancellationToken.None);
+        }
         await UpdateActiveCount();
         await UpdateMediaState(translationRequest);
         
@@ -354,154 +539,181 @@ public class TranslationRequestService : ITranslationRequestService
     }
 
     /// <inheritdoc />
-    public async Task<int> RetryAllFailedRequests()
+    public async Task<RetryFailedRequestsResponse> RetryAllFailedRequests()
     {
-        var batchSize = 50;
-        var totalRetried = 0;
+        return await RetryFailedRequests(ignoreBackoff: true);
+    }
+
+    /// <inheritdoc />
+    public async Task<RetryFailedRequestsResponse> RetryEligibleFailedRequests()
+    {
+        return await RetryFailedRequests(ignoreBackoff: false);
+    }
+
+    private async Task<RetryFailedRequestsResponse> RetryFailedRequests(bool ignoreBackoff)
+    {
+        var maxRequestRetries = int.TryParse(
+            await _settingService.GetSetting(SettingKeys.Translation.MaxRequestRetries),
+            out var parsedRetries)
+            ? parsedRetries
+            : 10;
+
         var now = DateTime.UtcNow;
-        var retriedIds = new List<int>();
+        var failedQuery = _dbContext.TranslationRequests
+            .Where(tr => tr.Status == TranslationStatus.Failed);
 
-        _logger.LogInformation("Starting batch retry of failed requests with exponential backoff...");
+        if (!ignoreBackoff)
+        {
+            failedQuery = failedQuery.Where(tr => tr.NextRetryAt == null || tr.NextRetryAt <= now);
+        }
 
-        // Loop until we have processed all eligible failed requests
+        var totalFailed = await failedQuery.CountAsync();
+        if (totalFailed == 0)
+        {
+            return new RetryFailedRequestsResponse
+            {
+                TotalFailed = 0,
+                Retried = 0,
+                BlockedByActiveRequest = 0,
+                RemainingFailed = await _dbContext.TranslationRequests.CountAsync(
+                    tr => tr.Status == TranslationStatus.Failed),
+                Message = ignoreBackoff
+                    ? "No failed translation requests were found."
+                    : "No failed translation requests were eligible for retry."
+            };
+        }
+
+        var activeDuplicateKeys = await GetActiveDuplicateKeysAsync();
+        var retriedCount = 0;
+        var blockedByActiveRequest = 0;
+        var permanentlyResolved = 0;
+        var lastProcessedId = 0;
+        var retriedBatch = new List<TranslationRequest>(RetryFailedRequestsBatchSize);
+
         while (true)
         {
-            // 1. Fetch a small batch of failed requests that are ready for retry
-            // (NextRetryAt is null or <= current time)
-            var batch = await _dbContext.TranslationRequests
-                .Where(tr => tr.Status == TranslationStatus.Failed)
-                .Where(tr => tr.NextRetryAt == null || tr.NextRetryAt <= now)
-                .OrderBy(tr => tr.NextRetryAt ?? tr.FailedAt ?? tr.CreatedAt)
-                .Take(batchSize)
+            var failedBatch = await failedQuery
+                .Where(tr => tr.Id > lastProcessedId)
+                .OrderBy(tr => tr.Id)
+                .Take(RetryFailedRequestsBatchSize)
                 .ToListAsync();
 
-            if (!batch.Any())
+            if (failedBatch.Count == 0)
             {
                 break;
             }
 
-            // 2. Identify potentially conflicting active requests
-            var mediaIds = batch
-                .Where(x => x.MediaId.HasValue)
-                .Select(x => x.MediaId!.Value)
-                .Distinct()
-                .ToList();
-
-            var activeRequestsKeys = new HashSet<(int?, MediaType, string, string)>();
-            
-            if (mediaIds.Any())
+            retriedBatch.Clear();
+            foreach (var failedRequest in failedBatch)
             {
-                var activeRequests = await _dbContext.TranslationRequests
-                    .Where(tr => (tr.Status == TranslationStatus.Pending || tr.Status == TranslationStatus.InProgress)
-                                 && tr.MediaId != null && mediaIds.Contains(tr.MediaId.Value))
-                    .Select(tr => new { tr.MediaId, tr.MediaType, tr.SourceLanguage, tr.TargetLanguage })
-                    .ToListAsync();
-                
-                foreach (var r in activeRequests)
+                lastProcessedId = failedRequest.Id;
+                NormalizeWorkloadIdentity(failedRequest);
+                var duplicateKey = BuildRetryDuplicateKey(failedRequest);
+                if (string.IsNullOrWhiteSpace(duplicateKey))
                 {
-                    activeRequestsKeys.Add((r.MediaId, r.MediaType, r.SourceLanguage, r.TargetLanguage));
+                    blockedByActiveRequest++;
+                    continue;
                 }
+
+                if (activeDuplicateKeys.Contains(duplicateKey))
+                {
+                    blockedByActiveRequest++;
+                    continue;
+                }
+
+                if (maxRequestRetries > 0 && failedRequest.RetryCount >= maxRequestRetries)
+                {
+                    _logger.LogInformation(
+                        "Permanently resolving failed request {RequestId} for {Title}: exceeded max request retries ({RetryCount}/{Max})",
+                        failedRequest.Id, failedRequest.Title, failedRequest.RetryCount, maxRequestRetries);
+                    var resolvedRequest = await ResolvePermanentlyFailedRequestAsync(failedRequest);
+                    if (resolvedRequest != null)
+                    {
+                        permanentlyResolved++;
+                    }
+                    continue;
+                }
+
+                await PopulateOutputMetadataAsync(failedRequest);
+
+                failedRequest.Status = TranslationStatus.Pending;
+                failedRequest.IsActive = true;
+                PopulateSourceDedupeKey(failedRequest);
+                failedRequest.IsPriority = true;
+                failedRequest.JobId = null;
+                failedRequest.CompletedAt = null;
+                failedRequest.NextRetryAt = null;
+
+                retriedBatch.Add(failedRequest);
+                activeDuplicateKeys.Add(duplicateKey);
             }
 
-            // 3. Group and filter to prevent duplicates
-            var groups = batch.GroupBy(tr => new
+            if (retriedBatch.Count == 0)
             {
-                tr.MediaId,
-                tr.MediaType,
-                tr.SourceLanguage,
-                tr.TargetLanguage
-            });
-
-            var idsToRetry = new List<int>();
-            
-            foreach (var group in groups)
-            {
-                var key = (group.Key.MediaId, group.Key.MediaType, group.Key.SourceLanguage, group.Key.TargetLanguage);
-                
-                // Only retry if no active request exists for this key
-                if (!activeRequestsKeys.Contains(key))
-                {
-                    // Take the most recent failed request from this group
-                    var requestToRetry = group.OrderByDescending(x => x.FailedAt ?? x.CreatedAt).First();
-                    idsToRetry.Add(requestToRetry.Id);
-                    
-                    // Prevent duplicates within the same batch
-                    activeRequestsKeys.Add(key);
-                }
+                continue;
             }
 
-            // 4. Process the batch using UPDATE instead of DELETE/INSERT
-            // This is much more efficient and reduces database churn
-            if (idsToRetry.Any())
+            await _dbContext.SaveChangesAsync();
+            retriedCount += retriedBatch.Count;
+            foreach (var retriedRequest in retriedBatch)
             {
-                try
-                {
-                    // Use ExecuteUpdateAsync for efficient batch updates
-                    await _dbContext.TranslationRequests
-                        .Where(tr => idsToRetry.Contains(tr.Id))
-                        .ExecuteUpdateAsync(setters => setters
-                            .SetProperty(tr => tr.Status, TranslationStatus.Pending)
-                            .SetProperty(tr => tr.IsActive, true)
-                            .SetProperty(tr => tr.IsPriority, true)
-                            .SetProperty(tr => tr.JobId, (string?)null)
-                            .SetProperty(tr => tr.CompletedAt, (DateTime?)null)
-                            .SetProperty(tr => tr.NextRetryAt, (DateTime?)null)
-                        );
-                    
-                    retriedIds.AddRange(idsToRetry);
-                    totalRetried += idsToRetry.Count;
-                    
-                    _logger.LogDebug("Updated {Count} failed requests to Pending status", idsToRetry.Count);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error updating failed requests to Pending status");
-                    break;
-                }
+                await UpdateMediaState(retriedRequest);
             }
-            
-            // Small delay to prevent overwhelming the database
-            await Task.Delay(50);
         }
 
-        // 5. Enqueue jobs for all retried requests
-        if (retriedIds.Any())
+        if (retriedCount > 0)
         {
-            // Fetch the updated requests to enqueue them
-            var updatedRequests = await _dbContext.TranslationRequests
-                .Where(tr => retriedIds.Contains(tr.Id))
-                .ToListAsync();
-            
-            foreach (var request in updatedRequests)
-            {
-                try
-                {
-                    await EnqueueTranslationJobAsync(request, true);
-                    await UpdateMediaState(request);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to enqueue job for request {RequestId}", request.Id);
-                }
-            }
+            _workerService.Signal();
+            await UpdateActiveCount();
         }
+
+        var remainingFailed = await _dbContext.TranslationRequests.CountAsync(
+            tr => tr.Status == TranslationStatus.Failed);
+
+        var response = new RetryFailedRequestsResponse
+        {
+            TotalFailed = totalFailed,
+            Retried = retriedCount,
+            BlockedByActiveRequest = blockedByActiveRequest,
+            RemainingFailed = remainingFailed,
+            Message =
+                $"Retried {retriedCount} failed request(s). Blocked {blockedByActiveRequest} due to active duplicates. Permanently resolved {permanentlyResolved} exceeded max retries."
+        };
 
         _logger.LogInformation(
-            "Successfully retried {TotalRetried} failed requests using UPDATE strategy", 
-            totalRetried);
+            "Failed retry completed. IgnoreBackoff={IgnoreBackoff}, TotalFailed={TotalFailed}, Retried={Retried}, Blocked={BlockedByActiveRequest}, PermanentlyResolved={PermanentlyResolved}, RemainingFailed={RemainingFailed}",
+            ignoreBackoff,
+            response.TotalFailed,
+            response.Retried,
+            response.BlockedByActiveRequest,
+            permanentlyResolved,
+            response.RemainingFailed);
 
-        // 6. Send batched SignalR notification instead of per-item
-        if (totalRetried > 0)
+        return response;
+    }
+
+    private async Task<TranslationRequest?> ResolvePermanentlyFailedRequestAsync(TranslationRequest failedRequest)
+    {
+        try
         {
-            var count = await GetActiveCount();
-            await _hubContext.Clients.Group("TranslationRequests").SendAsync("RequestActive", new
-            {
-                count,
-                retriedCount = totalRetried
-            });
-        }
+            _dbContext.TranslationRequests.Remove(failedRequest);
+            await _dbContext.SaveChangesAsync();
 
-return totalRetried;
+            await UpdateMediaState(failedRequest);
+
+            _logger.LogInformation(
+                "Permanently resolved failed request {RequestId} for {Title} after {RetryCount} retries",
+                failedRequest.Id, failedRequest.Title, failedRequest.RetryCount);
+
+            return failedRequest;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Failed to resolve permanently failed request {RequestId}",
+                failedRequest.Id);
+            return null;
+        }
     }
 
     /// <inheritdoc />
@@ -509,14 +721,22 @@ return totalRetried;
     {
         var failedRequests = await _dbContext.TranslationRequests
             .Where(tr => tr.Status == TranslationStatus.Failed)
-            .Select(tr => new { tr.Id, tr.MediaId, tr.MediaType })
+            .Select(tr => new
+            {
+                tr.Id,
+                tr.WorkloadKind,
+                tr.MediaId,
+                tr.MediaType,
+                tr.CustomMediaItemId,
+                tr.UploadBatchFileId
+            })
             .ToListAsync();
 
         if (!failedRequests.Any()) return 0;
 
         const int batchSize = 50;
         var totalRemoved = 0;
-        var mediaToUpdate = new List<(int? MediaId, MediaType MediaType)>();
+        var workloadsToUpdate = new List<(TranslationWorkloadKind WorkloadKind, int? MediaId, MediaType MediaType, int? CustomMediaItemId, int? UploadBatchFileId)>();
 
         foreach (var batch in failedRequests.Chunk(batchSize))
         {
@@ -527,21 +747,36 @@ return totalRetried;
 
             _dbContext.TranslationRequests.RemoveRange(toDelete);
             await _dbContext.SaveChangesAsync();
+            if (_translationCheckpointService != null)
+            {
+                foreach (var requestId in ids)
+                {
+                    await _translationCheckpointService.DeleteAsync(requestId, CancellationToken.None);
+                }
+            }
 
             totalRemoved += toDelete.Count;
-            mediaToUpdate.AddRange(batch.Select(r => (r.MediaId, r.MediaType)));
+            workloadsToUpdate.AddRange(batch.Select(r => (
+                r.WorkloadKind,
+                r.MediaId,
+                r.MediaType,
+                r.CustomMediaItemId,
+                r.UploadBatchFileId)));
 
             await Task.Delay(50);
         }
 
         await UpdateActiveCount();
 
-        foreach (var (mediaId, mediaType) in mediaToUpdate.Where(m => m.MediaId.HasValue).Distinct())
+        foreach (var (workloadKind, mediaId, mediaType, customMediaItemId, uploadBatchFileId) in workloadsToUpdate.Distinct())
         {
             var tempRequest = new TranslationRequest
             {
+                WorkloadKind = workloadKind,
                 MediaId = mediaId,
                 MediaType = mediaType,
+                CustomMediaItemId = customMediaItemId,
+                UploadBatchFileId = uploadBatchFileId,
                 Title = string.Empty,
                 SourceLanguage = string.Empty,
                 TargetLanguage = string.Empty,
@@ -556,7 +791,7 @@ return totalRetried;
     }
 
     /// <inheritdoc />
-    public async Task<string?> RetryTranslationRequest(TranslationRequest retryRequest)
+    public async Task<RetryTranslationRequestResponse?> RetryTranslationRequest(TranslationRequest retryRequest)
     {
         var translationRequest = await _dbContext.TranslationRequests.FirstOrDefaultAsync(
             translationRequest => translationRequest.Id == retryRequest.Id);
@@ -565,24 +800,28 @@ return totalRetried;
             return null;
         }
 
-        // Check if there's already an active request for this media/language combination
-        var hasActiveRequest = await _dbContext.TranslationRequests
-            .AnyAsync(tr =>
-                tr.MediaId == translationRequest.MediaId &&
-                tr.MediaType == translationRequest.MediaType &&
-                tr.SourceLanguage == translationRequest.SourceLanguage &&
-                tr.TargetLanguage == translationRequest.TargetLanguage &&
-                (tr.Status == TranslationStatus.Pending || tr.Status == TranslationStatus.InProgress));
-
-        if (hasActiveRequest)
+        var duplicateKey = BuildRetryDuplicateKey(translationRequest);
+        if (!string.IsNullOrWhiteSpace(duplicateKey))
         {
-            return $"Translation request for {translationRequest.Title} is already active or pending.";
+            var activeDuplicateKeys = await GetActiveDuplicateKeysAsync(translationRequest.Id);
+            if (activeDuplicateKeys.Contains(duplicateKey))
+            {
+                return new RetryTranslationRequestResponse
+                {
+                    RequestId = translationRequest.Id,
+                    Retried = false,
+                    BlockedByActiveRequest = true,
+                    Message = $"Translation request for {translationRequest.Title} is already active or pending."
+                };
+            }
         }
 
-        // Use UPDATE instead of DELETE/INSERT for efficiency
-        // Reset retry tracking fields and set status to Pending
+        NormalizeWorkloadIdentity(translationRequest);
+        await PopulateOutputMetadataAsync(translationRequest);
+
         translationRequest.Status = TranslationStatus.Pending;
         translationRequest.IsActive = true;
+        PopulateSourceDedupeKey(translationRequest);
         translationRequest.IsPriority = true;
         translationRequest.JobId = null;
         translationRequest.CompletedAt = null;
@@ -590,18 +829,229 @@ return totalRetried;
         translationRequest.NextRetryAt = null;
         
         await _dbContext.SaveChangesAsync();
-        
-        // Enqueue the job
-        await EnqueueTranslationJobAsync(translationRequest, true);
-        await UpdateMediaState(translationRequest);
-        
-        var count = await GetActiveCount();
-        await _hubContext.Clients.Group("TranslationRequests").SendAsync("RequestActive", new
-        {
-            count
-        });
 
-        return $"Translation request with id {retryRequest.Id} has been restarted";
+        _workerService.Signal();
+        await UpdateMediaState(translationRequest);
+        await UpdateActiveCount();
+
+        return new RetryTranslationRequestResponse
+        {
+            RequestId = retryRequest.Id,
+            Retried = true,
+            BlockedByActiveRequest = false,
+            Message = $"Translation request with id {retryRequest.Id} has been restarted"
+        };
+    }
+
+    private async Task<HashSet<string>> GetActiveDuplicateKeysAsync(int? excludedRequestId = null)
+    {
+        var activeRequestsQuery = _dbContext.TranslationRequests
+            .Where(tr =>
+                tr.Status == TranslationStatus.Pending ||
+                tr.Status == TranslationStatus.InProgress ||
+                tr.Status == TranslationStatus.Paused);
+
+        if (excludedRequestId.HasValue)
+        {
+            activeRequestsQuery = activeRequestsQuery.Where(tr => tr.Id != excludedRequestId.Value);
+        }
+
+        var activeRequests = await activeRequestsQuery
+            .ToListAsync();
+
+        var activeKeys = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var activeRequest in activeRequests)
+        {
+            var key = BuildRetryDuplicateKey(activeRequest);
+            if (!string.IsNullOrWhiteSpace(key))
+            {
+                activeKeys.Add(key);
+            }
+        }
+
+        return activeKeys;
+    }
+
+    private string? BuildRetryDuplicateKey(TranslationRequest request)
+    {
+        var effectiveWorkloadKind = GetEffectiveWorkloadKind(request);
+        var remappedFromLegacyLibrary =
+            request.WorkloadKind == TranslationWorkloadKind.Library &&
+            effectiveWorkloadKind != TranslationWorkloadKind.Library;
+
+        string? workloadItemKey = !string.IsNullOrWhiteSpace(request.WorkloadItemKey) && !remappedFromLegacyLibrary
+            ? request.WorkloadItemKey
+            : effectiveWorkloadKind switch
+            {
+                TranslationWorkloadKind.CustomSource when request.CustomMediaItemId.HasValue =>
+                    $"custom:{request.CustomMediaItemId.Value}",
+                TranslationWorkloadKind.Upload when request.UploadBatchFileId.HasValue =>
+                    $"upload:{request.UploadBatchFileId.Value}",
+                _ => request.MediaId.HasValue
+                    ? $"library:{request.MediaType}:{request.MediaId.Value}"
+                    : null
+            };
+
+        if (string.IsNullOrWhiteSpace(workloadItemKey) ||
+            string.IsNullOrWhiteSpace(request.SourceLanguage) ||
+            string.IsNullOrWhiteSpace(request.TargetLanguage))
+        {
+            return null;
+        }
+
+        return $"{workloadItemKey}|{request.SourceLanguage}|{request.TargetLanguage}|{GetEffectiveSourceDedupeKey(request)}";
+    }
+
+    private async Task<int> FindMatchingActiveRequestIdAsync(TranslationRequest translationRequest)
+    {
+        var isSupplemental =
+            SubtitleLanguageHelper.IsSupplementalSubtitleType(translationRequest.SourceSubtitleType);
+        var hasSourceType = !string.IsNullOrWhiteSpace(translationRequest.SourceSubtitleType);
+        var hasSourceIdentity = !string.IsNullOrWhiteSpace(translationRequest.SourceSnapshotIdentity);
+
+        var query = _dbContext.TranslationRequests
+            .Where(tr =>
+                (tr.WorkloadItemKey == translationRequest.WorkloadItemKey ||
+                 ((tr.WorkloadItemKey == string.Empty || tr.WorkloadItemKey == null) &&
+                    (
+                       (translationRequest.WorkloadKind == TranslationWorkloadKind.Library &&
+                        tr.WorkloadKind == TranslationWorkloadKind.Library &&
+                        tr.MediaId == translationRequest.MediaId &&
+                        tr.MediaType == translationRequest.MediaType) ||
+                       (translationRequest.WorkloadKind == TranslationWorkloadKind.CustomSource &&
+                        tr.WorkloadKind == TranslationWorkloadKind.CustomSource &&
+                        tr.CustomMediaItemId == translationRequest.CustomMediaItemId) ||
+                       (translationRequest.WorkloadKind == TranslationWorkloadKind.Upload &&
+                        tr.WorkloadKind == TranslationWorkloadKind.Upload &&
+                        tr.UploadBatchFileId == translationRequest.UploadBatchFileId)))) &&
+                tr.SourceLanguage == translationRequest.SourceLanguage &&
+                tr.TargetLanguage == translationRequest.TargetLanguage &&
+                tr.SourceDedupeKey == translationRequest.SourceDedupeKey &&
+(tr.IsActive == true || tr.Status == TranslationStatus.Failed));
+
+        query = isSupplemental
+            ? query.Where(tr =>
+                (tr.SourceSubtitleType == SubtitleLanguageHelper.TypeForced ||
+                 tr.SourceSubtitleType == SubtitleLanguageHelper.TypeSignsSongs) &&
+                (!hasSourceType ||
+                 tr.SourceSubtitleType == translationRequest.SourceSubtitleType) &&
+                (!translationRequest.SourceSnapshotStreamIndex.HasValue ||
+                 tr.SourceSnapshotStreamIndex == translationRequest.SourceSnapshotStreamIndex) &&
+                (!hasSourceIdentity ||
+                 tr.SourceSnapshotIdentity == translationRequest.SourceSnapshotIdentity))
+            : query.Where(tr =>
+                tr.SourceSubtitleType != SubtitleLanguageHelper.TypeForced &&
+                tr.SourceSubtitleType != SubtitleLanguageHelper.TypeSignsSongs);
+
+        var activeRequestIds = await query
+            .Select(tr => tr.Id)
+            .ToListAsync();
+
+        return activeRequestIds.FirstOrDefault();
+    }
+
+    private async Task<int> FindMatchingUniqueNonSupplementalRequestIdAsync(
+        TranslationRequest translationRequest)
+    {
+        if (string.IsNullOrWhiteSpace(translationRequest.WorkloadItemKey) ||
+            string.IsNullOrWhiteSpace(translationRequest.SourceLanguage) ||
+            string.IsNullOrWhiteSpace(translationRequest.TargetLanguage) ||
+            string.IsNullOrWhiteSpace(translationRequest.SourceDedupeKey) ||
+            SubtitleLanguageHelper.IsSupplementalSubtitleType(translationRequest.SourceSubtitleType))
+        {
+            return 0;
+        }
+
+        return await _dbContext.TranslationRequests
+            .Where(tr =>
+                tr.WorkloadItemKey == translationRequest.WorkloadItemKey &&
+                tr.SourceLanguage == translationRequest.SourceLanguage &&
+                tr.TargetLanguage == translationRequest.TargetLanguage &&
+                tr.SourceDedupeKey == translationRequest.SourceDedupeKey &&
+                tr.Status != TranslationStatus.Cancelled &&
+                tr.Status != TranslationStatus.Failed &&
+                tr.Status != TranslationStatus.Interrupted &&
+                (tr.SourceSubtitleType == null ||
+                 (tr.SourceSubtitleType != SubtitleLanguageHelper.TypeForced &&
+                  tr.SourceSubtitleType != SubtitleLanguageHelper.TypeSignsSongs)))
+            .OrderByDescending(tr => tr.Id)
+            .Select(tr => tr.Id)
+            .FirstOrDefaultAsync();
+    }
+
+    private async Task<int> RestartExistingUniqueNonSupplementalRequestAsync(
+        int requestId,
+        TranslationRequest source)
+    {
+        var existing = await _dbContext.TranslationRequests
+            .FirstAsync(tr => tr.Id == requestId);
+
+        if (existing.Status == TranslationStatus.InProgress)
+        {
+            existing.IsPriority = true;
+            await _dbContext.SaveChangesAsync();
+
+            _logger.LogInformation(
+                "Reusing in-progress non-supplemental translation request {RequestId} for workload {WorkloadItemKey} {Source}->{Target} instead of creating a duplicate row.",
+                existing.Id,
+                existing.WorkloadItemKey,
+                existing.SourceLanguage,
+                existing.TargetLanguage);
+
+            return existing.Id;
+        }
+
+        existing.WorkloadKind = source.WorkloadKind;
+        existing.WorkloadItemKey = source.WorkloadItemKey;
+        existing.MediaId = source.MediaId;
+        existing.CustomMediaItemId = source.CustomMediaItemId;
+        existing.UploadBatchFileId = source.UploadBatchFileId;
+        existing.Title = source.Title;
+        existing.SourceLanguage = source.SourceLanguage;
+        existing.TargetLanguage = source.TargetLanguage;
+        existing.SubtitleToTranslate = source.SubtitleToTranslate;
+        existing.TranslatedSubtitle = null;
+        existing.SourceSubtitleFormat = source.SourceSubtitleFormat;
+        existing.SubtitleOutputMode = source.SubtitleOutputMode;
+        existing.RequiredOutputFormats = source.RequiredOutputFormats;
+        existing.GeneratedOutputFormats = null;
+        existing.GeneratedSubtitlePaths = null;
+        existing.MediaType = source.MediaType;
+        existing.Status = TranslationStatus.Pending;
+        existing.IsActive = true;
+        existing.SourceDedupeKey = source.SourceDedupeKey;
+        existing.CompletedAt = null;
+        existing.Progress = 0;
+        existing.IsPriority = true;
+        existing.SourceSubtitleType = source.SourceSubtitleType;
+        existing.SourceSubtitleEntryCount = source.SourceSubtitleEntryCount;
+        existing.SelectedStreamTitle = source.SelectedStreamTitle;
+        existing.IsForcedSubtitle = source.IsForcedSubtitle;
+        existing.StartedAt = null;
+        existing.SourceSnapshotVersion = source.SourceSnapshotVersion;
+        existing.SourceSnapshotType = source.SourceSnapshotType;
+        existing.SourceSnapshotIdentity = source.SourceSnapshotIdentity;
+        existing.SourceSnapshotFingerprint = source.SourceSnapshotFingerprint;
+        existing.SourceSnapshotFileSizeBytes = source.SourceSnapshotFileSizeBytes;
+        existing.SourceSnapshotLastWriteUtc = source.SourceSnapshotLastWriteUtc;
+        existing.SourceSnapshotStreamIndex = source.SourceSnapshotStreamIndex;
+        existing.NextRetryAt = null;
+        existing.PausedAt = null;
+        existing.PauseReason = null;
+        existing.PausedProvider = null;
+
+        await EnqueueTranslationJobAsync(existing, true);
+        await UpdateMediaState(existing);
+        await UpdateActiveCount();
+
+        _logger.LogInformation(
+            "Restarted existing non-supplemental translation request {RequestId} for workload {WorkloadItemKey} {Source}->{Target} instead of creating a duplicate row.",
+            existing.Id,
+            existing.WorkloadItemKey,
+            existing.SourceLanguage,
+            existing.TargetLanguage);
+
+        return existing.Id;
     }
     
     /// <inheritdoc />
@@ -625,7 +1075,8 @@ return totalRetried;
         if (status == TranslationStatus.InProgress && 
             (request.Status == TranslationStatus.Cancelled || 
              request.Status == TranslationStatus.Completed ||
-             request.Status == TranslationStatus.Failed))
+             request.Status == TranslationStatus.Failed ||
+             request.Status == TranslationStatus.Paused))
         {
             // Throwing TaskCanceledException will cause the job to abort gracefully (mostly)
             // or at least stop processing
@@ -657,8 +1108,8 @@ return totalRetried;
     public async Task<(int Reenqueued, int SkippedProcessing)> ReenqueueQueuedRequests(bool includeInProgress = false)
     {
         var statuses = includeInProgress
-            ? new[] { TranslationStatus.Pending, TranslationStatus.InProgress }
-            : new[] { TranslationStatus.Pending };
+            ? new[] { TranslationStatus.Pending, TranslationStatus.InProgress, TranslationStatus.Paused }
+            : new[] { TranslationStatus.Pending, TranslationStatus.Paused };
 
         var requests = await _dbContext.TranslationRequests
             .Where(tr => statuses.Contains(tr.Status))
@@ -681,6 +1132,10 @@ return totalRetried;
             
             // Mark as Pending to be picked up by worker
             request.Status = TranslationStatus.Pending;
+            request.PausedAt = null;
+            request.PauseReason = null;
+            request.PausedProvider = null;
+            request.NextRetryAt = null;
             reenqueued++;
         }
 
@@ -701,8 +1156,8 @@ return totalRetried;
     public async Task<(int RemovedDuplicates, int SkippedProcessing)> DedupeQueuedRequests(bool includeInProgress = false)
     {
         var statuses = includeInProgress
-            ? new[] { TranslationStatus.Pending, TranslationStatus.InProgress }
-            : new[] { TranslationStatus.Pending };
+            ? new[] { TranslationStatus.Pending, TranslationStatus.InProgress, TranslationStatus.Paused }
+            : new[] { TranslationStatus.Pending, TranslationStatus.Paused };
 
         var requests = await _dbContext.TranslationRequests
             .Where(tr => statuses.Contains(tr.Status))
@@ -710,15 +1165,44 @@ return totalRetried;
             .ThenBy(tr => tr.Id)
             .ToListAsync();
 
+        var keysNormalized = false;
+        foreach (var request in requests)
+        {
+            var originalKey = request.WorkloadItemKey;
+            NormalizeWorkloadIdentity(request);
+            if (!string.Equals(originalKey, request.WorkloadItemKey, StringComparison.Ordinal))
+            {
+                keysNormalized = true;
+            }
+
+            var originalFormats = request.RequiredOutputFormats;
+            var normalizedFormats = GetEffectiveRequiredOutputFormats(request);
+            if (!string.Equals(originalFormats, normalizedFormats, StringComparison.Ordinal))
+            {
+                request.RequiredOutputFormats = normalizedFormats;
+                keysNormalized = true;
+            }
+        }
+
+        if (keysNormalized)
+        {
+            await _dbContext.SaveChangesAsync();
+        }
+
         var duplicatesToRemove = new List<TranslationRequest>();
         var skippedProcessing = 0;
 
         foreach (var group in requests.GroupBy(tr => new
                  {
-                     tr.MediaId,
-                     tr.MediaType,
+                     WorkloadItemKey = GetEffectiveWorkloadItemKey(tr),
                      tr.SourceLanguage,
-                     tr.TargetLanguage
+                     tr.TargetLanguage,
+                     SourceRole = SubtitleLanguageHelper.IsSupplementalSubtitleType(tr.SourceSubtitleType)
+                         ? tr.SourceSubtitleType
+                         : "Primary",
+                     SourceIdentity = SubtitleLanguageHelper.IsSupplementalSubtitleType(tr.SourceSubtitleType)
+                         ? tr.SourceSnapshotIdentity ?? tr.SourceSnapshotStreamIndex?.ToString() ?? string.Empty
+                         : string.Empty
                  }))
         {
             if (group.Count() <= 1)
@@ -768,8 +1252,16 @@ return totalRetried;
 
         if (duplicatesToRemove.Count > 0)
         {
+            var duplicateIds = duplicatesToRemove.Select(request => request.Id).ToList();
             _dbContext.TranslationRequests.RemoveRange(duplicatesToRemove);
             await _dbContext.SaveChangesAsync();
+            if (_translationCheckpointService != null)
+            {
+                foreach (var requestId in duplicateIds)
+                {
+                    await _translationCheckpointService.DeleteAsync(requestId, CancellationToken.None);
+                }
+            }
             await UpdateActiveCount();
         }
 
@@ -787,8 +1279,8 @@ return totalRetried;
     public async Task<(int Cancelled, int SkippedProcessing)> CancelAllQueuedRequests(bool includeInProgress = false)
     {
         var statuses = includeInProgress
-            ? new[] { TranslationStatus.Pending, TranslationStatus.InProgress }
-            : new[] { TranslationStatus.Pending };
+            ? new[] { TranslationStatus.Pending, TranslationStatus.InProgress, TranslationStatus.Paused }
+            : new[] { TranslationStatus.Pending, TranslationStatus.Paused };
 
         var requests = await _dbContext.TranslationRequests
             .Where(tr => statuses.Contains(tr.Status))
@@ -824,11 +1316,15 @@ return totalRetried;
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(r => r.Status, TranslationStatus.Cancelled)
                     .SetProperty(r => r.IsActive, (bool?)null) // Use explicit cast for ExecuteUpdate
-                    .SetProperty(r => r.CompletedAt, now));
+                    .SetProperty(r => r.CompletedAt, now)
+                    .SetProperty(r => r.PausedAt, (DateTime?)null)
+                    .SetProperty(r => r.PauseReason, (string?)null)
+                    .SetProperty(r => r.PausedProvider, (string?)null)
+                    .SetProperty(r => r.NextRetryAt, (DateTime?)null));
             
             // Bulk clear media hashes
             var movieIds = requests
-                .Where(r => r.MediaType == MediaType.Movie && r.MediaId.HasValue)
+                .Where(r => r.WorkloadKind == TranslationWorkloadKind.Library && r.MediaType == MediaType.Movie && r.MediaId.HasValue)
                 .Select(r => (int)r.MediaId!)
                 .Distinct()
                 .ToList();
@@ -841,7 +1337,7 @@ return totalRetried;
             }
             
             var episodeIds = requests
-                .Where(r => r.MediaType == MediaType.Episode && r.MediaId.HasValue)
+                .Where(r => r.WorkloadKind == TranslationWorkloadKind.Library && r.MediaType == MediaType.Episode && r.MediaId.HasValue)
                 .Select(r => (int)r.MediaId!)
                 .Distinct()
                 .ToList();
@@ -852,8 +1348,28 @@ return totalRetried;
                     .Where(e => episodeIds.Contains(e.Id))
                     .ExecuteUpdateAsync(s => s.SetProperty(e => e.MediaHash, string.Empty));
             }
+
+            var customItemIds = requests
+                .Where(r => r.WorkloadKind == TranslationWorkloadKind.CustomSource && r.CustomMediaItemId.HasValue)
+                .Select(r => r.CustomMediaItemId!.Value)
+                .Distinct()
+                .ToList();
+
+            if (customItemIds.Count > 0)
+            {
+                await _dbContext.CustomMediaItems
+                    .Where(item => customItemIds.Contains(item.Id))
+                    .ExecuteUpdateAsync(s => s.SetProperty(item => item.MediaHash, string.Empty));
+            }
             
             await UpdateActiveCount();
+            if (_translationCheckpointService != null)
+            {
+                foreach (var requestId in requestIds)
+                {
+                    await _translationCheckpointService.DeleteAsync(requestId, CancellationToken.None);
+                }
+            }
 
             // Update in-memory objects to reflect the new state
             foreach (var req in requests)
@@ -879,29 +1395,52 @@ return totalRetried;
     {
         // Update the persisted IsPriority column on pending translation requests for this media.
         // This ensures priority ordering is applied correctly when the worker picks up jobs.
-        bool isPriority = false;
-        
-        // Look up the media's current priority status
-        if (mediaType == MediaType.Movie)
+        bool isPriority;
+        IQueryable<TranslationRequest> requestsToUpdate = _dbContext.TranslationRequests
+            .Where(tr => tr.WorkloadKind == TranslationWorkloadKind.Library &&
+                         tr.Status == TranslationStatus.Pending);
+
+        switch (mediaType)
         {
-            isPriority = await _dbContext.Movies
-                .Where(m => m.Id == mediaId)
-                .Select(m => m.IsPriority)
-                .FirstOrDefaultAsync();
+            case MediaType.Movie:
+                isPriority = await _dbContext.Movies
+                    .Where(m => m.Id == mediaId)
+                    .Select(m => m.IsPriority)
+                    .FirstOrDefaultAsync();
+                requestsToUpdate = requestsToUpdate
+                    .Where(tr => tr.MediaId == mediaId && tr.MediaType == MediaType.Movie);
+                break;
+
+            case MediaType.Show:
+                isPriority = await _dbContext.Shows
+                    .Where(s => s.Id == mediaId)
+                    .Select(s => s.IsPriority)
+                    .FirstOrDefaultAsync();
+                requestsToUpdate = requestsToUpdate
+                    .Where(tr => tr.MediaType == MediaType.Episode &&
+                                 tr.MediaId.HasValue &&
+                                 _dbContext.Episodes.Any(e =>
+                                     e.Id == tr.MediaId.Value &&
+                                     e.Season.ShowId == mediaId));
+                break;
+
+            case MediaType.Episode:
+                isPriority = await _dbContext.Episodes
+                    .Where(e => e.Id == mediaId)
+                    .Select(e => e.Season.Show.IsPriority)
+                    .FirstOrDefaultAsync();
+                requestsToUpdate = requestsToUpdate
+                    .Where(tr => tr.MediaId == mediaId && tr.MediaType == MediaType.Episode);
+                break;
+
+            default:
+                _logger.LogWarning(
+                    "Unsupported media type for priority refresh: {MediaType}",
+                    mediaType);
+                return 0;
         }
-        else if (mediaType == MediaType.Episode)
-        {
-            isPriority = await _dbContext.Episodes
-                .Where(e => e.Id == mediaId)
-                .Select(e => e.Season.Show.IsPriority)
-                .FirstOrDefaultAsync();
-        }
-        
-        // Update all pending requests for this media with the new priority
-        var updated = await _dbContext.TranslationRequests
-            .Where(tr => tr.MediaId == mediaId && 
-                         tr.MediaType == mediaType && 
-                         tr.Status == TranslationStatus.Pending)
+
+        var updated = await requestsToUpdate
             .ExecuteUpdateAsync(s => s.SetProperty(tr => tr.IsPriority, isPriority));
         
         _logger.LogInformation(
@@ -940,32 +1479,8 @@ return totalRetried;
         int pageNumber,
         int pageSize)
     {
-        var query = _dbContext.TranslationRequests
-            .AsSplitQuery()
-            .Where(tr => tr.Status == TranslationStatus.Pending)
-            .AsQueryable();
+        var query = BuildPendingRequestsQuery(searchQuery, orderBy, ascending);
 
-        if (!string.IsNullOrEmpty(searchQuery))
-        {
-            query = query.Where(translationRequest => translationRequest.Title.ToLower().Contains(searchQuery.ToLower()));
-        }
-    
-        query = orderBy switch
-        {
-            "Title" => ascending 
-                ? query.OrderBy(m => m.Title) 
-                : query.OrderByDescending(m => m.Title),
-            "CreatedAt" => ascending
-                ? query.OrderByDescending(tr => tr.CreatedAt)
-                : query.OrderBy(tr => tr.CreatedAt),
-            "CompletedAt" => ascending
-                ? query.OrderByDescending(tr => tr.CompletedAt)
-                : query.OrderBy(tr => tr.CompletedAt),
-            _ => ascending
-                ? query.OrderByDescending(tr => tr.CreatedAt)
-                : query.OrderBy(tr => tr.CreatedAt)
-        };
-        
         var totalCount = await query.CountAsync();
         var requests = await query
             .Skip((pageNumber - 1) * pageSize)
@@ -982,17 +1497,86 @@ return totalRetried;
             PageSize = pageSize
         };
     }
+
+    private IQueryable<TranslationRequest> BuildPendingRequestsQuery(
+        string? searchQuery,
+        string? orderBy,
+        bool ascending,
+        bool asNoTracking = false)
+    {
+        var query = _dbContext.TranslationRequests
+            .AsSplitQuery()
+            .Where(tr => tr.Status == TranslationStatus.Pending)
+            .AsQueryable();
+
+        if (asNoTracking)
+        {
+            query = query.AsNoTracking();
+        }
+
+        if (!string.IsNullOrEmpty(searchQuery))
+        {
+            var normalizedSearchQuery = searchQuery.ToLower();
+            query = query.Where(translationRequest =>
+                translationRequest.Title.ToLower().Contains(normalizedSearchQuery));
+        }
+
+        if (string.IsNullOrWhiteSpace(orderBy) ||
+            orderBy.Equals(TranslationRequestQueueOrdering.QueueSort, StringComparison.OrdinalIgnoreCase))
+        {
+            return query.OrderByEffectiveQueuePriority(_dbContext);
+        }
+
+        return orderBy switch
+        {
+            "Title" => ascending
+                ? query.OrderBy(m => m.Title)
+                : query.OrderByDescending(m => m.Title),
+            "CreatedAt" => ascending
+                ? query.OrderByDescending(tr => tr.CreatedAt)
+                : query.OrderBy(tr => tr.CreatedAt),
+            "CompletedAt" => ascending
+                ? query.OrderByDescending(tr => tr.CompletedAt)
+                : query.OrderBy(tr => tr.CompletedAt),
+            _ => ascending
+                ? query.OrderByDescending(tr => tr.CreatedAt)
+                : query.OrderBy(tr => tr.CreatedAt)
+        };
+    }
     
     /// <inheritdoc />
     public async Task ClearMediaHash(TranslationRequest translationRequest)
     {
-        if (!translationRequest.MediaId.HasValue) 
-        {
-            return;
-        }
-
         try
         {
+            if (translationRequest.WorkloadKind == TranslationWorkloadKind.CustomSource)
+            {
+                if (!translationRequest.CustomMediaItemId.HasValue)
+                {
+                    return;
+                }
+
+                var customItem = await _dbContext.CustomMediaItems
+                    .FirstOrDefaultAsync(item => item.Id == translationRequest.CustomMediaItemId.Value);
+                if (customItem != null)
+                {
+                    customItem.MediaHash = string.Empty;
+                }
+
+                await _dbContext.SaveChangesAsync();
+                return;
+            }
+
+            if (translationRequest.WorkloadKind == TranslationWorkloadKind.Upload)
+            {
+                return;
+            }
+
+            if (!translationRequest.MediaId.HasValue)
+            {
+                return;
+            }
+
             switch (translationRequest.MediaType)
             {
                 case MediaType.Movie:
@@ -1031,14 +1615,20 @@ return totalRetried;
         }
 
         var movieIds = requests
-            .Where(r => r.MediaType == MediaType.Movie && r.MediaId.HasValue)
+            .Where(r => r.WorkloadKind == TranslationWorkloadKind.Library && r.MediaType == MediaType.Movie && r.MediaId.HasValue)
             .Select(r => r.MediaId!.Value)
             .Distinct()
             .ToList();
 
         var episodeIds = requests
-            .Where(r => r.MediaType == MediaType.Episode && r.MediaId.HasValue)
+            .Where(r => r.WorkloadKind == TranslationWorkloadKind.Library && r.MediaType == MediaType.Episode && r.MediaId.HasValue)
             .Select(r => r.MediaId!.Value)
+            .Distinct()
+            .ToList();
+
+        var customItemIds = requests
+            .Where(r => r.WorkloadKind == TranslationWorkloadKind.CustomSource && r.CustomMediaItemId.HasValue)
+            .Select(r => r.CustomMediaItemId!.Value)
             .Distinct()
             .ToList();
 
@@ -1060,10 +1650,34 @@ return totalRetried;
                 .Select(e => new { e.Id, Priority = e.Season.Show.IsPriority })
                 .ToDictionaryAsync(e => e.Id, e => e.Priority);
 
+        var customPriorityMap = customItemIds.Count == 0
+            ? new Dictionary<int, bool>()
+            : await _dbContext.CustomMediaItems
+                .Where(item => customItemIds.Contains(item.Id))
+                .Select(item => new { item.Id, item.IsPriority })
+                .ToDictionaryAsync(item => item.Id, item => item.IsPriority);
+
         foreach (var request in requests)
         {
             request.IsPriority = false;
-            
+
+            if (request.WorkloadKind == TranslationWorkloadKind.CustomSource)
+            {
+                if (request.CustomMediaItemId.HasValue &&
+                    customPriorityMap.TryGetValue(request.CustomMediaItemId.Value, out var customPriority) &&
+                    customPriority)
+                {
+                    request.IsPriority = true;
+                }
+
+                continue;
+            }
+
+            if (request.WorkloadKind == TranslationWorkloadKind.Upload)
+            {
+                continue;
+            }
+
             if (!request.MediaId.HasValue)
             {
                 continue;
@@ -1094,21 +1708,42 @@ return totalRetried;
     /// <param name="mediaId">The ID of the media entity</param>
     /// <param name="mediaType">The type of media (Movie or Episode)</param>
     /// <returns>True if the media is marked as priority, false otherwise</returns>
-    private async Task<bool> GetMediaPriorityAsync(int? mediaId, MediaType mediaType)
+    private async Task<bool> GetMediaPriorityAsync(TranslationRequest translationRequest)
     {
-        if (!mediaId.HasValue) return false;
-        
-        if (mediaType == MediaType.Movie)
+        if (translationRequest.WorkloadKind == TranslationWorkloadKind.CustomSource)
+        {
+            if (!translationRequest.CustomMediaItemId.HasValue)
+            {
+                return false;
+            }
+
+            return await _dbContext.CustomMediaItems
+                .Where(item => item.Id == translationRequest.CustomMediaItemId.Value)
+                .Select(item => item.IsPriority)
+                .FirstOrDefaultAsync();
+        }
+
+        if (translationRequest.WorkloadKind == TranslationWorkloadKind.Upload)
+        {
+            return false;
+        }
+
+        if (!translationRequest.MediaId.HasValue)
+        {
+            return false;
+        }
+
+        if (translationRequest.MediaType == MediaType.Movie)
         {
             return await _dbContext.Movies
-                .Where(m => m.Id == mediaId.Value)
+                .Where(m => m.Id == translationRequest.MediaId.Value)
                 .Select(m => m.IsPriority)
                 .FirstOrDefaultAsync();
         }
-        else if (mediaType == MediaType.Episode)
+        else if (translationRequest.MediaType == MediaType.Episode)
         {
             return await _dbContext.Episodes
-                .Where(e => e.Id == mediaId.Value)
+                .Where(e => e.Id == translationRequest.MediaId.Value)
                 .Select(e => e.Season.Show.IsPriority)
                 .FirstOrDefaultAsync();
         }
@@ -1141,6 +1776,9 @@ return totalRetried;
         var translationRequest = new TranslationRequest
         {
             MediaId = await GetMediaId(translateAbleContent.ArrMediaId, translateAbleContent.MediaType),
+            WorkloadKind = translateAbleContent.WorkloadKind,
+            CustomMediaItemId = translateAbleContent.CustomMediaItemId,
+            UploadBatchFileId = translateAbleContent.UploadBatchFileId,
             Title = translateAbleContent.Title,
             SourceLanguage = translateAbleContent.SourceLanguage,
             TargetLanguage = translateAbleContent.TargetLanguage,
@@ -1148,6 +1786,7 @@ return totalRetried;
             Status = TranslationStatus.InProgress,
             IsActive = true
         };
+        NormalizeWorkloadIdentity(translationRequest);
 
         // Link cancel token with new source to be able to cancel the async translation
         var asyncTranslationCancellationTokenSource = new CancellationTokenSource();
@@ -1452,6 +2091,22 @@ return totalRetried;
             Line = string.Join(" ", subtitle.TranslatedLines ?? subtitle.Lines)
         }));
     }
+
+    private async Task PopulateOutputMetadataAsync(TranslationRequest translationRequest)
+    {
+        var sourceSubtitleFormat = SubtitleOutputModeHelper.NormalizeFormat(
+            translationRequest.SourceSubtitleFormat ?? Path.GetExtension(translationRequest.SubtitleToTranslate));
+        var subtitleOutputMode = !string.IsNullOrWhiteSpace(translationRequest.SubtitleOutputMode)
+            ? SubtitleOutputModeHelper.Parse(translationRequest.SubtitleOutputMode)
+            : SubtitleOutputModeHelper.Parse(await _settingService.GetSetting(SettingKeys.Translation.SubtitleOutputMode));
+
+        translationRequest.SourceSubtitleFormat = sourceSubtitleFormat;
+        translationRequest.SubtitleOutputMode = subtitleOutputMode.ToSettingValue();
+        translationRequest.RequiredOutputFormats = SubtitleOutputModeHelper.SerializeFormats(
+            !string.IsNullOrWhiteSpace(translationRequest.RequiredOutputFormats)
+                ? SubtitleOutputModeHelper.DeserializeFormats(translationRequest.RequiredOutputFormats)
+                : SubtitleOutputModeHelper.GetRequiredOutputFormats(sourceSubtitleFormat, subtitleOutputMode));
+    }
     
     /// <summary>
     /// Formats the media title based on the media type and ID.
@@ -1459,6 +2114,34 @@ return totalRetried;
     /// <param name="translateAbleSubtitle">The subtitle information containing media type and ID</param>
     private async Task<string> FormatMediaTitle(TranslateAbleSubtitle translateAbleSubtitle)
     {
+        if (translateAbleSubtitle.WorkloadKind == TranslationWorkloadKind.CustomSource &&
+            translateAbleSubtitle.CustomMediaItemId.HasValue)
+        {
+            var customTitle = await _dbContext.CustomMediaItems
+                .Where(item => item.Id == translateAbleSubtitle.CustomMediaItemId.Value)
+                .Select(item => item.Title)
+                .FirstOrDefaultAsync();
+
+            if (!string.IsNullOrWhiteSpace(customTitle))
+            {
+                return customTitle;
+            }
+        }
+
+        if (translateAbleSubtitle.WorkloadKind == TranslationWorkloadKind.Upload &&
+            translateAbleSubtitle.UploadBatchFileId.HasValue)
+        {
+            var uploadFileName = await _dbContext.UploadBatchFiles
+                .Where(item => item.Id == translateAbleSubtitle.UploadBatchFileId.Value)
+                .Select(item => item.OriginalFileName)
+                .FirstOrDefaultAsync();
+
+            if (!string.IsNullOrWhiteSpace(uploadFileName))
+            {
+                return uploadFileName;
+            }
+        }
+
         switch (translateAbleSubtitle.MediaType)
         {
             case MediaType.Movie:
@@ -1525,8 +2208,172 @@ return totalRetried;
         return false;
     }
 
+    private void NormalizeWorkloadIdentity(TranslationRequest translationRequest)
+    {
+        var originalWorkloadKind = translationRequest.WorkloadKind;
+        var effectiveWorkloadKind = GetEffectiveWorkloadKind(translationRequest);
+        translationRequest.WorkloadKind = effectiveWorkloadKind;
+
+        if (string.IsNullOrWhiteSpace(translationRequest.WorkloadItemKey) ||
+            (originalWorkloadKind == TranslationWorkloadKind.Library &&
+             effectiveWorkloadKind != TranslationWorkloadKind.Library))
+        {
+            translationRequest.WorkloadItemKey = BuildWorkloadItemKey(translationRequest);
+        }
+    }
+
+    private static void PopulateSourceDedupeKey(TranslationRequest translationRequest)
+    {
+        translationRequest.SourceDedupeKey = BuildSourceDedupeKey(translationRequest);
+    }
+
+    internal static string BuildSourceDedupeKey(TranslationRequest translationRequest)
+    {
+        return BuildSourceDedupeKey(
+            translationRequest.SourceSubtitleType,
+            translationRequest.IsForcedSubtitle,
+            translationRequest.SourceSnapshotIdentity,
+            translationRequest.SourceSnapshotStreamIndex,
+            translationRequest.SubtitleToTranslate);
+    }
+
+    internal static string BuildSourceDedupeKey(
+        string? sourceSubtitleType,
+        bool isForcedSubtitle,
+        string? sourceSnapshotIdentity,
+        int? sourceSnapshotStreamIndex,
+        string? subtitlePath)
+    {
+        var isForcedDialogue =
+            SubtitleLanguageHelper.IsForcedDialogueType(sourceSubtitleType);
+        var isSupplemental =
+            SubtitleLanguageHelper.IsSupplementalSubtitleType(sourceSubtitleType) ||
+            (isForcedSubtitle && !isForcedDialogue);
+        if (!isSupplemental)
+        {
+            return "primary";
+        }
+
+        var role = SubtitleLanguageHelper.IsSupplementalSubtitleType(sourceSubtitleType)
+            ? sourceSubtitleType!
+            : SubtitleLanguageHelper.TypeForced;
+        var identity = !string.IsNullOrWhiteSpace(sourceSnapshotIdentity)
+            ? sourceSnapshotIdentity
+            : sourceSnapshotStreamIndex.HasValue
+                ? $"stream:{sourceSnapshotStreamIndex.Value}"
+                : !string.IsNullOrWhiteSpace(subtitlePath)
+                    ? subtitlePath
+                    : "unknown";
+        var key = $"supplemental:{role.Trim().ToLowerInvariant()}:{identity}";
+        return key.Length <= 512 ? key : key[..512];
+    }
+
+    private static string GetEffectiveSourceDedupeKey(TranslationRequest translationRequest)
+    {
+        return !string.IsNullOrWhiteSpace(translationRequest.SourceDedupeKey)
+            ? translationRequest.SourceDedupeKey
+            : BuildSourceDedupeKey(translationRequest);
+    }
+
+    private static TranslationWorkloadKind GetEffectiveWorkloadKind(TranslationRequest translationRequest)
+    {
+        if (translationRequest.WorkloadKind == TranslationWorkloadKind.Library && !translationRequest.MediaId.HasValue)
+        {
+            if (translationRequest.CustomMediaItemId.HasValue)
+            {
+                return TranslationWorkloadKind.CustomSource;
+            }
+
+            if (translationRequest.UploadBatchFileId.HasValue)
+            {
+                return TranslationWorkloadKind.Upload;
+            }
+        }
+
+        return translationRequest.WorkloadKind;
+    }
+
+    private static string BuildWorkloadItemKey(TranslationRequest translationRequest)
+    {
+        return translationRequest.WorkloadKind switch
+        {
+            TranslationWorkloadKind.CustomSource => translationRequest.CustomMediaItemId.HasValue
+                ? $"custom:{translationRequest.CustomMediaItemId.Value}"
+                : throw new ArgumentException("Custom-source translation requests require CustomMediaItemId."),
+            TranslationWorkloadKind.Upload => translationRequest.UploadBatchFileId.HasValue
+                ? $"upload:{translationRequest.UploadBatchFileId.Value}"
+                : throw new ArgumentException("Upload translation requests require UploadBatchFileId."),
+            _ => $"library:{translationRequest.MediaType}:{translationRequest.MediaId ?? 0}"
+        };
+    }
+
+    private static string GetEffectiveWorkloadItemKey(TranslationRequest translationRequest)
+    {
+        return string.IsNullOrWhiteSpace(translationRequest.WorkloadItemKey)
+            ? BuildWorkloadItemKey(translationRequest)
+            : translationRequest.WorkloadItemKey;
+    }
+
+    private static string GetEffectiveRequiredOutputFormats(TranslationRequest translationRequest)
+    {
+        return NormalizeRequiredOutputFormats(
+            translationRequest.RequiredOutputFormats,
+            translationRequest.SourceSubtitleFormat,
+            translationRequest.SubtitleOutputMode);
+    }
+
+    private static string NormalizeRequiredOutputFormats(
+        string? requiredOutputFormats,
+        string? sourceSubtitleFormat,
+        string? subtitleOutputMode = null)
+    {
+        if (!string.IsNullOrWhiteSpace(requiredOutputFormats))
+        {
+            var normalized = SubtitleOutputModeHelper.SerializeFormats(
+                SubtitleOutputModeHelper.DeserializeFormats(requiredOutputFormats));
+            if (!string.IsNullOrWhiteSpace(normalized))
+            {
+                return normalized;
+            }
+        }
+
+        return SubtitleOutputModeHelper.SerializeFormats(
+            SubtitleOutputModeHelper.GetRequiredOutputFormats(
+                sourceSubtitleFormat,
+                SubtitleOutputModeHelper.Parse(subtitleOutputMode)));
+    }
+
     private async Task UpdateMediaState(TranslationRequest request)
     {
+        if (request.WorkloadKind == TranslationWorkloadKind.CustomSource)
+        {
+            if (!request.CustomMediaItemId.HasValue)
+            {
+                return;
+            }
+
+            try
+            {
+                var item = await _dbContext.CustomMediaItems
+                    .FirstOrDefaultAsync(customItem => customItem.Id == request.CustomMediaItemId.Value);
+                if (item != null)
+                {
+                    await _customMediaStateService.UpdateStateAsync(item);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to update custom media state for item {CustomMediaItemId}", request.CustomMediaItemId);
+            }
+
+            return;
+        }
+
+        if (request.WorkloadKind == TranslationWorkloadKind.Upload)
+        {
+            return;
+        }
+
         if (!request.MediaId.HasValue) return;
 
         try

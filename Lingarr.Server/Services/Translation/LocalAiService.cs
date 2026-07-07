@@ -13,6 +13,7 @@ using Lingarr.Server.Models.Batch;
 using Lingarr.Server.Models.Batch.Response;
 using Lingarr.Server.Models.Integrations.Translation;
 using Lingarr.Server.Services.Translation.Base;
+using Lingarr.Server.Services.Translation.Streaming;
 
 namespace Lingarr.Server.Services.Translation;
 
@@ -40,8 +41,9 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
         HttpClient httpClient,
         ILogger<LocalAiService> logger,
         IDashboardService? dashboardService = null,
-        ITokenUsageService? tokenUsageService = null)
-        : base(settings, logger, "/app/Statics/ai_languages.json")
+        ITokenUsageService? tokenUsageService = null,
+        ITranslationPromptAugmenter? translationPromptAugmenter = null)
+        : base(settings, logger, "/app/Statics/ai_languages.json", translationPromptAugmenter)
     {
         _httpClient = httpClient;
         _dashboardService = dashboardService;
@@ -92,7 +94,8 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
                 ["sourceLanguage"] = GetFullLanguageName(sourceLanguage),
                 ["targetLanguage"] = GetFullLanguageName(targetLanguage)
             };
-            _prompt = ReplacePlaceholders(settings[SettingKeys.Translation.AiPrompt], _replacements);
+            _prompt = await ApplyTranslationPromptContextAsync(
+                ReplacePlaceholders(settings[SettingKeys.Translation.AiPrompt], _replacements));
             _contextPrompt = settings[SettingKeys.Translation.AiContextPrompt];
             _customParameters = PrepareCustomParameters(settings, SettingKeys.Translation.CustomAiParameters);
             _isChatEndpoint = _endpoint.TrimEnd('/').EndsWith("completions", StringComparison.OrdinalIgnoreCase);
@@ -366,13 +369,18 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
                                         type = "integer",
                                         description = "Position number of the subtitle item"
                                     },
+                                    sourceKey = new
+                                    {
+                                        type = "string",
+                                        description = "Source key copied exactly from the subtitle item"
+                                    },
                                     line = new
                                     {
                                         type = "string",
                                         description = "Translated subtitle text"
                                     }
                                 },
-                                required = new[] { "position", "line" },
+                                required = new[] { "position", "sourceKey", "line" },
                                 additionalProperties = false
                             }
                         }
@@ -417,6 +425,12 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
                 }
             }
         }
+        // Add streaming params — these MUST NOT be overridden by custom parameters
+        requestBody["stream"] = true;
+        requestBody["stream_options"] = new Dictionary<string, object>
+        {
+            ["include_usage"] = true
+        };
 
         var requestContent = new StringContent(
             JsonSerializer.Serialize(requestBody),
@@ -424,7 +438,8 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
             "application/json");
 
         var stopwatch = Stopwatch.StartNew();
-        var response = await _httpClient.PostAsync(_endpoint, requestContent, cancellationToken);
+        var request = new HttpRequestMessage(HttpMethod.Post, _endpoint) { Content = requestContent };
+        var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         stopwatch.Stop();
         
         if (!response.IsSuccessStatusCode)
@@ -440,30 +455,33 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
             throw new TranslationException("Batch translation using LocalAI structured output failed.");
         }
 
-        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-        var chatResponse = JsonSerializer.Deserialize<ChatResponse>(responseBody);
-        
+        var (translatedJson, promptTokens, completionTokens, totalTokens) =
+            await OpenAiStreamAccumulator.AccumulateAsync(response, cancellationToken);
+
+        if (string.IsNullOrEmpty(translatedJson))
+        {
+            throw new TranslationException("Empty response received from streaming LocalAI API");
+        }
+
         if (_dashboardService != null)
         {
             await _dashboardService.LogApiUsage(
-                ServiceName, 
-                chatResponse?.Usage?.TotalTokens, 
-                stopwatch.ElapsedMilliseconds, 
-                true,
+                ServiceName,
+                totalTokens,
+                stopwatch.ElapsedMilliseconds,
+                success: true,
                 null,
-                chatResponse?.Usage?.PromptTokens,
-                chatResponse?.Usage?.CompletionTokens);
+                promptTokens,
+                completionTokens);
         }
-
-        if (chatResponse?.Choices == null || chatResponse.Choices.Count == 0)
-        {
-            throw new TranslationException("No completion choices returned from LocalAI");
-        }
-
-        var translatedJson = chatResponse.Choices[0].Message.Content;
 
         try
         {
+            translatedJson = StructuredJsonResponseSanitizer.SanitizeInvalidEscapes(
+                translatedJson,
+                _logger,
+                ServiceName);
+
             // Parse the wrapper object first, extract the translations array
             var responseWrapper = JsonSerializer.Deserialize<JsonElement>(translatedJson);
             if (!responseWrapper.TryGetProperty("translations", out var translationsElement))
@@ -487,9 +505,11 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
                 throw new TranslationException("Failed to deserialize translated subtitles");
             }
 
-            return translatedItems
-                .GroupBy(item => item.Position)
-                .ToDictionary(group => group.Key, group => group.First().Line);
+            return BatchTranslationResponseMapper.MapAlignedTranslationsSafe(
+                subtitleBatch,
+                translatedItems,
+                _logger,
+                ServiceName).ValidTranslations;
         }
         catch (JsonException ex)
         {
@@ -527,13 +547,20 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
         };
 
         requestBody = AddCustomParameters(requestBody);
+        // Add streaming params — these MUST NOT be overridden by custom parameters
+        requestBody["stream"] = true;
+        requestBody["stream_options"] = new Dictionary<string, object>
+        {
+            ["include_usage"] = true
+        };
         var requestContent = new StringContent(
             JsonSerializer.Serialize(requestBody),
             Encoding.UTF8,
             "application/json");
 
         var stopwatch = Stopwatch.StartNew();
-        var response = await _httpClient.PostAsync(_endpoint, requestContent, cancellationToken);
+        var request = new HttpRequestMessage(HttpMethod.Post, _endpoint) { Content = requestContent };
+        var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         stopwatch.Stop();
         
         if (!response.IsSuccessStatusCode)
@@ -549,28 +576,27 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
             throw new TranslationException("Batch translation using LocalAI JSON parsing failed.");
         }
 
-        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-        var chatResponse = JsonSerializer.Deserialize<ChatResponse>(responseBody);
+        var (translatedJson, promptTokens, completionTokens, totalTokens) =
+            await OpenAiStreamAccumulator.AccumulateAsync(response, cancellationToken);
+
+        if (string.IsNullOrEmpty(translatedJson))
+        {
+            throw new TranslationException("Empty response received from streaming LocalAI API");
+        }
 
         if (_dashboardService != null)
         {
             await _dashboardService.LogApiUsage(
-                ServiceName, 
-                chatResponse?.Usage?.TotalTokens, 
-                stopwatch.ElapsedMilliseconds, 
-                true,
+                ServiceName,
+                totalTokens,
+                stopwatch.ElapsedMilliseconds,
+                success: true,
                 null,
-                chatResponse?.Usage?.PromptTokens,
-                chatResponse?.Usage?.CompletionTokens);
-        }
-
-        if (chatResponse?.Choices == null || chatResponse.Choices.Count == 0)
-        {
-            throw new TranslationException("No completion choices returned from LocalAI");
+                promptTokens,
+                completionTokens);
         }
 
         // Try to extract JSON
-        var translatedJson = chatResponse.Choices[0].Message.Content;
         var jsonStart = translatedJson.IndexOf('[');
         var jsonEnd = translatedJson.LastIndexOf(']');
         if (jsonStart != -1 && jsonEnd != -1 && jsonEnd > jsonStart)
@@ -580,6 +606,11 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
 
         try
         {
+            translatedJson = StructuredJsonResponseSanitizer.SanitizeInvalidEscapes(
+                translatedJson,
+                _logger,
+                ServiceName);
+
             var translatedItems = JsonSerializer.Deserialize<List<StructuredBatchResponse>>(translatedJson,
                 new JsonSerializerOptions
                 {
@@ -591,9 +622,11 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
                 throw new TranslationException("Failed to deserialize translated subtitles from JSON parsing");
             }
 
-            return translatedItems
-                .GroupBy(item => item.Position)
-                .ToDictionary(group => group.Key, group => group.First().Line);
+            return BatchTranslationResponseMapper.MapAlignedTranslationsSafe(
+                subtitleBatch,
+                translatedItems,
+                _logger,
+                ServiceName).ValidTranslations;
         }
         catch (JsonException ex)
         {
@@ -609,7 +642,7 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
         CancellationToken cancellationToken)
     {
         var batchPrompt = _prompt +
-                          "\n\nPlease return the response as a JSON array with objects containing 'position' and 'line' fields. Example: [{\"position\": 1, \"line\": \"translated text\"}]\n\n";
+                          "\n\nPlease return the response as a JSON array with objects containing 'position', 'sourceKey', and 'line' fields. Example: [{\"position\": 1, \"sourceKey\": \"abc123def456\", \"line\": \"translated text\"}]\n\n";
 
         var userContent = BuildBatchUserContent(subtitleBatch, preContext, postContext);
 
@@ -668,6 +701,11 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
 
         try
         {
+            translatedJson = StructuredJsonResponseSanitizer.SanitizeInvalidEscapes(
+                translatedJson,
+                _logger,
+                ServiceName);
+
             var translatedItems = JsonSerializer.Deserialize<List<StructuredBatchResponse>>(translatedJson);
 
             if (translatedItems == null)
@@ -675,9 +713,11 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
                 throw new TranslationException("Failed to deserialize translated subtitles from generate API");
             }
 
-            return translatedItems
-                .GroupBy(item => item.Position)
-                .ToDictionary(group => group.Key, group => group.First().Line);
+            return BatchTranslationResponseMapper.MapAlignedTranslationsSafe(
+                subtitleBatch,
+                translatedItems,
+                _logger,
+                ServiceName).ValidTranslations;
         }
         catch (JsonException ex)
         {

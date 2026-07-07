@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { useSignalR } from './useSignalR'
 import services from '@/services'
+import { useTranslationRequestStore } from '@/store/translationRequest'
 import type { IRequestProgress, ITranslationRequest } from '@/ts'
 
 export interface ActiveTranslation {
@@ -20,24 +21,36 @@ export interface DashboardRealtimeState {
     activeTranslations: Map<number, ActiveTranslation>
     activeCount: number
     lastUpdate: Date | null
+    lastCompletedRequestId: number | null
 }
 
 export function useDashboardSignalR() {
     const signalR = useSignalR()
+    const translationRequestStore = useTranslationRequestStore()
 
     const state = ref<DashboardRealtimeState>({
         isConnected: false,
         activeTranslations: new Map(),
         activeCount: 0,
-        lastUpdate: null
+        lastUpdate: null,
+        lastCompletedRequestId: null
     })
 
     const handleRequestProgress = (progress: IRequestProgress) => {
         const existing = state.value.activeTranslations.get(progress.id)
+        const isCompleted = progress.status === 'Completed'
+        const isTerminal =
+            isCompleted ||
+            progress.status === 'Failed' ||
+            progress.status === 'Cancelled' ||
+            progress.status === 'Interrupted'
 
-        if (progress.status === 'Completed' || progress.status === 'Failed') {
+        if (isTerminal) {
             state.value.activeTranslations.delete(progress.id)
             state.value.activeCount = state.value.activeTranslations.size
+            if (isCompleted) {
+                state.value.lastCompletedRequestId = progress.id
+            }
         } else {
             const translation: ActiveTranslation = {
                 id: progress.id,
@@ -62,6 +75,7 @@ export function useDashboardSignalR() {
     const handleRequestActive = (request: { count: number }) => {
         state.value.activeCount = request.count
         state.value.lastUpdate = new Date()
+        translationRequestStore.setActiveCount(request.count)
     }
 
     /**
@@ -96,7 +110,7 @@ export function useDashboardSignalR() {
                     sourceLanguage: request.sourceLanguage ?? '',
                     targetLanguage: request.targetLanguage ?? '',
                     progress: request.progress ?? 0,
-                    status: 'InProgress',
+                    status: request.status ?? 'InProgress',
                     startedAt: request.startedAt ? new Date(request.startedAt) : new Date()
                 }
 
@@ -115,7 +129,7 @@ export function useDashboardSignalR() {
 
     const connect = async () => {
         try {
-            const hub = await signalR.connect('translationRequests', '/signalr/TranslationRequests')
+            const hub = await signalR.connect('TranslationRequests', '/signalr/TranslationRequests')
 
             await hub.joinGroup({ group: 'TranslationRequests' })
 
@@ -130,7 +144,7 @@ export function useDashboardSignalR() {
     }
 
     const disconnect = async () => {
-        const hubState = signalR.state.hubs['translationRequests']
+        const hubState = signalR.state.hubs['TranslationRequests']
         if (hubState?.connection) {
             const hub = {
                 on: hubState.connection.on.bind(hubState.connection),

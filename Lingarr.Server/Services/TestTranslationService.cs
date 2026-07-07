@@ -197,6 +197,7 @@ public class TestTranslationService : ITestTranslationService
                     subtitles,
                     translationRequest,
                     stripFormatting,
+                    false,
                     maxSize,
                     batchRetryMode,
                     splitAttempts,
@@ -218,6 +219,7 @@ public class TestTranslationService : ITestTranslationService
                     stripFormatting,
                     0,
                     0,
+                    false,
                     _cancellationTokenSource.Token);
             }
             
@@ -348,6 +350,23 @@ public class TestTranslationService : ITestTranslationService
                }
                catch { /* ignore cleanup error */ }
            }
+
+            if (!string.IsNullOrWhiteSpace(temporaryFilePath)
+                && request.MediaId.HasValue
+                && request.MediaType.HasValue)
+            {
+                try
+                {
+                    await _extractionService.ClearExtractionMetadataAsync(
+                        request.MediaId.Value,
+                        request.MediaType.Value,
+                        temporaryFilePath);
+                }
+                catch
+                {
+                    // Ignore metadata cleanup errors in test mode.
+                }
+            }
             
             _isRunning = false;
             _cancellationTokenSource?.Dispose();

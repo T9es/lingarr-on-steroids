@@ -84,6 +84,18 @@ public class Message
     /// </summary>
     [JsonPropertyName("content")]
     public string Content { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Optional reasoning content returned by reasoning-capable OpenAI-compatible providers.
+    /// </summary>
+    [JsonPropertyName("reasoning")]
+    public string? Reasoning { get; set; }
+
+    /// <summary>
+    /// Legacy reasoning content field used by some OpenAI-compatible providers.
+    /// </summary>
+    [JsonPropertyName("reasoning_content")]
+    public string? ReasoningContent { get; set; }
 }
 
 /// <summary>

@@ -24,6 +24,9 @@ public class SubtitleExtractionService : ISubtitleExtractionService
     private readonly ILogger<SubtitleExtractionService> _logger;
     private readonly LingarrDbContext _dbContext;
     private readonly ISettingService _settingService;
+    private readonly ISubtitleService _subtitleService;
+    private readonly IEmbeddedSubtitleCacheService _embeddedSubtitleCacheService;
+    private readonly ISubtitleLanguageDetectionService _languageDetectionService;
 
     // Codecs that are text-based and can be extracted/translated
     private static readonly HashSet<string> TextBasedCodecs = new(StringComparer.OrdinalIgnoreCase)
@@ -40,8 +43,8 @@ public class SubtitleExtractionService : ISubtitleExtractionService
     // Map codec names to file extensions
     private static readonly Dictionary<string, string> CodecToExtension = new(StringComparer.OrdinalIgnoreCase)
     {
-        { "ass", ".srt" },
-        { "ssa", ".srt" },
+        { "ass", ".ass" },
+        { "ssa", ".ssa" },
         { "srt", ".srt" },
         { "subrip", ".srt" },
         { "webvtt", ".vtt" },
@@ -67,11 +70,17 @@ public class SubtitleExtractionService : ISubtitleExtractionService
     public SubtitleExtractionService(
         ILogger<SubtitleExtractionService> logger,
         LingarrDbContext dbContext,
-        ISettingService settingService)
+        ISettingService settingService,
+        ISubtitleService subtitleService,
+        IEmbeddedSubtitleCacheService embeddedSubtitleCacheService,
+        ISubtitleLanguageDetectionService languageDetectionService)
     {
         _logger = logger;
         _dbContext = dbContext;
         _settingService = settingService;
+        _subtitleService = subtitleService;
+        _embeddedSubtitleCacheService = embeddedSubtitleCacheService;
+        _languageDetectionService = languageDetectionService;
     }
 
     /// <inheritdoc />
@@ -213,12 +222,48 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             Directory.CreateDirectory(outputDirectory);
         }
 
-        // Determine output extension
-        var extension = CodecToExtension.GetValueOrDefault(codecName, ".srt");
         var outputPath = GetExtractedSubtitlePath(outputDirectory, mediaFilePath, codecName, language, streamIndex);
 
+        return await ExtractSubtitleToPathInternalAsync(mediaFilePath, streamIndex, outputPath, codecName);
+    }
+
+    /// <inheritdoc />
+    public Task<string?> TryExtractEmbeddedSubtitleForRequestAsync(
+        int mediaId,
+        MediaType mediaType,
+        string sourceLanguage,
+        List<int>? excludedStreamIndices = null,
+        int? preferredStreamIndex = null)
+    {
+        return TryExtractEmbeddedSubtitleInternalAsync(
+            mediaId,
+            mediaType,
+            sourceLanguage,
+            excludedStreamIndices,
+            preferredStreamIndex,
+            useInternalCache: true);
+    }
+
+    /// <inheritdoc />
+    public async Task<string?> ExtractSubtitleToFile(
+        string mediaFilePath,
+        int streamIndex,
+        string outputPath,
+        string codecName)
+    {
         try
         {
+            var outputDirectory = Path.GetDirectoryName(outputPath);
+            if (string.IsNullOrWhiteSpace(outputDirectory))
+            {
+                _logger.LogWarning("Invalid subtitle extraction output path: {OutputPath}", outputPath);
+                return null;
+            }
+
+            Directory.CreateDirectory(outputDirectory);
+
+            var extension = CodecToExtension.GetValueOrDefault(codecName, ".srt");
+
             // ffmpeg -i input.mkv -map 0:s:{streamIndex} -c:s copy output.ass
             // If copying doesn't work for the target format, we remove -c:s copy for conversion
             var copyMode = extension is ".ass" or ".ssa";
@@ -277,6 +322,10 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             {
                 await CleanupSubtitleFile(outputPath);
             }
+            else if (extension is ".ass" or ".ssa")
+            {
+                await EnsureExtractionMarkerAsync(outputPath);
+            }
 
             return outputPath;
         }
@@ -286,6 +335,14 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 streamIndex, mediaFilePath);
             return null;
         }
+    }
+    private async Task<string?> ExtractSubtitleToPathInternalAsync(
+        string mediaFilePath,
+        int streamIndex,
+        string outputPath,
+        string codecName)
+    {
+        return await ExtractSubtitleToFile(mediaFilePath, streamIndex, outputPath, codecName);
     }
 
     /// <inheritdoc />
@@ -303,6 +360,16 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             _logger.LogWarning(
                 "Could not find media file for {Type}: {FileName} in {Path}. Directory exists: {DirExists}",
                 "episode", episode.FileName, episode.Path, Directory.Exists(episode.Path));
+            
+            // Clear stale embedded subtitle records since the media file is no longer accessible
+            await _dbContext.EmbeddedSubtitles
+                .Where(e => e.EpisodeId == episode.Id && e.MovieId == null)
+                .ExecuteDeleteAsync();
+            DetachTrackedEmbeddedSubtitlesForMedia(_dbContext, episode.Id, null);
+            _logger.LogInformation(
+                "Cleared stale embedded subtitle records for episode {EpisodeId} - media file not found",
+                episode.Id);
+            
             return;
         }
         
@@ -324,6 +391,16 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             _logger.LogWarning(
                 "Could not find media file for {Type}: {FileName} in {Path}. Directory exists: {DirExists}",
                 "movie", movie.FileName, movie.Path, Directory.Exists(movie.Path));
+            
+            // Clear stale embedded subtitle records since the media file is no longer accessible
+            await _dbContext.EmbeddedSubtitles
+                .Where(e => e.MovieId == movie.Id && e.EpisodeId == null)
+                .ExecuteDeleteAsync();
+            DetachTrackedEmbeddedSubtitlesForMedia(_dbContext, null, movie.Id);
+            _logger.LogInformation(
+                "Cleared stale embedded subtitle records for movie {MovieId} - media file not found",
+                movie.Id);
+            
             return;
         }
         
@@ -435,6 +512,17 @@ public class SubtitleExtractionService : ISubtitleExtractionService
 
         if (embeddedSubs.Count == 0)
         {
+            var existingCount = await _dbContext.EmbeddedSubtitles
+                .Where(e => e.EpisodeId == episodeId && e.MovieId == movieId)
+                .ExecuteDeleteAsync();
+
+            if (existingCount > 0)
+            {
+                _logger.LogInformation(
+                    "Removed {Count} stale embedded subtitle records for media with no subtitle streams (EpisodeId={EpisodeId}, MovieId={MovieId})",
+                    existingCount, episodeId, movieId);
+            }
+
             return;
         }
 
@@ -445,9 +533,15 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             try
             {
                 // Use ExecuteDeleteAsync for atomic deletion - won't fail if rows already deleted
+                var existingSubtitles = await _dbContext.EmbeddedSubtitles
+                    .AsNoTracking()
+                    .Where(e => e.EpisodeId == episodeId && e.MovieId == movieId)
+                    .ToListAsync();
+
                 await _dbContext.EmbeddedSubtitles
                     .Where(e => e.EpisodeId == episodeId && e.MovieId == movieId)
                     .ExecuteDeleteAsync();
+                DetachTrackedEmbeddedSubtitlesForMedia(_dbContext, episodeId, movieId);
 
                 // Add new records
                 foreach (var sub in embeddedSubs)
@@ -460,11 +554,12 @@ public class SubtitleExtractionService : ISubtitleExtractionService
 
                     sub.EpisodeId = episodeId;
                     sub.MovieId = movieId;
+                    CopyOcrMetadataIfSameStream(existingSubtitles, sub);
                     _dbContext.EmbeddedSubtitles.Add(sub);
                 }
 
                 await _dbContext.SaveChangesAsync();
-                return; // Success, exit the retry loop
+                break; // Success, exit the retry loop
             }
             catch (DbUpdateException ex)
             {
@@ -520,6 +615,77 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 
                 // Small delay before retry to reduce collision chance
                 await Task.Delay(50 * attempt);
+            }
+        }
+
+        // Run AI language detection for untagged streams after successful sync
+        await TryDetectUnknownLanguagesAsync(episodeId, movieId);
+    }
+
+    private async Task TryDetectUnknownLanguagesAsync(int? episodeId, int? movieId)
+    {
+        var detectEnabled = string.Equals(
+            await _settingService.GetSetting(SettingKeys.SubtitleExtraction.DetectUnknownLanguages),
+            "true",
+            StringComparison.OrdinalIgnoreCase);
+
+        if (!detectEnabled)
+        {
+            return;
+        }
+
+        try
+        {
+            var detected = await _languageDetectionService.DetectUnknownLanguagesAsync(
+                movieId, episodeId);
+
+            if (detected > 0)
+            {
+                _logger.LogInformation(
+                    "Detected languages for {Count} untagged subtitle stream(s) via AI (EpisodeId={EpisodeId}, MovieId={MovieId})",
+                    detected, episodeId, movieId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "AI language detection failed during subtitle sync (EpisodeId={EpisodeId}, MovieId={MovieId}); streams will remain untagged",
+                episodeId, movieId);
+        }
+    }
+
+    internal static void DetachTrackedEmbeddedSubtitlesForMedia(
+        LingarrDbContext dbContext,
+        int? episodeId,
+        int? movieId)
+    {
+        var trackedSubtitles = dbContext.ChangeTracker
+            .Entries<EmbeddedSubtitle>()
+            .Where(entry => entry.Entity.EpisodeId == episodeId && entry.Entity.MovieId == movieId)
+            .ToList();
+
+        foreach (var entry in trackedSubtitles)
+        {
+            entry.State = EntityState.Detached;
+        }
+
+        if (episodeId.HasValue)
+        {
+            foreach (var entry in dbContext.ChangeTracker.Entries<Episode>()
+                         .Where(entry => entry.Entity.Id == episodeId.Value))
+            {
+                entry.Entity.EmbeddedSubtitles.Clear();
+                entry.Collection(episode => episode.EmbeddedSubtitles).IsLoaded = false;
+            }
+        }
+
+        if (movieId.HasValue)
+        {
+            foreach (var entry in dbContext.ChangeTracker.Entries<Movie>()
+                         .Where(entry => entry.Entity.Id == movieId.Value))
+            {
+                entry.Entity.EmbeddedSubtitles.Clear();
+                entry.Collection(movie => movie.EmbeddedSubtitles).IsLoaded = false;
             }
         }
     }
@@ -698,16 +864,127 @@ public class SubtitleExtractionService : ISubtitleExtractionService
         try
         {
             if (!File.Exists(filePath)) return -1;
-            
-            var content = File.ReadAllText(filePath);
-            // SRT: Count lines that are just numbers (entry markers)
-            var lines = content.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-            return lines.Count(line => int.TryParse(line.Trim(), out _) && line.Trim().All(char.IsDigit));
+
+            var extension = Path.GetExtension(filePath).ToLowerInvariant();
+            return extension switch
+            {
+                ".ass" or ".ssa" => File.ReadLines(filePath)
+                    .Count(line => line.TrimStart().StartsWith("Dialogue:", StringComparison.OrdinalIgnoreCase)),
+                ".srt" => CountTextCueEntries(filePath, isWebVtt: false),
+                ".vtt" => CountTextCueEntries(filePath, isWebVtt: true),
+                _ => File.ReadLines(filePath)
+                    .Count(line =>
+                    {
+                        var trimmed = line.Trim();
+                        return int.TryParse(trimmed, out _) && trimmed.All(char.IsDigit);
+                    })
+            };
         }
         catch
         {
             return -1;
         }
+    }
+
+    private static int CountTextCueEntries(string filePath, bool isWebVtt)
+    {
+        var count = 0;
+        var block = new List<string>();
+
+        foreach (var line in File.ReadLines(filePath))
+        {
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                if (IsTextCueBlock(block, isWebVtt))
+                {
+                    count++;
+                }
+
+                block.Clear();
+                continue;
+            }
+
+            block.Add(line.Trim());
+        }
+
+        if (IsTextCueBlock(block, isWebVtt))
+        {
+            count++;
+        }
+
+        return count;
+    }
+
+    private static bool IsTextCueBlock(IReadOnlyList<string> block, bool isWebVtt)
+    {
+        if (block.Count == 0)
+        {
+            return false;
+        }
+
+        var timeCodeIndex = -1;
+        for (var index = 0; index < block.Count; index++)
+        {
+            var line = block[index];
+            if (isWebVtt && ShouldSkipWebVttHeaderLine(line))
+            {
+                continue;
+            }
+
+            if (isWebVtt && IsWebVttMetadataBlock(line))
+            {
+                return false;
+            }
+
+            if (line.Contains("-->", StringComparison.Ordinal))
+            {
+                timeCodeIndex = index;
+                break;
+            }
+        }
+
+        if (timeCodeIndex < 0)
+        {
+            return false;
+        }
+
+        return block
+            .Skip(timeCodeIndex + 1)
+            .Any(line => !string.IsNullOrWhiteSpace(SubtitleFormatterService.RemoveMarkup(line)));
+    }
+
+    private static bool ShouldSkipWebVttHeaderLine(string line)
+    {
+        return line.StartsWith("WEBVTT", StringComparison.OrdinalIgnoreCase) ||
+               line.StartsWith("X-TIMESTAMP-MAP=", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsWebVttMetadataBlock(string line)
+    {
+        return line.StartsWith("NOTE", StringComparison.Ordinal) ||
+               line.StartsWith("STYLE", StringComparison.Ordinal) ||
+               line.StartsWith("REGION", StringComparison.Ordinal);
+    }
+
+    internal static async Task EnsureExtractionMarkerAsync(string filePath)
+    {
+        if (!File.Exists(filePath) || IsLingarrExtracted(filePath))
+        {
+            return;
+        }
+
+        var content = await File.ReadAllTextAsync(filePath);
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return;
+        }
+
+        var builder = new System.Text.StringBuilder();
+        builder.AppendLine($"{ExtractionMarkerPrefix} StreamIndex=0, Entries={CountSubtitleEntries(filePath)}");
+        builder.AppendLine();
+        builder.Append(content);
+
+        await File.WriteAllTextAsync(filePath, builder.ToString());
     }
 
     /// <summary>
@@ -827,6 +1104,23 @@ public class SubtitleExtractionService : ISubtitleExtractionService
         List<int>? excludedStreamIndices = null,
         int? preferredStreamIndex = null)
     {
+        return await TryExtractEmbeddedSubtitleInternalAsync(
+            mediaId,
+            mediaType,
+            sourceLanguage,
+            excludedStreamIndices,
+            preferredStreamIndex,
+            useInternalCache: false);
+    }
+
+    private async Task<string?> TryExtractEmbeddedSubtitleInternalAsync(
+        int mediaId,
+        MediaType mediaType,
+        string sourceLanguage,
+        List<int>? excludedStreamIndices,
+        int? preferredStreamIndex,
+        bool useInternalCache)
+    {
         try
         {
             List<EmbeddedSubtitle>? embeddedSubtitles = null;
@@ -860,8 +1154,19 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 }
 
                 embeddedSubtitles = episode.EmbeddedSubtitles;
-                mediaPath = Path.Combine(episode.Path, episode.FileName);
-                outputDir = episode.Path;
+                mediaPath = FindMediaFile(episode.Path, episode.FileName);
+                if (mediaPath == null)
+                {
+                    _logger.LogWarning(
+                        "Could not find media file for episode: {FileName} in {Path}. Directory exists: {DirExists}",
+                        episode.FileName,
+                        episode.Path,
+                        Directory.Exists(episode.Path));
+                    return null;
+                }
+                outputDir = useInternalCache
+                    ? _embeddedSubtitleCacheService.CacheRootPath
+                    : episode.Path;
             }
             else if (mediaType == MediaType.Movie)
             {
@@ -889,8 +1194,19 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 }
 
                 embeddedSubtitles = movie.EmbeddedSubtitles;
-                mediaPath = Path.Combine(movie.Path, movie.FileName);
-                outputDir = movie.Path;
+                mediaPath = FindMediaFile(movie.Path, movie.FileName);
+                if (mediaPath == null)
+                {
+                    _logger.LogWarning(
+                        "Could not find media file for movie: {FileName} in {Path}. Directory exists: {DirExists}",
+                        movie.FileName,
+                        movie.Path,
+                        Directory.Exists(movie.Path));
+                    return null;
+                }
+                outputDir = useInternalCache
+                    ? _embeddedSubtitleCacheService.CacheRootPath
+                    : movie.Path;
             }
             else
             {
@@ -898,26 +1214,43 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 return null;
             }
 
+            if (useInternalCache)
+            {
+                _embeddedSubtitleCacheService.EnsureCacheDirectory();
+            }
+
             // If a preferred stream index is specified, try that first
             if (preferredStreamIndex.HasValue)
             {
                 var preferredSubtitle = embeddedSubtitles?.FirstOrDefault(s => 
-                    s.StreamIndex == preferredStreamIndex.Value && s.IsTextBased);
+                    s.StreamIndex == preferredStreamIndex.Value && s.IsReadableSource());
 
                 if (preferredSubtitle != null)
                 {
+                    if (preferredSubtitle.HasUsableOcr())
+                    {
+                        _embeddedSubtitleCacheService.Touch(preferredSubtitle.OcrExtractedPath!);
+                        return preferredSubtitle.OcrExtractedPath;
+                    }
+
                     _logger.LogInformation(
                         "Using preferred stream index {StreamIndex} for extraction",
                         preferredStreamIndex.Value);
 
                     try
                     {
-                        var extractedPath = await ExtractSubtitle(
-                            mediaPath!,
-                            preferredSubtitle.StreamIndex,
-                            outputDir!,
-                            preferredSubtitle.CodecName,
-                            preferredSubtitle.Language);
+                        var extractedPath = useInternalCache
+                            ? await ExtractCandidateToInternalCacheAsync(
+                                mediaId,
+                                mediaType,
+                                mediaPath!,
+                                preferredSubtitle)
+                            : await ExtractSubtitle(
+                                mediaPath!,
+                                preferredSubtitle.StreamIndex,
+                                outputDir!,
+                                preferredSubtitle.CodecName,
+                                preferredSubtitle.Language);
 
                         if (!string.IsNullOrEmpty(extractedPath))
                         {
@@ -939,7 +1272,7 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 else
                 {
                     _logger.LogWarning(
-                        "Preferred stream index {StreamIndex} not found or not text-based, falling back to auto-selection",
+                        "Preferred stream index {StreamIndex} not found or not readable, falling back to auto-selection",
                         preferredStreamIndex.Value);
                 }
             }
@@ -953,7 +1286,11 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 return null;
             }
 
-            // Iterate through candidates to find a valid one
+            var viableCandidates = new List<ExtractedSubtitleCandidate>();
+
+            var extractionOutputPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            // Extract readable candidates first, then use content analysis as a second-stage tie-break.
             foreach (var candidate in candidates)
             {
                 // Skip streams that have already been tried
@@ -971,13 +1308,63 @@ public class SubtitleExtractionService : ISubtitleExtractionService
 
                 try
                 {
+                    if (candidate.HasUsableOcr())
+                    {
+                        var ocrEntryCount = candidate.OcrCueCount ?? CountSubtitleEntries(candidate.OcrExtractedPath!);
+                        viableCandidates.Add(
+                            new ExtractedSubtitleCandidate(
+                                candidate,
+                                candidate.OcrExtractedPath!,
+                                ocrEntryCount,
+                                SubtitleLanguageHelper.ScoreSubtitleCandidate(candidate, sourceLanguage),
+                                null,
+                                true));
+                        continue;
+                    }
+
+                    var extractionLanguageTag = candidate.Language;
+                    var candidateOutputPath = useInternalCache
+                        ? _embeddedSubtitleCacheService.GetCachePath(
+                            mediaId,
+                            mediaType,
+                            candidate.StreamIndex,
+                            candidate.CodecName,
+                            candidate.Language)
+                        : GetExtractedSubtitlePath(
+                            outputDir!,
+                            mediaPath!,
+                            candidate.CodecName,
+                            extractionLanguageTag,
+                            candidate.StreamIndex);
+                    if (!useInternalCache && !extractionOutputPaths.Add(candidateOutputPath))
+                    {
+                        extractionLanguageTag = BuildStreamSpecificLanguageTag(
+                            candidate.Language,
+                            candidate.StreamIndex);
+                        candidateOutputPath = GetExtractedSubtitlePath(
+                            outputDir!,
+                            mediaPath!,
+                            candidate.CodecName,
+                            extractionLanguageTag,
+                            candidate.StreamIndex);
+                        extractionOutputPaths.Add(candidateOutputPath);
+                    }
+
+                    var existedBeforeExtraction = File.Exists(candidateOutputPath);
+
                     // Extract the subtitle
-                    var extractedPath = await ExtractSubtitle(
-                        mediaPath!,
-                        candidate.StreamIndex,
-                        outputDir!,
-                        candidate.CodecName,
-                        candidate.Language);
+                    var extractedPath = useInternalCache
+                        ? await ExtractCandidateToInternalCacheAsync(
+                            mediaId,
+                            mediaType,
+                            mediaPath!,
+                            candidate)
+                        : await ExtractSubtitle(
+                            mediaPath!,
+                            candidate.StreamIndex,
+                            outputDir!,
+                            candidate.CodecName,
+                            extractionLanguageTag);
 
                     if (!string.IsNullOrEmpty(extractedPath))
                     {
@@ -1019,16 +1406,28 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                             continue; // Try next candidate
                         }
                         
-                        // Valid subtitle with sufficient entries
-                        candidate.IsExtracted = true;
-                        candidate.ExtractedPath = extractedPath;
-                        await _dbContext.SaveChangesAsync();
+                        var analysis = await AnalyzeExtractedCandidateAsync(candidate, extractedPath);
+                        var score = SubtitleLanguageHelper.ScoreSubtitleCandidate(
+                            candidate,
+                            sourceLanguage,
+                            analysis?.ContentScoreAdjustment ?? 0);
+
+                        viableCandidates.Add(
+                            new ExtractedSubtitleCandidate(
+                                candidate,
+                                extractedPath,
+                                entryCount,
+                                score,
+                                analysis,
+                                existedBeforeExtraction));
 
                         _logger.LogInformation(
-                            "Successfully extracted Stream {StreamIndex} with {Entries} entries to: {Path}",
-                            candidate.StreamIndex, entryCount, extractedPath);
-                        
-                        return extractedPath;
+                            "Successfully extracted Stream {StreamIndex} with {Entries} entries to: {Path}. Content score={Score}, pathological={Pathological}",
+                            candidate.StreamIndex,
+                            entryCount,
+                            extractedPath,
+                            score,
+                            analysis?.IsPathological ?? false);
                     }
                 }
                 catch (Exception ex)
@@ -1036,6 +1435,44 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                     _logger.LogWarning(ex, "Failed to extract candidate Stream {StreamIndex}", candidate.StreamIndex);
                     // Continue to next candidate
                 }
+            }
+
+            if (viableCandidates.Count > 0)
+            {
+                var selectedCandidate = viableCandidates
+                    .OrderByDescending(candidate => candidate.Score)
+                    .ThenBy(candidate => candidate.Subtitle.StreamIndex)
+                    .First();
+                foreach (var discardedCandidate in viableCandidates.Where(candidate => !ReferenceEquals(candidate, selectedCandidate)))
+                {
+                    DeleteDiscardedExtraction(discardedCandidate);
+                }
+
+                if (!selectedCandidate.Subtitle.HasUsableOcr())
+                {
+                    selectedCandidate.Subtitle.IsExtracted = true;
+                    selectedCandidate.Subtitle.ExtractedPath = selectedCandidate.ExtractedPath;
+                }
+                await _dbContext.SaveChangesAsync();
+
+                if (selectedCandidate.Analysis?.IsPathological == true)
+                {
+                    _logger.LogWarning(
+                        "Selected embedded Stream {StreamIndex}, but its ASS content still looks pathological: drawingEvents={DrawingEvents}, duplicateRatio={DuplicateRatio:F2}, avgProviderChars={AverageChars:F2}. Translation batching/dedupe will protect provider calls.",
+                        selectedCandidate.Subtitle.StreamIndex,
+                        selectedCandidate.Analysis.DrawingEvents,
+                        selectedCandidate.Analysis.DuplicateRatio,
+                        selectedCandidate.Analysis.AverageProviderCharsPerTranslatableCue);
+                }
+
+                _logger.LogInformation(
+                    "Selected extracted embedded Stream {StreamIndex} with content-aware score {Score} and {Entries} entries: {Path}",
+                    selectedCandidate.Subtitle.StreamIndex,
+                    selectedCandidate.Score,
+                    selectedCandidate.EntryCount,
+                    selectedCandidate.ExtractedPath);
+
+                return selectedCandidate.ExtractedPath;
             }
             
             _logger.LogWarning("All suitable embedded subtitle candidates failed extraction or were excluded");
@@ -1050,6 +1487,26 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             _logger.LogError(ex, "Error during embedded subtitle extraction for media {MediaId}", mediaId);
             throw new InvalidOperationException($"Embedded subtitle extraction failed: {ex.Message}", ex);
         }
+    }
+
+    private Task<string?> ExtractCandidateToInternalCacheAsync(
+        int mediaId,
+        MediaType mediaType,
+        string mediaPath,
+        EmbeddedSubtitle candidate)
+    {
+        var cachePath = _embeddedSubtitleCacheService.GetCachePath(
+            mediaId,
+            mediaType,
+            candidate.StreamIndex,
+            candidate.CodecName,
+            candidate.Language);
+
+        return ExtractSubtitleToPathInternalAsync(
+            mediaPath,
+            candidate.StreamIndex,
+            cachePath,
+            candidate.CodecName);
     }
 
     /// <inheritdoc />
@@ -1080,6 +1537,54 @@ public class SubtitleExtractionService : ISubtitleExtractionService
         await _dbContext.SaveChangesAsync();
     }
 
+    private async Task<AssSubtitleSourceAnalysis?> AnalyzeExtractedCandidateAsync(
+        EmbeddedSubtitle candidate,
+        string extractedPath)
+    {
+        var previousExtractedPath = candidate.ExtractedPath;
+        candidate.ExtractedPath = extractedPath;
+
+        try
+        {
+            return await AssSubtitleSourceAnalyzer.AnalyzeExtractedSubtitleAsync(
+                candidate,
+                _subtitleService);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(
+                ex,
+                "Failed to analyze extracted subtitle stream {StreamIndex} at {ExtractedPath}. Falling back to metadata score.",
+                candidate.StreamIndex,
+                extractedPath);
+            return null;
+        }
+        finally
+        {
+            candidate.ExtractedPath = previousExtractedPath;
+        }
+    }
+
+    private void DeleteDiscardedExtraction(ExtractedSubtitleCandidate candidate)
+    {
+        if (candidate.ExistedBeforeExtraction)
+        {
+            return;
+        }
+
+        try
+        {
+            File.Delete(candidate.ExtractedPath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(
+                ex,
+                "Failed to delete discarded extracted subtitle candidate at {ExtractedPath}",
+                candidate.ExtractedPath);
+        }
+    }
+
     /// <summary>
     /// Returns a list of embedded subtitle candidates sorted by suitability for translation.
     /// Prioritizes: text-based > matching source language > full/dialogue tracks > defaults.
@@ -1091,20 +1596,19 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             return [];
         }
 
-        // Only consider text-based subtitles
-        var textBased = embeddedSubtitles.Where(s => s.IsTextBased).ToList();
-        if (textBased.Count == 0)
+        var readableSubtitles = embeddedSubtitles.Where(s => s.IsReadableSource()).ToList();
+        if (readableSubtitles.Count == 0)
         {
             return [];
         }
 
         // Prefer subtitles whose language matches the configured source language.
-        // If none match, fall back to all text-based streams.
-        var languageMatched = textBased
+        // If none match, fall back to all readable streams.
+        var languageMatched = readableSubtitles
             .Where(s => SubtitleLanguageHelper.LanguageMatches(s.Language, sourceLanguage))
             .ToList();
 
-        var candidates = languageMatched.Count > 0 ? languageMatched : textBased;
+        var candidates = languageMatched.Count > 0 ? languageMatched : readableSubtitles;
 
         // Score candidates and sort
         return candidates
@@ -1114,6 +1618,54 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             .Select(x => x.Subtitle)
             .ToList();
     }
+
+    private static void CopyOcrMetadataIfSameStream(
+        IReadOnlyCollection<EmbeddedSubtitle> existingSubtitles,
+        EmbeddedSubtitle newSubtitle)
+    {
+        var existing = existingSubtitles.FirstOrDefault(subtitle =>
+            subtitle.StreamIndex == newSubtitle.StreamIndex &&
+            string.Equals(subtitle.CodecName, newSubtitle.CodecName, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(subtitle.Language, newSubtitle.Language, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(subtitle.Title, newSubtitle.Title, StringComparison.OrdinalIgnoreCase) &&
+            subtitle.IsDefault == newSubtitle.IsDefault &&
+            subtitle.IsForced == newSubtitle.IsForced);
+        if (existing == null)
+        {
+            return;
+        }
+
+        if (SubtitleOcrStatePolicy.IsStaleTransient(existing, DateTime.UtcNow))
+        {
+            SubtitleOcrStatePolicy.ResetStaleTransient(newSubtitle);
+            return;
+        }
+
+        newSubtitle.OcrStatus = existing.OcrStatus;
+        newSubtitle.OcrExtractedPath = existing.OcrExtractedPath;
+        newSubtitle.OcrError = existing.OcrError;
+        newSubtitle.OcrAttemptedAt = existing.OcrAttemptedAt;
+        newSubtitle.OcrCompletedAt = existing.OcrCompletedAt;
+        newSubtitle.OcrCueCount = existing.OcrCueCount;
+        newSubtitle.OcrQualityScore = existing.OcrQualityScore;
+        newSubtitle.OcrIssueSummary = existing.OcrIssueSummary;
+        newSubtitle.OcrApprovedAt = existing.OcrApprovedAt;
+    }
+
+    private static string? BuildStreamSpecificLanguageTag(string? language, int streamIndex)
+    {
+        return string.IsNullOrWhiteSpace(language)
+            ? $"stream{streamIndex}"
+            : $"{language}.s{streamIndex}";
+    }
+
+    private sealed record ExtractedSubtitleCandidate(
+        EmbeddedSubtitle Subtitle,
+        string ExtractedPath,
+        int EntryCount,
+        int Score,
+        AssSubtitleSourceAnalysis? Analysis,
+        bool ExistedBeforeExtraction);
 
     /// <inheritdoc />
     public async Task<List<AvailableSubtitleResponse>> ListAvailableSubtitlesAsync(int mediaId, MediaType mediaType)
@@ -1215,6 +1767,11 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 entryCount = CountSubtitleEntries(sub.ExtractedPath);
                 isSparse = entryCount >= 0 && entryCount < MinimumDialogueEntries;
             }
+            else if (sub.HasUsableOcr())
+            {
+                entryCount = sub.OcrCueCount ?? CountSubtitleEntries(sub.OcrExtractedPath!);
+                isSparse = entryCount >= 0 && entryCount < MinimumDialogueEntries;
+            }
 
             result.Add(new AvailableSubtitleResponse
             {
@@ -1229,7 +1786,20 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 IsExtracted = sub.IsExtracted,
                 ExtractedPath = sub.ExtractedPath,
                 EntryCount = entryCount,
-                IsSparse = isSparse
+                IsSparse = isSparse,
+                OcrStatus = sub.OcrStatus,
+                OcrExtractedPath = sub.OcrExtractedPath,
+                OcrError = sub.OcrError,
+                OcrAttemptedAt = sub.OcrAttemptedAt,
+                OcrCompletedAt = sub.OcrCompletedAt,
+                OcrCueCount = sub.OcrCueCount,
+                OcrQualityScore = sub.OcrQualityScore,
+                OcrIssueSummary = sub.OcrIssueSummary,
+                OcrApprovedAt = sub.OcrApprovedAt,
+                IsOcrSupported = !sub.IsTextBased &&
+                                 (string.Equals(sub.CodecName, "hdmv_pgs_subtitle", StringComparison.OrdinalIgnoreCase) ||
+                                  string.Equals(sub.CodecName, "pgssub", StringComparison.OrdinalIgnoreCase)),
+                IsOcrUsable = sub.HasUsableOcr()
             });
         }
 

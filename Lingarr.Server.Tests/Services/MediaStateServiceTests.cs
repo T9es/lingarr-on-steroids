@@ -1,13 +1,17 @@
 using System;
 using System.Collections.Generic;
 using System.Data.Common;
+using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
+using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Models;
+using Lingarr.Server.Models.Subtitle;
 using Lingarr.Server.Services;
 using Lingarr.Server.Services.Subtitle;
 using Microsoft.EntityFrameworkCore;
@@ -23,6 +27,8 @@ public class MediaStateServiceTests : IDisposable
     private readonly LingarrDbContext _context;
     private readonly Mock<ISettingService> _settingServiceMock;
     private readonly Mock<ISubtitleService> _subtitleServiceMock;
+    private readonly Mock<ISourceSubtitleSnapshotService> _sourceSubtitleSnapshotServiceMock;
+    private readonly Mock<IEmbeddedSubtitleCacheService> _cacheServiceMock;
     private readonly DbConnection _connection;
 
     public MediaStateServiceTests()
@@ -39,6 +45,26 @@ public class MediaStateServiceTests : IDisposable
         
         _settingServiceMock = new Mock<ISettingService>();
         _subtitleServiceMock = new Mock<ISubtitleService>();
+        _sourceSubtitleSnapshotServiceMock = new Mock<ISourceSubtitleSnapshotService>();
+        _cacheServiceMock = new Mock<IEmbeddedSubtitleCacheService>();
+
+        _sourceSubtitleSnapshotServiceMock
+            .Setup(s => s.ResolveCurrentSnapshotAsync(
+                It.IsAny<Lingarr.Core.Interfaces.IMedia>(),
+                It.IsAny<MediaType>(),
+                It.IsAny<IReadOnlyCollection<EmbeddedSubtitle>>(),
+                It.IsAny<IReadOnlyCollection<Models.FileSystem.Subtitles>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((SourceSubtitleSnapshot?)null);
+
+        _sourceSubtitleSnapshotServiceMock
+            .Setup(s => s.GetStaleTargetLanguagesAsync(
+                It.IsAny<int>(),
+                It.IsAny<MediaType>(),
+                It.IsAny<IEnumerable<string>>(),
+                It.IsAny<SourceSubtitleSnapshot?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new HashSet<string>());
     }
 
     public void Dispose()
@@ -46,6 +72,64 @@ public class MediaStateServiceTests : IDisposable
         _context.Dispose();
         _connection.Close();
         _connection.Dispose();
+    }
+
+    [Fact]
+    public async Task HasActiveTranslationRequestAsync_IgnoresUploadRequestsWithCollidingMediaId()
+    {
+        _context.TranslationRequests.Add(new TranslationRequest
+        {
+            Id = 900,
+            MediaId = 77,
+            MediaType = MediaType.Movie,
+            WorkloadKind = TranslationWorkloadKind.Upload,
+            Title = "Upload active",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            Status = TranslationStatus.Pending
+        });
+        await _context.SaveChangesAsync();
+
+        var service = new MediaStateService(
+            _context,
+            _settingServiceMock.Object,
+            _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
+            NullLogger<MediaStateService>.Instance);
+
+        var hasActive = await service.HasActiveTranslationRequestAsync(77, MediaType.Movie);
+
+        Assert.False(hasActive);
+    }
+
+    [Fact]
+    public async Task HasFailedTranslationRequestAsync_IgnoresUploadRequestsWithCollidingMediaId()
+    {
+        _context.TranslationRequests.Add(new TranslationRequest
+        {
+            Id = 901,
+            MediaId = 78,
+            MediaType = MediaType.Movie,
+            WorkloadKind = TranslationWorkloadKind.Upload,
+            Title = "Upload failed",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            Status = TranslationStatus.Failed
+        });
+        await _context.SaveChangesAsync();
+
+        var service = new MediaStateService(
+            _context,
+            _settingServiceMock.Object,
+            _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
+            NullLogger<MediaStateService>.Instance);
+
+        var hasFailed = await service.HasFailedTranslationRequestAsync(78, MediaType.Movie);
+
+        Assert.False(hasFailed);
     }
 
     [Fact]
@@ -102,12 +186,286 @@ public class MediaStateServiceTests : IDisposable
             _context,
             _settingServiceMock.Object,
             _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
             NullLogger<MediaStateService>.Instance);
 
         // Act
         var state = await service.UpdateStateAsync(movie, MediaType.Movie);
 
         // Assert - Should be Complete because embedded Dutch subtitle satisfies target
+        Assert.Equal(TranslationState.Complete, state);
+    }
+
+    [Fact]
+    public async Task ComputeStateAsync_WhenEmbeddedTargetExists_IgnoresOldFailedRequestHistory()
+    {
+        var movie = new Movie
+        {
+            Id = 10,
+            RadarrId = 10,
+            Title = "Recovered Movie",
+            Path = "/movies/recovered.mkv",
+            FileName = "recovered.mkv",
+            DateAdded = DateTime.UtcNow
+        };
+
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = 10,
+            Language = "eng",
+            IsTextBased = true,
+            CodecName = "subrip",
+            StreamIndex = 0
+        });
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = 10,
+            Language = "pol",
+            IsTextBased = true,
+            CodecName = "subrip",
+            StreamIndex = 1
+        });
+        _context.Movies.Add(movie);
+        _context.TranslationRequests.Add(new TranslationRequest
+        {
+            Id = 910,
+            WorkloadKind = TranslationWorkloadKind.Library,
+            MediaId = 10,
+            MediaType = MediaType.Movie,
+            Title = "Recovered Movie",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            Status = TranslationStatus.Failed
+        });
+        await _context.SaveChangesAsync();
+
+        _settingServiceMock
+            .SetupSequence(s => s.GetSettingAsJson<SourceLanguage>(It.IsAny<string>()))
+            .ReturnsAsync(new List<SourceLanguage> { new() { Name = "English", Code = "en" } })
+            .ReturnsAsync(new List<SourceLanguage> { new() { Name = "Polish", Code = "pl" } });
+        _settingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.SubtitleValidation.SkipWhenTargetEmbedded))
+            .ReturnsAsync("true");
+        _subtitleServiceMock
+            .Setup(s => s.GetAllSubtitles(It.IsAny<string>()))
+            .ReturnsAsync(new List<Models.FileSystem.Subtitles>());
+
+        var service = new MediaStateService(
+            _context,
+            _settingServiceMock.Object,
+            _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
+            NullLogger<MediaStateService>.Instance);
+
+        var state = await service.UpdateStateAsync(movie, MediaType.Movie);
+
+        Assert.Equal(TranslationState.Complete, state);
+    }
+
+    [Fact]
+    public async Task ComputeStateAsync_WithHistoricalForcedDialogueGeneratedForcedPath_CountsAsComplete()
+    {
+        var movie = new Movie
+        {
+            Id = 11,
+            RadarrId = 11,
+            Title = "Forced Dialogue Generated Target",
+            Path = "/movies/forced-dialogue.mkv",
+            FileName = "forced-dialogue.mkv",
+            DateAdded = DateTime.UtcNow
+        };
+
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = 11,
+            Language = "eng",
+            Title = "Full Subtitle",
+            IsTextBased = true,
+            IsForced = true,
+            CodecName = "subrip",
+            StreamIndex = 0
+        });
+
+        var targetPath = "/movies/forced-dialogue.pl.forced.-ai-.srt";
+        _context.Movies.Add(movie);
+        _context.TranslationRequests.Add(new TranslationRequest
+        {
+            Id = 911,
+            WorkloadKind = TranslationWorkloadKind.Library,
+            WorkloadItemKey = $"library:{MediaType.Movie}:{movie.Id}",
+            MediaId = movie.Id,
+            MediaType = MediaType.Movie,
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = "/movies/forced-dialogue.en.srt",
+            TranslatedSubtitle = targetPath,
+            SourceSubtitleFormat = ".srt",
+            RequiredOutputFormats = ".srt",
+            GeneratedOutputFormats = ".srt",
+            GeneratedSubtitlePaths = System.Text.Json.JsonSerializer.Serialize(new[] { targetPath }),
+            SourceSubtitleType = SubtitleLanguageHelper.TypeForcedDialogue,
+            IsForcedSubtitle = true,
+            SourceDedupeKey = "supplemental:forced:embedded|en|stream:0",
+            Status = TranslationStatus.Completed,
+            IsActive = false,
+            CompletedAt = DateTime.UtcNow
+        });
+        await _context.SaveChangesAsync();
+
+        _settingServiceMock
+            .SetupSequence(s => s.GetSettingAsJson<SourceLanguage>(It.IsAny<string>()))
+            .ReturnsAsync(new List<SourceLanguage> { new() { Name = "English", Code = "en" } })
+            .ReturnsAsync(new List<SourceLanguage> { new() { Name = "Polish", Code = "pl" } });
+        _settingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.SubtitleValidation.SkipWhenTargetEmbedded))
+            .ReturnsAsync("true");
+        _subtitleServiceMock
+            .Setup(s => s.GetAllSubtitles(It.IsAny<string>()))
+            .ReturnsAsync(new List<Models.FileSystem.Subtitles>
+            {
+                new()
+                {
+                    Path = targetPath,
+                    FileName = "forced-dialogue.pl.forced.-ai-",
+                    Language = "pl",
+                    Caption = "forced",
+                    Format = ".srt"
+                }
+            });
+
+        var service = new MediaStateService(
+            _context,
+            _settingServiceMock.Object,
+            _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
+            NullLogger<MediaStateService>.Instance);
+
+        var state = await service.UpdateStateAsync(movie, MediaType.Movie);
+
+        Assert.Equal(TranslationState.Complete, state);
+    }
+
+    [Fact]
+    public async Task ComputeStateAsync_ShouldReturnPending_WhenOnlySparseEmbeddedTargetExists()
+    {
+        var movie = new Movie
+        {
+            Id = 11,
+            RadarrId = 11,
+            Title = "Sparse Embedded Target",
+            Path = "/movies/sparse-target.mkv",
+            FileName = "sparse-target.mkv",
+            DateAdded = DateTime.UtcNow
+        };
+
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = 11,
+            Language = "eng",
+            IsTextBased = true,
+            CodecName = "subrip",
+            StreamIndex = 0
+        });
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = 11,
+            Language = "dut",
+            Title = "Signs & Songs",
+            IsTextBased = true,
+            IsForced = true,
+            CodecName = "ass",
+            StreamIndex = 1
+        });
+
+        _context.Movies.Add(movie);
+        await _context.SaveChangesAsync();
+
+        _settingServiceMock
+            .SetupSequence(s => s.GetSettingAsJson<SourceLanguage>(It.IsAny<string>()))
+            .ReturnsAsync(new List<SourceLanguage> { new() { Name = "English", Code = "en" } })
+            .ReturnsAsync(new List<SourceLanguage> { new() { Name = "Dutch", Code = "nl" } });
+        _settingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.SubtitleValidation.SkipWhenTargetEmbedded))
+            .ReturnsAsync("true");
+
+        _subtitleServiceMock
+            .Setup(s => s.GetAllSubtitles(It.IsAny<string>()))
+            .ReturnsAsync(new List<Models.FileSystem.Subtitles>());
+
+        var service = new MediaStateService(
+            _context,
+            _settingServiceMock.Object,
+            _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
+            NullLogger<MediaStateService>.Instance);
+
+        var state = await service.UpdateStateAsync(movie, MediaType.Movie);
+
+        Assert.Equal(TranslationState.Pending, state);
+    }
+
+    [Fact]
+    public async Task ComputeStateAsync_ShouldCountForcedLingarrGeneratedEmbeddedTarget()
+    {
+        var movie = new Movie
+        {
+            Id = 12,
+            RadarrId = 12,
+            Title = "Korra Generated Embedded Target",
+            Path = "/movies/korra-generated.mkv",
+            FileName = "korra-generated.mkv",
+            DateAdded = DateTime.UtcNow
+        };
+
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = 12,
+            Language = "eng",
+            Title = "English Full",
+            IsTextBased = true,
+            CodecName = "subrip",
+            StreamIndex = 0
+        });
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = 12,
+            Language = "pol",
+            Title = "pl (Lingarr)",
+            IsTextBased = true,
+            IsForced = true,
+            CodecName = "subrip",
+            StreamIndex = 1
+        });
+
+        _context.Movies.Add(movie);
+        await _context.SaveChangesAsync();
+
+        _settingServiceMock
+            .SetupSequence(s => s.GetSettingAsJson<SourceLanguage>(It.IsAny<string>()))
+            .ReturnsAsync(new List<SourceLanguage> { new() { Name = "English", Code = "en" } })
+            .ReturnsAsync(new List<SourceLanguage> { new() { Name = "Polish", Code = "pl" } });
+        _settingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.SubtitleValidation.SkipWhenTargetEmbedded))
+            .ReturnsAsync("true");
+        _subtitleServiceMock
+            .Setup(s => s.GetAllSubtitles(It.IsAny<string>()))
+            .ReturnsAsync(new List<Models.FileSystem.Subtitles>());
+
+        var service = new MediaStateService(
+            _context,
+            _settingServiceMock.Object,
+            _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
+            NullLogger<MediaStateService>.Instance);
+
+        var state = await service.UpdateStateAsync(movie, MediaType.Movie);
+
         Assert.Equal(TranslationState.Complete, state);
     }
 
@@ -153,6 +511,8 @@ public class MediaStateServiceTests : IDisposable
             _context,
             _settingServiceMock.Object,
             _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
             NullLogger<MediaStateService>.Instance);
 
         // Act
@@ -160,6 +520,172 @@ public class MediaStateServiceTests : IDisposable
 
         // Assert - Should be Pending because Dutch target is missing
         Assert.Equal(TranslationState.Pending, state);
+    }
+
+    [Fact]
+    public async Task ComputeStateAsync_ShouldReturnPending_WhenExternalTargetIsSparseEvenWithEmbeddedSource()
+    {
+        var tempDirectory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDirectory);
+        var sparseEnglishPath = Path.Combine(tempDirectory, "got.s01e02.en.srt");
+        var sparsePolishPath = Path.Combine(tempDirectory, "got.s01e02.pl.srt");
+
+        try
+        {
+            File.WriteAllText(
+                sparseEnglishPath,
+                """
+                1
+                00:48:33,147 --> 00:48:36,317
+                Tonight I would look upon your face!
+
+                """);
+            File.WriteAllText(
+                sparsePolishPath,
+                """
+                1
+                00:48:33,147 --> 00:48:36,317
+                Dzisiaj chce ujrzec twoja twarz!
+
+                """);
+
+            var movie = new Movie
+            {
+                Id = 22,
+                RadarrId = 22,
+                Title = "Game of Thrones - The Kingsroad",
+                Path = tempDirectory,
+                FileName = "got.s01e02.mkv",
+                DateAdded = DateTime.UtcNow
+            };
+            movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+            {
+                MovieId = 22,
+                Language = "eng",
+                IsTextBased = true,
+                CodecName = "subrip",
+                StreamIndex = 2
+            });
+
+            _context.Movies.Add(movie);
+            await _context.SaveChangesAsync();
+
+            _settingServiceMock
+                .SetupSequence(s => s.GetSettingAsJson<SourceLanguage>(It.IsAny<string>()))
+                .ReturnsAsync([new SourceLanguage { Name = "English", Code = "en" }])
+                .ReturnsAsync([new SourceLanguage { Name = "Polish", Code = "pl" }]);
+
+            _subtitleServiceMock
+                .Setup(s => s.GetAllSubtitles(It.IsAny<string>()))
+                .ReturnsAsync([
+                    new Models.FileSystem.Subtitles
+                    {
+                        FileName = "got.s01e02.en.srt",
+                        Language = "en",
+                        Path = sparseEnglishPath,
+                        Format = ".srt"
+                    },
+                    new Models.FileSystem.Subtitles
+                    {
+                        FileName = "got.s01e02.pl.srt",
+                        Language = "pl",
+                        Path = sparsePolishPath,
+                        Format = ".srt"
+                    }
+                ]);
+
+            var service = new MediaStateService(
+                _context,
+                _settingServiceMock.Object,
+                _subtitleServiceMock.Object,
+                _sourceSubtitleSnapshotServiceMock.Object,
+                _cacheServiceMock.Object,
+                NullLogger<MediaStateService>.Instance);
+
+            var state = await service.UpdateStateAsync(movie, MediaType.Movie);
+
+            Assert.Equal(TranslationState.Pending, state);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDirectory))
+            {
+                Directory.Delete(tempDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ComputeStateAsync_MatchSourceUsesConfiguredSourceLanguagePriorityForExternalFormats()
+    {
+        var movie = new Movie
+        {
+            Id = 23,
+            RadarrId = 23,
+            Title = "Priority Source Movie",
+            Path = "/movies/priority",
+            FileName = "priority.mkv",
+            DateAdded = DateTime.UtcNow
+        };
+
+        _context.Movies.Add(movie);
+        await _context.SaveChangesAsync();
+
+        _settingServiceMock
+            .SetupSequence(s => s.GetSettingAsJson<SourceLanguage>(It.IsAny<string>()))
+            .ReturnsAsync([
+                new SourceLanguage { Name = "English", Code = "en" },
+                new SourceLanguage { Name = "French", Code = "fr" }
+            ])
+            .ReturnsAsync([new SourceLanguage { Name = "Polish", Code = "pl" }]);
+
+        _settingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.Translation.IgnoreCaptions))
+            .ReturnsAsync("true");
+        _settingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.Translation.SubtitleOutputMode))
+            .ReturnsAsync(SubtitleOutputMode.MatchSource.ToSettingValue());
+        _settingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.SubtitleValidation.SkipWhenTargetEmbedded))
+            .ReturnsAsync("false");
+
+        _subtitleServiceMock
+            .Setup(s => s.GetAllSubtitles(It.IsAny<string>()))
+            .ReturnsAsync([
+                new Models.FileSystem.Subtitles
+                {
+                    FileName = "priority.fr.ass",
+                    Language = "fr",
+                    Path = "/movies/priority/priority.fr.ass",
+                    Format = ".ass"
+                },
+                new Models.FileSystem.Subtitles
+                {
+                    FileName = "priority.en.srt",
+                    Language = "en",
+                    Path = "/movies/priority/priority.en.srt",
+                    Format = ".srt"
+                },
+                new Models.FileSystem.Subtitles
+                {
+                    FileName = "priority.pl.srt",
+                    Language = "pl",
+                    Path = "/movies/priority/priority.pl.srt",
+                    Format = ".srt"
+                }
+            ]);
+
+        var service = new MediaStateService(
+            _context,
+            _settingServiceMock.Object,
+            _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
+            NullLogger<MediaStateService>.Instance);
+
+        var state = await service.UpdateStateAsync(movie, MediaType.Movie);
+
+        Assert.Equal(TranslationState.Complete, state);
     }
 
     [Fact]
@@ -219,12 +745,162 @@ public class MediaStateServiceTests : IDisposable
             _context,
             _settingServiceMock.Object,
             _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
             NullLogger<MediaStateService>.Instance);
 
         // Act
         var state = await service.UpdateStateAsync(movie, MediaType.Movie);
 
         // Assert - Should be Complete because both Dutch (external) and German (embedded) are satisfied
+        Assert.Equal(TranslationState.Complete, state);
+    }
+
+    [Fact]
+    public async Task ComputeStateAsync_ShouldReturnStale_WhenTargetSnapshotIsOutdated()
+    {
+        var movie = new Movie
+        {
+            Id = 20,
+            RadarrId = 20,
+            Title = "Stale Snapshot Movie",
+            Path = "/movies/stale",
+            FileName = "stale.mkv",
+            DateAdded = DateTime.UtcNow
+        };
+
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = 20,
+            Language = "eng",
+            IsTextBased = true,
+            CodecName = "subrip",
+            StreamIndex = 0
+        });
+
+        _context.Movies.Add(movie);
+        await _context.SaveChangesAsync();
+
+        _settingServiceMock
+            .SetupSequence(s => s.GetSettingAsJson<SourceLanguage>(It.IsAny<string>()))
+            .ReturnsAsync([new SourceLanguage { Name = "English", Code = "en" }])
+            .ReturnsAsync([new SourceLanguage { Name = "Polish", Code = "pl" }]);
+
+        _subtitleServiceMock
+            .Setup(s => s.GetAllSubtitles(It.IsAny<string>()))
+            .ReturnsAsync([
+                new Models.FileSystem.Subtitles { FileName = "stale.en", Language = "en", Path = "/movies/stale/stale.en.srt" },
+                new Models.FileSystem.Subtitles { FileName = "stale.pl", Language = "pl", Path = "/movies/stale/stale.pl.srt" }
+            ]);
+
+        _sourceSubtitleSnapshotServiceMock
+            .Setup(s => s.ResolveCurrentSnapshotAsync(
+                It.IsAny<Lingarr.Core.Interfaces.IMedia>(),
+                MediaType.Movie,
+                It.IsAny<IReadOnlyCollection<EmbeddedSubtitle>>(),
+                It.IsAny<IReadOnlyCollection<Models.FileSystem.Subtitles>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SourceSubtitleSnapshot
+            {
+                SourceType = SourceSubtitleSnapshot.ExternalType,
+                SourceLanguage = "en",
+                Identity = "external|en|/movies/stale/stale.en.srt",
+                Fingerprint = "NEW"
+            });
+
+        _sourceSubtitleSnapshotServiceMock
+            .Setup(s => s.GetStaleTargetLanguagesAsync(
+                movie.Id,
+                MediaType.Movie,
+                It.IsAny<IEnumerable<string>>(),
+                It.IsAny<SourceSubtitleSnapshot?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new HashSet<string> { "pl" });
+
+        var service = new MediaStateService(
+            _context,
+            _settingServiceMock.Object,
+            _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
+            NullLogger<MediaStateService>.Instance);
+
+        var state = await service.UpdateStateAsync(movie, MediaType.Movie);
+
+        Assert.Equal(TranslationState.Stale, state);
+    }
+
+    [Fact]
+    public async Task ComputeStateAsync_ShouldRemainComplete_WhenTargetSnapshotMatches()
+    {
+        var movie = new Movie
+        {
+            Id = 21,
+            RadarrId = 21,
+            Title = "Fresh Snapshot Movie",
+            Path = "/movies/fresh",
+            FileName = "fresh.mkv",
+            DateAdded = DateTime.UtcNow
+        };
+
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = 21,
+            Language = "eng",
+            IsTextBased = true,
+            CodecName = "subrip",
+            StreamIndex = 0
+        });
+
+        _context.Movies.Add(movie);
+        await _context.SaveChangesAsync();
+
+        _settingServiceMock
+            .SetupSequence(s => s.GetSettingAsJson<SourceLanguage>(It.IsAny<string>()))
+            .ReturnsAsync([new SourceLanguage { Name = "English", Code = "en" }])
+            .ReturnsAsync([new SourceLanguage { Name = "Polish", Code = "pl" }]);
+
+        _subtitleServiceMock
+            .Setup(s => s.GetAllSubtitles(It.IsAny<string>()))
+            .ReturnsAsync([
+                new Models.FileSystem.Subtitles { FileName = "fresh.en", Language = "en", Path = "/movies/fresh/fresh.en.srt" },
+                new Models.FileSystem.Subtitles { FileName = "fresh.pl", Language = "pl", Path = "/movies/fresh/fresh.pl.srt" }
+            ]);
+
+        _sourceSubtitleSnapshotServiceMock
+            .Setup(s => s.ResolveCurrentSnapshotAsync(
+                It.IsAny<Lingarr.Core.Interfaces.IMedia>(),
+                MediaType.Movie,
+                It.IsAny<IReadOnlyCollection<EmbeddedSubtitle>>(),
+                It.IsAny<IReadOnlyCollection<Models.FileSystem.Subtitles>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SourceSubtitleSnapshot
+            {
+                SourceType = SourceSubtitleSnapshot.ExternalType,
+                SourceLanguage = "en",
+                Identity = "external|en|/movies/fresh/fresh.en.srt",
+                Fingerprint = "SAME"
+            });
+
+        _sourceSubtitleSnapshotServiceMock
+            .Setup(s => s.GetStaleTargetLanguagesAsync(
+                movie.Id,
+                MediaType.Movie,
+                It.IsAny<IEnumerable<string>>(),
+                It.IsAny<SourceSubtitleSnapshot?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new HashSet<string>());
+
+        var service = new MediaStateService(
+            _context,
+            _settingServiceMock.Object,
+            _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
+            NullLogger<MediaStateService>.Instance);
+
+        var state = await service.UpdateStateAsync(movie, MediaType.Movie);
+
         Assert.Equal(TranslationState.Complete, state);
     }
 
@@ -272,6 +948,8 @@ public class MediaStateServiceTests : IDisposable
             _context,
             _settingServiceMock.Object,
             _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
             NullLogger<MediaStateService>.Instance);
 
         // Act
@@ -345,6 +1023,8 @@ public class MediaStateServiceTests : IDisposable
             _context,
             _settingServiceMock.Object,
             _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
             NullLogger<MediaStateService>.Instance);
 
         // Act
@@ -361,5 +1041,275 @@ public class MediaStateServiceTests : IDisposable
         // InProgress should be marked as Stale
         Assert.NotNull(inProgressEpisode);
         Assert.Equal(TranslationState.Stale, inProgressEpisode.TranslationState);
+    }
+
+    [Fact]
+    public async Task ComputeStateAsync_ShouldReturnPending_WhenBothOutputsAreRequiredButOnlyOneExists()
+    {
+        var movie = new Movie
+        {
+            Id = 30,
+            RadarrId = 30,
+            Title = "ASS Output Movie",
+            Path = "/movies/ass-output",
+            FileName = "ass-output.mkv",
+            DateAdded = DateTime.UtcNow
+        };
+
+        _context.Movies.Add(movie);
+        await _context.SaveChangesAsync();
+
+        _settingServiceMock
+            .SetupSequence(s => s.GetSettingAsJson<SourceLanguage>(It.IsAny<string>()))
+            .ReturnsAsync([new SourceLanguage { Name = "English", Code = "en" }])
+            .ReturnsAsync([new SourceLanguage { Name = "Polish", Code = "pl" }]);
+
+        _settingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.Translation.SubtitleOutputMode))
+            .ReturnsAsync(SubtitleOutputMode.Both.ToSettingValue());
+
+        _subtitleServiceMock
+            .Setup(s => s.GetAllSubtitles(It.IsAny<string>()))
+            .ReturnsAsync([
+                new Models.FileSystem.Subtitles { FileName = "ass-output.en", Language = "en", Path = "/movies/ass-output/ass-output.en.ass", Format = ".ass" },
+                new Models.FileSystem.Subtitles { FileName = "ass-output.pl", Language = "pl", Path = "/movies/ass-output/ass-output.pl.srt", Format = ".srt" }
+            ]);
+
+        var service = new MediaStateService(
+            _context,
+            _settingServiceMock.Object,
+            _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
+            NullLogger<MediaStateService>.Instance);
+
+        var state = await service.UpdateStateAsync(movie, MediaType.Movie);
+
+        Assert.Equal(TranslationState.Pending, state);
+    }
+
+    [Fact]
+    public async Task ComputeStateAsync_ShouldReturnComplete_WhenBothOutputsAreRequiredAndBothExist()
+    {
+        var movie = new Movie
+        {
+            Id = 31,
+            RadarrId = 31,
+            Title = "ASS Output Complete Movie",
+            Path = "/movies/ass-output-complete",
+            FileName = "ass-output-complete.mkv",
+            DateAdded = DateTime.UtcNow
+        };
+
+        _context.Movies.Add(movie);
+        await _context.SaveChangesAsync();
+
+        _settingServiceMock
+            .SetupSequence(s => s.GetSettingAsJson<SourceLanguage>(It.IsAny<string>()))
+            .ReturnsAsync([new SourceLanguage { Name = "English", Code = "en" }])
+            .ReturnsAsync([new SourceLanguage { Name = "Polish", Code = "pl" }]);
+
+        _settingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.Translation.SubtitleOutputMode))
+            .ReturnsAsync(SubtitleOutputMode.Both.ToSettingValue());
+
+        _subtitleServiceMock
+            .Setup(s => s.GetAllSubtitles(It.IsAny<string>()))
+            .ReturnsAsync([
+                new Models.FileSystem.Subtitles { FileName = "ass-output-complete.en", Language = "en", Path = "/movies/ass-output-complete/ass-output-complete.en.ass", Format = ".ass" },
+                new Models.FileSystem.Subtitles { FileName = "ass-output-complete.pl", Language = "pl", Path = "/movies/ass-output-complete/ass-output-complete.pl.srt", Format = ".srt" },
+                new Models.FileSystem.Subtitles { FileName = "ass-output-complete.pl", Language = "pl", Path = "/movies/ass-output-complete/ass-output-complete.pl.ass", Format = ".ass" }
+            ]);
+
+        var service = new MediaStateService(
+            _context,
+            _settingServiceMock.Object,
+            _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
+            NullLogger<MediaStateService>.Instance);
+
+        var state = await service.UpdateStateAsync(movie, MediaType.Movie);
+
+        Assert.Equal(TranslationState.Complete, state);
+    }
+
+    [Fact]
+    public async Task ComputeStateAsync_WithEmbeddedTargetAndBothMode_ReturnsComplete()
+    {
+        var movie = new Movie
+        {
+            Id = 34,
+            RadarrId = 34,
+            Title = "Embedded Target Movie",
+            Path = "/movies/embedded-target",
+            FileName = "embedded-target.mkv",
+            DateAdded = DateTime.UtcNow
+        };
+
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = 34,
+            Language = "eng",
+            IsTextBased = true,
+            CodecName = "ass",
+            StreamIndex = 0
+        });
+
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = 34,
+            Language = "pol",
+            IsTextBased = true,
+            CodecName = "ass",
+            StreamIndex = 1
+        });
+
+        _context.Movies.Add(movie);
+        await _context.SaveChangesAsync();
+
+        _settingServiceMock
+            .SetupSequence(s => s.GetSettingAsJson<SourceLanguage>(It.IsAny<string>()))
+            .ReturnsAsync([new SourceLanguage { Name = "English", Code = "en" }])
+            .ReturnsAsync([new SourceLanguage { Name = "Polish", Code = "pl" }]);
+
+        _settingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.Translation.SubtitleOutputMode))
+            .ReturnsAsync(SubtitleOutputMode.Both.ToSettingValue());
+        _settingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.SubtitleValidation.SkipWhenTargetEmbedded))
+            .ReturnsAsync("true");
+
+        _subtitleServiceMock
+            .Setup(s => s.GetAllSubtitles(It.IsAny<string>()))
+            .ReturnsAsync([]);
+
+        var service = new MediaStateService(
+            _context,
+            _settingServiceMock.Object,
+            _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
+            NullLogger<MediaStateService>.Instance);
+
+        var state = await service.UpdateStateAsync(movie, MediaType.Movie);
+
+        Assert.Equal(TranslationState.Complete, state);
+    }
+
+    [Fact]
+    public async Task ComputeStateAsync_ShouldIgnoreTemporaryExternalAssSource_WhenResolvingRequiredFormats()
+    {
+        var movie = new Movie
+        {
+            Id = 32,
+            RadarrId = 32,
+            Title = "Temporary Source Movie",
+            Path = "/movies/temp-source",
+            FileName = "temp-source.mkv",
+            DateAdded = DateTime.UtcNow
+        };
+
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = 32,
+            Language = "eng",
+            IsTextBased = true,
+            CodecName = "subrip",
+            StreamIndex = 0
+        });
+
+        _context.Movies.Add(movie);
+        await _context.SaveChangesAsync();
+
+        _settingServiceMock
+            .SetupSequence(s => s.GetSettingAsJson<SourceLanguage>(It.IsAny<string>()))
+            .ReturnsAsync([new SourceLanguage { Name = "English", Code = "en" }])
+            .ReturnsAsync([new SourceLanguage { Name = "Polish", Code = "pl" }]);
+
+        _settingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.Translation.SubtitleOutputMode))
+            .ReturnsAsync(SubtitleOutputMode.Both.ToSettingValue());
+
+        _subtitleServiceMock
+            .Setup(s => s.GetAllSubtitles(It.IsAny<string>()))
+            .ReturnsAsync([
+                new Models.FileSystem.Subtitles
+                {
+                    FileName = "lingarr_temp_source_123.en",
+                    Language = "en",
+                    Path = "/movies/temp-source/lingarr_temp_source_123.en.ass",
+                    Format = ".ass"
+                },
+                new Models.FileSystem.Subtitles
+                {
+                    FileName = "temp-source.pl",
+                    Language = "pl",
+                    Path = "/movies/temp-source/temp-source.pl.srt",
+                    Format = ".srt"
+                }
+            ]);
+
+        var service = new MediaStateService(
+            _context,
+            _settingServiceMock.Object,
+            _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
+            NullLogger<MediaStateService>.Instance);
+
+        var state = await service.UpdateStateAsync(movie, MediaType.Movie);
+
+        Assert.Equal(TranslationState.Complete, state);
+    }
+
+    [Fact]
+    public async Task ComputeStateAsync_ShouldReturnAwaitingSource_WhenOnlyTemporaryExternalSourceExists()
+    {
+        var movie = new Movie
+        {
+            Id = 33,
+            RadarrId = 33,
+            Title = "Only Temporary Source Movie",
+            Path = "/movies/only-temp-source",
+            FileName = "only-temp-source.mkv",
+            DateAdded = DateTime.UtcNow
+        };
+
+        _context.Movies.Add(movie);
+        await _context.SaveChangesAsync();
+
+        _settingServiceMock
+            .SetupSequence(s => s.GetSettingAsJson<SourceLanguage>(It.IsAny<string>()))
+            .ReturnsAsync([new SourceLanguage { Name = "English", Code = "en" }])
+            .ReturnsAsync([new SourceLanguage { Name = "Polish", Code = "pl" }]);
+
+        _settingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.Translation.SubtitleOutputMode))
+            .ReturnsAsync(SubtitleOutputMode.Both.ToSettingValue());
+
+        _subtitleServiceMock
+            .Setup(s => s.GetAllSubtitles(It.IsAny<string>()))
+            .ReturnsAsync([
+                new Models.FileSystem.Subtitles
+                {
+                    FileName = "lingarr_temp_source_123.en",
+                    Language = "en",
+                    Path = "/movies/only-temp-source/lingarr_temp_source_123.en.ass",
+                    Format = ".ass"
+                }
+            ]);
+
+        var service = new MediaStateService(
+            _context,
+            _settingServiceMock.Object,
+            _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
+            NullLogger<MediaStateService>.Instance);
+
+        var state = await service.UpdateStateAsync(movie, MediaType.Movie);
+
+        Assert.Equal(TranslationState.AwaitingSource, state);
     }
 }

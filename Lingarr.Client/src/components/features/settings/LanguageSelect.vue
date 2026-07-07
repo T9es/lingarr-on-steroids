@@ -1,8 +1,9 @@
 ﻿<template>
     <div class="relative">
         <div
-            ref="excludeClickOutside"
+            ref="triggerRef"
             class="border-accent flex h-12 cursor-pointer items-center justify-between rounded-md border px-4 py-2"
+            :class="{ 'opacity-50 cursor-not-allowed': disabled }"
             @click="toggleDropdown">
             <span v-if="selectedItems.length === 0" class="text-primary-content/50">
                 {{ translate('settings.translate.languageSelectPlaceholder') }}
@@ -13,48 +14,57 @@
                     :key="`${item.code}-${index}`"
                     :data-key="`${item.code}-${index}`"
                     class="bg-accent text-secondary-content flex cursor-pointer items-center rounded-md px-3 py-1 text-sm font-medium"
-                    @click.stop="removeItem(item)">
+                    :class="{ 'cursor-default': disabled }"
+                    @click.stop="disabled ? null : removeItem(item)">
                     <span class="text-accent-content mr-2">{{ item.name }}</span>
-                    <TimesIcon class="mt-0.5 h-4 w-4" />
+                    <TimesIcon v-if="!disabled" class="mt-0.5 h-4 w-4" />
                 </span>
             </div>
             <CaretRightIcon
                 :class="{ 'rotate-90': isOpen }"
                 class="arrow-right text-secondary-content h-5 w-5 transition-transform duration-200" />
         </div>
-        <ul
-            v-show="isOpen"
-            ref="clickOutside"
-            class="border-accent bg-primary absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md border shadow-lg">
-            <li v-if="!options?.length" class="text-primary-content p-3">
-                {{ translate('settings.translate.languageSelectTargetNotification') }}
-            </li>
-            <li v-else class="flex items-center">
-                <input
-                    ref="searchInput"
-                    v-model="searchTerm"
-                    class="border-accent text-primary-content relative w-full border-b bg-transparent p-2 outline-hidden"
-                    :placeholder="
-                        translate('settings.translate.selectOrSearchLanguagePlaceholder')
-                    " />
+        <Teleport to="body">
+            <ul
+                v-show="isOpen"
+                ref="dropdownRef"
+                class="border-accent bg-primary z-[100] max-h-60 overflow-auto rounded-md border shadow-lg"
+                :style="{
+                    position: 'fixed',
+                    top: dropdownPosition.top + 'px',
+                    left: dropdownPosition.left + 'px',
+                    width: dropdownPosition.width + 'px'
+                }">
+                <li v-if="!options?.length" class="text-primary-content p-3">
+                    {{ translate('settings.translate.languageSelectTargetNotification') }}
+                </li>
+                <li v-else class="relative flex items-center">
+                    <input
+                        ref="searchInput"
+                        v-model="searchTerm"
+                        class="border-accent text-primary-content relative w-full border-b bg-transparent p-2 outline-hidden"
+                        :placeholder="
+                            translate('settings.translate.selectOrSearchLanguagePlaceholder')
+                        " />
 
-                <span
-                    v-if="searchTerm"
-                    class="text-primary-content absolute right-0 z-10 flex cursor-pointer items-center p-3"
-                    @click="searchTerm = ''">
-                    <TimesIcon class="h-4 w-4" />
-                </span>
-            </li>
-            <li
-                v-for="(language, index) in filteredLanguages"
-                :key="`${language.code}-${index}`"
-                :data-key="`${language.code}-${index}`"
-                class="text-primary-content hover:bg-accent/20 cursor-pointer px-4 py-2"
-                :class="{ 'bg-accent/20': isSelected(language) }"
-                @click="selectItem(language)">
-                {{ language.name }}
-            </li>
-        </ul>
+                    <span
+                        v-if="searchTerm"
+                        class="text-primary-content absolute right-0 z-10 flex cursor-pointer items-center p-3"
+                        @click="searchTerm = ''">
+                        <TimesIcon class="h-4 w-4" />
+                    </span>
+                </li>
+                <li
+                    v-for="(language, index) in filteredLanguages"
+                    :key="`${language.code}-${index}`"
+                    :data-key="`${language.code}-${index}`"
+                    class="text-primary-content hover:bg-accent/20 cursor-pointer px-4 py-2"
+                    :class="{ 'bg-accent/20': isSelected(language) }"
+                    @click="selectItem(language)">
+                    {{ language.name }}
+                </li>
+            </ul>
+        </Teleport>
     </div>
 </template>
 
@@ -80,9 +90,10 @@ const emit = defineEmits(['update:selected'])
 const isOpen: Ref<boolean> = ref(false)
 const searchInput: Ref<HTMLInputElement | undefined> = ref()
 const selectedItems: Ref<ILanguage[]> = ref(selected)
-const clickOutside: Ref<HTMLElement | undefined> = ref()
-const excludeClickOutside: Ref<HTMLElement | undefined> = ref()
+const triggerRef: Ref<HTMLElement | undefined> = ref()
+const dropdownRef: Ref<HTMLElement | undefined> = ref()
 const searchTerm: Ref<string> = ref('')
+const dropdownPosition = ref({ top: 0, left: 0, width: 0 })
 
 const filteredLanguages = computed(() => {
     return options
@@ -97,6 +108,16 @@ const filteredLanguages = computed(() => {
 const toggleDropdown = async () => {
     if (disabled) return
     isOpen.value = !isOpen.value
+    if (isOpen.value) {
+        const rect = triggerRef.value?.getBoundingClientRect()
+        if (rect) {
+            dropdownPosition.value = {
+                top: rect.bottom + window.scrollY,
+                left: rect.left + window.scrollX,
+                width: rect.width
+            }
+        }
+    }
     await nextTick()
     searchInput.value?.focus()
 }
@@ -133,10 +154,10 @@ watch(
 )
 
 useClickOutside(
-    clickOutside,
+    dropdownRef,
     () => {
         isOpen.value = false
     },
-    excludeClickOutside
+    triggerRef
 )
 </script>

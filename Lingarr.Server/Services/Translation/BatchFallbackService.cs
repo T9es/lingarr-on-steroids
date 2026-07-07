@@ -55,6 +55,7 @@ public class BatchFallbackService : IBatchFallbackService
 
             var chunks = SplitIntoChunks(failedItems, splitLevel);
             var stillFailed = new List<BatchSubtitleItem>();
+            var providerUnavailableAbort = false;
 
             _logger.LogInformation(
                 "{BatchProgress}[{FileId}] Split level {Level}/{Max}: processing {ChunkCount} chunk(s), {ItemCount} items",
@@ -117,15 +118,35 @@ public class BatchFallbackService : IBatchFallbackService
                 }
                 catch (TranslationException ex)
                 {
-                    lastFailureSummary = TranslationFailureClassifier.GetFailureSummary(ex);
+                    if (ex is ProviderPauseException)
+                    {
+                        throw;
+                    }
+                    if (TranslationFailureClassifier.IsNonRepairableProviderConfigurationFailure(ex))
+                    {
+                        _logger.LogError(
+                            ex,
+                            "{BatchProgress}[{FileId}] Non-repairable provider configuration failure at split level {Level}. Failing fast.",
+                            batchProgress,
+                            fileIdentifier,
+                            splitLevel);
+                        throw;
+                    }
+
                     if (TranslationFailureClassifier.IsProviderUnavailable(ex))
                     {
                         sawProviderUnavailableFailure = true;
+                        providerUnavailableAbort = true;
+                        lastFailureSummary = TranslationFailureClassifier.GetFailureSummary(ex);
+                        _logger.LogWarning(ex,
+                            "{BatchProgress}[{FileId}] Provider unavailable at split level {Level}: {Count} items. Aborting split retry — provider outage will not be resolved by splitting.",
+                            batchProgress, fileIdentifier, splitLevel, chunk.Count);
+                        stillFailed.AddRange(chunk);
+                        break;
                     }
-                    else
-                    {
-                        sawNonProviderFailure = true;
-                    }
+
+                    sawNonProviderFailure = true;
+                    lastFailureSummary = TranslationFailureClassifier.GetFailureSummary(ex);
 
                     _logger.LogWarning(ex,
                         "{BatchProgress}[{FileId}] Chunk failed at split level {Level}: {Count} items. Will retry with smaller chunks if available.",
@@ -134,6 +155,29 @@ public class BatchFallbackService : IBatchFallbackService
                 }
                 catch (Exception ex)
                 {
+                    if (TranslationFailureClassifier.IsNonRepairableProviderConfigurationFailure(ex))
+                    {
+                        _logger.LogError(
+                            ex,
+                            "{BatchProgress}[{FileId}] Non-repairable provider configuration failure at split level {Level}. Failing fast.",
+                            batchProgress,
+                            fileIdentifier,
+                            splitLevel);
+                        throw;
+                    }
+
+                    if (TranslationFailureClassifier.IsProviderUnavailable(ex))
+                    {
+                        sawProviderUnavailableFailure = true;
+                        providerUnavailableAbort = true;
+                        lastFailureSummary = TranslationFailureClassifier.GetFailureSummary(ex);
+                        _logger.LogWarning(ex,
+                            "{BatchProgress}[{FileId}] Provider unavailable at split level {Level}: {Count} items. Aborting split retry — provider outage will not be resolved by splitting.",
+                            batchProgress, fileIdentifier, splitLevel, chunk.Count);
+                        stillFailed.AddRange(chunk);
+                        break;
+                    }
+
                     lastFailureSummary = TranslationFailureClassifier.GetFailureSummary(ex);
                     sawNonProviderFailure = true;
 
@@ -145,6 +189,11 @@ public class BatchFallbackService : IBatchFallbackService
             }
 
             failedItems = stillFailed;
+
+            if (providerUnavailableAbort)
+            {
+                break;
+            }
 
             if (failedItems.Count > 0 && splitLevel < maxSplitAttempts)
             {

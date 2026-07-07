@@ -101,7 +101,7 @@
                                             selectedStreamIndex === subtitle.streamIndex,
                                         'border-secondary/30 hover:border-accent':
                                             selectedStreamIndex !== subtitle.streamIndex,
-                                        'opacity-50': !subtitle.isTextBased
+                                        'opacity-50': !isSelectableSubtitle(subtitle)
                                     }"
                                     @click="selectSubtitle(subtitle)">
                                     <div class="flex items-start justify-between">
@@ -136,7 +136,7 @@
                                                 <span>•</span>
                                                 <span
                                                     :class="
-                                                        subtitle.isTextBased
+                                                        isSelectableSubtitle(subtitle)
                                                             ? 'text-green-400'
                                                             : 'text-red-400'
                                                     ">
@@ -156,6 +156,19 @@
                                                                 : 'text-green-400'
                                                         ">
                                                         {{ subtitle.entryCount }} entries
+                                                    </span>
+                                                </template>
+                                                <template v-if="subtitle.isOcrUsable">
+                                                    <span>|</span>
+                                                    <span class="text-accent">
+                                                        OCR
+                                                        <template
+                                                            v-if="
+                                                                subtitle.ocrQualityScore !== null &&
+                                                                subtitle.ocrQualityScore !== undefined
+                                                            ">
+                                                            {{ subtitle.ocrQualityScore }}
+                                                        </template>
                                                     </span>
                                                 </template>
                                             </div>
@@ -191,9 +204,9 @@
                                         ⚠️ Low entry count - may be Signs/Songs only
                                     </div>
                                     <div
-                                        v-else-if="!subtitle.isTextBased"
+                                        v-else-if="!isSelectableSubtitle(subtitle)"
                                         class="mt-1 text-xs text-red-400">
-                                        ❌ Image-based subtitle - cannot be translated
+                                        ❌ Image-based subtitle - OCR is required before translation
                                     </div>
                                 </div>
                             </div>
@@ -218,7 +231,8 @@
                                     :disabled="
                                         selectedStreamIndex === null ||
                                         isQueuing ||
-                                        !selectedSubtitle?.isTextBased
+                                        !selectedSubtitle ||
+                                        !isSelectableSubtitle(selectedSubtitle)
                                     "
                                     class="bg-accent hover:bg-accent/80 text-primary-content disabled:bg-secondary/50 rounded px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
                                     @click="extractAndTranslate">
@@ -273,6 +287,14 @@ interface AvailableSubtitle {
     extractedPath: string | null
     entryCount: number | null
     isSparse: boolean | null
+    ocrStatus: string
+    ocrExtractedPath: string | null
+    ocrError: string | null
+    ocrCueCount: number | null
+    ocrQualityScore: number | null
+    ocrIssueSummary: string | null
+    isOcrSupported: boolean
+    isOcrUsable: boolean
 }
 
 interface ErrorResponse {
@@ -303,6 +325,10 @@ const selectedStreamIndex = ref<number | null>(null)
 const selectedSubtitle = computed(() => {
     return subtitles.value.find((s) => s.streamIndex === selectedStreamIndex.value) || null
 })
+
+const isSelectableSubtitle = (subtitle: AvailableSubtitle): boolean => {
+    return subtitle.isTextBased || subtitle.isOcrUsable
+}
 
 // Language code to emoji mapping
 const languageEmojis: Record<string, string> = {
@@ -456,7 +482,7 @@ const getLanguageName = (lang: string | null): string => {
 }
 
 const selectSubtitle = (subtitle: AvailableSubtitle) => {
-    if (!subtitle.isTextBased) return
+    if (!isSelectableSubtitle(subtitle)) return
     selectedStreamIndex.value = subtitle.streamIndex
 }
 
@@ -481,10 +507,9 @@ const fetchSubtitles = async () => {
         const response = await axios.get(`/api/subtitle/available/${type}/${props.mediaId}`)
         subtitles.value = response.data
 
-        // Auto-select the first text-based subtitle
-        const firstTextBased = subtitles.value.find((s) => s.isTextBased)
-        if (firstTextBased) {
-            selectedStreamIndex.value = firstTextBased.streamIndex
+        const firstSelectable = subtitles.value.find(isSelectableSubtitle)
+        if (firstSelectable) {
+            selectedStreamIndex.value = firstSelectable.streamIndex
         }
     } catch (err: unknown) {
         error.value = getErrorResponse(err)?.error || 'Failed to load subtitles'
@@ -495,7 +520,13 @@ const fetchSubtitles = async () => {
 }
 
 const extractAndTranslate = async () => {
-    if (selectedStreamIndex.value === null || !selectedSubtitle.value?.isTextBased) return
+    if (
+        selectedStreamIndex.value === null ||
+        !selectedSubtitle.value ||
+        !isSelectableSubtitle(selectedSubtitle.value)
+    ) {
+        return
+    }
 
     isQueuing.value = true
     try {

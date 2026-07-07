@@ -15,6 +15,7 @@ export const SETTINGS = {
     SONARR_URL: 'sonarr_url',
     SOURCE_LANGUAGES: 'source_languages',
     TARGET_LANGUAGES: 'target_languages',
+    SOURCE_LANGUAGE_MODE: 'source_language_mode',
     SONARR_SETTINGS_COMPLETED: 'sonarr_settings_completed',
     RADARR_SETTINGS_COMPLETED: 'radarr_settings_completed',
     SERVICE_TYPE: 'service_type',
@@ -41,12 +42,22 @@ export const SETTINGS = {
     CHUTES_MODEL: 'chutes_model',
     CHUTES_API_KEY: 'chutes_api_key',
     CHUTES_USAGE_LIMIT_OVERRIDE: 'chutes_usage_limit_override',
+    NANOGPT_MODEL: 'nanogpt_model',
+    NANOGPT_API_KEY: 'nanogpt_api_key',
+    CROFAI_MODEL: 'crofai_model',
+    CROFAI_API_KEY: 'crofai_api_key',
+    NANOGPT_SUBSCRIPTION_MODELS_ONLY: 'nanogpt_subscription_models_only',
+    NANOGPT_WEEKLY_TOKEN_ALLOWANCE: 'nanogpt_weekly_token_allowance',
+    NANOGPT_TOKEN_RESERVE: 'nanogpt_token_reserve',
+    NANOGPT_DAILY_UNIT_RESERVE: 'nanogpt_daily_unit_reserve',
+    NANOGPT_MONTHLY_UNIT_RESERVE: 'nanogpt_monthly_unit_reserve',
     AI_PROMPT: 'ai_prompt',
     THEME: 'theme',
     LOCALE: 'locale',
     MOVIE_AGE_THRESHOLD: 'movie_age_threshold',
     SHOW_AGE_THRESHOLD: 'show_age_threshold',
     FIX_OVERLAPPING_SUBTITLES: 'fix_overlapping_subtitles',
+    SUBTITLE_OUTPUT_MODE: 'subtitle_output_mode',
     STRIP_SUBTITLE_FORMATTING: 'strip_subtitle_formatting',
     ADD_TRANSLATOR_INFO: 'add_translator_info',
     CUSTOM_AI_PARAMETERS: 'custom_ai_parameters',
@@ -57,6 +68,8 @@ export const SETTINGS = {
     SUBTITLE_VALIDATION_MAXSUBTITLELENGTH: 'subtitle_validation_maxsubtitlelength',
     SUBTITLE_VALIDATION_MAXFILESIZEBYTES: 'subtitle_validation_maxfilesizebytes',
     SUBTITLE_INTEGRITY_VALIDATION_ENABLED: 'subtitle_integrity_validation_enabled',
+    BULK_INTEGRITY_AUTO_QUEUE: 'bulk_integrity_auto_queue',
+    BULK_INTEGRITY_MAX_AUTO_QUEUE_PER_RUN: 'bulk_integrity_max_auto_queue_per_run',
     AI_CONTEXT_PROMPT_ENABLED: 'ai_context_prompt_enabled',
     AI_CONTEXT_PROMPT: 'ai_context_prompt',
     AI_CONTEXT_BEFORE: 'ai_context_before',
@@ -69,6 +82,7 @@ export const SETTINGS = {
     SUBTITLE_TAG_SHORT: 'subtitle_tag_short',
     CLEANUP_ORPHANED_SUBTITLES: 'cleanup_orphaned_subtitles',
     IGNORE_CAPTIONS: 'ignore_captions',
+    TRANSLATE_SUPPLEMENTAL_SUBTITLES: 'translate_supplemental_subtitles',
     MAX_RETRIES: 'max_retries',
     RETRY_DELAY: 'retry_delay',
     RETRY_DELAY_MULTIPLIER: 'retry_delay_multiplier',
@@ -84,7 +98,30 @@ export const SETTINGS = {
     BATCH_CONTEXT_ENABLED: 'batch_context_enabled',
     BATCH_CONTEXT_BEFORE: 'batch_context_before',
     BATCH_CONTEXT_AFTER: 'batch_context_after',
+    ENABLE_POST_TRANSLATION_QUALITY_GATE: 'enable_post_translation_quality_gate',
     SKIP_WHEN_TARGET_EMBEDDED: 'skip_when_target_embedded',
+    SUBTITLE_OCR_ENABLED: 'subtitle_ocr_enabled',
+    SUBTITLE_OCR_AUTO_QUEUE: 'subtitle_ocr_auto_queue',
+    SUBTITLE_OCR_MIN_QUALITY_SCORE: 'subtitle_ocr_min_quality_score',
+    SUBTITLE_OCR_LANGUAGES: 'subtitle_ocr_languages',
+    SUBTITLE_OCR_TRANSLATION_PROMPT_ENABLED: 'subtitle_ocr_translation_prompt_enabled',
+    EMBED_IN_CONTAINER: 'embed_in_container',
+    EMBED_WHEN_PATH_TOO_LONG: 'embed_when_path_too_long',
+    DETECT_UNKNOWN_LANGUAGES: 'detect_unknown_languages',
+    DETECT_UNKNOWN_LANGUAGES_SCHEDULE: 'detect_unknown_languages_schedule',
+    MOVIE_SYNC_ENABLED: 'movie_sync_enabled',
+    SHOW_SYNC_ENABLED: 'show_sync_enabled',
+    CUSTOM_SOURCE_SCAN_ENABLED: 'custom_source_scan_enabled',
+    CUSTOM_SOURCE_SCAN_SCHEDULE: 'custom_source_scan_schedule',
+    MAINTENANCE_CLEANUP_ENABLED: 'maintenance_cleanup_enabled',
+    MAINTENANCE_CLEANUP_SCHEDULE: 'maintenance_cleanup_schedule',
+    MAINTENANCE_UPLOAD_CLEANUP_ENABLED: 'maintenance_upload_cleanup_enabled',
+    MAINTENANCE_UPLOAD_CLEANUP_SCHEDULE: 'maintenance_upload_cleanup_schedule',
+    MAINTENANCE_STATISTICS_ENABLED: 'maintenance_statistics_enabled',
+    MAINTENANCE_STATISTICS_SCHEDULE: 'maintenance_statistics_schedule',
+    MAINTENANCE_RETRY_FAILED_ENABLED: 'maintenance_retry_failed_enabled',
+    MAINTENANCE_RETRY_FAILED_SCHEDULE: 'maintenance_retry_failed_schedule',
+    MAX_REQUEST_RETRIES: 'max_request_retries',
     RADARR_INSTANCES: 'radarr_instances',
     SONARR_INSTANCES: 'sonarr_instances',
     ONBOARDING_COMPLETED: 'onboarding_completed',
@@ -100,6 +137,8 @@ export const SETTINGS = {
     LOCALAI_TOKEN_LIMIT: 'localai_token_limit',
     LOCALAI_TOKEN_LIMIT_ENABLED: 'localai_token_limit_enabled',
     CHUTES_TOKEN_LIMIT: 'chutes_token_limit',
+    NANOGPT_TOKEN_LIMIT: 'nanogpt_token_limit',
+    CROFAI_TOKEN_LIMIT: 'crofai_token_limit',
     CHUTES_MODE: 'chutes_mode',
     TOKEN_LIMIT_RESET_TIME: 'token_limit_reset_time'
 } as const
@@ -115,6 +154,8 @@ export const ENCRYPTED_SETTING_KEYS = new Set<string>([
     SETTINGS.GEMINI_API_KEY,
     SETTINGS.DEEPSEEK_API_KEY,
     SETTINGS.CHUTES_API_KEY,
+    SETTINGS.NANOGPT_API_KEY,
+    SETTINGS.CROFAI_API_KEY,
     SETTINGS.RADARR_INSTANCES,
     SETTINGS.SONARR_INSTANCES
 ])
@@ -138,6 +179,7 @@ export interface ISettings {
     translation_schedule: string
     source_languages: string | ILanguage[]
     target_languages: string | ILanguage[]
+    source_language_mode: string
     automation_enabled: string
     sonarr_settings_completed: string
     radarr_settings_completed: string
@@ -156,10 +198,20 @@ export interface ISettings {
     chutes_model: string
     chutes_api_key: string
     chutes_usage_limit_override: string
+    nanogpt_model: string
+    nanogpt_api_key: string
+    nanogpt_subscription_models_only: string
+    nanogpt_weekly_token_allowance: string
+    nanogpt_token_reserve: string
+    nanogpt_daily_unit_reserve: string
+    nanogpt_monthly_unit_reserve: string
+    crofai_model: string
+    crofai_api_key: string
     ai_prompt: string
     movie_age_threshold: string
     show_age_threshold: string
     fix_overlapping_subtitles: string
+    subtitle_output_mode: string
     strip_subtitle_formatting: string
     add_translator_info: string
     theme: ITheme
@@ -172,6 +224,8 @@ export interface ISettings {
     subtitle_validation_mindurationms: string
     subtitle_validation_maxdurationsecs: string
     subtitle_integrity_validation_enabled: string
+    bulk_integrity_auto_queue: string
+    bulk_integrity_max_auto_queue_per_run: string
     ai_context_prompt_enabled: string
     ai_context_prompt: string
     ai_context_before: string
@@ -184,6 +238,7 @@ export interface ISettings {
     subtitle_tag_short: string
     cleanup_orphaned_subtitles: string
     ignore_captions: string
+    translate_supplemental_subtitles: string
     max_retries: string
     retry_delay: string
     retry_delay_multiplier: string
@@ -199,7 +254,30 @@ export interface ISettings {
     batch_context_enabled: string
     batch_context_before: string
     batch_context_after: string
+    enable_post_translation_quality_gate: string
     skip_when_target_embedded: string
+    subtitle_ocr_enabled: string
+    subtitle_ocr_auto_queue: string
+    subtitle_ocr_min_quality_score: string
+    subtitle_ocr_languages: string
+    subtitle_ocr_translation_prompt_enabled: string
+    embed_in_container: string
+    embed_when_path_too_long: string
+    detect_unknown_languages: string
+    detect_unknown_languages_schedule: string
+    movie_sync_enabled: string
+    show_sync_enabled: string
+    custom_source_scan_enabled: string
+    custom_source_scan_schedule: string
+    maintenance_cleanup_enabled: string
+    maintenance_cleanup_schedule: string
+    maintenance_upload_cleanup_enabled: string
+    maintenance_upload_cleanup_schedule: string
+    maintenance_statistics_enabled: string
+    maintenance_statistics_schedule: string
+    maintenance_retry_failed_enabled: string
+    maintenance_retry_failed_schedule: string
+    max_request_retries: string
     radarr_instances: string | IInstance[]
     sonarr_instances: string | IInstance[]
     onboarding_completed: string
@@ -214,6 +292,8 @@ export interface ISettings {
     localai_token_limit: string
     localai_token_limit_enabled: string
     chutes_token_limit: string
+    nanogpt_token_limit: string
+    crofai_token_limit: string
     chutes_mode: string
     token_limit_reset_time: string
 }
@@ -235,7 +315,9 @@ export const SERVICE_TYPE = {
     BING: 'bing',
     MICROSOFT: 'microsoft',
     YANDEX: 'yandex',
-    CHUTES: 'chutes'
+    CHUTES: 'chutes',
+    NANOGPT: 'nanogpt',
+    CROFAI: 'crofai'
 } as const
 
 export type ServiceType = (typeof SERVICE_TYPE)[keyof typeof SERVICE_TYPE]
@@ -247,6 +329,7 @@ export interface IFilterOptions {
 export interface ILogEntry {
     logLevel: string
     message: string
+    timestamp?: string
     formattedTime: string
     formattedDate: string
     formattedSource: string

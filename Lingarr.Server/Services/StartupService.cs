@@ -1,7 +1,8 @@
-﻿using Lingarr.Core.Configuration;
+using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
+using Lingarr.Server.Services.Subtitle;
 using Microsoft.EntityFrameworkCore;
 
 namespace Lingarr.Server.Services;
@@ -42,6 +43,7 @@ public class StartupService : IHostedService
             { SettingKeys.Translation.SourceLanguages, "[]" },
             { SettingKeys.Translation.TargetLanguages, "[]" },
             { SettingKeys.Translation.FixOverlappingSubtitles, "false" },
+            { SettingKeys.Translation.SubtitleOutputMode, "both" },
             { SettingKeys.Translation.StripSubtitleFormatting, "false" },
             { SettingKeys.Translation.AddTranslatorInfo, "false" },
             { SettingKeys.Translation.IgnoreCaptions, "false" },
@@ -57,15 +59,17 @@ public class StartupService : IHostedService
             { SettingKeys.Translation.RepairMaxRetries, "1" },
 
             // Tagging
-            { SettingKeys.Translation.UseSubtitleTagging, "false" },
+            { SettingKeys.Translation.UseSubtitleTagging, "true" },
             { SettingKeys.Translation.RemoveLanguageTag, "false" },
-            { SettingKeys.Translation.SubtitleTag, "[Lingarr]" },
+            { SettingKeys.Translation.SubtitleTag, "-AI-TRANSLATED-" },
             { SettingKeys.Translation.SubtitleTagShort, "-ai-" },
-            { SettingKeys.Translation.CleanupOrphanedSubtitles, "false" },
+            { SettingKeys.Translation.CleanupOrphanedSubtitles, "true" },
+            { SettingKeys.Translation.TranslateSupplementalSubtitles, "false" },
 
             // Request/Retry
             { SettingKeys.Translation.RequestTimeout, "15" },
             { SettingKeys.Translation.MaxRetries, "20" },
+            { SettingKeys.Translation.MaxRequestRetries, "10" },
             { SettingKeys.Translation.RetryDelay, "5" },
             { SettingKeys.Translation.RetryDelayMultiplier, "2" },
 
@@ -75,41 +79,68 @@ public class StartupService : IHostedService
             { SettingKeys.Translation.AiContextAfter, "2" },
 
             // ASS/SSA Drawing cleanup
-            { SettingKeys.Translation.StripAssDrawingCommands, "false" },
-            { SettingKeys.Translation.CleanSourceAssDrawings, "false" },
+            { SettingKeys.Translation.StripAssDrawingCommands, "true" },
+            { SettingKeys.Translation.CleanSourceAssDrawings, "true" },
 
             // Batch Context Wrapper
             { SettingKeys.Translation.BatchContextEnabled, "false" },
             { SettingKeys.Translation.BatchContextBefore, "3" },
             { SettingKeys.Translation.BatchContextAfter, "3" },
 
+            // MKV Container Embedding
+            { SettingKeys.Translation.EmbedInContainer, "false" },
+            { SettingKeys.Translation.EmbedWhenPathTooLong, "true" },
+
             // Provider specific defaults
             { SettingKeys.Translation.Chutes.RequestBuffer, "50" },
+            { SettingKeys.Translation.NanoGpt.SubscriptionModelsOnly, "true" },
+            { SettingKeys.Translation.NanoGpt.WeeklyTokenAllowance, "60000000" },
+            { SettingKeys.Translation.NanoGpt.TokenReserve, "0" },
+            { SettingKeys.Translation.NanoGpt.DailyUnitReserve, "0" },
+            { SettingKeys.Translation.NanoGpt.MonthlyUnitReserve, "0" },
             { SettingKeys.Translation.Anthropic.Version, "2023-06-01" },
 
             // Automation
             { SettingKeys.Automation.AutomationEnabled, "false" },
             { SettingKeys.Automation.TranslationSchedule, "0 * * * *" },
+            { SettingKeys.Automation.CustomSourceScanSchedule, "15 * * * *" },
             { SettingKeys.Automation.MaxTranslationsPerRun, "100" },
             { SettingKeys.Automation.MovieSchedule, "0 4 * * *" },
             { SettingKeys.Automation.ShowSchedule, "0 4 * * *" },
             { SettingKeys.Automation.MovieAgeThreshold, "0" },
             { SettingKeys.Automation.ShowAgeThreshold, "0" },
 
-            // Subtitle Extraction
+            // Upload workspace
+            { SettingKeys.UploadWorkspace.StorageRoot, "/app/config/uploads" },
+            { SettingKeys.UploadWorkspace.RetentionDays, "7" },
+            { SettingKeys.UploadWorkspace.ReservedWorkerSlots, "0" },
+            { SettingKeys.UploadWorkspace.MaxBatchSize, "100" },
+            { SettingKeys.UploadWorkspace.MaxFileSizeBytes, "2147483648" },
+
+// Subtitle Extraction
             { SettingKeys.SubtitleExtraction.ExtractionMode, "on_demand" },
+            { SettingKeys.SubtitleExtraction.OcrEnabled, "true" },
+            { SettingKeys.SubtitleExtraction.OcrAutoQueue, "true" },
+            { SettingKeys.SubtitleExtraction.OcrMinQualityScore, "70" },
+            { SettingKeys.SubtitleExtraction.OcrLanguages, "auto" },
+            { SettingKeys.SubtitleExtraction.OcrTranslationPromptEnabled, "true" },
+            { SettingKeys.SubtitleExtraction.DetectUnknownLanguages, "true" },
+            { SettingKeys.SubtitleExtraction.DetectUnknownLanguagesSchedule, "0 3 * * *" },
 
             // Validation
             { SettingKeys.SubtitleValidation.ValidateSubtitles, "false" },
             { SettingKeys.SubtitleValidation.IntegrityValidationEnabled, "false" },
+            { SettingKeys.SubtitleValidation.BulkIntegrityAutoQueue, "false" },
+            { SettingKeys.SubtitleValidation.BulkIntegrityMaxAutoQueuePerRun, "25" },
             { SettingKeys.SubtitleValidation.MaxFileSizeBytes, "1048576" },
             { SettingKeys.SubtitleValidation.MaxSubtitleLength, "500" },
             { SettingKeys.SubtitleValidation.MinSubtitleLength, "2" },
             { SettingKeys.SubtitleValidation.MinDurationMs, "500" },
             { SettingKeys.SubtitleValidation.MaxDurationSecs, "10" },
+            { SettingKeys.SubtitleValidation.SkipWhenTargetEmbedded, "true" },
 
             // Default AI Prompt Safeguard
-            { SettingKeys.Translation.AiPrompt, "Translate subtitles into natural, plain text. NEVER include ASS/SSA tags ({\\...}), HTML tags, or animation/karaoke markers in your output. If a line is purely an animation syllable (e.g., 'ha', 'na', 'te') or non-dialogue fragment, return an empty string for that position. Maintain the natural flow of speech and do NOT remove valid short dialogue like 'No!', 'Stop!', or single-word meanings." }
+            { SettingKeys.Translation.AiPrompt, "Translate subtitles into natural, plain text in {targetLanguage}. NEVER include ASS/SSA tags ({\\...}), HTML tags, or formatting markers in your output. Maintain the natural flow of speech. Translate ALL content including dialogue, song lyrics, signs, titles, and on-screen text. Do not return empty strings for any position - always provide a translation." }
         });
 
         await CheckAndUpdateIntegrationSettings(dbContext, "radarr", [
@@ -127,6 +158,7 @@ public class StartupService : IHostedService
         
         // Auto-recover media stuck in AwaitingSource due to previous indexing bug
         await FixStuckAwaitingSourceMedia(dbContext);
+        await RecoverStaleOcrStates(dbContext);
 
         // Ensure service_type is not empty
         var serviceType = await dbContext.Settings.FirstOrDefaultAsync(s => s.Key == SettingKeys.Translation.ServiceType);
@@ -242,7 +274,18 @@ public class StartupService : IHostedService
 
             { "CHUTES_MODEL", SettingKeys.Translation.Chutes.Model },
             { "CHUTES_API_KEY", SettingKeys.Translation.Chutes.ApiKey },
-            { "CHUTES_USAGE_LIMIT_OVERRIDE", SettingKeys.Translation.Chutes.UsageLimitOverride }
+            { "CHUTES_USAGE_LIMIT_OVERRIDE", SettingKeys.Translation.Chutes.UsageLimitOverride },
+
+            { "NANOGPT_MODEL", SettingKeys.Translation.NanoGpt.Model },
+            { "NANOGPT_API_KEY", SettingKeys.Translation.NanoGpt.ApiKey },
+            { "NANOGPT_SUBSCRIPTION_MODELS_ONLY", SettingKeys.Translation.NanoGpt.SubscriptionModelsOnly },
+            { "NANOGPT_WEEKLY_TOKEN_ALLOWANCE", SettingKeys.Translation.NanoGpt.WeeklyTokenAllowance },
+            { "NANOGPT_TOKEN_RESERVE", SettingKeys.Translation.NanoGpt.TokenReserve },
+            { "NANOGPT_DAILY_UNIT_RESERVE", SettingKeys.Translation.NanoGpt.DailyUnitReserve },
+            { "NANOGPT_MONTHLY_UNIT_RESERVE", SettingKeys.Translation.NanoGpt.MonthlyUnitReserve },
+
+            { "CROFAI_MODEL", SettingKeys.Translation.CrofAi.Model },
+            { "CROFAI_API_KEY", SettingKeys.Translation.CrofAi.ApiKey }
         };
 
         foreach (var (envVar, settingKey) in environmentSettings)
@@ -437,6 +480,114 @@ public class StartupService : IHostedService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error during AwaitingSource stuck media recovery. Continuing startup...");
+        }
+    }
+
+    private async Task RecoverStaleOcrStates(LingarrDbContext dbContext)
+    {
+        try
+        {
+            var now = DateTime.UtcNow;
+            var transientSubtitles = await dbContext.EmbeddedSubtitles
+                .Where(subtitle => subtitle.OcrStatus == SubtitleOcrStatus.Queued ||
+                                   subtitle.OcrStatus == SubtitleOcrStatus.Processing)
+                .ToListAsync();
+            var staleSubtitles = transientSubtitles
+                .Where(subtitle => SubtitleOcrStatePolicy.IsStaleTransient(subtitle, now))
+                .Where(subtitle =>
+                {
+                    if (subtitle.MovieId.HasValue)
+                    {
+                        return !SubtitleOcrJobActivity.HasActiveJob(
+                            subtitle.MovieId.Value,
+                            MediaType.Movie,
+                            subtitle.StreamIndex);
+                    }
+
+                    return subtitle.EpisodeId.HasValue &&
+                           !SubtitleOcrJobActivity.HasActiveJob(
+                               subtitle.EpisodeId.Value,
+                               MediaType.Episode,
+                               subtitle.StreamIndex);
+                })
+                .ToList();
+
+            var neverAttempted = transientSubtitles
+                .Where(subtitle => !subtitle.OcrAttemptedAt.HasValue)
+                .Where(subtitle =>
+                {
+                    if (subtitle.MovieId.HasValue)
+                    {
+                        return !SubtitleOcrJobActivity.HasActiveJob(
+                            subtitle.MovieId.Value,
+                            MediaType.Movie,
+                            subtitle.StreamIndex);
+                    }
+
+                    return subtitle.EpisodeId.HasValue &&
+                           !SubtitleOcrJobActivity.HasActiveJob(
+                               subtitle.EpisodeId.Value,
+                               MediaType.Episode,
+                               subtitle.StreamIndex);
+                })
+                .ToList();
+
+            var allToRecover = staleSubtitles
+                .Union(neverAttempted)
+                .ToList();
+
+            if (allToRecover.Count == 0)
+            {
+                return;
+            }
+
+            var episodeIds = allToRecover
+                .Where(subtitle => subtitle.EpisodeId.HasValue)
+                .Select(subtitle => subtitle.EpisodeId!.Value)
+                .Distinct()
+                .ToList();
+            var movieIds = allToRecover
+                .Where(subtitle => subtitle.MovieId.HasValue)
+                .Select(subtitle => subtitle.MovieId!.Value)
+                .Distinct()
+                .ToList();
+
+            foreach (var subtitle in allToRecover)
+            {
+                SubtitleOcrStatePolicy.ResetStaleTransient(subtitle);
+            }
+
+            await dbContext.SaveChangesAsync();
+
+            if (episodeIds.Count > 0)
+            {
+                await dbContext.Episodes
+                    .Where(episode => episodeIds.Contains(episode.Id))
+                    .ExecuteUpdateAsync(setters => setters.SetProperty(
+                        episode => episode.TranslationState,
+                        TranslationState.Unknown));
+            }
+
+            if (movieIds.Count > 0)
+            {
+                await dbContext.Movies
+                    .Where(movie => movieIds.Contains(movie.Id))
+                    .ExecuteUpdateAsync(setters => setters.SetProperty(
+                        movie => movie.TranslationState,
+                        TranslationState.Unknown));
+            }
+
+            _logger.LogWarning(
+                "Recovered {Count} stale OCR transient subtitle state(s) ({StaleFromTimeout} from timeout, {NeverAttempted} never attempted) across {EpisodeCount} episode(s) and {MovieCount} movie(s).",
+                allToRecover.Count,
+                staleSubtitles.Count,
+                neverAttempted.Count,
+                episodeIds.Count,
+                movieIds.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during stale OCR state recovery. Continuing startup...");
         }
     }
 }

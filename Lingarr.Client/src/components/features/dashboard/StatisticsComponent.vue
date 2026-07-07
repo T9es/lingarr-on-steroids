@@ -98,6 +98,7 @@
                             v-if="item.i === 'translation-history'"
                             :daily-statistics="dailyStats || []"
                             :statistics="statistics"
+                            :refresh-key="realtimeState.lastCompletedRequestId"
                             :is-loading="loading" />
 
                         <!-- Job Queue Widget -->
@@ -284,6 +285,17 @@ const fetchDailyStats = async () => {
     }
 }
 
+watch(
+    () => realtimeState.value.lastCompletedRequestId,
+    async (requestId, previousRequestId) => {
+        if (!requestId || requestId === previousRequestId) {
+            return
+        }
+
+        await Promise.all([fetchDailyStats(), fetchStatistics()])
+    }
+)
+
 onMounted(async () => {
     await connectSignalR()
     await loadInitialTranslations()
@@ -367,7 +379,9 @@ const ActiveTranslationsContent = defineComponent({
                                                   ? 'bg-blue-500/20 text-blue-400'
                                                   : t.status === 'Pending'
                                                     ? 'bg-yellow-500/20 text-yellow-400'
-                                                    : 'bg-secondary/50 text-primary-content/60'
+                                                    : t.status === 'Paused'
+                                                      ? 'bg-orange-500/20 text-orange-300'
+                                                      : 'bg-secondary/50 text-primary-content/60'
                                           ]
                                       },
                                       t.status

@@ -185,7 +185,7 @@
                                     " />
                             </div>
                             <div
-                                class="col-span-1 flex items-center justify-center px-4 py-2"
+                                class="col-span-1 flex items-center justify-center gap-2 px-4 py-2"
                                 @click.stop>
                                 <button
                                     class="border-accent hover:bg-accent cursor-pointer rounded border p-1 transition-colors"
@@ -196,6 +196,16 @@
                                         v-if="translatingMovies[group.movies[0].id]"
                                         class="h-4 w-4 animate-spin" />
                                     <LanguageIcon v-else class="h-4 w-4" />
+                                </button>
+                                <button
+                                    class="border-accent hover:bg-accent cursor-pointer rounded border p-1 transition-colors"
+                                    :disabled="recreatingMovies[group.movies[0].id]"
+                                    :title="translate('common.recreate')"
+                                    @click="recreateMovie(group.movies[0])">
+                                    <LoaderCircleIcon
+                                        v-if="recreatingMovies[group.movies[0].id]"
+                                        class="h-4 w-4 animate-spin" />
+                                    <ReloadIcon v-else class="h-4 w-4" />
                                 </button>
                             </div>
                             <div
@@ -394,7 +404,7 @@
                                         " />
                                 </div>
                                 <div
-                                    class="col-span-1 flex items-center justify-center px-4 py-2"
+                                    class="col-span-1 flex items-center justify-center gap-2 px-4 py-2"
                                     @click.stop>
                                     <button
                                         class="border-accent hover:bg-accent cursor-pointer rounded border p-1 transition-colors"
@@ -405,6 +415,16 @@
                                             v-if="translatingMovies[item.id]"
                                             class="h-4 w-4 animate-spin" />
                                         <LanguageIcon v-else class="h-4 w-4" />
+                                    </button>
+                                    <button
+                                        class="border-accent hover:bg-accent cursor-pointer rounded border p-1 transition-colors"
+                                        :disabled="recreatingMovies[item.id]"
+                                        :title="translate('common.recreate')"
+                                        @click="recreateMovie(item)">
+                                        <LoaderCircleIcon
+                                            v-if="recreatingMovies[item.id]"
+                                            class="h-4 w-4 animate-spin" />
+                                        <ReloadIcon v-else class="h-4 w-4" />
                                     </button>
                                 </div>
                                 <div
@@ -488,6 +508,7 @@ import InputComponent from '@/components/common/InputComponent.vue'
 import LanguageIcon from '@/components/icons/LanguageIcon.vue'
 import LoaderCircleIcon from '@/components/icons/LoaderCircleIcon.vue'
 import CheckMarkCicleIcon from '@/components/icons/CheckMarkCicleIcon.vue'
+import ReloadIcon from '@/components/icons/ReloadIcon.vue'
 import TranslationStateBadge from '@/components/common/TranslationStateBadge.vue'
 
 const { translate } = useI18n()
@@ -496,6 +517,7 @@ const settingStore = useSettingStore()
 const instanceStore = useInstanceStore()
 
 const translatingMovies = reactive<Record<number, boolean>>({})
+const recreatingMovies = reactive<Record<number, boolean>>({})
 const integrityCheckingMovies = reactive<Record<number, boolean>>({})
 
 // Group management for multi-instance duplicates
@@ -643,6 +665,22 @@ const translateMovie = async (movie: IMovie) => {
     }
 }
 
+const recreateMovie = async (movie: IMovie) => {
+    recreatingMovies[movie.id] = true
+    try {
+        const response = await services.translate.translateMedia<TranslateMediaResponse>(
+            movie.id,
+            MEDIA_TYPE.MOVIE,
+            true
+        )
+        console.log(response.message)
+    } catch (error) {
+        console.error('Failed to recreate movie:', error)
+    } finally {
+        recreatingMovies[movie.id] = false
+    }
+}
+
 const checkIntegrityMovie = async (movie: IMovie) => {
     integrityCheckingMovies[movie.id] = true
     try {
@@ -689,7 +727,18 @@ const truncate = (str: string | null | undefined, len: number): string => {
 
 const getEmbeddedBadgeClasses = (sub: IEmbeddedSubtitle): string => {
     if (!sub.isTextBased) {
-        // Image-based (PGS/VobSub) - gray, non-clickable
+        if (sub.ocrStatus === 'Queued' || sub.ocrStatus === 'Processing') {
+            return 'cursor-pointer text-accent border-accent bg-accent/10'
+        }
+        if (sub.isOcrUsable) {
+            return 'cursor-pointer text-blue-300 border-blue-500 bg-blue-900/30'
+        }
+        if (sub.ocrStatus === 'BlockedLowQuality' || sub.ocrStatus === 'Failed') {
+            return 'cursor-pointer text-red-300 border-red-500 bg-red-900/30'
+        }
+        if (sub.isOcrSupported) {
+            return 'cursor-pointer text-blue-300 border-blue-500 bg-blue-900/20'
+        }
         return 'cursor-not-allowed text-secondary-content/50 border-secondary-content/30 bg-secondary/30 opacity-60'
     }
     if (sub.isExtracted) {

@@ -8,6 +8,18 @@ namespace Lingarr.Server.Tests.Services.Subtitle;
 public class SubtitleLanguageHelperTests
 {
     [Fact]
+    public void GetSupplementalOutputCaption_ShouldNotMarkForcedDialogueAsForced()
+    {
+        Assert.Null(SubtitleLanguageHelper.GetSupplementalOutputCaption(SubtitleLanguageHelper.TypeForcedDialogue));
+        Assert.Equal(
+            "forced",
+            SubtitleLanguageHelper.GetSupplementalOutputCaption(SubtitleLanguageHelper.TypeForced));
+        Assert.Equal(
+            "signs",
+            SubtitleLanguageHelper.GetSupplementalOutputCaption(SubtitleLanguageHelper.TypeSignsSongs));
+    }
+
+    [Fact]
     public void FindBestMatch_ShouldPreferGoodLowerPriority_OverGarbageHigherPriority()
     {
         // Arrange: English "Signs & Songs" vs Japanese "Full"
@@ -245,5 +257,70 @@ public class SubtitleLanguageHelperTests
         
         Assert.Equal("ja", result.MatchedLanguage);
         Assert.Equal(1, result.Subtitle?.StreamIndex);
+    }
+
+    [Theory]
+    [InlineData("Movie.en.srt", "en")]
+    [InlineData("Movie.eng.ass", "en")]
+    [InlineData("Show.S01E01.[pl].vtt", "pl")]
+    [InlineData("Episode_ja.ssa", "ja")]
+    [InlineData("Film.pt-BR.srt", "pt")]
+    public void DetectLanguageFromFileName_ShouldRecognizeSupportedPatterns(string fileName, string expectedLanguage)
+    {
+        var detectedLanguage = SubtitleLanguageHelper.DetectLanguageFromFileName(fileName);
+
+        Assert.Equal(expectedLanguage, detectedLanguage);
+    }
+
+    [Theory]
+    [InlineData("queen.srt")]
+    [InlineData("plane.ass")]
+    [InlineData("Movie.ass.srt")]
+    [InlineData("Movie.sub.srt")]
+    [InlineData("railgun-e01-60s.embedded.ass")]
+    public void DetectLanguageFromFileName_ShouldAvoidFalsePositives(string fileName)
+    {
+        var detectedLanguage = SubtitleLanguageHelper.DetectLanguageFromFileName(fileName);
+
+        Assert.Null(detectedLanguage);
+    }
+
+    [Fact]
+    public void DetectLanguageFromFileName_ShouldRespectConfiguredLanguages()
+    {
+        var detectedLanguage = SubtitleLanguageHelper.DetectLanguageFromFileName(
+            "Movie.de.srt",
+            ["en", "pl"]);
+
+        Assert.Null(detectedLanguage);
+    }
+
+    [Theory]
+    [InlineData("New Amsterdam (2018) - S05E06 - Give Me a Sign [WEBDL-1080p][EAC3 5.pl.-ai-sztuczna-inteligencja-.srt")]
+    [InlineData("The Walking Dead (2010) - S09E03 - Warning Signs [WEBDL-1080p][EAC3 5.pl.-ai-sztuczna-inteligencja-.srt")]
+    [InlineData("Toradora! (2008) - S01E03 - 003 - Your Song [Bluray-1080p][FLAC 2.pl.-ai-sztuczna-inteligencja-.srt")]
+    [InlineData("Pokemon (1997) - S20E31 - 1253 - Song Within the Mist [WEBDL-1080p][AAC 2.pl.-ai-sztuczna-inteligencja-.ass")]
+    public void DetermineSubtitleTypeFromFilename_ShouldNotTreatMediaTitleKeywordsAsSupplemental(string fileName)
+    {
+        var subtitleType = SubtitleLanguageHelper.DetermineSubtitleTypeFromFilename(fileName);
+
+        Assert.Equal(SubtitleLanguageHelper.TypeFull, subtitleType);
+    }
+
+    [Theory]
+    [InlineData("Movie.pl.forced.-ai-sztuczna-inteligencja-.srt", SubtitleLanguageHelper.TypeForced)]
+    [InlineData("Movie.en.signs.srt", SubtitleLanguageHelper.TypeSignsSongs)]
+    [InlineData("Movie.en.signs-and-songs.srt", SubtitleLanguageHelper.TypeSignsSongs)]
+    [InlineData("Movie.jpn.karaoke.ass", SubtitleLanguageHelper.TypeSignsSongs)]
+    [InlineData("Movie.en.sdh.srt", SubtitleLanguageHelper.TypeSdh)]
+    [InlineData("Movie.en.cc.srt", SubtitleLanguageHelper.TypeClosedCaptions)]
+    [InlineData("Movie.en.commentary.srt", SubtitleLanguageHelper.TypeCommentary)]
+    public void DetermineSubtitleTypeFromFilename_ShouldUseSubtitleSuffixAfterLanguageToken(
+        string fileName,
+        string expectedType)
+    {
+        var subtitleType = SubtitleLanguageHelper.DetermineSubtitleTypeFromFilename(fileName);
+
+        Assert.Equal(expectedType, subtitleType);
     }
 }

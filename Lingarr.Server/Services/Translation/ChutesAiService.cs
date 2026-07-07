@@ -24,8 +24,10 @@ public class ChutesAiService : OpenAiService
         IChutesUsageService usageService,
         IHttpClientFactory httpClientFactory,
         IDashboardService? dashboardService = null,
-        ITokenUsageService? tokenUsageService = null)
-        : base(settings, logger, httpClientFactory.CreateClient(nameof(ChutesAiService)), dashboardService, tokenUsageService)
+        ITokenUsageService? tokenUsageService = null,
+        ITranslationPromptAugmenter? translationPromptAugmenter = null,
+        IProviderCircuitBreaker? circuitBreaker = null)
+        : base(settings, logger, httpClientFactory.CreateClient(nameof(ChutesAiService)), dashboardService, tokenUsageService, translationPromptAugmenter, circuitBreaker)
     {
         _usageService = usageService;
     }

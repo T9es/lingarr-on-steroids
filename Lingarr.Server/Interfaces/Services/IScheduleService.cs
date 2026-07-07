@@ -21,10 +21,11 @@ public interface IScheduleService
     
     
     /// <summary>
-    /// Gets a list of recurring jobs with their current status.
+    /// Gets a list of recurring jobs with their current status and
+    /// whether each job is currently enabled by its settings.
     /// </summary>
     /// <returns>A list of recurring job statuses</returns>
-    List<RecurringJobStatus> GetRecurringJobs();
+    Task<List<RecurringJobStatus>> GetRecurringJobs();
 
     /// <summary>
     /// Synchronizes recurring automation job registration with current settings.
@@ -32,9 +33,26 @@ public interface IScheduleService
     Task SyncAutomationJobAsync();
 
     /// <summary>
+    /// Synchronizes recurring custom-source scan job registration with current settings.
+    /// </summary>
+    Task SyncCustomSourceScanJobAsync();
+
+    /// <summary>
+    /// Synchronizes the unknown language detection job registration with current settings.
+    /// Registers the job when detect_unknown_languages is true and has a schedule,
+    /// removes it otherwise.
+    /// </summary>
+    Task SyncUnknownLanguageDetectionJobAsync();
+
+    /// <summary>
     /// Synchronizes recurring indexer job registrations with current settings.
     /// </summary>
     Task SyncIndexerJobsAsync();
+
+    /// <summary>
+    /// Synchronizes recurring maintenance job registrations with current settings.
+    /// </summary>
+    Task SyncMaintenanceJobsAsync();
     
     /// <summary>
     /// Gets the current state of a specific job.

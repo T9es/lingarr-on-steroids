@@ -19,17 +19,25 @@
                         fallback="none"
                         class="h-7 w-7"
                         :style="{ color: providerMeta.color }" />
-                    <span v-else class="text-lg font-semibold" :style="{ color: providerMeta.color }">
+                    <span
+                        v-else
+                        class="text-lg font-semibold"
+                        :style="{ color: providerMeta.color }">
                         {{ providerMeta.label.slice(0, 2) }}
                     </span>
                 </div>
 
                 <div class="min-w-0 flex-1 space-y-1">
-                    <p class="text-secondary-content text-xs font-semibold tracking-[0.18em] uppercase">
+                    <p
+                        class="text-secondary-content text-xs font-semibold tracking-[0.18em] uppercase">
                         {{ translate('onboardingSteps.configureService') }}
                     </p>
                     <h3 class="text-primary-content text-lg font-semibold sm:text-xl">
-                        {{ translate('onboarding.service.configureSelected', { service: serviceName }) }}
+                        {{
+                            translate('onboarding.service.configureSelected', {
+                                service: serviceName
+                            })
+                        }}
                     </h3>
                     <p class="text-secondary-content text-sm leading-6">
                         {{ providerMeta.label }}
@@ -62,6 +70,8 @@ import LocalAiConfig from '@/components/features/settings/services/LocalAiConfig
 import GeminiConfig from '@/components/features/settings/services/GeminiConfig.vue'
 import DeepSeekConfig from '@/components/features/settings/services/DeepSeekConfig.vue'
 import ChutesConfig from '@/components/features/settings/services/ChutesConfig.vue'
+import NanoGptConfig from '@/components/features/settings/services/NanoGptConfig.vue'
+import CrofAiConfig from '@/components/features/settings/services/CrofAiConfig.vue'
 
 const emit = defineEmits<{
     save: []
@@ -82,7 +92,9 @@ const serviceName = computed(() => {
         [SERVICE_TYPE.DEEPL]: 'services.serviceNames.deepl',
         [SERVICE_TYPE.GEMINI]: 'services.serviceNames.gemini',
         [SERVICE_TYPE.DEEPSEEK]: 'services.serviceNames.deepseek',
+        [SERVICE_TYPE.NANOGPT]: 'services.serviceNames.nanogpt',
         [SERVICE_TYPE.CHUTES]: 'services.serviceNames.chutes',
+        [SERVICE_TYPE.CROFAI]: 'services.serviceNames.crofai',
         [SERVICE_TYPE.GOOGLE]: 'services.serviceNames.google',
         [SERVICE_TYPE.BING]: 'services.serviceNames.bing',
         [SERVICE_TYPE.MICROSOFT]: 'services.serviceNames.microsoft',
@@ -111,6 +123,10 @@ const serviceConfigComponent = computed(() => {
             return DeepSeekConfig
         case SERVICE_TYPE.CHUTES:
             return ChutesConfig
+        case SERVICE_TYPE.CROFAI:
+            return CrofAiConfig
+        case SERVICE_TYPE.NANOGPT:
+            return NanoGptConfig
         case SERVICE_TYPE.GOOGLE:
         case SERVICE_TYPE.BING:
         case SERVICE_TYPE.MICROSOFT:

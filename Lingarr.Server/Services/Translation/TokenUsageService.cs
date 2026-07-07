@@ -122,6 +122,7 @@ public class TokenUsageService : ITokenUsageService
             "deepseek" => SettingKeys.Translation.TokenLimits.DeepSeekTokenLimit,
             "localai" => SettingKeys.Translation.TokenLimits.LocalAiTokenLimit,
             "chutes" => SettingKeys.Translation.TokenLimits.ChutesTokenLimit,
+            "nanogpt" => SettingKeys.Translation.TokenLimits.NanoGptTokenLimit,
             _ => null
         };
 

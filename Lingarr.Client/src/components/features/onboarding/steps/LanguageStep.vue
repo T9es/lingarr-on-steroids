@@ -1,5 +1,38 @@
 <template>
     <div class="space-y-6">
+        <!-- Source Language Mode Toggle -->
+        <div class="border-accent bg-secondary rounded-md border p-4">
+            <div class="mb-3 flex flex-col space-x-2">
+                <span class="text-primary-content font-semibold">
+                    {{ translate('settings.translate.sourceLanguageModeTitle') }}
+                </span>
+                <span class="text-secondary-content text-sm">
+                    {{ translate('settings.translate.sourceLanguageModeAutoDescription') }}
+                </span>
+            </div>
+            <ToggleButton v-model="autoModeEnabled">
+                <span class="text-primary-content text-sm font-medium">
+                    {{
+                        isAutoMode
+                            ? translate('settings.translate.sourceLanguageModeAuto')
+                            : translate('settings.translate.sourceLanguageModeManual')
+                    }}
+                </span>
+            </ToggleButton>
+            <div
+                v-if="isAutoMode"
+                class="bg-accent/10 text-accent mt-3 inline-flex items-center rounded-md px-3 py-1 text-xs font-medium">
+                {{ translate('settings.translate.sourceLanguageModeAutoBadge') }}
+            </div>
+            <div
+                v-else
+                class="border-accent bg-accent/5 mt-3 rounded-md border border-dashed px-3 py-2">
+                <span class="text-secondary-content text-xs leading-5">
+                    {{ translate('onboarding.language.autoModeRecommendation') }}
+                </span>
+            </div>
+        </div>
+
         <!-- Source Languages Section -->
         <div>
             <h3 class="text-primary-content mb-2 text-lg font-semibold">
@@ -8,11 +41,11 @@
             <p class="text-secondary-content mb-3 text-sm">
                 {{ translate('onboarding.language.sourceDescription') }}
             </p>
-            <LanguageSelect v-model:selected="sourceLanguages" :options="languages" />
+            <LanguageSelect v-model:selected="sourceLanguages" :options="languages" :disabled="isAutoMode" />
         </div>
 
         <!-- Target Languages Section (only shown when source languages are selected) -->
-        <div v-if="sourceLanguages.length > 0">
+        <div v-if="isAutoMode || sourceLanguages.length > 0">
             <h3 class="text-primary-content mb-2 text-lg font-semibold">
                 {{ translate('onboarding.language.targetTitle') }}
             </h3>
@@ -27,6 +60,7 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import LanguageSelect from '@/components/features/settings/LanguageSelect.vue'
+import ToggleButton from '@/components/common/ToggleButton.vue'
 import { ILanguage, SETTINGS } from '@/ts'
 import { useTranslateStore } from '@/store/translate'
 import { useSettingStore } from '@/store/setting'
@@ -63,12 +97,15 @@ const targetLanguages = computed({
 
 // Compute available target languages based on selected source languages
 const targetLanguageOptions = computed(() => {
-    if (sourceLanguages.value.length === 0) {
+    const sourceOptions = isAutoMode.value && sourceLanguages.value.length === 0
+        ? languages.value
+        : sourceLanguages.value
+    if (sourceOptions.length === 0) {
         return []
     }
 
     // Get all target codes from selected source languages
-    const allTargets = sourceLanguages.value.flatMap((sourceLanguage) => {
+    const allTargets = sourceOptions.flatMap((sourceLanguage) => {
         const sourceTargetSet = languages.value.find((lang) => lang.code === sourceLanguage.code)
         if (!sourceTargetSet) {
             return []
@@ -90,6 +127,22 @@ const targetLanguageOptions = computed(() => {
         })
         .filter((lang): lang is ILanguage => lang !== null)
 })
+
+const autoModeEnabled = computed({
+    get: (): string =>
+        (settingStore.getSetting(SETTINGS.SOURCE_LANGUAGE_MODE) as string) === 'auto'
+            ? 'true'
+            : 'false',
+    set: (newValue: string): void => {
+        settingStore.updateSetting(
+            SETTINGS.SOURCE_LANGUAGE_MODE,
+            newValue === 'true' ? 'auto' : 'manual',
+            true
+        )
+    }
+})
+
+const isAutoMode = computed((): boolean => autoModeEnabled.value === 'true')
 
 // Load languages on mount
 onMounted(() => {

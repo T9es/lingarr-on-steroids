@@ -5,7 +5,7 @@ namespace Lingarr.Server.Services.Subtitle;
 
 public class VttWriter : ISubtitleWriter
 {
-    private IEnumerable<string> SubtitleItemToSubtitleEntry(SubtitleItem subtitleItem, int subtitleEntryNumber)
+    private IEnumerable<string> SubtitleItemToSubtitleEntry(SubtitleItem subtitleItem)
     {
         string FormatTimeCodeLine()
         {
@@ -15,7 +15,7 @@ public class VttWriter : ISubtitleWriter
         }
 
         List<string> lines = new List<string>();
-        lines.Add(subtitleEntryNumber.ToString());
+        lines.Add(subtitleItem.Position.ToString());
         lines.Add(FormatTimeCodeLine());
         var linesToUse = subtitleItem.TranslatedLines.Count > 0 ? subtitleItem.TranslatedLines : subtitleItem.Lines;
         lines.AddRange(linesToUse);
@@ -49,7 +49,7 @@ public class VttWriter : ISubtitleWriter
             for (int index = 0; index < items.Count; index++)
             {
                 SubtitleItem subtitleItem = items[index];
-                IEnumerable<string> lines = SubtitleItemToSubtitleEntry(subtitleItem, subtitleItem.Position);
+                IEnumerable<string> lines = SubtitleItemToSubtitleEntry(subtitleItem);
                 foreach (string line in lines)
                 {
                     await writer.WriteLineAsync(line);

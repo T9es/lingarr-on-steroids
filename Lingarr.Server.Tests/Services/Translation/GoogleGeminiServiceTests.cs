@@ -11,6 +11,7 @@ using Lingarr.Core.Configuration;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models.Batch;
+using Lingarr.Server.Tests.Data;
 using Lingarr.Server.Services;
 using Lingarr.Server.Services.Translation;
 using Microsoft.Extensions.Logging;
@@ -75,29 +76,15 @@ public class GoogleGeminiServiceTests
         };
 
         // Truncated JSON response
-        // Full response would be: [{"position":1,"line":"Hola"},{"position":2,"line":"Mundo"}]
-        // Truncated: [{"position":1,"line":"Hola"},{"position":2,"line":"Mun
-        var truncatedJson = "[{\"position\":1,\"line\":\"Hola\"},{\"position\":2,\"line\":\"Mun";
+        // Full response would include an exact sourceKey for each translated item.
+        var helloKey = SourceKey(1, "Hello");
+        var worldKey = SourceKey(2, "World");
+        var truncatedJson =
+            $"[{{\"position\":1,\"sourceKey\":\"{helloKey}\",\"line\":\"Hola\"}},{{\"position\":2,\"sourceKey\":\"{worldKey}\",\"line\":\"Mun";
         
-        var geminiResponse = new
-        {
-            candidates = new[]
-            {
-                new
-                {
-                    content = new
-                    {
-                        parts = new[]
-                        {
-                            new { text = truncatedJson }
-                        }
-                    }
-                }
-            }
-        };
+        var sseContent = SseTestHelper.CreateGeminiSseResponse(truncatedJson,
+            promptTokens: 12, completionTokens: 8, totalTokens: 20);
 
-        var responseContent = JsonSerializer.Serialize(geminiResponse);
-        
         _httpMessageHandlerMock
             .Protected()
             .Setup<Task<HttpResponseMessage>>(
@@ -108,7 +95,7 @@ public class GoogleGeminiServiceTests
             .ReturnsAsync(new HttpResponseMessage
             {
                 StatusCode = HttpStatusCode.OK,
-                Content = new StringContent(responseContent, Encoding.UTF8, "application/json")
+                Content = new StringContent(sseContent, Encoding.UTF8, "text/event-stream")
             });
 
         // Act
@@ -159,27 +146,12 @@ public class GoogleGeminiServiceTests
 
         // Simulate truncation happening right inside a number, like in Issue #204
         // ...{"position":43
-        var truncatedJson = "[{\"position\":1,\"line\":\"Line 1\"},{\"position\":2";
+        var lineKey = SourceKey(1, "Line 1");
+        var truncatedJson = $"[{{\"position\":1,\"sourceKey\":\"{lineKey}\",\"line\":\"Line 1\"}},{{\"position\":2";
         
-        var geminiResponse = new
-        {
-            candidates = new[]
-            {
-                new
-                {
-                    content = new
-                    {
-                        parts = new[]
-                        {
-                            new { text = truncatedJson }
-                        }
-                    }
-                }
-            }
-        };
+        var sseContent = SseTestHelper.CreateGeminiSseResponse(truncatedJson,
+            promptTokens: 12, completionTokens: 8, totalTokens: 20);
 
-        var responseContent = JsonSerializer.Serialize(geminiResponse);
-        
         _httpMessageHandlerMock
             .Protected()
             .Setup<Task<HttpResponseMessage>>(
@@ -190,7 +162,7 @@ public class GoogleGeminiServiceTests
             .ReturnsAsync(new HttpResponseMessage
             {
                 StatusCode = HttpStatusCode.OK,
-                Content = new StringContent(responseContent, Encoding.UTF8, "application/json")
+                Content = new StringContent(sseContent, Encoding.UTF8, "text/event-stream")
             });
 
         // Act
@@ -200,6 +172,70 @@ public class GoogleGeminiServiceTests
         Assert.NotNull(result);
         Assert.Single(result); // Should contain only the first item
         Assert.Equal("Line 1", result[1]);
+    }
+
+    [Fact]
+    public async Task TranslateBatchAsync_RejectsShiftedSourceKeysInsteadOfApplyingWrongText()
+    {
+        var settings = new Dictionary<string, string>
+        {
+            { SettingKeys.Translation.Gemini.ApiKey, "test-api-key" },
+            { SettingKeys.Translation.Gemini.Model, "gemini-pro" },
+            { SettingKeys.Translation.AiPrompt, "Translate this." },
+            { SettingKeys.Translation.AiContextPrompt, "Context." },
+            { SettingKeys.Translation.AiContextPromptEnabled, "false" },
+            { SettingKeys.Translation.CustomAiParameters, "[]" },
+            { SettingKeys.Translation.RequestTimeout, "30" },
+            { SettingKeys.Translation.MaxRetries, "3" },
+            { SettingKeys.Translation.RetryDelay, "1000" },
+            { SettingKeys.Translation.RetryDelayMultiplier, "2" }
+        };
+
+        _settingsMock.Setup(s => s.GetSettings(It.IsAny<IEnumerable<string>>()))
+            .ReturnsAsync(settings);
+
+        var batch = new List<BatchSubtitleItem>
+        {
+            new() { Position = 1, Line = "LISTEN, EVERYONE." },
+            new() { Position = 2, Line = "I SEE THEM." }
+        };
+        var shiftedJson = JsonSerializer.Serialize(new[]
+        {
+            new
+            {
+                position = 1,
+                sourceKey = SourceKey(2, "I SEE THEM."),
+                line = "WIDZE ICH."
+            },
+            new
+            {
+                position = 2,
+                sourceKey = SourceKey(2, "I SEE THEM."),
+                line = "WIDZE ICH."
+            }
+        });
+        var sseContent = SseTestHelper.CreateGeminiSseResponse(
+            shiftedJson,
+            promptTokens: 12,
+            completionTokens: 8,
+            totalTokens: 20);
+
+        _httpMessageHandlerMock
+            .Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(new HttpResponseMessage
+            {
+                StatusCode = HttpStatusCode.OK,
+                Content = new StringContent(sseContent, Encoding.UTF8, "text/event-stream")
+            });
+
+        var result = await _service.TranslateBatchAsync(batch, "en", "pl", null, null, CancellationToken.None);
+
+        Assert.False(result.ContainsKey(1));
+        Assert.Equal("WIDZE ICH.", result[2]);
     }
 
     [Fact]
@@ -316,23 +352,9 @@ public class GoogleGeminiServiceTests
               }
             }
             """;
+        var helloKey = SourceKey(1, "Hello");
 
-        var successBody = JsonSerializer.Serialize(new
-        {
-            candidates = new[]
-            {
-                new
-                {
-                    content = new
-                    {
-                        parts = new[]
-                        {
-                            new { text = "[{\"position\":1,\"line\":\"Hola\"}]" }
-                        }
-                    }
-                }
-            }
-        });
+        var successJson = $"[{{\"position\":1,\"sourceKey\":\"{helloKey}\",\"line\":\"Hola\"}}]";
 
         _httpMessageHandlerMock
             .Protected()
@@ -348,7 +370,11 @@ public class GoogleGeminiServiceTests
             .ReturnsAsync(new HttpResponseMessage
             {
                 StatusCode = HttpStatusCode.OK,
-                Content = new StringContent(successBody, Encoding.UTF8, "application/json")
+                Content = new StringContent(
+                    SseTestHelper.CreateGeminiSseResponse(successJson,
+                        promptTokens: 12, completionTokens: 8, totalTokens: 20),
+                    Encoding.UTF8,
+                    "text/event-stream")
             });
 
         var result = await _service.TranslateBatchAsync(batch, "en", "es", null, null, CancellationToken.None);
@@ -532,5 +558,14 @@ public class GoogleGeminiServiceTests
                 123,
                 45),
             Times.Once);
+    }
+
+    private static string SourceKey(int position, string line)
+    {
+        return BatchTranslationResponseMapper.GetSourceKey(new BatchSubtitleItem
+        {
+            Position = position,
+            Line = line
+        });
     }
 }

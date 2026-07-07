@@ -31,7 +31,7 @@ public class ErrorLog
     /// <summary>
     /// Additional context or details
     /// </summary>
-    [MaxLength(2000)]
+    [MaxLength(10000)]
     public string? Details { get; set; }
     
     /// <summary>

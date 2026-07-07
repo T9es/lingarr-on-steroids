@@ -1,5 +1,9 @@
 using Hangfire;
+using System.Text.Json;
+using Lingarr.Core.Configuration;
+using Lingarr.Core.Data;
 using Lingarr.Core.Enum;
+using Lingarr.Core.Interfaces;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Jobs;
@@ -19,18 +23,29 @@ public class SubtitlePath
 [Route("api/[controller]")]
 public class SubtitleController : ControllerBase
 {
+    private static readonly string[] HangfireQueues = ["system", "default", "movies", "shows", "webhook"];
+
     private readonly ISubtitleService _subtitleService;
     private readonly ISubtitleIntegrityService _integrityService;
     private readonly ISubtitleExtractionService _extractionService;
+    private readonly ISettingService _settingService;
+    private readonly LingarrDbContext _dbContext;
+    private readonly IMediaSubtitleProcessor _mediaSubtitleProcessor;
 
     public SubtitleController(
         ISubtitleService subtitleService,
         ISubtitleIntegrityService integrityService,
-        ISubtitleExtractionService extractionService)
+        ISubtitleExtractionService extractionService,
+        ISettingService settingService,
+        LingarrDbContext dbContext,
+        IMediaSubtitleProcessor mediaSubtitleProcessor)
     {
         _subtitleService = subtitleService;
         _integrityService = integrityService;
         _extractionService = extractionService;
+        _settingService = settingService;
+        _dbContext = dbContext;
+        _mediaSubtitleProcessor = mediaSubtitleProcessor;
     }
     
     /// <summary>
@@ -67,9 +82,56 @@ public class SubtitleController : ControllerBase
         var current = Jobs.AssVerificationStats.Current;
         if (current == null)
         {
+            if (HasActiveAssVerificationJob())
+            {
+                return Ok(new Jobs.AssVerificationStats
+                {
+                    IsRunning = true,
+                    StatusMessage = "ASS integrity verification is queued or recovering after a restart. Progress will resume when the worker starts reporting."
+                });
+            }
+
             return Ok(new { isRunning = false });
         }
         return Ok(current);
+    }
+
+    private static bool HasActiveAssVerificationJob()
+    {
+        try
+        {
+            var storage = JobStorage.Current;
+            if (storage == null)
+            {
+                return false;
+            }
+
+            var monitoringApi = storage.GetMonitoringApi();
+            if (monitoringApi.ProcessingJobs(0, 1000).Any(job => IsAssVerificationJob(job.Value?.Job)))
+            {
+                return true;
+            }
+
+            foreach (var queue in HangfireQueues)
+            {
+                if (monitoringApi.EnqueuedJobs(queue, 0, 1000).Any(job => IsAssVerificationJob(job.Value?.Job)))
+                {
+                    return true;
+                }
+            }
+
+            return monitoringApi.ScheduledJobs(0, 1000).Any(job => IsAssVerificationJob(job.Value?.Job));
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool IsAssVerificationJob(Hangfire.Common.Job? job)
+    {
+        return job?.Type == typeof(VerifyAssIntegrityJob) &&
+               job.Method.Name == nameof(VerifyAssIntegrityJob.Execute);
     }
 
     /// <summary>
@@ -117,6 +179,124 @@ public class SubtitleController : ControllerBase
         return Ok(result);
     }
 
+    [HttpPost("quality-audit")]
+    public ActionResult<string> StartQualityAudit()
+    {
+        var jobId = BackgroundJob.Enqueue<SubtitleQualityAuditJob>(job => job.Execute());
+        return Ok(new { jobId });
+    }
+
+    [HttpGet("quality-audit/status")]
+    public ActionResult GetQualityAuditStatus()
+    {
+        var current = Jobs.SubtitleQualityAuditStats.Current;
+        if (current == null)
+        {
+            if (HasActiveQualityAuditJob())
+            {
+                return Ok(new Jobs.SubtitleQualityAuditStats
+                {
+                    IsRunning = true
+                });
+            }
+
+            return Ok(new { isRunning = false });
+        }
+
+        return Ok(current);
+    }
+
+    [HttpGet("quality-audit/result")]
+    public async Task<ActionResult<SubtitleQualityAuditResult>> GetQualityAuditResult()
+    {
+        var value = await _settingService.GetSetting(
+            SettingKeys.SubtitleValidation.LastQualityAuditResult);
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return Ok(new SubtitleQualityAuditResult());
+        }
+
+        return Ok(JsonSerializer.Deserialize<SubtitleQualityAuditResult>(
+            value,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web)) ?? new SubtitleQualityAuditResult());
+    }
+
+    [HttpPost("quality-audit/findings/{id}/dismiss")]
+    public async Task<ActionResult<SubtitleQualityAuditResult>> DismissQualityAuditFinding(string id)
+    {
+        var result = await LoadQualityAuditResult();
+        var finding = result.Findings.FirstOrDefault(item => item.Id == id);
+        if (finding == null)
+        {
+            return NotFound();
+        }
+
+        finding.Dismissed = true;
+        await SaveQualityAuditResult(result);
+        return Ok(result);
+    }
+
+    [HttpPost("quality-audit/findings/{id}/requeue")]
+    public async Task<ActionResult<SubtitleQualityAuditResult>> RequeueQualityAuditFinding(string id)
+    {
+        var result = await LoadQualityAuditResult();
+        var finding = result.Findings.FirstOrDefault(item => item.Id == id);
+        if (finding == null)
+        {
+            return NotFound();
+        }
+
+        if (!await RequeueFindingAsync(finding))
+        {
+            return NotFound();
+        }
+
+        await SaveQualityAuditResult(result);
+        return Ok(result);
+    }
+
+    [HttpPost("quality-audit/findings/requeue-all")]
+    public async Task<ActionResult<SubtitleQualityAuditResult>> RequeueAllQualityAuditFindings(
+        [FromBody] RequeueAllQualityAuditFindingsRequest? request = null)
+    {
+        var result = await LoadQualityAuditResult();
+        var filterIssueTypes = request?.IssueTypes;
+        var findingsToRequeue = result.Findings
+            .Where(f => !f.IsQueued && !f.Dismissed)
+            .Where(f => filterIssueTypes == null || filterIssueTypes.Count == 0
+                        || f.IssueTypes.Any(t => filterIssueTypes.Contains(t)))
+            .ToList();
+
+        foreach (var finding in findingsToRequeue)
+        {
+            await RequeueFindingAsync(finding);
+        }
+
+        await SaveQualityAuditResult(result);
+        return Ok(result);
+    }
+
+    [HttpPost("quality-audit/findings/dismiss-all")]
+    public async Task<ActionResult<SubtitleQualityAuditResult>> DismissAllQualityAuditFindings(
+        [FromBody] DismissAllQualityAuditFindingsRequest? request = null)
+    {
+        var result = await LoadQualityAuditResult();
+        var filterIssueTypes = request?.IssueTypes;
+        var findingsToDismiss = result.Findings
+            .Where(f => !f.IsQueued && !f.Dismissed)
+            .Where(f => filterIssueTypes == null || filterIssueTypes.Count == 0
+                        || f.IssueTypes.Any(t => filterIssueTypes.Contains(t)))
+            .ToList();
+
+        foreach (var finding in findingsToDismiss)
+        {
+            finding.Dismissed = true;
+        }
+
+        await SaveQualityAuditResult(result);
+        return Ok(result);
+    }
+
     /// <summary>
     /// Lists all available embedded subtitles for a movie or episode with metadata and entry counts.
     /// </summary>
@@ -138,5 +318,112 @@ public class SubtitleController : ControllerBase
 
         var subtitles = await _extractionService.ListAvailableSubtitlesAsync(mediaId, type);
         return Ok(subtitles);
+    }
+
+    private static bool HasActiveQualityAuditJob()
+    {
+        try
+        {
+            var storage = JobStorage.Current;
+            if (storage == null)
+            {
+                return false;
+            }
+
+            var monitoringApi = storage.GetMonitoringApi();
+            if (monitoringApi.ProcessingJobs(0, 1000).Any(job => IsQualityAuditJob(job.Value?.Job)))
+            {
+                return true;
+            }
+
+            foreach (var queue in HangfireQueues)
+            {
+                if (monitoringApi.EnqueuedJobs(queue, 0, 1000).Any(job => IsQualityAuditJob(job.Value?.Job)))
+                {
+                    return true;
+                }
+            }
+
+            return monitoringApi.ScheduledJobs(0, 1000).Any(job => IsQualityAuditJob(job.Value?.Job));
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool IsQualityAuditJob(Hangfire.Common.Job? job)
+    {
+        return job?.Type == typeof(SubtitleQualityAuditJob) &&
+               job.Method.Name == nameof(SubtitleQualityAuditJob.Execute);
+    }
+
+    private async Task<SubtitleQualityAuditResult> LoadQualityAuditResult()
+    {
+        var value = await _settingService.GetSetting(
+            SettingKeys.SubtitleValidation.LastQualityAuditResult);
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return new SubtitleQualityAuditResult();
+        }
+
+        return JsonSerializer.Deserialize<SubtitleQualityAuditResult>(
+            value,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web)) ?? new SubtitleQualityAuditResult();
+    }
+
+    private async Task SaveQualityAuditResult(SubtitleQualityAuditResult result)
+    {
+        await _settingService.SetSetting(
+            SettingKeys.SubtitleValidation.LastQualityAuditResult,
+            JsonSerializer.Serialize(result, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+    }
+    private async Task<bool> RequeueFindingAsync(SubtitleQualityAuditFinding finding)
+    {
+        var mediaType = Enum.TryParse<MediaType>(
+            finding.MediaType,
+            true,
+            out var parsedMediaType)
+            ? parsedMediaType
+            : MediaType.Movie;
+
+        IMedia? media = mediaType switch
+        {
+            MediaType.Movie => await _dbContext.Movies.FindAsync(finding.MediaId),
+            MediaType.Episode => await _dbContext.Episodes.FindAsync(finding.MediaId),
+            _ => null
+        };
+
+        if (media == null)
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(finding.TargetLanguage))
+        {
+            await _mediaSubtitleProcessor.ProcessMediaForceTargetAsync(
+                media,
+                mediaType,
+                finding.TargetLanguage,
+                forceProcess: true,
+                forceTranslation: true,
+                forcePriority: true,
+                queueTranslations: true,
+                maxTranslationsToQueue: 1);
+        }
+        else
+        {
+            await _mediaSubtitleProcessor.ProcessMediaForceAsync(
+                media,
+                mediaType,
+                forceProcess: true,
+                forceTranslation: true,
+                forcePriority: true,
+                queueTranslations: true,
+                maxTranslationsToQueue: 1);
+        }
+
+        finding.IsQueued = true;
+        return true;
     }
 }

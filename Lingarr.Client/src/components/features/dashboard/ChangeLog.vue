@@ -68,6 +68,43 @@ import CardComponent from '@/components/common/CardComponent.vue'
 
 const changelog = ref([
     {
+        date: '2026-07-06',
+        version: '3.0.0',
+        title: 'Major Release',
+        changes: [
+            'OCR for bitmap subtitles (DVD/VobSub, PGS)',
+            'CrofAI, NanoGPT providers with quota tracking',
+            'Per-provider circuit breaker and paused translation recovery',
+            'Post-translation quality gate with inline editing',
+            'Configurable job scheduling on new Tasks page',
+            'Auto source-language detection mode',
+            '204 commits, 33 new features, 102+ fixes since v2.5.0'
+        ]
+    },
+    {
+        date: '2026-03-27',
+        version: '2.5.0',
+        title: 'Maintenance Release',
+        changes: [
+            'Polished onboarding flow',
+            'Hardened multi-instance sync and webhooks',
+            'AwaitingSource auto-recovery',
+            'Accurate dashboard translation counts',
+            'WebVTT support and database indexes'
+        ]
+    },
+    {
+        date: '2026-02-12',
+        version: '2.3.0',
+        title: 'Translation Queue & Integrity',
+        changes: [
+            'Translation queue performance fixes',
+            'Embedded-subtitle extraction',
+            'Manual subtitle selection',
+            'Integrity-check system'
+        ]
+    },
+    {
         date: '2025',
         version: '0.9.5',
         title: '',

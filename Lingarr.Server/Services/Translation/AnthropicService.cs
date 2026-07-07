@@ -12,6 +12,7 @@ using Lingarr.Server.Services.Translation.Base;
 using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models.Batch;
 using Lingarr.Server.Models.Batch.Response;
+using Lingarr.Server.Services.Translation.Streaming;
 
 namespace Lingarr.Server.Services.Translation;
 
@@ -21,6 +22,7 @@ public class AnthropicService : BaseLanguageService, ITranslationService, IBatch
     private readonly HttpClient _httpClient;
     private readonly IDashboardService? _dashboardService;
     private readonly ITokenUsageService? _tokenUsageService;
+    private readonly IProviderCircuitBreaker? _circuitBreaker;
     private const string ServiceName = "anthropic";
     private string? _model;
     private string? _prompt;
@@ -38,12 +40,15 @@ public class AnthropicService : BaseLanguageService, ITranslationService, IBatch
         HttpClient httpClient,
         ILogger<AnthropicService> logger,
         IDashboardService? dashboardService = null,
-        ITokenUsageService? tokenUsageService = null)
-        : base(settings, logger, "/app/Statics/ai_languages.json")
+        ITokenUsageService? tokenUsageService = null,
+        ITranslationPromptAugmenter? translationPromptAugmenter = null,
+        IProviderCircuitBreaker? circuitBreaker = null)
+        : base(settings, logger, "/app/Statics/ai_languages.json", translationPromptAugmenter)
     {
         _httpClient = httpClient;
         _dashboardService = dashboardService;
         _tokenUsageService = tokenUsageService;
+        _circuitBreaker = circuitBreaker;
     }
 
     /// <summary>
@@ -91,7 +96,8 @@ public class AnthropicService : BaseLanguageService, ITranslationService, IBatch
                 ["sourceLanguage"] = GetFullLanguageName(sourceLanguage),
                 ["targetLanguage"] = GetFullLanguageName(targetLanguage)
             };
-            _prompt = ReplacePlaceholders(settings[SettingKeys.Translation.AiPrompt], _replacements);
+            _prompt = await ApplyTranslationPromptContextAsync(
+                ReplacePlaceholders(settings[SettingKeys.Translation.AiPrompt], _replacements));
             _contextPrompt = settings[SettingKeys.Translation.AiContextPrompt];
             _customParameters = PrepareCustomParameters(settings, SettingKeys.Translation.CustomAiParameters);
             
@@ -133,6 +139,8 @@ public class AnthropicService : BaseLanguageService, ITranslationService, IBatch
         CancellationToken cancellationToken)
     {
         await InitializeAsync(sourceLanguage, targetLanguage);
+
+        await EnsureProviderCircuitAllowedAsync(cancellationToken);
 
         if (_tokenUsageService != null)
         {
@@ -182,6 +190,13 @@ public class AnthropicService : BaseLanguageService, ITranslationService, IBatch
                         throw new HttpRequestException("Rate limit exceeded", null, HttpStatusCode.TooManyRequests);
                     }
 
+                    if ((int)response.StatusCode >= 500 && (int)response.StatusCode < 600)
+                    {
+                        var errorBody = await response.Content.ReadAsStringAsync(linked.Token);
+                        _logger.LogWarning("{StatusCode} Server Error. Provider Message: {Content}", response.StatusCode, errorBody);
+                        throw new HttpRequestException("Provider server error", null, HttpStatusCode.ServiceUnavailable);
+                    }
+
                     _logger.LogError("Response Status Code: {StatusCode}", response.StatusCode);
                     _logger.LogError("Response Content: {ResponseContent}",
                         await response.Content.ReadAsStringAsync(cancellationToken: linked.Token));
@@ -214,6 +229,7 @@ if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var us
                 }
 
                 var subtitleLine = jsonResponse.GetProperty("content")[0].GetProperty("text").GetString();
+                _circuitBreaker?.RecordSuccess(ServiceName);
                 return subtitleLine ?? throw new InvalidOperationException();
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
@@ -234,6 +250,8 @@ if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var us
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable || 
                 ex.StatusCode == HttpStatusCode.GatewayTimeout || ex.StatusCode == HttpStatusCode.BadGateway)
             {
+                await RecordProviderFailureAsync(ex, cancellationToken);
+
                 if (attempt == _maxRetries)
                 {
                     _logger.LogError(ex, "Anthropic server error. Max retries exhausted for text: {Text}", text);
@@ -296,6 +314,8 @@ if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var us
     {
         await InitializeAsync(sourceLanguage, targetLanguage);
 
+        await EnsureProviderCircuitAllowedAsync(cancellationToken);
+
         using var retry = new CancellationTokenSource();
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, retry.Token);
         
@@ -304,7 +324,9 @@ if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var us
         {
             try
             {
-                return await TranslateBatchWithAnthropicApi(subtitleBatch, preContext, postContext, linked.Token);
+                var result = await TranslateBatchWithAnthropicApi(subtitleBatch, preContext, postContext, linked.Token);
+                _circuitBreaker?.RecordSuccess(ServiceName);
+                return result;
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
             {
@@ -324,6 +346,8 @@ if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var us
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable || 
                 ex.StatusCode == HttpStatusCode.GatewayTimeout || ex.StatusCode == HttpStatusCode.BadGateway)
             {
+                await RecordProviderFailureAsync(ex, cancellationToken);
+
                 if (attempt == _maxRetries)
                 {
                     _logger.LogError(ex, "Service unavailable. Max retries exhausted for batch translation");
@@ -378,7 +402,7 @@ if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var us
         var requestBody = new Dictionary<string, object>
         {
             ["model"] = _model!,
-            ["max_tokens"] = 1024,
+            ["max_tokens"] = 8192,
             ["system"] = _prompt!,
             ["tools"] = new[]
             {
@@ -404,13 +428,18 @@ if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var us
                                         type = "integer",
                                         description = "Position/index of the subtitle item"
                                     },
+                                    ["sourceKey"] = new
+                                    {
+                                        type = "string",
+                                        description = "Source key copied exactly from the subtitle item"
+                                    },
                                     ["line"] = new
                                     {
                                         type = "string",
                                         description = "Translated subtitle text"
                                     }
                                 },
-                                required = new[] { "position", "line" }
+                                required = new[] { "position", "sourceKey", "line" }
                             },
                             description = "Array of translated subtitle items with their positions"
                         }
@@ -445,6 +474,8 @@ if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var us
                 }
             }
         }
+        // Add streaming — this MUST NOT be overridden by custom parameters
+        requestBody["stream"] = true;
 
         var content = new StringContent(
             JsonSerializer.Serialize(requestBody),
@@ -452,7 +483,8 @@ if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var us
             "application/json");
 
         var stopwatch = Stopwatch.StartNew();
-        var response = await _httpClient.PostAsync($"{_endpoint}/messages", content, cancellationToken);
+        var request = new HttpRequestMessage(HttpMethod.Post, $"{_endpoint}/messages") { Content = content };
+        var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         stopwatch.Stop();
 
         if (!response.IsSuccessStatusCode)
@@ -468,54 +500,37 @@ if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var us
             throw new TranslationException("Batch translation using Anthropic failed.");
         }
 
-        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-        var jsonResponse = JsonSerializer.Deserialize<JsonElement>(responseBody);
+        var (accumulatedJson, inputTokens, outputTokens, totalTokens) =
+            await AnthropicStreamAccumulator.AccumulateAsync(response, cancellationToken);
 
-if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var usageProp))
+        if (string.IsNullOrEmpty(accumulatedJson))
         {
-            int inputTokens = 0;
-            int outputTokens = 0;
-            if (usageProp.TryGetProperty("input_tokens", out var inputTokensProp)) inputTokens = inputTokensProp.GetInt32();
-            if (usageProp.TryGetProperty("output_tokens", out var outputTokensProp)) outputTokens = outputTokensProp.GetInt32();
-            int totalTokens = inputTokens + outputTokens;
-            
+            throw new TranslationException("Empty response received from streaming API");
+        }
+
+        // Log API usage from streaming accumulator
+        if (_dashboardService != null)
+        {
             await _dashboardService.LogApiUsage(
-                ServiceName, 
-                totalTokens > 0 ? totalTokens : null, 
-                stopwatch.ElapsedMilliseconds, 
-                true, 
-                null, 
-                inputTokens > 0 ? inputTokens : null, 
-                outputTokens > 0 ? outputTokens : null);
-        }
-        else if (_dashboardService != null)
-        {
-            await _dashboardService.LogApiUsage(ServiceName, null, stopwatch.ElapsedMilliseconds, true);
+                ServiceName,
+                totalTokens,
+                stopwatch.ElapsedMilliseconds,
+                true,
+                null,
+                inputTokens,
+                outputTokens);
         }
 
-        // Extract tool use result from Anthropic response
-        if (!jsonResponse.TryGetProperty("content", out var contentArray) || 
-            contentArray.GetArrayLength() == 0)
-        {
-            throw new TranslationException("Invalid response format from Anthropic API.");
-        }
+        accumulatedJson = StructuredJsonResponseSanitizer.SanitizeInvalidEscapes(
+            accumulatedJson,
+            _logger,
+            ServiceName);
 
-        JsonElement? toolUseContent = null;
-        foreach (var contentItem in contentArray.EnumerateArray())
+        // Parse the accumulated tool_use input JSON
+        var inputJson = JsonSerializer.Deserialize<JsonElement>(accumulatedJson);
+        if (!inputJson.TryGetProperty("translations", out var translationsProperty))
         {
-            if (contentItem.TryGetProperty("type", out var typeProperty) && 
-                typeProperty.GetString() == "tool_use")
-            {
-                toolUseContent = contentItem;
-                break;
-            }
-        }
-
-        if (!toolUseContent.HasValue || 
-            !toolUseContent.Value.TryGetProperty("input", out var inputProperty) ||
-            !inputProperty.TryGetProperty("translations", out var translationsProperty))
-        {
-            throw new TranslationException("Tool use result not found or invalid in Anthropic response.");
+            throw new TranslationException("Tool use result does not contain 'translations' property in streaming response.");
         }
 
         try
@@ -524,18 +539,22 @@ if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var us
             foreach (var translation in translationsProperty.EnumerateArray())
             {
                 var position = translation.GetProperty("position").GetInt32();
+                var sourceKey = translation.GetProperty("sourceKey").GetString();
                 var line = translation.GetProperty("line").GetString() ?? string.Empty;
 
                 translatedItems.Add(new StructuredBatchResponse
                 {
                     Position = position,
+                    SourceKey = sourceKey,
                     Line = line
                 });
             }
 
-            return translatedItems
-                .GroupBy(item => item.Position)
-                .ToDictionary(group => group.Key, group => group.First().Line);
+            return BatchTranslationResponseMapper.MapAlignedTranslationsSafe(
+                subtitleBatch,
+                translatedItems,
+                _logger,
+                ServiceName).ValidTranslations;
         }
         catch (Exception ex)
         {
@@ -620,5 +639,21 @@ if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var us
                 Message = "Error fetching models from Anthropic API: " + ex.Message
             };
         }
+    }
+
+    private Task EnsureProviderCircuitAllowedAsync(CancellationToken cancellationToken)
+    {
+        return _circuitBreaker?.EnsureAllowedAsync(ServiceName, cancellationToken) ?? Task.CompletedTask;
+    }
+
+    private async Task RecordProviderFailureAsync(Exception exception, CancellationToken cancellationToken)
+    {
+        if (_circuitBreaker == null)
+        {
+            return;
+        }
+
+        _circuitBreaker.RecordFailure(ServiceName, exception);
+        await _circuitBreaker.EnsureAllowedAsync(ServiceName, cancellationToken);
     }
 }

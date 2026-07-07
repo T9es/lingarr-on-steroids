@@ -1,4 +1,4 @@
-﻿namespace Lingarr.Core.Configuration;
+namespace Lingarr.Core.Configuration;
 
 public static class SettingKeys
 {
@@ -72,6 +72,23 @@ public static class SettingKeys
             public const string RequestBuffer = "chutes_request_buffer";
         }
 
+        public static class NanoGpt
+        {
+            public const string Model = "nanogpt_model";
+            public const string ApiKey = "nanogpt_api_key";
+            public const string SubscriptionModelsOnly = "nanogpt_subscription_models_only";
+            public const string WeeklyTokenAllowance = "nanogpt_weekly_token_allowance";
+            public const string TokenReserve = "nanogpt_token_reserve";
+            public const string DailyUnitReserve = "nanogpt_daily_unit_reserve";
+            public const string MonthlyUnitReserve = "nanogpt_monthly_unit_reserve";
+        }
+
+        public static class CrofAi
+        {
+            public const string Model = "crofai_model";
+            public const string ApiKey = "crofai_api_key";
+        }
+
         public static class TokenLimits
         {
             public const string OpenAiTokenLimit = "openai_token_limit";
@@ -80,6 +97,8 @@ public static class SettingKeys
             public const string DeepSeekTokenLimit = "deepseek_token_limit";
             public const string LocalAiTokenLimit = "localai_token_limit";
             public const string ChutesTokenLimit = "chutes_token_limit";
+            public const string NanoGptTokenLimit = "nanogpt_token_limit";
+            public const string CrofAiTokenLimit = "crofai_token_limit";
             public const string LocalAiTokenLimitEnabled = "localai_token_limit_enabled";
             public const string ChutesMode = "chutes_mode";
             public const string TokenLimitResetTime = "token_limit_reset_time";
@@ -110,6 +129,7 @@ public static class SettingKeys
         public const string SubtitleTagShort = "subtitle_tag_short";
         public const string CleanupOrphanedSubtitles = "cleanup_orphaned_subtitles";
         public const string IgnoreCaptions = "ignore_captions";
+        public const string TranslateSupplementalSubtitles = "translate_supplemental_subtitles";
         public const string RequestTimeout = "request_timeout";
         public const string MaxRetries = "max_retries";
         public const string RetryDelay = "retry_delay";
@@ -118,6 +138,8 @@ public static class SettingKeys
         public const string MaxBatchSplitAttempts = "max_batch_split_attempts";
         public const string StripAssDrawingCommands = "strip_ass_drawing_commands";
         public const string CleanSourceAssDrawings = "clean_source_ass_drawings";
+        public const string SubtitleOutputMode = "subtitle_output_mode";
+        public const string SourceLanguageMode = "source_language_mode";
         
         /// <summary>
         /// Batch retry mode: "immediate" (split and retry now) or "deferred" (collect failures, repair at end)
@@ -133,6 +155,12 @@ public static class SettingKeys
         /// Maximum number of retries for the repair batch (default: 1)
         /// </summary>
         public const string RepairMaxRetries = "repair_max_retries";
+        
+        /// <summary>
+        /// Maximum number of request-level retries before a failed translation request
+        /// is permanently abandoned. Default: 10. Set to 0 for unlimited retries.
+        /// </summary>
+        public const string MaxRequestRetries = "max_request_retries";
         
         /// <summary>
         /// Integer version that increments when source/target languages or ignore_captions change.
@@ -154,18 +182,59 @@ public static class SettingKeys
         /// Number of context lines to include after the last item in each batch
         /// </summary>
         public const string BatchContextAfter = "batch_context_after";
+
+        /// <summary>
+        /// When enabled, embeds translated subtitles into MKV containers when
+        /// the output file path would exceed filesystem limits. Default: true
+        /// </summary>
+        public const string EmbedInContainer = "embed_in_container";
+        /// <summary>
+        /// When enabled, subtitles are embedded in the MKV container only when
+        /// the output file path would exceed filesystem limits.
+        /// </summary>
+        public const string EmbedWhenPathTooLong = "embed_when_path_too_long";
+        /// <summary>
+        /// When enabled, quality validation failures block publication. When disabled (default),
+        /// failures log a warning instead. Default: false (disabled).
+        /// </summary>
+        public const string EnablePostTranslationQualityGate = "enable_post_translation_quality_gate";
     }
 
     public static class Automation
     {
         public const string AutomationEnabled = "automation_enabled";
         public const string TranslationSchedule = "translation_schedule";
+        public const string CustomSourceScanSchedule = "custom_source_scan_schedule";
+        public const string CustomSourceScanEnabled = "custom_source_scan_enabled";
         public const string MaxTranslationsPerRun = "max_translations_per_run";
         public const string TranslationCycle = "translation_cycle";
         public const string MovieSchedule = "movie_schedule";
+        public const string MovieSyncEnabled = "movie_sync_enabled";
         public const string ShowSchedule = "show_schedule";
+        public const string ShowSyncEnabled = "show_sync_enabled";
         public const string MovieAgeThreshold = "movie_age_threshold";
         public const string ShowAgeThreshold = "show_age_threshold";
+    }
+
+    public static class Maintenance
+    {
+        public const string CleanupEnabled = "maintenance_cleanup_enabled";
+        public const string CleanupSchedule = "maintenance_cleanup_schedule";
+        public const string UploadCleanupEnabled = "maintenance_upload_cleanup_enabled";
+        public const string UploadCleanupSchedule = "maintenance_upload_cleanup_schedule";
+        public const string StatisticsEnabled = "maintenance_statistics_enabled";
+        public const string StatisticsSchedule = "maintenance_statistics_schedule";
+        public const string RetryFailedEnabled = "maintenance_retry_failed_enabled";
+        public const string RetryFailedSchedule = "maintenance_retry_failed_schedule";
+    }
+
+    public static class UploadWorkspace
+    {
+        public const string StorageRoot = "upload_workspace_storage_root";
+        public const string RetentionDays = "upload_workspace_retention_days";
+        public const string ReservedWorkerSlots = "upload_workspace_reserved_worker_slots";
+        public const string MaxBatchSize = "upload_workspace_max_batch_size";
+        public const string MaxFileSizeBytes = "upload_workspace_max_file_size_bytes";
     }
 
     public static class SubtitleValidation
@@ -177,6 +246,8 @@ public static class SettingKeys
         public const string MaxDurationSecs = "subtitle_validation_maxdurationsecs";
         public const string ValidateSubtitles = "subtitle_validation_enabled";
         public const string IntegrityValidationEnabled = "subtitle_integrity_validation_enabled";
+        public const string BulkIntegrityAutoQueue = "bulk_integrity_auto_queue";
+        public const string BulkIntegrityMaxAutoQueuePerRun = "bulk_integrity_max_auto_queue_per_run";
         
         /// <summary>
         /// When enabled, skip translation if the target language subtitle is already embedded in the media container.
@@ -187,14 +258,32 @@ public static class SettingKeys
         // Persistent scan results
         public const string LastIntegrityCheckResult = "subtitle_integrity_last_result";
         public const string LastAssVerificationResult = "subtitle_ass_verification_last_result";
+        public const string LastQualityAuditResult = "subtitle_quality_audit_last_result";
     }
 
-    public static class SubtitleExtraction
+public static class SubtitleExtraction
     {
         /// <summary>
         /// Extraction mode: "on_demand" | "specific_language" | "extract_all"
         /// </summary>
         public const string ExtractionMode = "subtitle_extraction_mode";
+        public const string OcrEnabled = "subtitle_ocr_enabled";
+        public const string OcrAutoQueue = "subtitle_ocr_auto_queue";
+        public const string OcrMinQualityScore = "subtitle_ocr_min_quality_score";
+        public const string OcrLanguages = "subtitle_ocr_languages";
+        public const string OcrTranslationPromptEnabled = "subtitle_ocr_translation_prompt_enabled";
+
+        /// <summary>
+        /// Enable AI-based language detection for subtitle streams with no language tag.
+        /// Default: false (disabled)
+        /// </summary>
+        public const string DetectUnknownLanguages = "detect_unknown_languages";
+
+        /// <summary>
+        /// Cron schedule for the automatic unknown language detection job.
+        /// Default: "0 3 * * *" (daily at 3 AM UTC)
+        /// </summary>
+        public const string DetectUnknownLanguagesSchedule = "detect_unknown_languages_schedule";
     }
 
     public static class Onboarding

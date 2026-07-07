@@ -143,6 +143,13 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<IIntegrationService, IntegrationService>();
         builder.Services.AddScoped<IInstanceConfigService, InstanceConfigService>();
         builder.Services.AddScoped<IAutomationService, AutomationService>();
+        builder.Services.AddScoped<ICustomMediaStateService, CustomMediaStateService>();
+        builder.Services.AddScoped<ICustomMediaSubtitleProcessor, CustomMediaSubtitleProcessor>();
+        builder.Services.AddScoped<ICustomSourceScannerService, CustomSourceScannerService>();
+        builder.Services.AddScoped<ICustomSourceService, CustomSourceService>();
+        builder.Services.AddScoped<UploadWorkspaceService>();
+        builder.Services.AddScoped<IUploadWorkspaceService>(sp => sp.GetRequiredService<UploadWorkspaceService>());
+        builder.Services.AddScoped<IUploadWorkspaceCleanupService>(sp => sp.GetRequiredService<UploadWorkspaceService>());
         builder.Services.AddScoped<IMediaService, MediaService>();
         builder.Services.AddScoped<IProgressService, ProgressService>();
         builder.Services.AddScoped<IRadarrService, RadarrService>();
@@ -158,11 +165,28 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<ISubtitleWriter, SrtWriter>();
         builder.Services.AddScoped<ISubtitleWriter, SsaWriter>();
         builder.Services.AddScoped<ISubtitleWriter, SsaWriter>();
+        builder.Services.AddSingleton<IEmbeddedSubtitleCacheService, EmbeddedSubtitleCacheService>();
         builder.Services.AddScoped<ISubtitleExtractionService, SubtitleExtractionService>();
+        builder.Services.AddScoped<ISubtitleOcrService, SubtitleOcrService>();
+        builder.Services.AddScoped<ISubtitleOcrEngine, ExternalSubtitleOcrEngine>();
         builder.Services.AddScoped<ISubtitleIntegrityService, SubtitleIntegrityService>();
+        builder.Services.AddScoped<ISubtitleAlignmentCheckService, SubtitleAlignmentCheckService>();
+        builder.Services.AddScoped<ISubtitleQualityValidatorService, SubtitleQualityValidatorService>();
+        builder.Services.AddScoped<ITranslationDiagnosticsService, TranslationDiagnosticsService>();
+        builder.Services.AddScoped<ISubtitleSourceSelectionService, SubtitleSourceSelectionService>();
+        builder.Services.AddScoped<ISourceSubtitleSnapshotService, SourceSubtitleSnapshotService>();
+        builder.Services.AddScoped<ISourceSubtitleResolver, SourceSubtitleResolver>();
         builder.Services.AddScoped<IOrphanSubtitleCleanupService, OrphanSubtitleCleanupService>();
+        builder.Services.AddScoped<ISubtitleOutputBackfillService, SubtitleOutputBackfillService>();
+        builder.Services.AddScoped<ITranslationSubtitleRepairService, TranslationSubtitleRepairService>();
+        builder.Services.AddScoped<ISubtitleOutputReconciliationService, SubtitleOutputReconciliationService>();
+        builder.Services.AddScoped<IMkvEmbeddingService, MkvEmbeddingService>();
+        builder.Services.AddSingleton<ITranslationQualityScorer, TranslationQualityScorer>();
+        builder.Services.AddScoped<ISubtitleLanguageDetectionService, SubtitleLanguageDetectionService>();
 
         // Register translate services
+        builder.Services.AddScoped<ITranslationPromptContextAccessor, TranslationPromptContextAccessor>();
+        builder.Services.AddScoped<ITranslationPromptAugmenter, TranslationPromptAugmenter>();
         builder.Services.AddScoped<ITranslationServiceFactory, TranslationFactory>();
 
         // Added startup service to validate new settings
@@ -173,6 +197,7 @@ public static class ServiceCollectionExtensions
         
         // Add temp file cleanup service to remove orphaned subtitle files on startup
         builder.Services.AddHostedService<TempFileCleanupService>();
+        builder.Services.AddHostedService<EmbeddedSubtitleCacheCleanupService>();
 
         // Add translation services
         builder.Services.AddTransient<GoogleTranslator>();
@@ -180,18 +205,29 @@ public static class ServiceCollectionExtensions
         builder.Services.AddTransient<MicrosoftTranslator>();
         builder.Services.AddTransient<YandexTranslator>();
         builder.Services.AddTransient<OpenAiService>();
+        builder.Services.AddTransient<NanoGptService>();
 
         builder.Services.AddTransient<PathConversionService>();
         builder.Services.AddScoped<IStatisticsService, StatisticsService>();
         builder.Services.AddScoped<IChutesUsageService, ChutesUsageService>();
+        builder.Services.AddScoped<INanoGptUsageService, NanoGptUsageService>();
+        builder.Services.AddScoped<ICrofAiUsageService, CrofAiUsageService>();
         builder.Services.AddScoped<ITokenUsageService, TokenUsageService>();
+        builder.Services.AddScoped<ITranslationCheckpointService, TranslationCheckpointService>();
+        builder.Services.AddScoped<IFailedTranslationCompletionService, FailedTranslationCompletionService>();
+        builder.Services.AddScoped<ITranslationSiblingSequenceApprovalService, TranslationSiblingSequenceApprovalService>();
+        builder.Services.AddScoped<IPausedTranslationResumeService, PausedTranslationResumeService>();
         
         // Translation worker service (singleton BackgroundService that manages translation workers)
         builder.Services.AddSingleton<ITranslationWorkerService, TranslationWorkerService>();
         builder.Services.AddHostedService(sp => (TranslationWorkerService)sp.GetRequiredService<ITranslationWorkerService>());
+        builder.Services.AddHostedService<PausedTranslationMonitorService>();
         
         // Translation cancellation service (singleton to allow cancelling running jobs)
         builder.Services.AddSingleton<ITranslationCancellationService, TranslationCancellationService>();
+        
+        // Circuit breaker for translation providers (singleton to coordinate across all workers)
+        builder.Services.AddSingleton<IProviderCircuitBreaker, ProviderCircuitBreaker>();
         
         // Batch fallback service for graduated retry with chunk splitting
         builder.Services.AddScoped<IBatchFallbackService, BatchFallbackService>();

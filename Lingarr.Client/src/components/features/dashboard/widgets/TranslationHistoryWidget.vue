@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from '@/plugins/i18n'
 import { useInstanceStore } from '@/store/instance'
 import services from '@/services'
 import TrendUpIcon from '@/components/icons/TrendUpIcon.vue'
 import TrendDownIcon from '@/components/icons/TrendDownIcon.vue'
 import TrendFlatIcon from '@/components/icons/TrendFlatIcon.vue'
+import CompletedTranslationCompareModal from '@/components/features/translation-compare/CompletedTranslationCompareModal.vue'
 import type { DailyStatistic, FilteredStatistics } from '@/ts/statistics'
 import {
     Chart as ChartJS,
@@ -32,6 +33,7 @@ const props = defineProps<{
         totalFilesTranslated: number
         totalCharactersTranslated: number
     }
+    refreshKey?: number | null
     isLoading?: boolean
 }>()
 
@@ -42,6 +44,9 @@ interface RecentTranslation {
     targetLanguage: string
     completedAt: string | null
     mediaType: string
+    workloadKind?: string
+    workloadItemKey?: string
+    workloadSourceLabel?: string
 }
 
 interface RecentTranslationRaw {
@@ -57,6 +62,21 @@ interface RecentTranslationRaw {
     CompletedAt?: string | null
     mediaType?: string
     MediaType?: string
+    workloadKind?: string
+    WorkloadKind?: string
+    workloadItemKey?: string
+    WorkloadItemKey?: string
+    workloadSourceLabel?: string
+    WorkloadSourceLabel?: string
+}
+
+interface RecentTranslationsResponseRaw {
+    items?: RecentTranslationRaw[]
+    Items?: RecentTranslationRaw[]
+    totalCount?: number
+    TotalCount?: number
+    hasMore?: boolean
+    HasMore?: boolean
 }
 
 interface HourlyStatistic {
@@ -69,6 +89,14 @@ type ChartLabelContext = TooltipItem<'bar'>
 
 const recentTranslations = ref<RecentTranslation[]>([])
 const recentLoading = ref(false)
+const recentLoadingMore = ref(false)
+const recentHasMore = ref(true)
+const recentPageSize = 10
+const recentScrollContainer = ref<HTMLElement | null>(null)
+const recentSentinel = ref<HTMLElement | null>(null)
+let recentObserver: IntersectionObserver | null = null
+const selectedCompareRequestId = ref<number | null>(null)
+const compareModalOpen = ref(false)
 const chartKey = ref(0)
 const selectedFilter = ref<TimeFilter>('30d')
 const customDateRange = ref<Date[]>([])
@@ -99,29 +127,130 @@ watch(customDateRange, async () => {
     }
 })
 
+watch(
+    () => props.refreshKey,
+    async (requestId, previousRequestId) => {
+        if (!requestId || requestId === previousRequestId) {
+            return
+        }
+
+        await fetchRecentTranslations(true)
+        if (selectedFilter.value === '24h') {
+            await fetchHourlyStatistics()
+        }
+        await fetchFilteredStatistics()
+        chartKey.value++
+    }
+)
+
+watch(
+    () => [props.isLoading, hourlyLoading.value, filteredLoading.value],
+    async ([isPageLoading, isHourlyLoading, isFilteredLoading]) => {
+        if (!isPageLoading && !isHourlyLoading && !isFilteredLoading) {
+            await nextTick()
+            setupRecentObserver()
+        }
+    }
+)
+
 onMounted(async () => {
-    await fetchRecentTranslations()
+    await fetchRecentTranslations(true)
     await fetchFilteredStatistics()
+    await nextTick()
+    setupRecentObserver()
 })
 
-const fetchRecentTranslations = async () => {
-    recentLoading.value = true
+onUnmounted(() => {
+    if (recentObserver) {
+        recentObserver.disconnect()
+    }
+})
+
+const fetchRecentTranslations = async (reset = false) => {
+    if (reset) {
+        recentLoading.value = true
+        recentTranslations.value = []
+        recentHasMore.value = true
+    } else if (recentLoading.value || recentLoadingMore.value || !recentHasMore.value) {
+        return
+    } else {
+        recentLoadingMore.value = true
+    }
+
     try {
+        const offset = reset ? 0 : recentTranslations.value.length
         const response =
-            await services.translationRequest.getRecentCompleted<RecentTranslationRaw[]>(5)
-        recentTranslations.value = (response || []).map((item) => ({
+            await services.translationRequest.getRecentCompleted<RecentTranslationsResponseRaw>(
+                offset,
+                recentPageSize
+            )
+        const rawItems = response?.items || response?.Items || []
+        const mappedItems = rawItems.map((item) => ({
             id: item.id || item.Id || 0,
             title: item.title || item.Title || 'Unknown',
             sourceLanguage: item.sourceLanguage || item.SourceLanguage || '',
             targetLanguage: item.targetLanguage || item.TargetLanguage || '',
             completedAt: item.completedAt || item.CompletedAt || null,
-            mediaType: item.mediaType || item.MediaType || 'Movie'
+            mediaType: item.mediaType || item.MediaType || 'Movie',
+            workloadKind: item.workloadKind || item.WorkloadKind || 'Library',
+            workloadItemKey: item.workloadItemKey || item.WorkloadItemKey || undefined,
+            workloadSourceLabel: item.workloadSourceLabel || item.WorkloadSourceLabel || undefined
         }))
+
+        recentTranslations.value = reset
+            ? mappedItems
+            : [...recentTranslations.value, ...mappedItems]
+
+        recentHasMore.value =
+            response?.hasMore ?? response?.HasMore ?? mappedItems.length === recentPageSize
     } catch (error) {
         console.warn('Failed to fetch recent translations:', error)
     } finally {
         recentLoading.value = false
+        recentLoadingMore.value = false
     }
+}
+
+const loadMoreRecentTranslations = async () => {
+    if (recentLoading.value || recentLoadingMore.value || !recentHasMore.value) {
+        return
+    }
+
+    await fetchRecentTranslations(false)
+}
+
+const setupRecentObserver = () => {
+    if (recentObserver) {
+        recentObserver.disconnect()
+    }
+
+    recentObserver = new IntersectionObserver(
+        (entries) => {
+            if (
+                entries[0].isIntersecting &&
+                recentHasMore.value &&
+                !recentLoading.value &&
+                !recentLoadingMore.value
+            ) {
+                loadMoreRecentTranslations()
+            }
+        },
+        { root: recentScrollContainer.value, threshold: 0.1 }
+    )
+
+    if (recentSentinel.value) {
+        recentObserver.observe(recentSentinel.value)
+    }
+}
+
+const openCompareModal = (requestId: number) => {
+    selectedCompareRequestId.value = requestId
+    compareModalOpen.value = true
+}
+
+const closeCompareModal = () => {
+    compareModalOpen.value = false
+    selectedCompareRequestId.value = null
 }
 
 const fetchHourlyStatistics = async () => {
@@ -448,6 +577,61 @@ const formatRelativeTime = (dateStr: string | null): string => {
     return new Date(dateStr).toLocaleDateString()
 }
 
+const getWorkloadLabel = (workloadKind?: string): string => {
+    switch (workloadKind) {
+        case 'CustomSource':
+            return 'Custom Source'
+        case 'Upload':
+            return 'Upload'
+        default:
+            return 'Library'
+    }
+}
+
+const normalizeWorkloadSourceValue = (value?: string): string | null => {
+    if (!value) {
+        return null
+    }
+
+    const trimmed = value.trim()
+    if (!trimmed) {
+        return null
+    }
+
+    const prefixedValue = /^(upload|custom):(.+)$/i.exec(trimmed)
+    if (!prefixedValue) {
+        return trimmed
+    }
+
+    const strippedValue = prefixedValue[2]?.trim()
+    return strippedValue || null
+}
+
+const getWorkloadSourceLabel = (item: RecentTranslation): string | null => {
+    const sourceValue =
+        normalizeWorkloadSourceValue(item.workloadSourceLabel) ||
+        normalizeWorkloadSourceValue(item.workloadItemKey)
+
+    if (!sourceValue) {
+        return null
+    }
+
+    const isUploadSource =
+        item.workloadKind === 'Upload' || /^upload:/i.test(item.workloadItemKey || '')
+    const isCustomSource =
+        item.workloadKind === 'CustomSource' || /^custom:/i.test(item.workloadItemKey || '')
+
+    if (isUploadSource) {
+        return `Batch ${sourceValue}`
+    }
+
+    if (isCustomSource) {
+        return `Source ${sourceValue}`
+    }
+
+    return null
+}
+
 const timeFilterOptions = [
     { value: '24h', label: '24h' },
     { value: '7d', label: '7 days' },
@@ -498,7 +682,7 @@ const timeFilterOptions = [
                 class="border-accent h-6 w-6 animate-spin rounded-full border-2 border-t-transparent"></div>
         </div>
 
-        <div v-else class="flex flex-1 flex-col gap-3">
+        <div v-else class="flex min-h-0 flex-1 flex-col gap-3">
             <div class="grid grid-cols-4 gap-2">
                 <div class="bg-primary/50 rounded-md p-2 text-center">
                     <div class="text-primary-content/50 text-xs">Translations</div>
@@ -563,11 +747,13 @@ const timeFilterOptions = [
                 </div>
             </div>
 
-            <div class="min-h-0 flex-1 overflow-hidden">
+            <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
                 <h4 class="text-primary-content/50 mb-1 text-xs font-medium">
                     {{ i18n.translate('statistics.recentTranslations') || 'Recent' }}
                 </h4>
-                <div class="scrollbar-thin h-full space-y-1.5 overflow-y-auto pr-1">
+                <div
+                    ref="recentScrollContainer"
+                    class="scrollbar-thin min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-1">
                     <div
                         v-if="recentLoading"
                         class="text-primary-content/50 py-2 text-center text-xs">
@@ -584,9 +770,21 @@ const timeFilterOptions = [
                     <div
                         v-for="item in recentTranslations"
                         :key="item.id"
-                        class="bg-primary/30 rounded-md p-2">
+                        class="bg-primary/30 hover:bg-primary/40 cursor-pointer rounded-md p-2 transition-colors"
+                        @click="openCompareModal(item.id)">
                         <div class="text-primary-content truncate text-xs font-medium">
                             {{ item.title }}
+                        </div>
+                        <div class="mt-1">
+                            <span
+                                class="bg-secondary text-primary-content/80 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide">
+                                {{ getWorkloadLabel(item.workloadKind) }}
+                            </span>
+                            <span
+                                v-if="getWorkloadSourceLabel(item)"
+                                class="bg-secondary text-primary-content/70 ml-1 rounded px-1.5 py-0.5 text-[10px] tracking-wide">
+                                {{ getWorkloadSourceLabel(item) }}
+                            </span>
                         </div>
                         <div class="text-primary-content/50 flex items-center gap-1 text-xs">
                             <span>{{ item.sourceLanguage }} → {{ item.targetLanguage }}</span>
@@ -595,9 +793,19 @@ const timeFilterOptions = [
                             </span>
                         </div>
                     </div>
+                    <div ref="recentSentinel" class="h-1"></div>
+                    <div
+                        v-if="recentLoadingMore"
+                        class="text-primary-content/50 py-1 text-center text-xs">
+                        {{ i18n.translate('common.loading') }}
+                    </div>
                 </div>
             </div>
         </div>
+        <CompletedTranslationCompareModal
+            :is-open="compareModalOpen"
+            :translation-request-id="selectedCompareRequestId"
+            @close="closeCompareModal" />
     </div>
 </template>
 

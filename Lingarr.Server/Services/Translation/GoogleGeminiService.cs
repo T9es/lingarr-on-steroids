@@ -15,6 +15,7 @@ using Lingarr.Server.Services.Translation.Base;
 using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models.Batch;
 using Lingarr.Server.Models.Batch.Response;
+using Lingarr.Server.Services.Translation.Streaming;
 
 namespace Lingarr.Server.Services.Translation;
 
@@ -24,6 +25,7 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
     private readonly HttpClient _httpClient;
     private readonly IDashboardService? _dashboardService;
     private readonly ITokenUsageService? _tokenUsageService;
+    private readonly IProviderCircuitBreaker? _circuitBreaker;
     private const string ServiceName = "gemini";
     private string? _model;
     private string? _apiKey;
@@ -36,18 +38,23 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
     private TimeSpan _retryDelay;
     private int _retryDelayMultiplier;
     private TimeSpan? _apiSuggestedRetryDelay;
+    private static readonly TimeSpan MinQuotaRetryDelay = TimeSpan.FromSeconds(1);
+    private const int MaxQuotaRetries = 8;
 
     public GoogleGeminiService(
         ISettingService settings,
         HttpClient httpClient,
         ILogger<GoogleGeminiService> logger,
         IDashboardService? dashboardService = null,
-        ITokenUsageService? tokenUsageService = null)
-        : base(settings, logger, "/app/Statics/ai_languages.json")
+        ITokenUsageService? tokenUsageService = null,
+        ITranslationPromptAugmenter? translationPromptAugmenter = null,
+        IProviderCircuitBreaker? circuitBreaker = null)
+        : base(settings, logger, "/app/Statics/ai_languages.json", translationPromptAugmenter)
     {
         _httpClient = httpClient;
         _dashboardService = dashboardService;
         _tokenUsageService = tokenUsageService;
+        _circuitBreaker = circuitBreaker;
     }
 
     /// <summary>
@@ -93,7 +100,8 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
                 ["sourceLanguage"] = GetFullLanguageName(sourceLanguage),
                 ["targetLanguage"] = GetFullLanguageName(targetLanguage)
             };
-            _prompt = ReplacePlaceholders(settings[SettingKeys.Translation.AiPrompt], _replacements);
+            _prompt = await ApplyTranslationPromptContextAsync(
+                ReplacePlaceholders(settings[SettingKeys.Translation.AiPrompt], _replacements));
             _contextPrompt = settings[SettingKeys.Translation.AiContextPrompt];
             _customParameters = PrepareCustomParameters(settings, SettingKeys.Translation.CustomAiParameters);
 
@@ -135,6 +143,8 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
     {
         await InitializeAsync(sourceLanguage, targetLanguage);
 
+        await EnsureProviderCircuitAllowedAsync(cancellationToken);
+
         if (_tokenUsageService != null)
         {
             await _tokenUsageService.EnsureTokensAvailableAsync(ServiceName, cancellationToken);
@@ -149,23 +159,32 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
         {
             try
             {
-                return await TranslateWithGeminiApi(text, linked.Token);
+                var result = await TranslateWithGeminiApi(text, linked.Token);
+                _circuitBreaker?.RecordSuccess(ServiceName);
+                return result;
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
             {
-                if (attempt == _maxRetries)
+                var quotaRetryLimit = GetQuotaRetryLimit();
+                if (attempt >= quotaRetryLimit)
                 {
                     _logger.LogError(ex, "Too many requests. Max retries exhausted for text: {Text}", text);
-                    throw new TranslationException("Too many requests. Retry limit reached.", ex);
+                    var resumeDelay = _apiSuggestedRetryDelay ?? TimeSpan.FromSeconds(60);
+                    _apiSuggestedRetryDelay = null;
+                    throw new ProviderPauseException(
+                        ServiceName,
+                        "Gemini rate limit exceeded (429). Translation paused to avoid further rate limit errors.",
+                        DateTime.UtcNow.Add(resumeDelay),
+                        ex);
                 }
-                
-                var effectiveDelay = _apiSuggestedRetryDelay ?? delay;
+
+                var effectiveDelay = BuildQuotaRetryDelay(delay);
                 var suggestedSeconds = _apiSuggestedRetryDelay?.TotalSeconds ?? 0;
                 _apiSuggestedRetryDelay = null;
 
                 _logger.LogWarning(
                     "429 Too Many Requests. API suggests retry in {SuggestedDelay}s. Retrying in {Delay}s... (Attempt {Attempt}/{MaxRetries})",
-                    suggestedSeconds, effectiveDelay.TotalSeconds, attempt, _maxRetries);
+                    suggestedSeconds, effectiveDelay.TotalSeconds, attempt, quotaRetryLimit);
 
                 await Task.Delay(effectiveDelay, linked.Token).ConfigureAwait(false);
                 
@@ -174,6 +193,8 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable || 
                 ex.StatusCode == HttpStatusCode.GatewayTimeout || ex.StatusCode == HttpStatusCode.BadGateway)
             {
+                await RecordProviderFailureAsync(ex, cancellationToken);
+
                 if (attempt == _maxRetries)
                 {
                     _logger.LogError(ex, "Gemini server error. Max retries exhausted for text: {Text}", text);
@@ -416,6 +437,8 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
         CancellationToken cancellationToken)
     {
         await InitializeAsync(sourceLanguage, targetLanguage);
+
+        await EnsureProviderCircuitAllowedAsync(cancellationToken);
         
         using var retry = new CancellationTokenSource();
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, retry.Token);
@@ -425,23 +448,32 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
         {
             try
             {
-                return await TranslateBatchWithGeminiApi(subtitleBatch, preContext, postContext, linked.Token);
+                var result = await TranslateBatchWithGeminiApi(subtitleBatch, preContext, postContext, targetLanguage, linked.Token);
+                _circuitBreaker?.RecordSuccess(ServiceName);
+                return result;
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
             {
-                if (attempt == _maxRetries)
+                var quotaRetryLimit = GetQuotaRetryLimit();
+                if (attempt >= quotaRetryLimit)
                 {
                     _logger.LogError(ex, "Too many requests. Max retries exhausted for batch translation");
-                    throw new TranslationException("Too many requests. Retry limit reached.", ex);
+                    var resumeDelay = _apiSuggestedRetryDelay ?? TimeSpan.FromSeconds(60);
+                    _apiSuggestedRetryDelay = null;
+                    throw new ProviderPauseException(
+                        ServiceName,
+                        "Gemini rate limit exceeded (429). Translation paused to avoid further rate limit errors.",
+                        DateTime.UtcNow.Add(resumeDelay),
+                        ex);
                 }
 
-                var effectiveDelay = _apiSuggestedRetryDelay ?? delay;
+                var effectiveDelay = BuildQuotaRetryDelay(delay);
                 var suggestedSeconds = _apiSuggestedRetryDelay?.TotalSeconds ?? 0;
                 _apiSuggestedRetryDelay = null;
 
                 _logger.LogWarning(
                     "429 Too Many Requests. API suggests retry in {SuggestedDelay}s. Retrying in {Delay}s... (Attempt {Attempt}/{MaxRetries})",
-                    suggestedSeconds, effectiveDelay.TotalSeconds, attempt, _maxRetries);
+                    suggestedSeconds, effectiveDelay.TotalSeconds, attempt, quotaRetryLimit);
 
                 await Task.Delay(effectiveDelay, linked.Token).ConfigureAwait(false);
                 
@@ -450,6 +482,8 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable || 
                 ex.StatusCode == HttpStatusCode.GatewayTimeout || ex.StatusCode == HttpStatusCode.BadGateway)
             {
+                await RecordProviderFailureAsync(ex, cancellationToken);
+
                 if (attempt == _maxRetries)
                 {
                     _logger.LogError(ex, "Service unavailable. Max retries exhausted for batch translation");
@@ -500,12 +534,13 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
         List<BatchSubtitleItem> subtitleBatch,
         List<string>? preContext,
         List<string>? postContext,
+        string targetLanguage,
         CancellationToken cancellationToken)
     {
         // Build user content with context wrapper
         var userContent = BuildBatchUserContent(subtitleBatch, preContext, postContext);
 
-        var endpoint = $"{_endpoint}/models/{_model}:generateContent?key={_apiKey}";
+        var endpoint = $"{_endpoint}/models/{_model}:streamGenerateContent?alt=sse&key={_apiKey}";
         var requestBody = new Dictionary<string, object>
         {
             ["systemInstruction"] = new
@@ -546,12 +581,20 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
                             {
                                 type = "integer"
                             },
+                            sourceKey = new
+                            {
+                                type = "string"
+                            },
                             line = new
+                            {
+                                type = "string"
+                            },
+                            language = new
                             {
                                 type = "string"
                             }
                         },
-                        required = new[] { "position", "line" }
+                        required = new[] { "position", "sourceKey", "line" },
                     }
                 }
             }
@@ -575,7 +618,8 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
             "application/json");
 
         var stopwatch = Stopwatch.StartNew();
-        var response = await _httpClient.PostAsync(endpoint, content, cancellationToken);
+        var request = new HttpRequestMessage(HttpMethod.Post, endpoint) { Content = content };
+        var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         stopwatch.Stop();
         
         if (!response.IsSuccessStatusCode)
@@ -605,42 +649,56 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
             throw new TranslationException(failureMessage);
         }
 
-        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-        var geminiResponse = JsonSerializer.Deserialize<GeminiResponse>(responseBody);
-        
+        var (translatedJson, promptTokens, completionTokens, totalTokens) =
+            await GeminiStreamAccumulator.AccumulateAsync(response, cancellationToken);
+
+        if (string.IsNullOrEmpty(translatedJson))
+        {
+            throw new TranslationException("Empty response received from streaming Gemini API");
+        }
+
+        // Log token usage from streaming accumulator
         if (_dashboardService != null)
         {
-            int? tokensUsed = null;
-            int? promptTokens = null;
-            int? completionTokens = null;
-            if (geminiResponse?.UsageMetadata != null)
-            {
-                promptTokens = geminiResponse.UsageMetadata.PromptTokenCount;
-                completionTokens = geminiResponse.UsageMetadata.CandidatesTokenCount;
-                tokensUsed = promptTokens + completionTokens;
-            }
-            await _dashboardService.LogApiUsage(ServiceName, tokensUsed, stopwatch.ElapsedMilliseconds, true, null, promptTokens, completionTokens);
+            await _dashboardService.LogApiUsage(
+                ServiceName,
+                totalTokens,
+                stopwatch.ElapsedMilliseconds,
+                true,
+                null,
+                promptTokens,
+                completionTokens);
         }
-
-        if (geminiResponse?.Candidates == null || geminiResponse.Candidates.Count == 0 ||
-            geminiResponse.Candidates[0].Content?.Parts == null ||
-            geminiResponse.Candidates[0].Content?.Parts.Count == 0)
-        {
-            throw new TranslationException("Invalid or empty response from Gemini API.");
-        }
-
-        var translatedJson = geminiResponse.Candidates[0].Content?.Parts[0].Text ?? string.Empty;
         try
         {
+            translatedJson = StructuredJsonResponseSanitizer.SanitizeInvalidEscapes(
+                translatedJson,
+                _logger,
+                ServiceName);
+
             var translatedItems = JsonSerializer.Deserialize<List<StructuredBatchResponse>>(translatedJson);
             if (translatedItems == null)
             {
                 throw new TranslationException("Failed to deserialize translated subtitles");
             }
+            // Log warning if language field doesn't match target
+            foreach (var item in translatedItems)
+            {
+                if (!string.IsNullOrWhiteSpace(item.Language) &&
+                    !string.Equals(item.Language, targetLanguage, StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogWarning(
+                        "Gemini reported language '{ReportedLanguage}' for position {Position}, " +
+                        "but target language is '{TargetLanguage}'. This may indicate a translation quality issue.",
+                        item.Language, item.Position, targetLanguage);
+                }
+            }
 
-            return translatedItems
-                .GroupBy(item => item.Position)
-                .ToDictionary(group => group.Key, group => group.First().Line);
+            return BatchTranslationResponseMapper.MapAlignedTranslationsSafe(
+                subtitleBatch,
+                translatedItems,
+                _logger,
+                ServiceName).ValidTranslations;
         }
 
         catch (JsonException ex)
@@ -650,13 +708,31 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
                 var repairedJson = TryRepairJson(translatedJson);
                 if (repairedJson != translatedJson)
                 {
+                    repairedJson = StructuredJsonResponseSanitizer.SanitizeInvalidEscapes(
+                        repairedJson,
+                        _logger,
+                        ServiceName);
+
                     var translatedItems = JsonSerializer.Deserialize<List<StructuredBatchResponse>>(repairedJson);
                     if (translatedItems != null)
                     {
+                        foreach (var item in translatedItems)
+                        {
+                            if (!string.IsNullOrWhiteSpace(item.Language) &&
+                                !string.Equals(item.Language, targetLanguage, StringComparison.OrdinalIgnoreCase))
+                            {
+                                _logger.LogWarning(
+                                    "Gemini reported language '{ReportedLanguage}' for position {Position} " +
+                                    "(repaired response), but target language is '{TargetLanguage}'.",
+                                    item.Language, item.Position, targetLanguage);
+                            }
+                        }
                         _logger.LogWarning("Successfully repaired the truncated JSON response from Gemini. Please verify the result.");
-                        return translatedItems
-                            .GroupBy(item => item.Position)
-                            .ToDictionary(group => group.Key, group => group.First().Line);
+                        return BatchTranslationResponseMapper.MapAlignedTranslationsSafe(
+                            subtitleBatch,
+                            translatedItems,
+                            _logger,
+                            ServiceName).ValidTranslations;
                     }
                 }
             }
@@ -712,6 +788,39 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
         }
         
         return null;
+    }
+
+    private int GetQuotaRetryLimit()
+    {
+        return Math.Min(Math.Max(_maxRetries, 1), MaxQuotaRetries);
+    }
+
+    private TimeSpan BuildQuotaRetryDelay(TimeSpan fallbackDelay)
+    {
+        var delay = _apiSuggestedRetryDelay ?? fallbackDelay;
+        if (delay < MinQuotaRetryDelay)
+        {
+            delay = MinQuotaRetryDelay;
+        }
+
+        var jitter = TimeSpan.FromMilliseconds(Random.Shared.Next(0, 500));
+        return delay + jitter;
+    }
+
+    private Task EnsureProviderCircuitAllowedAsync(CancellationToken cancellationToken)
+    {
+        return _circuitBreaker?.EnsureAllowedAsync(ServiceName, cancellationToken) ?? Task.CompletedTask;
+    }
+
+    private async Task RecordProviderFailureAsync(Exception exception, CancellationToken cancellationToken)
+    {
+        if (_circuitBreaker == null)
+        {
+            return;
+        }
+
+        _circuitBreaker.RecordFailure(ServiceName, exception);
+        await _circuitBreaker.EnsureAllowedAsync(ServiceName, cancellationToken);
     }
 
     private static bool IsRetryableStatus(HttpStatusCode statusCode)

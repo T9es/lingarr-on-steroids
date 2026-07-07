@@ -58,24 +58,69 @@ public class TranslationRequestController : ControllerBase
     }
 
     /// <summary>
-    /// Gets recent completed translation requests
+    /// Gets a bounded overview of translation request sections for the translations page.
     /// </summary>
-    /// <param name="limit">Maximum number of requests to return (default: 10)</param>
-    /// <response code="200">Returns recent completed translation requests</response>
-    /// <response code="500">If there was an error retrieving completed requests</response>
-    /// <returns>ActionResult containing the list of recent completed translation requests</returns>
-    [HttpGet("recent")]
-    public async Task<ActionResult<List<TranslationRequest>>> GetRecentCompletedRequests([FromQuery] int limit = 10)
+    /// <param name="searchQuery">Optional pending-request search term</param>
+    /// <param name="orderBy">Pending-request sort field: "Queue", "Title", "CreatedAt", or "CompletedAt"</param>
+    /// <param name="ascending">Pending-request sort direction</param>
+    /// <param name="pageSize">Pending-request page size</param>
+    /// <param name="pageNumber">Pending-request page number</param>
+    /// <param name="sectionLimit">Maximum failed and in-progress rows returned</param>
+    /// <response code="200">Returns active count plus pending, failed, and in-progress sections</response>
+    [HttpGet("overview")]
+    public async Task<ActionResult<TranslationRequestsOverviewResponse>> GetOverview(
+        string? searchQuery,
+        string? orderBy,
+        bool ascending = true,
+        int pageSize = 20,
+        int pageNumber = 1,
+        int sectionLimit = 100)
     {
-        var requests = await _translationRequestService.GetRecentCompletedRequests(limit);
-        return Ok(requests);
+        pageNumber = Math.Max(1, pageNumber);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+        sectionLimit = Math.Clamp(sectionLimit, 25, 200);
+
+        var overview = await _translationRequestService.GetOverview(
+            searchQuery,
+            orderBy,
+            ascending,
+            pageNumber,
+            pageSize,
+            sectionLimit);
+
+        return Ok(overview);
+    }
+
+    /// <summary>
+    /// Gets recent completed translation requests with pagination.
+    /// </summary>
+    /// <param name="offset">Number of items to skip (default: 0)</param>
+    /// <param name="limit">Maximum number of items to return (default: 10)</param>
+    /// <response code="200">Returns paginated recent completed translation requests</response>
+    /// <response code="500">If there was an error retrieving completed requests</response>
+    /// <returns>ActionResult containing items, total count and has-more flag</returns>
+    [HttpGet("recent")]
+    public async Task<ActionResult<object>> GetRecentCompletedRequests(
+        [FromQuery] int offset = 0,
+        [FromQuery] int limit = 10)
+    {
+        var (requests, totalCount) = await _translationRequestService.GetRecentCompletedRequests(
+            offset,
+            limit);
+
+        return Ok(new
+        {
+            items = requests,
+            totalCount,
+            hasMore = offset + requests.Count < totalCount
+        });
     }
 
     /// <summary>
     /// Retrieves a paginated list of translation requests with optional filtering and sorting
     /// </summary>
     /// <param name="searchQuery">Optional search term to filter requests</param>
-    /// <param name="orderBy">Property name to sort the results by</param>
+    /// <param name="orderBy">Property name to sort by: "Queue", "Title", "CreatedAt", or "CompletedAt"</param>
     /// <param name="ascending">Sort direction; true for ascending, false for descending</param>
     /// <param name="pageSize">Number of items per page</param>
     /// <param name="pageNumber">Page number to retrieve</param>
@@ -167,16 +212,15 @@ public class TranslationRequestController : ControllerBase
     }
 
     /// <summary>
-    /// Retries all translation requests with Failed status
+    /// Retries all translation requests with Failed status.
     /// </summary>
-    /// <response code="200">Returns the count of retried requests</response>
+    /// <response code="200">Returns structured retry counters</response>
     /// <response code="500">If there was an error processing the retries</response>
-    /// <returns>ActionResult containing the number of retried requests</returns>
-[HttpPost("retry-all-failed")]
-    public async Task<ActionResult<int>> RetryAllFailedRequests()
+    [HttpPost("retry-all-failed")]
+    public async Task<ActionResult<RetryFailedRequestsResponse>> RetryAllFailedRequests()
     {
-        var count = await _translationRequestService.RetryAllFailedRequests();
-        return Ok(count);
+        var response = await _translationRequestService.RetryAllFailedRequests();
+        return Ok(response);
     }
 
     /// <summary>
@@ -193,25 +237,23 @@ public class TranslationRequestController : ControllerBase
     }
     
     /// <summary>
-    /// Retries an existing translation request
-    /// Does not delete the current one, just reques
-    /// The request with the same information
+    /// Retries an existing translation request.
     /// </summary>
     /// <param name="retryRequest">The translation request to retry</param>
-    /// <response code="200">Returns the new translation request</response>
+    /// <response code="200">Returns structured retry result</response>
     /// <response code="404">If the translation request was not found</response>
     /// <response code="500">If there was an error checking for updates</response>
-    /// <returns>ActionResult containing the new translation request if found, or NotFound if the request doesn't exist</returns>
     [HttpPost("retry")]
-    public async Task<ActionResult<string>> RetryTranslationRequest([FromBody] TranslationRequest retryRequest)
+    public async Task<ActionResult<RetryTranslationRequestResponse>> RetryTranslationRequest(
+        [FromBody] TranslationRequest retryRequest)
     {
-        var newTranslationRequest = await _translationRequestService.RetryTranslationRequest(retryRequest);
-        if (newTranslationRequest != null)
+        var response = await _translationRequestService.RetryTranslationRequest(retryRequest);
+        if (response != null)
         {
-            return Ok(newTranslationRequest);
+            return Ok(response);
         }
 
-        return NotFound(newTranslationRequest);
+        return NotFound(response);
     }
 
     /// <summary>

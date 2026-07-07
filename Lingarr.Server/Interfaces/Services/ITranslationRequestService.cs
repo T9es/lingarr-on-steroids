@@ -1,7 +1,8 @@
-﻿using DeepL;
+using DeepL;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Models;
+using Lingarr.Server.Models.Api;
 using Lingarr.Server.Models.Batch.Response;
 using Lingarr.Server.Models.FileSystem;
 
@@ -100,7 +101,7 @@ public interface ITranslationRequestService
     /// Retrieves a paginated list of translation requests with optional filtering and sorting.
     /// </summary>
     /// <param name="searchQuery">Optional search term to filter requests by title</param>
-    /// <param name="orderBy">Property to sort by: "Title", "CreatedAt", or "CompletedAt"</param>
+    /// <param name="orderBy">Property to sort by: "Queue", "Title", "CreatedAt", or "CompletedAt"</param>
     /// <param name="ascending">Sort direction</param>
     /// <param name="pageNumber">Page number for pagination (1-based)</param>
     /// <param name="pageSize">Number of items per page</param>
@@ -115,6 +116,24 @@ public interface ITranslationRequestService
         int pageSize);
 
     /// <summary>
+    /// Retrieves the active count plus bounded pending, failed, and in-progress request sections.
+    /// </summary>
+    /// <param name="searchQuery">Optional search term to filter pending requests by title</param>
+    /// <param name="orderBy">Property to sort pending requests by: "Queue", "Title", "CreatedAt", or "CompletedAt"</param>
+    /// <param name="ascending">Sort direction for pending requests</param>
+    /// <param name="pageNumber">Pending request page number</param>
+    /// <param name="pageSize">Number of pending requests per page</param>
+    /// <param name="sectionLimit">Maximum failed and in-progress rows returned</param>
+    /// <returns>Overview response for the translations page</returns>
+    Task<TranslationRequestsOverviewResponse> GetOverview(
+        string? searchQuery,
+        string? orderBy,
+        bool ascending,
+        int pageNumber,
+        int pageSize,
+        int sectionLimit);
+
+    /// <summary>
     /// Removes an existing translation request and its associated background job.
     /// </summary>
     /// <param name="cancelRequest">The translation request to remove</param>
@@ -125,11 +144,17 @@ public interface ITranslationRequestService
         TranslationRequest cancelRequest
     );
 
-/// <summary>
-    /// Retries all translation requests with Failed status
+    /// <summary>
+    /// Retries all translation requests with Failed status.
     /// </summary>
-    /// <returns>Int representing number of retried requests</returns>
-    Task<int> RetryAllFailedRequests();
+    /// <returns>Structured retry result with retried and blocked counters.</returns>
+    Task<RetryFailedRequestsResponse> RetryAllFailedRequests();
+
+    /// <summary>
+    /// Retries failed translation requests that are currently eligible by retry backoff policy.
+    /// </summary>
+    /// <returns>Structured retry result with retried and blocked counters.</returns>
+    Task<RetryFailedRequestsResponse> RetryEligibleFailedRequests();
 
     /// <summary>
     /// Removes all translation requests with Failed status
@@ -138,15 +163,12 @@ public interface ITranslationRequestService
     Task<int> RemoveAllFailedRequests();
     
     /// <summary>
-    /// Retries an existing translation request
+    /// Retries an existing translation request.
     /// </summary>
     /// <param name="retryRequest">The translation request to retry</param>
-    /// <returns>
-    /// A message indicating the result of the new transaltion request, or null if the request wasn't found
-    /// </returns>
-    Task<string?> RetryTranslationRequest(
-        TranslationRequest retryRequest
-    );
+    /// <returns>Structured retry result, or null if the request wasn't found.</returns>
+    Task<RetryTranslationRequestResponse?> RetryTranslationRequest(
+        TranslationRequest retryRequest);
 
     /// <summary>
     /// Cancels an existing translation request and its associated background job.
@@ -210,9 +232,24 @@ public interface ITranslationRequestService
     Task<List<TranslationRequest>> GetInProgressRequests();
 
     /// <summary>
-    /// Retrieves recent completed translation requests.
+    /// Retrieves recent completed translation requests using offset-based pagination.
     /// </summary>
+    /// <param name="offset">Number of records to skip</param>
     /// <param name="limit">Maximum number of requests to return</param>
-    /// <returns>List of recent completed translation requests</returns>
-    Task<List<TranslationRequest>> GetRecentCompletedRequests(int limit = 10);
+    /// <returns>
+    /// Tuple containing the page of completed requests and the total completed requests count
+    /// </returns>
+    Task<(List<TranslationRequest> Requests, int TotalCount)> GetRecentCompletedRequests(
+        int offset = 0,
+        int limit = 10);
+    /// <summary>
+    /// Checks if a non-supplemental translation request already exists for the given media/language pair,
+    /// regardless of its status (including completed requests).
+    /// </summary>
+    /// <param name="mediaId">The media item ID</param>
+    /// <param name="mediaType">The media type (Movie/Episode)</param>
+    /// <param name="sourceLanguage">Source language code</param>
+    /// <param name="targetLanguage">Target language code</param>
+    /// <returns>True if a non-supplemental request already exists</returns>
+    Task<bool> HasExistingNonSupplementalRequestAsync(int mediaId, MediaType mediaType, string sourceLanguage, string targetLanguage);
 }

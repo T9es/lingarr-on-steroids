@@ -49,6 +49,24 @@ public class ModelData
     [JsonPropertyName("owned_by")]
     public string? OwnedBy { get; set; }
 
+    [JsonPropertyName("name")]
+    public string? Name { get; set; }
+
+    [JsonPropertyName("description")]
+    public string? Description { get; set; }
+
+    [JsonPropertyName("context_length")]
+    public int? ContextLength { get; set; }
+
+    [JsonPropertyName("max_output_tokens")]
+    public int? MaxOutputTokens { get; set; }
+
+    [JsonPropertyName("capabilities")]
+    public ModelCapabilities? Capabilities { get; set; }
+
+    [JsonPropertyName("pricing")]
+    public NanoGptModelPricing? Pricing { get; set; }
+
     /// <summary>
     /// Chutes-specific chute identifier
     /// </summary>
@@ -60,6 +78,36 @@ public class ModelData
     /// </summary>
     [JsonPropertyName("price")]
     public ChutesModelPrice? Price { get; set; }
+}
+
+public class ModelCapabilities
+{
+    [JsonPropertyName("structured_output")]
+    public bool? StructuredOutput { get; set; }
+
+    [JsonPropertyName("tool_calling")]
+    public bool? ToolCalling { get; set; }
+
+    [JsonPropertyName("reasoning")]
+    public bool? Reasoning { get; set; }
+
+    [JsonPropertyName("vision")]
+    public bool? Vision { get; set; }
+}
+
+public class NanoGptModelPricing
+{
+    [JsonPropertyName("prompt")]
+    public decimal? Prompt { get; set; }
+
+    [JsonPropertyName("completion")]
+    public decimal? Completion { get; set; }
+
+    [JsonPropertyName("currency")]
+    public string? Currency { get; set; }
+
+    [JsonPropertyName("unit")]
+    public string? Unit { get; set; }
 }
 
 public class ChutesModelPrice

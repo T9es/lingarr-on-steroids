@@ -24,6 +24,9 @@ ENGLISH_VALUE_ALLOWLIST = {
     'settings.custom.key_placeholder',
     'settings.services.localAiModelPlaceholder',
     'settings.services.localAiPlaceholder',
+    'settings.subtitle.groupValidation',
+    'settings.subtitle.outputModeBoth',
+    'statistics.inLabel',
     'translationState.notApplicable'
 }
 
@@ -121,6 +124,16 @@ def is_allowed_english_value(key):
     )
 
 
+def contains_suspicious_replacement(value):
+    if not isinstance(value, str):
+        return False
+
+    return bool(
+        re.search(r'(?<=\w)\?(?=\w)|\?\?', value)
+        or '\ufffd' in value
+    )
+
+
 def main():
     errors = []
     warnings = []
@@ -188,6 +201,11 @@ def main():
             continue
 
         for key, value in translations.items():
+            if contains_suspicious_replacement(value):
+                errors.append(
+                    f'Locale "{locale}" contains suspicious replacement characters for "{key}": {value}'
+                )
+
             english_value = english_translations.get(key)
             if (
                 looks_like_translatable_text(value)

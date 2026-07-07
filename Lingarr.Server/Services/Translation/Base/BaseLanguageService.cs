@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Lingarr.Server.Interfaces.Services;
+using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models;
 using Lingarr.Server.Models.Batch;
 
@@ -14,11 +15,13 @@ public abstract class BaseLanguageService : BaseTranslationService
     protected string? _contextPromptEnabled;
     protected Dictionary<string, string> _replacements;
     protected List<KeyValuePair<string, object>>? _customParameters;
+    protected readonly ITranslationPromptAugmenter? _translationPromptAugmenter;
 
     protected BaseLanguageService(
         ISettingService settings,
         ILogger logger,
-        string languageFilePath) : base(settings, logger)
+        string languageFilePath,
+        ITranslationPromptAugmenter? translationPromptAugmenter = null) : base(settings, logger)
     {
         // Resolve absolute Docker paths (/app/...) relative to application base directory if they don't exist
         // This ensures local development works when hardcoded absolute Docker paths are passed.
@@ -50,6 +53,16 @@ public abstract class BaseLanguageService : BaseTranslationService
 
         _languageFilePath = languageFilePath;
         _replacements = new Dictionary<string, string>();
+        _translationPromptAugmenter = translationPromptAugmenter;
+    }
+
+    protected async Task<string> ApplyTranslationPromptContextAsync(
+        string systemPrompt,
+        CancellationToken cancellationToken = default)
+    {
+        return _translationPromptAugmenter == null
+            ? systemPrompt
+            : await _translationPromptAugmenter.AugmentAsync(systemPrompt, cancellationToken);
     }
     
     /// <summary>
@@ -237,8 +250,7 @@ public abstract class BaseLanguageService : BaseTranslationService
 
         if (!hasPreContext && !hasPostContext)
         {
-            // No context wrapper, just return the batch as JSON
-            return JsonSerializer.Serialize(subtitleBatch);
+            return BuildStrictBatchInstructions(JsonSerializer.Serialize(BuildKeyedBatchPayload(subtitleBatch)));
         }
 
         // Build content with context wrapper
@@ -256,7 +268,7 @@ public abstract class BaseLanguageService : BaseTranslationService
         }
 
         sb.AppendLine("[SUBTITLES_TO_TRANSLATE]");
-        sb.AppendLine(JsonSerializer.Serialize(subtitleBatch));
+        sb.AppendLine(JsonSerializer.Serialize(BuildKeyedBatchPayload(subtitleBatch)));
         sb.AppendLine("[/SUBTITLES_TO_TRANSLATE]");
 
         if (hasPostContext)
@@ -270,6 +282,33 @@ public abstract class BaseLanguageService : BaseTranslationService
             sb.AppendLine("[/CONTEXT_AFTER]");
         }
 
-        return sb.ToString();
+        return BuildStrictBatchInstructions(sb.ToString());
+    }
+
+    private static string BuildStrictBatchInstructions(string subtitlePayload)
+    {
+        return
+            "Translate every subtitle item exactly once. Do not omit, merge, split, reorder, or renumber items. " +
+            "For each output object, keep position and sourceKey unchanged; put only the translated text in line. " +
+            "Every translatable item must receive target-language translated text. " +
+            "Do not copy source text as a fallback; proper names may remain unchanged when that is correct. Do NOT skip any position. " +
+            "Some source lines may contain OCR errors from bitmap subtitles; silently repair obvious OCR noise while translating the dialogue. " +
+            "Return valid JSON only. Inside JSON string values, use JSON \\n for line breaks. " +
+            "Never use raw ASS/SSA \\N or any invalid backslash escape in JSON output." +
+            Environment.NewLine +
+            subtitlePayload;
+    }
+
+    private static List<BatchSubtitleItem> BuildKeyedBatchPayload(
+        IEnumerable<BatchSubtitleItem> subtitleBatch)
+    {
+        return subtitleBatch
+            .Select(item => new BatchSubtitleItem
+            {
+                Position = item.Position,
+                SourceKey = BatchTranslationResponseMapper.GetSourceKey(item),
+                Line = item.Line
+            })
+            .ToList();
     }
 }

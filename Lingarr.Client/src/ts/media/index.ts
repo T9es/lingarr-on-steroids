@@ -31,6 +31,43 @@ export interface IEmbeddedSubtitle {
     isForced: boolean
     isExtracted: boolean
     extractedPath: string | null
+    ocrStatus: SubtitleOcrStatus
+    ocrExtractedPath: string | null
+    ocrError: string | null
+    ocrAttemptedAt: string | null
+    ocrCompletedAt: string | null
+    ocrCueCount: number | null
+    ocrQualityScore: number | null
+    ocrIssueSummary: string | null
+    ocrApprovedAt: string | null
+    isOcrSupported: boolean
+    isOcrUsable: boolean
+}
+
+export type SubtitleOcrStatus =
+    | 'NotStarted'
+    | 'Queued'
+    | 'Processing'
+    | 'Succeeded'
+    | 'BlockedLowQuality'
+    | 'Failed'
+    | 'Approved'
+
+export interface ISubtitleOcrPreviewLine {
+    position: number
+    startTime: number
+    endTime: number
+    text: string
+}
+
+export interface ISubtitleOcrPreview {
+    success: boolean
+    status: SubtitleOcrStatus
+    cueCount: number | null
+    qualityScore: number | null
+    issueSummary: string | null
+    error: string | null
+    lines: ISubtitleOcrPreviewLine[]
 }
 
 export interface IMovie extends IBaseEntity {
@@ -54,18 +91,27 @@ export interface ITranslationRequest {
     id: number
     jobId: string
     title: string
+    workloadKind?: TranslationWorkloadKind
+    workloadItemKey?: string
+    workloadSourceLabel?: string
     sourceLanguage: string
     targetLanguage: string
     subtitleToTranslate?: string
     translatedSubtitle?: string
     mediaType: MediaType
     mediaId?: number | null
+    customMediaItemId?: number | null
+    uploadBatchFileId?: number | null
     status: TranslationStatus
     progress: number
     completedAt?: string | null
     isPriority?: boolean
     isActive?: boolean
     startedAt?: string | null
+    pausedAt?: string | null
+    pauseReason?: string | null
+    pausedProvider?: string | null
+    nextRetryAt?: string | null
 }
 
 export interface ITranslationRequestLog {
@@ -74,6 +120,33 @@ export interface ITranslationRequestLog {
     message: string
     details?: string | null
     createdAt: string
+}
+
+export interface IRetryFailedRequestsResponse {
+    totalFailed: number
+    retried: number
+    blockedByActiveRequest: number
+    remainingFailed: number
+    message: string
+}
+
+export interface IRetryTranslationRequestResponse {
+    requestId: number
+    retried: boolean
+    blockedByActiveRequest: boolean
+    message: string
+}
+
+export interface ITranslationRequestSection {
+    items: ITranslationRequest[]
+    totalCount: number
+}
+
+export interface ITranslationRequestsOverview {
+    activeCount: number
+    pending: IPagedResult<ITranslationRequest>
+    failed: ITranslationRequestSection
+    inProgress: ITranslationRequestSection
 }
 
 export interface IRequestProgress {
@@ -129,6 +202,40 @@ export interface IPagedResult<T> {
     pageSize: number
 }
 
+export interface ICustomSource extends IBaseEntity {
+    name: string
+    sourceType: 'MovieRoot' | 'ShowRoot'
+    rootPath: string
+    recursive: boolean
+    enabled: boolean
+    includeInAutomation: boolean
+    lastScannedAt?: string | null
+    lastScanResult?: string | null
+    lastScanError?: string | null
+    items?: ICustomMediaItem[]
+}
+
+export interface ICustomMediaItem extends IBaseEntity {
+    customSourceId: number
+    itemKind: 'Movie' | 'Episode'
+    title: string
+    fileName: string
+    path: string
+    relativePath: string
+    mediaHash?: string | null
+    dateAdded?: string | null
+    translationState?: TranslationStateType
+    indexedAt?: string | null
+    stateSettingsVersion?: number
+    lastSubtitleCheckAt?: string | null
+    excludeFromTranslation: boolean
+    isPriority: boolean
+    priorityDate?: string | null
+    seriesTitle?: string | null
+    seasonNumber?: number | null
+    episodeNumber?: number | null
+}
+
 export const MEDIA_TYPE = {
     MOVIE: 'Movie',
     SHOW: 'Show',
@@ -138,13 +245,23 @@ export const MEDIA_TYPE = {
 
 export type MediaType = (typeof MEDIA_TYPE)[keyof typeof MEDIA_TYPE]
 
+export const TRANSLATION_WORKLOAD_KIND = {
+    LIBRARY: 'Library',
+    CUSTOM_SOURCE: 'CustomSource',
+    UPLOAD: 'Upload'
+} as const
+
+export type TranslationWorkloadKind =
+    (typeof TRANSLATION_WORKLOAD_KIND)[keyof typeof TRANSLATION_WORKLOAD_KIND]
+
 export const TRANSLATION_STATUS = {
     PENDING: 'Pending',
     INPROGRESS: 'InProgress',
     COMPLETED: 'Completed',
     FAILED: 'Failed',
     CANCELLED: 'Cancelled',
-    INTERRUPTED: 'Interrupted'
+    INTERRUPTED: 'Interrupted',
+    PAUSED: 'Paused'
 } as const
 
 export type TranslationStatus = (typeof TRANSLATION_STATUS)[keyof typeof TRANSLATION_STATUS]
@@ -164,7 +281,9 @@ export const TRANSLATION_STATE = {
     STALE: 5,
     NO_SUITABLE_SUBTITLES: 6,
     FAILED: 7,
-    AWAITING_SOURCE: 8
+    AWAITING_SOURCE: 8,
+    OCR_PENDING: 9,
+    OCR_BLOCKED: 10
 } as const
 
 export type TranslationStateType = (typeof TRANSLATION_STATE)[keyof typeof TRANSLATION_STATE]

@@ -66,6 +66,42 @@ const service = (http: AxiosStatic, resource = '/api/subtitle'): ISubtitleServic
         })
     },
 
+    queueOcr(mediaType: 'movie' | 'episode', mediaId: number, streamIndex: number) {
+        return new Promise((resolve, reject) => {
+            http.post(`${resource}/${mediaType}/${mediaId}/ocr/${streamIndex}`)
+                .then((response: AxiosResponse) => {
+                    resolve(response.data)
+                })
+                .catch((error: AxiosError) => {
+                    reject(error.response)
+                })
+        })
+    },
+
+    approveOcr(mediaType: 'movie' | 'episode', mediaId: number, streamIndex: number) {
+        return new Promise((resolve, reject) => {
+            http.post(`${resource}/${mediaType}/${mediaId}/ocr/${streamIndex}/approve`)
+                .then((response: AxiosResponse) => {
+                    resolve(response.data)
+                })
+                .catch((error: AxiosError) => {
+                    reject(error.response)
+                })
+        })
+    },
+
+    previewOcr(mediaType: 'movie' | 'episode', mediaId: number, streamIndex: number) {
+        return new Promise((resolve, reject) => {
+            http.get(`${resource}/${mediaType}/${mediaId}/ocr/${streamIndex}/preview`)
+                .then((response: AxiosResponse) => {
+                    resolve(response.data)
+                })
+                .catch((error: AxiosError) => {
+                    reject(error.response)
+                })
+        })
+    },
+
     probeEmbeddedSubtitles<T>(mediaType: 'movie' | 'episode', mediaId: number): Promise<T> {
         return new Promise((resolve, reject) => {
             http.post(`${resource}/${mediaType}/${mediaId}/probe`)

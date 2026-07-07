@@ -23,4 +23,9 @@ export interface IRecurringJob {
     currentState: string
     isCurrentlyRunning: boolean
     currentJobId: string | null
+    displayNameKey: string
+    enabledSettingKey: string | null
+    scheduleSettingKey: string | null
+    isEditable: boolean
+    isEnabled?: boolean
 }

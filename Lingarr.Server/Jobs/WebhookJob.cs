@@ -58,19 +58,26 @@ public class WebhookJob
                 return;
             }
 
-            // Sync or find the movie using the correct instance
-            var internalMovieId = await _mediaService.GetMovieIdOrSyncFromRadarrMovieId(movieId, instanceId);
-            
-            if (internalMovieId == 0)
+            // Refresh movie metadata from Radarr (ensures file_name/path are up to date)
+            var refreshResult = await _mediaService.RefreshMovieFromRadarrMovieId(movieId, instanceId);
+
+            if (refreshResult == null)
             {
                 _logger.LogWarning(
-                    "Movie '{Title}' (Radarr ID: {MovieId}) not found in instance '{InstanceId}' - may not have file yet",
+                    "Movie '{Title}' (Radarr ID: {MovieId}) could not be refreshed in instance '{InstanceId}'",
                     title, movieId, instanceId);
                 return;
             }
 
+            if (refreshResult.FileChanged)
+            {
+                await _translationRequestService.InterruptActiveRequestsForMedia(
+                    MediaType.Movie,
+                    refreshResult.MovieId);
+            }
+
             var processed = await _automationService.ProcessSingleMediaForAutomationAsync(
-                internalMovieId,
+                refreshResult.MovieId,
                 MediaType.Movie,
                 "radarr_webhook");
             

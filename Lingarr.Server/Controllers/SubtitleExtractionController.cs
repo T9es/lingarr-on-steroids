@@ -1,9 +1,12 @@
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
+using Hangfire;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
+using Lingarr.Server.Jobs;
 using Lingarr.Server.Models.Api;
+using Lingarr.Server.Services.Subtitle;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -15,17 +18,20 @@ public class SubtitleExtractionController : ControllerBase
 {
     private readonly LingarrDbContext _dbContext;
     private readonly ISubtitleExtractionService _extractionService;
+    private readonly ISubtitleOcrService _subtitleOcrService;
     private readonly IMediaStateService _mediaStateService;
     private readonly ILogger<SubtitleExtractionController> _logger;
 
     public SubtitleExtractionController(
         LingarrDbContext dbContext,
         ISubtitleExtractionService extractionService,
+        ISubtitleOcrService subtitleOcrService,
         IMediaStateService mediaStateService,
         ILogger<SubtitleExtractionController> logger)
     {
         _dbContext = dbContext;
         _extractionService = extractionService;
+        _subtitleOcrService = subtitleOcrService;
         _mediaStateService = mediaStateService;
         _logger = logger;
     }
@@ -133,7 +139,7 @@ public class SubtitleExtractionController : ControllerBase
             return BadRequest(new ExtractSubtitleResponse
             {
                 Success = false,
-                Error = "Cannot extract image-based subtitles (PGS/VobSub). OCR is not supported."
+                Error = "Cannot extract image-based subtitles directly. Use OCR for supported bitmap streams."
             });
         }
 
@@ -198,7 +204,7 @@ public class SubtitleExtractionController : ControllerBase
             return BadRequest(new ExtractSubtitleResponse
             {
                 Success = false,
-                Error = "Cannot extract image-based subtitles (PGS/VobSub). OCR is not supported."
+                Error = "Cannot extract image-based subtitles directly. Use OCR for supported bitmap streams."
             });
         }
 
@@ -206,6 +212,46 @@ public class SubtitleExtractionController : ControllerBase
         var outputDir = episode.Path;
 
         return await ExtractAndUpdateAsync(embeddedSub, mediaPath, outputDir);
+    }
+
+    [HttpPost("movie/{id:int}/ocr/{streamIndex:int}")]
+    public async Task<ActionResult<SubtitleOcrResponse>> QueueMovieOcr(int id, int streamIndex)
+    {
+        return await QueueOcrAsync(id, MediaType.Movie, streamIndex, manual: true);
+    }
+
+    [HttpPost("episode/{id:int}/ocr/{streamIndex:int}")]
+    public async Task<ActionResult<SubtitleOcrResponse>> QueueEpisodeOcr(int id, int streamIndex)
+    {
+        return await QueueOcrAsync(id, MediaType.Episode, streamIndex, manual: true);
+    }
+
+    [HttpPost("movie/{id:int}/ocr/{streamIndex:int}/approve")]
+    public async Task<ActionResult<SubtitleOcrResponse>> ApproveMovieOcr(int id, int streamIndex)
+    {
+        var result = await _subtitleOcrService.ApproveOcrAsync(id, MediaType.Movie, streamIndex);
+        return result.Success ? Ok(SubtitleOcrResponse.FromResult(result)) : BadRequest(SubtitleOcrResponse.FromResult(result));
+    }
+
+    [HttpPost("episode/{id:int}/ocr/{streamIndex:int}/approve")]
+    public async Task<ActionResult<SubtitleOcrResponse>> ApproveEpisodeOcr(int id, int streamIndex)
+    {
+        var result = await _subtitleOcrService.ApproveOcrAsync(id, MediaType.Episode, streamIndex);
+        return result.Success ? Ok(SubtitleOcrResponse.FromResult(result)) : BadRequest(SubtitleOcrResponse.FromResult(result));
+    }
+
+    [HttpGet("movie/{id:int}/ocr/{streamIndex:int}/preview")]
+    public async Task<ActionResult> PreviewMovieOcr(int id, int streamIndex)
+    {
+        var result = await _subtitleOcrService.GetPreviewAsync(id, MediaType.Movie, streamIndex);
+        return result.Success ? Ok(result) : BadRequest(result);
+    }
+
+    [HttpGet("episode/{id:int}/ocr/{streamIndex:int}/preview")]
+    public async Task<ActionResult> PreviewEpisodeOcr(int id, int streamIndex)
+    {
+        var result = await _subtitleOcrService.GetPreviewAsync(id, MediaType.Episode, streamIndex);
+        return result.Success ? Ok(result) : BadRequest(result);
     }
 
     /// <summary>
@@ -309,6 +355,26 @@ public class SubtitleExtractionController : ControllerBase
         }
     }
 
+    private async Task<ActionResult<SubtitleOcrResponse>> QueueOcrAsync(
+        int id,
+        MediaType mediaType,
+        int streamIndex,
+        bool manual)
+    {
+        var result = await _subtitleOcrService.QueueOcrAsync(id, mediaType, streamIndex, manual);
+        if (!result.Success)
+        {
+            return BadRequest(SubtitleOcrResponse.FromResult(result));
+        }
+
+        if (result.Status == SubtitleOcrStatus.Queued)
+        {
+            BackgroundJob.Enqueue<SubtitleOcrJob>(job => job.Execute(id, mediaType, streamIndex, manual));
+        }
+
+        return Ok(SubtitleOcrResponse.FromResult(result));
+    }
+
     private async Task NormalizeStaleExtractedSubtitlesAsync(List<EmbeddedSubtitle>? subtitles)
     {
         if (subtitles == null || subtitles.Count == 0)
@@ -347,6 +413,19 @@ public class SubtitleExtractionController : ControllerBase
         IsDefault = entity.IsDefault,
         IsForced = entity.IsForced,
         IsExtracted = entity.IsExtracted,
-        ExtractedPath = entity.ExtractedPath
+        ExtractedPath = entity.ExtractedPath,
+        OcrStatus = entity.OcrStatus,
+        OcrExtractedPath = entity.OcrExtractedPath,
+        OcrError = entity.OcrError,
+        OcrAttemptedAt = entity.OcrAttemptedAt,
+        OcrCompletedAt = entity.OcrCompletedAt,
+        OcrCueCount = entity.OcrCueCount,
+        OcrQualityScore = entity.OcrQualityScore,
+        OcrIssueSummary = entity.OcrIssueSummary,
+        OcrApprovedAt = entity.OcrApprovedAt,
+        IsOcrSupported = entity.IsTextBased == false &&
+                         (string.Equals(entity.CodecName, "hdmv_pgs_subtitle", StringComparison.OrdinalIgnoreCase) ||
+                          string.Equals(entity.CodecName, "pgssub", StringComparison.OrdinalIgnoreCase)),
+        IsOcrUsable = entity.HasUsableOcr()
     };
 }

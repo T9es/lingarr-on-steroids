@@ -1,5 +1,12 @@
 import { AxiosError, AxiosResponse, AxiosStatic } from 'axios'
-import { ITranslationRequest, ITranslationRequestLog, ITranslationRequestService } from '@/ts'
+import {
+    IRetryFailedRequestsResponse,
+    IRetryTranslationRequestResponse,
+    ITranslationRequest,
+    ITranslationRequestLog,
+    ITranslationRequestsOverview,
+    ITranslationRequestService
+} from '@/ts'
 
 const service = (
     http: AxiosStatic,
@@ -38,9 +45,36 @@ const service = (
                 })
         })
     },
-    getRecentCompleted<T>(limit = 10): Promise<T> {
+    overview(
+        pageNumber: number,
+        searchQuery: string,
+        orderBy: string,
+        ascending: boolean,
+        pageSize = 20,
+        sectionLimit = 100
+    ): Promise<ITranslationRequestsOverview> {
         return new Promise((resolve, reject) => {
-            http.get(`${resource}/recent`.addParams({ limit }))
+            http.get(
+                `${resource}/overview`.addParams({
+                    pageNumber,
+                    searchQuery,
+                    orderBy,
+                    ascending,
+                    pageSize,
+                    sectionLimit
+                })
+            )
+                .then((response: AxiosResponse<ITranslationRequestsOverview>) => {
+                    resolve(response.data)
+                })
+                .catch((error: AxiosError) => {
+                    reject(error.response)
+                })
+        })
+    },
+    getRecentCompleted<T>(offset = 0, limit = 10): Promise<T> {
+        return new Promise((resolve, reject) => {
+            http.get(`${resource}/recent`.addParams({ offset, limit }))
                 .then((response: AxiosResponse<T>) => {
                     resolve(response.data)
                 })
@@ -94,10 +128,10 @@ const service = (
                 })
         })
     },
-    retry<T>(translationRequest: ITranslationRequest): Promise<T> {
+    retry(translationRequest: ITranslationRequest): Promise<IRetryTranslationRequestResponse> {
         return new Promise((resolve, reject) => {
             http.post(`${resource}/retry`, translationRequest)
-                .then((response: AxiosResponse<T>) => {
+                .then((response: AxiosResponse<IRetryTranslationRequestResponse>) => {
                     resolve(response.data)
                 })
                 .catch((error: AxiosError) => {
@@ -105,10 +139,10 @@ const service = (
                 })
         })
     },
-    retryAllFailed<T>(): Promise<T> {
+    retryAllFailed(): Promise<IRetryFailedRequestsResponse> {
         return new Promise((resolve, reject) => {
             http.post(`${resource}/retry-all-failed`)
-                .then((response: AxiosResponse<T>) => {
+                .then((response: AxiosResponse<IRetryFailedRequestsResponse>) => {
                     resolve(response.data)
                 })
                 .catch((error: AxiosError) => {

@@ -16,4 +16,9 @@ public class TranslateMediaRequest
     /// The type of media (Movie, Episode, Season, Show).
     /// </summary>
     public MediaType MediaType { get; set; }
+
+    /// <summary>
+    /// When true, remove Lingarr-managed translated outputs for this media before re-queueing translation.
+    /// </summary>
+    public bool ForceRecreate { get; set; }
 }

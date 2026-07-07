@@ -5,15 +5,25 @@ namespace Lingarr.Core.Entities;
 public class TranslationRequest : BaseEntity
 {
     public string? JobId  { get; set; }
+    public TranslationWorkloadKind WorkloadKind { get; set; } = TranslationWorkloadKind.Library;
+    public string WorkloadItemKey { get; set; } = string.Empty;
     public int? MediaId  { get; set; }
+    public int? CustomMediaItemId { get; set; }
+    public int? UploadBatchFileId { get; set; }
     public required string Title { get; set; }
     public required string SourceLanguage { get; set; }
     public required string TargetLanguage { get; set; }
     public string? SubtitleToTranslate { get; set; }
     public string? TranslatedSubtitle { get; set; }
+    public string? SourceSubtitleFormat { get; set; }
+    public string? SubtitleOutputMode { get; set; }
+    public string? RequiredOutputFormats { get; set; }
+    public string? GeneratedOutputFormats { get; set; }
+    public string? GeneratedSubtitlePaths { get; set; }
     public required MediaType MediaType { get; set; }
     public required TranslationStatus Status { get; set; }
     public bool? IsActive { get; set; }
+    public string SourceDedupeKey { get; set; } = "primary";
     public DateTime? CompletedAt { get; set; }
     public int Progress { get; set; }
     
@@ -54,6 +64,41 @@ public class TranslationRequest : BaseEntity
     /// Number of times this request has been retried after failure
     /// </summary>
     public int RetryCount { get; set; }
+
+    /// <summary>
+    /// Version of the source snapshot format used to capture source freshness metadata.
+    /// </summary>
+    public int SourceSnapshotVersion { get; set; } = 1;
+
+    /// <summary>
+    /// Source snapshot type used by this translation request ("external" or "embedded").
+    /// </summary>
+    public string? SourceSnapshotType { get; set; }
+
+    /// <summary>
+    /// Stable identity for the source subtitle candidate used during translation.
+    /// </summary>
+    public string? SourceSnapshotIdentity { get; set; }
+
+    /// <summary>
+    /// Fingerprint of the source subtitle revision used for translation.
+    /// </summary>
+    public string? SourceSnapshotFingerprint { get; set; }
+
+    /// <summary>
+    /// Source subtitle file size in bytes when the request was translated (external source only).
+    /// </summary>
+    public long? SourceSnapshotFileSizeBytes { get; set; }
+
+    /// <summary>
+    /// Source subtitle file last write UTC timestamp when translated (external source only).
+    /// </summary>
+    public DateTime? SourceSnapshotLastWriteUtc { get; set; }
+
+    /// <summary>
+    /// Selected source stream index when translating from embedded subtitles.
+    /// </summary>
+    public int? SourceSnapshotStreamIndex { get; set; }
     
     /// <summary>
     /// When the request last failed (null if never failed)
@@ -65,4 +110,19 @@ public class TranslationRequest : BaseEntity
     /// Used for exponential backoff of failed requests
     /// </summary>
     public DateTime? NextRetryAt { get; set; }
+
+    /// <summary>
+    /// When the request was paused because the selected provider could not continue safely.
+    /// </summary>
+    public DateTime? PausedAt { get; set; }
+
+    /// <summary>
+    /// Human-readable reason for the current paused state.
+    /// </summary>
+    public string? PauseReason { get; set; }
+
+    /// <summary>
+    /// Provider that caused the pause.
+    /// </summary>
+    public string? PausedProvider { get; set; }
 }

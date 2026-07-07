@@ -27,12 +27,35 @@ const service = (http: AxiosStatic, resource = '/api/translate'): ITranslateServ
                 })
         })
     },
-    translateMedia<T>(mediaId: number, mediaType: MediaType): Promise<T> {
+    translateMedia<T>(mediaId: number, mediaType: MediaType, forceRecreate = false): Promise<T> {
         return new Promise((resolve, reject) => {
             http.post(`${resource}/media`, {
                 mediaId: mediaId,
-                mediaType: mediaType
+                mediaType: mediaType,
+                forceRecreate: forceRecreate
             })
+                .then((response: AxiosResponse<T>) => {
+                    resolve(response.data)
+                })
+                .catch((error: AxiosError) => {
+                    reject(error.response)
+                })
+        })
+    },
+    recreateAllMedia<T>(): Promise<T> {
+        return new Promise((resolve, reject) => {
+            http.post(`${resource}/recreate-all`)
+                .then((response: AxiosResponse<T>) => {
+                    resolve(response.data)
+                })
+                .catch((error: AxiosError) => {
+                    reject(error.response)
+                })
+        })
+    },
+    reconcileOutputs<T>(): Promise<T> {
+        return new Promise((resolve, reject) => {
+            http.post(`${resource}/reconcile-outputs`)
                 .then((response: AxiosResponse<T>) => {
                     resolve(response.data)
                 })

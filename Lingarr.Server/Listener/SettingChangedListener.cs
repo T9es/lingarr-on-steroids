@@ -52,6 +52,11 @@ public class SettingChangedListener
                 ])
             },
             {
+                "customSourceSchedule", ("Action", "CustomSourceSchedule", [
+                    SettingKeys.Automation.CustomSourceScanSchedule
+                ])
+            },
+            {
                 "clearHash", ("Action", "ClearHash", [
                     SettingKeys.Translation.SourceLanguages
                 ])
@@ -59,12 +64,52 @@ public class SettingChangedListener
             {
                 "schedule", ("Action", "Schedule", [
                     SettingKeys.Automation.MovieSchedule,
-                    SettingKeys.Automation.ShowSchedule
+                    SettingKeys.Automation.ShowSchedule,
+                    SettingKeys.Automation.MovieSyncEnabled,
+                    SettingKeys.Automation.ShowSyncEnabled,
+                    SettingKeys.Automation.CustomSourceScanEnabled
+                ])
+            },
+            {
+                "maintenanceSchedule", ("Action", "MaintenanceSchedule", [
+                    SettingKeys.Maintenance.CleanupEnabled,
+                    SettingKeys.Maintenance.CleanupSchedule,
+                    SettingKeys.Maintenance.UploadCleanupEnabled,
+                    SettingKeys.Maintenance.UploadCleanupSchedule,
+                    SettingKeys.Maintenance.StatisticsEnabled,
+                    SettingKeys.Maintenance.StatisticsSchedule,
+                    SettingKeys.Maintenance.RetryFailedEnabled,
+                    SettingKeys.Maintenance.RetryFailedSchedule
                 ])
             },
             {
                 "serviceType", ("Action", "ServiceType", [
                     SettingKeys.Translation.ServiceType
+                ])
+            },
+            {
+                "resumePausedTranslations", ("Action", "ResumePausedTranslations", [
+                    SettingKeys.Translation.ServiceType,
+                    SettingKeys.Translation.OpenAi.ApiKey,
+                    SettingKeys.Translation.OpenAi.Model,
+                    SettingKeys.Translation.Anthropic.ApiKey,
+                    SettingKeys.Translation.Anthropic.Model,
+                    SettingKeys.Translation.Gemini.ApiKey,
+                    SettingKeys.Translation.Gemini.Model,
+                    SettingKeys.Translation.DeepSeek.ApiKey,
+                    SettingKeys.Translation.DeepSeek.Model,
+                    SettingKeys.Translation.LocalAi.ApiKey,
+                    SettingKeys.Translation.LocalAi.Endpoint,
+                    SettingKeys.Translation.LocalAi.Model,
+                    SettingKeys.Translation.Chutes.ApiKey,
+                    SettingKeys.Translation.Chutes.Model,
+                    SettingKeys.Translation.NanoGpt.ApiKey,
+                    SettingKeys.Translation.NanoGpt.Model,
+                    SettingKeys.Translation.NanoGpt.SubscriptionModelsOnly,
+                    SettingKeys.Translation.NanoGpt.WeeklyTokenAllowance,
+                    SettingKeys.Translation.NanoGpt.TokenReserve,
+                    SettingKeys.Translation.NanoGpt.DailyUnitReserve,
+                    SettingKeys.Translation.NanoGpt.MonthlyUnitReserve
                 ])
             },
             {
@@ -78,15 +123,39 @@ public class SettingChangedListener
                 ])
             },
             {
+                "uploadReservedWorkerSlots", ("Action", "UploadReservedWorkerSlots", [
+                    SettingKeys.UploadWorkspace.ReservedWorkerSlots
+                ])
+            },
+            {
+                "sourceLanguageMode", ("Action", "InvalidateTranslationState", [
+                    SettingKeys.Translation.SourceLanguageMode
+                ])
+            },
+            {
+                "unknownLanguageDetection", ("Action", "SyncUnknownLanguageDetection", [
+                    SettingKeys.SubtitleExtraction.DetectUnknownLanguages,
+                    SettingKeys.SubtitleExtraction.DetectUnknownLanguagesSchedule
+                ])
+            },
+            {
                 "languageSettings", ("Action", "InvalidateTranslationState", [
                     SettingKeys.Translation.SourceLanguages,
                     SettingKeys.Translation.TargetLanguages,
-                    SettingKeys.Translation.IgnoreCaptions
+                    SettingKeys.Translation.IgnoreCaptions,
+                    SettingKeys.Translation.SubtitleOutputMode,
+                    SettingKeys.SubtitleValidation.SkipWhenTargetEmbedded,
+                    SettingKeys.SubtitleExtraction.OcrEnabled,
+                    SettingKeys.SubtitleExtraction.OcrAutoQueue,
+                    SettingKeys.SubtitleExtraction.OcrMinQualityScore,
+                    SettingKeys.SubtitleExtraction.OcrLanguages
                 ])
             }
         };
 
-        // Find and execute the appropriate action for the changed setting
+        // Some settings intentionally participate in more than one group.
+        // For example, source language changes should clear cached hashes and
+        // invalidate translation state in the same pass.
         foreach (var group in settingGroups)
         {
             // Check if the changed setting belongs to this configuration group based on it's *keys*
@@ -101,8 +170,6 @@ public class SettingChangedListener
                         await RunAction(group.Value.actionName, group.Value.keys);
                         break;
                 }
-
-                break;
             }
         }
     }
@@ -186,7 +253,7 @@ public class SettingChangedListener
         bool allRequiredKeysHaveValues = requiredKeys.All(key =>
             settings.TryGetValue(key, out var value) && !string.IsNullOrEmpty(value));
 
-        if (allRequiredKeysHaveValues)
+        if (allRequiredKeysHaveValues || actionName == "ResumePausedTranslations")
         {
             switch (actionName)
             {
@@ -199,7 +266,17 @@ public class SettingChangedListener
                     await _scheduleService.SyncIndexerJobsAsync();
                     break;
 
+                case "CustomSourceSchedule":
+                    await _scheduleService.SyncCustomSourceScanJobAsync();
+                    break;
 
+                case "MaintenanceSchedule":
+                    await _scheduleService.SyncMaintenanceJobsAsync();
+                    break;
+
+                case "SyncUnknownLanguageDetection":
+                    await _scheduleService.SyncUnknownLanguageDetectionJobAsync();
+                    break;
 
                 case "BatchTranslation":
                     var useBatchTranslation = await settingService.GetSetting(SettingKeys.Translation.UseBatchTranslation);
@@ -223,6 +300,18 @@ public class SettingChangedListener
                         "Settings changed for |Green|ParallelTranslations|/Green|. Reconfigured to |Orange|{MaxParallel}|/Orange| concurrent translations.",
                         maxParallel);
                     break;
+
+                case "UploadReservedWorkerSlots":
+                    var workerServiceForReservedSlots = _serviceProvider.GetRequiredService<ITranslationWorkerService>();
+                    var reservedSlotsSetting = await settingService.GetSetting(SettingKeys.UploadWorkspace.ReservedWorkerSlots);
+                    var reservedSlots = int.TryParse(reservedSlotsSetting, out var reservedVal) && reservedVal >= 0
+                        ? reservedVal
+                        : 0;
+                    await workerServiceForReservedSlots.ReconfigureReservedUploadSlotsAsync(reservedSlots);
+                    _logger.LogInformation(
+                        "Settings changed for |Green|UploadReservedWorkerSlots|/Green|. Reconfigured to |Orange|{ReservedSlots}|/Orange| reserved upload slot(s).",
+                        reservedSlots);
+                    break;
                     
                 case "InvalidateTranslationState":
                     var mediaStateService = scope.ServiceProvider.GetRequiredService<IMediaStateService>();
@@ -230,6 +319,17 @@ public class SettingChangedListener
                     await mediaStateService.MarkAllStaleAsync();
                     _logger.LogInformation(
                         "Language settings changed - incremented version and marked all media as stale");
+                    break;
+
+                case "ResumePausedTranslations":
+                    var pausedResumeService = scope.ServiceProvider.GetRequiredService<IPausedTranslationResumeService>();
+                    var resumed = await pausedResumeService.ResumePausedRequestsForProviderChangeAsync(CancellationToken.None);
+                    if (resumed > 0)
+                    {
+                        _logger.LogInformation(
+                            "Provider setting changed - resumed {Count} paused translation request(s)",
+                            resumed);
+                    }
                     break;
             }
         }

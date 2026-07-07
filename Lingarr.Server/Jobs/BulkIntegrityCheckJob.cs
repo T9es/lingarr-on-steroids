@@ -1,12 +1,15 @@
 using Hangfire;
+using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Filters;
 using Lingarr.Server.Hubs;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
+using Lingarr.Server.Models;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace Lingarr.Server.Jobs;
 
@@ -20,6 +23,7 @@ public class BulkIntegrityCheckJob
     private readonly IMediaSubtitleProcessor _mediaSubtitleProcessor;
     private readonly ISubtitleIntegrityService _integrityService;
     private readonly IHubContext<JobProgressHub> _hubContext;
+    private readonly ISettingService _settingService;
     private readonly ILogger<BulkIntegrityCheckJob> _logger;
 
     public BulkIntegrityCheckJob(
@@ -27,12 +31,14 @@ public class BulkIntegrityCheckJob
         IMediaSubtitleProcessor mediaSubtitleProcessor,
         ISubtitleIntegrityService integrityService,
         IHubContext<JobProgressHub> hubContext,
+        ISettingService settingService,
         ILogger<BulkIntegrityCheckJob> logger)
     {
         _dbContext = dbContext;
         _mediaSubtitleProcessor = mediaSubtitleProcessor;
         _integrityService = integrityService;
         _hubContext = hubContext;
+        _settingService = settingService;
         _logger = logger;
     }
 
@@ -49,6 +55,19 @@ public class BulkIntegrityCheckJob
 
         try
         {
+            var autoQueue = string.Equals(
+                await _settingService.GetSetting(SettingKeys.SubtitleValidation.BulkIntegrityAutoQueue),
+                "true",
+                StringComparison.OrdinalIgnoreCase);
+            var maxAutoQueue = int.TryParse(
+                await _settingService.GetSetting(SettingKeys.SubtitleValidation.BulkIntegrityMaxAutoQueuePerRun),
+                out var parsedMaxAutoQueue)
+                ? Math.Max(0, parsedMaxAutoQueue)
+                : 25;
+
+            stats.AutoQueueEnabled = autoQueue;
+            stats.MaxAutoQueuePerRun = maxAutoQueue;
+
             // Get all Complete-state movies
             var completedMovieIds = await _dbContext.Movies
                 .Where(m => m.TranslationState == TranslationState.Complete)
@@ -82,18 +101,29 @@ public class BulkIntegrityCheckJob
 
                     if (movie == null) continue;
 
-                    // ProcessMediaForceAsync returns count of translations queued
-                    var queuedCount = await _mediaSubtitleProcessor.ProcessMediaForceAsync(
+                    var shouldQueue = autoQueue && stats.QueuedCount < maxAutoQueue;
+                    var remainingQueueSlots = Math.Max(0, maxAutoQueue - stats.QueuedCount);
+                    var mediaFindings = new List<SubtitleIntegrityFinding>();
+                    var affectedCount = await _mediaSubtitleProcessor.ProcessMediaForceAsync(
                         movie, 
                         MediaType.Movie, 
                         forceProcess: true,     // Skip hash check, run validation
-                        forceTranslation: false // Only queue corrupt ones
+                        forceTranslation: false, // Only queue corrupt ones
+                        forcePriority: false,
+                        queueTranslations: shouldQueue,
+                        maxTranslationsToQueue: remainingQueueSlots,
+                        integrityFindings: mediaFindings
                     );
 
-                    if (queuedCount > 0)
+                    stats.FlaggedItems.AddRange(mediaFindings);
+
+                    if (affectedCount > 0)
                     {
                         stats.CorruptCount++;
-                        stats.QueuedCount += queuedCount;
+                        if (shouldQueue)
+                        {
+                            stats.QueuedCount += affectedCount;
+                        }
                     }
                     else
                     {
@@ -128,17 +158,29 @@ public class BulkIntegrityCheckJob
 
                     if (episode == null) continue;
 
-                    var queuedCount = await _mediaSubtitleProcessor.ProcessMediaForceAsync(
+                    var shouldQueue = autoQueue && stats.QueuedCount < maxAutoQueue;
+                    var remainingQueueSlots = Math.Max(0, maxAutoQueue - stats.QueuedCount);
+                    var mediaFindings = new List<SubtitleIntegrityFinding>();
+                    var affectedCount = await _mediaSubtitleProcessor.ProcessMediaForceAsync(
                         episode, 
                         MediaType.Episode, 
                         forceProcess: true,
-                        forceTranslation: false
+                        forceTranslation: false,
+                        forcePriority: false,
+                        queueTranslations: shouldQueue,
+                        maxTranslationsToQueue: remainingQueueSlots,
+                        integrityFindings: mediaFindings
                     );
 
-                    if (queuedCount > 0)
+                    stats.FlaggedItems.AddRange(mediaFindings);
+
+                    if (affectedCount > 0)
                     {
                         stats.CorruptCount++;
-                        stats.QueuedCount += queuedCount;
+                        if (shouldQueue)
+                        {
+                            stats.QueuedCount += affectedCount;
+                        }
                     }
                     else
                     {
@@ -161,6 +203,7 @@ public class BulkIntegrityCheckJob
 
             stats.IsComplete = true;
             stats.IsRunning = false;
+            await PersistResult(stats);
             await SendProgress(stats);
 
             _logger.LogInformation(
@@ -173,6 +216,7 @@ public class BulkIntegrityCheckJob
             stats.IsComplete = true;
             stats.IsRunning = false;
             stats.Error = ex.Message;
+            await PersistResult(stats);
             await SendProgress(stats);
             throw;
         }
@@ -188,6 +232,20 @@ public class BulkIntegrityCheckJob
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "Failed to send bulk integrity progress update");
+        }
+    }
+
+    private async Task PersistResult(BulkIntegrityStats stats)
+    {
+        try
+        {
+            await _settingService.SetSetting(
+                SettingKeys.SubtitleValidation.LastIntegrityCheckResult,
+                JsonSerializer.Serialize(stats, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Failed to persist bulk integrity result");
         }
     }
 }
@@ -210,6 +268,8 @@ public class BulkIntegrityStats
     public int CorruptCount { get; set; }
     public int QueuedCount { get; set; }
     public int ErrorCount { get; set; }
+    public bool AutoQueueEnabled { get; set; }
+    public int MaxAutoQueuePerRun { get; set; }
     
     /// <summary>
     /// Number of translations with incomplete source subtitles (Forced/Signs-only).
@@ -220,6 +280,11 @@ public class BulkIntegrityStats
     /// List of flagged incomplete subtitle issues.
     /// </summary>
     public List<Models.SubtitleTypeCheckResult> IncompleteSubtitles { get; set; } = new();
+
+    /// <summary>
+    /// Detailed actionable findings detected by this integrity run.
+    /// </summary>
+    public List<SubtitleIntegrityFinding> FlaggedItems { get; set; } = new();
     
     public bool IsComplete { get; set; }
     public bool IsRunning { get; set; }

@@ -331,6 +331,77 @@ public class MediaService : IMediaService
     }
 
     /// <inheritdoc />
+    public async Task<MovieRefreshResult?> RefreshMovieFromRadarrMovieId(int radarrMovieId, string? sourceInstanceId = null)
+    {
+        var instanceId = sourceInstanceId ?? "default";
+
+        try
+        {
+            var config = await _instanceConfigService.GetRadarrConfig(instanceId);
+
+            if (config == null)
+            {
+                _logger.LogWarning("No Radarr instance config found for instanceId '{InstanceId}'", instanceId);
+                return null;
+            }
+
+            var movieFetched = await _radarrService.GetMovie(radarrMovieId, config.Url, config.ApiKey);
+            if (movieFetched == null)
+            {
+                return null;
+            }
+
+            if (!movieFetched.HasFile)
+            {
+                _logger.LogInformation(
+                    "Skipping targeted refresh for Radarr movie {MovieId} from instance '{InstanceId}' because it has no file",
+                    radarrMovieId,
+                    instanceId);
+                return null;
+            }
+
+            // Capture old state before syncing (no-tracking to avoid conflict with SyncMovie)
+            var existingMovie = await _dbContext.Movies
+                .AsNoTracking()
+                .FirstOrDefaultAsync(m => m.RadarrId == radarrMovieId && m.SourceInstanceId == instanceId);
+            var oldPath = existingMovie?.Path;
+            var oldFileName = existingMovie?.FileName;
+
+            var syncedMovie = await _movieSyncService.SyncMovie(movieFetched, instanceId);
+            if (syncedMovie == null)
+            {
+                return null;
+            }
+
+            var fileChanged = oldPath != syncedMovie.Path || oldFileName != syncedMovie.FileName;
+
+            return new MovieRefreshResult(
+                syncedMovie.Id,
+                fileChanged,
+                oldFileName,
+                syncedMovie.FileName,
+                syncedMovie.IndexedAt);
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            _logger.LogWarning(
+                "Movie with Radarr ID {MovieId} not found in instance '{InstanceId}' during targeted refresh (404)",
+                radarrMovieId,
+                instanceId);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Failed to refresh movie with Radarr ID {MovieId} from instance '{InstanceId}'",
+                radarrMovieId,
+                instanceId);
+            return null;
+        }
+    }
+
+    /// <inheritdoc />
     public async Task<PagedResult<Show>> GetShows(
         string? searchQuery,
         string? orderBy,

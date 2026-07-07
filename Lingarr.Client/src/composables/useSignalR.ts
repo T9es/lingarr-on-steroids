@@ -10,6 +10,33 @@ export const createSignalRStore = (): SignalRStore => {
     })
 
     const connectionPromises = new Map<string, Promise<void>>()
+    const joinedGroups = new Map<string, Map<string, { group: string }>>()
+
+    const getJoinedGroups = (hubName: string): Map<string, { group: string }> => {
+        const existing = joinedGroups.get(hubName)
+        if (existing) {
+            return existing
+        }
+
+        const groups = new Map<string, { group: string }>()
+        joinedGroups.set(hubName, groups)
+        return groups
+    }
+
+    const rejoinGroups = async (hubName: string): Promise<void> => {
+        const hubConnection = state.hubs[hubName]
+        if (!hubConnection?.connection) {
+            return
+        }
+
+        for (const groupName of getJoinedGroups(hubName).values()) {
+            try {
+                await hubConnection.connection.invoke('JoinGroup', groupName)
+            } catch (err) {
+                console.error(`Error rejoining group ${groupName.group} in hub ${hubName}:`, err)
+            }
+        }
+    }
 
     const connect = async (hubName: string, url: string): Promise<Hub> => {
         if (!state.hubs[hubName]) {
@@ -33,6 +60,7 @@ export const createSignalRStore = (): SignalRStore => {
 
                     connection.onreconnected(() => {
                         state.hubs[hubName].isConnected = true
+                        void rejoinGroups(hubName)
                     })
 
                     connection.onclose(() => {
@@ -63,6 +91,7 @@ export const createSignalRStore = (): SignalRStore => {
                 if (hubConnection.connection) {
                     try {
                         await hubConnection.connection.invoke('JoinGroup', groupName)
+                        getJoinedGroups(hubName).set(groupName.group, groupName)
                     } catch (err) {
                         console.error(
                             `Error joining group ${groupName.group} in hub ${hubName}:`,
@@ -72,6 +101,7 @@ export const createSignalRStore = (): SignalRStore => {
                 }
             },
             leaveGroup: async (groupName: { group: string }): Promise<void> => {
+                getJoinedGroups(hubName).delete(groupName.group)
                 if (hubConnection.connection) {
                     try {
                         await hubConnection.connection.invoke('LeaveGroup', groupName)

@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -16,19 +15,12 @@ public class SubtitleService : ISubtitleService
     private static readonly string[] SupportedExtensions = [".srt", ".ssa", ".ass", ".vtt"];
     private static readonly string[] SupportedCaptions = ["sdh", "cc", "forced", "hi"];
     private static readonly char[] WhitespaceCharacters = [' ', '\t', '\n', '\r'];
-
-    private static readonly Dictionary<string, string> LanguageLookup = new(StringComparer.OrdinalIgnoreCase);
-    private readonly ILogger<SubtitleService> _logger;
-
-    static SubtitleService()
+    private static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        foreach (var c in CultureInfo.GetCultures(CultureTypes.AllCultures))
-        {
-            if (!string.IsNullOrEmpty(c.Name)) LanguageLookup[c.Name] = c.TwoLetterISOLanguageName;
-            if (!string.IsNullOrEmpty(c.ThreeLetterISOLanguageName)) LanguageLookup[c.ThreeLetterISOLanguageName] = c.TwoLetterISOLanguageName;
-            if (!string.IsNullOrEmpty(c.TwoLetterISOLanguageName)) LanguageLookup[c.TwoLetterISOLanguageName] = c.TwoLetterISOLanguageName;
-        }
-    }
+        ".mkv", ".mp4", ".avi", ".wmv", ".flv", ".ts", ".m2ts", ".mov", ".webm", ".mpg", ".mpeg", ".m4v"
+    };
+
+    private readonly ILogger<SubtitleService> _logger;
 
     public SubtitleService(
         ILogger<SubtitleService> logger)
@@ -132,45 +124,62 @@ public class SubtitleService : ISubtitleService
     }
 
     /// <inheritdoc />
-    public string CreateFilePath(string originalPath, string targetLanguage, string subtitleTag)
+    public string CreateFilePath(string originalPath, string targetLanguage, string subtitleTag, string? outputFormat = null)
     {
-        return CreateFilePathInternal(originalPath, targetLanguage, subtitleTag);
+        return CreateFilePathInternal(originalPath, targetLanguage, subtitleTag, outputFormat);
     }
 
     /// <inheritdoc />
-    public IEnumerable<string> CreateFallbackPaths(string originalPath, string targetLanguage, string subtitleTag, string subtitleTagShort)
+    public IEnumerable<string> CreateFallbackPaths(
+        string originalPath,
+        string targetLanguage,
+        string subtitleTag,
+        string subtitleTagShort,
+        string? outputFormat = null,
+        string? forcedCaption = null)
     {
         var paths = new List<string>();
 
         // 1. Full Tag
-        paths.Add(CreateFilePathInternal(originalPath, targetLanguage, subtitleTag));
+        paths.Add(CreateFilePathInternal(originalPath, targetLanguage, subtitleTag, outputFormat, forcedCaption));
 
         // 2. Short Tag (if provided and different)
-        if (!string.IsNullOrEmpty(subtitleTagShort) && 
+        if (!string.IsNullOrEmpty(subtitleTagShort) &&
             !string.Equals(subtitleTagShort, subtitleTag, StringComparison.OrdinalIgnoreCase))
         {
-            paths.Add(CreateFilePathInternal(originalPath, targetLanguage, subtitleTagShort));
+            paths.Add(CreateFilePathInternal(originalPath, targetLanguage, subtitleTagShort, outputFormat, forcedCaption));
         }
 
         // 3. No Tag (if different from previous)
-        var noTagPath = CreateFilePathInternal(originalPath, targetLanguage, null);
+        var noTagPath = CreateFilePathInternal(originalPath, targetLanguage, null, outputFormat, forcedCaption);
         if (!paths.Contains(noTagPath))
         {
             paths.Add(noTagPath);
         }
 
-        // 4. Truncated Path (Last Resort) using Short Tag (or no tag if short is empty)
-        // We truncate the base filename to ensure proper length
-        var tagForTruncation = !string.IsNullOrEmpty(subtitleTagShort) ? subtitleTagShort : null;
-        paths.Add(CreateTruncatedFilePath(originalPath, targetLanguage, tagForTruncation));
-
         return paths.Distinct();
     }
 
-    private string CreateFilePathInternal(string originalPath, string targetLanguage, string? subtitleTag)
+    private string CreateFilePathInternal(
+        string originalPath,
+        string targetLanguage,
+        string? subtitleTag,
+        string? outputFormat = null,
+        string? forcedCaption = null)
     {
-        var extension = Path.GetExtension(originalPath);
+        var extension = !string.IsNullOrWhiteSpace(outputFormat)
+            ? SubtitleOutputModeHelper.NormalizeFormat(outputFormat)
+            : Path.GetExtension(originalPath);
         var fileNameWithoutExtension = Path.GetFileNameWithoutExtension(originalPath);
+        var directory = Path.GetDirectoryName(originalPath) ?? string.Empty;
+
+        if (IsVideoFilePath(originalPath))
+        {
+            var newFileName = BuildVideoDerivedSubtitleName(
+                fileNameWithoutExtension, targetLanguage, forcedCaption, subtitleTag, extension);
+            return Path.Combine(directory, newFileName);
+        }
+
         var parts = fileNameWithoutExtension.Split('.');
         var reversedParts = parts.Reverse().ToList();
 
@@ -181,6 +190,11 @@ public class SubtitleService : ISubtitleService
         {
             caption = reversedParts[captionIndex].ToLowerInvariant();
             reversedParts.RemoveAt(captionIndex);
+        }
+
+        if (!string.IsNullOrWhiteSpace(forcedCaption))
+        {
+            caption = forcedCaption.ToLowerInvariant();
         }
 
         // Extract language
@@ -219,52 +233,49 @@ public class SubtitleService : ISubtitleService
             newParts.Add(subtitleTag.ToLowerInvariant());
         }
         
-        // Build new file name and path
-        var newFileName = string.Join(".", newParts) + extension;
-        var directory = Path.GetDirectoryName(originalPath) ?? string.Empty;
-        return Path.Combine(directory, newFileName);
+        // Build subtitle file name and path
+        var result = string.Join(".", newParts) + extension;
+        return Path.Combine(directory, result);
     }
 
-    private string CreateTruncatedFilePath(string originalPath, string targetLanguage, string? subtitleTag)
+    private static bool IsVideoFilePath(string path)
     {
-        // Calculate max filename length (255)
-        // Reserve space for extension, language, tag, separators
-        const int maxFilenameLength = 250; // Safety margin
-        var extension = Path.GetExtension(originalPath); // e.g. .srt
-        
-        // Resolve target language code
-        string? targetLanguageCode = null;
-        if (!string.IsNullOrEmpty(targetLanguage)
-            && !TryGetLanguageByPart(targetLanguage, out targetLanguageCode))
+        var ext = Path.GetExtension(path);
+        return !string.IsNullOrEmpty(ext) && VideoExtensions.Contains(ext);
+    }
+
+    private static string BuildVideoDerivedSubtitleName(
+        string videoBaseName,
+        string targetLanguage,
+        string? forcedCaption,
+        string? subtitleTag,
+        string extension)
+    {
+        var parts = new List<string> { videoBaseName };
+
+        if (!string.IsNullOrEmpty(targetLanguage))
         {
-            targetLanguageCode = targetLanguage;
+            if (TryGetLanguageByPart(targetLanguage, out var code))
+            {
+                parts.Add(code.ToLowerInvariant());
+            }
+            else
+            {
+                parts.Add(targetLanguage.ToLowerInvariant());
+            }
         }
 
-        // Build suffix: .[code].[tag].srt
-        var suffixParts = new List<string>();
-        if (targetLanguageCode != null) suffixParts.Add(targetLanguageCode.ToLowerInvariant());
-        if (!string.IsNullOrEmpty(subtitleTag)) suffixParts.Add(subtitleTag.ToLowerInvariant());
-        
-        var suffix = (suffixParts.Any() ? "." + string.Join(".", suffixParts) : "") + extension;
-
-        // Calculate maximum allowed length for base name
-        // BaseName + Suffix <= 255
-        var maxBaseLength = maxFilenameLength - suffix.Length;
-        if (maxBaseLength < 10) maxBaseLength = 10; // Ensure at least some characters
-
-        // Get original base name (without language parts)
-        var pathWithoutLang = CreateFilePathInternal(originalPath, "", null); // Abuse internal method to strip lang
-        var dir = Path.GetDirectoryName(pathWithoutLang) ?? "";
-        var nameOnly = Path.GetFileNameWithoutExtension(pathWithoutLang);
-
-        if (nameOnly.Length > maxBaseLength)
+        if (!string.IsNullOrWhiteSpace(forcedCaption))
         {
-            nameOnly = nameOnly.Substring(0, maxBaseLength);
+            parts.Add(forcedCaption.ToLowerInvariant());
         }
 
-        // We can't use CreateFilePathInternal here because we manually truncated the name
-        // And we already constructed the suffix
-        return Path.Combine(dir, nameOnly + suffix);
+        if (!string.IsNullOrEmpty(subtitleTag))
+        {
+            parts.Add(subtitleTag.ToLowerInvariant());
+        }
+
+        return string.Join(".", parts) + extension;
     }
 
     /// <inheritdoc />
@@ -429,7 +440,7 @@ public class SubtitleService : ISubtitleService
         try
         {
             using var stream = File.OpenRead(filePath);
-            return ValidateSubtitleStream(stream, Encoding.UTF8, options);
+            return ValidateSubtitleStream(stream, Encoding.UTF8, options, Path.GetExtension(filePath));
         }
         catch (Exception ex)
         {
@@ -441,7 +452,8 @@ public class SubtitleService : ISubtitleService
     private bool ValidateSubtitleStream(
         Stream subtitleStream,
         Encoding encoding,
-        SubtitleValidationOptions options)
+        SubtitleValidationOptions options,
+        string? fileExtension = null)
     {
         try
         {
@@ -460,7 +472,12 @@ public class SubtitleService : ISubtitleService
             // Reset stream position to the beginning before parsing
             subtitleStream.Seek(0, SeekOrigin.Begin);
 
-            var parser = new SrtParser();
+            ISubtitleParser parser = fileExtension?.ToLowerInvariant() switch
+            {
+                ".ass" or ".ssa" => new SsaParser(),
+                ".vtt" => new VttParser(),
+                _ => new SrtParser()
+            };
             var subtitles = parser.ParseStream(subtitleStream, encoding);
 
             if (subtitles.Count < 2)
@@ -660,9 +677,9 @@ public class SubtitleService : ISubtitleService
     /// </param>
     private static bool TryGetLanguageByPart(string part, out string? languageCode)
     {
-        if (LanguageLookup.TryGetValue(part, out var code))
+        if (SubtitleLanguageHelper.TryNormalizeKnownLanguageCode(part, out var normalizedCode))
         {
-            languageCode = code;
+            languageCode = normalizedCode;
             return true;
         }
 

@@ -3,6 +3,7 @@ using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models.Batch;
 using Lingarr.Server.Models.FileSystem;
+using Lingarr.Server.Services.Subtitle;
 
 namespace Lingarr.Server.Services.Translation;
 
@@ -24,7 +25,7 @@ public class DeferredRepairService : IDeferredRepairService
         List<RepairItem> failedItems,
         List<SubtitleItem> allSubtitles,
         int contextRadius,
-        bool stripSubtitleFormatting)
+        IReadOnlyDictionary<int, string> providerVisibleTextByPosition)
     {
         if (failedItems.Count == 0)
         {
@@ -64,10 +65,10 @@ public class DeferredRepairService : IDeferredRepairService
                 {
                     continue; // Position doesn't exist (sparse positions)
                 }
-                
-                var line = string.Join(" ", stripSubtitleFormatting 
-                    ? subtitle.PlaintextLines 
-                    : subtitle.Lines);
+
+                var line = providerVisibleTextByPosition.TryGetValue(pos, out var providerVisibleText)
+                    ? providerVisibleText
+                    : FallbackToVisibleText(subtitle);
                 
                 batchItems.Add(new BatchSubtitleItem
                 {
@@ -92,6 +93,22 @@ public class DeferredRepairService : IDeferredRepairService
             FailedPositions = failedSet,
             Ranges = ranges
         };
+    }
+
+    private static string FallbackToVisibleText(SubtitleItem subtitle)
+    {
+        if (subtitle.PlaintextLines.Count > 0)
+        {
+            return string.Join('\n', subtitle.PlaintextLines);
+        }
+
+        if (subtitle.Lines.Count > 0)
+        {
+            var cleaned = subtitle.Lines.Select(SubtitleFormatterService.RemoveMarkup).ToList();
+            return string.Join('\n', cleaned);
+        }
+
+        return string.Empty;
     }
 
     /// <inheritdoc />
@@ -187,7 +204,7 @@ public class DeferredRepairService : IDeferredRepairService
                 if (finalMissing.Count == 0)
                 {
                     _logger.LogInformation(
-                        "[{FileId}] Deferred repair succeeded: all {Count} items translated on attempt {Attempt}",
+                        "[{FileId}] Deferred repair returned candidates for all {Count} failed items on attempt {Attempt}",
                         fileIdentifier, repairBatch.FailedPositions.Count, attempt);
                     return results;
                 }
@@ -219,6 +236,20 @@ public class DeferredRepairService : IDeferredRepairService
             }
             catch (Exception ex)
             {
+                if (ex is ProviderPauseException)
+                {
+                    throw;
+                }
+                if (TranslationFailureClassifier.IsNonRepairableProviderConfigurationFailure(ex))
+                {
+                    _logger.LogError(
+                        ex,
+                        "[{FileId}] Deferred repair hit a non-repairable provider configuration failure on attempt {Attempt}. Failing fast.",
+                        fileIdentifier,
+                        attempt);
+                    throw;
+                }
+
                 if (attempt <= maxRetries)
                 {
                     _logger.LogWarning(ex,

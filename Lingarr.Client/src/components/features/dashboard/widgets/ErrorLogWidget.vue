@@ -5,6 +5,7 @@ import RefreshIcon from '@/components/icons/RefreshIcon.vue'
 import axios from 'axios'
 
 const i18n = useI18n()
+const PAGE_SIZE = 20
 
 interface ErrorLog {
     id: number
@@ -35,16 +36,25 @@ const fetchErrors = async (reset = false) => {
 
     try {
         const offset = reset ? 0 : errors.value.length
-        const response = await axios.get(`/api/dashboard/errors?limit=20&offset=${offset}`)
+        const response = await axios.get('/api/dashboard/errors', {
+            params: {
+                limit: PAGE_SIZE,
+                offset
+            }
+        })
         const newErrors = response.data || []
 
         if (reset) {
             errors.value = newErrors
         } else {
-            errors.value = [...errors.value, ...newErrors]
+            const existingIds = new Set(errors.value.map((error) => error.id))
+            const dedupedErrors = newErrors.filter(
+                (error: ErrorLog) => !existingIds.has(error.id)
+            )
+            errors.value = [...errors.value, ...dedupedErrors]
         }
 
-        hasMore.value = newErrors.length === 20
+        hasMore.value = newErrors.length === PAGE_SIZE
     } catch (e) {
         console.error('Failed to fetch error log:', e)
     } finally {

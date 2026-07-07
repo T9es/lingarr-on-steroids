@@ -35,11 +35,12 @@ import { MenuItem } from '@/ts'
 import PageLayout from '@/components/layout/PageLayout.vue'
 import IntegrationIcon from '@/components/icons/IntegrationIcon.vue'
 import SettingIcon from '@/components/icons/SettingIcon.vue'
-import AutomationIcon from '@/components/icons/AutomationIcon.vue'
 import TaskIcon from '@/components/icons/TaskIcon.vue'
 import LanguageIcon from '@/components/icons/LanguageIcon.vue'
 import LogIcon from '@/components/icons/LogIcon.vue'
 import CheckMarkIcon from '@/components/icons/CheckMarkIcon.vue'
+import FoldersIcon from '@/components/icons/FoldersIcon.vue'
+import MediaEmojiIcon from '@/components/icons/MediaEmojiIcon.vue'
 
 const { translate } = useI18n()
 
@@ -69,9 +70,15 @@ const menuItems = computed<MenuItem[]>(() => [
         children: []
     },
     {
-        label: translate('navigation.automation'),
-        icon: AutomationIcon,
-        route: 'automation-settings',
+        label: translate('navigation.customSources'),
+        icon: FoldersIcon,
+        route: 'custom-sources-settings',
+        children: []
+    },
+    {
+        label: translate('navigation.uploadWorkspace'),
+        icon: MediaEmojiIcon,
+        route: 'upload-workspace-settings',
         children: []
     },
     { label: translate('navigation.tasks'), icon: TaskIcon, route: 'tasks-settings', children: [] },

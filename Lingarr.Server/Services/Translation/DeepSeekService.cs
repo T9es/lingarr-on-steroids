@@ -12,6 +12,7 @@ using Lingarr.Server.Models;
 using Lingarr.Server.Models.Batch;
 using Lingarr.Server.Models.Batch.Response;
 using Lingarr.Server.Exceptions;
+using Lingarr.Server.Services.Translation.Streaming;
 
 namespace Lingarr.Server.Services.Translation;
 
@@ -31,8 +32,10 @@ public class DeepSeekService : OpenAiService
         ILogger<DeepSeekService> logger,
         IHttpClientFactory httpClientFactory,
         IDashboardService? dashboardService = null,
-        ITokenUsageService? tokenUsageService = null)
-        : base(settings, logger, httpClientFactory.CreateClient(nameof(DeepSeekService)), dashboardService, tokenUsageService)
+        ITokenUsageService? tokenUsageService = null,
+        ITranslationPromptAugmenter? translationPromptAugmenter = null,
+        IProviderCircuitBreaker? circuitBreaker = null)
+        : base(settings, logger, httpClientFactory.CreateClient(nameof(DeepSeekService)), dashboardService, tokenUsageService, translationPromptAugmenter, circuitBreaker)
     {
     }
 
@@ -200,10 +203,10 @@ public class DeepSeekService : OpenAiService
                            "IMPORTANT: You must output a valid JSON object matching this schema:\n" +
                            "{\n" +
                            "  \"translations\": [\n" +
-                           "    { \"position\": 1, \"line\": \"Translated text\" }\n" +
+                           "    { \"position\": 1, \"sourceKey\": \"abc123def456\", \"line\": \"Translated text\" }\n" +
                            "  ]\n" +
                            "}\n" +
-                           "The 'position' field must match the input position. The 'line' field contains the translated text.";
+                           "The 'position' and 'sourceKey' fields must match the input item. The 'line' field contains the translated text.";
 
         // Build user content with optional batch context wrapper
         var userContent = BuildBatchUserContent(subtitleBatch, preContext, postContext);
@@ -224,7 +227,6 @@ public class DeepSeekService : OpenAiService
                     ["content"] = userContent
                 }
             },
-            ["max_tokens"] = 8192,
             ["response_format"] = responseFormat
         };
 
@@ -239,6 +241,12 @@ public class DeepSeekService : OpenAiService
                 }
             }
         }
+        // Add streaming params — these MUST NOT be overridden by custom parameters
+        requestBody["stream"] = true;
+        requestBody["stream_options"] = new Dictionary<string, object>
+        {
+            ["include_usage"] = true
+        };
 
         var requestContent = new StringContent(
             JsonSerializer.Serialize(requestBody),
@@ -246,7 +254,8 @@ public class DeepSeekService : OpenAiService
             "application/json");
 
         var stopwatch = Stopwatch.StartNew();
-        var response = await _httpClient.PostAsync(requestUrl, requestContent, cancellationToken);
+        var request = new HttpRequestMessage(HttpMethod.Post, requestUrl) { Content = requestContent };
+        var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         stopwatch.Stop();
 
         if (!response.IsSuccessStatusCode)
@@ -283,27 +292,26 @@ public class DeepSeekService : OpenAiService
             throw new TranslationException($"Batch translation using DeepSeek API failed. Status: {response.StatusCode}");
         }
 
-        var completionResponse = await response.Content.ReadFromJsonAsync<ChatCompletionResponse>(cancellationToken);
-        if (completionResponse?.Choices == null || completionResponse.Choices.Count == 0)
+        var (translatedJson, promptTokens, completionTokens, totalTokens) =
+            await OpenAiStreamAccumulator.AccumulateAsync(response, cancellationToken);
+
+        if (string.IsNullOrEmpty(translatedJson))
         {
-            throw new TranslationException("No completion choices returned from DeepSeek");
+            throw new TranslationException("Empty response received from streaming API");
         }
 
         // Log successful API usage
         if (_dashboardService != null)
         {
-            var tokensUsed = completionResponse.Usage?.TotalTokens;
             await _dashboardService.LogApiUsage(
                 ServiceName,
-                tokensUsed,
+                totalTokens,
                 stopwatch.ElapsedMilliseconds,
                 true,
                 null,
-                completionResponse.Usage?.PromptTokens,
-                completionResponse.Usage?.CompletionTokens);
+                promptTokens,
+                completionTokens);
         }
-
-        var translatedJson = completionResponse.Choices[0].Message.Content;
         try
         {
             // DeepSeek might wrap it in markdown code block ```json ... ```
@@ -315,6 +323,11 @@ public class DeepSeekService : OpenAiService
             {
                 translatedJson = translatedJson.Replace("```", "").Trim();
             }
+
+            translatedJson = StructuredJsonResponseSanitizer.SanitizeInvalidEscapes(
+                translatedJson,
+                _logger,
+                ServiceName);
 
             var responseWrapper = JsonSerializer.Deserialize<JsonElement>(translatedJson);
             if (!responseWrapper.TryGetProperty("translations", out var translationsElement))
@@ -342,9 +355,13 @@ public class DeepSeekService : OpenAiService
                 "Batch translation successful. Requested: {RequestedCount}, Received: {ReceivedCount}",
                 subtitleBatch.Count, translatedItems.Count);
 
-            return translatedItems
-                .GroupBy(item => item.Position)
-                .ToDictionary(group => group.Key, group => group.First().Line);
+            var mappingResult = BatchTranslationResponseMapper.MapAlignedTranslationsSafe(
+                subtitleBatch,
+                translatedItems,
+                _logger,
+                ServiceName);
+
+            return mappingResult.ValidTranslations;
         }
         catch (JsonException ex)
         {

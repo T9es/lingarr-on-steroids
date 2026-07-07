@@ -20,12 +20,17 @@
                     :class="[
                         'rounded-xl border p-4 text-left transition-all duration-200 hover:-translate-y-0.5',
                         selectedService === service.value
-                            ? 'bg-secondary/55 shadow-lg'
+                            ? 'bg-secondary/55 ring-2 ring-accent ring-offset-2 ring-offset-secondary shadow-lg'
                             : 'bg-primary/55 hover:bg-secondary/45'
                     ]"
                     :style="getCardStyle(service, selectedService === service.value)"
                     @click="selectService(service.value)">
-                    <div class="flex min-w-0 items-start gap-3">
+                    <div class="relative flex min-w-0 items-start gap-3">
+                        <div
+                            v-if="selectedService === service.value"
+                            class="bg-accent text-accent-content absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full shadow-lg">
+                            <CheckMarkIcon class="h-3.5 w-3.5" />
+                        </div>
                         <div
                             class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border"
                             :style="getIconShellStyle(service)">
@@ -61,6 +66,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import ProviderIcon from '@/components/icons/ProviderIcon.vue'
+import CheckMarkIcon from '@/components/icons/CheckMarkIcon.vue'
 import { useSettingStore } from '@/store/setting'
 import { SERVICE_TYPE, SETTINGS } from '@/ts'
 import { useI18n } from '@/plugins/i18n'
@@ -83,6 +89,7 @@ const aiServices: ServiceOption[] = [
         providerKey: 'anthropic'
     },
     { value: SERVICE_TYPE.CHUTES, labelKey: 'services.serviceNames.chutes', providerKey: 'chutes' },
+    { value: SERVICE_TYPE.CROFAI, labelKey: 'services.serviceNames.crofai', providerKey: 'crofai' },
     {
         value: SERVICE_TYPE.DEEPSEEK,
         labelKey: 'services.serviceNames.deepseek',
@@ -93,6 +100,11 @@ const aiServices: ServiceOption[] = [
         value: SERVICE_TYPE.LOCALAI,
         labelKey: 'services.serviceNames.localai',
         providerKey: 'localai'
+    },
+    {
+        value: SERVICE_TYPE.NANOGPT,
+        labelKey: 'services.serviceNames.nanogpt',
+        providerKey: 'nanogpt'
     },
     { value: SERVICE_TYPE.OPENAI, labelKey: 'services.serviceNames.openai', providerKey: 'openai' }
 ]
