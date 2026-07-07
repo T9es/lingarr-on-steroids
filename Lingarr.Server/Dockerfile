@@ -75,6 +75,8 @@ WORKDIR /app
 COPY --from=publish /app/publish .
 COPY --from=pgstosrt /opt/pgstosrt /opt/pgstosrt
 ENV DOTNET_ROLL_FORWARD=Major
+RUN chown -R app:app /app
+USER app
 
 VOLUME /app/config
 # Start the application
