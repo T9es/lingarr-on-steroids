@@ -27,11 +27,14 @@ v3 版本相比 v2.5.0 是一次重大变更。如果你只读一节，请读这
 
 - **版本管理改为基于 Git。** Assembly 版本号现在在构建时通过 `git describe` 解析，Docker 构建也会转发一个 `VERSION` 参数。发布新版本只需打 `v3.0.0` 标签并推送，不再需要手动修改 `Lingarr.Core.csproj`。
 - **Dev Build 徽章显示真实版本。** 左下角的徽章现在显示 `Dev <version>`（例如 `Dev 3.0.0-216-g39ae09b2`），不再只是泛用的 `Dev Build` 文字。
-- **CrofAI 成为受支持的 AI 提供商**，仅以 credits 方式追踪使用情况。当 CrofAI credits 余额降为零时，翻译会自动暂停。新的 `CROFAI_*` 环境变量见 [Settings.MD](Settings.MD)。
+- **CrofAI、NanoGPT、Chutes.ai 和 LocalAI** 加入为新的受支持翻译后端，均带有配额跟踪。
 - **位图字幕 OCR 支持。** DVD/VobSub、PGS 等基于图像的字幕轨会先经过 OCR 转成文本，再像其他来源一样被翻译。新增 `OcrPending` 和 `OcrBlocked` 两个状态覆盖 OCR 生命周期。
 - **按提供商的熔断器。** 如果某个提供商开始大量返回 5xx，熔断器会打开并暂停请求，避免在故障期间消耗你的 API 配额。
 - **暂停翻译的恢复机制。** 来自提供商的 429 错误（例如 Gemini 限流）不会再直接终止翻译。Worker 会保留槽位，限制解除后自动继续。
 - **翻译后质量门。** 批次完成后，剩余段落会被打分。UI 支持对超出容差的条目进行复核、编辑、接受或拒绝，并提供 Requeue All / Dismiss All 的批量操作。
+- **内联字幕对比与编辑。** 将原始字幕和翻译字幕并排对比，逐行编辑，并直接在仪表盘中批准或拒绝。
+- **字幕完整性检查。** 对整个媒体库进行自动化的质量验证，支持可配置的检查计划。
+- **自定义翻译源。** 通过 Custom Sources 设置页面接入你自己的翻译 API 或自托管 LLM 提供商。
 - **自动源语言模式。** 可以按 cue 自动检测源语言，使用 NLLB（FLORES-200 spBLEU）、LLM 层级比较和语言族启发式。开关在 onboarding 和源语言设置中。
 - **新版 Tasks 页面提供可配置的作业调度。** 每个 Hangfire 和翻译作业都有独立的启用开关和 cron 表达式。Tasks 页面是 Schedule 页面的重命名和重新设计版本，使用共享的 CardComponent、1/2/3 列响应式网格、显式的加载和空状态、以及修正后的 SignalR 清理。Limits 卡片上原来的 automation 块已移除。
 - **可配置的嵌入和语言检测，并提供新的 UI。** 前端设置支持 MKV 嵌入行为、未打标签流的语言检测，以及请求重试上限。

@@ -27,11 +27,14 @@ La versión v3 trae cambios importantes respecto a v2.5.0. Si solo vas a leer un
 
 - **Versiónado consciente de Git.** La versión del assembly se resuelve desde `git describe` en tiempo de compilacion y el build de Docker reenvia un argumento `VERSION`. Para sacar un release basta con etiquetar `v3.0.0` y hacer push de la etiqueta. Ya no hace falta editar `Lingarr.Core.csproj` a maño.
 - **La insignia Dev Build muestra la versión real.** La insignia de la esquina inferior izquierda ahora lee `Dev <versión>` (por ejemplo, `Dev 3.0.0-216-g39ae09b2`) en lugar del texto generico anterior.
-- **CrofAI ya es un proveedor de IA soportado** con seguimiento de uso solo por creditos. Las traducciónes se pausan automáticamente al agotar el saldo. Mira las nuevas variables `CROFAI_*` en [Settings.MD](Settings.MD).
+- **CrofAI, NanoGPT, Chutes.ai y LocalAI** se unen como nuevos backends de traduccion soportados, cada uno con seguimiento de cuotas.
 - **OCR para subtítulos bitmap.** DVD/VobSub, PGS y otras pistas de imagen se pasan por OCR y luego se traducen como cualquier otra fuente. Dos nuevos estados (`OcrPending`, `OcrBlocked`) cubren el ciclo de vida OCR.
 - **Circuit breaker por proveedor.** Si un proveedor empieza a fallar con 5xx, el circuito se abre y las peticiones se pausan, en vez de gastar tu cuota de API durante la caida.
 - **Reanudacion de traducciónes pausadas.** Los 429 del proveedor (por ejemplo, limites de Gemini) ya no matan la traducción. El worker retiene el slot y continua cuando se levanta el limite.
 - **Post-translation quality gate.** Tras cerrar un lote, los parrafos supervivientes se puntuan. La UI permite revisar, editar, aceptar o rechazar los que queden fuera de tolerancia, con acciones masívas de Requeue All y Dismiss All.
+- **Comparacion y edicion de subtitulos en linea.** Compara originales y subtitulos traducidos lado a lado, edita lineas individuales y aprueba o rechaza directamente en el dashboard.
+- **Verificacion de integridad de subtitulos.** Verificacion automatizada de calidad en toda tu biblioteca multimedia con programaciones configurables.
+- **Fuentes de traduccion personalizadas.** Conecta tu propia API de traduccion o proveedor LLM autoalojado desde la pagina de configuracion Custom Sources.
 - **Modo de idioma origen automático.** El idioma origen se detecta por cue usando NLLB (FLORES-200 spBLEU), comparativa de LLM tier y heuristicas de familia linguistica. Interruptor en onboarding y en los ajustes de idioma origen.
 - **Programador de trabajos configurable en la nueva página Tasks.** Cada trabajo de Hangfire y de traducción tiene su propio interruptor y una expresion cron. La página Tasks sustituye a la antigua Schedule, con componentes CardComponent compartidos, una rejilla 1/2/3 responsive, estados de carga y vacio, y limpieza de SignalR corregida. El bloque antiguo de automatización de la tarjeta limits se ha eliminado.
 - **Embedding y detección de idioma configurables, con nueva UI.** Ajustes de frontend para comportamiento de embedding MKV, detección de idioma en streams sin etiqueta y limite de reintentos por peticion.

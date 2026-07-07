@@ -27,11 +27,14 @@ De v3-release is een flinke verandering ten opzichte van v2.5.0. Als je maar een
 
 - **Git-bewuste release-versionering.** De assembly-versie wordt nu bij build-tijd uit `git describe` gehaald en de Docker-build stuurt een `VERSION`-build-arg door. Een release uitbrengen is nu alleen nog `v3.0.0` taggen en pushen. `Lingarr.Core.csproj` hoeft niet meer handmatig te worden aangepast.
 - **Dev-build-badge toont de echte versie.** De badge linksonder in de zijbalk toont nu `Dev <version>` (bijvoorbeeld `Dev 3.0.0-216-g39ae09b2`) in plaats van de generieke `Dev Build`-tekst.
-- **CrofAI is nu een ondersteunde AI-provider** met alleen-credits gebruiksregistratie. Vertalingen pauzeren automatisch wanneer je CrofAI-tegoed nul bereikt. Zie de nieuwe `CROFAI_*`-omgevingsvariabelen in [Settings.MD](Settings.MD).
+- **CrofAI, NanoGPT, Chutes.ai en LocalAI** als nieuwe ondersteunde vertaalbackends, elk met quotatracking.
 - **OCR voor bitmap-ondertitels.** DVD/VobSub, PGS en andere beeldgebaseerde ondertiteltracks worden via OCR naar tekst omgezet en daarna zoals elke andere bron vertaald. Twee nieuwe mediastatussen (`OcrPending`, `OcrBlocked`) dekken de OCR-levenscyclus af.
 - **Per-provider circuit breaker.** Gooit een provider opeens 5xx-fouten, dan opent het circuit en worden verzoeken korte tijd gepauzeerd in plaats van je API-quotum te verbranden tijdens een storing.
 - **Hervatting van gepauzeerde vertalingen.** Provider-429's (bijvoorbeeld Gemini-rate-limits) beeindigen een vertaling niet meer. De worker houdt de slot vast en hervat zodra de limiet opgeheven is.
 - **Post-translation quality gate.** Na afloop van een batch worden de overgebleven alinea's gescoord. De UI laat je buiten de tolerantie vallende items beoordelen, bewerken, accepteren of afwijzen, inclusief Requeue All / Dismiss All als bulkactie.
+- **Inline ondertitelvergelijking en bewerking.** Originele en vertaalde ondertitels naast elkaar vergelijken, individuele regels bewerken en direct in het dashboard goedkeuren of afwijzen.
+- **Ondertitelintegriteitscontrole.** Geautomatiseerde kwaliteitsverificatie door je hele mediabibliotheek met configureerbare schema's.
+- **Eigen vertaalbronnen.** Eigen vertaal-API of zelf-gehoste LLM-provider toevoegen via de Custom Sources-instellingenpagina.
 - **Automatische brontaalmodus.** De brontaal kan per cue automatisch worden gedetecteerd met NLLB (FLORES-200 spBLEU), LLM-tiervergelijking en taalfamilie-heuristiek. Schakelaar in de onboarding en in de brontaalinstellingen.
 - **Configureerbare job scheduling op de nieuwe Tasks-pagina.** Elke Hangfire- en vertaaljob heeft een eigen aan/uit-schakelaar en een cron-expressie. De Tasks-pagina is de hernoemde en opnieuw ontworpen Schedule-pagina, met gedeelde CardComponent-kaarten, een responsive 1/2/3-kolomsraster, laad- en leeg-statussen, en gecorrigeerde SignalR-cleanup. Het oude automation-blok op de limits-kaart is weg.
 - **Configureerbare embedding en taaldetectie, met nieuwe UI.** Frontend-instellingen voor MKV-embedded-ondertitelgedrag, taaldetectie op niet-getagde streams en een limiet op vertaal-herkansingen.

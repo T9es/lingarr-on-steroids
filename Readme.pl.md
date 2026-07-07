@@ -27,11 +27,14 @@ Wersja v3 to poważna zmiana w stosunku do v2.5.0. Jeśli przeczytasz tylko jedn
 
 - **Wersjonowanie świadome Git.** Wersja assembly jest teraz rozwiązywana z `git describe` w czasie budowania, a build Dockera przekazuje argument `VERSION`. Wydanie v3.0.0 to już tylko otagowanie `v3.0.0` i push taga. `Lingarr.Core.csproj` nie trzeba już ręcznie edytować.
 - **Znaczek Dev Build pokazuje prawdziwą wersję.** Znaczek w lewym dolnym rogu pokazuje teraz `Dev <version>` (na przykład `Dev 3.0.0-216-g39ae09b2`) zamiast ogólnego tekstu.
-- **CrofAI jest teraz wspieranym providerem AI** z śledzeniem użycia tylko na kredyty. Tłumaczenia pauzuja się automatycznie, gdy saldo kredytów CrofAI spadnie do zera. Zobacz nowe zmienne `CROFAI_*` w [Settings.MD](Settings.MD).
+- **CrofAI, NanoGPT, Chutes.ai i LocalAI** dołączają jako nowe wspierane backends tłumaczeń, z śledzeniem limitów dla każdego.
 - **OCR dla napisów bitmapowych.** Ścieżki DVD/VobSub, PGS i inne oparte na obrazie są przetwarzane przez OCR, a nastepnie tłumaczone jak kazde inne zrodlo. Dwa nowe stany (`OcrPending`, `OcrBlocked`) obejmuja cykl życia OCR.
 - **Circuit breaker per provider.** Gdy provider zaczyna zwracac bledy 5xx, obwod się otwiera i zapytania są pauzowane, zamiast zuzywas twojego limitu API podczas awarii.
 - **Wznawianie wstrzymanych tłumaczeń.** 429 od providera (na przykład limity Gemini) nie kończą już tłumaczenia. Worker trzyma slot i wznawia, gdy limit zostanie zniesiony.
 - **Post-translation quality gate.** Po zakończeniu batcha pozostale akapity są oceniane. UI pozwala przegladac, edytować, akceptowac lub odrzucac pozycje poza tolerancja, lacznie z akcjami masowymi Requeue All i Dismiss All.
+- **Porównanie i edycja napisów inline.** Porównuj oryginalne i przetłumaczone napisy obok siebie, edytuj pojedyncze linie i zatwierdzaj lub odrzucaj bezpośrednio na dashboardzie.
+- **Sprawdzanie integralności napisów.** Automatyczna weryfikacja jakości w całej bibliotece mediów z konfigurowalnym harmonogramem.
+- **Własne źródła tłumaczeń.** Dodaj własną API tłumaczeń lub samodzielnie hostowany LLM na stronie ustawień Custom Sources.
 - **Tryb automatycznego języka źródłowego.** Język źródłowy może byc automatycznie wykrywany per cue, z NLLB (FLORES-200 spBLEU), porownaniem tierow LLM i heurystykami rodzin językowymi. Przełącznik w onboardingu i w ustawieniach języka źródłowego.
 - **Konfigurowalne planowanie zadań na nowej stronie Tasks.** Kazde zadanie Hangfire i tłumaczenia ma własny przełącznik i wyrażenie cron. Strona Tasks to przemianowana i przeprojektowana strona Schedule, z kartami CardComponent, responsywna siatka 1/2/3, stanami ladowania i pustymi oraz poprawionym sprzataniem SignalR. Stary blok automatyzacji na karcie limits zniknal.
 - **Konfigurowalne embedding i wykrywanie języka, z nowym UI.** Ustawienia frontendu dla zachowania MKV-embed, wykrywania języka nieoznaczonych strumieni oraz limitu powtórzeń.
