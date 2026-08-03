@@ -374,4 +374,42 @@ public sealed class RollbackBackupRecoveryTests : IDisposable
         var json = File.ReadAllText($"{backupPath}.meta.json");
         Assert.Contains("expected-hash", json);
     }
+
+    [Fact]
+    public void ReconcileSubtitleBackups_WithShortSiblingBackupAndManifest_RestoresOriginal()
+    {
+        // New short sibling backup naming (.lingarr-rollback-{guid}.bak) with a
+        // manifest must restore the original when the final file is missing.
+        var backupPath = Path.Combine(_directory, $".lingarr-rollback-{Guid.NewGuid():N}.bak");
+        File.WriteAllText(backupPath, _originalContent);
+        RollbackBackupRecovery.WriteManifest(backupPath, new RollbackBackupManifest
+        {
+            RequestId = 7,
+            TargetPath = _finalPath,
+            OriginalHash = Hash(_originalContent),
+            ExpectedPublishedHash = Hash(_publishedContent)
+        });
+        Assert.False(File.Exists(_finalPath));
+
+        RollbackBackupRecovery.ReconcileSubtitleBackups(_finalPath, 7, NullLogger.Instance);
+
+        Assert.True(File.Exists(_finalPath));
+        Assert.Equal(_originalContent, File.ReadAllText(_finalPath));
+        Assert.False(File.Exists(backupPath));
+    }
+
+    [Fact]
+    public void ReconcileSubtitleBackups_WithShortSiblingBackupNoManifestAndFinalMissing_LeavesItUntouched()
+    {
+        // Manifest-less short sibling backups are only matched by the manifest-verified
+        // pattern and must never be restored automatically.
+        var backupPath = Path.Combine(_directory, $".lingarr-rollback-{Guid.NewGuid():N}.bak");
+        File.WriteAllText(backupPath, _originalContent);
+        Assert.False(File.Exists(_finalPath));
+
+        RollbackBackupRecovery.ReconcileSubtitleBackups(_finalPath, 7, NullLogger.Instance);
+
+        Assert.False(File.Exists(_finalPath));
+        Assert.True(File.Exists(backupPath));
+    }
 }

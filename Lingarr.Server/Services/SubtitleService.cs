@@ -15,6 +15,7 @@ public class SubtitleService : ISubtitleService
     private static readonly string[] SupportedExtensions = [".srt", ".ssa", ".ass", ".vtt"];
     private static readonly string[] SupportedCaptions = ["sdh", "cc", "forced", "hi"];
     private static readonly char[] WhitespaceCharacters = [' ', '\t', '\n', '\r'];
+    private const int MaxFilenameBytes = 255;
     private static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".mkv", ".mp4", ".avi", ".wmv", ".flv", ".ts", ".m2ts", ".mov", ".webm", ".mpg", ".mpeg", ".m4v"
@@ -157,7 +158,70 @@ public class SubtitleService : ISubtitleService
             paths.Add(noTagPath);
         }
 
+        // 4. Truncated (last resort): byte-safe variant that always fits the
+        // filesystem per-component limit, added only when even the shortest
+        // named variant exceeds it.
+        var truncatedPath = CreateTruncatedFilePath(noTagPath);
+        if (!string.IsNullOrEmpty(truncatedPath) && !paths.Contains(truncatedPath))
+        {
+            paths.Add(truncatedPath);
+        }
+
         return paths.Distinct();
+    }
+
+    /// <summary>
+    /// Produces a byte-safe truncated variant of the supplied path that fits the
+    /// filesystem per-component limit (255 bytes), used as a last-resort fallback
+    /// when even the shortest named variant exceeds it. Returns null when the
+    /// supplied path already fits and no truncation is needed.
+    /// </summary>
+    private static string? CreateTruncatedFilePath(string filePath)
+    {
+        var fileName = Path.GetFileName(filePath);
+        if (Encoding.UTF8.GetByteCount(fileName) <= MaxFilenameBytes)
+        {
+            return null;
+        }
+
+        var directory = Path.GetDirectoryName(filePath) ?? string.Empty;
+        var extension = Path.GetExtension(fileName);
+        var baseName = Path.GetFileNameWithoutExtension(fileName);
+        var hash = ComputeStableShortHash(baseName);
+        var suffix = $"-{hash}{extension}";
+        var maxBaseBytes = Math.Max(8, MaxFilenameBytes - Encoding.UTF8.GetByteCount(suffix));
+        var truncatedBase = TruncateUtf8(baseName, maxBaseBytes);
+        return Path.Combine(directory, truncatedBase + suffix);
+    }
+
+    private static string TruncateUtf8(string value, int maxBytes)
+    {
+        if (Encoding.UTF8.GetByteCount(value) <= maxBytes)
+        {
+            return value;
+        }
+
+        var builder = new StringBuilder();
+        var byteCount = 0;
+        foreach (var rune in value.EnumerateRunes())
+        {
+            var runeBytes = rune.Utf8SequenceLength;
+            if (byteCount + runeBytes > maxBytes)
+            {
+                break;
+            }
+
+            builder.Append(rune.ToString());
+            byteCount += runeBytes;
+        }
+
+        return builder.ToString();
+    }
+
+    private static string ComputeStableShortHash(string value)
+    {
+        var hashBytes = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(value));
+        return Convert.ToHexString(hashBytes.AsSpan(0, 4)).ToLowerInvariant();
     }
 
     private string CreateFilePathInternal(

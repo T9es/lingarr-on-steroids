@@ -1,3 +1,5 @@
+using System;
+using System.IO;
 using System.Linq;
 using Lingarr.Server.Services;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -113,19 +115,57 @@ public class SubtitleServiceFilePathTests
     }
 
     [Fact]
-    public void CreateFallbackPaths_FromVideoFile_DoesNotReturnTruncatedPrefixPath()
+    public void CreateFallbackPaths_FromVideoFile_AddsTruncatedLastResortPath_WhenEvenNoTagExceedsLimit()
     {
+        // 245 + " [DTS 5.1]-GRP" = 263 chars: even the no-tag variant (263 + ".pl.srt")
+        // exceeds the 255-byte filesystem limit, so a byte-truncated last-resort path
+        // must be appended as the fourth candidate.
         var longBaseName = new string('A', 245) + " [DTS 5.1]-GRP";
         var paths = _service.CreateFallbackPaths(
             $@"C:\Movies\Film\{longBaseName}.mkv",
             "pl", "lingarr", "ai", ".srt").ToList();
 
-        Assert.Equal(3, paths.Count);
-        Assert.All(paths, path =>
+        Assert.Equal(4, paths.Count);
+        Assert.All(paths.Take(3), path =>
         {
             Assert.Contains(longBaseName, path);
             Assert.DoesNotContain("[DTS 5.pl", path);
         });
+
+        var truncated = paths[3];
+        Assert.EndsWith(".srt", truncated);
+        Assert.True(
+            System.Text.Encoding.UTF8.GetByteCount(Path.GetFileName(truncated)) <= 255,
+            $"Truncated filename must fit the filesystem limit: {truncated}");
+        Assert.DoesNotContain(longBaseName, truncated);
+    }
+
+    [Fact]
+    public void CreateFallbackPaths_WithMultibyteLongName_TruncatesAtRuneBoundary()
+    {
+        // 130 x "é" = 260 UTF-8 bytes: exceeds the limit and exercises byte-safe
+        // truncation that must not split a multi-byte rune.
+        var longBaseName = new string('é', 130);
+        var paths = _service.CreateFallbackPaths(
+            $@"C:\Movies\Film\{longBaseName}.mkv",
+            "pl", "lingarr", "ai", ".srt").ToList();
+
+        Assert.Equal(4, paths.Count);
+        var truncatedFileName = Path.GetFileName(paths[3]);
+        Assert.True(
+            System.Text.Encoding.UTF8.GetByteCount(truncatedFileName) <= 255,
+            $"Truncated filename must fit the filesystem limit: {truncatedFileName}");
+        Assert.DoesNotContain("\uFFFD", truncatedFileName, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CreateFallbackPaths_NormalName_StillReturnsThreePaths()
+    {
+        var paths = _service.CreateFallbackPaths(
+            @"C:\Movies\Film\Film (2024) [DTS 5.1]-GRP.mkv",
+            "pl", "lingarr", "ai", ".srt").ToList();
+
+        Assert.Equal(3, paths.Count);
     }
 
     [Fact]

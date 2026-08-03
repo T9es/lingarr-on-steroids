@@ -342,6 +342,7 @@ _translationPromptContextAccessor = translationPromptContextAccessor ??
 SettingKeys.Translation.BatchContextAfter,
                 SettingKeys.Translation.TranslateSupplementalSubtitles,
                 SettingKeys.Translation.EmbedInContainer,
+                SettingKeys.Translation.EmbedWhenPathTooLong,
                 SettingKeys.SubtitleExtraction.OcrTranslationPromptEnabled
             ]);
             var serviceType = settings[SettingKeys.Translation.ServiceType];
@@ -1218,6 +1219,7 @@ SettingKeys.Translation.BatchContextAfter,
 Exception? lastException = null;
                 bool success = false;
                 bool allPathsTooLong = true;
+                string? embeddingFailureNote = null;
                 var anyPathExceedsLimit = paths.Any(p => _mkvEmbeddingService.WouldExceedPathLimit(p));
                 var embedWhenPathTooLong = settings.TryGetValue(SettingKeys.Translation.EmbedWhenPathTooLong, out var tooLongVal)
                     && string.Equals(tooLongVal, "true", StringComparison.OrdinalIgnoreCase);
@@ -1244,6 +1246,8 @@ Exception? lastException = null;
                         lastException = new PathTooLongException(
                             $"All output file paths exceed filesystem limits for format {outputFormat}, " +
                             "and MKV embedding was not possible.");
+                        embeddingFailureNote =
+                            " MKV embedding was not possible (media is not an MKV, is missing, or embedding failed).";
 
                         _logger.LogWarning(
                             "Path exceeds filesystem limit and MKV embedding failed for format {Format} on request {RequestId}. Falling back to path write attempts.",
@@ -1254,104 +1258,112 @@ Exception? lastException = null;
 
                 if (!success)
                 {
-                    if (!anyPathExceedsLimit)
+                    foreach (var path in paths)
                     {
-                        foreach (var path in paths)
+                        // Skip candidates whose final filename cannot exist on the
+                        // filesystem before spending any work on them; the next,
+                        // shorter fallback variant is tried instead.
+                        if (_mkvEmbeddingService.WouldExceedPathLimit(path))
                         {
-                            string? stagingPath = null;
-                            string? publicationPath = null;
-                            var preserveStagingArtifact = false;
-                            try
+                            _logger.LogWarning("Path too long: {Path}. Trying fallback...", path);
+                            lastException = new PathTooLongException(
+                                $"The subtitle filename exceeds the filesystem limit (255 bytes): {Path.GetFileName(path)}");
+                            continue;
+                        }
+
+                        string? stagingPath = null;
+                        string? publicationPath = null;
+                        var preserveStagingArtifact = false;
+                        try
+                        {
+                            stagingPath = _translationDiagnosticsService.CreateQuarantinePath(
+                                translationRequest.Id,
+                                path);
+
+                            EnsureParentDirectory(stagingPath);
+                            await _subtitleService.WriteSubtitles(
+                                stagingPath,
+                                renderSubtitles,
+                                outputStripFormatting);
+
+                            var validationResult = await _subtitleQualityValidatorService.ValidateAsync(
+                                new SubtitleQualityValidationRequest
+                                {
+                                    SourcePath = translationRequest.SubtitleToTranslate!,
+                                    TargetPath = stagingPath,
+                                    SourceLanguage = translationRequest.SourceLanguage,
+                                    TargetLanguage = translationRequest.TargetLanguage,
+                                    OutputFormat = outputFormat
+                                },
+                                cancellationToken);
+
+                            if (!validationResult.IsValid)
                             {
-                                stagingPath = _translationDiagnosticsService.CreateQuarantinePath(
-                                    translationRequest.Id,
-                                    path);
-
-                                EnsureParentDirectory(stagingPath);
-                                await _subtitleService.WriteSubtitles(
+                                await RecordOutputValidationFailureAsync(
+                                    translationRequest,
+                                    path,
                                     stagingPath,
-                                    renderSubtitles,
-                                    outputStripFormatting);
-
-                                var validationResult = await _subtitleQualityValidatorService.ValidateAsync(
-                                    new SubtitleQualityValidationRequest
-                                    {
-                                        SourcePath = translationRequest.SubtitleToTranslate!,
-                                        TargetPath = stagingPath,
-                                        SourceLanguage = translationRequest.SourceLanguage,
-                                        TargetLanguage = translationRequest.TargetLanguage,
-                                        OutputFormat = outputFormat
-                                    },
+                                    outputFormat,
+                                    validationResult,
                                     cancellationToken);
 
-                                if (!validationResult.IsValid)
+                                var qualityGateSetting = await _settings.GetSetting(SettingKeys.Translation.EnablePostTranslationQualityGate);
+                                var qualityGateEnabled = string.Equals(qualityGateSetting, "true", StringComparison.OrdinalIgnoreCase);
+
+                                if (qualityGateEnabled)
                                 {
-                                    await RecordOutputValidationFailureAsync(
-                                        translationRequest,
-                                        path,
-                                        stagingPath,
-                                        outputFormat,
-                                        validationResult,
-                                        cancellationToken);
-
-                                    var qualityGateSetting = await _settings.GetSetting(SettingKeys.Translation.EnablePostTranslationQualityGate);
-                                    var qualityGateEnabled = string.Equals(qualityGateSetting, "true", StringComparison.OrdinalIgnoreCase);
-
-                                    if (qualityGateEnabled)
-                                    {
-                                        preserveStagingArtifact = true;
-                                        throw new TranslationException(
-                                            $"Generated subtitle failed quality validation before publishing: {validationResult.Summary}");
-                                    }
-
-                                    _logger.LogWarning(
-                                        "Post-translation quality gate is disabled. Publishing subtitle despite validation failure: {Summary}",
-                                        validationResult.Summary);
+                                    preserveStagingArtifact = true;
+                                    throw new TranslationException(
+                                        $"Generated subtitle failed quality validation before publishing: {validationResult.Summary}");
                                 }
 
-                                EnsureParentDirectory(path);
-                                publicationPath = CreatePublicationPath(path);
-                                File.Copy(stagingPath, publicationPath!, true);
-                                success = true;
-                                allPathsTooLong = false;
-                                writtenOutputs.Add((outputFormat, path));
-                                stagedOutputs.Add(new StagedSubtitleOutput(
-                                    outputFormat,
-                                    path,
-                                    stagingPath!,
-                                    publicationPath!,
-                                    paths,
-                                    subtitleTag,
-                                    subtitleTagShort,
-                                    translationRequest.SubtitleToTranslate));
-                                break;
+                                _logger.LogWarning(
+                                    "Post-translation quality gate is disabled. Publishing subtitle despite validation failure: {Summary}",
+                                    validationResult.Summary);
                             }
-                            catch (TranslationException)
-                            {
-                                if (!preserveStagingArtifact)
-                                {
-                                    DeleteFileIfExists(stagingPath);
-                                }
 
-                                DeleteFileIfExists(publicationPath);
-
-                                throw;
-                            }
-                            catch (PathTooLongException ex)
+                            EnsureParentDirectory(path);
+                            publicationPath = CreatePublicationPath(path);
+                            File.Copy(stagingPath, publicationPath!, true);
+                            success = true;
+                            allPathsTooLong = false;
+                            writtenOutputs.Add((outputFormat, path));
+                            stagedOutputs.Add(new StagedSubtitleOutput(
+                                outputFormat,
+                                path,
+                                stagingPath!,
+                                publicationPath!,
+                                paths,
+                                subtitleTag,
+                                subtitleTagShort,
+                                translationRequest.SubtitleToTranslate));
+                            break;
+                        }
+                        catch (TranslationException)
+                        {
+                            if (!preserveStagingArtifact)
                             {
                                 DeleteFileIfExists(stagingPath);
-                                DeleteFileIfExists(publicationPath);
-                                _logger.LogWarning("Path too long: {Path}. Trying fallback...", path);
-                                lastException = ex;
                             }
-                            catch (Exception ex)
-                            {
-                                DeleteFileIfExists(stagingPath);
-                                DeleteFileIfExists(publicationPath);
-                                _logger.LogWarning(ex, "Failed to write subtitle to {Path}. Trying fallback...", path);
-                                lastException = ex;
-                                allPathsTooLong = false;
-                            }
+
+                            DeleteFileIfExists(publicationPath);
+
+                            throw;
+                        }
+                        catch (PathTooLongException ex)
+                        {
+                            DeleteFileIfExists(stagingPath);
+                            DeleteFileIfExists(publicationPath);
+                            _logger.LogWarning("Path too long: {Path}. Trying fallback...", path);
+                            lastException = ex;
+                        }
+                        catch (Exception ex)
+                        {
+                            DeleteFileIfExists(stagingPath);
+                            DeleteFileIfExists(publicationPath);
+                            _logger.LogWarning(ex, "Failed to write subtitle to {Path}. Trying fallback...", path);
+                            lastException = ex;
+                            allPathsTooLong = false;
                         }
                     }
                 }
@@ -1372,6 +1384,11 @@ Exception? lastException = null;
                         writtenOutputs.Add((outputFormat, embeddedOutput.OutputPath));
                         stagedEmbeddedOutputs.Add(embeddedOutput);
                     }
+                    else
+                    {
+                        embeddingFailureNote =
+                            " MKV embedding was attempted as a fallback but was not possible (media is not an MKV, is missing, or embedding failed).";
+                    }
                 }
 
                 if (!success)
@@ -1389,7 +1406,7 @@ Exception? lastException = null;
                         throw lastException;
                     }
 
-                    throw new Exception($"Failed to write subtitle to any fallback path for format {outputFormat}.");
+                    throw new Exception($"Failed to write subtitle to any fallback path for format {outputFormat}.{embeddingFailureNote}");
                 }
 
             }
@@ -1497,6 +1514,18 @@ Exception? lastException = null;
         CancellationToken cancellationToken)
     {
         var basePath = await ResolveOutputBasePathAsync(translationRequest, cancellationToken);
+        if (!string.Equals(Path.GetExtension(basePath), ".mkv", StringComparison.OrdinalIgnoreCase) ||
+            !File.Exists(basePath))
+        {
+            // The write base may be an external subtitle sitting next to the media
+            // container; embedding must target the managed media file instead.
+            var managedMediaPath = await ResolveManagedMediaPathAsync(translationRequest, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(managedMediaPath))
+            {
+                basePath = managedMediaPath;
+            }
+        }
+
         if (string.IsNullOrEmpty(basePath))
         {
             _logger.LogWarning("Cannot embed subtitle in MKV: no base media path resolved for request {RequestId}", translationRequest.Id);
@@ -1578,6 +1607,34 @@ Exception? lastException = null;
             return translationRequest.SubtitleToTranslate!;
         }
 
+        var managedMediaPath = await ResolveManagedMediaPathAsync(translationRequest, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(managedMediaPath))
+        {
+            return managedMediaPath;
+        }
+
+        _logger.LogWarning(
+            "Could not resolve media file path for embedded-cache translation request {RequestId}. Falling back to cache source path.",
+            translationRequest.Id);
+        return translationRequest.SubtitleToTranslate!;
+    }
+
+    /// <summary>
+    /// Resolves the managed media file (movie/episode container) for a library
+    /// translation request, or null when the media record is missing or its file
+    /// cannot be located. Used by MKV embedding so the subtitle is embedded into
+    /// the actual media container even when the source was an external subtitle.
+    /// </summary>
+    private async Task<string?> ResolveManagedMediaPathAsync(
+        TranslationRequest translationRequest,
+        CancellationToken cancellationToken)
+    {
+        if (translationRequest.WorkloadKind != TranslationWorkloadKind.Library ||
+            !translationRequest.MediaId.HasValue)
+        {
+            return null;
+        }
+
         if (translationRequest.MediaType == MediaType.Movie)
         {
             var movie = await _dbContext.Movies
@@ -1586,11 +1643,7 @@ Exception? lastException = null;
                 .Select(item => new { item.Path, item.FileName })
                 .FirstOrDefaultAsync(cancellationToken);
 
-            var moviePath = ResolveMediaFilePath(movie?.Path, movie?.FileName);
-            if (!string.IsNullOrWhiteSpace(moviePath))
-            {
-                return moviePath;
-            }
+            return ResolveMediaFilePath(movie?.Path, movie?.FileName);
         }
 
         if (translationRequest.MediaType == MediaType.Episode)
@@ -1601,17 +1654,10 @@ Exception? lastException = null;
                 .Select(item => new { item.Path, item.FileName })
                 .FirstOrDefaultAsync(cancellationToken);
 
-            var episodePath = ResolveMediaFilePath(episode?.Path, episode?.FileName);
-            if (!string.IsNullOrWhiteSpace(episodePath))
-            {
-                return episodePath;
-            }
+            return ResolveMediaFilePath(episode?.Path, episode?.FileName);
         }
 
-        _logger.LogWarning(
-            "Could not resolve media file path for embedded-cache translation request {RequestId}. Falling back to cache source path.",
-            translationRequest.Id);
-        return translationRequest.SubtitleToTranslate!;
+        return null;
     }
 
     private static string? ResolveMediaFilePath(string? directoryPath, string? fileName)
@@ -1716,7 +1762,11 @@ Exception? lastException = null;
 
     private static string CreatePublicationPath(string finalPath)
     {
-        return $"{finalPath}.lingarr-publish-{Guid.NewGuid():N}.tmp";
+        // The publication temp file must use a short, fixed-length name independent of
+        // the final filename: appending a suffix to a near-limit (255-byte) filename
+        // would exceed the filesystem per-component limit before the rename completes.
+        var directory = Path.GetDirectoryName(finalPath) ?? string.Empty;
+        return Path.Combine(directory, $".lingarr-publish-{Guid.NewGuid():N}.tmp");
     }
 
     private static List<SubtitleItem> BuildOutputSubtitles(
@@ -1897,10 +1947,10 @@ Exception? lastException = null;
             {
                 if (hadExistingFile)
                 {
-                    File.Move(stagedOutput.FinalPath, backupPath);
-                    // The manifest is written as soon as the backup exists and before
-                    // the published file replaces the final path, so every crash window
-                    // stays reconcilable.
+                    // The manifest is written before the original file is moved aside so
+                    // the backup is always accompanied by its manifest; a crash between
+                    // these two steps leaves only a harmless orphan manifest, never an
+                    // unrecoverable backup.
                     RollbackBackupRecovery.WriteManifest(backupPath, new RollbackBackupManifest
                     {
                         RequestId = requestId,
@@ -1908,6 +1958,8 @@ Exception? lastException = null;
                         OriginalHash = originalHash,
                         ExpectedPublishedHash = expectedContentHash
                     });
+
+                    File.Move(stagedOutput.FinalPath, backupPath);
                 }
 
                 File.Move(stagedOutput.PublicationPath, stagedOutput.FinalPath, true);
@@ -2076,7 +2128,10 @@ Exception? lastException = null;
 
     private static string CreateRollbackBackupPath(string finalPath)
     {
-        return $"{finalPath}.lingarr-rollback-{Guid.NewGuid():N}.bak";
+        // Short sibling name so the backup never exceeds the filesystem per-component
+        // limit even when the final filename is close to 255 bytes.
+        var directory = Path.GetDirectoryName(finalPath) ?? string.Empty;
+        return Path.Combine(directory, $".lingarr-rollback-{Guid.NewGuid():N}.bak");
     }
 
     private static IEnumerable<string> GetPublicationPaths(WrittenSubtitleOutput writtenOutput)

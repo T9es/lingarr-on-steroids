@@ -263,6 +263,84 @@ public class TranslationJobTests : IDisposable
     }
 
     [Fact]
+    public async Task ExecuteAsync_WhenOutputFilenameExceedsLimit_WritesFittingShortTagFallback()
+    {
+        // Media base long enough that the full-tag output (base.pl.lingarr.srt) exceeds
+        // the 255-byte filesystem limit while the short-tag fallback (base.pl.-ai-.srt)
+        // still fits. The job must skip the too-long candidate and publish the fitting one.
+        var longBase = new string('A', 241);
+        var mediaFileName = $"{longBase}.mkv";
+        var mediaPath = Path.Combine(_tempDirectory, mediaFileName);
+        var sourceSubtitlePath = Path.Combine(_tempDirectory, $"{longBase}.en.srt");
+        await File.WriteAllTextAsync(mediaPath, string.Empty);
+        await File.WriteAllTextAsync(
+            sourceSubtitlePath,
+            string.Join(
+                Environment.NewLine + Environment.NewLine,
+                Enumerable.Range(1, SubtitleExtractionService.MinimumDialogueEntries)
+                    .Select(index =>
+                    {
+                        var start = TimeSpan.FromSeconds(index);
+                        var end = TimeSpan.FromSeconds(index + 1);
+                        return $"{index}{Environment.NewLine}{start:hh\\:mm\\:ss},000 --> {end:hh\\:mm\\:ss},000{Environment.NewLine}Hello {index}";
+                    })));
+
+        var movie = CreateMovie(31);
+        movie.Path = _tempDirectory;
+        movie.FileName = mediaFileName;
+        var request = new TranslationRequest
+        {
+            MediaId = movie.Id,
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Pending,
+            SubtitleToTranslate = sourceSubtitlePath,
+            SourceSubtitleFormat = ".srt",
+            SubtitleOutputMode = "match-source",
+            RequiredOutputFormats = ".srt",
+            IsActive = true
+        };
+
+        _dbContext.Movies.Add(movie);
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var subtitleService = new SubtitleService(NullLogger<SubtitleService>.Instance);
+        var translationServiceMock = new Mock<ITranslationService>();
+        translationServiceMock
+            .Setup(service => service.TranslateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string text, string _, string _, List<string>? _, List<string>? _, CancellationToken _) =>
+                text.Replace("Hello", "Czesc", StringComparison.Ordinal));
+
+        var job = BuildExecutableJob(
+            subtitleService,
+            Mock.Of<ISubtitleExtractionService>(),
+            translationServiceMock.Object,
+            CreatePassingQualityValidator().Object,
+            settingOverrides: new Dictionary<string, string>
+            {
+                [SettingKeys.Translation.EmbedInContainer] = "false",
+                [SettingKeys.Translation.EmbedWhenPathTooLong] = "false"
+            });
+
+        await job.ExecuteAsync(request.Id, CancellationToken.None);
+
+        var updatedRequest = await _dbContext.TranslationRequests.SingleAsync(item => item.Id == request.Id);
+        Assert.NotNull(updatedRequest.TranslatedSubtitle);
+        Assert.Equal(TranslationStatus.Completed, updatedRequest.Status);
+        Assert.EndsWith($"{longBase}.pl.-ai-.srt", updatedRequest.TranslatedSubtitle, StringComparison.Ordinal);
+        Assert.True(File.Exists(updatedRequest.TranslatedSubtitle));
+    }
+
+    [Fact]
     public async Task BuildOcrTranslationPromptContextAsync_ForEpisode_DoesNotFollowAutoIncludeCycles()
     {
         var show = new Show

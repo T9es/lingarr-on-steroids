@@ -1151,6 +1151,19 @@ public class FailedTranslationCompletionService : IFailedTranslationCompletionSe
                 Exception? lastException = null;
                 foreach (var candidatePath in candidatePaths)
                 {
+                    // Skip candidates whose final filename cannot exist on the
+                    // filesystem; the next, shorter fallback variant is tried instead.
+                    if (_mkvEmbeddingService.WouldExceedPathLimit(candidatePath))
+                    {
+                        lastException = new PathTooLongException(
+                            $"The subtitle filename exceeds the filesystem limit (255 bytes): {Path.GetFileName(candidatePath)}");
+                        _logger.LogWarning(
+                            "Path too long: {Path}. Trying fallback path for request {RequestId}.",
+                            candidatePath,
+                            request.Id);
+                        continue;
+                    }
+
                     var stagingPath = CreateStagingPath(candidatePath, ownershipToken);
                     try
                     {
@@ -1241,6 +1254,19 @@ public class FailedTranslationCompletionService : IFailedTranslationCompletionSe
         string targetLanguage,
         CancellationToken cancellationToken)
     {
+        if (string.IsNullOrWhiteSpace(mediaPath) ||
+            !string.Equals(Path.GetExtension(mediaPath), ".mkv", StringComparison.OrdinalIgnoreCase) ||
+            !File.Exists(mediaPath))
+        {
+            // The write base may be an external subtitle sitting next to the media
+            // container; embedding must target the managed media file instead.
+            var managedMediaPath = await ResolveManagedMediaPathAsync(request, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(managedMediaPath))
+            {
+                mediaPath = managedMediaPath;
+            }
+        }
+
         if (string.IsNullOrWhiteSpace(mediaPath) ||
             !string.Equals(Path.GetExtension(mediaPath), ".mkv", StringComparison.OrdinalIgnoreCase))
         {
@@ -1463,6 +1489,34 @@ public class FailedTranslationCompletionService : IFailedTranslationCompletionSe
             return sourcePath;
         }
 
+        var managedMediaPath = await ResolveManagedMediaPathAsync(request, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(managedMediaPath))
+        {
+            return managedMediaPath;
+        }
+
+        _logger.LogWarning(
+            "Could not resolve the managed media path for failed translation request {RequestId}; using the source subtitle path.",
+            request.Id);
+        return sourcePath;
+    }
+
+    /// <summary>
+    /// Resolves the managed media file (movie/episode container) for a library
+    /// translation request, or null when the media record is missing or its file
+    /// cannot be located. Used by MKV embedding so the subtitle is embedded into
+    /// the actual media container even when the source was an external subtitle.
+    /// </summary>
+    private async Task<string?> ResolveManagedMediaPathAsync(
+        TranslationRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request.WorkloadKind != TranslationWorkloadKind.Library ||
+            !request.MediaId.HasValue)
+        {
+            return null;
+        }
+
         if (request.MediaType == MediaType.Movie)
         {
             var movie = await _dbContext.Movies
@@ -1471,13 +1525,10 @@ public class FailedTranslationCompletionService : IFailedTranslationCompletionSe
                 .Select(item => new { item.Path, item.FileName })
                 .FirstOrDefaultAsync(cancellationToken);
 
-            var moviePath = ResolveMediaFilePath(movie?.Path, movie?.FileName);
-            if (!string.IsNullOrWhiteSpace(moviePath))
-            {
-                return moviePath;
-            }
+            return ResolveMediaFilePath(movie?.Path, movie?.FileName);
         }
-        else if (request.MediaType == MediaType.Episode)
+
+        if (request.MediaType == MediaType.Episode)
         {
             var episode = await _dbContext.Episodes
                 .AsNoTracking()
@@ -1485,17 +1536,10 @@ public class FailedTranslationCompletionService : IFailedTranslationCompletionSe
                 .Select(item => new { item.Path, item.FileName })
                 .FirstOrDefaultAsync(cancellationToken);
 
-            var episodePath = ResolveMediaFilePath(episode?.Path, episode?.FileName);
-            if (!string.IsNullOrWhiteSpace(episodePath))
-            {
-                return episodePath;
-            }
+            return ResolveMediaFilePath(episode?.Path, episode?.FileName);
         }
 
-        _logger.LogWarning(
-            "Could not resolve the managed media path for failed translation request {RequestId}; using the extraction cache path.",
-            request.Id);
-        return sourcePath;
+        return null;
     }
 
     private static List<string> GetPersistedOutputPaths(TranslationRequest request)
@@ -1729,10 +1773,10 @@ public class FailedTranslationCompletionService : IFailedTranslationCompletionSe
 
                 if (publishedOutput.BackupPath != null)
                 {
-                    File.Move(output.FinalPath, publishedOutput.BackupPath);
-                    // The manifest is written as soon as the backup exists and before
-                    // the published file replaces the final path, so every crash window
-                    // stays reconcilable.
+                    // The manifest is written before the original file is moved aside so
+                    // the backup is always accompanied by its manifest; a crash between
+                    // these two steps leaves only a harmless orphan manifest, never an
+                    // unrecoverable backup.
                     RollbackBackupRecovery.WriteManifest(publishedOutput.BackupPath, new RollbackBackupManifest
                     {
                         RequestId = requestId,
@@ -1740,6 +1784,8 @@ public class FailedTranslationCompletionService : IFailedTranslationCompletionSe
                         OriginalHash = originalHash,
                         ExpectedPublishedHash = expectedContentHash
                     });
+
+                    File.Move(output.FinalPath, publishedOutput.BackupPath);
                 }
 
                 File.Move(output.StagingPath, output.FinalPath);
@@ -1980,16 +2026,28 @@ public class FailedTranslationCompletionService : IFailedTranslationCompletionSe
 
     private static string CreateStagingPath(string finalPath, string ownershipToken)
     {
+        // Short sibling name so staging never exceeds the filesystem per-component
+        // limit even when the final filename is close to 255 bytes.
+        var directory = Path.GetDirectoryName(finalPath) ?? string.Empty;
         var extension = Path.GetExtension(finalPath);
-        var pathWithoutExtension = finalPath[..^extension.Length];
-        return $"{pathWithoutExtension}.{ownershipToken}.tmp{extension}";
+        var discriminator = ComputeStableShortHash($"{ownershipToken}|{finalPath}");
+        return Path.Combine(directory, $".lingarr-stage-{discriminator}{extension}");
     }
 
     private static string CreatePublicationBackupPath(string finalPath, string ownershipToken)
     {
+        // Short sibling name so the rollback backup never exceeds the filesystem
+        // per-component limit even when the final filename is close to 255 bytes.
+        var directory = Path.GetDirectoryName(finalPath) ?? string.Empty;
         var extension = Path.GetExtension(finalPath);
-        var pathWithoutExtension = finalPath[..^extension.Length];
-        return $"{pathWithoutExtension}.{ownershipToken}.bak{extension}";
+        var discriminator = ComputeStableShortHash($"{ownershipToken}|{finalPath}");
+        return Path.Combine(directory, $".lingarr-rollback-{discriminator}{extension}");
+    }
+
+    private static string ComputeStableShortHash(string value)
+    {
+        var hashBytes = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(value));
+        return Convert.ToHexString(hashBytes.AsSpan(0, 4)).ToLowerInvariant();
     }
 
     private static List<SubtitleItem> RenderOutputSubtitles(

@@ -125,9 +125,12 @@ internal static class RollbackBackupRecovery
         // The job-style rollback naming ({file}.lingarr-rollback-{guid}.bak) is unique to
         // Lingarr, so manifest-less orphans can be restored safely. The completed-edits
         // naming ({base}.{token}.bak{ext}) is also matched by ordinary user files, so
-        // manifest-less candidates found there are never touched.
+        // manifest-less candidates found there are never touched. Short sibling backups
+        // (.lingarr-rollback-*) are only ever reconciled via their manifest, which
+        // records the exact target path, so manifest-less candidates are never restored.
         CollectMatchingFiles(directory, $"{fileName}{JobRollbackPrefix}*{JobRollbackSuffix}", candidates, allowLegacyRestore: true);
         CollectMatchingFiles(directory, $"{fileNameWithoutExtension}.*{JobRollbackSuffix}{extension}", candidates, allowLegacyRestore: false);
+        CollectMatchingFiles(directory, $"{JobRollbackPrefix}*", candidates, allowLegacyRestore: false);
 
         ReconcileCandidates(finalPath, candidates, logger);
     }
