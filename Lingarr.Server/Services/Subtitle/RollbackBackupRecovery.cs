@@ -54,6 +54,9 @@ internal static class RollbackBackupRecovery
     private static readonly StringComparison PathComparison =
         OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
+    private static readonly IEqualityComparer<string> PathComparer =
+        OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+
     /// <summary>Writes (atomically) the manifest sidecar for a backup.</summary>
     public static void WriteManifest(string backupPath, RollbackBackupManifest manifest)
     {
@@ -118,9 +121,13 @@ internal static class RollbackBackupRecovery
         var fileNameWithoutExtension = Path.GetFileNameWithoutExtension(finalPath);
         var extension = Path.GetExtension(finalPath);
 
-        var candidates = new List<string>();
-        CollectMatchingFiles(directory, $"{fileName}{JobRollbackPrefix}*{JobRollbackSuffix}", candidates);
-        CollectMatchingFiles(directory, $"{fileNameWithoutExtension}.*{JobRollbackSuffix}{extension}", candidates);
+        var candidates = new List<(string BackupPath, bool AllowLegacyRestore)>();
+        // The job-style rollback naming ({file}.lingarr-rollback-{guid}.bak) is unique to
+        // Lingarr, so manifest-less orphans can be restored safely. The completed-edits
+        // naming ({base}.{token}.bak{ext}) is also matched by ordinary user files, so
+        // manifest-less candidates found there are never touched.
+        CollectMatchingFiles(directory, $"{fileName}{JobRollbackPrefix}*{JobRollbackSuffix}", candidates, allowLegacyRestore: true);
+        CollectMatchingFiles(directory, $"{fileNameWithoutExtension}.*{JobRollbackSuffix}{extension}", candidates, allowLegacyRestore: false);
 
         ReconcileCandidates(finalPath, candidates, requestId, logger);
     }
@@ -135,8 +142,8 @@ internal static class RollbackBackupRecovery
         var tempDirectory = Path.GetTempPath();
         if (Directory.Exists(tempDirectory))
         {
-            var tempCandidates = new List<string>();
-            CollectMatchingFiles(tempDirectory, JobEmbeddedBackupPattern, tempCandidates);
+            var tempCandidates = new List<(string BackupPath, bool AllowLegacyRestore)>();
+            CollectMatchingFiles(tempDirectory, JobEmbeddedBackupPattern, tempCandidates, allowLegacyRestore: true);
             ReconcileCandidates(mediaPath, tempCandidates, requestId, logger);
         }
 
@@ -148,8 +155,8 @@ internal static class RollbackBackupRecovery
 
         var fileNameWithoutExtension = Path.GetFileNameWithoutExtension(mediaPath);
         var extension = Path.GetExtension(mediaPath);
-        var siblingCandidates = new List<string>();
-        CollectMatchingFiles(directory, $"{fileNameWithoutExtension}.*{JobRollbackSuffix}{extension}", siblingCandidates);
+        var siblingCandidates = new List<(string BackupPath, bool AllowLegacyRestore)>();
+        CollectMatchingFiles(directory, $"{fileNameWithoutExtension}.*{JobRollbackSuffix}{extension}", siblingCandidates, allowLegacyRestore: false);
         ReconcileCandidates(mediaPath, siblingCandidates, requestId, logger);
     }
 
@@ -166,23 +173,23 @@ internal static class RollbackBackupRecovery
             return;
         }
 
-        var candidates = new List<string>();
-        CollectMatchingFiles(tempDirectory, JobEmbeddedBackupPattern, candidates);
+        var candidates = new List<(string BackupPath, bool AllowLegacyRestore)>();
+        CollectMatchingFiles(tempDirectory, JobEmbeddedBackupPattern, candidates, allowLegacyRestore: true);
         foreach (var candidate in candidates)
         {
-            var manifest = LoadManifest(candidate);
+            var manifest = LoadManifest(candidate.BackupPath);
             if (manifest == null || manifest.RequestId != requestId)
             {
                 continue;
             }
 
-            ApplyManifestRules(manifest.TargetPath, candidate, manifest, logger);
+            ApplyManifestRules(manifest.TargetPath, candidate.BackupPath, manifest, candidate.AllowLegacyRestore, logger);
         }
     }
 
     private static void ReconcileCandidates(
         string targetPath,
-        List<string> candidates,
+        List<(string BackupPath, bool AllowLegacyRestore)> candidates,
         int requestId,
         ILogger logger)
     {
@@ -192,10 +199,10 @@ internal static class RollbackBackupRecovery
         }
 
         var normalizedTarget = NormalizePath(targetPath);
-        var manifests = new List<(string BackupPath, RollbackBackupManifest? Manifest, DateTime CreatedAtUtc)>();
-        foreach (var candidate in candidates.Distinct(StringComparer.OrdinalIgnoreCase))
+        var manifests = new List<(string BackupPath, bool AllowLegacyRestore, RollbackBackupManifest? Manifest, DateTime CreatedAtUtc)>();
+        foreach (var candidate in candidates.DistinctBy(item => item.BackupPath, PathComparer))
         {
-            var manifest = LoadManifest(candidate);
+            var manifest = LoadManifest(candidate.BackupPath);
             if (manifest != null &&
                 !string.Equals(
                     NormalizePath(manifest.TargetPath),
@@ -205,12 +212,12 @@ internal static class RollbackBackupRecovery
                 continue;
             }
 
-            manifests.Add((candidate, manifest, manifest?.CreatedAtUtc ?? DateTime.MinValue));
+            manifests.Add((candidate.BackupPath, candidate.AllowLegacyRestore, manifest, manifest?.CreatedAtUtc ?? DateTime.MinValue));
         }
 
         foreach (var item in manifests.OrderBy(item => item.CreatedAtUtc))
         {
-            ApplyManifestRules(targetPath, item.BackupPath, item.Manifest, logger);
+            ApplyManifestRules(targetPath, item.BackupPath, item.Manifest, item.AllowLegacyRestore, logger);
         }
     }
 
@@ -218,6 +225,7 @@ internal static class RollbackBackupRecovery
         string targetPath,
         string backupPath,
         RollbackBackupManifest? manifest,
+        bool allowLegacyRestore,
         ILogger logger)
     {
         if (!File.Exists(backupPath))
@@ -240,6 +248,17 @@ internal static class RollbackBackupRecovery
 
         if (manifest == null)
         {
+            if (!allowLegacyRestore)
+            {
+                // The naming pattern is not uniquely attributable to Lingarr (it also
+                // matches ordinary user files), so a manifest-less backup is never
+                // moved into place automatically.
+                logger.LogDebug(
+                    "Leaving orphaned rollback backup {BackupPath} untouched: it has no manifest and its naming is not uniquely attributable to Lingarr",
+                    backupPath);
+                return;
+            }
+
             // Pre-manifest orphan: only safe to restore when the final file is missing
             // (the backup is then the only copy of the original).
             if (currentHash == null)
@@ -286,6 +305,21 @@ internal static class RollbackBackupRecovery
                 backupPath,
                 targetPath);
             DeleteBackup(backupPath);
+            return;
+        }
+
+        if (manifest.ExpectedPublishedHash == null)
+        {
+            // The published hash was never recorded (crash between embed success and the
+            // manifest update). The target is modified but not provably foreign; restore
+            // the original, matching the runtime rollback semantics for this state.
+            logger.LogWarning(
+                "Restoring pre-publication file for {TargetPath} from rollback backup {BackupPath} (interrupted attempt {RequestId} left an unrecorded modification)",
+                targetPath,
+                backupPath,
+                manifest.RequestId);
+            DeleteFileIfExists(targetPath);
+            TryRestore(targetPath, backupPath, logger);
             return;
         }
 
@@ -343,7 +377,11 @@ internal static class RollbackBackupRecovery
         return $"{backupPath}{ManifestSuffix}";
     }
 
-    private static void CollectMatchingFiles(string directory, string pattern, List<string> results)
+    private static void CollectMatchingFiles(
+        string directory,
+        string pattern,
+        List<(string BackupPath, bool AllowLegacyRestore)> results,
+        bool allowLegacyRestore)
     {
         try
         {
@@ -351,7 +389,7 @@ internal static class RollbackBackupRecovery
             {
                 if (!file.EndsWith(ManifestSuffix, StringComparison.OrdinalIgnoreCase))
                 {
-                    results.Add(file);
+                    results.Add((file, allowLegacyRestore));
                 }
             }
         }

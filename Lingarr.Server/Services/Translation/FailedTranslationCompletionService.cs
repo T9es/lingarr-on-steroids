@@ -359,9 +359,14 @@ public class FailedTranslationCompletionService : IFailedTranslationCompletionSe
             if (completionRowsUpdated == 0)
             {
                 await _dbContext.Entry(dbRequest).ReloadAsync(cancellationToken);
-                RollbackPublishedOutputs(publishedOutputs);
+                var completedByOthers = dbRequest.Status == TranslationStatus.Completed;
+                if (!completedByOthers)
+                {
+                    RollbackPublishedOutputs(publishedOutputs);
+                    RollbackEmbeddedPublication(embeddedPublication);
+                }
+
                 publishedOutputs = null;
-                RollbackEmbeddedPublication(embeddedPublication);
                 embeddedPublication = null;
                 CleanupStagedOutputs(writtenOutput);
                 return BuildCurrentStateResult(dbRequest);
@@ -393,12 +398,28 @@ public class FailedTranslationCompletionService : IFailedTranslationCompletionSe
         }
         catch (Exception exception)
         {
-            if (!completionCommitted && publishedOutputs != null)
+            var completedByOthers = false;
+            try
+            {
+                completedByOthers = await _dbContext.TranslationRequests
+                    .Where(item => item.Id == dbRequest.Id)
+                    .Select(item => item.Status)
+                    .FirstOrDefaultAsync(CancellationToken.None) == TranslationStatus.Completed;
+            }
+            catch (Exception stateQueryException)
+            {
+                _logger.LogWarning(
+                    stateQueryException,
+                    "Could not verify request state for translation request {RequestId}; keeping the existing rollback behavior",
+                    dbRequest.Id);
+            }
+
+            if (!completionCommitted && publishedOutputs != null && !completedByOthers)
             {
                 RollbackPublishedOutputs(publishedOutputs);
             }
 
-            if (!completionCommitted)
+            if (!completionCommitted && !completedByOthers)
             {
                 RollbackEmbeddedPublication(embeddedPublication);
             }
@@ -613,9 +634,14 @@ public class FailedTranslationCompletionService : IFailedTranslationCompletionSe
             if (rowsUpdated == 0)
             {
                 await _dbContext.Entry(dbRequest).ReloadAsync(cancellationToken);
-                RollbackPublishedOutputs(publishedOutputs);
+                var completedByOthers = dbRequest.Status == TranslationStatus.Completed;
+                if (!completedByOthers)
+                {
+                    RollbackPublishedOutputs(publishedOutputs);
+                    RollbackEmbeddedPublication(embeddedPublication);
+                }
+
                 publishedOutputs = null;
-                RollbackEmbeddedPublication(embeddedPublication);
                 embeddedPublication = null;
                 CleanupStagedOutputs(writtenOutput);
                 return new FailedTranslationCompletionResult(
@@ -636,12 +662,28 @@ public class FailedTranslationCompletionService : IFailedTranslationCompletionSe
         }
         catch (Exception exception)
         {
-            if (!publicationCommitted && publishedOutputs != null)
+            var completedByOthers = false;
+            try
+            {
+                completedByOthers = await _dbContext.TranslationRequests
+                    .Where(item => item.Id == dbRequest.Id)
+                    .Select(item => item.Status)
+                    .FirstOrDefaultAsync(CancellationToken.None) == TranslationStatus.Completed;
+            }
+            catch (Exception stateQueryException)
+            {
+                _logger.LogWarning(
+                    stateQueryException,
+                    "Could not verify request state for translation request {RequestId}; keeping the existing rollback behavior",
+                    dbRequest.Id);
+            }
+
+            if (!publicationCommitted && publishedOutputs != null && !completedByOthers)
             {
                 RollbackPublishedOutputs(publishedOutputs);
             }
 
-            if (!publicationCommitted)
+            if (!publicationCommitted && !completedByOthers)
             {
                 RollbackEmbeddedPublication(embeddedPublication);
             }

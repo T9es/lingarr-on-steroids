@@ -290,6 +290,37 @@ public sealed class RollbackBackupRecoveryTests : IDisposable
     }
 
     [Fact]
+    public void ReconcileSubtitleBackups_WhenExpectedHashNotRecordedAndTargetModified_RestoresOriginal()
+    {
+        // Crash between embed success and the manifest update: the published hash was
+        // never recorded, and the target is modified. Runtime rollback semantics for
+        // this state restore the original; the reconciler must match them.
+        var backupPath = CreateJobStyleBackup(_originalContent, expectedPublishedHash: null);
+        File.WriteAllText(_finalPath, _publishedContent);
+
+        RollbackBackupRecovery.ReconcileSubtitleBackups(_finalPath, 7, NullLogger.Instance);
+
+        Assert.Equal(_originalContent, File.ReadAllText(_finalPath));
+        Assert.False(File.Exists(backupPath));
+    }
+
+    [Fact]
+    public void ReconcileSubtitleBackups_WhenCompareStyleBackupHasNoManifest_NeverMovesItIntoPlace()
+    {
+        // The completed-edits naming ({base}.{token}.bak{ext}) also matches ordinary
+        // user files: without a manifest it must never be restored, even when the
+        // final file is missing.
+        var backupPath = $"{_finalPath[..^Path.GetExtension(_finalPath).Length]}.completed-compare-abc.bak.srt";
+        File.WriteAllText(backupPath, _originalContent);
+        Assert.False(File.Exists(_finalPath));
+
+        RollbackBackupRecovery.ReconcileSubtitleBackups(_finalPath, 7, NullLogger.Instance);
+
+        Assert.False(File.Exists(_finalPath));
+        Assert.True(File.Exists(backupPath));
+    }
+
+    [Fact]
     public void DeleteBackup_RemovesBackupAndManifest()
     {
         var backupPath = Path.Combine(_directory, "some.bak");

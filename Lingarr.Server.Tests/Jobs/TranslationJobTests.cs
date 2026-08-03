@@ -3541,6 +3541,122 @@ public class TranslationJobTests : IDisposable
     }
 
     [Fact]
+    public async Task ExecuteAsync_WhenReplacementWinsWithIdenticalContent_DoesNotRollBackReplacementFiles()
+    {
+        var mediaPath = Path.Combine(_tempDirectory, "movie-22-identical-cas-race.mkv");
+        await File.WriteAllTextAsync(mediaPath, "original media");
+
+        var movie = CreateMovie(22);
+        movie.Path = _tempDirectory;
+        movie.FileName = Path.GetFileName(mediaPath);
+
+        var sourceSubtitlePath = _embeddedSubtitleCacheService.GetCachePath(
+            movie.Id,
+            MediaType.Movie,
+            streamIndex: 0,
+            codecName: "subrip",
+            language: "eng");
+        await File.WriteAllTextAsync(sourceSubtitlePath, BuildSrtContent(50));
+
+        var request = new TranslationRequest
+        {
+            MediaId = movie.Id,
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaType = MediaType.Movie,
+            WorkloadKind = TranslationWorkloadKind.Library,
+            WorkloadItemKey = "library:Movie:22",
+            Status = TranslationStatus.Pending,
+            SubtitleToTranslate = sourceSubtitlePath,
+            SourceSubtitleFormat = ".srt",
+            SubtitleOutputMode = "match-source",
+            RequiredOutputFormats = ".srt",
+            IsActive = true
+        };
+
+        _dbContext.Movies.Add(movie);
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var subtitleService = new SubtitleService(NullLogger<SubtitleService>.Instance);
+        var winnerSidecarPath = subtitleService
+            .CreateFallbackPaths(mediaPath, "pl", "lingarr", "-ai-", ".srt", null)
+            .First();
+        var extractionServiceMock = new Mock<ISubtitleExtractionService>();
+        extractionServiceMock
+            .Setup(service => service.SyncEmbeddedSubtitles(It.IsAny<Movie>()))
+            .Returns(Task.CompletedTask);
+
+        var translationServiceMock = new Mock<ITranslationService>();
+        translationServiceMock
+            .Setup(service => service.TranslateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync("Czesc");
+
+        var mkvEmbeddingServiceMock = new Mock<IMkvEmbeddingService>();
+        mkvEmbeddingServiceMock
+            .Setup(service => service.WouldExceedPathLimit(It.IsAny<string>()))
+            .Returns(false);
+        mkvEmbeddingServiceMock
+            .Setup(service => service.EmbedSubtitleAsync(
+                mediaPath,
+                It.IsAny<string>(),
+                "pl",
+                "pl (Lingarr)",
+                It.IsAny<CancellationToken>()))
+            .Returns<string, string, string, string?, CancellationToken>(async (path, _, _, _, _) =>
+            {
+                await File.WriteAllTextAsync(path, "identical stale media");
+                return new MkvEmbedResult(true, path);
+            });
+
+        var job = BuildExecutableJob(
+            subtitleService,
+            extractionServiceMock.Object,
+            translationServiceMock.Object,
+            CreatePassingQualityValidator().Object,
+            new Dictionary<string, string>
+            {
+                [SettingKeys.Translation.EmbedInContainer] = "true"
+            },
+            mkvEmbeddingServiceMock.Object);
+        job.BeforeFinalCompletionCommitAsync = async () =>
+        {
+            // A replacement worker completes the request with byte-identical media
+            // output. The stale worker must not roll these files back: the identical
+            // hash would otherwise pass its ownership check and delete the committed
+            // container.
+            await File.WriteAllTextAsync(mediaPath, "identical stale media");
+            await File.WriteAllTextAsync(winnerSidecarPath, "replacement winner sidecar");
+            var winnerPaths = JsonSerializer.Serialize(new[] { winnerSidecarPath });
+            await _dbContext.TranslationRequests
+                .Where(item => item.Id == request.Id)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(item => item.Status, TranslationStatus.Completed)
+                    .SetProperty(item => item.IsActive, (bool?)null)
+                    .SetProperty(item => item.JobId, (string?)null)
+                    .SetProperty(item => item.TranslatedSubtitle, winnerSidecarPath)
+                    .SetProperty(item => item.GeneratedSubtitlePaths, winnerPaths));
+        };
+
+        await job.ExecuteAsync(request.Id, CancellationToken.None);
+
+        Assert.Equal("identical stale media", await File.ReadAllTextAsync(mediaPath));
+        Assert.Equal("replacement winner sidecar", await File.ReadAllTextAsync(winnerSidecarPath));
+        var persistedRequest = await _dbContext.TranslationRequests
+            .AsNoTracking()
+            .SingleAsync(item => item.Id == request.Id);
+        Assert.Equal(TranslationStatus.Completed, persistedRequest.Status);
+        Assert.Equal(winnerSidecarPath, persistedRequest.TranslatedSubtitle);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_WhenBatchMkvEmbeddingFails_DoesNotPerformSequentialEmbedsAndMarksRequestFailed()
     {
         var mediaPath = Path.Combine(_tempDirectory, "movie-20-dual.mkv");

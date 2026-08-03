@@ -2005,6 +2005,13 @@ Exception? lastException = null;
                                  File.Exists(publishedOutput.BackupPath);
         if (!finalExists || publicationStillOwnsFinal)
         {
+            if (!finalExists && publishedOutput.HadExistingFile && !canRestoreOriginal)
+            {
+                _logger.LogWarning(
+                    "Subtitle output {Path} is missing and its rollback backup is also missing; the pre-publication file cannot be recovered",
+                    publishedOutput.FinalPath);
+            }
+
             if (publicationStillOwnsFinal && (canRestoreOriginal || !publishedOutput.HadExistingFile))
             {
                 DeleteFileIfExists(publishedOutput.FinalPath);
@@ -2155,15 +2162,25 @@ Exception? lastException = null;
                         : string.Equals(currentHash, backup.ExpectedPublishedHash, StringComparison.Ordinal);
                 }
 
-                if (shouldRestore && File.Exists(backup.BackupPath))
+                if (shouldRestore)
                 {
-                    if (File.Exists(backup.MediaPath))
+                    if (File.Exists(backup.BackupPath))
                     {
-                        File.Delete(backup.MediaPath);
-                    }
+                        if (File.Exists(backup.MediaPath))
+                        {
+                            File.Delete(backup.MediaPath);
+                        }
 
-                    File.Move(backup.BackupPath, backup.MediaPath);
-                    RollbackBackupRecovery.DeleteManifest(backup.BackupPath);
+                        File.Move(backup.BackupPath, backup.MediaPath);
+                        RollbackBackupRecovery.DeleteManifest(backup.BackupPath);
+                    }
+                    else
+                    {
+                        _logger.LogWarning(
+                            "MKV rollback backup {BackupPath} for {MediaPath} is missing; leaving the current container untouched",
+                            backup.BackupPath,
+                            backup.MediaPath);
+                    }
                 }
                 else if (currentHash != null &&
                          string.Equals(currentHash, backup.OriginalHash, StringComparison.Ordinal))
@@ -2613,8 +2630,19 @@ Exception? lastException = null;
             {
                 await transaction!.RollbackAsync(cancellationToken);
                 await _dbContext.Entry(translationRequest).ReloadAsync(cancellationToken);
-                RollbackPublishedOutputs(publishedOutputs);
-                RollbackEmbeddedPublication(embeddedPublication);
+                var completedByOthers = translationRequest.Status == TranslationStatus.Completed;
+                if (!completedByOthers)
+                {
+                    RollbackPublishedOutputs(publishedOutputs);
+                    RollbackEmbeddedPublication(embeddedPublication);
+                }
+                else
+                {
+                    _logger.LogInformation(
+                        "Skipping file rollback for translation request {RequestId} because it was completed by another worker; files are left for reconciliation",
+                        translationRequest.Id);
+                }
+
                 CleanupStagedOutputArtifacts(
                     writtenOutput.StagedOutputs,
                     writtenOutput.StagedEmbeddedOutputs);
@@ -2671,8 +2699,36 @@ Exception? lastException = null;
 
             if (!completionCommitted)
             {
-                RollbackPublishedOutputs(publishedOutputs);
-                RollbackEmbeddedPublication(embeddedPublication);
+                // The commit probe could not confirm the completion. Before rolling
+                // back files, check whether another worker completed the request: a
+                // committed replacement's files must not be rolled back.
+                var completedByOthers = false;
+                try
+                {
+                    completedByOthers = await _dbContext.TranslationRequests
+                        .Where(item => item.Id == translationRequest.Id)
+                        .Select(item => item.Status)
+                        .FirstOrDefaultAsync(CancellationToken.None) == TranslationStatus.Completed;
+                }
+                catch (Exception stateQueryException)
+                {
+                    _logger.LogWarning(
+                        stateQueryException,
+                        "Could not verify request state for translation request {RequestId}; keeping the existing rollback behavior",
+                        translationRequest.Id);
+                }
+
+                if (!completedByOthers)
+                {
+                    RollbackPublishedOutputs(publishedOutputs);
+                    RollbackEmbeddedPublication(embeddedPublication);
+                }
+                else
+                {
+                    _logger.LogInformation(
+                        "Skipping file rollback for translation request {RequestId} because it was completed by another worker; files are left for reconciliation",
+                        translationRequest.Id);
+                }
             }
             else
             {
