@@ -734,10 +734,12 @@ public class FailedTranslationCompletionService : IFailedTranslationCompletionSe
                 // In this flow the request is Completed by definition, so a mere
                 // Completed status is no takeover evidence: only a JobId that is no
                 // longer this attempt's ownership token proves another worker
-                // reclaimed the request and will publish its own outputs.
+                // reclaimed the request and will publish its own outputs. A null
+                // JobId is takeover evidence too: the only operation that nulls it
+                // is a completion commit, and for embedded output the container
+                // path is shared, so rolling back could destroy committed output.
                 completedByOthers = requestState != null &&
                                     requestState.Status == TranslationStatus.Completed &&
-                                    requestState.JobId != null &&
                                     !string.Equals(
                                         requestState.JobId,
                                         ownershipToken,
