@@ -235,6 +235,45 @@ public sealed class RollbackBackupRecoveryTests : IDisposable
     }
 
     [Fact]
+    public void ReconcileEmbeddedBackups_WithShortSiblingBackupAndManifest_RestoresOriginal()
+    {
+        // The completed-edits media backup now uses the short sibling naming
+        // (.lingarr-rollback-{hash}.mkv); a manifest-backed backup must restore
+        // the original when the media is an uncommitted merged output.
+        var mediaPath = Path.Combine(_directory, "Episode.S01E01.mkv");
+        File.WriteAllText(mediaPath, _publishedContent);
+        var backupPath = Path.Combine(_directory, $".lingarr-rollback-{Guid.NewGuid():N}.mkv");
+        File.WriteAllText(backupPath, _originalContent);
+        RollbackBackupRecovery.WriteManifest(backupPath, new RollbackBackupManifest
+        {
+            RequestId = 42,
+            TargetPath = mediaPath,
+            OriginalHash = Hash(_originalContent),
+            ExpectedPublishedHash = Hash(_publishedContent)
+        });
+
+        RollbackBackupRecovery.ReconcileEmbeddedBackups(mediaPath, 42, NullLogger.Instance);
+
+        Assert.Equal(_originalContent, File.ReadAllText(mediaPath));
+        Assert.False(File.Exists(backupPath));
+    }
+
+    [Fact]
+    public void ReconcileEmbeddedBackups_WithShortSiblingBackupNoManifest_LeavesItUntouched()
+    {
+        // Manifest-less short sibling media backups are never restored automatically.
+        var mediaPath = Path.Combine(_directory, "Episode.S01E01.mkv");
+        File.WriteAllText(mediaPath, _publishedContent);
+        var backupPath = Path.Combine(_directory, $".lingarr-rollback-{Guid.NewGuid():N}.mkv");
+        File.WriteAllText(backupPath, _originalContent);
+
+        RollbackBackupRecovery.ReconcileEmbeddedBackups(mediaPath, 42, NullLogger.Instance);
+
+        Assert.Equal(_publishedContent, File.ReadAllText(mediaPath));
+        Assert.True(File.Exists(backupPath));
+    }
+
+    [Fact]
     public void ReconcileSubtitleBackups_WhenTargetExistsButIsUnreadable_KeepsBackup()
     {
         if (!OperatingSystem.IsWindows())

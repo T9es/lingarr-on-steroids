@@ -160,6 +160,10 @@ internal static class RollbackBackupRecovery
         var extension = Path.GetExtension(mediaPath);
         var siblingCandidates = new List<(string BackupPath, bool AllowLegacyRestore)>();
         CollectMatchingFiles(directory, $"{fileNameWithoutExtension}.*{JobRollbackSuffix}{extension}", siblingCandidates, allowLegacyRestore: false);
+        // Short sibling backups (.lingarr-rollback-*) are only ever reconciled via
+        // their manifest, which records the exact target path, so manifest-less
+        // candidates are never restored.
+        CollectMatchingFiles(directory, $"{JobRollbackPrefix}*", siblingCandidates, allowLegacyRestore: false);
         ReconcileCandidates(mediaPath, siblingCandidates, logger);
     }
 
