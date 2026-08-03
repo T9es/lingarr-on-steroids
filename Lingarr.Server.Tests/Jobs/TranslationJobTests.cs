@@ -21,6 +21,7 @@ using Lingarr.Server.Models.Subtitle;
 using Lingarr.Server.Models.Translation;
 using Lingarr.Server.Services;
 using Lingarr.Server.Services.Subtitle;
+using Lingarr.Server.Services.Translation;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -636,6 +637,322 @@ public class TranslationJobTests : IDisposable
         Assert.Contains("only 1 entries", errorLog.Details);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_WhenConfiguredSubtitleValidationBlocksSource_MarksRequestFailedAndLogsRetryableReason()
+    {
+        var sourceSubtitlePath = Path.Combine(_tempDirectory, "validation-blocked.en.srt");
+        await File.WriteAllTextAsync(sourceSubtitlePath, BuildSrtContent(1));
+
+        var movie = CreateMovie(25);
+        movie.Path = _tempDirectory;
+        var request = CreatePendingMovieRequest(movie, sourceSubtitlePath);
+
+        _dbContext.Movies.Add(movie);
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var translationServiceMock = new Mock<ITranslationService>();
+        var job = BuildExecutableJob(
+            new SubtitleService(NullLogger<SubtitleService>.Instance),
+            Mock.Of<ISubtitleExtractionService>(),
+            translationServiceMock.Object,
+            settingOverrides: new Dictionary<string, string>
+            {
+                [SettingKeys.SubtitleValidation.ValidateSubtitles] = "true"
+            });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => job.ExecuteAsync(request.Id, CancellationToken.None));
+
+        var updatedRequest = await _dbContext.TranslationRequests
+            .AsNoTracking()
+            .SingleAsync(item => item.Id == request.Id);
+        Assert.Equal(TranslationStatus.Failed, updatedRequest.Status);
+        Assert.Null(updatedRequest.CompletedAt);
+        Assert.Equal(1, updatedRequest.RetryCount);
+        Assert.NotNull(updatedRequest.NextRetryAt);
+        Assert.Null(updatedRequest.IsActive);
+
+        var logs = await _dbContext.TranslationRequestLogs
+            .Where(log => log.TranslationRequestId == request.Id)
+            .OrderBy(log => log.Id)
+            .ToListAsync();
+        Assert.Contains(logs, log =>
+            log.Level == "Warning" &&
+            log.Message == "Configured subtitle validation blocked this translation.");
+        Assert.Contains(logs, log =>
+            log.Level == "Error" &&
+            log.Message.StartsWith("Translation failed: Configured subtitle validation blocked this translation.") &&
+            log.Details?.Contains("failed one or more configured safety checks") == true);
+        translationServiceMock.Verify(service => service.TranslateAsync(
+            It.IsAny<string>(),
+            It.IsAny<string>(),
+            It.IsAny<string>(),
+            It.IsAny<List<string>?>(),
+            It.IsAny<List<string>?>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task HandleCancellation_MarksActiveRequestCancelled()
+    {
+        var translationRequestServiceMock = new Mock<ITranslationRequestService>();
+        translationRequestServiceMock
+            .Setup(service => service.ClearMediaHash(It.IsAny<TranslationRequest>()))
+            .Returns(Task.CompletedTask);
+        translationRequestServiceMock
+            .Setup(service => service.UpdateActiveCount())
+            .ReturnsAsync(0);
+        var progressServiceMock = new Mock<IProgressService>();
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+        var job = BuildStateTransitionJob(
+            translationRequestServiceMock.Object,
+            progressServiceMock.Object);
+        var request = new TranslationRequest
+        {
+            Title = "Explicitly cancelled request",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.InProgress,
+            IsActive = true
+        };
+
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        await job.HandleCancellation(request);
+
+        var persistedRequest = await _dbContext.TranslationRequests
+            .AsNoTracking()
+            .SingleAsync(item => item.Id == request.Id);
+        Assert.Equal(TranslationStatus.Cancelled, persistedRequest.Status);
+        Assert.NotNull(persistedRequest.CompletedAt);
+        Assert.Null(persistedRequest.IsActive);
+    }
+
+    [Fact]
+    public async Task HandleCancellation_HoldsAttemptOwnershipWhileDeletingCheckpoint()
+    {
+        var checkpointServiceMock = new Mock<ITranslationCheckpointService>();
+        checkpointServiceMock
+            .Setup(service => service.DeleteAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns(async (int requestId, CancellationToken _) =>
+            {
+                var currentRequest = await _dbContext.TranslationRequests
+                    .AsNoTracking()
+                    .SingleAsync(item => item.Id == requestId);
+
+                Assert.Equal(TranslationStatus.InProgress, currentRequest.Status);
+                Assert.StartsWith("cancellation:", currentRequest.JobId);
+                Assert.Null(await TranslationWorkerService.TryClaimPendingRequestAsync(
+                    _dbContext,
+                    requestId,
+                    CancellationToken.None));
+            });
+
+        var job = BuildStateTransitionJob(
+            Mock.Of<ITranslationRequestService>(),
+            Mock.Of<IProgressService>(),
+            checkpointServiceMock.Object);
+        var request = new TranslationRequest
+        {
+            Title = "Checkpoint cancellation race",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.InProgress,
+            IsActive = true,
+            JobId = "old-attempt"
+        };
+
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        await job.HandleCancellation(request, "old-attempt");
+
+        var persistedRequest = await _dbContext.TranslationRequests
+            .AsNoTracking()
+            .SingleAsync(item => item.Id == request.Id);
+        Assert.Equal(TranslationStatus.Cancelled, persistedRequest.Status);
+        Assert.Null(persistedRequest.JobId);
+        checkpointServiceMock.Verify(
+            service => service.DeleteAsync(
+                request.Id,
+                It.IsAny<CancellationToken>(),
+                It.Is<string?>(token => token != null && token.StartsWith("cancellation:", StringComparison.Ordinal))),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenOwnershipIsLostDuringCancellationRegistration_DoesNotStartTranslation()
+    {
+        var request = new TranslationRequest
+        {
+            Title = "Delayed registration ownership race",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.InProgress,
+            IsActive = true,
+            JobId = "old-attempt"
+        };
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var settingsServiceMock = new Mock<ISettingService>();
+        settingsServiceMock
+            .Setup(service => service.GetSettings(It.IsAny<IEnumerable<string>>()))
+            .ReturnsAsync((IEnumerable<string> keys) =>
+            {
+                var settings = keys.ToDictionary(key => key, _ => string.Empty);
+                settings[SettingKeys.Translation.ServiceType] = "mock";
+                settings[SettingKeys.SubtitleValidation.ValidateSubtitles] = "false";
+                return settings;
+            });
+
+        var translationFactoryMock = new Mock<ITranslationServiceFactory>();
+        translationFactoryMock
+            .Setup(factory => factory.CreateTranslationService(It.IsAny<string>()))
+            .Returns(Mock.Of<ITranslationService>());
+
+        using var registrationSource = new CancellationTokenSource();
+        var cancellationServiceMock = new Mock<ITranslationCancellationService>();
+        cancellationServiceMock
+            .Setup(service => service.RegisterJob(request.Id, "old-attempt"))
+            .Callback(() =>
+            {
+                request.JobId = "replacement-attempt";
+                _dbContext.SaveChanges();
+            })
+            .Returns(registrationSource.Token);
+        cancellationServiceMock
+            .Setup(service => service.UnregisterJob(request.Id, registrationSource.Token))
+            .Returns(true);
+
+        var subtitleService = new SubtitleService(NullLogger<SubtitleService>.Instance);
+        var job = new TranslationJob(
+            NullLogger<TranslationJob>.Instance,
+            settingsServiceMock.Object,
+            _dbContext,
+            Mock.Of<IProgressService>(),
+            subtitleService,
+            Mock.Of<IScheduleService>(),
+            Mock.Of<IStatisticsService>(),
+            translationFactoryMock.Object,
+            Mock.Of<ITranslationRequestService>(),
+            Mock.Of<IBatchFallbackService>(),
+            Mock.Of<ISubtitleExtractionService>(),
+            cancellationServiceMock.Object,
+            Mock.Of<IMediaStateService>(),
+            Mock.Of<ICustomMediaStateService>(),
+            Mock.Of<IDeferredRepairService>(),
+            Mock.Of<IDashboardService>(),
+            Mock.Of<ISourceSubtitleSnapshotService>(),
+            Mock.Of<ISourceSubtitleResolver>(),
+            _embeddedSubtitleCacheService,
+            Mock.Of<IUploadWorkspaceService>());
+
+        var exception = await Record.ExceptionAsync(() => job.ExecuteAsync(
+            request.Id,
+            "old-attempt",
+            CancellationToken.None));
+
+        Assert.Null(exception);
+        translationFactoryMock.Verify(
+            factory => factory.CreateTranslationService(It.IsAny<string>()),
+            Times.Never);
+        cancellationServiceMock.Verify(
+            service => service.RegisterJob(request.Id, "old-attempt"),
+            Times.Once);
+        cancellationServiceMock.Verify(
+            service => service.UnregisterJob(request.Id, registrationSource.Token),
+            Times.Once);
+
+        var persistedRequest = await _dbContext.TranslationRequests
+            .AsNoTracking()
+            .SingleAsync(item => item.Id == request.Id);
+        Assert.Equal(TranslationStatus.InProgress, persistedRequest.Status);
+        Assert.Equal("replacement-attempt", persistedRequest.JobId);
+    }
+
+    [Fact]
+    public async Task TryCancelObsoleteUnsafeSource_HoldsAttemptOwnershipWhileDeletingCheckpoint()
+    {
+        var checkpointServiceMock = new Mock<ITranslationCheckpointService>();
+        checkpointServiceMock
+            .Setup(service => service.DeleteAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns(async (int requestId, CancellationToken _) =>
+            {
+                var currentRequest = await _dbContext.TranslationRequests
+                    .AsNoTracking()
+                    .SingleAsync(item => item.Id == requestId);
+
+                Assert.Equal(TranslationStatus.InProgress, currentRequest.Status);
+                Assert.StartsWith("unsafe-source:", currentRequest.JobId);
+                Assert.Null(await TranslationWorkerService.TryClaimPendingRequestAsync(
+                    _dbContext,
+                    requestId,
+                    CancellationToken.None));
+            });
+
+        var requestServiceMock = new Mock<ITranslationRequestService>();
+        requestServiceMock
+            .Setup(service => service.ClearMediaHash(It.IsAny<TranslationRequest>()))
+            .Returns(Task.CompletedTask);
+        requestServiceMock
+            .Setup(service => service.UpdateActiveCount())
+            .ReturnsAsync(0);
+        var progressServiceMock = new Mock<IProgressService>();
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+        var job = BuildStateTransitionJob(
+            requestServiceMock.Object,
+            progressServiceMock.Object,
+            checkpointServiceMock.Object);
+        var request = new TranslationRequest
+        {
+            Title = "Checkpoint failure race",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.InProgress,
+            IsActive = true,
+            JobId = "old-attempt",
+            SourceSubtitleEntryCount = 1
+        };
+
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var failed = await job.TryCancelObsoleteUnsafeSourceAsync(
+            request,
+            selectedSubtitle: null,
+            subtitles: [],
+            new Dictionary<string, string>
+            {
+                [SettingKeys.Translation.TranslateSupplementalSubtitles] = "false"
+            },
+            CancellationToken.None,
+            "old-attempt");
+
+        Assert.True(failed);
+        var persistedRequest = await _dbContext.TranslationRequests
+            .AsNoTracking()
+            .SingleAsync(item => item.Id == request.Id);
+        Assert.Equal(TranslationStatus.Failed, persistedRequest.Status);
+        Assert.Null(persistedRequest.JobId);
+        checkpointServiceMock.Verify(
+            service => service.DeleteAsync(
+                request.Id,
+                It.IsAny<CancellationToken>(),
+                It.Is<string?>(token => token != null && token.StartsWith("unsafe-source:", StringComparison.Ordinal))),
+            Times.Once);
+    }
+
     [Theory]
     [InlineData(TranslationStatus.Failed)]
     [InlineData(TranslationStatus.Completed)]
@@ -783,6 +1100,188 @@ public class TranslationJobTests : IDisposable
         progressServiceMock.Verify(
             service => service.Emit(It.IsAny<TranslationRequest>(), 100),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task HandleCompletion_WhenAttemptOwnerChanges_DoesNotCompleteNewAttempt()
+    {
+        var translationRequestServiceMock = new Mock<ITranslationRequestService>();
+        translationRequestServiceMock
+            .Setup(service => service.UpdateActiveCount())
+            .ReturnsAsync(0);
+        var progressServiceMock = new Mock<IProgressService>();
+        var job = BuildStateTransitionJob(
+            translationRequestServiceMock.Object,
+            progressServiceMock.Object);
+        var request = new TranslationRequest
+        {
+            Title = "Stale completion request",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.InProgress,
+            IsActive = true,
+            JobId = "old-attempt",
+            TranslatedSubtitle = "/movies/old.pl.srt",
+            GeneratedOutputFormats = ".srt",
+            GeneratedSubtitlePaths = "[\"/movies/old.pl.srt\"]"
+        };
+
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        await _dbContext.TranslationRequests
+            .Where(item => item.Id == request.Id)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.JobId, "new-attempt")
+                .SetProperty(item => item.Status, TranslationStatus.InProgress));
+
+        request.TranslatedSubtitle = "/movies/stale.pl.srt";
+        var completed = await job.HandleCompletion(
+            request,
+            ["/movies/stale.pl.srt"],
+            CancellationToken.None);
+
+        var persistedRequest = await _dbContext.TranslationRequests
+            .AsNoTracking()
+            .SingleAsync(item => item.Id == request.Id);
+
+        Assert.False(completed);
+        Assert.Equal(TranslationStatus.InProgress, persistedRequest.Status);
+        Assert.Equal("new-attempt", persistedRequest.JobId);
+        Assert.Equal("/movies/old.pl.srt", persistedRequest.TranslatedSubtitle);
+        translationRequestServiceMock.Verify(service => service.UpdateActiveCount(), Times.Never);
+        progressServiceMock.Verify(
+            service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task TryMarkGenericFailureAsync_WhenAttemptOwnerChanges_DoesNotFailNewAttempt()
+    {
+        var translationRequestServiceMock = new Mock<ITranslationRequestService>();
+        translationRequestServiceMock
+            .Setup(service => service.UpdateActiveCount())
+            .ReturnsAsync(0);
+        var job = BuildStateTransitionJob(
+            translationRequestServiceMock.Object,
+            Mock.Of<IProgressService>());
+        var request = new TranslationRequest
+        {
+            Title = "Stale failure request",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.InProgress,
+            IsActive = true,
+            JobId = "old-attempt",
+            RetryCount = 1
+        };
+
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        await _dbContext.TranslationRequests
+            .Where(item => item.Id == request.Id)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(item => item.JobId, "new-attempt"));
+
+        var failed = await job.TryMarkGenericFailureAsync(
+            request,
+            DateTime.UtcNow,
+            DateTime.UtcNow.AddHours(1),
+            CancellationToken.None);
+
+        var persistedRequest = await _dbContext.TranslationRequests
+            .AsNoTracking()
+            .SingleAsync(item => item.Id == request.Id);
+
+        Assert.False(failed);
+        Assert.Equal(TranslationStatus.InProgress, persistedRequest.Status);
+        Assert.Equal("new-attempt", persistedRequest.JobId);
+        Assert.Equal(1, persistedRequest.RetryCount);
+        translationRequestServiceMock.Verify(service => service.UpdateActiveCount(), Times.Never);
+    }
+
+    [Fact]
+    public async Task HandleProviderPause_WhenAttemptOwnerChanges_DoesNotPauseNewAttempt()
+    {
+        var translationRequestServiceMock = new Mock<ITranslationRequestService>();
+        translationRequestServiceMock
+            .Setup(service => service.UpdateActiveCount())
+            .ReturnsAsync(0);
+        var job = BuildStateTransitionJob(
+            translationRequestServiceMock.Object,
+            Mock.Of<IProgressService>());
+        var request = new TranslationRequest
+        {
+            Title = "Stale pause request",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.InProgress,
+            IsActive = true,
+            JobId = "old-attempt",
+            RetryCount = 1
+        };
+
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        await _dbContext.TranslationRequests
+            .Where(item => item.Id == request.Id)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(item => item.JobId, "new-attempt"));
+
+        var paused = await job.HandleProviderPause(
+            request,
+            new ProviderPauseException(
+                "gemini",
+                "temporary provider limit",
+                DateTime.UtcNow.AddMinutes(5)),
+            [],
+            CancellationToken.None);
+
+        var persistedRequest = await _dbContext.TranslationRequests
+            .AsNoTracking()
+            .SingleAsync(item => item.Id == request.Id);
+
+        Assert.False(paused);
+        Assert.Equal(TranslationStatus.InProgress, persistedRequest.Status);
+        Assert.Equal("new-attempt", persistedRequest.JobId);
+        Assert.Equal(1, persistedRequest.RetryCount);
+    }
+
+    [Fact]
+    public async Task HandleCancellation_WhenAttemptOwnerChanges_DoesNotCancelNewAttempt()
+    {
+        var job = BuildStateTransitionJob(
+            Mock.Of<ITranslationRequestService>(),
+            Mock.Of<IProgressService>());
+        var request = new TranslationRequest
+        {
+            Title = "Stale cancellation request",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.InProgress,
+            IsActive = true,
+            JobId = "old-attempt"
+        };
+
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        await _dbContext.TranslationRequests
+            .Where(item => item.Id == request.Id)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(item => item.JobId, "new-attempt"));
+
+        await job.HandleCancellation(request);
+
+        var persistedRequest = await _dbContext.TranslationRequests
+            .AsNoTracking()
+            .SingleAsync(item => item.Id == request.Id);
+
+        Assert.Equal(TranslationStatus.InProgress, persistedRequest.Status);
+        Assert.Equal("new-attempt", persistedRequest.JobId);
     }
 
     [Theory]
@@ -1135,7 +1634,7 @@ public class TranslationJobTests : IDisposable
     }
 
     [Fact]
-    public async Task ExecuteAsync_WhenCompletionLosesRace_RemovesNewlyWrittenOutput()
+    public async Task ExecuteAsync_WhenCompletionLosesRace_DoesNotOverwriteNewerRetryOutput()
     {
         var sourceSubtitlePath = Path.Combine(_tempDirectory, "completion-race.en.srt");
         var outputPath = Path.Combine(_tempDirectory, "completion-race.pl.srt");
@@ -1155,6 +1654,7 @@ public class TranslationJobTests : IDisposable
         await using var externalContext = new LingarrDbContext(externalContextOptions);
 
         var subtitleServiceMock = new Mock<ISubtitleService>();
+        string? stagedPath = null;
         subtitleServiceMock
             .Setup(service => service.ReadSubtitles(sourceSubtitlePath))
             .ReturnsAsync(BuildSubtitleItems(50));
@@ -1174,14 +1674,17 @@ public class TranslationJobTests : IDisposable
                 It.IsAny<bool>()))
             .Returns(async (string path, List<SubtitleItem> subtitles, bool _) =>
             {
-                await File.WriteAllTextAsync(
-                    path,
-                    string.Join(Environment.NewLine, subtitles.SelectMany(item => item.TranslatedLines)));
+                stagedPath = path;
+                await File.WriteAllTextAsync(path, "stale worker output");
+                await File.WriteAllTextAsync(outputPath, "newer retry output");
+                var generatedSubtitlePaths = JsonSerializer.Serialize(new[] { outputPath });
                 await externalContext.TranslationRequests
                     .Where(item => item.Id == request.Id)
                     .ExecuteUpdateAsync(setters => setters
                         .SetProperty(item => item.Status, TranslationStatus.Completed)
-                        .SetProperty(item => item.IsActive, (bool?)null));
+                        .SetProperty(item => item.IsActive, (bool?)null)
+                        .SetProperty(item => item.TranslatedSubtitle, outputPath)
+                        .SetProperty(item => item.GeneratedSubtitlePaths, generatedSubtitlePaths));
             });
 
         var translationServiceMock = new Mock<ITranslationService>();
@@ -1207,7 +1710,9 @@ public class TranslationJobTests : IDisposable
             .AsNoTracking()
             .SingleAsync(item => item.Id == request.Id);
         Assert.Equal(TranslationStatus.Completed, persistedRequest.Status);
-        Assert.False(File.Exists(outputPath));
+        Assert.Equal("newer retry output", await File.ReadAllTextAsync(outputPath));
+        Assert.NotNull(stagedPath);
+        Assert.False(File.Exists(stagedPath));
     }
 
     [Fact]
@@ -1426,7 +1931,7 @@ public class TranslationJobTests : IDisposable
             _embeddedSubtitleCacheService,
             Mock.Of<IUploadWorkspaceService>());
 
-        await Assert.ThrowsAsync<TranslationException>(() => job.ExecuteAsync(request.Id, CancellationToken.None));
+        await Assert.ThrowsAsync<MissingTranslationException>(() => job.ExecuteAsync(request.Id, CancellationToken.None));
 
         Assert.True(File.Exists(extractedAssPath));
         var updatedRequest = await _dbContext.TranslationRequests.SingleAsync(item => item.Id == request.Id);
@@ -1634,7 +2139,7 @@ public class TranslationJobTests : IDisposable
             _embeddedSubtitleCacheService,
             Mock.Of<IUploadWorkspaceService>());
 
-        await Assert.ThrowsAsync<TranslationException>(() => job.ExecuteAsync(request.Id, CancellationToken.None));
+        await Assert.ThrowsAsync<MissingTranslationException>(() => job.ExecuteAsync(request.Id, CancellationToken.None));
 
         Assert.True(File.Exists(extractedAssPath));
         var updatedRequest = await _dbContext.TranslationRequests.SingleAsync(item => item.Id == request.Id);
@@ -1815,6 +2320,229 @@ public class TranslationJobTests : IDisposable
         Assert.Equal(2, generatedPaths.Count);
         Assert.Contains(generatedPaths, path => Path.GetExtension(path) == ".ass" && File.Exists(path));
         Assert.Contains(generatedPaths, path => Path.GetExtension(path) == ".srt" && File.Exists(path));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenLaterOutputFormatFails_CleansPreviouslyStagedArtifacts()
+    {
+        var sourceSubtitlePath = Path.Combine(_tempDirectory, "partial-output.en.ass");
+        await File.WriteAllTextAsync(sourceSubtitlePath, "source");
+
+        var movie = CreateMovie(61);
+        movie.Path = _tempDirectory;
+        var request = new TranslationRequest
+        {
+            MediaId = movie.Id,
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Pending,
+            SubtitleToTranslate = sourceSubtitlePath,
+            SourceSubtitleFormat = ".ass",
+            SubtitleOutputMode = "match-source",
+            RequiredOutputFormats = ".ass",
+            IsActive = true
+        };
+
+        _dbContext.Movies.Add(movie);
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var quarantineRoot = Path.Combine(_tempDirectory, "quarantine");
+        var previousQuarantineRoot = Environment.GetEnvironmentVariable("LINGARR_TRANSLATION_QUARANTINE_PATH");
+        Environment.SetEnvironmentVariable("LINGARR_TRANSLATION_QUARANTINE_PATH", quarantineRoot);
+
+        var assFinalPath = Path.Combine(_tempDirectory, "partial-output.pl.lingarr.ass");
+        var srtFinalPath = Path.Combine(_tempDirectory, "partial-output.pl.lingarr.srt");
+        var subtitleServiceMock = new Mock<ISubtitleService>();
+        subtitleServiceMock
+            .Setup(service => service.ReadSubtitles(sourceSubtitlePath))
+            .ReturnsAsync(BuildSubtitleItems(50));
+        subtitleServiceMock
+            .Setup(service => service.CreateFallbackPaths(
+                sourceSubtitlePath,
+                "pl",
+                "lingarr",
+                "-ai-",
+                ".ass",
+                null))
+            .Returns([assFinalPath]);
+        subtitleServiceMock
+            .Setup(service => service.CreateFallbackPaths(
+                sourceSubtitlePath,
+                "pl",
+                "lingarr",
+                "-ai-",
+                ".srt",
+                null))
+            .Returns([srtFinalPath]);
+        subtitleServiceMock
+            .Setup(service => service.WriteSubtitles(
+                It.IsAny<string>(),
+                It.IsAny<List<SubtitleItem>>(),
+                It.IsAny<bool>()))
+            .Returns(async (string path, List<SubtitleItem> _, bool _) =>
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                await File.WriteAllTextAsync(path, "partial output");
+                if (string.Equals(Path.GetExtension(path), ".srt", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new IOException("forced later-format write failure");
+                }
+            });
+
+        var translationServiceMock = new Mock<ITranslationService>();
+        translationServiceMock
+            .Setup(service => service.TranslateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync("Czesc");
+
+        var job = BuildExecutableJob(
+            subtitleServiceMock.Object,
+            Mock.Of<ISubtitleExtractionService>(),
+            translationServiceMock.Object,
+            CreatePassingQualityValidator().Object,
+            new Dictionary<string, string>
+            {
+                [SettingKeys.Translation.SubtitleOutputMode] = "both"
+            });
+
+        try
+        {
+            await Assert.ThrowsAsync<IOException>(() => job.ExecuteAsync(request.Id, CancellationToken.None));
+
+            Assert.False(File.Exists(assFinalPath));
+            Assert.False(File.Exists(srtFinalPath));
+            Assert.False(
+                Directory.Exists(quarantineRoot) &&
+                Directory.EnumerateFiles(quarantineRoot, "*", SearchOption.AllDirectories).Any());
+            Assert.Empty(
+                Directory.EnumerateFiles(_tempDirectory, "*lingarr-publish-*.tmp", SearchOption.AllDirectories));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("LINGARR_TRANSLATION_QUARANTINE_PATH", previousQuarantineRoot);
+        }
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenPublicationFailsAfterFirstSidecarMove_RestoresEarlierOutput()
+    {
+        var sourceSubtitlePath = Path.Combine(_tempDirectory, "publication-race.en.ass");
+        await File.WriteAllTextAsync(sourceSubtitlePath, BuildSrtContent(50));
+
+        var movie = CreateMovie(62);
+        movie.Path = _tempDirectory;
+        var request = new TranslationRequest
+        {
+            MediaId = movie.Id,
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Pending,
+            SubtitleToTranslate = sourceSubtitlePath,
+            SourceSubtitleFormat = ".ass",
+            SubtitleOutputMode = "both",
+            RequiredOutputFormats = ".ass,.srt",
+            IsActive = true
+        };
+
+        _dbContext.Movies.Add(movie);
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var quarantineRoot = Path.Combine(_tempDirectory, "publication-quarantine");
+        var previousQuarantineRoot = Environment.GetEnvironmentVariable("LINGARR_TRANSLATION_QUARANTINE_PATH");
+        Environment.SetEnvironmentVariable("LINGARR_TRANSLATION_QUARANTINE_PATH", quarantineRoot);
+
+        var firstFinalPath = Path.Combine(_tempDirectory, "publication-race.pl.lingarr.ass");
+        var blockedFinalPath = Path.Combine(_tempDirectory, "blocked-publication-output");
+        Directory.CreateDirectory(blockedFinalPath);
+
+        var subtitleServiceMock = new Mock<ISubtitleService>();
+        subtitleServiceMock
+            .Setup(service => service.ReadSubtitles(sourceSubtitlePath))
+            .ReturnsAsync(BuildSubtitleItems(50));
+        subtitleServiceMock
+            .Setup(service => service.CreateFallbackPaths(
+                sourceSubtitlePath,
+                "pl",
+                "lingarr",
+                "-ai-",
+                ".ass",
+                null))
+            .Returns([firstFinalPath]);
+        subtitleServiceMock
+            .Setup(service => service.CreateFallbackPaths(
+                sourceSubtitlePath,
+                "pl",
+                "lingarr",
+                "-ai-",
+                ".srt",
+                null))
+            .Returns([blockedFinalPath]);
+        subtitleServiceMock
+            .Setup(service => service.WriteSubtitles(
+                It.IsAny<string>(),
+                It.IsAny<List<SubtitleItem>>(),
+                It.IsAny<bool>()))
+            .Returns(async (string path, List<SubtitleItem> _, bool _) =>
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                await File.WriteAllTextAsync(path, "staged publication output");
+            });
+
+        var translationServiceMock = new Mock<ITranslationService>();
+        translationServiceMock
+            .Setup(service => service.TranslateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync("Czesc");
+
+        var job = BuildExecutableJob(
+            subtitleServiceMock.Object,
+            Mock.Of<ISubtitleExtractionService>(),
+            translationServiceMock.Object,
+            CreatePassingQualityValidator().Object,
+            new Dictionary<string, string>
+            {
+                [SettingKeys.Translation.SubtitleOutputMode] = "both"
+            });
+
+        try
+        {
+            var publicationException = await Assert.ThrowsAnyAsync<Exception>(
+                () => job.ExecuteAsync(request.Id, CancellationToken.None));
+            Assert.True(
+                publicationException is IOException or UnauthorizedAccessException,
+                $"Unexpected publication exception: {publicationException.GetType().Name}");
+
+            var persistedRequest = await _dbContext.TranslationRequests
+                .AsNoTracking()
+                .SingleAsync(item => item.Id == request.Id);
+            Assert.Equal(TranslationStatus.Failed, persistedRequest.Status);
+            Assert.False(File.Exists(firstFinalPath));
+            Assert.True(Directory.Exists(blockedFinalPath));
+            Assert.Empty(
+                Directory.EnumerateFiles(_tempDirectory, "*lingarr-rollback-*.bak", SearchOption.AllDirectories));
+            Assert.Empty(
+                Directory.EnumerateFiles(_tempDirectory, "*lingarr-publish-*.tmp", SearchOption.AllDirectories));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("LINGARR_TRANSLATION_QUARANTINE_PATH", previousQuarantineRoot);
+        }
     }
 
     [Fact]
@@ -2118,7 +2846,7 @@ public class TranslationJobTests : IDisposable
             extractionServiceMock.Object,
             translationServiceMock.Object);
 
-        await Assert.ThrowsAsync<TranslationException>(() => job.ExecuteAsync(request.Id, CancellationToken.None));
+        await Assert.ThrowsAsync<MissingTranslationException>(() => job.ExecuteAsync(request.Id, CancellationToken.None));
 
         Assert.NotNull(excludedStreams);
         Assert.Contains(2, excludedStreams!);
@@ -2701,6 +3429,231 @@ public class TranslationJobTests : IDisposable
     }
 
     [Fact]
+    public async Task ExecuteAsync_WhenMkvPublicationLosesFinalCas_LeavesReplacementMediaAndSidecarUntouched()
+    {
+        var mediaPath = Path.Combine(_tempDirectory, "movie-21-cas-race.mkv");
+        await File.WriteAllTextAsync(mediaPath, "original media");
+
+        var movie = CreateMovie(21);
+        movie.Path = _tempDirectory;
+        movie.FileName = Path.GetFileName(mediaPath);
+
+        var sourceSubtitlePath = _embeddedSubtitleCacheService.GetCachePath(
+            movie.Id,
+            MediaType.Movie,
+            streamIndex: 0,
+            codecName: "subrip",
+            language: "eng");
+        await File.WriteAllTextAsync(sourceSubtitlePath, BuildSrtContent(50));
+
+        var request = new TranslationRequest
+        {
+            MediaId = movie.Id,
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaType = MediaType.Movie,
+            WorkloadKind = TranslationWorkloadKind.Library,
+            WorkloadItemKey = "library:Movie:21",
+            Status = TranslationStatus.Pending,
+            SubtitleToTranslate = sourceSubtitlePath,
+            SourceSubtitleFormat = ".srt",
+            SubtitleOutputMode = "match-source",
+            RequiredOutputFormats = ".srt",
+            IsActive = true
+        };
+
+        _dbContext.Movies.Add(movie);
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var subtitleService = new SubtitleService(NullLogger<SubtitleService>.Instance);
+        var winnerSidecarPath = subtitleService
+            .CreateFallbackPaths(mediaPath, "pl", "lingarr", "-ai-", ".srt", null)
+            .First();
+        var extractionServiceMock = new Mock<ISubtitleExtractionService>();
+        extractionServiceMock
+            .Setup(service => service.SyncEmbeddedSubtitles(It.IsAny<Movie>()))
+            .Returns(Task.CompletedTask);
+
+        var translationServiceMock = new Mock<ITranslationService>();
+        translationServiceMock
+            .Setup(service => service.TranslateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync("Czesc");
+
+        var mkvEmbeddingServiceMock = new Mock<IMkvEmbeddingService>();
+        mkvEmbeddingServiceMock
+            .Setup(service => service.WouldExceedPathLimit(It.IsAny<string>()))
+            .Returns(false);
+        mkvEmbeddingServiceMock
+            .Setup(service => service.EmbedSubtitleAsync(
+                mediaPath,
+                It.IsAny<string>(),
+                "pl",
+                "pl (Lingarr)",
+                It.IsAny<CancellationToken>()))
+            .Returns<string, string, string, string?, CancellationToken>(async (path, _, _, _, _) =>
+            {
+                await File.WriteAllTextAsync(path, "stale worker media");
+                return new MkvEmbedResult(true, path);
+            });
+
+        var job = BuildExecutableJob(
+            subtitleService,
+            extractionServiceMock.Object,
+            translationServiceMock.Object,
+            CreatePassingQualityValidator().Object,
+            new Dictionary<string, string>
+            {
+                [SettingKeys.Translation.EmbedInContainer] = "true"
+            },
+            mkvEmbeddingServiceMock.Object);
+        job.BeforeFinalCompletionCommitAsync = async () =>
+        {
+            await File.WriteAllTextAsync(mediaPath, "replacement winner media");
+            await File.WriteAllTextAsync(winnerSidecarPath, "replacement winner sidecar");
+            var winnerPaths = JsonSerializer.Serialize(new[] { winnerSidecarPath });
+            await _dbContext.TranslationRequests
+                .Where(item => item.Id == request.Id)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(item => item.Status, TranslationStatus.Completed)
+                    .SetProperty(item => item.IsActive, (bool?)null)
+                    .SetProperty(item => item.JobId, (string?)null)
+                    .SetProperty(item => item.TranslatedSubtitle, winnerSidecarPath)
+                    .SetProperty(item => item.GeneratedSubtitlePaths, winnerPaths));
+        };
+
+        await job.ExecuteAsync(request.Id, CancellationToken.None);
+
+        Assert.Equal("replacement winner media", await File.ReadAllTextAsync(mediaPath));
+        Assert.Equal("replacement winner sidecar", await File.ReadAllTextAsync(winnerSidecarPath));
+        var persistedRequest = await _dbContext.TranslationRequests
+            .AsNoTracking()
+            .SingleAsync(item => item.Id == request.Id);
+        Assert.Equal(TranslationStatus.Completed, persistedRequest.Status);
+        Assert.Equal(winnerSidecarPath, persistedRequest.TranslatedSubtitle);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenBatchMkvEmbeddingFails_DoesNotPerformSequentialEmbedsAndMarksRequestFailed()
+    {
+        var mediaPath = Path.Combine(_tempDirectory, "movie-20-dual.mkv");
+        await File.WriteAllTextAsync(mediaPath, "original mkv");
+
+        var movie = CreateMovie(201);
+        movie.Path = _tempDirectory;
+        movie.FileName = Path.GetFileName(mediaPath);
+
+        var sourceSubtitlePath = _embeddedSubtitleCacheService.GetCachePath(
+            movie.Id,
+            MediaType.Movie,
+            streamIndex: 0,
+            codecName: "ass",
+            language: "eng");
+        await File.WriteAllTextAsync(sourceSubtitlePath, BuildAssContent(50));
+
+        var request = new TranslationRequest
+        {
+            MediaId = movie.Id,
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaType = MediaType.Movie,
+            WorkloadKind = TranslationWorkloadKind.Library,
+            WorkloadItemKey = "library:Movie:201",
+            Status = TranslationStatus.Pending,
+            SubtitleToTranslate = sourceSubtitlePath,
+            SourceSubtitleFormat = ".ass",
+            SubtitleOutputMode = "both",
+            RequiredOutputFormats = ".ass,.srt",
+            IsActive = true
+        };
+
+        _dbContext.Movies.Add(movie);
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var translationServiceMock = new Mock<ITranslationService>();
+        translationServiceMock
+            .Setup(service => service.TranslateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync("Czesc");
+
+        var mkvEmbeddingServiceMock = new Mock<IMkvEmbeddingService>();
+        mkvEmbeddingServiceMock
+            .Setup(service => service.WouldExceedPathLimit(It.IsAny<string>()))
+            .Returns(false);
+        mkvEmbeddingServiceMock
+            .Setup(service => service.EmbedSubtitlesAsync(
+                mediaPath,
+                It.IsAny<IReadOnlyCollection<MkvSubtitleInput>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MkvEmbedResult(
+                Success: false,
+                Error: "forced failure while adding the second subtitle track"));
+
+        var job = BuildExecutableJob(
+            new SubtitleService(NullLogger<SubtitleService>.Instance),
+            Mock.Of<ISubtitleExtractionService>(),
+            translationServiceMock.Object,
+            CreatePassingQualityValidator().Object,
+            new Dictionary<string, string>
+            {
+                [SettingKeys.Translation.EmbedInContainer] = "true",
+                [SettingKeys.Translation.SubtitleOutputMode] = "both"
+            },
+            mkvEmbeddingServiceMock.Object);
+
+        var exception = await Assert.ThrowsAsync<TranslationException>(
+            () => job.ExecuteAsync(request.Id, CancellationToken.None));
+
+        Assert.Contains("Batch MKV embedding failed", exception.Message);
+        Assert.Contains("No multi-output container publication was accepted", exception.Message);
+        Assert.Equal("original mkv", await File.ReadAllTextAsync(mediaPath));
+
+        var updatedRequest = await _dbContext.TranslationRequests
+            .AsNoTracking()
+            .SingleAsync(item => item.Id == request.Id);
+        Assert.Equal(TranslationStatus.Failed, updatedRequest.Status);
+
+        mkvEmbeddingServiceMock.Verify(
+            service => service.EmbedSubtitlesAsync(
+                mediaPath,
+                It.Is<IReadOnlyCollection<MkvSubtitleInput>>(items =>
+                    items.Count == 2 &&
+                    items.Any(item => item.SubtitlePath.EndsWith(".ass", StringComparison.OrdinalIgnoreCase)) &&
+                    items.Any(item => item.SubtitlePath.EndsWith(".srt", StringComparison.OrdinalIgnoreCase))),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+        mkvEmbeddingServiceMock.Verify(
+            service => service.EmbedSubtitleAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+
+        var failureLog = await _dbContext.TranslationRequestLogs
+            .AsNoTracking()
+            .Where(log => log.TranslationRequestId == request.Id && log.Level == "Error")
+            .Select(log => log.Message + " " + log.Details)
+            .SingleAsync();
+        Assert.Contains("Batch MKV embedding failed", failureLog);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_WhenWritingSidecar_DoesNotRefreshEmbeddedSubtitleIndex()
     {
         var sourceSubtitlePath = Path.Combine(_tempDirectory, "movie-21.en.srt");
@@ -2933,7 +3886,8 @@ public class TranslationJobTests : IDisposable
 
     private TranslationJob BuildStateTransitionJob(
         ITranslationRequestService translationRequestService,
-        IProgressService progressService)
+        IProgressService progressService,
+        ITranslationCheckpointService? translationCheckpointService = null)
     {
         return new TranslationJob(
             NullLogger<TranslationJob>.Instance,
@@ -2955,7 +3909,8 @@ public class TranslationJobTests : IDisposable
             Mock.Of<ISourceSubtitleSnapshotService>(),
             Mock.Of<ISourceSubtitleResolver>(),
             _embeddedSubtitleCacheService,
-            Mock.Of<IUploadWorkspaceService>());
+            Mock.Of<IUploadWorkspaceService>(),
+            translationCheckpointService);
     }
 
     private TranslationJob BuildExecutableJob(

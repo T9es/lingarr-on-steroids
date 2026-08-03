@@ -71,7 +71,10 @@ internal sealed class SubtitleTextLine
             return SubtitleTextStructure.RenderLocalMarkupAroundTranslatedText(Parts, translatedText);
         }
 
-        var translatedSegments = DistributeTranslation(translatedText, originalTranslatableTexts);
+        var translatedSegments = DistributeTranslation(
+            translatedText,
+            originalTranslatableTexts,
+            preserveWhitespace: Parts.Any(part => part.Kind == SubtitleTextPartKind.AssKaraokeTag));
 
         var translatedIndex = 0;
         var builder = new StringBuilder();
@@ -100,7 +103,10 @@ internal sealed class SubtitleTextLine
                 part.Kind == SubtitleTextPartKind.InlineMarkupTag);
     }
 
-    private static List<string> DistributeTranslation(string translatedText, IReadOnlyList<string> originalSegments)
+    private static List<string> DistributeTranslation(
+        string translatedText,
+        IReadOnlyList<string> originalSegments,
+        bool preserveWhitespace = false)
     {
         if (originalSegments.Count == 0)
         {
@@ -146,12 +152,14 @@ internal sealed class SubtitleTextLine
                 previousElementBoundary,
                 totalTextElements);
             var boundaryChar = textElementBoundaries[boundaryElement];
-            segments.Add(normalized[previousCharBoundary..boundaryChar].Trim());
+            var translatedSegment = normalized[previousCharBoundary..boundaryChar];
+            segments.Add(preserveWhitespace ? translatedSegment : translatedSegment.Trim());
             previousElementBoundary = boundaryElement;
             previousCharBoundary = boundaryChar;
         }
 
-        segments.Add(normalized[previousCharBoundary..].Trim());
+        var finalSegment = normalized[previousCharBoundary..];
+        segments.Add(preserveWhitespace ? finalSegment : finalSegment.Trim());
         return segments;
     }
 
@@ -338,6 +346,17 @@ internal sealed class SubtitleTextStructure
         if (VisibleLineCount == 0)
         {
             return SourceLines.ToList();
+        }
+
+        if (Lines.Any(line => line.Parts.Any(part => part.Kind == SubtitleTextPartKind.AssKaraokeTag)))
+        {
+            var karaokeTranslation = NormalizeProviderTranslationText(translatedProviderText)
+                .Replace("\\N", "\n", StringComparison.Ordinal)
+                .Replace("\\n", "\n", StringComparison.Ordinal);
+
+            return ApplyProviderTranslation(karaokeTranslation)
+                .Select(line => line.Replace("\n", "\\N", StringComparison.Ordinal))
+                .ToList();
         }
 
         var translatedText = NormalizeProviderTranslationText(translatedProviderText)

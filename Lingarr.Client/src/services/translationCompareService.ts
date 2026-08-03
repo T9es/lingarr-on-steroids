@@ -27,11 +27,12 @@ export const translationCompareService = {
 
     async saveEdits(
         requestId: number,
-        edits: EditEntry[]
+        edits: EditEntry[],
+        sourceFingerprint: string
     ): Promise<CompletedTranslationCompareResponse> {
         const response = await axios.post<CompletedTranslationCompareResponse>(
             `/api/translation-compare/${requestId}/save`,
-            { edits },
+            { sourceFingerprint, edits },
             { headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' } }
         )
         return response.data
@@ -39,11 +40,12 @@ export const translationCompareService = {
 
     async acceptTranslation(
         requestId: number,
-        edits?: EditEntry[]
+        edits: EditEntry[] | undefined,
+        sourceFingerprint: string
     ): Promise<CompletedTranslationCompareResponse> {
         const response = await axios.post<CompletedTranslationCompareResponse>(
             `/api/translation-compare/${requestId}/accept`,
-            { edits },
+            { sourceFingerprint, edits },
             { headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' } }
         )
         return response.data

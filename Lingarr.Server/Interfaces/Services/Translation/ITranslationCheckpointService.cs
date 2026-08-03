@@ -25,6 +25,11 @@ public interface ITranslationCheckpointService
         TranslationCheckpoint checkpoint,
         CancellationToken cancellationToken);
 
+    Task SaveCheckpointAsync(
+        TranslationCheckpoint checkpoint,
+        CancellationToken cancellationToken,
+        string? ownershipToken);
+
     Task SaveTranslationAsync(
         int translationRequestId,
         string sourceFingerprint,
@@ -32,5 +37,19 @@ public interface ITranslationCheckpointService
         string translatedText,
         CancellationToken cancellationToken);
 
+    Task SaveTranslationAsync(
+        int translationRequestId,
+        string sourceFingerprint,
+        int position,
+        string translatedText,
+        CancellationToken cancellationToken,
+        string? ownershipToken);
+
     Task DeleteAsync(int translationRequestId, CancellationToken cancellationToken);
+
+    Task DeleteAsync(
+        int translationRequestId,
+        CancellationToken cancellationToken,
+        string? ownershipToken)
+        => DeleteAsync(translationRequestId, cancellationToken);
 }

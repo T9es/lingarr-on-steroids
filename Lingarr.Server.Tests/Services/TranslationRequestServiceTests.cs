@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,8 +12,10 @@ using Lingarr.Server.Hubs;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models.FileSystem;
+using Lingarr.Server.Models.Translation;
 using Lingarr.Server.Services;
 using Lingarr.Server.Services.Subtitle;
+using Lingarr.Server.Services.Translation;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -162,6 +165,171 @@ public class TranslationRequestServiceTests
         var pendingCount = await context.TranslationRequests
             .CountAsync(tr => tr.Status == TranslationStatus.Pending);
         Assert.Equal(2, pendingCount);
+    }
+
+    [Fact]
+    public async Task ReenqueueQueuedRequests_ClearsStaleOwnerAndPreservesCheckpoint()
+    {
+        var root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            await using var context = BuildContext();
+            var request = CreateRequest(
+                1,
+                12,
+                MediaType.Movie,
+                "en",
+                "pl",
+                "/movies/requeue-checkpoint.en.srt",
+                TranslationStatus.Paused,
+                DateTime.UtcNow);
+            request.JobId = "stale-owner";
+            request.StartedAt = DateTime.UtcNow.AddMinutes(-5);
+            request.PausedAt = DateTime.UtcNow.AddMinutes(-1);
+            context.TranslationRequests.Add(request);
+            await context.SaveChangesAsync();
+
+            var checkpointService = new TranslationCheckpointService(
+                NullLogger<TranslationCheckpointService>.Instance,
+                root);
+            await checkpointService.SaveTranslationAsync(
+                request.Id,
+                "source-1",
+                4,
+                "preserve me",
+                CancellationToken.None);
+
+            var service = CreateService(
+                context,
+                translationCheckpointService: checkpointService);
+
+            var result = await service.ReenqueueQueuedRequests();
+
+            Assert.Equal(1, result.Reenqueued);
+            var persistedRequest = await context.TranslationRequests
+                .AsNoTracking()
+                .SingleAsync(item => item.Id == request.Id);
+            Assert.Equal(TranslationStatus.Pending, persistedRequest.Status);
+            Assert.True(persistedRequest.IsActive);
+            Assert.Null(persistedRequest.JobId);
+            Assert.Null(persistedRequest.StartedAt);
+            Assert.Null(persistedRequest.PausedAt);
+
+            var checkpoint = await checkpointService.LoadByRequestIdAsync(
+                request.Id,
+                CancellationToken.None);
+            Assert.NotNull(checkpoint);
+            Assert.Equal("preserve me", checkpoint!.Translations[4]);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ReenqueueQueuedRequests_DoesNotDowngradeRequestThatChangedStateAfterRead()
+    {
+        await using var context = BuildContext();
+
+        var request = CreateRequest(
+            1,
+            12,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/race.en.srt",
+            TranslationStatus.Pending,
+            DateTime.UtcNow);
+        request.IsActive = true;
+        context.TranslationRequests.Add(request);
+        await context.SaveChangesAsync();
+
+        var cancellationServiceMock = new Mock<ITranslationCancellationService>();
+        using var replacementAttemptCts = new CancellationTokenSource();
+        cancellationServiceMock
+            .Setup(service => service.GetToken(request.Id))
+            .Returns(replacementAttemptCts.Token);
+        cancellationServiceMock
+            .Setup(service => service.CancelJob(request.Id, replacementAttemptCts.Token))
+            .Callback(() =>
+            {
+                var trackedRequest = context.TranslationRequests.Local.Single(item => item.Id == request.Id);
+                trackedRequest.Status = TranslationStatus.InProgress;
+                trackedRequest.IsActive = true;
+                trackedRequest.JobId = "replacement-worker";
+                context.SaveChanges();
+            });
+
+        var service = CreateService(
+            context,
+            cancellationServiceMock: cancellationServiceMock);
+
+        var result = await service.ReenqueueQueuedRequests();
+
+        Assert.Equal(0, result.Reenqueued);
+        var persistedRequest = await context.TranslationRequests
+            .AsNoTracking()
+            .SingleAsync(item => item.Id == request.Id);
+        Assert.Equal(TranslationStatus.InProgress, persistedRequest.Status);
+    }
+
+    [Fact]
+    public async Task DedupeQueuedRequests_DoesNotDeleteDuplicateThatChangesStateAfterRead()
+    {
+        await using var context = BuildContext();
+
+        var now = DateTime.UtcNow;
+        var canonical = CreateRequest(
+            1,
+            13,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/dedupe-race.en.srt",
+            TranslationStatus.Pending,
+            now);
+        var duplicate = CreateRequest(
+            2,
+            13,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/dedupe-race.en.srt",
+            TranslationStatus.Pending,
+            now.AddSeconds(1));
+        context.TranslationRequests.AddRange(canonical, duplicate);
+        await context.SaveChangesAsync();
+
+        var cancellationServiceMock = new Mock<ITranslationCancellationService>();
+        cancellationServiceMock
+            .Setup(service => service.GetToken(duplicate.Id))
+            .Returns(CancellationToken.None)
+            .Callback(() =>
+            {
+                var trackedRequest = context.TranslationRequests.Local.Single(item => item.Id == duplicate.Id);
+                trackedRequest.Status = TranslationStatus.InProgress;
+                trackedRequest.IsActive = true;
+                trackedRequest.JobId = "replacement-worker";
+                context.SaveChanges();
+            });
+
+        var service = CreateService(
+            context,
+            cancellationServiceMock: cancellationServiceMock);
+
+        var (removed, skipped) = await service.DedupeQueuedRequests();
+
+        Assert.Equal(0, removed);
+        Assert.Equal(1, skipped);
+        var persistedDuplicate = await context.TranslationRequests
+            .AsNoTracking()
+            .SingleAsync(item => item.Id == duplicate.Id);
+        Assert.Equal(TranslationStatus.InProgress, persistedDuplicate.Status);
     }
 
     [Fact]
@@ -473,6 +641,14 @@ public class TranslationRequestServiceTests
         await context.SaveChangesAsync();
 
         var cancellationMock = new Mock<ITranslationCancellationService>();
+        using var pendingAttemptCts = new CancellationTokenSource();
+        using var inProgressAttemptCts = new CancellationTokenSource();
+        cancellationMock
+            .Setup(service => service.GetToken(1))
+            .Returns(pendingAttemptCts.Token);
+        cancellationMock
+            .Setup(service => service.GetToken(2))
+            .Returns(inProgressAttemptCts.Token);
         var mediaStateMock = new Mock<IMediaStateService>();
         var service = CreateService(
             context,
@@ -494,9 +670,73 @@ public class TranslationRequestServiceTests
         Assert.NotNull(updatedMovie);
         Assert.Equal(string.Empty, updatedMovie!.MediaHash);
 
-        cancellationMock.Verify(c => c.CancelJob(1), Times.Once);
-        cancellationMock.Verify(c => c.CancelJob(2), Times.Once);
+        cancellationMock.Verify(c => c.CancelJob(1, pendingAttemptCts.Token), Times.Once);
+        cancellationMock.Verify(c => c.CancelJob(2, inProgressAttemptCts.Token), Times.Once);
         mediaStateMock.Verify(m => m.UpdateStateAsync(It.IsAny<Movie>(), MediaType.Movie, true), Times.Once);
+    }
+
+    [Fact]
+    public async Task InterruptActiveRequestsForMedia_HoldsAttemptOwnershipWhileDeletingCheckpoint()
+    {
+        await using var connection = new SqliteConnection("Filename=:memory:");
+        await connection.OpenAsync();
+        await using var context = BuildSqliteContext(connection);
+
+        var request = CreateRequest(
+            1,
+            51,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/checkpoint-interrupt.en.srt",
+            TranslationStatus.InProgress,
+            DateTime.UtcNow);
+        request.JobId = "old-attempt";
+        request.IsActive = true;
+        context.TranslationRequests.Add(request);
+        await context.SaveChangesAsync();
+
+        using var attemptCts = new CancellationTokenSource();
+        var cancellationServiceMock = new Mock<ITranslationCancellationService>();
+        cancellationServiceMock
+            .Setup(service => service.GetToken(request.Id, "old-attempt"))
+            .Returns(attemptCts.Token);
+        var checkpointServiceMock = new Mock<ITranslationCheckpointService>();
+        checkpointServiceMock
+            .Setup(service => service.DeleteAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns(async (int requestId, CancellationToken _) =>
+            {
+                var currentRequest = await context.TranslationRequests
+                    .AsNoTracking()
+                    .SingleAsync(item => item.Id == requestId);
+
+                Assert.Equal(TranslationStatus.InProgress, currentRequest.Status);
+                Assert.StartsWith("interrupt:", currentRequest.JobId);
+                Assert.Null(await TranslationWorkerService.TryClaimPendingRequestAsync(
+                    context,
+                    requestId,
+                    CancellationToken.None));
+            });
+
+        var service = CreateService(
+            context,
+            cancellationServiceMock: cancellationServiceMock,
+            translationCheckpointService: checkpointServiceMock.Object);
+
+        var interrupted = await service.InterruptActiveRequestsForMedia(MediaType.Movie, 51);
+
+        Assert.Equal(1, interrupted);
+        var persistedRequest = await context.TranslationRequests
+            .AsNoTracking()
+            .SingleAsync(item => item.Id == request.Id);
+        Assert.Equal(TranslationStatus.Interrupted, persistedRequest.Status);
+        Assert.Null(persistedRequest.JobId);
+        checkpointServiceMock.Verify(
+            checkpoint => checkpoint.DeleteAsync(request.Id, It.IsAny<CancellationToken>()),
+            Times.Once);
+        cancellationServiceMock.Verify(
+            cancellation => cancellation.CancelJob(request.Id, attemptCts.Token),
+            Times.Once);
     }
 
     [Fact]
@@ -607,6 +847,57 @@ public class TranslationRequestServiceTests
                 It.IsAny<Lingarr.Core.Interfaces.IMedia>(),
                 It.IsAny<MediaType>(),
                 It.IsAny<bool>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task CancelAllQueuedRequests_DoesNotCancelRequestReclaimedAfterRead()
+    {
+        await using var context = BuildContext();
+
+        var request = CreateRequest(
+            1,
+            57,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/cancel-all-race.en.srt",
+            TranslationStatus.Pending,
+            DateTime.UtcNow);
+        context.TranslationRequests.Add(request);
+        await context.SaveChangesAsync();
+
+        var cancellationServiceMock = new Mock<ITranslationCancellationService>();
+        cancellationServiceMock
+            .Setup(service => service.GetToken(request.Id))
+            .Returns(CancellationToken.None)
+            .Callback(() =>
+            {
+                var trackedRequest = context.TranslationRequests.Local.Single(item => item.Id == request.Id);
+                trackedRequest.Status = TranslationStatus.InProgress;
+                trackedRequest.IsActive = true;
+                trackedRequest.JobId = "replacement-worker";
+                context.SaveChanges();
+            });
+
+        var service = CreateService(
+            context,
+            cancellationServiceMock: cancellationServiceMock);
+
+        var result = await service.CancelAllQueuedRequests(includeInProgress: true);
+
+        Assert.Equal(0, result.Cancelled);
+        Assert.Equal(1, result.SkippedProcessing);
+        var persistedRequest = await context.TranslationRequests
+            .AsNoTracking()
+            .SingleAsync(item => item.Id == request.Id);
+        Assert.Equal(TranslationStatus.InProgress, persistedRequest.Status);
+        Assert.Equal("replacement-worker", persistedRequest.JobId);
+        cancellationServiceMock.Verify(
+            service => service.CancelJob(It.IsAny<int>()),
+            Times.Never);
+        cancellationServiceMock.Verify(
+            service => service.CancelJob(It.IsAny<int>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -1191,6 +1482,60 @@ public class TranslationRequestServiceTests
     }
 
     [Fact]
+    public async Task RetryAllFailedRequests_PreservesHealthyCheckpointTranslations()
+    {
+        var root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            await using var context = BuildContext();
+            var failedRequest = CreateRequest(
+                1,
+                314,
+                MediaType.Movie,
+                "en",
+                "pl",
+                "/movies/checkpoint-bulk.en.srt",
+                TranslationStatus.Failed,
+                DateTime.UtcNow.AddMinutes(-1));
+            failedRequest.IsActive = null;
+            context.TranslationRequests.Add(failedRequest);
+            await context.SaveChangesAsync();
+
+            var checkpointService = new TranslationCheckpointService(
+                NullLogger<TranslationCheckpointService>.Instance,
+                root);
+            await checkpointService.SaveTranslationAsync(
+                failedRequest.Id,
+                "source-1",
+                7,
+                "healthy translation",
+                CancellationToken.None);
+
+            var service = CreateService(
+                context,
+                translationCheckpointService: checkpointService);
+
+            var result = await service.RetryAllFailedRequests();
+
+            Assert.Equal(1, result.Retried);
+            var checkpoint = await checkpointService.LoadAsync(
+                failedRequest.Id,
+                "source-1",
+                CancellationToken.None);
+            Assert.NotNull(checkpoint);
+            Assert.Equal("healthy translation", checkpoint.Translations[7]);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task RetryAllFailedRequests_RetriesInterruptedRequestsAndLeavesCancelledRequestsOut()
     {
         await using var context = BuildContext();
@@ -1245,6 +1590,110 @@ public class TranslationRequestServiceTests
         Assert.True(persistedRequests[1].IsActive);
     }
 
+    [Theory]
+    [InlineData(TranslationStatus.InProgress)]
+    [InlineData(TranslationStatus.Cancelled)]
+    public async Task RetryAllFailedRequests_DoesNotOverwriteRequestThatChangesStateAfterRead(
+        TranslationStatus newerStatus)
+    {
+        await using var context = BuildContext();
+
+        var failedRequest = CreateRequest(
+            1,
+            317,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/retry-race.en.srt",
+            TranslationStatus.Failed,
+            DateTime.UtcNow.AddMinutes(-1));
+        failedRequest.IsActive = null;
+        context.TranslationRequests.Add(failedRequest);
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+        service.BeforeFailedRequestRetryAsync = requestId =>
+        {
+            var trackedRequest = context.TranslationRequests.Local.Single(item => item.Id == requestId);
+            trackedRequest.Status = newerStatus;
+            trackedRequest.IsActive = newerStatus == TranslationStatus.InProgress ? true : null;
+            trackedRequest.CompletedAt = DateTime.UtcNow;
+            context.SaveChanges();
+            return Task.CompletedTask;
+        };
+
+        var result = await service.RetryAllFailedRequests();
+
+        Assert.Equal(1, result.TotalFailed);
+        Assert.Equal(0, result.Retried);
+
+        var persistedRequest = await context.TranslationRequests
+            .AsNoTracking()
+            .SingleAsync(item => item.Id == failedRequest.Id);
+        Assert.Equal(newerStatus, persistedRequest.Status);
+        var expectedIsActive = newerStatus == TranslationStatus.InProgress ? (bool?)true : null;
+        Assert.Equal(expectedIsActive, persistedRequest.IsActive);
+    }
+
+    [Fact]
+    public async Task RetryAllFailedRequests_PermanentResolutionDeletesCheckpointAfterRowDelete()
+    {
+        var root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            await using var context = BuildContext();
+            var failedRequest = CreateRequest(
+                1,
+                317,
+                MediaType.Movie,
+                "en",
+                "pl",
+                "/movies/permanent-resolution.en.srt",
+                TranslationStatus.Failed,
+                DateTime.UtcNow);
+            failedRequest.RetryCount = 1;
+            context.TranslationRequests.Add(failedRequest);
+            await context.SaveChangesAsync();
+
+            var checkpointService = new TranslationCheckpointService(
+                NullLogger<TranslationCheckpointService>.Instance,
+                root);
+            await checkpointService.SaveTranslationAsync(
+                failedRequest.Id,
+                "source-1",
+                2,
+                "partial translation",
+                CancellationToken.None);
+
+            var settingServiceMock = new Mock<ISettingService>();
+            settingServiceMock
+                .Setup(service => service.GetSetting(SettingKeys.Translation.MaxRequestRetries))
+                .ReturnsAsync("1");
+            var service = CreateService(
+                context,
+                settingServiceMock: settingServiceMock,
+                translationCheckpointService: checkpointService);
+
+            var result = await service.RetryAllFailedRequests();
+
+            Assert.Equal(1, result.TotalFailed);
+            Assert.Equal(0, result.Retried);
+            Assert.Equal(0, result.RemainingFailed);
+            Assert.False(await context.TranslationRequests.AnyAsync());
+            Assert.Null(await checkpointService.LoadByRequestIdAsync(
+                failedRequest.Id,
+                CancellationToken.None));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
     [Fact]
     public async Task RemoveAllFailedRequests_RemovesInterruptedRequestsAndLeavesCancelledRequestsOut()
     {
@@ -1292,6 +1741,43 @@ public class TranslationRequestServiceTests
         var remainingRequest = Assert.Single(remainingRequests);
         Assert.Equal(cancelledRequest.Id, remainingRequest.Id);
         Assert.Equal(TranslationStatus.Cancelled, remainingRequest.Status);
+    }
+
+    [Fact]
+    public async Task RemoveAllFailedRequests_DoesNotDeleteRequestThatChangesStateAfterRead()
+    {
+        await using var context = BuildContext();
+
+        var failedRequest = CreateRequest(
+            1,
+            315,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/remove-race.en.srt",
+            TranslationStatus.Failed,
+            DateTime.UtcNow);
+        failedRequest.IsActive = null;
+        context.TranslationRequests.Add(failedRequest);
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+        service.BeforeFailedRequestDeletionAsync = requestId =>
+        {
+            var trackedRequest = context.TranslationRequests.Local.Single(item => item.Id == requestId);
+            trackedRequest.Status = TranslationStatus.Pending;
+            trackedRequest.IsActive = true;
+            context.SaveChanges();
+            return Task.CompletedTask;
+        };
+
+        var removed = await service.RemoveAllFailedRequests();
+
+        Assert.Equal(0, removed);
+        var persistedRequest = await context.TranslationRequests
+            .AsNoTracking()
+            .SingleAsync(item => item.Id == failedRequest.Id);
+        Assert.Equal(TranslationStatus.Pending, persistedRequest.Status);
     }
 
     [Fact]
@@ -1488,7 +1974,7 @@ public class TranslationRequestServiceTests
     }
 
     [Fact]
-    public async Task GetOverview_ReturnsCountsAndLimitsFailedAndInProgressItems()
+    public async Task GetOverview_ReturnsCountsWithAllFailedAndBoundedInProgressItems()
     {
         await using var context = BuildContext();
 
@@ -1553,8 +2039,10 @@ public class TranslationRequestServiceTests
         Assert.Equal(2, overview.Pending.TotalCount);
         Assert.Equal(2, overview.Pending.Items.Count());
         Assert.Equal(3, overview.Failed.TotalCount);
-        Assert.Equal(2, overview.Failed.Items.Count);
-        Assert.Equal([requests[2].Id, requests[3].Id], overview.Failed.Items.Select(request => request.Id));
+        Assert.Equal(3, overview.Failed.Items.Count);
+        Assert.Equal(
+            [requests[2].Id, requests[3].Id, requests[4].Id],
+            overview.Failed.Items.Select(request => request.Id));
         Assert.Equal("Overview failure details", overview.Failed.Items[0].LatestFailureMessage);
         Assert.Equal(2, overview.InProgress.TotalCount);
         Assert.Equal(2, overview.InProgress.Items.Count);
@@ -1562,6 +2050,42 @@ public class TranslationRequestServiceTests
         Assert.DoesNotContain(overview.Failed.Items, request => request.Status != TranslationStatus.Failed);
         Assert.DoesNotContain(overview.InProgress.Items, request =>
             request.Status != TranslationStatus.InProgress && request.Status != TranslationStatus.Paused);
+    }
+
+    [Fact]
+    public async Task GetOverview_ReturnsEveryFailedRequestWhenThereAreMoreThanTheLegacySectionLimit()
+    {
+        await using var context = BuildContext();
+
+        var now = DateTime.UtcNow;
+        var failedRequests = Enumerable.Range(1, 101)
+            .Select(index => CreateRequest(
+                index,
+                500 + index,
+                MediaType.Movie,
+                "en",
+                "pl",
+                $"/movies/failed-{index}.en.srt",
+                TranslationStatus.Failed,
+                now.AddSeconds(index)))
+            .ToList();
+        for (var index = 0; index < failedRequests.Count; index++)
+        {
+            failedRequests[index].CompletedAt = now.AddSeconds(index + 1);
+        }
+        context.TranslationRequests.AddRange(failedRequests);
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+        var overview = await service.GetOverview(null, null, true, 1, 20, 1);
+
+        Assert.Equal(101, overview.Failed.TotalCount);
+        Assert.Equal(101, overview.Failed.Items.Count);
+        Assert.Equal(
+            failedRequests
+                .OrderByDescending(request => request.CompletedAt)
+                .Select(request => request.Id),
+            overview.Failed.Items.Select(request => request.Id));
     }
 
     [Fact]
@@ -2334,6 +2858,111 @@ public class TranslationRequestServiceTests
     }
 
     [Fact]
+    public async Task RetryTranslationRequest_PreservesHealthyCheckpointTranslations()
+    {
+        var root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            await using var context = BuildContext();
+            var failedRequest = CreateRequest(
+                1,
+                316,
+                MediaType.Movie,
+                "en",
+                "pl",
+                "/movies/checkpoint-individual.en.srt",
+                TranslationStatus.Failed,
+                DateTime.UtcNow.AddMinutes(-1));
+            failedRequest.IsActive = null;
+            context.TranslationRequests.Add(failedRequest);
+            await context.SaveChangesAsync();
+
+            var checkpointService = new TranslationCheckpointService(
+                NullLogger<TranslationCheckpointService>.Instance,
+                root);
+            await checkpointService.SaveTranslationAsync(
+                failedRequest.Id,
+                "source-1",
+                9,
+                "healthy individual translation",
+                CancellationToken.None);
+
+            var service = CreateService(
+                context,
+                translationCheckpointService: checkpointService);
+
+            var result = await service.RetryTranslationRequest(failedRequest);
+
+            Assert.NotNull(result);
+            Assert.True(result!.Retried);
+            var checkpoint = await checkpointService.LoadAsync(
+                failedRequest.Id,
+                "source-1",
+                CancellationToken.None);
+            Assert.NotNull(checkpoint);
+            Assert.Equal("healthy individual translation", checkpoint.Translations[9]);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(TranslationStatus.InProgress)]
+    [InlineData(TranslationStatus.Completed)]
+    [InlineData(TranslationStatus.Cancelled)]
+    public async Task RetryTranslationRequest_DoesNotOverwriteRequestThatChangesStateAfterRead(
+        TranslationStatus newerStatus)
+    {
+        await using var context = BuildContext();
+
+        var failedRequest = CreateRequest(
+            1,
+            318,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/retry-individual-race.en.srt",
+            TranslationStatus.Failed,
+            DateTime.UtcNow.AddMinutes(-1));
+        failedRequest.IsActive = null;
+        context.TranslationRequests.Add(failedRequest);
+        await context.SaveChangesAsync();
+
+        var workerServiceMock = new Mock<ITranslationWorkerService>();
+        var service = CreateService(context, workerServiceMock: workerServiceMock);
+        service.BeforeFailedRequestRetryAsync = requestId =>
+        {
+            var trackedRequest = context.TranslationRequests.Local.Single(item => item.Id == requestId);
+            trackedRequest.Status = newerStatus;
+            trackedRequest.IsActive = newerStatus == TranslationStatus.InProgress ? true : null;
+            trackedRequest.CompletedAt = DateTime.UtcNow;
+            context.SaveChanges();
+            return Task.CompletedTask;
+        };
+
+        var result = await service.RetryTranslationRequest(failedRequest);
+
+        Assert.NotNull(result);
+        Assert.False(result!.Retried);
+        Assert.False(result.BlockedByActiveRequest);
+        Assert.Contains("state changed", result.Message, StringComparison.OrdinalIgnoreCase);
+        workerServiceMock.Verify(worker => worker.Signal(), Times.Never);
+
+        var persistedRequest = await context.TranslationRequests
+            .AsNoTracking()
+            .SingleAsync(item => item.Id == failedRequest.Id);
+        Assert.Equal(newerStatus, persistedRequest.Status);
+        var expectedIsActive = newerStatus == TranslationStatus.InProgress ? (bool?)true : null;
+        Assert.Equal(expectedIsActive, persistedRequest.IsActive);
+    }
+
+    [Fact]
     public async Task CreateRequest_UsesUploadFileNameAsTitle_ForUploadWorkload()
     {
         await using var context = BuildContext();
@@ -2499,7 +3128,8 @@ public class TranslationRequestServiceTests
         Mock<ITranslationCancellationService>? cancellationServiceMock = null,
         Mock<IMediaStateService>? mediaStateServiceMock = null,
         Mock<ICustomMediaStateService>? customMediaStateServiceMock = null,
-        Mock<ISettingService>? settingServiceMock = null)
+        Mock<ISettingService>? settingServiceMock = null,
+        ITranslationCheckpointService? translationCheckpointService = null)
     {
         workerServiceMock ??= new Mock<ITranslationWorkerService>();
         cancellationServiceMock ??= new Mock<ITranslationCancellationService>();
@@ -2531,6 +3161,7 @@ public class TranslationRequestServiceTests
             NullLogger<TranslationRequestService>.Instance,
             cancellationServiceMock.Object,
             mediaStateServiceMock.Object,
-            customMediaStateServiceMock.Object);
+            customMediaStateServiceMock.Object,
+            translationCheckpointService);
     }
 }

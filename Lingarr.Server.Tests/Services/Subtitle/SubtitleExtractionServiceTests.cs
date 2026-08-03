@@ -284,13 +284,82 @@ public class SubtitleExtractionServiceTests : IDisposable
 
         var method = typeof(SubtitleExtractionService).GetMethod(
             "CopyOcrMetadataIfSameStream",
-            BindingFlags.NonPublic | BindingFlags.Static);
+            BindingFlags.NonPublic | BindingFlags.Instance);
 
         Assert.NotNull(method);
-        method.Invoke(null, [new[] { existingSubtitle }, newSubtitle]);
+        method.Invoke(_service, [new[] { existingSubtitle }, newSubtitle, "missing-media.mkv"]);
 
         Assert.Equal(SubtitleOcrStatus.NotStarted, newSubtitle.OcrStatus);
         Assert.Null(newSubtitle.OcrAttemptedAt);
+    }
+
+    [Fact]
+    public async Task CopyOcrMetadataIfSameStream_DoesNotReattachStaleManagedOcrAfterMediaReplacement()
+    {
+        var mediaDirectory = CreateMediaDirectory();
+        try
+        {
+            var mediaPath = Path.Combine(mediaDirectory, "episode.mkv");
+            await File.WriteAllTextAsync(mediaPath, "old media snapshot");
+
+            var cacheService = new EmbeddedSubtitleCacheService(
+                NullLogger<EmbeddedSubtitleCacheService>.Instance,
+                Path.Combine(mediaDirectory, "cache"),
+                TimeSpan.FromDays(30));
+            var ocrPath = cacheService.GetOcrCachePath(
+                mediaId: 31,
+                mediaType: MediaType.Movie,
+                streamIndex: 0,
+                language: "eng");
+            await File.WriteAllTextAsync(ocrPath, "1\n00:00:01,000 --> 00:00:02,000\nOld OCR\n");
+            cacheService.RecordSourceSnapshot(ocrPath, mediaPath);
+
+            await File.WriteAllTextAsync(mediaPath, "new media snapshot");
+
+            var service = new SubtitleExtractionService(
+                NullLogger<SubtitleExtractionService>.Instance,
+                _dbContext,
+                Mock.Of<ISettingService>(),
+                Mock.Of<ISubtitleService>(),
+                cacheService,
+                Mock.Of<ISubtitleLanguageDetectionService>());
+            var existingSubtitle = new EmbeddedSubtitle
+            {
+                StreamIndex = 0,
+                Language = "eng",
+                Title = "English PGS",
+                CodecName = "hdmv_pgs_subtitle",
+                IsTextBased = false,
+                OcrStatus = SubtitleOcrStatus.Succeeded,
+                OcrExtractedPath = ocrPath
+            };
+            var newSubtitle = new EmbeddedSubtitle
+            {
+                StreamIndex = 0,
+                Language = "eng",
+                Title = "English PGS",
+                CodecName = "hdmv_pgs_subtitle",
+                IsTextBased = false
+            };
+
+            var method = typeof(SubtitleExtractionService).GetMethod(
+                "CopyOcrMetadataIfSameStream",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+
+            Assert.NotNull(method);
+            method.Invoke(service, [new[] { existingSubtitle }, newSubtitle, mediaPath]);
+
+            Assert.Equal(SubtitleOcrStatus.NotStarted, newSubtitle.OcrStatus);
+            Assert.Null(newSubtitle.OcrExtractedPath);
+            Assert.False(File.Exists(ocrPath));
+        }
+        finally
+        {
+            if (Directory.Exists(mediaDirectory))
+            {
+                Directory.Delete(mediaDirectory, recursive: true);
+            }
+        }
     }
 
     public void Dispose()

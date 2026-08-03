@@ -3,8 +3,8 @@ export interface TranslationCompareLine {
     original: string
     translated?: string
     success: boolean
-    isMissing?: boolean        // NEW
-    canEdit?: boolean          // NEW
+    isMissing?: boolean // NEW
+    canEdit?: boolean // NEW
     error?: string
     durationMs?: number
     startTimeMs?: number
@@ -20,10 +20,11 @@ export interface CompletedTranslationCompareResponse {
     completedAt: string | null
     originalSubtitlePath: string
     translatedSubtitlePath: string
+    sourceFingerprint: string
     originalLineCount: number
     translatedLineCount: number
     lines: TranslationCompareLine[]
-    isPartialFailure?: boolean     // NEW
-    missingPositions?: number[]    // NEW
-    canAccept?: boolean             // NEW
+    isPartialFailure?: boolean // NEW
+    missingPositions?: number[] // NEW
+    canAccept?: boolean // NEW
 }

@@ -223,6 +223,31 @@ public class SubtitleTextStructureTests
     }
 
     [Fact]
+    public void AssKaraoke_WhenBackfillUsesSingleVisibleText_ShouldRemapInteriorTagsWithoutPlainOutputLeakage()
+    {
+        var sourceLines = new List<string>
+        {
+            @"{\k10}Hello{\K20} world{\kf30}again{\ko40} now{\kt50}!"
+        };
+        var structure = BuildAssStructure(sourceLines);
+        const string translatedText = "Witaj świecie jeszcze raz!";
+
+        var translated = structure.ApplyProviderTranslationAsSingleVisibleText(translatedText);
+        var translatedAss = Assert.Single(translated);
+
+        foreach (var tag in new[] { @"{\k10}", @"{\K20}", @"{\kf30}", @"{\ko40}", @"{\kt50}" })
+        {
+            Assert.Contains(tag, translatedAss, StringComparison.Ordinal);
+        }
+
+        var plainLines = PlainTextSubtitleOutputRenderer.ConvertToPlainTextLines(
+            string.Join("\\N", translated));
+
+        Assert.Equal([translatedText], plainLines);
+        Assert.DoesNotContain(plainLines, line => line.Contains("{\\", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void AssKaraoke_WhenFallbackPreviouslyProducedNegativeClampMaxima_ShouldNotThrow()
     {
         var sourceLines = new List<string> { "{\\k10}One{\\k10}Two{\\k10}Three{\\k10}Four" };

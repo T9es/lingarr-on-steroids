@@ -65,7 +65,7 @@ public class TranslationRequestController : ControllerBase
     /// <param name="ascending">Pending-request sort direction</param>
     /// <param name="pageSize">Pending-request page size</param>
     /// <param name="pageNumber">Pending-request page number</param>
-    /// <param name="sectionLimit">Maximum failed and in-progress rows returned</param>
+    /// <param name="sectionLimit">Maximum in-progress rows returned; failed and interrupted rows are returned in full</param>
     /// <response code="200">Returns active count plus pending, failed, and in-progress sections</response>
     [HttpGet("overview")]
     public async Task<ActionResult<TranslationRequestsOverviewResponse>> GetOverview(

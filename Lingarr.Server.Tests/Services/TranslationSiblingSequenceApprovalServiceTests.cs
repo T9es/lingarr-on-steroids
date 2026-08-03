@@ -11,6 +11,7 @@ using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Exceptions;
 using Lingarr.Server.Interfaces.Services.Translation;
+using Lingarr.Server.Models.FileSystem;
 using Lingarr.Server.Models.Translation;
 using Lingarr.Server.Services.Translation;
 using Microsoft.Data.Sqlite;
@@ -184,6 +185,9 @@ public class TranslationSiblingSequenceApprovalServiceTests : IDisposable
                 .Where(save => save.TranslationRequestId == scenario.CurrentRequest.Id)
                 .Select(save => save.Position)
                 .Order());
+        Assert.Equal(
+            [10, 11, 12],
+            _checkpointService.SavedSourcePreservedPositions[scenario.CurrentRequest.Id].Order());
     }
 
     [Fact]
@@ -215,6 +219,111 @@ public class TranslationSiblingSequenceApprovalServiceTests : IDisposable
             .Where(cue => cue.TranslationRequestId == scenario.CurrentRequest.Id)
             .ToListAsync();
         Assert.All(storedCurrentCues, cue => Assert.False(cue.AutoApprovalEligible));
+    }
+
+    [Fact]
+    public async Task ProcessMissingTranslationAsync_WhenPreviouslyApprovedCueIsReportedAgain_ClearsStaleApprovalState()
+    {
+        var scenario = await CreateScenarioAsync();
+        await AddFailedCuesAsync(
+            scenario.CurrentRequest,
+            (10, "Previously approved line"));
+
+        var staleCue = await _dbContext.TranslationFailedCues
+            .SingleAsync(cue => cue.TranslationRequestId == scenario.CurrentRequest.Id);
+        staleCue.AutoApprovedAt = DateTime.UtcNow.AddMinutes(-10);
+        staleCue.ApprovalSequenceHash = "old-sequence";
+        await _dbContext.SaveChangesAsync();
+
+        var result = await CreateService().ProcessMissingTranslationAsync(
+            scenario.CurrentRequest,
+            Missing((10, "Previously approved line", true)),
+            CancellationToken.None);
+
+        Assert.False(result.CurrentRequestCompleted);
+        Assert.NotNull(result.RemainingException);
+
+        var refreshedCue = await _dbContext.TranslationFailedCues
+            .SingleAsync(cue => cue.TranslationRequestId == scenario.CurrentRequest.Id);
+        Assert.Null(refreshedCue.AutoApprovedAt);
+        Assert.Null(refreshedCue.ApprovalSequenceHash);
+    }
+
+    [Fact]
+    public async Task ProcessMissingTranslationAsync_WhenPreviouslyApprovedCueMatchesSiblingRun_ReapprovesRepeatedOpening()
+    {
+        var scenario = await CreateScenarioAsync();
+        await AddFailedCuesAsync(
+            scenario.CurrentRequest,
+            (10, "Opening line one"),
+            (11, "Opening line two"),
+            (12, "Opening line three"));
+        await AddFailedCuesAsync(
+            scenario.SiblingRequest,
+            (42, "Opening line one"),
+            (43, "Opening line two"),
+            (44, "Opening line three"));
+
+        var staleCurrentCues = await _dbContext.TranslationFailedCues
+            .Where(cue => cue.TranslationRequestId == scenario.CurrentRequest.Id)
+            .ToListAsync();
+        foreach (var cue in staleCurrentCues)
+        {
+            cue.AutoApprovedAt = DateTime.UtcNow.AddMinutes(-10);
+            cue.ApprovalSequenceHash = "old-sequence";
+        }
+
+        await _dbContext.SaveChangesAsync();
+
+        var result = await CreateService().ProcessMissingTranslationAsync(
+            scenario.CurrentRequest,
+            Missing(
+                (10, "Opening line one", true),
+                (11, "Opening line two", true),
+                (12, "Opening line three", true)),
+            CancellationToken.None);
+
+        Assert.True(result.CurrentRequestCompleted);
+        Assert.Equal([10, 11, 12], result.ApprovedPositions.Order());
+
+        var currentCues = await _dbContext.TranslationFailedCues
+            .Where(cue => cue.TranslationRequestId == scenario.CurrentRequest.Id)
+            .ToListAsync();
+        Assert.All(currentCues, cue =>
+        {
+            Assert.NotNull(cue.AutoApprovedAt);
+            Assert.NotEqual("old-sequence", cue.ApprovalSequenceHash);
+        });
+    }
+
+    [Fact]
+    public async Task ProcessMissingTranslationAsync_WhenCurrentCuesAreAllApprovedButHistoricalCueRemains_DoesNotReturnOriginalException()
+    {
+        var scenario = await CreateScenarioAsync();
+        await AddFailedCuesAsync(
+            scenario.CurrentRequest,
+            (10, "Opening line one"),
+            (11, "Opening line two"),
+            (12, "Opening line three"),
+            (99, "Stale historical failure"));
+        await AddFailedCuesAsync(
+            scenario.SiblingRequest,
+            (42, "Opening line one"),
+            (43, "Opening line two"),
+            (44, "Opening line three"));
+
+        var result = await CreateService().ProcessMissingTranslationAsync(
+            scenario.CurrentRequest,
+            Missing(
+                (10, "Opening line one", true),
+                (11, "Opening line two", true),
+                (12, "Opening line three", true)),
+            CancellationToken.None);
+
+        Assert.False(result.CurrentRequestCompleted);
+        Assert.Null(result.RemainingException);
+        Assert.Equal([10, 11, 12], result.ApprovedPositions.Order());
+        Assert.DoesNotContain(scenario.CurrentRequest.Id, _completionService.CompletedRequestIds);
     }
 
     [Fact]
@@ -386,6 +495,7 @@ public class TranslationSiblingSequenceApprovalServiceTests : IDisposable
     private sealed class RecordingCheckpointService : ITranslationCheckpointService
     {
         public List<(int TranslationRequestId, int Position, string Text)> SavedTranslations { get; } = [];
+        public Dictionary<int, HashSet<int>> SavedSourcePreservedPositions { get; } = [];
 
         public Task<TranslationCheckpoint?> LoadAsync(
             int translationRequestId,
@@ -402,6 +512,8 @@ public class TranslationSiblingSequenceApprovalServiceTests : IDisposable
             TranslationCheckpoint checkpoint,
             CancellationToken cancellationToken)
         {
+            SavedSourcePreservedPositions[checkpoint.TranslationRequestId] =
+                [.. checkpoint.SourcePreservedPositions];
             foreach (var (position, text) in checkpoint.Translations)
             {
                 SavedTranslations.Add((checkpoint.TranslationRequestId, position, text));
@@ -409,6 +521,12 @@ public class TranslationSiblingSequenceApprovalServiceTests : IDisposable
 
             return Task.CompletedTask;
         }
+
+        public Task SaveCheckpointAsync(
+            TranslationCheckpoint checkpoint,
+            CancellationToken cancellationToken,
+            string? ownershipToken)
+            => SaveCheckpointAsync(checkpoint, cancellationToken);
 
         public Task SaveTranslationAsync(
             int translationRequestId,
@@ -420,6 +538,20 @@ public class TranslationSiblingSequenceApprovalServiceTests : IDisposable
             SavedTranslations.Add((translationRequestId, position, translatedText));
             return Task.CompletedTask;
         }
+
+        public Task SaveTranslationAsync(
+            int translationRequestId,
+            string sourceFingerprint,
+            int position,
+            string translatedText,
+            CancellationToken cancellationToken,
+            string? ownershipToken)
+            => SaveTranslationAsync(
+                translationRequestId,
+                sourceFingerprint,
+                position,
+                translatedText,
+                cancellationToken);
 
         public Task DeleteAsync(int translationRequestId, CancellationToken cancellationToken)
             => Task.CompletedTask;
@@ -444,6 +576,19 @@ public class TranslationSiblingSequenceApprovalServiceTests : IDisposable
                 Completed: true,
                 AlreadyCompleted: false,
                 OutputPath: $"completed-{request.Id}.srt"));
+        }
+
+        public Task<FailedTranslationCompletionResult> PublishCompletedEditsAsync(
+            TranslationRequest request,
+            string sourcePath,
+            IReadOnlyList<SubtitleItem> translatedSubtitles,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult(new FailedTranslationCompletionResult(
+                Completed: false,
+                AlreadyCompleted: false,
+                OutputPath: null,
+                SkippedReason: "Not used by this test."));
         }
     }
 }

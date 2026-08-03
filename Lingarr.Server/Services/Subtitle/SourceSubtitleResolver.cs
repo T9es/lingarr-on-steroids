@@ -44,7 +44,7 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (HasUsableExistingPath(request.SubtitleToTranslate))
+        if (await HasUsableExistingPathAsync(request, cancellationToken))
         {
             if (_embeddedSubtitleCacheService.IsManagedCachePath(request.SubtitleToTranslate))
             {
@@ -89,8 +89,11 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
         return extractedPath;
     }
 
-    private bool HasUsableExistingPath(string? path)
+    private async Task<bool> HasUsableExistingPathAsync(
+        TranslationRequest request,
+        CancellationToken cancellationToken)
     {
+        var path = request.SubtitleToTranslate;
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
         {
             return false;
@@ -101,7 +104,120 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
             return true;
         }
 
-        return !_embeddedSubtitleCacheService.IsExpired(path);
+        if (_embeddedSubtitleCacheService.IsExpired(path) || !request.MediaId.HasValue)
+        {
+            return false;
+        }
+
+        var mediaPath = await ResolveCurrentMediaFilePathAsync(request, cancellationToken);
+        if (string.IsNullOrWhiteSpace(mediaPath))
+        {
+            _logger.LogDebug(
+                "Cannot validate managed embedded subtitle cache {CachePath} because media {MediaId} is unavailable",
+                path,
+                request.MediaId);
+            return false;
+        }
+
+        if (_embeddedSubtitleCacheService.IsCurrentForSource(path, mediaPath))
+        {
+            return true;
+        }
+
+        _embeddedSubtitleCacheService.Invalidate(path);
+        _logger.LogInformation(
+            "Invalidated managed embedded subtitle cache {CachePath} after source media snapshot changed at {MediaPath}",
+            path,
+            mediaPath);
+        return false;
+    }
+
+    private async Task<string?> ResolveCurrentMediaFilePathAsync(
+        TranslationRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!request.MediaId.HasValue)
+        {
+            return null;
+        }
+
+        if (request.MediaType == MediaType.Movie)
+        {
+            var movie = await _dbContext.Movies
+                .AsNoTracking()
+                .Where(item => item.Id == request.MediaId.Value)
+                .Select(item => new { item.Path, item.FileName })
+                .FirstOrDefaultAsync(cancellationToken);
+            return ResolveMediaFilePath(movie?.Path, movie?.FileName);
+        }
+
+        if (request.MediaType == MediaType.Episode)
+        {
+            var episode = await _dbContext.Episodes
+                .AsNoTracking()
+                .Where(item => item.Id == request.MediaId.Value)
+                .Select(item => new { item.Path, item.FileName })
+                .FirstOrDefaultAsync(cancellationToken);
+            return ResolveMediaFilePath(episode?.Path, episode?.FileName);
+        }
+
+        return null;
+    }
+
+    private static string? ResolveMediaFilePath(string? directoryPath, string? fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            return null;
+        }
+
+        if (Path.IsPathRooted(fileName))
+        {
+            return File.Exists(fileName) ? fileName : null;
+        }
+
+        if (string.IsNullOrWhiteSpace(directoryPath))
+        {
+            return null;
+        }
+
+        var directPath = Path.Combine(directoryPath, fileName);
+        if (File.Exists(directPath))
+        {
+            return directPath;
+        }
+
+        if (!Directory.Exists(directoryPath))
+        {
+            return null;
+        }
+
+        var mediaExtensions = new[] { ".mkv", ".mp4", ".avi", ".m4v", ".webm", ".mov", ".wmv" };
+        var baseName = mediaExtensions.Contains(
+            Path.GetExtension(fileName),
+            StringComparer.OrdinalIgnoreCase)
+            ? Path.GetFileNameWithoutExtension(fileName)
+            : fileName;
+
+        foreach (var extension in mediaExtensions)
+        {
+            var candidatePath = Path.Combine(directoryPath, baseName + extension);
+            if (File.Exists(candidatePath))
+            {
+                return candidatePath;
+            }
+        }
+
+        return Directory.EnumerateFiles(directoryPath)
+            .FirstOrDefault(path =>
+                mediaExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase) &&
+                (string.Equals(
+                     Path.GetFileNameWithoutExtension(path),
+                     baseName,
+                     StringComparison.OrdinalIgnoreCase) ||
+                 Path.GetFileName(path).StartsWith(
+                     baseName + ".",
+                     StringComparison.OrdinalIgnoreCase)));
     }
 
     private async Task<int?> ResolvePreferredStreamIndexAsync(
@@ -183,7 +299,9 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
                 await _dbContext.Entry(movie).Collection(item => item.EmbeddedSubtitles).LoadAsync(cancellationToken);
             }
 
-            return movie.EmbeddedSubtitles.ToList();
+            var movieSubtitles = movie.EmbeddedSubtitles.ToList();
+            await InvalidateStaleManagedArtifactsAsync(request, movieSubtitles, cancellationToken);
+            return movieSubtitles;
         }
 
         var episode = await _dbContext.Episodes
@@ -200,7 +318,57 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
             await _dbContext.Entry(episode).Collection(item => item.EmbeddedSubtitles).LoadAsync(cancellationToken);
         }
 
-        return episode.EmbeddedSubtitles.ToList();
+        var episodeSubtitles = episode.EmbeddedSubtitles.ToList();
+        await InvalidateStaleManagedArtifactsAsync(request, episodeSubtitles, cancellationToken);
+        return episodeSubtitles;
+    }
+
+    private async Task InvalidateStaleManagedArtifactsAsync(
+        TranslationRequest request,
+        IReadOnlyCollection<EmbeddedSubtitle> subtitles,
+        CancellationToken cancellationToken)
+    {
+        if (subtitles.Count == 0)
+        {
+            return;
+        }
+
+        var mediaPath = await ResolveCurrentMediaFilePathAsync(request, cancellationToken);
+        if (string.IsNullOrWhiteSpace(mediaPath))
+        {
+            return;
+        }
+
+        var changed = false;
+        foreach (var subtitle in subtitles)
+        {
+            if (IsStaleManagedArtifact(subtitle.ExtractedPath, mediaPath))
+            {
+                _embeddedSubtitleCacheService.Invalidate(subtitle.ExtractedPath!);
+                subtitle.IsExtracted = false;
+                subtitle.ExtractedPath = null;
+                changed = true;
+            }
+
+            if (IsStaleManagedArtifact(subtitle.OcrExtractedPath, mediaPath))
+            {
+                _embeddedSubtitleCacheService.Invalidate(subtitle.OcrExtractedPath!);
+                SubtitleOcrStatePolicy.Reset(subtitle);
+                changed = true;
+            }
+        }
+
+        if (changed)
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+    }
+
+    private bool IsStaleManagedArtifact(string? path, string mediaPath)
+    {
+        return !string.IsNullOrWhiteSpace(path) &&
+               _embeddedSubtitleCacheService.IsManagedCachePath(path) &&
+               !_embeddedSubtitleCacheService.IsCurrentForSource(path, mediaPath);
     }
 
     private static int ScoreSubtitle(EmbeddedSubtitle subtitle, TranslationRequest request)

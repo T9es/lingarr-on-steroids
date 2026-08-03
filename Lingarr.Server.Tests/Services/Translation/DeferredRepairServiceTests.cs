@@ -1,7 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Lingarr.Core.Entities;
+using Lingarr.Server.Exceptions;
+using Lingarr.Server.Interfaces.Services;
+using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models.Batch;
 using Lingarr.Server.Models.FileSystem;
 using Lingarr.Server.Services.Subtitle;
@@ -48,11 +53,11 @@ public class DeferredRepairServiceTests
             contextRadius: 1,
             providerTextByPosition);
 
-        var failedItem = Assert.Single(batch.Items.Where(item => item.Position == 1));
+        var failedItem = Assert.Single(batch.Items, item => item.Position == 1);
         Assert.Equal("Line one\nLine two", failedItem.Line);
         Assert.DoesNotContain("{", failedItem.Line, StringComparison.Ordinal);
 
-        var contextItem = Assert.Single(batch.Items.Where(item => item.Position == 2));
+        var contextItem = Assert.Single(batch.Items, item => item.Position == 2);
         Assert.Equal("Context", contextItem.Line);
         Assert.DoesNotContain("<", contextItem.Line, StringComparison.Ordinal);
     }
@@ -81,6 +86,113 @@ public class DeferredRepairServiceTests
 
         var failedItem = Assert.Single(batch.Items);
         Assert.Equal("First\nSecond", failedItem.Line);
+    }
+
+    [Fact]
+    public async Task ExecuteRepairAsync_SendsOnlyFailedRepresentativesWithContext_AndIgnoresExtraResults()
+    {
+        var fallbackServiceMock = new Mock<IBatchFallbackService>();
+        List<BatchSubtitleItem>? capturedBatch = null;
+
+        fallbackServiceMock
+            .Setup(service => service.TranslateWithFallbackAsync(
+                It.IsAny<List<BatchSubtitleItem>>(),
+                It.IsAny<IBatchTranslationService>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>()))
+            .Callback((List<BatchSubtitleItem> batch, IBatchTranslationService _, string _, string _, int _, string _, int _, int _, CancellationToken _) =>
+            {
+                capturedBatch = batch;
+            })
+            .ReturnsAsync(new Dictionary<int, string>
+            {
+                [1] = "context must not be applied",
+                [2] = "repaired",
+                [3] = "context must not be applied"
+            });
+
+        var repairBatch = new ContextualRepairBatch
+        {
+            Items =
+            [
+                new BatchSubtitleItem { Position = 1, Line = "Before" },
+                new BatchSubtitleItem { Position = 2, Line = "Failed source" },
+                new BatchSubtitleItem { Position = 3, Line = "After" }
+            ],
+            FailedPositions = [2],
+            Ranges = [new ContextRange(1, 3)]
+        };
+
+        var service = new DeferredRepairService(Mock.Of<ILogger<DeferredRepairService>>());
+        var result = await service.ExecuteRepairAsync(
+            repairBatch,
+            Mock.Of<IBatchTranslationService>(),
+            fallbackServiceMock.Object,
+            "en",
+            "pl",
+            batchSize: 10,
+            maxRetries: 1,
+            fileIdentifier: "test",
+            CancellationToken.None);
+
+        var request = Assert.Single(capturedBatch!);
+        var contextualRequest = Assert.IsType<ContextualBatchSubtitleItem>(request);
+        Assert.Equal(2, contextualRequest.Position);
+        Assert.Equal(new[] { "Before" }, contextualRequest.PreContext);
+        Assert.Equal(new[] { "After" }, contextualRequest.PostContext);
+        Assert.Single(result);
+        Assert.Equal("repaired", result[2]);
+        Assert.DoesNotContain(1, result.Keys);
+        Assert.DoesNotContain(3, result.Keys);
+    }
+
+    [Fact]
+    public async Task ExecuteRepairAsync_WhenRetriesAreExhausted_ReturnsMissingTranslationData()
+    {
+        var fallbackServiceMock = new Mock<IBatchFallbackService>();
+        fallbackServiceMock
+            .Setup(service => service.TranslateWithFallbackAsync(
+                It.IsAny<List<BatchSubtitleItem>>(),
+                It.IsAny<IBatchTranslationService>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<int, string>());
+
+        var repairBatch = new ContextualRepairBatch
+        {
+            Items =
+            [
+                new BatchSubtitleItem { Position = 8, Line = "Failed source" }
+            ],
+            FailedPositions = [8],
+            Ranges = [new ContextRange(8, 8)]
+        };
+
+        var exception = await Assert.ThrowsAsync<MissingTranslationException>(() =>
+            new DeferredRepairService(Mock.Of<ILogger<DeferredRepairService>>()).ExecuteRepairAsync(
+                repairBatch,
+                Mock.Of<IBatchTranslationService>(),
+                fallbackServiceMock.Object,
+                "en",
+                "pl",
+                batchSize: 1,
+                maxRetries: 0,
+                fileIdentifier: "test",
+                CancellationToken.None));
+
+        var missingCue = Assert.Single(exception.MissingCues);
+        Assert.Equal(8, missingCue.Position);
+        Assert.Equal("Failed source", missingCue.SourceText);
     }
 
     private static string BuildAssProviderVisibleText(string line)

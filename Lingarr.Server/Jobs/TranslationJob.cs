@@ -13,6 +13,7 @@ using Lingarr.Server.Services;
 using Lingarr.Server.Extensions;
 using Lingarr.Server.Services.Subtitle;
 using System.Text.Json;
+using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.OpenApi.Extensions;
@@ -63,6 +64,8 @@ public class TranslationJob
     private readonly ITranslationPromptContextAccessor _translationPromptContextAccessor;
     private readonly IMkvEmbeddingService _mkvEmbeddingService;
     private readonly ITranslationSiblingSequenceApprovalService? _siblingSequenceApprovalService;
+
+    internal Func<Task>? BeforeFinalCompletionCommitAsync { get; set; }
 
     public TranslationJob(
         ILogger<TranslationJob> logger,
@@ -138,10 +141,17 @@ _translationPromptContextAccessor = translationPromptContextAccessor ??
     /// Concurrency is managed by the worker service, not internally.
     /// </summary>
     public Task ExecuteAsync(int translationRequestId, CancellationToken cancellationToken)
-        => ExecuteCore(translationRequestId, cancellationToken);
+        => ExecuteCore(translationRequestId, null, cancellationToken);
+
+    internal Task ExecuteAsync(
+        int translationRequestId,
+        string ownershipToken,
+        CancellationToken cancellationToken)
+        => ExecuteCore(translationRequestId, ownershipToken, cancellationToken);
 
     private async Task ExecuteCore(
         int translationRequestId,
+        string? ownershipToken,
         CancellationToken cancellationToken)
     {
         // Fetch the fresh request from the database
@@ -154,6 +164,10 @@ _translationPromptContextAccessor = translationPromptContextAccessor ??
             _logger.LogWarning("Translation request {RequestId} not found - it may have been deleted. Aborting job.", translationRequestId);
             return;
         }
+
+        var executionOwnershipToken = string.IsNullOrWhiteSpace(ownershipToken)
+            ? translationRequest.JobId
+            : ownershipToken;
 
         var requestLogs = new List<TranslationRequestLog>();
         _translationPromptContextAccessor.Clear();
@@ -172,24 +186,121 @@ _translationPromptContextAccessor = translationPromptContextAccessor ??
         // Note: JobContextFilter may not be available without Hangfire context
         // This is fine - we can skip job name/id logging for worker-invoked jobs
 
-        // Register this job for cooperative cancellation and create a linked token
-        var jobCancellationToken = _cancellationService.RegisterJob(translationRequest.Id);
-        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, jobCancellationToken);
-        var effectiveCancellationToken = linkedCts.Token;
-
+        CancellationToken jobCancellationToken = CancellationToken.None;
+        CancellationToken effectiveCancellationToken = cancellationToken;
+        CancellationTokenSource? linkedCts = null;
         string? temporaryFilePath = null;
+        WrittenSubtitleOutput? pendingWrittenOutput = null;
         try
         {
             effectiveCancellationToken.ThrowIfCancellationRequested();
 
-            var request = await _translationRequestService.UpdateTranslationRequest(
-                translationRequest,
-                TranslationStatus.InProgress,
-                null); // No Hangfire job ID
+            TranslationRequest request;
+            if (!string.IsNullOrWhiteSpace(executionOwnershipToken))
+            {
+                var startedAt = DateTime.UtcNow;
+                var rowsUpdated = await _dbContext.TranslationRequests
+                    .Where(item => item.Id == translationRequest.Id &&
+                                   item.Status == TranslationStatus.InProgress &&
+                                   item.JobId == executionOwnershipToken)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(item => item.IsActive, (bool?)true)
+                        .SetProperty(item => item.StartedAt, startedAt)
+                        .SetProperty(item => item.UpdatedAt, startedAt),
+                        effectiveCancellationToken);
 
-            // Set when translation actually started
-            request.StartedAt = DateTime.UtcNow;
-            await _dbContext.SaveChangesAsync(effectiveCancellationToken);
+                if (rowsUpdated == 0)
+                {
+                    _logger.LogInformation(
+                        "Skipping translation request {RequestId} because its worker ownership was reclaimed before execution started",
+                        translationRequest.Id);
+                    return;
+                }
+
+                await _dbContext.Entry(translationRequest).ReloadAsync(cancellationToken);
+                if (translationRequest.Status != TranslationStatus.InProgress ||
+                    !string.Equals(
+                        translationRequest.JobId,
+                        executionOwnershipToken,
+                        StringComparison.Ordinal))
+                {
+                    _logger.LogInformation(
+                        "Skipping translation request {RequestId} because its worker ownership changed before cancellation registration",
+                        translationRequest.Id);
+                    return;
+                }
+
+                jobCancellationToken = _cancellationService.RegisterJob(
+                    translationRequest.Id,
+                    executionOwnershipToken!);
+                linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+                    cancellationToken,
+                    jobCancellationToken);
+                effectiveCancellationToken = linkedCts.Token;
+                effectiveCancellationToken.ThrowIfCancellationRequested();
+
+                var registrationRowsUpdated = await _dbContext.TranslationRequests
+                    .Where(item => item.Id == translationRequest.Id &&
+                                   item.Status == TranslationStatus.InProgress &&
+                                   item.JobId == executionOwnershipToken)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(item => item.IsActive, (bool?)true)
+                        .SetProperty(item => item.UpdatedAt, DateTime.UtcNow),
+                        effectiveCancellationToken);
+
+                if (registrationRowsUpdated == 0)
+                {
+                    _logger.LogInformation(
+                        "Skipping translation request {RequestId} because its worker ownership was lost during cancellation registration",
+                        translationRequest.Id);
+                    return;
+                }
+
+                request = translationRequest;
+            }
+            else
+            {
+                jobCancellationToken = _cancellationService.RegisterJob(translationRequest.Id);
+                linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+                    cancellationToken,
+                    jobCancellationToken);
+                effectiveCancellationToken = linkedCts.Token;
+                effectiveCancellationToken.ThrowIfCancellationRequested();
+
+                request = await _translationRequestService.UpdateTranslationRequest(
+                    translationRequest,
+                    TranslationStatus.InProgress,
+                    null); // Legacy/manual invocation without an attempt token
+
+                // Set when translation actually started
+                request.StartedAt = DateTime.UtcNow;
+                await _dbContext.SaveChangesAsync(effectiveCancellationToken);
+            }
+
+            translationRequest = request;
+
+            if (translationRequest.Status != TranslationStatus.Completed)
+            {
+                try
+                {
+                    // A crashed attempt may have left an MKV rollback backup in the temp
+                    // directory while the media container holds its uncommitted output.
+                    // Reconcile before extraction so a retry never reads from a
+                    // container that a previous attempt already modified. Requests that
+                    // already committed are skipped: their leftovers belong to the
+                    // commit-cleanup window and must not be reverted.
+                    RollbackBackupRecovery.ReconcileRequestEmbeddedBackups(
+                        translationRequest.Id,
+                        _logger);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(
+                        ex,
+                        "Failed to reconcile leftover MKV rollback backups for request {RequestId}",
+                        translationRequest.Id);
+                }
+            }
 
             var subtitlePathForLog = translationRequest.SubtitleToTranslate ?? "Unknown";
             _logger.LogInformation("TranslateJob started for subtitle: |Green|{filePath}|/Green|",
@@ -408,24 +519,25 @@ SettingKeys.Translation.BatchContextAfter,
                     StripSubtitleFormatting = translationStripSubtitleFormatting
                 };
 
-                if (string.IsNullOrEmpty(request.SubtitleToTranslate) || !_subtitleService.ValidateSubtitle(request.SubtitleToTranslate, validationOptions))
-                {
-                    const string validationMessage = "Subtitle is not valid according to configured preferences.";
-                    _logger.LogWarning(validationMessage);
-                    AddRequestLog("Warning", validationMessage);
-                    throw new TaskCanceledException(validationMessage);
-                }
-
-                var isValid = _subtitleService.ValidateSubtitle(
-                    request.SubtitleToTranslate,
-                    validationOptions);
+                var isValid = !string.IsNullOrWhiteSpace(request.SubtitleToTranslate) &&
+                              _subtitleService.ValidateSubtitle(
+                                  request.SubtitleToTranslate,
+                                  validationOptions);
 
                 if (!isValid)
                 {
-                    const string validationMessage = "Subtitle is not valid according to configured preferences.";
-                    _logger.LogWarning(validationMessage);
-                    AddRequestLog("Warning", validationMessage);
-                    throw new TaskCanceledException(validationMessage);
+                    const string validationMessage =
+                        "Configured subtitle validation blocked this translation.";
+                    var validationDetails = string.IsNullOrWhiteSpace(request.SubtitleToTranslate)
+                        ? "No readable source subtitle path was available. Correct or replace the source subtitle, or adjust the validation settings, then retry."
+                        : $"Source subtitle '{request.SubtitleToTranslate}' failed one or more configured safety checks. Correct or replace the source subtitle, or adjust the validation settings, then retry.";
+
+                    _logger.LogWarning(
+                        "{ValidationMessage} {ValidationDetails}",
+                        validationMessage,
+                        validationDetails);
+                    AddRequestLog("Warning", validationMessage, validationDetails);
+                    throw new InvalidOperationException($"{validationMessage} {validationDetails}");
                 }
             }
 
@@ -524,7 +636,8 @@ SettingKeys.Translation.BatchContextAfter,
                             sourceIsEmbedded ? selectedSubtitle : null,
                             subtitles,
                             settings,
-                            effectiveCancellationToken))
+                            effectiveCancellationToken,
+                            executionOwnershipToken))
                     {
                         return;
                     }
@@ -751,6 +864,7 @@ SettingKeys.Translation.BatchContextAfter,
                 settings,
                 embedInContainer,
                 effectiveCancellationToken);
+            pendingWrittenOutput = writtenOutput;
             request.TranslatedSubtitle = writtenOutput.PrimaryPath;
             // Guard: TranslatedSubtitle should never equal SubtitleToTranslate
             if (string.Equals(request.TranslatedSubtitle, request.SubtitleToTranslate, StringComparison.OrdinalIgnoreCase))
@@ -768,16 +882,22 @@ SettingKeys.Translation.BatchContextAfter,
             AddRequestLog(
                 "Information",
                 $"Translation completed successfully and subtitle file was written to: {writtenOutput.PrimaryPath}");
-            var completionAccepted = await HandleCompletion(request, writtenOutput.OutputPaths, effectiveCancellationToken);
+            var completionAccepted = await HandleCompletion(request, writtenOutput, effectiveCancellationToken);
             if (!completionAccepted)
             {
-                await CleanupUnclaimedOutputFilesAsync(request, writtenOutput.OutputPaths);
+                await CleanupUnclaimedOutputFilesAsync(request, writtenOutput);
                 return;
             }
+            pendingWrittenOutput = null;
         }
         catch (ProviderPauseException ex)
         {
-            await HandleProviderPause(translationRequest, ex, requestLogs, effectiveCancellationToken);
+            await HandleProviderPause(
+                translationRequest,
+                ex,
+                requestLogs,
+                effectiveCancellationToken,
+                executionOwnershipToken);
         }
         catch (Exception ex) when (TranslationFailureClassifier.IsProviderUnavailable(ex))
         {
@@ -787,16 +907,17 @@ SettingKeys.Translation.BatchContextAfter,
                 translationRequest,
                 new ProviderPauseException(serviceType, reason, DateTime.UtcNow.AddMinutes(15), ex),
                 requestLogs,
-                effectiveCancellationToken);
+                effectiveCancellationToken,
+                executionOwnershipToken);
         }
         catch (TaskCanceledException)
         {
-            await HandleCancellation(translationRequest);
+            await HandleCancellation(translationRequest, executionOwnershipToken);
         }
         catch (OperationCanceledException)
         {
             // Also catch OperationCanceledException for cooperative cancellation
-            await HandleCancellation(translationRequest);
+            await HandleCancellation(translationRequest, executionOwnershipToken);
         }
         catch (Exception ex)
         {
@@ -852,7 +973,8 @@ SettingKeys.Translation.BatchContextAfter,
                             translationRequest,
                             now,
                             nextRetryAt,
-                            effectiveCancellationToken);
+                            effectiveCancellationToken,
+                            executionOwnershipToken);
 
                         if (!failureClaimed)
                         {
@@ -981,7 +1103,17 @@ SettingKeys.Translation.BatchContextAfter,
         {
             _translationPromptContextAccessor.Clear();
             // Always unregister the job from cooperative cancellation
-            _cancellationService.UnregisterJob(translationRequest.Id);
+            if (jobCancellationToken != CancellationToken.None)
+            {
+                _cancellationService.UnregisterJob(translationRequest.Id, jobCancellationToken);
+            }
+
+            linkedCts?.Dispose();
+
+            if (pendingWrittenOutput != null)
+            {
+                await CleanupUnclaimedOutputFilesAsync(translationRequest, pendingWrittenOutput);
+            }
 
             await CleanupTemporaryExtractedSubtitleAsync(translationRequest, temporaryFilePath);
         }
@@ -1039,6 +1171,9 @@ SettingKeys.Translation.BatchContextAfter,
         bool embedInContainer,
         CancellationToken cancellationToken)
     {
+        var stagedOutputs = new List<StagedSubtitleOutput>();
+        var stagedEmbeddedOutputs = new List<StagedEmbeddedSubtitleOutput>();
+
         try
         {
             var targetLanguage = removeLanguageTag ? "" : translationRequest.TargetLanguage;
@@ -1089,7 +1224,7 @@ Exception? lastException = null;
 
                 if (embedInContainer || (embedWhenPathTooLong && anyPathExceedsLimit))
                 {
-                    var embeddedPath = await TryEmbedInMkvContainerAsync(
+                    var embeddedOutput = await StageSubtitleForMkvEmbeddingAsync(
                         translationRequest,
                         renderSubtitles,
                         outputFormat,
@@ -1097,11 +1232,12 @@ Exception? lastException = null;
                         translationRequest.TargetLanguage,
                         cancellationToken);
 
-                    if (embeddedPath != null)
+                    if (embeddedOutput != null)
                     {
                         success = true;
                         allPathsTooLong = false;
-                        writtenOutputs.Add((outputFormat, embeddedPath));
+                        writtenOutputs.Add((outputFormat, embeddedOutput.OutputPath));
+                        stagedEmbeddedOutputs.Add(embeddedOutput);
                     }
                     else
                     {
@@ -1122,9 +1258,12 @@ Exception? lastException = null;
                     {
                         foreach (var path in paths)
                         {
+                            string? stagingPath = null;
+                            string? publicationPath = null;
+                            var preserveStagingArtifact = false;
                             try
                             {
-                                var stagingPath = _translationDiagnosticsService.CreateQuarantinePath(
+                                stagingPath = _translationDiagnosticsService.CreateQuarantinePath(
                                     translationRequest.Id,
                                     path);
 
@@ -1160,6 +1299,7 @@ Exception? lastException = null;
 
                                     if (qualityGateEnabled)
                                     {
+                                        preserveStagingArtifact = true;
                                         throw new TranslationException(
                                             $"Generated subtitle failed quality validation before publishing: {validationResult.Summary}");
                                     }
@@ -1170,31 +1310,44 @@ Exception? lastException = null;
                                 }
 
                                 EnsureParentDirectory(path);
-                                File.Copy(stagingPath, path, true);
-                                File.Delete(stagingPath);
-                                DeleteStaleTaggedFallbackSiblings(
-                                    paths,
-                                    path,
-                                    translationRequest.SubtitleToTranslate,
-                                    subtitleTag,
-                                    subtitleTagShort);
-
+                                publicationPath = CreatePublicationPath(path);
+                                File.Copy(stagingPath, publicationPath!, true);
                                 success = true;
                                 allPathsTooLong = false;
                                 writtenOutputs.Add((outputFormat, path));
+                                stagedOutputs.Add(new StagedSubtitleOutput(
+                                    outputFormat,
+                                    path,
+                                    stagingPath!,
+                                    publicationPath!,
+                                    paths,
+                                    subtitleTag,
+                                    subtitleTagShort,
+                                    translationRequest.SubtitleToTranslate));
                                 break;
                             }
                             catch (TranslationException)
                             {
+                                if (!preserveStagingArtifact)
+                                {
+                                    DeleteFileIfExists(stagingPath);
+                                }
+
+                                DeleteFileIfExists(publicationPath);
+
                                 throw;
                             }
                             catch (PathTooLongException ex)
                             {
+                                DeleteFileIfExists(stagingPath);
+                                DeleteFileIfExists(publicationPath);
                                 _logger.LogWarning("Path too long: {Path}. Trying fallback...", path);
                                 lastException = ex;
                             }
                             catch (Exception ex)
                             {
+                                DeleteFileIfExists(stagingPath);
+                                DeleteFileIfExists(publicationPath);
                                 _logger.LogWarning(ex, "Failed to write subtitle to {Path}. Trying fallback...", path);
                                 lastException = ex;
                                 allPathsTooLong = false;
@@ -1205,7 +1358,7 @@ Exception? lastException = null;
 
                 if (!success && (embedInContainer || allPathsTooLong))
                 {
-                    var embeddedPath = await TryEmbedInMkvContainerAsync(
+                    var embeddedOutput = await StageSubtitleForMkvEmbeddingAsync(
                         translationRequest,
                         renderSubtitles,
                         outputFormat,
@@ -1213,10 +1366,11 @@ Exception? lastException = null;
                         translationRequest.TargetLanguage,
                         cancellationToken);
 
-                    if (embeddedPath != null)
+                    if (embeddedOutput != null)
                     {
                         success = true;
-                        writtenOutputs.Add((outputFormat, embeddedPath));
+                        writtenOutputs.Add((outputFormat, embeddedOutput.OutputPath));
+                        stagedEmbeddedOutputs.Add(embeddedOutput);
                     }
                 }
 
@@ -1258,10 +1412,13 @@ Exception? lastException = null;
             return new WrittenSubtitleOutput(
                 primaryPath,
                 generatedFormats,
-                writtenOutputs.Select(output => output.Path).ToList());
+                writtenOutputs.Select(output => output.Path).ToList(),
+                stagedOutputs,
+                stagedEmbeddedOutputs);
         }
         catch (Exception e)
         {
+            CleanupStagedOutputArtifacts(stagedOutputs, stagedEmbeddedOutputs);
             _logger.LogError(e, e.Message);
             throw;
         }
@@ -1331,7 +1488,7 @@ Exception? lastException = null;
                    StringComparison.OrdinalIgnoreCase);
     }
 
-    private async Task<string?> TryEmbedInMkvContainerAsync(
+    private async Task<StagedEmbeddedSubtitleOutput?> StageSubtitleForMkvEmbeddingAsync(
         TranslationRequest translationRequest,
         List<SubtitleItem> renderSubtitles,
         string outputFormat,
@@ -1388,49 +1545,24 @@ Exception? lastException = null;
             await _subtitleService.WriteSubtitles(tempSubtitlePath, renderSubtitles, outputStripFormatting);
 
             var trackName = $"{normalizedLanguage} (Lingarr)";
-            var result = await _mkvEmbeddingService.EmbedSubtitleAsync(
+            var embeddedMarker = $"mkv-embedded:stream0";
+            return new StagedEmbeddedSubtitleOutput(
+                $"{embeddedMarker}|{basePath}",
                 basePath,
                 tempSubtitlePath,
                 normalizedLanguage,
-                trackName,
-                cancellationToken);
-
-            if (!result.Success)
-            {
-                _logger.LogWarning(
-                    "MKV embedding failed for request {RequestId}: {Error}",
-                    translationRequest.Id,
-                    result.Error);
-                return null;
-            }
-
-            _logger.LogInformation(
-                "Successfully embedded subtitle in MKV container for request {RequestId}. Language: {Language}, Track: {TrackName}",
-                translationRequest.Id,
-                normalizedLanguage,
                 trackName);
-
-            var embeddedMarker = $"mkv-embedded:stream0";
-            return $"{embeddedMarker}|{basePath}";
+        }
+        catch (OperationCanceledException)
+        {
+            DeleteFileIfExists(tempSubtitlePath);
+            throw;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to embed subtitle in MKV container for request {RequestId}", translationRequest.Id);
+            DeleteFileIfExists(tempSubtitlePath);
+            _logger.LogWarning(ex, "Failed to stage subtitle for MKV embedding for request {RequestId}", translationRequest.Id);
             return null;
-        }
-        finally
-        {
-            if (tempSubtitlePath != null && File.Exists(tempSubtitlePath))
-            {
-                try
-                {
-                    File.Delete(tempSubtitlePath);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to delete temporary subtitle file: {Path}", tempSubtitlePath);
-                }
-            }
         }
     }
 
@@ -1582,6 +1714,11 @@ Exception? lastException = null;
         }
     }
 
+    private static string CreatePublicationPath(string finalPath)
+    {
+        return $"{finalPath}.lingarr-publish-{Guid.NewGuid():N}.tmp";
+    }
+
     private static List<SubtitleItem> BuildOutputSubtitles(
         List<SubtitleItem> translatedSubtitles,
         string outputFormat,
@@ -1622,61 +1759,619 @@ Exception? lastException = null;
         return renderedSubtitles;
     }
 
+    private sealed record StagedEmbeddedSubtitleOutput(
+        string OutputPath,
+        string MediaPath,
+        string SubtitlePath,
+        string LanguageCode,
+        string TrackName);
+
+    private sealed record StagedSubtitleOutput(
+        string Format,
+        string FinalPath,
+        string StagingPath,
+        string PublicationPath,
+        IReadOnlyCollection<string> CandidatePaths,
+        string SubtitleTag,
+        string SubtitleTagShort,
+        string? SourcePath);
+
+    private sealed record PublishedSubtitleArtifact(
+        string FinalPath,
+        string? BackupPath,
+        bool HadExistingFile,
+        string ExpectedContentHash);
+
+    private sealed class EmbeddedPublicationTransaction
+    {
+        public List<EmbeddedPublicationBackup> Backups { get; } = [];
+    }
+
+    private sealed class EmbeddedPublicationBackup
+    {
+        public EmbeddedPublicationBackup(
+            string mediaPath,
+            string backupPath,
+            string originalHash)
+        {
+            MediaPath = mediaPath;
+            BackupPath = backupPath;
+            OriginalHash = originalHash;
+        }
+
+        public string MediaPath { get; }
+
+        public string BackupPath { get; }
+
+        public string OriginalHash { get; }
+
+        public string? ExpectedPublishedHash { get; set; }
+    }
+
     private sealed record WrittenSubtitleOutput(
         string PrimaryPath,
         string GeneratedFormats,
-        IReadOnlyCollection<string> OutputPaths);
+        IReadOnlyCollection<string> OutputPaths,
+        IReadOnlyCollection<StagedSubtitleOutput> StagedOutputs,
+        IReadOnlyCollection<StagedEmbeddedSubtitleOutput> StagedEmbeddedOutputs);
 
-    private async Task CleanupUnclaimedOutputFilesAsync(
+    private Task CleanupUnclaimedOutputFilesAsync(
         TranslationRequest translationRequest,
-        IReadOnlyCollection<string> outputPaths)
+        WrittenSubtitleOutput writtenOutput)
     {
-        var recordedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (!string.IsNullOrWhiteSpace(translationRequest.GeneratedSubtitlePaths))
+        CleanupStagedOutputArtifacts(writtenOutput.StagedOutputs, writtenOutput.StagedEmbeddedOutputs);
+
+        return Task.CompletedTask;
+    }
+
+    private void CleanupStagedOutputArtifacts(
+        IReadOnlyCollection<StagedSubtitleOutput> stagedOutputs,
+        IReadOnlyCollection<StagedEmbeddedSubtitleOutput> stagedEmbeddedOutputs)
+    {
+        foreach (var stagedOutput in stagedOutputs)
         {
-            try
-            {
-                var persistedPaths = JsonSerializer.Deserialize<List<string>>(
-                    translationRequest.GeneratedSubtitlePaths);
-                if (persistedPaths != null)
-                {
-                    recordedPaths.UnionWith(persistedPaths);
-                }
-            }
-            catch (JsonException)
-            {
-                _logger.LogDebug(
-                    "Could not parse recorded output paths while cleaning stale output for request {RequestId}",
-                    translationRequest.Id);
-            }
+            DeleteFileIfExists(stagedOutput.StagingPath);
+            DeleteFileIfExists(stagedOutput.PublicationPath);
         }
 
-        foreach (var outputPath in outputPaths)
+        foreach (var embeddedOutput in stagedEmbeddedOutputs)
         {
-            if (string.IsNullOrWhiteSpace(outputPath) ||
-                IsSamePath(outputPath, translationRequest.SubtitleToTranslate) ||
-                recordedPaths.Contains(outputPath) ||
-                !File.Exists(outputPath))
+            DeleteFileIfExists(embeddedOutput.SubtitlePath);
+        }
+    }
+
+    private void DeleteFileIfExists(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+        {
+            return;
+        }
+
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to delete subtitle artifact {Path}", path);
+        }
+    }
+
+    private void PublishStagedOutputs(
+        WrittenSubtitleOutput writtenOutput,
+        List<PublishedSubtitleArtifact> publishedOutputs,
+        int requestId,
+        CancellationToken cancellationToken)
+    {
+        foreach (var stagedOutput in writtenOutput.StagedOutputs)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!File.Exists(stagedOutput.PublicationPath))
             {
-                continue;
+                throw new FileNotFoundException(
+                    $"Staged subtitle output was not found for format {stagedOutput.Format}.",
+                    stagedOutput.PublicationPath);
             }
 
             try
             {
-                File.Delete(outputPath);
-                _logger.LogInformation(
-                    "Removed unclaimed subtitle output {OutputPath} after stale completion for request {RequestId}",
-                    outputPath,
-                    translationRequest.Id);
+                RollbackBackupRecovery.ReconcileSubtitleBackups(
+                    stagedOutput.FinalPath,
+                    requestId,
+                    _logger);
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(
                     ex,
-                    "Failed to remove unclaimed subtitle output {OutputPath} after stale completion for request {RequestId}",
-                    outputPath,
-                    translationRequest.Id);
+                    "Failed to reconcile stale rollback backups for {Path}",
+                    stagedOutput.FinalPath);
             }
+
+            EnsureParentDirectory(stagedOutput.FinalPath);
+            var backupPath = CreateRollbackBackupPath(stagedOutput.FinalPath);
+            var hadExistingFile = File.Exists(stagedOutput.FinalPath);
+            var originalHash = hadExistingFile ? ComputeFileHash(stagedOutput.FinalPath) : null;
+            var expectedContentHash = ComputeFileHash(stagedOutput.PublicationPath);
+            try
+            {
+                if (hadExistingFile)
+                {
+                    File.Move(stagedOutput.FinalPath, backupPath);
+                    // The manifest is written as soon as the backup exists and before
+                    // the published file replaces the final path, so every crash window
+                    // stays reconcilable.
+                    RollbackBackupRecovery.WriteManifest(backupPath, new RollbackBackupManifest
+                    {
+                        RequestId = requestId,
+                        TargetPath = stagedOutput.FinalPath,
+                        OriginalHash = originalHash,
+                        ExpectedPublishedHash = expectedContentHash
+                    });
+                }
+
+                File.Move(stagedOutput.PublicationPath, stagedOutput.FinalPath, true);
+                publishedOutputs.Add(new PublishedSubtitleArtifact(
+                    stagedOutput.FinalPath,
+                    backupPath,
+                    hadExistingFile,
+                    expectedContentHash));
+                DeleteFileIfExists(stagedOutput.StagingPath);
+            }
+            catch
+            {
+                RestorePublishedSubtitleArtifact(
+                    new PublishedSubtitleArtifact(
+                        stagedOutput.FinalPath,
+                        backupPath,
+                        hadExistingFile,
+                        expectedContentHash));
+                throw;
+            }
+        }
+
+    }
+
+    private void FinalizePublishedOutputs(
+        WrittenSubtitleOutput writtenOutput,
+        IReadOnlyCollection<PublishedSubtitleArtifact> publishedOutputs)
+    {
+        foreach (var publishedOutput in publishedOutputs)
+        {
+            RollbackBackupRecovery.DeleteBackup(publishedOutput.BackupPath);
+        }
+
+        foreach (var stagedOutput in writtenOutput.StagedOutputs)
+        {
+            DeleteStaleTaggedFallbackSiblings(
+                stagedOutput.CandidatePaths,
+                stagedOutput.FinalPath,
+                stagedOutput.SourcePath,
+                stagedOutput.SubtitleTag,
+                stagedOutput.SubtitleTagShort);
+        }
+    }
+
+    private void CleanupPublicationBackups(
+        IReadOnlyCollection<PublishedSubtitleArtifact> publishedOutputs)
+    {
+        foreach (var publishedOutput in publishedOutputs)
+        {
+            RollbackBackupRecovery.DeleteBackup(publishedOutput.BackupPath);
+        }
+    }
+
+    private void RollbackPublishedOutputs(
+        IReadOnlyList<PublishedSubtitleArtifact> publishedOutputs)
+    {
+        for (var index = publishedOutputs.Count - 1; index >= 0; index--)
+        {
+            try
+            {
+                RestorePublishedSubtitleArtifact(publishedOutputs[index]);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Failed to roll back subtitle publication for {Path}",
+                    publishedOutputs[index].FinalPath);
+            }
+        }
+    }
+
+    private void RestorePublishedSubtitleArtifact(PublishedSubtitleArtifact publishedOutput)
+    {
+        var finalExists = File.Exists(publishedOutput.FinalPath);
+        var publicationStillOwnsFinal = false;
+        if (finalExists)
+        {
+            if (!TryComputeFileHash(publishedOutput.FinalPath, out var currentHash))
+            {
+                _logger.LogWarning(
+                    "Could not verify ownership of subtitle output {Path} during rollback; leaving the current file and backup untouched",
+                    publishedOutput.FinalPath);
+                return;
+            }
+
+            publicationStillOwnsFinal = string.Equals(
+                currentHash,
+                publishedOutput.ExpectedContentHash,
+                StringComparison.Ordinal);
+        }
+
+        var canRestoreOriginal = publishedOutput.HadExistingFile &&
+                                 publishedOutput.BackupPath != null &&
+                                 File.Exists(publishedOutput.BackupPath);
+        if (!finalExists || publicationStillOwnsFinal)
+        {
+            if (publicationStillOwnsFinal && (canRestoreOriginal || !publishedOutput.HadExistingFile))
+            {
+                DeleteFileIfExists(publishedOutput.FinalPath);
+            }
+            else if (publicationStillOwnsFinal && publishedOutput.HadExistingFile)
+            {
+                // The original existed but its backup is gone: the current file is the
+                // only surviving content — never delete it.
+                _logger.LogWarning(
+                    "Keeping subtitle output {Path} during rollback: the original existed but its rollback backup is missing",
+                    publishedOutput.FinalPath);
+            }
+
+            if (canRestoreOriginal)
+            {
+                try
+                {
+                    EnsureParentDirectory(publishedOutput.FinalPath);
+                    File.Move(publishedOutput.BackupPath, publishedOutput.FinalPath);
+                    RollbackBackupRecovery.DeleteManifest(publishedOutput.BackupPath);
+                }
+                catch (Exception ex)
+                {
+                    // The backup is deliberately kept: it holds the pre-publication original.
+                    _logger.LogWarning(
+                        ex,
+                        "Failed to restore previous subtitle output {Path} after publication rollback; keeping rollback backup {BackupPath}",
+                        publishedOutput.FinalPath,
+                        publishedOutput.BackupPath);
+                }
+            }
+        }
+        else if (publishedOutput.BackupPath != null &&
+                 File.Exists(publishedOutput.BackupPath))
+        {
+            // A foreign writer owns the final file: keep the backup — it holds the
+            // pre-publication original and must survive for manual or automatic recovery.
+            _logger.LogWarning(
+                "Rollback skipped for {Path}: current file was not produced by this publication. Keeping rollback backup {BackupPath}.",
+                publishedOutput.FinalPath,
+                publishedOutput.BackupPath);
+        }
+    }
+
+    private static string CreateRollbackBackupPath(string finalPath)
+    {
+        return $"{finalPath}.lingarr-rollback-{Guid.NewGuid():N}.bak";
+    }
+
+    private static IEnumerable<string> GetPublicationPaths(WrittenSubtitleOutput writtenOutput)
+    {
+        return writtenOutput.StagedOutputs
+            .Select(output => output.FinalPath)
+            .Concat(writtenOutput.StagedEmbeddedOutputs.Select(output => output.MediaPath));
+    }
+
+    private async Task<EmbeddedPublicationTransaction?> CreateEmbeddedPublicationTransactionAsync(
+        WrittenSubtitleOutput writtenOutput,
+        string? ownershipToken,
+        int requestId,
+        CancellationToken cancellationToken)
+    {
+        var mediaPaths = writtenOutput.StagedEmbeddedOutputs
+            .Select(output => output.MediaPath)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (mediaPaths.Count == 0)
+        {
+            return null;
+        }
+
+        var transaction = new EmbeddedPublicationTransaction();
+        try
+        {
+            foreach (var mediaPath in mediaPaths)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!File.Exists(mediaPath))
+                {
+                    throw new FileNotFoundException(
+                        $"Media container for MKV embedding was not found: {mediaPath}",
+                        mediaPath);
+                }
+
+                try
+                {
+                    RollbackBackupRecovery.ReconcileEmbeddedBackups(mediaPath, requestId, _logger);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(
+                        ex,
+                        "Failed to reconcile stale MKV rollback backups for {MediaPath}",
+                        mediaPath);
+                }
+
+                var backupPath = CreateEmbeddedPublicationBackupPath(ownershipToken);
+                var originalHash = ComputeFileHash(mediaPath);
+                try
+                {
+                    await CopyFileAsync(mediaPath, backupPath, cancellationToken);
+                }
+                catch
+                {
+                    DeleteFileIfExists(backupPath);
+                    throw;
+                }
+
+                transaction.Backups.Add(new EmbeddedPublicationBackup(
+                    mediaPath,
+                    backupPath,
+                    originalHash));
+                RollbackBackupRecovery.WriteManifest(backupPath, new RollbackBackupManifest
+                {
+                    RequestId = requestId,
+                    TargetPath = mediaPath,
+                    OriginalHash = originalHash
+                });
+            }
+
+            return transaction;
+        }
+        catch
+        {
+            RollbackEmbeddedPublication(transaction);
+            throw;
+        }
+    }
+
+    private void RollbackEmbeddedPublication(EmbeddedPublicationTransaction? transaction)
+    {
+        if (transaction == null)
+        {
+            return;
+        }
+
+        foreach (var backup in transaction.Backups.AsEnumerable().Reverse())
+        {
+            try
+            {
+                var shouldRestore = !File.Exists(backup.MediaPath);
+                string? currentHash = null;
+                if (!shouldRestore)
+                {
+                    currentHash = ComputeFileHash(backup.MediaPath);
+                    shouldRestore = backup.ExpectedPublishedHash == null
+                        ? !string.Equals(currentHash, backup.OriginalHash, StringComparison.Ordinal)
+                        : string.Equals(currentHash, backup.ExpectedPublishedHash, StringComparison.Ordinal);
+                }
+
+                if (shouldRestore && File.Exists(backup.BackupPath))
+                {
+                    if (File.Exists(backup.MediaPath))
+                    {
+                        File.Delete(backup.MediaPath);
+                    }
+
+                    File.Move(backup.BackupPath, backup.MediaPath);
+                    RollbackBackupRecovery.DeleteManifest(backup.BackupPath);
+                }
+                else if (currentHash != null &&
+                         string.Equals(currentHash, backup.OriginalHash, StringComparison.Ordinal))
+                {
+                    // Media is untouched: the backup is a redundant copy.
+                    RollbackBackupRecovery.DeleteBackup(backup.BackupPath);
+                }
+                else
+                {
+                    // A foreign writer owns the media: keep the backup — it holds the
+                    // pre-publication original and must survive for recovery.
+                    _logger.LogWarning(
+                        "Keeping MKV rollback backup {BackupPath} for {MediaPath}: current file was not produced by this publication",
+                        backup.BackupPath,
+                        backup.MediaPath);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Failed to roll back MKV publication for {MediaPath}",
+                    backup.MediaPath);
+            }
+        }
+    }
+
+    private void CleanupEmbeddedPublicationBackups(EmbeddedPublicationTransaction? transaction)
+    {
+        if (transaction == null)
+        {
+            return;
+        }
+
+        foreach (var backup in transaction.Backups)
+        {
+            RollbackBackupRecovery.DeleteBackup(backup.BackupPath);
+        }
+    }
+
+    private static async Task CopyFileAsync(
+        string sourcePath,
+        string destinationPath,
+        CancellationToken cancellationToken)
+    {
+        EnsureParentDirectory(destinationPath);
+        await using var source = new FileStream(
+            sourcePath,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete,
+            bufferSize: 64 * 1024,
+            options: FileOptions.Asynchronous | FileOptions.SequentialScan);
+        await using var destination = new FileStream(
+            destinationPath,
+            FileMode.CreateNew,
+            FileAccess.Write,
+            FileShare.None,
+            bufferSize: 64 * 1024,
+            options: FileOptions.Asynchronous | FileOptions.SequentialScan);
+        await source.CopyToAsync(destination, cancellationToken);
+        await destination.FlushAsync(cancellationToken);
+    }
+
+    private static string ComputeFileHash(string path)
+    {
+        using var stream = File.OpenRead(path);
+        return Convert.ToHexString(SHA256.HashData(stream));
+    }
+
+    private static bool TryComputeFileHash(string path, out string hash)
+    {
+        try
+        {
+            hash = ComputeFileHash(path);
+            return true;
+        }
+        catch (Exception)
+        {
+            hash = string.Empty;
+            return false;
+        }
+    }
+
+    private static string CreateEmbeddedPublicationBackupPath(string? ownershipToken)
+    {
+        var token = string.IsNullOrWhiteSpace(ownershipToken) ? "legacy" : ownershipToken;
+        return Path.Combine(
+            Path.GetTempPath(),
+            $"lingarr_normal_embed_{token}_{Guid.NewGuid():N}.bak");
+    }
+
+    private async Task PublishStagedEmbeddedOutputsAsync(
+        WrittenSubtitleOutput writtenOutput,
+        EmbeddedPublicationTransaction? transaction,
+        CancellationToken cancellationToken)
+    {
+        var embeddedOutputs = writtenOutput.StagedEmbeddedOutputs.ToList();
+        if (embeddedOutputs.Count == 0)
+        {
+            return;
+        }
+
+        if (transaction == null)
+        {
+            throw new InvalidOperationException(
+                "MKV embedding cannot be published without a reversible publication transaction.");
+        }
+
+        foreach (var embeddedOutput in embeddedOutputs)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!File.Exists(embeddedOutput.SubtitlePath))
+            {
+                throw new FileNotFoundException(
+                    "Staged subtitle for MKV embedding was not found.",
+                    embeddedOutput.SubtitlePath);
+            }
+        }
+
+        var mediaPaths = embeddedOutputs
+            .Select(output => output.MediaPath)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (mediaPaths.Count != 1)
+        {
+            throw new TranslationException(
+                "MKV embedding was not published because one translation request staged subtitles for multiple media containers. " +
+                "The request will remain retryable and no container embedding was started.");
+        }
+
+        if (embeddedOutputs.Count == 1)
+        {
+            var embeddedOutput = embeddedOutputs[0];
+            var publication = transaction.Backups.Single(backup =>
+                string.Equals(
+                    backup.MediaPath,
+                    embeddedOutput.MediaPath,
+                    StringComparison.OrdinalIgnoreCase));
+            var result = await _mkvEmbeddingService.EmbedSubtitleAsync(
+                embeddedOutput.MediaPath,
+                embeddedOutput.SubtitlePath,
+                embeddedOutput.LanguageCode,
+                embeddedOutput.TrackName,
+                cancellationToken);
+
+            if (result is null || !result.Success)
+            {
+                throw new TranslationException(
+                    $"MKV embedding failed for request output {embeddedOutput.OutputPath}: " +
+                    $"{result?.Error ?? "The embedding service returned no result."}");
+            }
+
+            publication.ExpectedPublishedHash = ComputeFileHash(embeddedOutput.MediaPath);
+            RollbackBackupRecovery.UpdateManifest(
+                publication.BackupPath,
+                manifest => manifest.ExpectedPublishedHash = publication.ExpectedPublishedHash);
+
+            DeleteFileIfExists(embeddedOutput.SubtitlePath);
+            _logger.LogInformation(
+                "Successfully embedded subtitle in MKV container. Language: {Language}, Track: {TrackName}",
+                embeddedOutput.LanguageCode,
+                embeddedOutput.TrackName);
+            return;
+        }
+
+        var batchInputs = embeddedOutputs
+            .Select(output => new MkvSubtitleInput(
+                output.SubtitlePath,
+                output.LanguageCode,
+                output.TrackName))
+            .ToList();
+        var batchResult = await _mkvEmbeddingService.EmbedSubtitlesAsync(
+            mediaPaths[0],
+            batchInputs,
+            cancellationToken);
+
+        if (batchResult is null || !batchResult.Success)
+        {
+            var error = batchResult?.Error ?? "The batch embedding service returned no result.";
+            _logger.LogError(
+                "Batch MKV embedding failed for request outputs {OutputPaths}. " +
+                "The container was not accepted as published and the request will be retried. Error: {Error}",
+                string.Join(", ", embeddedOutputs.Select(output => output.OutputPath)),
+                error);
+            throw new TranslationException(
+                $"Batch MKV embedding failed for request outputs " +
+                $"{string.Join(", ", embeddedOutputs.Select(output => output.OutputPath))}. " +
+                $"No multi-output container publication was accepted; the request remains retryable. {error}");
+        }
+
+        var batchPublication = transaction.Backups.Single(backup =>
+            string.Equals(
+                backup.MediaPath,
+                mediaPaths[0],
+                StringComparison.OrdinalIgnoreCase));
+        batchPublication.ExpectedPublishedHash = ComputeFileHash(mediaPaths[0]);
+        RollbackBackupRecovery.UpdateManifest(
+            batchPublication.BackupPath,
+            manifest => manifest.ExpectedPublishedHash = batchPublication.ExpectedPublishedHash);
+
+        foreach (var embeddedOutput in embeddedOutputs)
+        {
+            DeleteFileIfExists(embeddedOutput.SubtitlePath);
+            _logger.LogInformation(
+                "Successfully embedded subtitle in MKV container. Language: {Language}, Track: {TrackName}",
+                embeddedOutput.LanguageCode,
+                embeddedOutput.TrackName);
         }
     }
 
@@ -1684,11 +2379,16 @@ Exception? lastException = null;
         TranslationRequest request,
         DateTime failedAt,
         DateTime nextRetryAt,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? ownershipToken = null)
     {
-        var rowsUpdated = await _dbContext.TranslationRequests
+        ownershipToken = ResolveOwnershipToken(request, ownershipToken);
+        var query = _dbContext.TranslationRequests
             .Where(item => item.Id == request.Id &&
-                           item.Status == TranslationStatus.InProgress)
+                          item.Status == TranslationStatus.InProgress &&
+                          item.JobId == ownershipToken);
+
+        var rowsUpdated = await query
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(item => item.Status, TranslationStatus.Failed)
                 .SetProperty(item => item.IsActive, (bool?)null)
@@ -1699,6 +2399,7 @@ Exception? lastException = null;
                 .SetProperty(item => item.PausedAt, (DateTime?)null)
                 .SetProperty(item => item.PauseReason, (string?)null)
                 .SetProperty(item => item.PausedProvider, (string?)null)
+                .SetProperty(item => item.JobId, (string?)null)
                 .SetProperty(item => item.UpdatedAt, failedAt),
                 cancellationToken);
 
@@ -1720,18 +2421,21 @@ Exception? lastException = null;
         TranslationRequest request,
         ProviderPauseException exception,
         List<TranslationRequestLog> requestLogs,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? ownershipToken = null)
     {
+        ownershipToken = ResolveOwnershipToken(request, ownershipToken);
         var now = DateTime.UtcNow;
         var reason = string.IsNullOrWhiteSpace(exception.Reason)
             ? "Translation provider paused the request."
             : exception.Reason;
 
-        var currentRequest = await _dbContext.TranslationRequests
+        var currentRequestQuery = _dbContext.TranslationRequests
             .AsNoTracking()
-            .FirstOrDefaultAsync(
-                translationRequest => translationRequest.Id == request.Id,
-                cancellationToken);
+            .Where(translationRequest => translationRequest.Id == request.Id &&
+                                         translationRequest.JobId == ownershipToken);
+
+        var currentRequest = await currentRequestQuery.FirstOrDefaultAsync(cancellationToken);
 
         if (currentRequest == null)
         {
@@ -1750,10 +2454,13 @@ Exception? lastException = null;
             _ => TimeSpan.FromSeconds(300)
         };
         var resumeAt = now + pauseDelay;
-        var rowsUpdated = await _dbContext.TranslationRequests
+        var pauseQuery = _dbContext.TranslationRequests
             .Where(translationRequest => translationRequest.Id == request.Id &&
                                          translationRequest.Status == TranslationStatus.InProgress &&
-                                         translationRequest.RetryCount == currentRequest.RetryCount)
+                                         translationRequest.RetryCount == currentRequest.RetryCount &&
+                                         translationRequest.JobId == ownershipToken);
+
+        var rowsUpdated = await pauseQuery
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(translationRequest => translationRequest.Status, TranslationStatus.Paused)
                 .SetProperty(translationRequest => translationRequest.IsActive, (bool?)true)
@@ -1819,35 +2526,176 @@ Exception? lastException = null;
         IReadOnlyCollection<string> outputPaths,
         CancellationToken cancellationToken)
     {
+        var writtenOutput = new WrittenSubtitleOutput(
+            translationRequest.TranslatedSubtitle ?? outputPaths.FirstOrDefault() ?? string.Empty,
+            translationRequest.GeneratedOutputFormats ?? string.Empty,
+            outputPaths,
+            [],
+            []);
+        return await HandleCompletion(translationRequest, writtenOutput, cancellationToken);
+    }
+
+    private async Task<bool> HandleCompletion(
+        TranslationRequest translationRequest,
+        WrittenSubtitleOutput writtenOutput,
+        CancellationToken cancellationToken)
+    {
         var now = DateTime.UtcNow;
         var translatedSubtitle = translationRequest.TranslatedSubtitle;
         var generatedOutputFormats = translationRequest.GeneratedOutputFormats;
         var generatedSubtitlePaths = translationRequest.GeneratedSubtitlePaths;
 
-        var rowsUpdated = await _dbContext.TranslationRequests
+        var ownershipToken = translationRequest.JobId;
+        var completionQuery = _dbContext.TranslationRequests
             .Where(item => item.Id == translationRequest.Id &&
-                          item.Status == TranslationStatus.InProgress)
-            .ExecuteUpdateAsync(setters => setters
-                .SetProperty(item => item.TranslatedSubtitle, translatedSubtitle)
-                .SetProperty(item => item.GeneratedOutputFormats, generatedOutputFormats)
-                .SetProperty(item => item.GeneratedSubtitlePaths, generatedSubtitlePaths)
-                .SetProperty(item => item.CompletedAt, now)
-                .SetProperty(item => item.Status, TranslationStatus.Completed)
-                .SetProperty(item => item.IsActive, (bool?)null)
-                .SetProperty(item => item.PausedAt, (DateTime?)null)
-                .SetProperty(item => item.PauseReason, (string?)null)
-                .SetProperty(item => item.PausedProvider, (string?)null)
-                .SetProperty(item => item.RetryCount, 0)
-                .SetProperty(item => item.NextRetryAt, (DateTime?)null)
-                .SetProperty(item => item.UpdatedAt, now), cancellationToken);
+                          item.Status == TranslationStatus.InProgress &&
+                          item.JobId == ownershipToken);
 
-        if (rowsUpdated == 0)
+        var publishedOutputs = new List<PublishedSubtitleArtifact>();
+        EmbeddedPublicationTransaction? embeddedPublication = null;
+        var completionCommitted = false;
+        var commitAttempted = false;
+        IAsyncDisposable? publicationLease = null;
+        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? transaction = null;
+        try
         {
-            await _dbContext.Entry(translationRequest).ReloadAsync(cancellationToken);
-            _logger.LogInformation(
-                "Skipping completion for translation request {RequestId} because it is no longer active",
-                translationRequest.Id);
-            return false;
+            publicationLease = await MkvEmbeddingService.AcquirePublicationLeaseAsync(
+                GetPublicationPaths(writtenOutput),
+                cancellationToken);
+
+            var stillOwnsRequest = await completionQuery.AnyAsync(cancellationToken);
+            if (!stillOwnsRequest)
+            {
+                await _dbContext.Entry(translationRequest).ReloadAsync(cancellationToken);
+                CleanupStagedOutputArtifacts(
+                    writtenOutput.StagedOutputs,
+                    writtenOutput.StagedEmbeddedOutputs);
+                _logger.LogInformation(
+                    "Skipping completion for translation request {RequestId} because it is no longer active",
+                    translationRequest.Id);
+                return false;
+            }
+
+            PublishStagedOutputs(writtenOutput, publishedOutputs, translationRequest.Id, cancellationToken);
+            embeddedPublication = await CreateEmbeddedPublicationTransactionAsync(
+                writtenOutput,
+                ownershipToken,
+                translationRequest.Id,
+                cancellationToken);
+            await PublishStagedEmbeddedOutputsAsync(
+                writtenOutput,
+                embeddedPublication,
+                cancellationToken);
+
+            if (BeforeFinalCompletionCommitAsync != null)
+            {
+                await BeforeFinalCompletionCommitAsync();
+            }
+
+            transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+            var rowsUpdated = await completionQuery
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(item => item.TranslatedSubtitle, translatedSubtitle)
+                    .SetProperty(item => item.GeneratedOutputFormats, generatedOutputFormats)
+                    .SetProperty(item => item.GeneratedSubtitlePaths, generatedSubtitlePaths)
+                    .SetProperty(item => item.CompletedAt, now)
+                    .SetProperty(item => item.Status, TranslationStatus.Completed)
+                    .SetProperty(item => item.IsActive, (bool?)null)
+                    .SetProperty(item => item.PausedAt, (DateTime?)null)
+                    .SetProperty(item => item.PauseReason, (string?)null)
+                    .SetProperty(item => item.PausedProvider, (string?)null)
+                    .SetProperty(item => item.RetryCount, 0)
+                    .SetProperty(item => item.NextRetryAt, (DateTime?)null)
+                    .SetProperty(item => item.JobId, (string?)null)
+                    .SetProperty(item => item.UpdatedAt, now), cancellationToken);
+
+            if (rowsUpdated == 0)
+            {
+                await transaction!.RollbackAsync(cancellationToken);
+                await _dbContext.Entry(translationRequest).ReloadAsync(cancellationToken);
+                RollbackPublishedOutputs(publishedOutputs);
+                RollbackEmbeddedPublication(embeddedPublication);
+                CleanupStagedOutputArtifacts(
+                    writtenOutput.StagedOutputs,
+                    writtenOutput.StagedEmbeddedOutputs);
+                _logger.LogInformation(
+                    "Skipping completion for translation request {RequestId} because it is no longer active",
+                    translationRequest.Id);
+                return false;
+            }
+
+            commitAttempted = true;
+            await transaction!.CommitAsync(CancellationToken.None);
+            completionCommitted = true;
+            CleanupEmbeddedPublicationBackups(embeddedPublication);
+            FinalizePublishedOutputs(writtenOutput, publishedOutputs);
+        }
+        catch
+        {
+            if (transaction != null)
+            {
+                try
+                {
+                    await transaction.RollbackAsync(CancellationToken.None);
+                }
+                catch (Exception rollbackException)
+                {
+                    _logger.LogWarning(
+                        rollbackException,
+                        "Failed to roll back translation request state after publication failure for request {RequestId}",
+                        translationRequest.Id);
+                }
+            }
+
+            if (!completionCommitted && commitAttempted)
+            {
+                try
+                {
+                    completionCommitted = await _dbContext.TranslationRequests
+                        .AsNoTracking()
+                        .AnyAsync(item => item.Id == translationRequest.Id &&
+                                          item.Status == TranslationStatus.Completed &&
+                                          item.JobId == null &&
+                                          item.TranslatedSubtitle == translatedSubtitle &&
+                                          item.GeneratedSubtitlePaths == generatedSubtitlePaths,
+                            CancellationToken.None);
+                }
+                catch (Exception probeException)
+                {
+                    _logger.LogWarning(
+                        probeException,
+                        "Could not determine whether translation completion committed for request {RequestId}",
+                        translationRequest.Id);
+                }
+            }
+
+            if (!completionCommitted)
+            {
+                RollbackPublishedOutputs(publishedOutputs);
+                RollbackEmbeddedPublication(embeddedPublication);
+            }
+            else
+            {
+                CleanupEmbeddedPublicationBackups(embeddedPublication);
+                CleanupPublicationBackups(publishedOutputs);
+            }
+
+            CleanupStagedOutputArtifacts(
+                writtenOutput.StagedOutputs,
+                writtenOutput.StagedEmbeddedOutputs);
+            throw;
+        }
+        finally
+        {
+            if (transaction != null)
+            {
+                await transaction.DisposeAsync();
+            }
+
+            if (publicationLease != null)
+            {
+                await publicationLease.DisposeAsync();
+            }
         }
 
         await _dbContext.Entry(translationRequest).ReloadAsync(cancellationToken);
@@ -1856,7 +2704,7 @@ Exception? lastException = null;
         {
             await _uploadWorkspaceService.HandleRequestCompletedAsync(
                 translationRequest,
-                outputPaths,
+                writtenOutput.OutputPaths,
                 cancellationToken);
         }
 
@@ -1864,14 +2712,17 @@ Exception? lastException = null;
         await _progressService.Emit(translationRequest, 100);
         if (_translationCheckpointService != null)
         {
-            await _translationCheckpointService.DeleteAsync(translationRequest.Id, cancellationToken);
+            await _translationCheckpointService.DeleteAsync(
+                translationRequest.Id,
+                cancellationToken,
+                ownershipToken);
         }
 
         try
         {
             await RefreshEmbeddedSubtitleIndexAfterEmbeddedOutputAsync(
                 translationRequest,
-                outputPaths,
+                writtenOutput.OutputPaths,
                 cancellationToken);
         }
         catch (Exception ex)
@@ -1926,8 +2777,11 @@ Exception? lastException = null;
         }
     }
 
-    internal async Task HandleCancellation(TranslationRequest request)
+    internal async Task HandleCancellation(
+        TranslationRequest request,
+        string? ownershipToken = null)
     {
+        ownershipToken = ResolveOwnershipToken(request, ownershipToken);
         var cleanupToken = CancellationToken.None;
 
         var translationRequest =
@@ -1941,12 +2795,36 @@ Exception? lastException = null;
 
         var now = DateTime.UtcNow;
         var expectedStatus = translationRequest.Status;
-        var rowsUpdated = await _dbContext.TranslationRequests
+        var cleanupOwner = $"cancellation:{Guid.NewGuid():N}";
+        var ownershipQuery = _dbContext.TranslationRequests
             .Where(item => item.Id == request.Id &&
                            item.Status == expectedStatus &&
+                           item.JobId == ownershipToken &&
                            (item.Status == TranslationStatus.Pending ||
                             item.Status == TranslationStatus.InProgress ||
-                            item.Status == TranslationStatus.Paused))
+                            item.Status == TranslationStatus.Paused));
+
+        var rowsClaimed = await ownershipQuery
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.Status, TranslationStatus.InProgress)
+                .SetProperty(item => item.JobId, cleanupOwner)
+                .SetProperty(item => item.UpdatedAt, now), cleanupToken);
+
+        if (rowsClaimed == 0)
+        {
+            return;
+        }
+
+        await _dbContext.Entry(translationRequest).ReloadAsync(cleanupToken);
+        await DeleteCheckpointSafelyAsync(
+            translationRequest.Id,
+            cleanupOwner,
+            cleanupToken);
+
+        var rowsUpdated = await _dbContext.TranslationRequests
+            .Where(item => item.Id == request.Id &&
+                           item.Status == TranslationStatus.InProgress &&
+                           item.JobId == cleanupOwner)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(item => item.CompletedAt, now)
                 .SetProperty(item => item.Status, TranslationStatus.Cancelled)
@@ -1955,6 +2833,7 @@ Exception? lastException = null;
                 .SetProperty(item => item.PauseReason, (string?)null)
                 .SetProperty(item => item.PausedProvider, (string?)null)
                 .SetProperty(item => item.NextRetryAt, (DateTime?)null)
+                .SetProperty(item => item.JobId, (string?)null)
                 .SetProperty(item => item.UpdatedAt, now), cleanupToken);
 
         if (rowsUpdated == 0)
@@ -1973,10 +2852,6 @@ Exception? lastException = null;
         await _translationRequestService.ClearMediaHash(translationRequest);
         await _translationRequestService.UpdateActiveCount();
         await _progressService.Emit(translationRequest, 0);
-        if (_translationCheckpointService != null)
-        {
-            await _translationCheckpointService.DeleteAsync(translationRequest.Id, cleanupToken);
-        }
         await RefreshTranslationStateAsync(translationRequest, cleanupToken);
     }
 
@@ -1985,8 +2860,10 @@ Exception? lastException = null;
         EmbeddedSubtitle? selectedSubtitle,
         IReadOnlyList<SubtitleItem> subtitles,
         IReadOnlyDictionary<string, string> settings,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? ownershipToken = null)
     {
+        ownershipToken = ResolveOwnershipToken(request, ownershipToken);
         var reason = GetUnsafeSourceCancellationReason(
             request,
             selectedSubtitle,
@@ -2001,10 +2878,33 @@ Exception? lastException = null;
         const string failureMessage =
             "Translation failed before execution because the selected source is obsolete or unsafe.";
         var now = DateTime.UtcNow;
+        var cleanupOwner = $"unsafe-source:{Guid.NewGuid():N}";
+
+        var unsafeSourceQuery = _dbContext.TranslationRequests
+            .Where(item => item.Id == request.Id &&
+                          item.Status == TranslationStatus.InProgress &&
+                          item.JobId == ownershipToken);
+
+        var rowsClaimed = await unsafeSourceQuery
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.JobId, cleanupOwner)
+                .SetProperty(item => item.UpdatedAt, now), cancellationToken);
+
+        if (rowsClaimed == 0)
+        {
+            _logger.LogInformation(
+                "Skipping obsolete unsafe source failure for translation request {RequestId} because it is no longer active",
+                request.Id);
+            return true;
+        }
+
+        await _dbContext.Entry(request).ReloadAsync(cancellationToken);
+        await DeleteCheckpointSafelyAsync(request.Id, cleanupOwner, cancellationToken);
 
         var rowsUpdated = await _dbContext.TranslationRequests
             .Where(item => item.Id == request.Id &&
-                          item.Status == TranslationStatus.InProgress)
+                          item.Status == TranslationStatus.InProgress &&
+                          item.JobId == cleanupOwner)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(item => item.CompletedAt, (DateTime?)null)
                 .SetProperty(item => item.Status, TranslationStatus.Failed)
@@ -2015,12 +2915,13 @@ Exception? lastException = null;
                 .SetProperty(item => item.PauseReason, (string?)null)
                 .SetProperty(item => item.PausedProvider, (string?)null)
                 .SetProperty(item => item.NextRetryAt, (DateTime?)null)
+                .SetProperty(item => item.JobId, (string?)null)
                 .SetProperty(item => item.UpdatedAt, now), cancellationToken);
 
         if (rowsUpdated == 0)
         {
             _logger.LogInformation(
-                "Skipping obsolete unsafe source failure for translation request {RequestId} because it is no longer active",
+                "Skipping obsolete unsafe source failure for translation request {RequestId} because its cleanup ownership was lost",
                 request.Id);
             return true;
         }
@@ -2043,13 +2944,44 @@ Exception? lastException = null;
         await _translationRequestService.ClearMediaHash(request);
         await _translationRequestService.UpdateActiveCount();
         await _progressService.Emit(request, 0);
-        if (_translationCheckpointService != null)
-        {
-            await _translationCheckpointService.DeleteAsync(request.Id, cancellationToken);
-        }
 
         await RefreshTranslationStateAsync(request, cancellationToken);
         return true;
+    }
+
+    private async Task DeleteCheckpointSafelyAsync(
+        int requestId,
+        string? ownershipToken,
+        CancellationToken cancellationToken)
+    {
+        if (_translationCheckpointService == null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _translationCheckpointService.DeleteAsync(
+                requestId,
+                cancellationToken,
+                ownershipToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Failed to delete the translation checkpoint for request {RequestId} before releasing attempt ownership",
+                requestId);
+        }
+    }
+
+    private static string? ResolveOwnershipToken(
+        TranslationRequest request,
+        string? ownershipToken)
+    {
+        return string.IsNullOrWhiteSpace(ownershipToken)
+            ? request.JobId
+            : ownershipToken;
     }
 
     internal static string? GetUnsafeSourceCancellationReason(

@@ -20,6 +20,7 @@ public class DismissAllQualityAuditFindingsRequest
 
 public class TranslationCompareEditRequest
 {
+    public string? SourceFingerprint { get; set; }
     public List<TranslationCompareEdit> Edits { get; set; } = [];
 }
 

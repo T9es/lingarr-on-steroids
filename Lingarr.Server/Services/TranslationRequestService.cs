@@ -26,6 +26,25 @@ public class TranslationRequestService : ITranslationRequestService
         status == TranslationStatus.Pending ||
         status == TranslationStatus.InProgress ||
         status == TranslationStatus.Paused;
+
+    private void CancelCapturedAttempt(int requestId, CancellationToken expectedToken)
+    {
+        if (expectedToken == CancellationToken.None)
+        {
+            return;
+        }
+
+        _cancellationService.CancelJob(requestId, expectedToken);
+    }
+
+    private CancellationToken GetCapturedAttemptToken(
+        int requestId,
+        string? expectedOwnershipToken)
+    {
+        return string.IsNullOrWhiteSpace(expectedOwnershipToken)
+            ? _cancellationService.GetToken(requestId)
+            : _cancellationService.GetToken(requestId, expectedOwnershipToken);
+    }
     
     private readonly LingarrDbContext _dbContext;
     private readonly ITranslationWorkerService _workerService;
@@ -42,6 +61,9 @@ public class TranslationRequestService : ITranslationRequestService
     private readonly ICustomMediaStateService _customMediaStateService;
     private readonly ITranslationCheckpointService? _translationCheckpointService;
     static private Dictionary<int, CancellationTokenSource> _asyncTranslationJobs = new Dictionary<int, CancellationTokenSource>();
+
+    internal Func<int, Task>? BeforeFailedRequestDeletionAsync { get; set; }
+    internal Func<int, Task>? BeforeFailedRequestRetryAsync { get; set; }
 
     public TranslationRequestService(
         LingarrDbContext dbContext,
@@ -362,9 +384,9 @@ public class TranslationRequestService : ITranslationRequestService
                          tr.Status == TranslationStatus.Interrupted)
             .OrderByDescending(tr => tr.CompletedAt);
         var failedTotalCount = await failedQuery.CountAsync();
-        var failedRequests = await failedQuery
-            .Take(sectionLimit)
-            .ToListAsync();
+        // The failed section is the operator's attention queue. Return it in full so
+        // TotalCount never describes rows that the panel cannot reach.
+        var failedRequests = await failedQuery.ToListAsync();
 
         var inProgressQuery = _dbContext.TranslationRequests
             .AsNoTracking()
@@ -438,23 +460,22 @@ public class TranslationRequestService : ITranslationRequestService
         foreach (var request in activeRequests)
         {
             var expectedStatus = request.Status;
+            var expectedJobId = request.JobId;
+            var capturedCancellationToken = GetCapturedAttemptToken(request.Id, expectedJobId);
+            var cleanupOwner = $"interrupt:{Guid.NewGuid():N}";
             var rowsUpdated = await _dbContext.TranslationRequests
                 .Where(item => item.Id == request.Id &&
                                item.MediaType == mediaType &&
                                item.WorkloadKind == TranslationWorkloadKind.Library &&
                                item.MediaId == mediaId &&
                                item.Status == expectedStatus &&
+                               item.JobId == expectedJobId &&
                                (item.Status == TranslationStatus.Pending ||
                                 item.Status == TranslationStatus.InProgress ||
                                 item.Status == TranslationStatus.Paused))
                 .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(item => item.CompletedAt, now)
-                    .SetProperty(item => item.Status, TranslationStatus.Interrupted)
-                    .SetProperty(item => item.IsActive, (bool?)null)
-                    .SetProperty(item => item.PausedAt, (DateTime?)null)
-                    .SetProperty(item => item.PauseReason, (string?)null)
-                    .SetProperty(item => item.PausedProvider, (string?)null)
-                    .SetProperty(item => item.NextRetryAt, (DateTime?)null)
+                    .SetProperty(item => item.Status, TranslationStatus.InProgress)
+                    .SetProperty(item => item.JobId, cleanupOwner)
                     .SetProperty(item => item.UpdatedAt, now));
 
             if (rowsUpdated == 0)
@@ -463,32 +484,58 @@ public class TranslationRequestService : ITranslationRequestService
             }
 
             await _dbContext.Entry(request).ReloadAsync();
-            interruptedRequests.Add(request);
-        }
-
-        if (interruptedRequests.Count == 0)
-        {
-            return 0;
-        }
-
-        foreach (var request in interruptedRequests)
-        {
-            _cancellationService.CancelJob(request.Id);
+            CancelCapturedAttempt(request.Id, capturedCancellationToken);
 
             if (_asyncTranslationJobs.ContainsKey(request.Id))
             {
                 await _asyncTranslationJobs[request.Id].CancelAsync();
             }
-        }
 
-        foreach (var request in interruptedRequests)
-        {
-            await ClearMediaHash(request);
-            await _progressService.Emit(request, 0);
             if (_translationCheckpointService != null)
             {
-                await _translationCheckpointService.DeleteAsync(request.Id, CancellationToken.None);
+                try
+                {
+                    await _translationCheckpointService.DeleteAsync(request.Id, CancellationToken.None);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(
+                        ex,
+                        "Failed to delete the translation checkpoint for interrupted request {RequestId} before releasing attempt ownership",
+                        request.Id);
+                }
             }
+
+            var finalized = await _dbContext.TranslationRequests
+                .Where(item => item.Id == request.Id &&
+                               item.Status == TranslationStatus.InProgress &&
+                               item.JobId == cleanupOwner)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(item => item.CompletedAt, now)
+                    .SetProperty(item => item.Status, TranslationStatus.Interrupted)
+                    .SetProperty(item => item.IsActive, (bool?)null)
+                    .SetProperty(item => item.JobId, (string?)null)
+                    .SetProperty(item => item.StartedAt, (DateTime?)null)
+                    .SetProperty(item => item.PausedAt, (DateTime?)null)
+                    .SetProperty(item => item.PauseReason, (string?)null)
+                    .SetProperty(item => item.PausedProvider, (string?)null)
+                    .SetProperty(item => item.NextRetryAt, (DateTime?)null)
+                    .SetProperty(item => item.UpdatedAt, now));
+
+            if (finalized == 0)
+            {
+                continue;
+            }
+
+            await _dbContext.Entry(request).ReloadAsync();
+            interruptedRequests.Add(request);
+            await ClearMediaHash(request);
+            await _progressService.Emit(request, 0);
+        }
+
+        if (interruptedRequests.Count == 0)
+        {
+            return 0;
         }
 
         await UpdateActiveCount();
@@ -514,10 +561,13 @@ public class TranslationRequestService : ITranslationRequestService
         }
 
         var expectedStatus = translationRequest.Status;
+        var expectedJobId = translationRequest.JobId;
+        var cancellationToken = GetCapturedAttemptToken(translationRequest.Id, expectedJobId);
         var now = DateTime.UtcNow;
         var rowsUpdated = await _dbContext.TranslationRequests
             .Where(item => item.Id == translationRequest.Id &&
                            item.Status == expectedStatus &&
+                           item.JobId == expectedJobId &&
                            (item.Status == TranslationStatus.Pending ||
                             item.Status == TranslationStatus.InProgress ||
                             item.Status == TranslationStatus.Paused))
@@ -525,6 +575,8 @@ public class TranslationRequestService : ITranslationRequestService
                 .SetProperty(item => item.CompletedAt, now)
                 .SetProperty(item => item.Status, TranslationStatus.Cancelled)
                 .SetProperty(item => item.IsActive, (bool?)null)
+                .SetProperty(item => item.JobId, (string?)null)
+                .SetProperty(item => item.StartedAt, (DateTime?)null)
                 .SetProperty(item => item.PausedAt, (DateTime?)null)
                 .SetProperty(item => item.PauseReason, (string?)null)
                 .SetProperty(item => item.PausedProvider, (string?)null)
@@ -539,7 +591,7 @@ public class TranslationRequestService : ITranslationRequestService
         await _dbContext.Entry(translationRequest).ReloadAsync();
 
         // Trigger cooperative cancellation for running jobs after the compare-and-set succeeds.
-        _cancellationService.CancelJob(translationRequest.Id);
+        CancelCapturedAttempt(translationRequest.Id, cancellationToken);
 
         // Also cancel any async translation jobs
         if (_asyncTranslationJobs.ContainsKey(translationRequest.Id))
@@ -568,9 +620,19 @@ public class TranslationRequestService : ITranslationRequestService
         {
             return null;
         }
-        
-        _dbContext.TranslationRequests.Remove(translationRequest);
-        await _dbContext.SaveChangesAsync();
+
+        var cancellationToken = GetCapturedAttemptToken(translationRequest.Id, translationRequest.JobId);
+        if (!await TryDeleteTranslationRequestAsync(translationRequest))
+        {
+            return $"Translation request with id {cancelRequest.Id} was not removed because its state changed";
+        }
+
+        CancelCapturedAttempt(translationRequest.Id, cancellationToken);
+        if (_asyncTranslationJobs.ContainsKey(translationRequest.Id))
+        {
+            await _asyncTranslationJobs[translationRequest.Id].CancelAsync();
+        }
+
         if (_translationCheckpointService != null)
         {
             await _translationCheckpointService.DeleteAsync(translationRequest.Id, CancellationToken.None);
@@ -652,7 +714,7 @@ public class TranslationRequestService : ITranslationRequestService
             foreach (var failedRequest in failedBatch)
             {
                 lastProcessedId = failedRequest.Id;
-                NormalizeWorkloadIdentity(failedRequest);
+                var expectedStatus = failedRequest.Status;
                 var duplicateKey = BuildRetryDuplicateKey(failedRequest);
                 if (string.IsNullOrWhiteSpace(duplicateKey))
                 {
@@ -679,19 +741,24 @@ public class TranslationRequestService : ITranslationRequestService
                     continue;
                 }
 
-                await PopulateOutputMetadataAsync(failedRequest);
-                if (_translationCheckpointService != null)
+                if (BeforeFailedRequestRetryAsync != null)
                 {
-                    await _translationCheckpointService.DeleteAsync(failedRequest.Id, CancellationToken.None);
+                    await BeforeFailedRequestRetryAsync(failedRequest.Id);
                 }
 
-                failedRequest.Status = TranslationStatus.Pending;
-                failedRequest.IsActive = true;
+                NormalizeWorkloadIdentity(failedRequest);
+                await PopulateOutputMetadataAsync(failedRequest);
                 PopulateSourceDedupeKey(failedRequest);
-                failedRequest.IsPriority = true;
-                failedRequest.JobId = null;
-                failedRequest.CompletedAt = null;
-                failedRequest.NextRetryAt = null;
+
+                if (!await TryRetryFailedRequestAsync(failedRequest, expectedStatus))
+                {
+                    if (IsActiveStatus(failedRequest.Status))
+                    {
+                        activeDuplicateKeys.Add(duplicateKey);
+                    }
+
+                    continue;
+                }
 
                 retriedBatch.Add(failedRequest);
                 activeDuplicateKeys.Add(duplicateKey);
@@ -702,7 +769,6 @@ public class TranslationRequestService : ITranslationRequestService
                 continue;
             }
 
-            await _dbContext.SaveChangesAsync();
             retriedCount += retriedBatch.Count;
             foreach (var retriedRequest in retriedBatch)
             {
@@ -742,12 +808,95 @@ public class TranslationRequestService : ITranslationRequestService
         return response;
     }
 
+    private async Task<bool> TryRetryFailedRequestAsync(
+        TranslationRequest request,
+        TranslationStatus expectedStatus)
+    {
+        if (expectedStatus != TranslationStatus.Failed &&
+            expectedStatus != TranslationStatus.Interrupted)
+        {
+            return false;
+        }
+
+        var now = DateTime.UtcNow;
+        var workloadKind = request.WorkloadKind;
+        var workloadItemKey = request.WorkloadItemKey;
+        var sourceSubtitleFormat = request.SourceSubtitleFormat;
+        var subtitleOutputMode = request.SubtitleOutputMode;
+        var requiredOutputFormats = request.RequiredOutputFormats;
+        var sourceDedupeKey = request.SourceDedupeKey;
+        int rowsUpdated;
+
+        try
+        {
+            rowsUpdated = await _dbContext.TranslationRequests
+                .Where(item => item.Id == request.Id && item.Status == expectedStatus)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(item => item.WorkloadKind, workloadKind)
+                    .SetProperty(item => item.WorkloadItemKey, workloadItemKey)
+                    .SetProperty(item => item.SourceSubtitleFormat, sourceSubtitleFormat)
+                    .SetProperty(item => item.SubtitleOutputMode, subtitleOutputMode)
+                    .SetProperty(item => item.RequiredOutputFormats, requiredOutputFormats)
+                    .SetProperty(item => item.Status, TranslationStatus.Pending)
+                    .SetProperty(item => item.IsActive, (bool?)true)
+                    .SetProperty(item => item.SourceDedupeKey, sourceDedupeKey)
+                    .SetProperty(item => item.IsPriority, true)
+                    .SetProperty(item => item.JobId, (string?)null)
+                    .SetProperty(item => item.CompletedAt, (DateTime?)null)
+                    .SetProperty(item => item.NextRetryAt, (DateTime?)null)
+                    .SetProperty(item => item.UpdatedAt, now));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException)
+        {
+            await _dbContext.Entry(request).ReloadAsync();
+            if (request.Status != expectedStatus)
+            {
+                return false;
+            }
+
+            request.WorkloadKind = workloadKind;
+            request.WorkloadItemKey = workloadItemKey;
+            request.SourceSubtitleFormat = sourceSubtitleFormat;
+            request.SubtitleOutputMode = subtitleOutputMode;
+            request.RequiredOutputFormats = requiredOutputFormats;
+            request.Status = TranslationStatus.Pending;
+            request.IsActive = true;
+            request.SourceDedupeKey = sourceDedupeKey;
+            request.IsPriority = true;
+            request.JobId = null;
+            request.CompletedAt = null;
+            request.NextRetryAt = null;
+            request.UpdatedAt = now;
+            await _dbContext.SaveChangesAsync();
+            return true;
+        }
+
+        if (rowsUpdated == 0)
+        {
+            await _dbContext.Entry(request).ReloadAsync();
+            return false;
+        }
+
+        await _dbContext.Entry(request).ReloadAsync();
+        return true;
+    }
+
     private async Task<TranslationRequest?> ResolvePermanentlyFailedRequestAsync(TranslationRequest failedRequest)
     {
         try
         {
-            _dbContext.TranslationRequests.Remove(failedRequest);
-            await _dbContext.SaveChangesAsync();
+            if (!await TryDeleteFailedRequestAsync(
+                    failedRequest.Id,
+                    failedRequest.Status,
+                    failedRequest.JobId))
+            {
+                return null;
+            }
+
+            if (_translationCheckpointService != null)
+            {
+                await _translationCheckpointService.DeleteAsync(failedRequest.Id, CancellationToken.None);
+            }
 
             await UpdateMediaState(failedRequest);
 
@@ -775,6 +924,8 @@ public class TranslationRequestService : ITranslationRequestService
             .Select(tr => new
             {
                 tr.Id,
+                tr.Status,
+                tr.JobId,
                 tr.WorkloadKind,
                 tr.MediaId,
                 tr.MediaType,
@@ -791,35 +942,34 @@ public class TranslationRequestService : ITranslationRequestService
 
         foreach (var batch in failedRequests.Chunk(batchSize))
         {
-            var ids = batch.Select(r => r.Id).ToList();
-            var toDelete = await _dbContext.TranslationRequests
-                .Where(tr => ids.Contains(tr.Id) &&
-                             (tr.Status == TranslationStatus.Failed ||
-                              tr.Status == TranslationStatus.Interrupted))
-                .ToListAsync();
-
-            if (toDelete.Count == 0)
+            foreach (var failedRequest in batch)
             {
-                continue;
-            }
-
-            _dbContext.TranslationRequests.RemoveRange(toDelete);
-            await _dbContext.SaveChangesAsync();
-            if (_translationCheckpointService != null)
-            {
-                foreach (var requestId in toDelete.Select(request => request.Id))
+                if (BeforeFailedRequestDeletionAsync != null)
                 {
-                    await _translationCheckpointService.DeleteAsync(requestId, CancellationToken.None);
+                    await BeforeFailedRequestDeletionAsync(failedRequest.Id);
+                }
+
+                if (!await TryDeleteFailedRequestAsync(
+                        failedRequest.Id,
+                        failedRequest.Status,
+                        failedRequest.JobId))
+                {
+                    continue;
+                }
+
+                totalRemoved++;
+                workloadsToUpdate.Add((
+                    failedRequest.WorkloadKind,
+                    failedRequest.MediaId,
+                    failedRequest.MediaType,
+                    failedRequest.CustomMediaItemId,
+                    failedRequest.UploadBatchFileId));
+
+                if (_translationCheckpointService != null)
+                {
+                    await _translationCheckpointService.DeleteAsync(failedRequest.Id, CancellationToken.None);
                 }
             }
-
-            totalRemoved += toDelete.Count;
-            workloadsToUpdate.AddRange(toDelete.Select(r => (
-                r.WorkloadKind,
-                r.MediaId,
-                r.MediaType,
-                r.CustomMediaItemId,
-                r.UploadBatchFileId)));
 
             await Task.Delay(50);
         }
@@ -848,6 +998,90 @@ public class TranslationRequestService : ITranslationRequestService
         return totalRemoved;
     }
 
+    private async Task<bool> TryDeleteTranslationRequestAsync(TranslationRequest request)
+    {
+        var expectedStatus = request.Status;
+        var expectedJobId = request.JobId;
+
+        try
+        {
+            var rowsDeleted = await _dbContext.TranslationRequests
+                .Where(item => item.Id == request.Id &&
+                               item.Status == expectedStatus &&
+                               item.JobId == expectedJobId)
+                .ExecuteDeleteAsync();
+
+            if (rowsDeleted == 0)
+            {
+                return false;
+            }
+
+            _dbContext.Entry(request).State = EntityState.Detached;
+            return true;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException)
+        {
+            await _dbContext.Entry(request).ReloadAsync();
+            if (request.Status != expectedStatus ||
+                !string.Equals(request.JobId, expectedJobId, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            _dbContext.TranslationRequests.Remove(request);
+            await _dbContext.SaveChangesAsync();
+            return true;
+        }
+    }
+
+    private async Task<bool> TryDeleteFailedRequestAsync(
+        int requestId,
+        TranslationStatus expectedStatus,
+        string? expectedJobId)
+    {
+        try
+        {
+            var rowsDeleted = await _dbContext.TranslationRequests
+                .Where(request => request.Id == requestId &&
+                                  request.Status == expectedStatus &&
+                                  request.JobId == expectedJobId &&
+                                  (request.Status == TranslationStatus.Failed ||
+                                   request.Status == TranslationStatus.Interrupted))
+                .ExecuteDeleteAsync();
+
+            return rowsDeleted > 0;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException)
+        {
+            var trackedRequest = _dbContext.TranslationRequests.Local
+                .FirstOrDefault(item => item.Id == requestId);
+            TranslationRequest? request = trackedRequest;
+            if (request != null)
+            {
+                await _dbContext.Entry(request).ReloadAsync();
+            }
+            else
+            {
+                request = await _dbContext.TranslationRequests
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(item => item.Id == requestId);
+            }
+
+            if (request == null ||
+                request.Status != expectedStatus ||
+                !string.Equals(request.JobId, expectedJobId, StringComparison.Ordinal) ||
+                (request.Status != TranslationStatus.Failed &&
+                 request.Status != TranslationStatus.Interrupted))
+            {
+                return false;
+            }
+
+            _dbContext.TranslationRequests.Remove(request);
+            await _dbContext.SaveChangesAsync();
+            return true;
+        }
+    }
+
     /// <inheritdoc />
     public async Task<RetryTranslationRequestResponse?> RetryTranslationRequest(TranslationRequest retryRequest)
     {
@@ -858,6 +1092,7 @@ public class TranslationRequestService : ITranslationRequestService
             return null;
         }
 
+        var expectedStatus = translationRequest.Status;
         var duplicateKey = BuildRetryDuplicateKey(translationRequest);
         if (!string.IsNullOrWhiteSpace(duplicateKey))
         {
@@ -874,23 +1109,25 @@ public class TranslationRequestService : ITranslationRequestService
             }
         }
 
-        NormalizeWorkloadIdentity(translationRequest);
-        await PopulateOutputMetadataAsync(translationRequest);
-        if (_translationCheckpointService != null)
+        if (BeforeFailedRequestRetryAsync != null)
         {
-            await _translationCheckpointService.DeleteAsync(translationRequest.Id, CancellationToken.None);
+            await BeforeFailedRequestRetryAsync(translationRequest.Id);
         }
 
-        translationRequest.Status = TranslationStatus.Pending;
-        translationRequest.IsActive = true;
+        NormalizeWorkloadIdentity(translationRequest);
+        await PopulateOutputMetadataAsync(translationRequest);
         PopulateSourceDedupeKey(translationRequest);
-        translationRequest.IsPriority = true;
-        translationRequest.JobId = null;
-        translationRequest.CompletedAt = null;
-        // Keep RetryCount and FailedAt for history, but clear NextRetryAt
-        translationRequest.NextRetryAt = null;
-        
-        await _dbContext.SaveChangesAsync();
+
+        if (!await TryRetryFailedRequestAsync(translationRequest, expectedStatus))
+        {
+            return new RetryTranslationRequestResponse
+            {
+                RequestId = retryRequest.Id,
+                Retried = false,
+                BlockedByActiveRequest = false,
+                Message = $"Translation request with id {retryRequest.Id} was not restarted because its state changed to {translationRequest.Status}."
+            };
+        }
 
         _workerService.Signal();
         await UpdateMediaState(translationRequest);
@@ -1246,20 +1483,16 @@ public class TranslationRequestService : ITranslationRequestService
                 continue;
             }
 
-            // For Pending jobs, trigger cooperative cancellation and reset
-            _cancellationService.CancelJob(request.Id);
-            
-            // Mark as Pending to be picked up by worker
-            request.Status = TranslationStatus.Pending;
-            request.PausedAt = null;
-            request.PauseReason = null;
-            request.PausedProvider = null;
-            request.NextRetryAt = null;
-            reenqueued++;
+            if (await TryReenqueueQueuedRequestAsync(request))
+            {
+                reenqueued++;
+            }
+            else if (await GetCurrentTranslationStatusAsync(request.Id) == TranslationStatus.InProgress)
+            {
+                skippedProcessing++;
+            }
         }
 
-        await _dbContext.SaveChangesAsync();
-        
         // Signal worker service that work is available
         _workerService.Signal();
 
@@ -1269,6 +1502,117 @@ public class TranslationRequestService : ITranslationRequestService
             skippedProcessing);
 
         return (reenqueued, skippedProcessing);
+    }
+
+    private async Task<bool> TryReenqueueQueuedRequestAsync(TranslationRequest request)
+    {
+        var expectedStatus = request.Status;
+        if (expectedStatus != TranslationStatus.Pending &&
+            expectedStatus != TranslationStatus.Paused)
+        {
+            return false;
+        }
+
+        var expectedJobId = request.JobId;
+        var cancellationToken = GetCapturedAttemptToken(request.Id, expectedJobId);
+        var maintenanceOwner = $"maintenance:{Guid.NewGuid():N}";
+        var rowsUpdated = 0;
+        try
+        {
+            rowsUpdated = await _dbContext.TranslationRequests
+                .Where(item => item.Id == request.Id &&
+                               item.Status == expectedStatus &&
+                               item.JobId == expectedJobId)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(item => item.Status, TranslationStatus.InProgress)
+                    .SetProperty(item => item.IsActive, (bool?)true)
+                    .SetProperty(item => item.JobId, maintenanceOwner)
+                    .SetProperty(item => item.StartedAt, (DateTime?)null)
+                    .SetProperty(item => item.PausedAt, (DateTime?)null)
+                    .SetProperty(item => item.PauseReason, (string?)null)
+                    .SetProperty(item => item.PausedProvider, (string?)null)
+                    .SetProperty(item => item.NextRetryAt, (DateTime?)null));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException)
+        {
+            await _dbContext.Entry(request).ReloadAsync();
+            if (request.Status != expectedStatus ||
+                !string.Equals(request.JobId, expectedJobId, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            request.Status = TranslationStatus.InProgress;
+            request.IsActive = true;
+            request.JobId = maintenanceOwner;
+            request.StartedAt = null;
+            request.PausedAt = null;
+            request.PauseReason = null;
+            request.PausedProvider = null;
+            request.NextRetryAt = null;
+            await _dbContext.SaveChangesAsync();
+            rowsUpdated = 1;
+        }
+
+        if (rowsUpdated == 0)
+        {
+            return false;
+        }
+
+        await _dbContext.Entry(request).ReloadAsync();
+
+        // The request is parked under a private maintenance owner before cancellation.
+        // This prevents a replacement worker from claiming it during this handoff.
+        CancelCapturedAttempt(request.Id, cancellationToken);
+
+        var now = DateTime.UtcNow;
+        try
+        {
+            rowsUpdated = await _dbContext.TranslationRequests
+                .Where(item => item.Id == request.Id &&
+                               item.Status == TranslationStatus.InProgress &&
+                               item.JobId == maintenanceOwner)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(item => item.Status, TranslationStatus.Pending)
+                    .SetProperty(item => item.IsActive, (bool?)true)
+                    .SetProperty(item => item.JobId, (string?)null)
+                    .SetProperty(item => item.StartedAt, (DateTime?)null)
+                    .SetProperty(item => item.PausedAt, (DateTime?)null)
+                    .SetProperty(item => item.PauseReason, (string?)null)
+                    .SetProperty(item => item.PausedProvider, (string?)null)
+                    .SetProperty(item => item.NextRetryAt, (DateTime?)null)
+                    .SetProperty(item => item.UpdatedAt, now));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException)
+        {
+            await _dbContext.Entry(request).ReloadAsync();
+            if (request.Status != TranslationStatus.InProgress ||
+                !string.Equals(request.JobId, maintenanceOwner, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            request.Status = TranslationStatus.Pending;
+            request.IsActive = true;
+            request.JobId = null;
+            request.StartedAt = null;
+            request.PausedAt = null;
+            request.PauseReason = null;
+            request.PausedProvider = null;
+            request.NextRetryAt = null;
+            request.UpdatedAt = now;
+            await _dbContext.SaveChangesAsync();
+            return true;
+        }
+
+        if (rowsUpdated == 0)
+        {
+            await _dbContext.Entry(request).ReloadAsync();
+            return false;
+        }
+
+        await _dbContext.Entry(request).ReloadAsync();
+        return true;
     }
 
     /// <inheritdoc />
@@ -1362,21 +1706,35 @@ public class TranslationRequestService : ITranslationRequestService
                     continue;
                 }
 
-                // Cancel the job if it's running (cooperative cancellation)
-                _cancellationService.CancelJob(duplicate.Id);
-
                 duplicatesToRemove.Add(duplicate);
             }
         }
 
+        var removedDuplicates = 0;
         if (duplicatesToRemove.Count > 0)
         {
-            var duplicateIds = duplicatesToRemove.Select(request => request.Id).ToList();
-            _dbContext.TranslationRequests.RemoveRange(duplicatesToRemove);
-            await _dbContext.SaveChangesAsync();
+            var removedDuplicateIds = new List<int>();
+            foreach (var duplicate in duplicatesToRemove)
+            {
+                var cancellationToken = GetCapturedAttemptToken(duplicate.Id, duplicate.JobId);
+
+                if (await TryDeleteQueuedRequestAsync(duplicate, statuses))
+                {
+                    CancelCapturedAttempt(duplicate.Id, cancellationToken);
+                    removedDuplicates++;
+                    removedDuplicateIds.Add(duplicate.Id);
+                    continue;
+                }
+
+                if (await GetCurrentTranslationStatusAsync(duplicate.Id) == TranslationStatus.InProgress)
+                {
+                    skippedProcessing++;
+                }
+            }
+
             if (_translationCheckpointService != null)
             {
-                foreach (var requestId in duplicateIds)
+                foreach (var requestId in removedDuplicateIds)
                 {
                     await _translationCheckpointService.DeleteAsync(requestId, CancellationToken.None);
                 }
@@ -1384,14 +1742,60 @@ public class TranslationRequestService : ITranslationRequestService
             await UpdateActiveCount();
         }
 
-        var removedDuplicates = duplicatesToRemove.Count;
-
         _logger.LogInformation(
             "Removed {RemovedCount} duplicate translation request(s). Skipped {SkippedCount} processing duplicate(s).",
             removedDuplicates,
             skippedProcessing);
 
         return (removedDuplicates, skippedProcessing);
+    }
+
+    private async Task<bool> TryDeleteQueuedRequestAsync(
+        TranslationRequest request,
+        TranslationStatus[] allowedStatuses)
+    {
+        var expectedStatus = request.Status;
+        var expectedJobId = request.JobId;
+        try
+        {
+            var rowsDeleted = await _dbContext.TranslationRequests
+                .Where(item => item.Id == request.Id &&
+                               item.Status == expectedStatus &&
+                               item.JobId == expectedJobId &&
+                               allowedStatuses.Contains(item.Status))
+                .ExecuteDeleteAsync();
+
+            if (rowsDeleted == 0)
+            {
+                return false;
+            }
+
+            _dbContext.Entry(request).State = EntityState.Detached;
+            return true;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException)
+        {
+            await _dbContext.Entry(request).ReloadAsync();
+            if (request.Status != expectedStatus ||
+                !string.Equals(request.JobId, expectedJobId, StringComparison.Ordinal) ||
+                !allowedStatuses.Contains(request.Status))
+            {
+                return false;
+            }
+
+            _dbContext.TranslationRequests.Remove(request);
+            await _dbContext.SaveChangesAsync();
+            return true;
+        }
+    }
+
+    private Task<TranslationStatus?> GetCurrentTranslationStatusAsync(int requestId)
+    {
+        return _dbContext.TranslationRequests
+            .AsNoTracking()
+            .Where(request => request.Id == requestId)
+            .Select(request => (TranslationStatus?)request.Status)
+            .FirstOrDefaultAsync();
     }
 
     /// <inheritdoc />
@@ -1410,29 +1814,71 @@ public class TranslationRequestService : ITranslationRequestService
 
         foreach (var request in requests)
         {
+            var expectedStatus = request.Status;
+            var expectedJobId = request.JobId;
+            var cancellationToken = GetCapturedAttemptToken(request.Id, expectedJobId);
             var isProcessing = request.Status == TranslationStatus.InProgress;
-            _cancellationService.CancelJob(request.Id);
 
             var now = DateTime.UtcNow;
-            var rowsUpdated = await _dbContext.TranslationRequests
-                .Where(item => item.Id == request.Id && statuses.Contains(item.Status))
-                .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(item => item.Status, TranslationStatus.Cancelled)
-                    .SetProperty(item => item.IsActive, (bool?)null)
-                    .SetProperty(item => item.CompletedAt, now)
-                    .SetProperty(item => item.PausedAt, (DateTime?)null)
-                    .SetProperty(item => item.PauseReason, (string?)null)
-                    .SetProperty(item => item.PausedProvider, (string?)null)
-                    .SetProperty(item => item.NextRetryAt, (DateTime?)null)
-                    .SetProperty(item => item.UpdatedAt, now));
+            var rowsUpdated = 0;
+            try
+            {
+                rowsUpdated = await _dbContext.TranslationRequests
+                    .Where(item => item.Id == request.Id &&
+                                   item.Status == expectedStatus &&
+                                   item.JobId == expectedJobId &&
+                                   statuses.Contains(item.Status))
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(item => item.Status, TranslationStatus.Cancelled)
+                        .SetProperty(item => item.IsActive, (bool?)null)
+                        .SetProperty(item => item.JobId, (string?)null)
+                        .SetProperty(item => item.StartedAt, (DateTime?)null)
+                        .SetProperty(item => item.CompletedAt, now)
+                        .SetProperty(item => item.PausedAt, (DateTime?)null)
+                        .SetProperty(item => item.PauseReason, (string?)null)
+                        .SetProperty(item => item.PausedProvider, (string?)null)
+                        .SetProperty(item => item.NextRetryAt, (DateTime?)null)
+                        .SetProperty(item => item.UpdatedAt, now));
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException)
+            {
+                await _dbContext.Entry(request).ReloadAsync();
+                if (request.Status == expectedStatus &&
+                    string.Equals(request.JobId, expectedJobId, StringComparison.Ordinal) &&
+                    statuses.Contains(request.Status))
+                {
+                    request.Status = TranslationStatus.Cancelled;
+                    request.IsActive = null;
+                    request.JobId = null;
+                    request.StartedAt = null;
+                    request.CompletedAt = now;
+                    request.PausedAt = null;
+                    request.PauseReason = null;
+                    request.PausedProvider = null;
+                    request.NextRetryAt = null;
+                    request.UpdatedAt = now;
+                    await _dbContext.SaveChangesAsync();
+                    rowsUpdated = 1;
+                }
+            }
 
             if (rowsUpdated == 0)
             {
+                if (await GetCurrentTranslationStatusAsync(request.Id) == TranslationStatus.InProgress)
+                {
+                    skippedProcessing++;
+                }
+
                 continue;
             }
 
+            // The terminal CAS makes the request non-claimable before cancellation is signaled.
+            CancelCapturedAttempt(request.Id, cancellationToken);
+
             request.Status = TranslationStatus.Cancelled;
             request.IsActive = null;
+            request.JobId = null;
+            request.StartedAt = null;
             request.CompletedAt = now;
             cancelledRequests.Add(request);
             if (isProcessing)

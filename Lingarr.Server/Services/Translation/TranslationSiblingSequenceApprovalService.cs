@@ -38,7 +38,13 @@ public class TranslationSiblingSequenceApprovalService : ITranslationSiblingSequ
         MissingTranslationException exception,
         CancellationToken cancellationToken)
     {
-        await UpsertMissingCuesAsync(request.Id, exception.MissingCues, cancellationToken);
+        var sourceFingerprint = await GetCheckpointFingerprintAsync(request, cancellationToken);
+        await UpsertMissingCuesAsync(
+            request.Id,
+            exception.MissingCues,
+            sourceFingerprint,
+            request.JobId,
+            cancellationToken);
 
         if (!IsLibraryEpisodeRequest(request) ||
             exception.MissingCues.All(cue => !cue.AutoApprovalEligible))
@@ -334,26 +340,37 @@ public class TranslationSiblingSequenceApprovalService : ITranslationSiblingSequ
                 continue;
             }
 
+            var sourceFingerprint = await GetCheckpointFingerprintAsync(request, cancellationToken);
             var checkpoint = await _checkpointService.LoadByRequestIdAsync(
                 requestId,
                 cancellationToken) ?? new TranslationCheckpoint
                 {
                     TranslationRequestId = requestId,
-                    SourceFingerprint = request.SourceSnapshotFingerprint ?? string.Empty
+                    SourceFingerprint = sourceFingerprint
                 };
 
-            if (string.IsNullOrWhiteSpace(checkpoint.SourceFingerprint) &&
-                !string.IsNullOrWhiteSpace(request.SourceSnapshotFingerprint))
+            if (!string.Equals(
+                    checkpoint.SourceFingerprint,
+                    sourceFingerprint,
+                    StringComparison.Ordinal))
             {
-                checkpoint.SourceFingerprint = request.SourceSnapshotFingerprint;
+                checkpoint = new TranslationCheckpoint
+                {
+                    TranslationRequestId = requestId,
+                    SourceFingerprint = sourceFingerprint
+                };
             }
 
             foreach (var cue in cues.Where(item => approvedPositions.Contains(item.Position)))
             {
                 checkpoint.Translations[cue.Position] = cue.SourceText;
+                checkpoint.SourcePreservedPositions.Add(cue.Position);
             }
 
-            await _checkpointService.SaveCheckpointAsync(checkpoint, cancellationToken);
+            await _checkpointService.SaveCheckpointAsync(
+                checkpoint,
+                cancellationToken,
+                request.JobId);
         }
     }
 
@@ -405,8 +422,12 @@ public class TranslationSiblingSequenceApprovalService : ITranslationSiblingSequ
         var remainingCues = exception.MissingCues
             .Where(cue => !approvedPositions.Contains(cue.Position))
             .ToList();
-        if (remainingCues.Count == exception.MissingCues.Count ||
-            remainingCues.Count == 0)
+        if (remainingCues.Count == 0)
+        {
+            return null;
+        }
+
+        if (remainingCues.Count == exception.MissingCues.Count)
         {
             return exception;
         }
@@ -417,17 +438,29 @@ public class TranslationSiblingSequenceApprovalService : ITranslationSiblingSequ
     private async Task UpsertMissingCuesAsync(
         int requestId,
         IReadOnlyList<MissingTranslationCue> missingCues,
+        string sourceFingerprint,
+        string? ownershipToken,
         CancellationToken cancellationToken)
     {
         try
         {
-            await UpsertMissingCuesOnceAsync(requestId, missingCues, cancellationToken);
+            await UpsertMissingCuesOnceAsync(
+                requestId,
+                missingCues,
+                sourceFingerprint,
+                ownershipToken,
+                cancellationToken);
             await _dbContext.SaveChangesAsync(cancellationToken);
         }
         catch (DbUpdateException)
         {
             _dbContext.ChangeTracker.Clear();
-            await UpsertMissingCuesOnceAsync(requestId, missingCues, cancellationToken);
+            await UpsertMissingCuesOnceAsync(
+                requestId,
+                missingCues,
+                sourceFingerprint,
+                ownershipToken,
+                cancellationToken);
             await _dbContext.SaveChangesAsync(cancellationToken);
         }
     }
@@ -435,8 +468,34 @@ public class TranslationSiblingSequenceApprovalService : ITranslationSiblingSequ
     private async Task UpsertMissingCuesOnceAsync(
         int requestId,
         IReadOnlyList<MissingTranslationCue> missingCues,
+        string sourceFingerprint,
+        string? ownershipToken,
         CancellationToken cancellationToken)
     {
+        var checkpoint = await _checkpointService.LoadByRequestIdAsync(requestId, cancellationToken);
+        var sourcePreservedPositionsChanged = false;
+        if (checkpoint != null &&
+            !string.Equals(
+                checkpoint.SourceFingerprint,
+                sourceFingerprint,
+                StringComparison.Ordinal))
+        {
+            checkpoint = new TranslationCheckpoint
+            {
+                TranslationRequestId = requestId,
+                SourceFingerprint = sourceFingerprint
+            };
+            sourcePreservedPositionsChanged = true;
+        }
+
+        if (checkpoint != null)
+        {
+            foreach (var position in missingCues.Select(cue => cue.Position))
+            {
+                sourcePreservedPositionsChanged |= checkpoint.SourcePreservedPositions.Remove(position);
+            }
+        }
+
         var positions = missingCues.Select(item => item.Position).ToList();
         var existingCues = await _dbContext.TranslationFailedCues
             .Where(item => item.TranslationRequestId == requestId && positions.Contains(item.Position))
@@ -452,6 +511,8 @@ public class TranslationSiblingSequenceApprovalService : ITranslationSiblingSequ
                 existingCue.NormalizedText = normalizedText;
                 existingCue.TextHash = textHash;
                 existingCue.AutoApprovalEligible = missingCue.AutoApprovalEligible;
+                existingCue.AutoApprovedAt = null;
+                existingCue.ApprovalSequenceHash = null;
                 continue;
             }
 
@@ -464,6 +525,15 @@ public class TranslationSiblingSequenceApprovalService : ITranslationSiblingSequ
                 TextHash = textHash,
                 AutoApprovalEligible = missingCue.AutoApprovalEligible
             });
+        }
+
+        if (sourcePreservedPositionsChanged)
+        {
+            checkpoint!.UpdatedAtUtc = DateTime.UtcNow;
+            await _checkpointService.SaveCheckpointAsync(
+                checkpoint,
+                cancellationToken,
+                ownershipToken);
         }
     }
 
@@ -494,6 +564,37 @@ public class TranslationSiblingSequenceApprovalService : ITranslationSiblingSequ
     {
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(text));
         return Convert.ToHexString(bytes).ToLowerInvariant();
+    }
+
+    private static async Task<string> GetCheckpointFingerprintAsync(
+        TranslationRequest request,
+        CancellationToken cancellationToken)
+    {
+        var sourceIdentity = TranslationCheckpointService.GetFallbackCheckpointFingerprint(request);
+        if (string.IsNullOrWhiteSpace(request.SubtitleToTranslate))
+        {
+            return sourceIdentity;
+        }
+
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await using var stream = new FileStream(
+                request.SubtitleToTranslate,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete,
+                bufferSize: 64 * 1024,
+                options: FileOptions.Asynchronous | FileOptions.SequentialScan);
+            var contentHash = await SHA256.HashDataAsync(stream, cancellationToken);
+            return TranslationCheckpointService.BuildCheckpointFingerprint(
+                request,
+                Convert.ToHexString(contentHash));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            return sourceIdentity;
+        }
     }
 
     private sealed record MatchingRun(

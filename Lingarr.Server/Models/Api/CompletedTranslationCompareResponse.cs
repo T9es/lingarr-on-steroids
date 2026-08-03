@@ -10,6 +10,7 @@ public class CompletedTranslationCompareResponse
     public DateTime? CompletedAt { get; set; }
     public required string OriginalSubtitlePath { get; set; }
     public required string TranslatedSubtitlePath { get; set; }
+    public required string SourceFingerprint { get; set; }
     public int OriginalLineCount { get; set; }
     public int TranslatedLineCount { get; set; }
     public List<TranslationCompareLineDto> Lines { get; set; } = [];

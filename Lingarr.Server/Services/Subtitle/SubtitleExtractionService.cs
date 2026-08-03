@@ -327,6 +327,11 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 await EnsureExtractionMarkerAsync(outputPath);
             }
 
+            if (_embeddedSubtitleCacheService.IsManagedCachePath(outputPath))
+            {
+                _embeddedSubtitleCacheService.RecordSourceSnapshot(outputPath, mediaFilePath);
+            }
+
             return outputPath;
         }
         catch (Exception ex)
@@ -538,6 +543,8 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                     .Where(e => e.EpisodeId == episodeId && e.MovieId == movieId)
                     .ToListAsync();
 
+                InvalidateManagedArtifactFiles(existingSubtitles, mediaPath);
+
                 await _dbContext.EmbeddedSubtitles
                     .Where(e => e.EpisodeId == episodeId && e.MovieId == movieId)
                     .ExecuteDeleteAsync();
@@ -554,7 +561,7 @@ public class SubtitleExtractionService : ISubtitleExtractionService
 
                     sub.EpisodeId = episodeId;
                     sub.MovieId = movieId;
-                    CopyOcrMetadataIfSameStream(existingSubtitles, sub);
+                    CopyOcrMetadataIfSameStream(existingSubtitles, sub, mediaPath);
                     _dbContext.EmbeddedSubtitles.Add(sub);
                 }
 
@@ -1214,6 +1221,12 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 return null;
             }
 
+            if (embeddedSubtitles != null &&
+                InvalidateStaleManagedArtifacts(embeddedSubtitles, mediaPath!))
+            {
+                await _dbContext.SaveChangesAsync();
+            }
+
             if (useInternalCache)
             {
                 _embeddedSubtitleCacheService.EnsureCacheDirectory();
@@ -1619,9 +1632,10 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             .ToList();
     }
 
-    private static void CopyOcrMetadataIfSameStream(
+    private void CopyOcrMetadataIfSameStream(
         IReadOnlyCollection<EmbeddedSubtitle> existingSubtitles,
-        EmbeddedSubtitle newSubtitle)
+        EmbeddedSubtitle newSubtitle,
+        string mediaPath)
     {
         var existing = existingSubtitles.FirstOrDefault(subtitle =>
             subtitle.StreamIndex == newSubtitle.StreamIndex &&
@@ -1641,6 +1655,13 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             return;
         }
 
+        if (IsStaleManagedArtifact(existing.OcrExtractedPath, mediaPath))
+        {
+            _embeddedSubtitleCacheService.Invalidate(existing.OcrExtractedPath!);
+            SubtitleOcrStatePolicy.Reset(newSubtitle);
+            return;
+        }
+
         newSubtitle.OcrStatus = existing.OcrStatus;
         newSubtitle.OcrExtractedPath = existing.OcrExtractedPath;
         newSubtitle.OcrError = existing.OcrError;
@@ -1650,6 +1671,57 @@ public class SubtitleExtractionService : ISubtitleExtractionService
         newSubtitle.OcrQualityScore = existing.OcrQualityScore;
         newSubtitle.OcrIssueSummary = existing.OcrIssueSummary;
         newSubtitle.OcrApprovedAt = existing.OcrApprovedAt;
+    }
+
+    private bool InvalidateStaleManagedArtifacts(
+        IEnumerable<EmbeddedSubtitle> subtitles,
+        string mediaPath)
+    {
+        var changed = false;
+        foreach (var subtitle in subtitles)
+        {
+            if (IsStaleManagedArtifact(subtitle.ExtractedPath, mediaPath))
+            {
+                _embeddedSubtitleCacheService.Invalidate(subtitle.ExtractedPath!);
+                subtitle.IsExtracted = false;
+                subtitle.ExtractedPath = null;
+                changed = true;
+            }
+
+            if (IsStaleManagedArtifact(subtitle.OcrExtractedPath, mediaPath))
+            {
+                _embeddedSubtitleCacheService.Invalidate(subtitle.OcrExtractedPath!);
+                SubtitleOcrStatePolicy.Reset(subtitle);
+                changed = true;
+            }
+        }
+
+        return changed;
+    }
+
+    private void InvalidateManagedArtifactFiles(
+        IEnumerable<EmbeddedSubtitle> subtitles,
+        string mediaPath)
+    {
+        foreach (var subtitle in subtitles)
+        {
+            if (IsStaleManagedArtifact(subtitle.ExtractedPath, mediaPath))
+            {
+                _embeddedSubtitleCacheService.Invalidate(subtitle.ExtractedPath!);
+            }
+
+            if (IsStaleManagedArtifact(subtitle.OcrExtractedPath, mediaPath))
+            {
+                _embeddedSubtitleCacheService.Invalidate(subtitle.OcrExtractedPath!);
+            }
+        }
+    }
+
+    private bool IsStaleManagedArtifact(string? path, string mediaPath)
+    {
+        return !string.IsNullOrWhiteSpace(path) &&
+               _embeddedSubtitleCacheService.IsManagedCachePath(path) &&
+               !_embeddedSubtitleCacheService.IsCurrentForSource(path, mediaPath);
     }
 
     private static string? BuildStreamSpecificLanguageTag(string? language, int streamIndex)
@@ -1672,6 +1744,7 @@ public class SubtitleExtractionService : ISubtitleExtractionService
     {
         var result = new List<AvailableSubtitleResponse>();
         List<EmbeddedSubtitle>? embeddedSubtitles = null;
+        string? mediaPath = null;
 
         // Get media and its embedded subtitles
         if (mediaType == MediaType.Episode)
@@ -1691,6 +1764,8 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 _logger.LogWarning("Episode has no path/filename: {MediaId}", mediaId);
                 return result;
             }
+
+            mediaPath = FindMediaFile(episode.Path, episode.FileName);
 
             // Sync embedded subtitles if not already done
             if (episode.EmbeddedSubtitles == null || episode.EmbeddedSubtitles.Count == 0)
@@ -1719,6 +1794,8 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 return result;
             }
 
+            mediaPath = FindMediaFile(movie.Path, movie.FileName);
+
             // Sync embedded subtitles if not already done
             if (movie.EmbeddedSubtitles == null || movie.EmbeddedSubtitles.Count == 0)
             {
@@ -1739,6 +1816,9 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             return result;
         }
 
+        var metadataChanged = mediaPath != null &&
+                              InvalidateStaleManagedArtifacts(embeddedSubtitles, mediaPath);
+
         var staleSubtitles = embeddedSubtitles
             .Where(sub => sub.IsExtracted &&
                           !string.IsNullOrEmpty(sub.ExtractedPath) &&
@@ -1752,7 +1832,11 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 staleSubtitle.IsExtracted = false;
                 staleSubtitle.ExtractedPath = null;
             }
+            metadataChanged = true;
+        }
 
+        if (metadataChanged)
+        {
             await _dbContext.SaveChangesAsync();
         }
 

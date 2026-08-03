@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
@@ -11,12 +12,67 @@ public class MkvEmbeddingService : IMkvEmbeddingService
     private const string MkvPropEditBinary = "mkvpropedit";
     private const int Ext4MaxFilenameBytes = 255;
     private const string TempOutputPrefix = "lingarr_merged_";
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> PublicationLocks = new(
+        StringComparer.OrdinalIgnoreCase);
 
     private readonly ILogger<MkvEmbeddingService> _logger;
 
     public MkvEmbeddingService(ILogger<MkvEmbeddingService> logger)
     {
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Acquires an in-process publication lease for the supplied media and output paths.
+    /// Callers hold the lease through ownership validation, filesystem publication, and
+    /// the final database compare-and-set so replacement attempts cannot interleave output.
+    /// </summary>
+    internal static async Task<IAsyncDisposable> AcquirePublicationLeaseAsync(
+        IEnumerable<string>? paths,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var keys = (paths ?? [])
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Select(NormalizePublicationKey)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var gates = new List<SemaphoreSlim>(keys.Count);
+
+        try
+        {
+            foreach (var key in keys)
+            {
+                var gate = PublicationLocks.GetOrAdd(key, static _ => new SemaphoreSlim(1, 1));
+                await gate.WaitAsync(cancellationToken);
+                gates.Add(gate);
+            }
+
+            return new PublicationLease(gates);
+        }
+        catch
+        {
+            for (var index = gates.Count - 1; index >= 0; index--)
+            {
+                gates[index].Release();
+            }
+
+            throw;
+        }
+    }
+
+    private static string NormalizePublicationKey(string path)
+    {
+        try
+        {
+            return Path.GetFullPath(path);
+        }
+        catch (ArgumentException)
+        {
+            return $"logical-publication:{path}";
+        }
     }
 
     /// <inheritdoc />
@@ -166,6 +222,145 @@ public class MkvEmbeddingService : IMkvEmbeddingService
         }
     }
 
+    /// <inheritdoc />
+    public async Task<MkvEmbedResult> EmbedSubtitlesAsync(
+        string mkvPath,
+        IReadOnlyCollection<MkvSubtitleInput> subtitles,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(mkvPath))
+        {
+            return new MkvEmbedResult(Success: false, Error: "MKV path is null or empty.");
+        }
+
+        if (subtitles == null || subtitles.Count == 0)
+        {
+            return new MkvEmbedResult(Success: false, Error: "At least one subtitle is required for batch MKV embedding.");
+        }
+
+        if (!File.Exists(mkvPath))
+        {
+            return new MkvEmbedResult(Success: false, Error: $"MKV file not found: {mkvPath}");
+        }
+
+        var missingSubtitle = subtitles.FirstOrDefault(subtitle =>
+            string.IsNullOrEmpty(subtitle.SubtitlePath) || !File.Exists(subtitle.SubtitlePath));
+        if (missingSubtitle != null)
+        {
+            var missingPath = missingSubtitle.SubtitlePath ?? string.Empty;
+            return new MkvEmbedResult(Success: false, Error: $"Subtitle file not found: {missingPath}");
+        }
+
+        string? tempOutputPath = null;
+        try
+        {
+            var identifyResult = await RunProcessAsync(
+                MkvMergeBinary,
+                new List<string> { "-J", mkvPath },
+                ct);
+            if (identifyResult.ExitCode != 0)
+            {
+                return new MkvEmbedResult(
+                    Success: false,
+                    Error: $"mkvmerge JSON identification failed with exit code {identifyResult.ExitCode}: " +
+                           TruncateOutput(identifyResult.Output));
+            }
+
+            var existingTrackIds = subtitles
+                .SelectMany(subtitle => FindLingarrTrackIdsToReplace(
+                    identifyResult.Output,
+                    subtitle.LanguageCode,
+                    SubtitleOutputModeHelper.NormalizeFormat(Path.GetExtension(subtitle.SubtitlePath)),
+                    subtitle.TrackName))
+                .Distinct()
+                .ToList();
+
+            tempOutputPath = CreateTempOutputPath(mkvPath);
+            var arguments = BuildMkvMergeArguments(
+                mkvPath,
+                subtitles,
+                tempOutputPath,
+                existingTrackIds);
+
+            _logger.LogInformation(
+                "Embedding {SubtitleCount} subtitles into MKV container in one merge. MKV: |Green|{MkvPath}|/Green|",
+                subtitles.Count,
+                mkvPath);
+
+            var result = await RunProcessAsync(MkvMergeBinary, arguments, ct);
+            if (result.ExitCode != 0 && result.ExitCode != 1)
+            {
+                _logger.LogError(
+                    "mkvmerge batch embedding failed with exit code {ExitCode}. Error: {Error}",
+                    result.ExitCode,
+                    TruncateOutput(result.Output));
+                CleanupTempFile(tempOutputPath);
+                return new MkvEmbedResult(
+                    Success: false,
+                    Error: $"mkvmerge batch embedding failed with exit code {result.ExitCode}: " +
+                           TruncateOutput(result.Output));
+            }
+
+            _logger.LogInformation(
+                "mkvmerge batch embedding completed successfully (exit code {ExitCode}). Output: {Output}",
+                result.ExitCode,
+                TruncateOutput(result.Output));
+            if (result.ExitCode == 1)
+            {
+                _logger.LogWarning("mkvmerge reported warnings during batch embedding: {Warnings}", TruncateOutput(result.Output));
+            }
+
+            if (!File.Exists(tempOutputPath))
+            {
+                CleanupTempFile(tempOutputPath);
+                return new MkvEmbedResult(
+                    Success: false,
+                    Error: $"mkvmerge reported success but batch output file was not found: {tempOutputPath}");
+            }
+
+            var swapResult = await SwapWithOriginalAsync(mkvPath, tempOutputPath, ct);
+            if (!swapResult.Success)
+            {
+                CleanupTempFile(tempOutputPath);
+                return new MkvEmbedResult(
+                    Success: false,
+                    Error: $"Batch MKV embedding could not publish the merged container: {swapResult.Error}");
+            }
+
+            var verifyResult = await VerifyTrackAsync(
+                mkvPath,
+                subtitles.First().LanguageCode,
+                ct);
+            if (!verifyResult)
+            {
+                _logger.LogWarning(
+                    "Could not verify batch-embedded subtitle tracks in {MkvPath}. The tracks may still have been added successfully.",
+                    mkvPath);
+            }
+
+            return new MkvEmbedResult(Success: true, OutputPath: mkvPath);
+        }
+        catch (OperationCanceledException)
+        {
+            if (tempOutputPath != null)
+            {
+                CleanupTempFile(tempOutputPath);
+            }
+
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Exception during batch MKV embedding for {MkvPath}", mkvPath);
+            if (tempOutputPath != null)
+            {
+                CleanupTempFile(tempOutputPath);
+            }
+
+            return new MkvEmbedResult(Success: false, Error: $"Exception during batch embedding: {ex.Message}");
+        }
+    }
+
     internal static List<string> BuildMkvMergeArguments(
         string mkvPath,
         string subtitlePath,
@@ -202,6 +397,49 @@ public class MkvEmbeddingService : IMkvEmbeddingService
         }
 
         args.Add(subtitlePath);
+
+        return args;
+    }
+
+    internal static List<string> BuildMkvMergeArguments(
+        string mkvPath,
+        IReadOnlyCollection<MkvSubtitleInput> subtitles,
+        string tempOutputPath,
+        IReadOnlyCollection<int> excludeTrackIds)
+    {
+        var args = new List<string>
+        {
+            "-o",
+            tempOutputPath
+        };
+
+        if (excludeTrackIds.Count > 0)
+        {
+            args.Add("--subtitle-tracks");
+            args.Add($"!{string.Join(",", excludeTrackIds)}");
+        }
+
+        args.Add(mkvPath);
+        foreach (var subtitle in subtitles)
+        {
+            var extension = Path.GetExtension(subtitle.SubtitlePath).ToLowerInvariant();
+            args.Add("--language");
+            args.Add($"0:{subtitle.LanguageCode}");
+
+            if (!string.IsNullOrEmpty(subtitle.TrackName))
+            {
+                args.Add("--track-name");
+                args.Add($"0:{subtitle.TrackName}");
+            }
+
+            if (extension is ".ass" or ".ssa")
+            {
+                args.Add("--default-track-flag");
+                args.Add("0:no");
+            }
+
+            args.Add(subtitle.SubtitlePath);
+        }
 
         return args;
     }
@@ -398,11 +636,16 @@ public class MkvEmbeddingService : IMkvEmbeddingService
         {
             _logger.LogError(ex, "Failed to swap merged MKV with original: {OriginalPath}", originalPath);
 
-            if (File.Exists(backupPath) && !File.Exists(originalPath))
+            if (File.Exists(backupPath))
             {
                 try
                 {
-                    File.Move(backupPath, originalPath);
+                    if (File.Exists(originalPath))
+                    {
+                        File.Delete(originalPath);
+                    }
+
+                    File.Move(backupPath, originalPath, overwrite: true);
                     _logger.LogInformation("Restored original MKV from backup: {MkvPath}", originalPath);
                 }
                 catch (Exception restoreEx)
@@ -511,6 +754,30 @@ public class MkvEmbeddingService : IMkvEmbeddingService
         }
 
         return output.Length <= maxLength ? output : output[..maxLength] + "...";
+    }
+
+    private sealed class PublicationLease : IAsyncDisposable
+    {
+        private readonly IReadOnlyList<SemaphoreSlim> _gates;
+        private int _disposed;
+
+        public PublicationLease(IReadOnlyList<SemaphoreSlim> gates)
+        {
+            _gates = gates;
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+            {
+                for (var index = _gates.Count - 1; index >= 0; index--)
+                {
+                    _gates[index].Release();
+                }
+            }
+
+            return ValueTask.CompletedTask;
+        }
     }
 }
 

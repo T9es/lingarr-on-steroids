@@ -28,9 +28,12 @@
         </div>
 
         <template v-else-if="compareData">
-            <div v-if="compareData.isPartialFailure" class="border-yellow-500/30 bg-yellow-500/10 border rounded p-3 text-sm text-yellow-300 mb-3 mx-4 mt-4">
-                This translation failed with {{ compareData.missingPositions?.length }} untranslated position(s).
-                Click any missing line to provide a translation, or click Accept to finalize as-is. Untranslated positions will keep the original source text.
+            <div
+                v-if="compareData.isPartialFailure"
+                class="mx-4 mt-4 mb-3 rounded border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm text-yellow-300">
+                This translation failed with {{ compareData.missingPositions?.length }} untranslated
+                position(s). Click any missing line to provide a translation, or click Accept to
+                finalize as-is. Untranslated positions will keep the original source text.
             </div>
             <div class="border-secondary/30 bg-primary/40 border-b px-4 py-2 text-xs">
                 <span class="text-secondary-content">
@@ -54,7 +57,7 @@
         </div>
 
         <template #footer>
-            <div v-if="saveSuccess" class="text-green-400 text-sm mr-auto">
+            <div v-if="saveSuccess" class="mr-auto text-sm text-green-400">
                 {{ t('common.saved', 'Saved!') }}
             </div>
             <button
@@ -68,14 +71,14 @@
                 v-if="editedLines.size > 0"
                 @click="handleSaveEdits"
                 :disabled="isSaving"
-                class="bg-accent text-primary-content hover:bg-accent/80 disabled:opacity-50 rounded px-4 py-2 text-sm font-medium transition-colors">
+                class="bg-accent text-primary-content hover:bg-accent/80 rounded px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50">
                 {{ t('common.saveEdits', 'Save Edits') }}
             </button>
             <button
-                v-if="allowAccept && compareData?.isPartialFailure"
+                v-if="allowAccept && compareData?.canAccept === true"
                 @click="handleAcceptTranslation"
                 :disabled="isSaving"
-                class="bg-accent text-primary-content hover:bg-accent/80 disabled:opacity-50 rounded px-4 py-2 text-sm font-medium transition-colors">
+                class="bg-accent text-primary-content hover:bg-accent/80 rounded px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50">
                 {{ t('translations.acceptTranslation', 'Accept Translation') }}
             </button>
             <button
@@ -96,13 +99,16 @@ import TranslationCompareTable from '@/components/features/translation-compare/T
 import { translationCompareService } from '@/services/translationCompareService'
 import type { CompletedTranslationCompareResponse } from '@/ts/translationCompare'
 
-const props = withDefaults(defineProps<{
-    isOpen: boolean
-    translationRequestId: number | null
-    allowAccept?: boolean
-}>(), {
-    allowAccept: true
-})
+const props = withDefaults(
+    defineProps<{
+        isOpen: boolean
+        translationRequestId: number | null
+        allowAccept?: boolean
+    }>(),
+    {
+        allowAccept: true
+    }
+)
 
 const emit = defineEmits<{
     close: []
@@ -176,6 +182,14 @@ function handleEditLine(payload: { position: number; translatedText: string }) {
 
 async function handleSaveEdits() {
     if (!props.translationRequestId || editedLines.value.size === 0) return
+    const sourceFingerprint = compareData.value?.sourceFingerprint
+    if (!sourceFingerprint) {
+        errorMessage.value = t(
+            'translationTest.errors.sourceFingerprintMissing',
+            'Compare data is out of date. Reload before saving edits.'
+        )
+        return
+    }
 
     isSaving.value = true
     saveSuccess.value = false
@@ -184,7 +198,11 @@ async function handleSaveEdits() {
             position,
             translatedText
         }))
-        const result = await translationCompareService.saveEdits(props.translationRequestId, edits)
+        const result = await translationCompareService.saveEdits(
+            props.translationRequestId,
+            edits,
+            sourceFingerprint
+        )
         compareData.value = result
         editedLines.value.clear()
         saveSuccess.value = true
@@ -192,7 +210,10 @@ async function handleSaveEdits() {
             saveSuccess.value = false
         }, 2000)
     } catch (error) {
-        errorMessage.value = t('translationTest.errors.saveFailed', 'Failed to save edits.')
+        errorMessage.value = getRequestErrorMessage(
+            error,
+            t('translationTest.errors.saveFailed', 'Failed to save edits.')
+        )
     } finally {
         isSaving.value = false
     }
@@ -200,27 +221,57 @@ async function handleSaveEdits() {
 
 async function handleAcceptTranslation() {
     if (!props.translationRequestId) return
+    const sourceFingerprint = compareData.value?.sourceFingerprint
+    if (!sourceFingerprint) {
+        errorMessage.value = t(
+            'translationTest.errors.sourceFingerprintMissing',
+            'Compare data is out of date. Reload before accepting the translation.'
+        )
+        return
+    }
 
     isSaving.value = true
     try {
-        const edits = editedLines.value.size > 0
-            ? Array.from(editedLines.value.entries()).map(([position, translatedText]) => ({
-                  position,
-                  translatedText
-              }))
-            : undefined
+        const edits =
+            editedLines.value.size > 0
+                ? Array.from(editedLines.value.entries()).map(([position, translatedText]) => ({
+                      position,
+                      translatedText
+                  }))
+                : undefined
         const result = await translationCompareService.acceptTranslation(
             props.translationRequestId,
-            edits
+            edits,
+            sourceFingerprint
         )
         compareData.value = result
         editedLines.value.clear()
         emit('accepted')
     } catch (error) {
-        errorMessage.value = t('translationTest.errors.acceptFailed', 'Failed to accept translation.')
+        errorMessage.value = getRequestErrorMessage(
+            error,
+            t('translationTest.errors.acceptFailed', 'Failed to accept translation.')
+        )
     } finally {
         isSaving.value = false
     }
+}
+
+function getRequestErrorMessage(error: unknown, fallback: string): string {
+    const axiosError = error as AxiosError<{ message?: string }>
+    if (axiosError.response?.status === 409) {
+        compareData.value = null
+        editedLines.value.clear()
+        return (
+            axiosError.response.data?.message ??
+            t(
+                'translationTest.errors.sourceChanged',
+                'The source subtitle changed. Reload the compare data before retrying.'
+            )
+        )
+    }
+
+    return axiosError.response?.data?.message ?? fallback
 }
 
 function t(key: string, fallback: string, params?: Record<string, string | number>): string {

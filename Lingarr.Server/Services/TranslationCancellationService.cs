@@ -9,7 +9,25 @@ namespace Lingarr.Server.Services;
 /// </summary>
 public class TranslationCancellationService : ITranslationCancellationService
 {
-    private readonly ConcurrentDictionary<int, CancellationTokenSource> _tokens = new();
+    private readonly record struct RegistrationKey(int RequestId, string? OwnershipToken);
+
+    private sealed class CancellationRegistration
+    {
+        public CancellationRegistration(CancellationTokenSource source, string? ownershipToken)
+        {
+            Source = source;
+            Token = source.Token;
+            OwnershipToken = ownershipToken;
+        }
+
+        public CancellationTokenSource Source { get; }
+
+        public CancellationToken Token { get; }
+
+        public string? OwnershipToken { get; }
+    }
+
+    private readonly ConcurrentDictionary<RegistrationKey, CancellationRegistration> _registrations = new();
     private readonly ILogger<TranslationCancellationService> _logger;
 
     public TranslationCancellationService(ILogger<TranslationCancellationService> logger)
@@ -20,64 +38,208 @@ public class TranslationCancellationService : ITranslationCancellationService
     /// <inheritdoc />
     public CancellationToken RegisterJob(int requestId)
     {
-        var cts = new CancellationTokenSource();
-        
-        if (_tokens.TryAdd(requestId, cts))
+        return RegisterJobCore(new RegistrationKey(requestId, null));
+    }
+
+    /// <inheritdoc />
+    public CancellationToken RegisterJob(int requestId, string ownershipToken)
+    {
+        if (string.IsNullOrWhiteSpace(ownershipToken))
         {
-            _logger.LogDebug("Registered cancellation token for request {RequestId}", requestId);
-            return cts.Token;
+            throw new ArgumentException("An ownership token is required for an attempt-scoped registration.", nameof(ownershipToken));
         }
-        
-        // If already registered (shouldn't happen), return existing token
-        cts.Dispose();
-        return _tokens.TryGetValue(requestId, out var existing) 
-            ? existing.Token 
-            : CancellationToken.None;
+
+        return RegisterJobCore(new RegistrationKey(requestId, ownershipToken));
+    }
+
+    private CancellationToken RegisterJobCore(RegistrationKey key)
+    {
+        var registration = new CancellationRegistration(
+            new CancellationTokenSource(),
+            key.OwnershipToken);
+
+        while (true)
+        {
+            if (_registrations.TryGetValue(key, out var existing))
+            {
+                registration.Source.Dispose();
+                return existing.Token;
+            }
+
+            if (_registrations.TryAdd(key, registration))
+            {
+                _logger.LogDebug(
+                    "Registered cancellation token for request {RequestId}{AttemptScope}",
+                    key.RequestId,
+                    key.OwnershipToken == null ? string.Empty : " under a worker attempt");
+                return registration.Token;
+            }
+        }
     }
 
     /// <inheritdoc />
     public CancellationToken GetToken(int requestId)
     {
-        return _tokens.TryGetValue(requestId, out var cts) 
-            ? cts.Token 
+        if (_registrations.TryGetValue(new RegistrationKey(requestId, null), out var legacyRegistration))
+        {
+            return legacyRegistration.Token;
+        }
+
+        var activeRegistrations = GetAttemptRegistrations(requestId)
+            .Where(registration => !registration.Source.IsCancellationRequested)
+            .ToList();
+        return activeRegistrations.Count == 1
+            ? activeRegistrations[0].Token
+            : CancellationToken.None;
+    }
+
+    /// <inheritdoc />
+    public CancellationToken GetToken(int requestId, string? expectedOwnershipToken)
+    {
+        return _registrations.TryGetValue(
+                   new RegistrationKey(requestId, expectedOwnershipToken),
+                   out var registration)
+            ? registration.Token
             : CancellationToken.None;
     }
 
     /// <inheritdoc />
     public bool CancelJob(int requestId)
     {
-        if (_tokens.TryGetValue(requestId, out var cts))
+        if (_registrations.TryGetValue(new RegistrationKey(requestId, null), out var legacyRegistration))
         {
-            try
+            return CancelRegistration(requestId, legacyRegistration, attemptScoped: false);
+        }
+
+        var activeRegistrations = GetAttemptRegistrations(requestId)
+            .Where(registration => !registration.Source.IsCancellationRequested)
+            .ToList();
+        return activeRegistrations.Count == 1 &&
+               CancelRegistration(requestId, activeRegistrations[0], attemptScoped: true);
+    }
+
+    /// <inheritdoc />
+    public bool CancelJob(int requestId, CancellationToken expectedToken)
+    {
+        if (expectedToken == CancellationToken.None)
+        {
+            return false;
+        }
+
+        return TryFindRegistrationByToken(requestId, expectedToken, out _, out var registration) &&
+               CancelRegistration(requestId, registration, attemptScoped: true);
+    }
+
+    private bool CancelRegistration(
+        int requestId,
+        CancellationRegistration registration,
+        bool attemptScoped)
+    {
+        try
+        {
+            registration.Source.Cancel();
+            _logger.LogInformation(
+                "Triggered cancellation for request {RequestId}{AttemptScope}",
+                requestId,
+                attemptScoped ? " for the captured attempt" : string.Empty);
+            return true;
+        }
+        catch (ObjectDisposedException)
+        {
+            // Token was already disposed (job finished), safe to ignore
+            _logger.LogDebug("Cancellation token for request {RequestId} was already disposed", requestId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Cancellation callbacks for request {RequestId} threw", requestId);
+        }
+
+        return false;
+    }
+
+    private IReadOnlyCollection<CancellationRegistration> GetAttemptRegistrations(int requestId)
+    {
+        return _registrations
+            .Where(pair => pair.Key.RequestId == requestId && pair.Key.OwnershipToken != null)
+            .Select(pair => pair.Value)
+            .ToList();
+    }
+
+    private bool TryFindRegistrationByToken(
+        int requestId,
+        CancellationToken expectedToken,
+        out RegistrationKey key,
+        out CancellationRegistration registration)
+    {
+        foreach (var pair in _registrations)
+        {
+            if (pair.Key.RequestId == requestId && pair.Value.Token == expectedToken)
             {
-                cts.Cancel();
-                _logger.LogInformation("Triggered cancellation for request {RequestId}", requestId);
+                key = pair.Key;
+                registration = pair.Value;
                 return true;
             }
-            catch (ObjectDisposedException)
-            {
-                // Token was already disposed (job finished), safe to ignore
-                _logger.LogDebug("Cancellation token for request {RequestId} was already disposed", requestId);
-            }
         }
-        
+
+        key = default;
+        registration = null!;
+        _logger.LogDebug(
+            "Skipped cancellation for request {RequestId} because its captured attempt is no longer registered",
+            requestId);
         return false;
+    }
+
+    private bool TryRemove(RegistrationKey key, CancellationRegistration registration)
+    {
+        return ((ICollection<KeyValuePair<RegistrationKey, CancellationRegistration>>)_registrations)
+            .Remove(new KeyValuePair<RegistrationKey, CancellationRegistration>(key, registration));
+    }
+
+    private void DisposeRegistration(int requestId, CancellationRegistration registration)
+    {
+        try
+        {
+            registration.Source.Dispose();
+            _logger.LogDebug("Unregistered cancellation token for request {RequestId}", requestId);
+        }
+        catch (ObjectDisposedException)
+        {
+            // Already disposed, safe to ignore
+        }
     }
 
     /// <inheritdoc />
     public void UnregisterJob(int requestId)
     {
-        if (_tokens.TryRemove(requestId, out var cts))
+        var legacyKey = new RegistrationKey(requestId, null);
+        if (_registrations.TryGetValue(legacyKey, out var legacyRegistration) &&
+            TryRemove(legacyKey, legacyRegistration))
         {
-            try
-            {
-                cts.Dispose();
-                _logger.LogDebug("Unregistered cancellation token for request {RequestId}", requestId);
-            }
-            catch (ObjectDisposedException)
-            {
-                // Already disposed, safe to ignore
-            }
+            DisposeRegistration(requestId, legacyRegistration);
+            return;
         }
+
+        var attemptRegistrations = _registrations
+            .Where(pair => pair.Key.RequestId == requestId && pair.Key.OwnershipToken != null)
+            .ToList();
+        if (attemptRegistrations.Count == 1 &&
+            TryRemove(attemptRegistrations[0].Key, attemptRegistrations[0].Value))
+        {
+            DisposeRegistration(requestId, attemptRegistrations[0].Value);
+        }
+    }
+
+    /// <inheritdoc />
+    public bool UnregisterJob(int requestId, CancellationToken expectedToken)
+    {
+        if (expectedToken == CancellationToken.None ||
+            !TryFindRegistrationByToken(requestId, expectedToken, out var key, out var registration) ||
+            !TryRemove(key, registration))
+        {
+            return false;
+        }
+
+        DisposeRegistration(requestId, registration);
+        return true;
     }
 }

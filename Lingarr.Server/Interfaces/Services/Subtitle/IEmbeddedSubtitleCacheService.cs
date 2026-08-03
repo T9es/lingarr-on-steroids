@@ -16,6 +16,12 @@ public interface IEmbeddedSubtitleCacheService
 
     bool IsExpired(string path);
 
+    bool IsCurrentForSource(string cachePath, string sourceMediaPath);
+
+    void RecordSourceSnapshot(string cachePath, string sourceMediaPath);
+
+    void Invalidate(string cachePath);
+
     void EnsureCacheDirectory();
 
     void Touch(string path);

@@ -251,4 +251,56 @@ public class BatchFallbackServiceTests
         Assert.Contains("provider was unavailable", exception.Message);
         Assert.Contains("Gemini is temporarily unavailable", exception.Message);
     }
+
+    [Fact]
+    public async Task TranslateWithFallbackAsync_ContextualRepairItem_PropagatesContextAndFiltersUnexpectedPositions()
+    {
+        var batchServiceMock = new Mock<IBatchTranslationService>();
+        List<string>? capturedPreContext = null;
+        List<string>? capturedPostContext = null;
+
+        batchServiceMock
+            .Setup(service => service.TranslateBatchAsync(
+                It.IsAny<List<BatchSubtitleItem>>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .Callback((List<BatchSubtitleItem> _, string _, string _, List<string>? preContext, List<string>? postContext, CancellationToken _) =>
+            {
+                capturedPreContext = preContext;
+                capturedPostContext = postContext;
+            })
+            .ReturnsAsync(new Dictionary<int, string>
+            {
+                [1] = "unexpected context result",
+                [2] = "repaired",
+                [3] = "unexpected context result"
+            });
+
+        var contextualItem = new ContextualBatchSubtitleItem(
+            new BatchSubtitleItem { Position = 2, Line = "Failed source" },
+            ["Before"],
+            ["After"]);
+        var service = new BatchFallbackService(_loggerMock.Object);
+
+        var result = await service.TranslateWithFallbackAsync(
+            [contextualItem],
+            batchServiceMock.Object,
+            sourceLanguage: "en",
+            targetLanguage: "pl",
+            maxSplitAttempts: 3,
+            fileIdentifier: "TestFile",
+            batchNumber: 1,
+            totalBatches: 1,
+            cancellationToken: CancellationToken.None);
+
+        Assert.Equal(new[] { "Before" }, capturedPreContext);
+        Assert.Equal(new[] { "After" }, capturedPostContext);
+        Assert.Single(result);
+        Assert.Equal("repaired", result[2]);
+        Assert.DoesNotContain(1, result.Keys);
+        Assert.DoesNotContain(3, result.Keys);
+    }
 }

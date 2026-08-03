@@ -25,6 +25,11 @@ internal static class SubtitleOcrStatePolicy
 
     public static void ResetStaleTransient(EmbeddedSubtitle subtitle)
     {
+        Reset(subtitle);
+    }
+
+    public static void Reset(EmbeddedSubtitle subtitle)
+    {
         subtitle.OcrStatus = SubtitleOcrStatus.NotStarted;
         subtitle.OcrExtractedPath = null;
         subtitle.OcrError = null;

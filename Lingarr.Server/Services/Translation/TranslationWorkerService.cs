@@ -20,12 +20,30 @@ public class TranslationWorkerService : BackgroundService, ITranslationWorkerSer
     private const int MaxWorkersLimit = 20;
     private const int MinPollIntervalMs = 500;
     private const int IdlePollIntervalMs = 5000;
+
+    private sealed class ActiveWorker
+    {
+        public ActiveWorker(
+            string ownershipToken,
+            TranslationWorkloadKind workloadKind,
+            Task? task = null)
+        {
+            OwnershipToken = ownershipToken;
+            WorkloadKind = workloadKind;
+            Task = task;
+        }
+
+        public string OwnershipToken { get; }
+
+        public TranslationWorkloadKind WorkloadKind { get; }
+
+        public Task? Task { get; set; }
+    }
     
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<TranslationWorkerService> _logger;
     private readonly SemaphoreSlim _workSignal = new(0, int.MaxValue);
-    private readonly ConcurrentDictionary<int, Task> _activeWorkerTasks = new();
-    private readonly ConcurrentDictionary<int, TranslationWorkloadKind> _activeWorkerKinds = new();
+    private readonly ConcurrentDictionary<int, ActiveWorker> _activeWorkerTasks = new();
     
     private int _maxWorkers = 1;
     private int _reservedUploadWorkerSlots;
@@ -226,7 +244,11 @@ public class TranslationWorkerService : BackgroundService, ITranslationWorkerSer
         var interruptedCount = await dbContext.TranslationRequests
             .Where(r => r.Status == TranslationStatus.InProgress)
             .ExecuteUpdateAsync(
-                s => s.SetProperty(r => r.Status, TranslationStatus.Pending),
+                s => s
+                    .SetProperty(r => r.Status, TranslationStatus.Pending)
+                    .SetProperty(r => r.JobId, (string?)null)
+                    .SetProperty(r => r.IsActive, (bool?)true)
+                    .SetProperty(r => r.UpdatedAt, DateTime.UtcNow),
                 cancellationToken);
         
         if (interruptedCount > 0)
@@ -285,24 +307,21 @@ public class TranslationWorkerService : BackgroundService, ITranslationWorkerSer
 
     private void CleanupCompletedWorkers()
     {
-        var completedIds = _activeWorkerTasks
-            .Where(kv => kv.Value.IsCompleted)
-            .Select(kv => kv.Key)
+        var completedWorkers = _activeWorkerTasks
+            .Where(kv => kv.Value.Task?.IsCompleted == true)
             .ToList();
-        
-        foreach (var id in completedIds)
-        {
-            if (_activeWorkerTasks.TryRemove(id, out var task))
-            {
-                _activeWorkerKinds.TryRemove(id, out _);
 
+        foreach (var workerEntry in completedWorkers)
+        {
+            if (TryRemoveWorkerTask(workerEntry.Key, workerEntry.Value))
+            {
                 // Log if task faulted
-                if (task.IsFaulted)
+                if (workerEntry.Value.Task?.IsFaulted == true)
                 {
                     _logger.LogError(
-                        task.Exception,
+                        workerEntry.Value.Task.Exception,
                         "Worker task for request {RequestId} faulted",
-                        id);
+                        workerEntry.Key);
                 }
             }
         }
@@ -313,7 +332,8 @@ public class TranslationWorkerService : BackgroundService, ITranslationWorkerSer
         using var scope = _serviceProvider.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<LingarrDbContext>();
 
-        var activeUploadWorkers = _activeWorkerKinds.Values.Count(kind => kind == TranslationWorkloadKind.Upload);
+        var activeUploadWorkers = _activeWorkerTasks.Values.Count(
+            worker => worker.WorkloadKind == TranslationWorkloadKind.Upload);
         var activeNonUploadWorkers = ActiveWorkers - activeUploadWorkers;
 
         var hasPendingUpload = await dbContext.TranslationRequests
@@ -393,13 +413,12 @@ public class TranslationWorkerService : BackgroundService, ITranslationWorkerSer
             return false;
         }
 
-        var claimed = await dbContext.TranslationRequests
-            .Where(request => request.Id == candidate.Id && request.Status == TranslationStatus.Pending)
-            .ExecuteUpdateAsync(
-                setters => setters.SetProperty(request => request.Status, TranslationStatus.InProgress),
-                stoppingToken);
+        var ownershipToken = await TryClaimPendingRequestAsync(
+            dbContext,
+            candidate.Id,
+            stoppingToken);
 
-        if (claimed == 0)
+        if (ownershipToken == null)
         {
             _logger.LogDebug("Request {RequestId} was claimed by another worker", candidate.Id);
             return true;
@@ -424,15 +443,110 @@ public class TranslationWorkerService : BackgroundService, ITranslationWorkerSer
             activeUploadWorkers + (candidate.WorkloadKind == TranslationWorkloadKind.Upload ? 1 : 0),
             maxUploadWorkersWhenContended);
 
-        var workerTask = ProcessRequestAsync(candidate.Id, stoppingToken);
+        var activeWorker = new ActiveWorker(ownershipToken, candidate.WorkloadKind);
+        var workerTask = ProcessRequestAsync(candidate.Id, ownershipToken, activeWorker, stoppingToken);
+        activeWorker.Task = workerTask;
+
+        if (!TryRegisterWorkerTask(candidate.Id, activeWorker))
+        {
+            _logger.LogError(
+                "Failed to register worker task for request {RequestId} and ownership {OwnershipToken}",
+                candidate.Id,
+                ownershipToken);
+            await workerTask;
+            return true;
+        }
+
         _lastClaimedWorkloadKind = candidate.WorkloadKind;
-        _activeWorkerTasks.TryAdd(candidate.Id, workerTask);
-        _activeWorkerKinds.TryAdd(candidate.Id, candidate.WorkloadKind);
 
         return true;
     }
 
-    private async Task ProcessRequestAsync(int requestId, CancellationToken stoppingToken)
+    internal bool TryRegisterWorkerTask(
+        int requestId,
+        string ownershipToken,
+        Task task,
+        TranslationWorkloadKind workloadKind)
+    {
+        return TryRegisterWorkerTask(
+            requestId,
+            new ActiveWorker(ownershipToken, workloadKind, task));
+    }
+
+    private bool TryRegisterWorkerTask(int requestId, ActiveWorker worker)
+    {
+        while (true)
+        {
+            if (!_activeWorkerTasks.TryGetValue(requestId, out var existing))
+            {
+                if (_activeWorkerTasks.TryAdd(requestId, worker))
+                {
+                    return true;
+                }
+
+                continue;
+            }
+
+            if (string.Equals(
+                    existing.OwnershipToken,
+                    worker.OwnershipToken,
+                    StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            if (_activeWorkerTasks.TryUpdate(requestId, worker, existing))
+            {
+                return true;
+            }
+        }
+    }
+
+    internal bool TryRemoveWorkerTask(
+        int requestId,
+        string ownershipToken,
+        Task task)
+    {
+        if (!_activeWorkerTasks.TryGetValue(requestId, out var current) ||
+            !string.Equals(current.OwnershipToken, ownershipToken, StringComparison.Ordinal) ||
+            !ReferenceEquals(current.Task, task))
+        {
+            return false;
+        }
+
+        return TryRemoveWorkerTask(requestId, current);
+    }
+
+    private bool TryRemoveWorkerTask(int requestId, ActiveWorker expectedWorker)
+    {
+        return ((ICollection<KeyValuePair<int, ActiveWorker>>)_activeWorkerTasks)
+            .Remove(new KeyValuePair<int, ActiveWorker>(requestId, expectedWorker));
+    }
+
+    internal static async Task<string?> TryClaimPendingRequestAsync(
+        LingarrDbContext dbContext,
+        int requestId,
+        CancellationToken cancellationToken)
+    {
+        var ownershipToken = Guid.NewGuid().ToString("N");
+        var rowsUpdated = await dbContext.TranslationRequests
+            .Where(request => request.Id == requestId &&
+                              request.Status == TranslationStatus.Pending)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(request => request.Status, TranslationStatus.InProgress)
+                .SetProperty(request => request.IsActive, (bool?)true)
+                .SetProperty(request => request.JobId, ownershipToken)
+                .SetProperty(request => request.UpdatedAt, DateTime.UtcNow),
+                cancellationToken);
+
+        return rowsUpdated == 0 ? null : ownershipToken;
+    }
+
+    private async Task ProcessRequestAsync(
+        int requestId,
+        string ownershipToken,
+        ActiveWorker activeWorker,
+        CancellationToken stoppingToken)
     {
         try
         {
@@ -441,13 +555,15 @@ public class TranslationWorkerService : BackgroundService, ITranslationWorkerSer
                 using var scope = _serviceProvider.CreateScope();
                 var translationJob = scope.ServiceProvider.GetRequiredService<TranslationJob>();
 
-                await translationJob.ExecuteAsync(requestId, stoppingToken);
+                await translationJob.ExecuteAsync(requestId, ownershipToken, stoppingToken);
 
                 // Check if the request was paused (e.g. Gemini 429 rate limit)
                 var dbContext = scope.ServiceProvider.GetRequiredService<LingarrDbContext>();
                 var request = await dbContext.TranslationRequests
                     .AsNoTracking()
-                    .FirstOrDefaultAsync(r => r.Id == requestId, stoppingToken);
+                    .FirstOrDefaultAsync(
+                        r => r.Id == requestId && r.JobId == ownershipToken,
+                        stoppingToken);
 
                 if (request?.Status != TranslationStatus.Paused || request.NextRetryAt == null)
                     break;
@@ -464,8 +580,10 @@ public class TranslationWorkerService : BackgroundService, ITranslationWorkerSer
 
                 // Resume: set back to InProgress directly
                 // (UpdateTranslationRequest blocks Paused to InProgress)
-                await dbContext.TranslationRequests
-                    .Where(r => r.Id == requestId && r.Status == TranslationStatus.Paused)
+                var resumed = await dbContext.TranslationRequests
+                    .Where(r => r.Id == requestId &&
+                                r.Status == TranslationStatus.Paused &&
+                                r.JobId == ownershipToken)
                     .ExecuteUpdateAsync(s => s
                         .SetProperty(r => r.Status, TranslationStatus.InProgress)
                         .SetProperty(r => r.PausedAt, (DateTime?)null)
@@ -473,6 +591,14 @@ public class TranslationWorkerService : BackgroundService, ITranslationWorkerSer
                         .SetProperty(r => r.PausedProvider, (string?)null)
                         .SetProperty(r => r.NextRetryAt, (DateTime?)null),
                         stoppingToken);
+
+                if (resumed == 0)
+                {
+                    _logger.LogInformation(
+                        "Request {RequestId} was reclaimed before its paused worker could resume",
+                        requestId);
+                    break;
+                }
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -482,7 +608,7 @@ public class TranslationWorkerService : BackgroundService, ITranslationWorkerSer
                 requestId);
             
             // Reset to Pending so it can be picked up after restart
-            await ResetRequestToPendingAsync(requestId);
+            await ResetRequestToPendingAsync(requestId, ownershipToken);
         }
         catch (Exception ex)
         {
@@ -492,25 +618,33 @@ public class TranslationWorkerService : BackgroundService, ITranslationWorkerSer
             // we must mark the job as Failed to prevent infinite retry loops.
             // The recovery logic resets InProgress→Pending on startup, so leaving
             // a job in InProgress would cause it to be retried endlessly.
-            await MarkRequestAsFailedAsync(requestId, ex.Message);
+            await MarkRequestAsFailedAsync(requestId, ex.Message, ownershipToken);
         }
         finally
         {
-            _activeWorkerTasks.TryRemove(requestId, out _);
-            _activeWorkerKinds.TryRemove(requestId, out _);
+            TryRemoveWorkerTask(requestId, activeWorker);
         }
     }
 
-    private async Task ResetRequestToPendingAsync(int requestId)
+    private async Task ResetRequestToPendingAsync(int requestId, string? ownershipToken = null)
     {
         try
         {
             using var scope = _serviceProvider.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<LingarrDbContext>();
-            
-            await dbContext.TranslationRequests
-                .Where(r => r.Id == requestId && r.Status == TranslationStatus.InProgress)
-                .ExecuteUpdateAsync(s => s.SetProperty(r => r.Status, TranslationStatus.Pending));
+
+            var query = dbContext.TranslationRequests
+                .Where(r => r.Id == requestId && r.Status == TranslationStatus.InProgress);
+            if (!string.IsNullOrWhiteSpace(ownershipToken))
+            {
+                query = query.Where(r => r.JobId == ownershipToken);
+            }
+
+            await query.ExecuteUpdateAsync(s => s
+                .SetProperty(r => r.Status, TranslationStatus.Pending)
+                .SetProperty(r => r.JobId, (string?)null)
+                .SetProperty(r => r.IsActive, (bool?)true)
+                .SetProperty(r => r.UpdatedAt, DateTime.UtcNow));
         }
         catch (Exception ex)
         {
@@ -518,7 +652,10 @@ public class TranslationWorkerService : BackgroundService, ITranslationWorkerSer
         }
     }
 
-    private async Task MarkRequestAsFailedAsync(int requestId, string errorMessage)
+    private async Task MarkRequestAsFailedAsync(
+        int requestId,
+        string errorMessage,
+        string? ownershipToken = null)
     {
         try
         {
@@ -527,13 +664,21 @@ public class TranslationWorkerService : BackgroundService, ITranslationWorkerSer
             
             var now = DateTime.UtcNow;
             
-            // Only update if still InProgress - TranslationJob may have already marked it Failed
-            var rowsUpdated = await dbContext.TranslationRequests
-                .Where(r => r.Id == requestId && r.Status == TranslationStatus.InProgress)
+            // Only update if this worker still owns the InProgress request.
+            var query = dbContext.TranslationRequests
+                .Where(r => r.Id == requestId && r.Status == TranslationStatus.InProgress);
+            if (!string.IsNullOrWhiteSpace(ownershipToken))
+            {
+                query = query.Where(r => r.JobId == ownershipToken);
+            }
+
+            var rowsUpdated = await query
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(r => r.Status, TranslationStatus.Failed)
                     .SetProperty(r => r.IsActive, (bool?)null)
-                    .SetProperty(r => r.CompletedAt, now));
+                    .SetProperty(r => r.CompletedAt, now)
+                    .SetProperty(r => r.JobId, (string?)null)
+                    .SetProperty(r => r.UpdatedAt, now));
             
             // Only add log entry if we actually changed the status
             // (avoids duplicate logs when TranslationJob already handled the failure)
@@ -574,7 +719,10 @@ public class TranslationWorkerService : BackgroundService, ITranslationWorkerSer
 
     private async Task WaitForActiveWorkersAsync()
     {
-        var activeTasks = _activeWorkerTasks.Values.ToList();
+        var activeTasks = _activeWorkerTasks.Values
+            .Select(worker => worker.Task)
+            .OfType<Task>()
+            .ToList();
         if (activeTasks.Count == 0) return;
         
         _logger.LogInformation(

@@ -146,6 +146,13 @@ public class SubtitleOcrService : ISubtitleOcrService
         try
         {
             NormalizeOcrOutputFile(engineResult.OutputPath);
+            if (_embeddedSubtitleCacheService.IsManagedCachePath(engineResult.OutputPath))
+            {
+                _embeddedSubtitleCacheService.RecordSourceSnapshot(
+                    engineResult.OutputPath,
+                    context.MediaPath);
+            }
+
             var subtitles = await _subtitleService.ReadSubtitles(engineResult.OutputPath);
             var quality = SubtitleOcrQualityAnalyzer.Analyze(
                 subtitles,
@@ -543,9 +550,14 @@ public class SubtitleOcrService : ISubtitleOcrService
 
             var subtitle = movie.EmbeddedSubtitles.FirstOrDefault(s => s.StreamIndex == streamIndex);
             var path = ResolveMediaPath(movie.Path, movie.FileName);
-            return subtitle == null || path == null
-                ? null
-                : new OcrMediaContext(movie, MediaType.Movie, subtitle, path);
+            if (subtitle == null || path == null)
+            {
+                return null;
+            }
+
+            var context = new OcrMediaContext(movie, MediaType.Movie, subtitle, path);
+            await InvalidateStaleManagedOcrAsync(context, cancellationToken);
+            return context;
         }
 
         var episode = await _dbContext.Episodes
@@ -558,9 +570,41 @@ public class SubtitleOcrService : ISubtitleOcrService
 
         var episodeSubtitle = episode.EmbeddedSubtitles.FirstOrDefault(s => s.StreamIndex == streamIndex);
         var episodePath = ResolveMediaPath(episode.Path, episode.FileName);
-        return episodeSubtitle == null || episodePath == null
-            ? null
-            : new OcrMediaContext(episode, MediaType.Episode, episodeSubtitle, episodePath);
+        if (episodeSubtitle == null || episodePath == null)
+        {
+            return null;
+        }
+
+        var episodeContext = new OcrMediaContext(
+            episode,
+            MediaType.Episode,
+            episodeSubtitle,
+            episodePath);
+        await InvalidateStaleManagedOcrAsync(episodeContext, cancellationToken);
+        return episodeContext;
+    }
+
+    private async Task InvalidateStaleManagedOcrAsync(
+        OcrMediaContext context,
+        CancellationToken cancellationToken)
+    {
+        var path = context.Subtitle.OcrExtractedPath;
+        if (string.IsNullOrWhiteSpace(path) ||
+            !_embeddedSubtitleCacheService.IsManagedCachePath(path) ||
+            _embeddedSubtitleCacheService.IsCurrentForSource(path, context.MediaPath))
+        {
+            return;
+        }
+
+        _embeddedSubtitleCacheService.Invalidate(path);
+        SubtitleOcrStatePolicy.Reset(context.Subtitle);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Invalidated stale managed OCR output for {MediaType} {MediaId} stream {StreamIndex} after media snapshot changed",
+            context.MediaType,
+            context.Media.Id,
+            context.Subtitle.StreamIndex);
     }
 
     private static string? ResolveMediaPath(string? directory, string? fileName)

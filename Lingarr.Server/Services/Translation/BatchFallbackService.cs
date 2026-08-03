@@ -1,9 +1,30 @@
+using System.Diagnostics.CodeAnalysis;
 using Lingarr.Server.Exceptions;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models.Batch;
 
 namespace Lingarr.Server.Services.Translation;
+
+internal sealed class ContextualBatchSubtitleItem : BatchSubtitleItem
+{
+    [SetsRequiredMembers]
+    public ContextualBatchSubtitleItem(
+        BatchSubtitleItem source,
+        List<string>? preContext,
+        List<string>? postContext)
+    {
+        Position = source.Position;
+        SourceKey = source.SourceKey;
+        Line = source.Line;
+        PreContext = preContext;
+        PostContext = postContext;
+    }
+
+    public List<string>? PreContext { get; }
+
+    public List<string>? PostContext { get; }
+}
 
 /// <summary>
 /// Provides fallback translation with graduated chunk splitting when batch translations fail.
@@ -67,14 +88,18 @@ public class BatchFallbackService : IBatchFallbackService
 
                 try
                 {
-                    // Note: BatchFallbackService doesn't use wrapper context (only for chunk splitting retries)
+                    var (preContext, postContext) = GetContextForChunk(chunk);
                     var chunkResults = await batchService.TranslateBatchAsync(
-                        chunk, sourceLanguage, targetLanguage, null, null, cancellationToken);
+                        chunk, sourceLanguage, targetLanguage, preContext, postContext, cancellationToken);
 
                     // Record successful translations
+                    var chunkPositions = chunk.Select(item => item.Position).ToHashSet();
                     foreach (var kvp in chunkResults)
                     {
-                        results[kvp.Key] = kvp.Value;
+                        if (chunkPositions.Contains(kvp.Key))
+                        {
+                            results[kvp.Key] = kvp.Value;
+                        }
                     }
 
                     // Detect partial failures where some items in the chunk did not receive a translation
@@ -234,6 +259,18 @@ public class BatchFallbackService : IBatchFallbackService
             batchProgress, fileIdentifier, batch.Count);
 
         return results;
+    }
+
+    private static (List<string>? PreContext, List<string>? PostContext) GetContextForChunk(
+        IReadOnlyList<BatchSubtitleItem> chunk)
+    {
+        var contextualItem = chunk.OfType<ContextualBatchSubtitleItem>().FirstOrDefault();
+        if (contextualItem == null)
+        {
+            return (null, null);
+        }
+
+        return (contextualItem.PreContext, contextualItem.PostContext);
     }
 
     /// <summary>

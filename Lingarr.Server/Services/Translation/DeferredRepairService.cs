@@ -3,6 +3,7 @@ using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models.Batch;
 using Lingarr.Server.Models.FileSystem;
+using Lingarr.Server.Models.Translation;
 using Lingarr.Server.Services.Subtitle;
 
 namespace Lingarr.Server.Services.Translation;
@@ -129,7 +130,7 @@ public class DeferredRepairService : IDeferredRepairService
         }
 
         maxRetries = Math.Max(1, maxRetries);
-        batchSize = batchSize <= 0 ? 50 : batchSize; // Default to 50 if zero or negative
+        batchSize = batchSize <= 0 ? 50 : batchSize;
         
         var results = new Dictionary<int, string>();
         
@@ -155,43 +156,38 @@ public class DeferredRepairService : IDeferredRepairService
 
                 if (stillMissingPositions.Count == 0) break;
 
-                // Filter repairBatch.Items to only include current ranges that contain missing failed positions
-                // However, the repairBatch already contains merged ranges. 
-                // To keep it simple and respect the user's batching request:
-                // We will split the ENTIRE repairBatch.Items (failed + context) into smaller chunks
-                // and process each chunk using the fallback service.
-
-                var chunks = SplitIntoChunks(repairBatch.Items, batchSize);
+                var repairRequests = BuildRepairRequests(repairBatch, stillMissingPositions);
+                var chunks = SplitIntoChunks(repairRequests, batchSize);
                 
                 _logger.LogInformation(
-                    "[{FileId}] Repair attempt {Attempt}: Processing {ChunkCount} chunks of max size {BatchSize}",
-                    fileIdentifier, attempt, chunks.Count, batchSize);
+                    "[{FileId}] Repair attempt {Attempt}: Processing {RequestCount} failed representatives in {ChunkCount} scheduling chunk(s) of max size {BatchSize}",
+                    fileIdentifier, attempt, repairRequests.Count, chunks.Count, batchSize);
 
+                var requestNumber = 0;
                 for (int i = 0; i < chunks.Count; i++)
                 {
                     var chunk = chunks[i];
-                    
-                    // Note: Instead of direct TranslateBatchAsync, we use TranslateWithFallbackAsync
-                    // to gracefully handle any individual chunk failure (like JSON truncation)
-                    var chunkResults = await fallbackService.TranslateWithFallbackAsync(
-                        chunk,
-                        batchService,
-                        sourceLanguage,
-                        targetLanguage,
-                        3, // maxSplitAttempts for repairs
-                        fileIdentifier,
-                        i + 1,
-                        chunks.Count,
-                        cancellationToken);
-
-                    // Extract translations for failed positions that were in this chunk
-                    foreach (var item in chunk)
+                    foreach (var repairRequest in chunk)
                     {
-                        if (repairBatch.FailedPositions.Contains(item.Position) && 
-                            chunkResults.TryGetValue(item.Position, out var translated) && 
+                        cancellationToken.ThrowIfCancellationRequested();
+                        requestNumber++;
+
+                        var chunkResults = await fallbackService.TranslateWithFallbackAsync(
+                            [repairRequest],
+                            batchService,
+                            sourceLanguage,
+                            targetLanguage,
+                            3,
+                            fileIdentifier,
+                            requestNumber,
+                            repairRequests.Count,
+                            cancellationToken);
+
+                        if (repairBatch.FailedPositions.Contains(repairRequest.Position) &&
+                            chunkResults.TryGetValue(repairRequest.Position, out var translated) &&
                             !string.IsNullOrWhiteSpace(translated))
                         {
-                            results[item.Position] = translated;
+                            results[repairRequest.Position] = translated;
                         }
                     }
                 }
@@ -221,7 +217,9 @@ public class DeferredRepairService : IDeferredRepairService
                         "[{FileId}] Deferred repair exhausted after {Attempts} attempts. {MissingCount} items failed permanently.",
                         fileIdentifier, attempt, finalMissing.Count);
                     
-                    throw new TranslationException(
+                    throw CreateMissingTranslationException(
+                        repairBatch,
+                        results,
                         $"Deferred repair failed after {attempt} attempts. " +
                         $"{finalMissing.Count} items could not be translated.");
                 }
@@ -230,9 +228,20 @@ public class DeferredRepairService : IDeferredRepairService
             {
                 throw;
             }
-            catch (TranslationException) when (attempt > maxRetries)
+            catch (TranslationException ex) when (attempt > maxRetries)
             {
-                throw;
+                if (ex is MissingTranslationException ||
+                    ex is ProviderPauseException ||
+                    TranslationFailureClassifier.IsProviderUnavailable(ex))
+                {
+                    throw;
+                }
+
+                throw CreateMissingTranslationException(
+                    repairBatch,
+                    results,
+                    $"Deferred repair failed after {attempt} attempts.",
+                    ex);
             }
             catch (Exception ex)
             {
@@ -247,7 +256,11 @@ public class DeferredRepairService : IDeferredRepairService
                         "[{FileId}] Deferred repair hit a non-repairable provider configuration failure on attempt {Attempt}. Failing fast.",
                         fileIdentifier,
                         attempt);
-                    throw;
+                    throw CreateMissingTranslationException(
+                        repairBatch,
+                        results,
+                        $"Deferred repair failed after {attempt} attempts because the translation provider configuration is invalid.",
+                        ex);
                 }
 
                 if (attempt <= maxRetries)
@@ -259,12 +272,95 @@ public class DeferredRepairService : IDeferredRepairService
                 else
                 {
                     _logger.LogError(ex, "[{FileId}] Permanent error during repair attempt {Attempt}", fileIdentifier, attempt);
-                    throw;
+                    if (TranslationFailureClassifier.IsProviderUnavailable(ex))
+                    {
+                        throw;
+                    }
+
+                    throw CreateMissingTranslationException(
+                        repairBatch,
+                        results,
+                        $"Deferred repair failed after {attempt} attempts.",
+                        ex);
                 }
             }
         }
         
         return results;
+    }
+
+    private static MissingTranslationException CreateMissingTranslationException(
+        ContextualRepairBatch repairBatch,
+        IReadOnlyDictionary<int, string> results,
+        string message,
+        Exception? innerException = null)
+    {
+        var missingCues = repairBatch.FailedPositions
+            .Where(position =>
+                !results.TryGetValue(position, out var translation) ||
+                string.IsNullOrWhiteSpace(translation))
+            .OrderBy(position => position)
+            .Select(position => new MissingTranslationCue(
+                position,
+                repairBatch.Items.FirstOrDefault(item => item.Position == position)?.Line ?? string.Empty,
+                AutoApprovalEligible: false))
+            .ToList();
+
+        if (missingCues.Count == 0)
+        {
+            missingCues = repairBatch.FailedPositions
+                .OrderBy(position => position)
+                .Select(position => new MissingTranslationCue(
+                    position,
+                    repairBatch.Items.FirstOrDefault(item => item.Position == position)?.Line ?? string.Empty,
+                    AutoApprovalEligible: false))
+                .ToList();
+        }
+
+        return new MissingTranslationException(
+            missingCues,
+            innerException ?? new TranslationException(message));
+    }
+
+    private static List<BatchSubtitleItem> BuildRepairRequests(
+        ContextualRepairBatch repairBatch,
+        IReadOnlySet<int> failedPositions)
+    {
+        var itemsByPosition = repairBatch.Items.ToDictionary(item => item.Position);
+        var requests = new List<BatchSubtitleItem>(failedPositions.Count);
+
+        foreach (var position in failedPositions.OrderBy(position => position))
+        {
+            if (!itemsByPosition.TryGetValue(position, out var failedItem))
+            {
+                continue;
+            }
+
+            var range = repairBatch.Ranges.FirstOrDefault(candidate =>
+                position >= candidate.Start && position <= candidate.End);
+            var rangeStart = range?.Start ?? repairBatch.Items.Min(item => item.Position);
+            var rangeEnd = range?.End ?? repairBatch.Items.Max(item => item.Position);
+
+            var preContext = repairBatch.Items
+                .Where(item => item.Position >= rangeStart && item.Position < position)
+                .OrderBy(item => item.Position)
+                .Select(item => item.Line)
+                .Where(line => !string.IsNullOrWhiteSpace(line))
+                .ToList();
+            var postContext = repairBatch.Items
+                .Where(item => item.Position > position && item.Position <= rangeEnd)
+                .OrderBy(item => item.Position)
+                .Select(item => item.Line)
+                .Where(line => !string.IsNullOrWhiteSpace(line))
+                .ToList();
+
+            requests.Add(new ContextualBatchSubtitleItem(
+                failedItem,
+                preContext.Count == 0 ? null : preContext,
+                postContext.Count == 0 ? null : postContext));
+        }
+
+        return requests;
     }
 
     private static List<List<BatchSubtitleItem>> SplitIntoChunks(List<BatchSubtitleItem> items, int chunkSize)

@@ -17,6 +17,20 @@ public interface IMkvEmbeddingService
         string languageCode,
         string? trackName = null,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Embeds multiple subtitle files into an MKV container in one merge and swap operation.
+    /// If the merge fails, the original container is left untouched.
+    /// </summary>
+    Task<MkvEmbedResult> EmbedSubtitlesAsync(
+        string mkvPath,
+        IReadOnlyCollection<MkvSubtitleInput> subtitles,
+        CancellationToken ct = default);
 }
 
 public record MkvEmbedResult(bool Success, string? OutputPath = null, string? Error = null);
+
+public sealed record MkvSubtitleInput(
+    string SubtitlePath,
+    string LanguageCode,
+    string? TrackName = null);

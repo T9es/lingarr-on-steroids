@@ -29,6 +29,28 @@ internal static class SubtitleSemanticClassifier
         "playing", "reads", "screaming", "singing", "softly", "song", "whispering"
     };
 
+    private static readonly HashSet<string> StandaloneSfxTerms = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "bang", "bangs", "banging", "bell", "bells", "buzz", "buzzes", "buzzing",
+        "clang", "clangs", "clanging", "clatter", "clatters", "clattering", "click", "clicks",
+        "clicking", "cough", "coughs", "coughing", "crash", "crashes", "crashing", "creak",
+        "creaks", "creaking", "cry", "cries", "door", "doors", "explosion", "explosions",
+        "footstep", "footsteps", "giggle", "giggles", "giggling", "gunshot", "gunshots",
+        "heartbeat", "heartbeats", "knock", "knocks", "knocking", "laugh", "laughs", "laughter",
+        "moan", "moans", "moaning", "roar", "roars", "roaring", "rustle", "rustles", "rustling",
+        "sigh", "sighs", "sighing", "slam", "slams", "slamming", "sneeze", "sneezes", "sneezing",
+        "sniff", "sniffs", "sniffing", "sniffles", "sob", "sobs", "sobbing", "squeak", "squeaks",
+        "squeaking", "stomp", "stomps", "stomping", "thud", "thuds", "thunder", "thunderclap",
+        "whistle", "whistles", "whistling", "wind"
+    };
+
+    private static readonly HashSet<string> SdhCueModifiers = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "approaching", "away", "distant", "echo", "echoes", "echoing", "faint", "loud", "loudly",
+        "nearby", "off-screen", "offscreen", "outside", "receding", "slow", "slowly", "soft",
+        "sudden", "suddenly"
+    };
+
     private static readonly HashSet<string> LyricOrChantTerms = new(StringComparer.OrdinalIgnoreCase)
     {
         "fond", "embrace", "ha", "ha'aheo", "haaheo", "i", "ka", "lipo", "na", "nani", "noho",
@@ -131,11 +153,51 @@ internal static class SubtitleSemanticClassifier
 
     public static bool CanIgnoreUnchangedEcho(string text)
     {
-        var classification = Classify(null, text);
+        return CanIgnoreUnchangedEcho(text, null);
+    }
+
+    public static bool CanIgnoreUnchangedEcho(
+        string text,
+        SubtitleItem? subtitle,
+        string? styleName = null)
+    {
+        var classification = Classify(subtitle, text, styleName);
+        return IsSourcePreservable(classification);
+    }
+
+    public static bool IsSafeSourceEcho(
+        SubtitleItem? subtitle,
+        string sourceText,
+        string? translatedText,
+        string? styleName = null)
+    {
+        if (string.IsNullOrWhiteSpace(sourceText) || string.IsNullOrWhiteSpace(translatedText))
+        {
+            return false;
+        }
+
+        var normalizedSource = NormalizeSourceEchoText(sourceText);
+        var normalizedTranslation = NormalizeSourceEchoText(translatedText);
+        return string.Equals(normalizedSource, normalizedTranslation, StringComparison.Ordinal) &&
+               CanIgnoreUnchangedEcho(normalizedSource, subtitle, styleName);
+    }
+
+    private static bool IsSourcePreservable(SubtitleSemanticClassification classification)
+    {
         return classification.Kind is SubtitleSemanticKind.SdhSoundEffect
             or SubtitleSemanticKind.LyricOrChant
             or SubtitleSemanticKind.SignOrTitle
             or SubtitleSemanticKind.ProperNameOnly;
+    }
+
+    private static string NormalizeSourceEchoText(string text)
+    {
+        var normalized = SubtitleTextStructure.NormalizeProviderTranslationText(text)
+            .Replace("\\N", " ", StringComparison.Ordinal)
+            .Replace("\\n", " ", StringComparison.Ordinal)
+            .Replace('\n', ' ')
+            .Trim();
+        return string.Join(' ', normalized.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
     }
 
     public static bool IsLikelyCorruptText(string text)
@@ -309,7 +371,14 @@ internal static class SubtitleSemanticClassifier
         }
 
         var tokens = GetWordTokens(trimmed).ToList();
-        return tokens.Any(token => SdhTerms.Contains(token));
+        if (tokens.Any(token => SdhTerms.Contains(token)))
+        {
+            return true;
+        }
+
+        return tokens.Count > 0 &&
+               tokens.Any(token => StandaloneSfxTerms.Contains(token)) &&
+               tokens.All(token => StandaloneSfxTerms.Contains(token) || SdhCueModifiers.Contains(token));
     }
 
     private static bool IsSignOrTitle(string text, string? style)

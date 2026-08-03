@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
+using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Services.Subtitle;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -10,6 +13,23 @@ namespace Lingarr.Server.Tests.Services.Subtitle;
 
 public class MkvEmbeddingServiceTests
 {
+    [Fact]
+    public async Task AcquirePublicationLeaseAsync_SerializesTheSameMediaPath()
+    {
+        var mediaPath = Path.Combine(Path.GetTempPath(), "lingarr-publication-lock-test.mkv");
+        await using var firstLease = await MkvEmbeddingService.AcquirePublicationLeaseAsync([mediaPath]);
+
+        var secondLeaseTask = MkvEmbeddingService.AcquirePublicationLeaseAsync([mediaPath]);
+        var completedTask = await Task.WhenAny(
+            secondLeaseTask,
+            Task.Delay(TimeSpan.FromMilliseconds(150)));
+
+        Assert.NotSame(secondLeaseTask, completedTask);
+
+        await firstLease.DisposeAsync();
+        await using var secondLease = await secondLeaseTask;
+    }
+
     [Fact]
     public void CreateTempOutputPath_WithNearLimitMkvName_StaysWithinFilenameLimit()
     {
@@ -141,6 +161,27 @@ public class MkvEmbeddingServiceTests
         Assert.Equal("!5,7", args[subtitleTracksIndex + 1]);
         Assert.DoesNotContain("!5", args);
         Assert.DoesNotContain("!7", args);
+    }
+
+    [Fact]
+    public void BuildMkvMergeArguments_BatchAppendsAllSubtitleInputsBeforeOneSwap()
+    {
+        var args = MkvEmbeddingService.BuildMkvMergeArguments(
+            "/media/movie.mkv",
+            [
+                new MkvSubtitleInput("/tmp/translated.ass", "pl", "pl (Lingarr)"),
+                new MkvSubtitleInput("/tmp/translated.srt", "pl", "pl (Lingarr)")
+            ],
+            "/media/out.mkv",
+            [5, 7]);
+
+        Assert.Equal("!5,7", args[args.IndexOf("--subtitle-tracks") + 1]);
+        Assert.Equal(1, args.Count(value => value == "/media/movie.mkv"));
+        Assert.True(args.IndexOf("/tmp/translated.ass") > args.IndexOf("/media/movie.mkv"));
+        Assert.True(args.IndexOf("/tmp/translated.srt") > args.IndexOf("/tmp/translated.ass"));
+        Assert.Equal(2, args.Count(value => value == "--language"));
+        Assert.Equal(2, args.Count(value => value == "--track-name"));
+        Assert.Equal(1, args.Count(value => value == "--default-track-flag"));
     }
 
     [Fact]

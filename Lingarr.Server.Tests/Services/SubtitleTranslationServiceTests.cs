@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -15,6 +16,7 @@ using Lingarr.Server.Models.Translation;
 using Lingarr.Server.Services;
 using Lingarr.Server.Services.Translation;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
 
@@ -626,7 +628,7 @@ public class SubtitleTranslationServiceTests
             Item(1, "This source sentence must be translated before approval.")
         };
 
-        var exception = await Assert.ThrowsAsync<TranslationException>(() => service.TranslateSubtitles(
+        var exception = await Assert.ThrowsAsync<MissingTranslationException>(() => service.TranslateSubtitles(
             subtitles,
             new TranslationRequest
             {
@@ -644,7 +646,10 @@ public class SubtitleTranslationServiceTests
             cancellationToken: CancellationToken.None));
 
         Assert.Contains("source", exception.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("echo", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "echo",
+            exception.InnerException?.Message ?? string.Empty,
+            StringComparison.OrdinalIgnoreCase);
         checkpointServiceMock.Verify(service => service.SaveTranslationAsync(
             112,
             It.IsAny<string>(),
@@ -691,7 +696,7 @@ public class SubtitleTranslationServiceTests
             Item(1, "This translation is ready for final review.")
         };
 
-        var exception = await Assert.ThrowsAsync<TranslationException>(() => service.TranslateSubtitles(
+        var exception = await Assert.ThrowsAsync<MissingTranslationException>(() => service.TranslateSubtitles(
             subtitles,
             new TranslationRequest
             {
@@ -708,7 +713,10 @@ public class SubtitleTranslationServiceTests
             preserveAssFormatting: false,
             cancellationToken: CancellationToken.None));
 
-        Assert.Contains("wrong target language", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "wrong target language",
+            exception.InnerException?.Message ?? string.Empty,
+            StringComparison.OrdinalIgnoreCase);
         checkpointServiceMock.Verify(service => service.SaveTranslationAsync(
             113,
             It.IsAny<string>(),
@@ -955,6 +963,117 @@ public class SubtitleTranslationServiceTests
         Assert.DoesNotContain(243, savedCheckpoint.Translations.Keys);
         Assert.DoesNotContain(244, savedCheckpoint.Translations.Keys);
         Assert.Equal("Musimy teraz wyjść.", savedCheckpoint.Translations[245]);
+    }
+
+    [Fact]
+    public async Task TranslateSubtitlesBatch_WhenRetryingIncompleteCheckpoint_SendsOnlyMissingRepresentativeWithConfiguredContext()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var batchServiceMock = translationServiceMock.As<IBatchTranslationService>();
+        var checkpointServiceMock = new Mock<ITranslationCheckpointService>();
+        var loggerMock = new Mock<ILogger>();
+        var progressServiceMock = new Mock<IProgressService>();
+        var capturedBatches = new List<List<BatchSubtitleItem>>();
+        var capturedPreContexts = new List<List<string>?>();
+        var capturedPostContexts = new List<List<string>?>();
+        var checkpoint = new TranslationCheckpoint
+        {
+            TranslationRequestId = 111,
+            SourceFingerprint = "retry-context",
+            Translations = new Dictionary<int, string>
+            {
+                [1] = "Zdrowa linia przed.",
+                [2] = "This line needs a retry.",
+                [3] = "Zdrowa linia po."
+            }
+        };
+
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+        batchServiceMock
+            .Setup(service => service.TranslateBatchAsync(
+                It.IsAny<List<BatchSubtitleItem>>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .Callback((List<BatchSubtitleItem> batch, string _, string _, List<string>? preContext, List<string>? postContext, CancellationToken _) =>
+            {
+                capturedBatches.Add(batch.ToList());
+                capturedPreContexts.Add(preContext?.ToList());
+                capturedPostContexts.Add(postContext?.ToList());
+            })
+            .ReturnsAsync((List<BatchSubtitleItem> batch, string _, string _, List<string>? _, List<string>? _, CancellationToken _) =>
+                batch.ToDictionary(item => item.Position, _ => "PrzetĹ‚umaczona linia retry."));
+        checkpointServiceMock
+            .Setup(service => service.LoadAsync(111, "retry-context", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(checkpoint);
+        checkpointServiceMock
+            .Setup(service => service.SaveCheckpointAsync(
+                It.IsAny<TranslationCheckpoint>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        checkpointServiceMock
+            .Setup(service => service.SaveTranslationAsync(
+                111,
+                "retry-context",
+                2,
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            loggerMock.Object,
+            progressServiceMock.Object,
+            checkpointService: checkpointServiceMock.Object);
+
+        var subtitles = new List<SubtitleItem>
+        {
+            Item(1, "Previously translated line."),
+            Item(2, "This line needs a retry."),
+            Item(3, "Following context line.")
+        };
+
+        var result = await service.TranslateSubtitlesBatch(
+            subtitles,
+            new TranslationRequest
+            {
+                Id = 111,
+                Title = "Episode",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                MediaType = Lingarr.Core.Enum.MediaType.Show,
+                Status = Lingarr.Core.Enum.TranslationStatus.Pending,
+                SourceSnapshotFingerprint = "retry-context"
+            },
+            stripSubtitleFormatting: false,
+            preserveAssFormatting: false,
+            batchSize: 1,
+            batchRetryMode: "none",
+            batchContextEnabled: false,
+            batchContextBefore: 1,
+            batchContextAfter: 1,
+            cancellationToken: CancellationToken.None);
+
+        var sentBatch = Assert.Single(capturedBatches);
+        var sentItem = Assert.Single(sentBatch);
+        Assert.Equal(2, sentItem.Position);
+        Assert.Equal("This line needs a retry.", sentItem.Line);
+        Assert.Equal(["Previously translated line."], Assert.Single(capturedPreContexts));
+        Assert.Equal(["Following context line."], Assert.Single(capturedPostContexts));
+        Assert.DoesNotContain(sentBatch, item => item.Line is "Previously translated line." or "Following context line.");
+        Assert.Equal("PrzetĹ‚umaczona linia retry.", result[1].TranslatedLines[0]);
+        Assert.Equal("Zdrowa linia przed.", result[0].TranslatedLines[0]);
+        Assert.Equal("Zdrowa linia po.", result[2].TranslatedLines[0]);
+        checkpointServiceMock.Verify(service => service.SaveTranslationAsync(
+            111,
+            "retry-context",
+            2,
+            It.IsAny<string>(),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -1215,6 +1334,93 @@ public class SubtitleTranslationServiceTests
         Assert.Equal(2, capturedPreContexts.Count);
         Assert.Empty(capturedPreContexts[0]!);
         Assert.Equal(["Before"], capturedPreContexts[1]);
+    }
+
+    [Fact]
+    public async Task TranslateSubtitlesBatch_WhenImmediateFallbackSplitsBatch_PreservesConfiguredContext()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var batchServiceMock = translationServiceMock.As<IBatchTranslationService>();
+        var progressServiceMock = new Mock<IProgressService>();
+        var capturedCalls = new List<(
+            List<int> Positions,
+            List<string>? PreContext,
+            List<string>? PostContext)>();
+
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+
+        batchServiceMock
+            .Setup(service => service.TranslateBatchAsync(
+                It.IsAny<List<BatchSubtitleItem>>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns((
+                List<BatchSubtitleItem> batch,
+                string _,
+                string _,
+                List<string>? preContext,
+                List<string>? postContext,
+                CancellationToken _) =>
+            {
+                capturedCalls.Add((
+                    batch.Select(item => item.Position).ToList(),
+                    preContext?.ToList(),
+                    postContext?.ToList()));
+
+                return batch.Count > 1
+                    ? Task.FromException<Dictionary<int, string>>(
+                        new TranslationException("Forced full-batch failure."))
+                    : Task.FromResult(batch.ToDictionary(
+                        item => item.Position,
+                        item => $"Przetlumaczona linia {item.Position}"));
+            });
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            Mock.Of<ILogger>(),
+            progressServiceMock.Object,
+            batchFallbackService: new BatchFallbackService(Mock.Of<ILogger<BatchFallbackService>>()));
+        var subtitles = Enumerable.Range(1, 6)
+            .Select(position => Item(position, $"Subtitle line {position}"))
+            .ToList();
+
+        await service.TranslateSubtitlesBatch(
+            subtitles,
+            new TranslationRequest
+            {
+                Id = 117,
+                Title = "Episode",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                MediaType = Lingarr.Core.Enum.MediaType.Show,
+                Status = Lingarr.Core.Enum.TranslationStatus.Pending
+            },
+            stripSubtitleFormatting: false,
+            batchSize: 2,
+            batchRetryMode: "immediate",
+            maxSplitAttempts: 2,
+            batchContextEnabled: true,
+            batchContextBefore: 1,
+            batchContextAfter: 1,
+            cancellationToken: CancellationToken.None);
+
+        var targetCalls = capturedCalls
+            .Where(call => call.Positions.SequenceEqual([3, 4]) ||
+                          call.Positions.SequenceEqual([3]) ||
+                          call.Positions.SequenceEqual([4]))
+            .ToList();
+        Assert.Equal(3, targetCalls.Count);
+        Assert.All(targetCalls, call =>
+        {
+            Assert.Equal(["Subtitle line 2"], call.PreContext);
+            Assert.Equal(["Subtitle line 5"], call.PostContext);
+        });
+        Assert.Equal(6, subtitles.Count(subtitle => subtitle.TranslatedLines.Count == 1));
     }
 
     [Fact]
@@ -1734,7 +1940,75 @@ public class SubtitleTranslationServiceTests
     }
 
     [Fact]
-    public async Task TranslateSubtitlesBatch_WhenResidualEchoedCuesAreWithinTolerance_PreservesSource()
+    public async Task TranslateSubtitlesBatch_WhenAssSemanticCuesEchoSource_PreservesThemButRejectsOrdinaryDialogue()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var batchServiceMock = translationServiceMock.As<IBatchTranslationService>();
+        var loggerMock = new Mock<ILogger>();
+        var progressServiceMock = new Mock<IProgressService>();
+
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+        batchServiceMock
+            .Setup(service => service.TranslateBatchAsync(
+                It.IsAny<List<BatchSubtitleItem>>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((List<BatchSubtitleItem> batch, string _, string _, List<string>? _, List<string>? _, CancellationToken _) =>
+                batch.ToDictionary(item => item.Position, item => item.Line));
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            loggerMock.Object,
+            progressServiceMock.Object);
+        var subtitles = new List<SubtitleItem>
+        {
+            new()
+            {
+                Position = 1,
+                Lines = ["{\\an8}SHOW TITLE"],
+                PlaintextLines = ["SHOW TITLE"],
+                SsaDialogue = new SsaDialogue { Style = "Signs" }
+            },
+            new()
+            {
+                Position = 2,
+                Lines = ["{\\k20}La la"],
+                PlaintextLines = ["La la"],
+                SsaDialogue = new SsaDialogue { Style = "Karaoke" }
+            },
+            Item(3, "This is ordinary dialogue")
+        };
+
+        var exception = await Assert.ThrowsAsync<MissingTranslationException>(() => service.TranslateSubtitlesBatch(
+            subtitles,
+            new TranslationRequest
+            {
+                Id = 116,
+                Title = "Episode",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                MediaType = Lingarr.Core.Enum.MediaType.Show,
+                Status = Lingarr.Core.Enum.TranslationStatus.Pending
+            },
+            stripSubtitleFormatting: false,
+            preserveAssFormatting: true,
+            batchSize: 3,
+            batchRetryMode: "none",
+            cancellationToken: CancellationToken.None));
+
+        Assert.Equal([3], exception.MissingCues.Select(cue => cue.Position));
+        Assert.Equal("{\\an8}SHOW TITLE", subtitles[0].TranslatedLines[0]);
+        Assert.Equal("{\\k20}La la", subtitles[1].TranslatedLines[0]);
+        Assert.Empty(subtitles[2].TranslatedLines);
+    }
+
+    [Fact]
+    public async Task TranslateSubtitlesBatch_WhenSingleResidualDialogueEchoRemains_StillReportsMissing()
     {
         var translationServiceMock = new Mock<ITranslationService>();
         var batchServiceMock = translationServiceMock.As<IBatchTranslationService>();
@@ -1801,7 +2075,7 @@ public class SubtitleTranslationServiceTests
             .Select(position => Item(position, position == 1 ? "Whoa, whoa, whoa." : $"Subtitle line number {position}"))
             .ToList();
 
-        var result = await service.TranslateSubtitlesBatch(
+        var exception = await Assert.ThrowsAsync<MissingTranslationException>(() => service.TranslateSubtitlesBatch(
             subtitles,
             new TranslationRequest
             {
@@ -1816,10 +2090,11 @@ public class SubtitleTranslationServiceTests
             preserveAssFormatting: false,
             batchSize: 100,
             batchRetryMode: "deferred",
-            cancellationToken: CancellationToken.None);
+            cancellationToken: CancellationToken.None));
 
-        Assert.Equal("Whoa, whoa, whoa.", result[0].TranslatedLines[0]);
-        Assert.Equal("Przetlumaczona linia 2", result[1].TranslatedLines[0]);
+        Assert.Contains(1, exception.MissingCues.Select(cue => cue.Position));
+        Assert.Empty(subtitles[0].TranslatedLines);
+        Assert.Equal("Przetlumaczona linia 2", subtitles[1].TranslatedLines[0]);
     }
 
     [Fact]
@@ -1889,6 +2164,584 @@ public class SubtitleTranslationServiceTests
         Assert.NotEmpty(capturedAfterCounts);
         Assert.All(capturedBeforeCounts, count => Assert.InRange(count, 0, 10));
         Assert.All(capturedAfterCounts, count => Assert.InRange(count, 0, 10));
+    }
+
+    [Fact]
+    public async Task TranslateSubtitles_WhenSnapshotFingerprintIsPresent_UsesStableSourceContentIdentity()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var checkpointServiceMock = new Mock<ITranslationCheckpointService>();
+        var progressServiceMock = new Mock<IProgressService>();
+        var loadedFingerprints = new List<string>();
+        var checkpointTranslations = new Dictionary<string, Dictionary<int, string>>();
+        var temporaryDirectory = Directory.CreateTempSubdirectory("lingarr-checkpoint-fingerprint-");
+        var sourcePath = Path.Combine(temporaryDirectory.FullName, "source.srt");
+
+        try
+        {
+            await File.WriteAllTextAsync(sourcePath, "1\n00:00:00,000 --> 00:00:01,000\nHello there\n");
+
+            progressServiceMock
+                .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+                .Returns(Task.CompletedTask);
+            translationServiceMock
+                .Setup(service => service.TranslateAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<List<string>?>(),
+                    It.IsAny<List<string>?>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync((string text, string _, string _, List<string>? _, List<string>? _, CancellationToken _) =>
+                    text == "Hello there"
+                        ? "To jest stare tłumaczenie"
+                        : "To jest nowe tłumaczenie");
+            checkpointServiceMock
+                .Setup(service => service.LoadAsync(
+                    301,
+                    It.IsAny<string>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync((int _, string fingerprint, CancellationToken _) =>
+                {
+                    loadedFingerprints.Add(fingerprint);
+                    return checkpointTranslations.TryGetValue(fingerprint, out var translations)
+                        ? new TranslationCheckpoint
+                        {
+                            TranslationRequestId = 301,
+                            SourceFingerprint = fingerprint,
+                            Translations = new Dictionary<int, string>(translations)
+                        }
+                        : null;
+                });
+            checkpointServiceMock
+                .Setup(service => service.SaveTranslationAsync(
+                    301,
+                    It.IsAny<string>(),
+                    It.IsAny<int>(),
+                    It.IsAny<string>(),
+                    It.IsAny<CancellationToken>()))
+                .Callback<int, string, int, string, CancellationToken>(
+                    (_, fingerprint, position, translation, _) =>
+                    {
+                        if (!checkpointTranslations.TryGetValue(fingerprint, out var translations))
+                        {
+                            translations = new Dictionary<int, string>();
+                            checkpointTranslations[fingerprint] = translations;
+                        }
+
+                        translations[position] = translation;
+                    })
+                .Returns(Task.CompletedTask);
+
+            var service = new SubtitleTranslationService(
+                translationServiceMock.Object,
+                Mock.Of<ILogger>(),
+                progressServiceMock.Object,
+                checkpointService: checkpointServiceMock.Object);
+            var request = new TranslationRequest
+            {
+                Id = 301,
+                Title = "Episode",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                SubtitleToTranslate = sourcePath,
+                SourceSubtitleFormat = ".srt",
+                SourceSnapshotFingerprint = "snapshot-identity",
+                MediaType = Lingarr.Core.Enum.MediaType.Show,
+                Status = Lingarr.Core.Enum.TranslationStatus.Pending
+            };
+
+            var firstResult = await service.TranslateSubtitles(
+                [Item(1, "Hello there")],
+                request,
+                stripSubtitleFormatting: false,
+                contextBefore: 0,
+                contextAfter: 0,
+                preserveAssFormatting: false,
+                cancellationToken: CancellationToken.None);
+            var retryResult = await service.TranslateSubtitles(
+                [Item(1, "Hello there")],
+                request,
+                stripSubtitleFormatting: false,
+                contextBefore: 0,
+                contextAfter: 0,
+                preserveAssFormatting: false,
+                cancellationToken: CancellationToken.None);
+
+            await File.WriteAllTextAsync(sourcePath, "1\n00:00:00,000 --> 00:00:01,000\nGoodbye there\n");
+            var replacedSourceResult = await service.TranslateSubtitles(
+                [Item(1, "Goodbye there")],
+                request,
+                stripSubtitleFormatting: false,
+                contextBefore: 0,
+                contextAfter: 0,
+                preserveAssFormatting: false,
+                cancellationToken: CancellationToken.None);
+
+            Assert.Equal("To jest stare tłumaczenie", firstResult[0].TranslatedLines[0]);
+            Assert.Equal("To jest stare tłumaczenie", retryResult[0].TranslatedLines[0]);
+            Assert.Equal("To jest nowe tłumaczenie", replacedSourceResult[0].TranslatedLines[0]);
+            Assert.Equal(2, translationServiceMock.Invocations.Count(invocation =>
+                invocation.Method.Name == nameof(ITranslationService.TranslateAsync)));
+            Assert.Equal(3, loadedFingerprints.Count);
+            Assert.Equal(loadedFingerprints[0], loadedFingerprints[1]);
+            Assert.NotEqual(loadedFingerprints[0], loadedFingerprints[2]);
+            Assert.Contains("content-sha256:", loadedFingerprints[0], StringComparison.Ordinal);
+        }
+        finally
+        {
+            temporaryDirectory.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task TranslateSubtitles_WhenProviderThrowsGenericFailure_ReturnsMissingTranslationData()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        translationServiceMock
+            .Setup(service => service.TranslateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new TranslationException("Provider rejected the translation request."));
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            Mock.Of<ILogger>(),
+            Mock.Of<IProgressService>());
+
+        var exception = await Assert.ThrowsAsync<MissingTranslationException>(() => service.TranslateSubtitles(
+            [Item(501, "A line that must remain reviewable")],
+            new TranslationRequest
+            {
+                Id = 501,
+                Title = "Episode",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                MediaType = Lingarr.Core.Enum.MediaType.Show,
+                Status = Lingarr.Core.Enum.TranslationStatus.Pending
+            },
+            stripSubtitleFormatting: false,
+            contextBefore: 0,
+            contextAfter: 0,
+            preserveAssFormatting: false,
+            cancellationToken: CancellationToken.None));
+
+        var cue = Assert.Single(exception.MissingCues);
+        Assert.Equal(501, cue.Position);
+        Assert.Equal("A line that must remain reviewable", cue.SourceText);
+        Assert.Contains("Provider rejected", exception.InnerException?.InnerException?.Message ?? string.Empty);
+    }
+
+    [Fact]
+    public async Task TranslateSubtitlesBatch_WhenCheckpointMarksSourcePreservedPositions_HydratesThemWithoutProviderRequests()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var batchServiceMock = translationServiceMock.As<IBatchTranslationService>();
+        var checkpointServiceMock = new Mock<ITranslationCheckpointService>();
+        var progressServiceMock = new Mock<IProgressService>();
+        List<BatchSubtitleItem>? capturedBatch = null;
+
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+        batchServiceMock
+            .Setup(service => service.TranslateBatchAsync(
+                It.IsAny<List<BatchSubtitleItem>>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .Callback((List<BatchSubtitleItem> batch, string _, string _, List<string>? _, List<string>? _, CancellationToken _) =>
+            {
+                capturedBatch = batch;
+            })
+            .ReturnsAsync(new Dictionary<int, string>
+            {
+                [4] = "Przetłumaczona zwykła linia"
+            });
+        checkpointServiceMock
+            .Setup(service => service.LoadAsync(401, "source-preserved", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TranslationCheckpoint
+            {
+                TranslationRequestId = 401,
+                SourceFingerprint = "source-preserved",
+                Translations = new Dictionary<int, string>
+                {
+                    [1] = "Opening line one",
+                    [2] = "Opening line two",
+                    [3] = "Opening line three"
+                },
+                SourcePreservedPositions = [1, 2, 3]
+            });
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            Mock.Of<ILogger>(),
+            progressServiceMock.Object,
+            checkpointService: checkpointServiceMock.Object);
+        var subtitles =
+            new[]
+            {
+                Item(1, "Opening line one"),
+                Item(2, "Opening line two"),
+                Item(3, "Opening line three"),
+                Item(4, "Ordinary dialogue")
+            }
+            .ToList();
+
+        var result = await service.TranslateSubtitlesBatch(
+            subtitles,
+            new TranslationRequest
+            {
+                Id = 401,
+                Title = "Episode",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                SourceSnapshotFingerprint = "source-preserved",
+                MediaType = Lingarr.Core.Enum.MediaType.Show,
+                Status = Lingarr.Core.Enum.TranslationStatus.Pending
+            },
+            stripSubtitleFormatting: false,
+            preserveAssFormatting: false,
+            batchSize: 10,
+            cancellationToken: CancellationToken.None);
+
+        Assert.NotNull(capturedBatch);
+        Assert.Equal([4], capturedBatch!.Select(item => item.Position));
+        Assert.Equal("Opening line one", result[0].TranslatedLines[0]);
+        Assert.Equal("Opening line two", result[1].TranslatedLines[0]);
+        Assert.Equal("Opening line three", result[2].TranslatedLines[0]);
+        Assert.Equal("Przetłumaczona zwykła linia", result[3].TranslatedLines[0]);
+    }
+
+    [Fact]
+    public async Task TranslateSubtitlesBatch_WhenSameTextHasDialogueAndSignSemantics_DoesNotShareProviderRepresentative()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var batchServiceMock = translationServiceMock.As<IBatchTranslationService>();
+        var progressServiceMock = new Mock<IProgressService>();
+        List<BatchSubtitleItem>? capturedBatch = null;
+
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+        batchServiceMock
+            .Setup(service => service.TranslateBatchAsync(
+                It.IsAny<List<BatchSubtitleItem>>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .Callback((List<BatchSubtitleItem> batch, string _, string _, List<string>? _, List<string>? _, CancellationToken _) =>
+            {
+                capturedBatch = batch;
+            })
+            .ReturnsAsync((List<BatchSubtitleItem> batch, string _, string _, List<string>? _, List<string>? _, CancellationToken _) =>
+                batch.ToDictionary(
+                    item => item.Position,
+                    item => item.Position == 1 ? "Dialog tłumaczenie" : "Znak tłumaczenie"));
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            Mock.Of<ILogger>(),
+            progressServiceMock.Object);
+        var subtitles = new List<SubtitleItem>
+        {
+            Item(1, "ON SCREEN"),
+            new()
+            {
+                Position = 2,
+                Lines = ["ON SCREEN"],
+                PlaintextLines = ["ON SCREEN"],
+                SsaDialogue = new SsaDialogue { Style = "Signs" }
+            }
+        };
+
+        var result = await service.TranslateSubtitlesBatch(
+            subtitles,
+            new TranslationRequest
+            {
+                Id = 402,
+                Title = "Episode",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                MediaType = Lingarr.Core.Enum.MediaType.Show,
+                Status = Lingarr.Core.Enum.TranslationStatus.Pending
+            },
+            stripSubtitleFormatting: false,
+            preserveAssFormatting: false,
+            batchSize: 10,
+            cancellationToken: CancellationToken.None);
+
+        Assert.NotNull(capturedBatch);
+        Assert.Equal([1, 2], capturedBatch!.Select(item => item.Position));
+        Assert.Equal("Dialog tłumaczenie", result[0].TranslatedLines[0]);
+        Assert.Equal("Znak tłumaczenie", result[1].TranslatedLines[0]);
+    }
+
+    [Fact]
+    public async Task TranslateSubtitles_WhenSnapshotIdentityChangesWithSameSourceBytes_DoesNotReuseSourcePreservedCheckpoint()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var progressServiceMock = new Mock<IProgressService>();
+        var root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        var sourcePath = Path.Combine(root, "source.srt");
+        var providerCallCount = 0;
+
+        Directory.CreateDirectory(root);
+        await File.WriteAllTextAsync(
+            sourcePath,
+            "1\n00:00:00,000 --> 00:00:01,000\nOpening line\n");
+
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+        translationServiceMock
+            .Setup(service => service.TranslateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((
+                string _,
+                string _,
+                string _,
+                List<string>? _,
+                List<string>? _,
+                CancellationToken _) =>
+            {
+                var call = Interlocked.Increment(ref providerCallCount);
+                return call == 1 ? "Translated version one" : "Translated version two";
+            });
+
+        try
+        {
+            var checkpointService = new TranslationCheckpointService(
+                NullLogger<TranslationCheckpointService>.Instance,
+                root);
+            var service = new SubtitleTranslationService(
+                translationServiceMock.Object,
+                Mock.Of<ILogger>(),
+                progressServiceMock.Object,
+                checkpointService: checkpointService);
+            var firstRequest = new TranslationRequest
+            {
+                Id = 701,
+                Title = "Episode",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                SubtitleToTranslate = sourcePath,
+                SourceSubtitleFormat = ".srt",
+                SourceSnapshotType = "embedded",
+                SourceSnapshotIdentity = "embedded|en|stream:1",
+                SourceSnapshotFingerprint = "snapshot-same-revision",
+                SourceSnapshotStreamIndex = 1,
+                MediaType = Lingarr.Core.Enum.MediaType.Show,
+                Status = Lingarr.Core.Enum.TranslationStatus.Pending
+            };
+
+            await service.TranslateSubtitles(
+                [Item(1, "Opening line")],
+                firstRequest,
+                stripSubtitleFormatting: false,
+                contextBefore: 0,
+                contextAfter: 0,
+                preserveAssFormatting: false,
+                cancellationToken: CancellationToken.None);
+
+            var cachedCheckpoint = await checkpointService.LoadByRequestIdAsync(
+                firstRequest.Id,
+                CancellationToken.None);
+            Assert.NotNull(cachedCheckpoint);
+            var firstFingerprint = cachedCheckpoint!.SourceFingerprint;
+            cachedCheckpoint!.Translations[1] = "Opening line";
+            cachedCheckpoint.SourcePreservedPositions.Add(1);
+            await checkpointService.SaveCheckpointAsync(cachedCheckpoint, CancellationToken.None);
+
+            var secondRequest = new TranslationRequest
+            {
+                Id = firstRequest.Id,
+                Title = firstRequest.Title,
+                SourceLanguage = firstRequest.SourceLanguage,
+                TargetLanguage = firstRequest.TargetLanguage,
+                SubtitleToTranslate = firstRequest.SubtitleToTranslate,
+                SourceSubtitleFormat = firstRequest.SourceSubtitleFormat,
+                SourceSnapshotType = "embedded",
+                SourceSnapshotIdentity = "embedded|en|stream:2",
+                SourceSnapshotFingerprint = "snapshot-same-revision",
+                SourceSnapshotStreamIndex = 2,
+                MediaType = firstRequest.MediaType,
+                Status = firstRequest.Status
+            };
+
+            var result = await service.TranslateSubtitles(
+                [Item(1, "Opening line")],
+                secondRequest,
+                stripSubtitleFormatting: false,
+                contextBefore: 0,
+                contextAfter: 0,
+                preserveAssFormatting: false,
+                cancellationToken: CancellationToken.None);
+
+            Assert.Equal(2, providerCallCount);
+            Assert.Equal("Translated version two", result[0].TranslatedLines[0]);
+            var refreshedCheckpoint = await checkpointService.LoadByRequestIdAsync(
+                secondRequest.Id,
+                CancellationToken.None);
+            Assert.NotNull(refreshedCheckpoint);
+            Assert.NotEqual(firstFingerprint, refreshedCheckpoint!.SourceFingerprint);
+            Assert.Empty(refreshedCheckpoint.SourcePreservedPositions);
+            Assert.Equal("Translated version two", refreshedCheckpoint.Translations[1]);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task TranslateSubtitles_WhenExactSemanticDuplicatesExist_UsesOneProviderRequestAndPreservesEachAssStructure()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var progressServiceMock = new Mock<IProgressService>();
+        var calls = new List<(string Text, List<string>? Before, List<string>? After)>();
+
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+        translationServiceMock
+            .Setup(service => service.TranslateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<string, string, string, List<string>?, List<string>?, CancellationToken>(
+                (text, _, _, before, after, _) => calls.Add((text, before, after)))
+            .ReturnsAsync("Translated duplicate");
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            Mock.Of<ILogger>(),
+            progressServiceMock.Object);
+        var subtitles = new List<SubtitleItem>
+        {
+            Item(1, "♪"),
+            new()
+            {
+                Position = 2,
+                Lines = ["{\\an7}Repeated line"],
+                PlaintextLines = ["Repeated line"]
+            },
+            new()
+            {
+                Position = 3,
+                Lines = ["{\\an8}Repeated line"],
+                PlaintextLines = ["Repeated line"]
+            },
+            Item(4, "♪")
+        };
+
+        var result = await service.TranslateSubtitles(
+            subtitles,
+            new TranslationRequest
+            {
+                Id = 702,
+                Title = "Episode",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                MediaType = Lingarr.Core.Enum.MediaType.Show,
+                Status = Lingarr.Core.Enum.TranslationStatus.Pending
+            },
+            stripSubtitleFormatting: false,
+            contextBefore: 1,
+            contextAfter: 1,
+            preserveAssFormatting: true,
+            cancellationToken: CancellationToken.None);
+
+        var call = Assert.Single(calls);
+        Assert.Equal("Repeated line", call.Text);
+        Assert.Equal(["♪"], call.Before);
+        Assert.Equal(["Repeated line"], call.After);
+        Assert.Equal("{\\an7}Translated duplicate", result[1].TranslatedLines[0]);
+        Assert.Equal("{\\an8}Translated duplicate", result[2].TranslatedLines[0]);
+    }
+
+    [Fact]
+    public async Task TranslateSubtitles_WhenSameTextHasDifferentSemanticKinds_UsesSeparateProviderRepresentatives()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var progressServiceMock = new Mock<IProgressService>();
+        var providerCallCount = 0;
+
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+        translationServiceMock
+            .Setup(service => service.TranslateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((
+                string _,
+                string _,
+                string _,
+                List<string>? _,
+                List<string>? _,
+                CancellationToken _) =>
+            {
+                var call = Interlocked.Increment(ref providerCallCount);
+                return call == 1 ? "Translated dialogue" : "Translated sign";
+            });
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            Mock.Of<ILogger>(),
+            progressServiceMock.Object);
+        var result = await service.TranslateSubtitles(
+            [
+                Item(1, "Repeated line"),
+                new SubtitleItem
+                {
+                    Position = 2,
+                    Lines = ["Repeated line"],
+                    PlaintextLines = ["Repeated line"],
+                    SsaDialogue = new SsaDialogue { Style = "Signs" }
+                }
+            ],
+            new TranslationRequest
+            {
+                Id = 703,
+                Title = "Episode",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                MediaType = Lingarr.Core.Enum.MediaType.Show,
+                Status = Lingarr.Core.Enum.TranslationStatus.Pending
+            },
+            stripSubtitleFormatting: false,
+            contextBefore: 0,
+            contextAfter: 0,
+            preserveAssFormatting: false,
+            cancellationToken: CancellationToken.None);
+
+        Assert.Equal(2, providerCallCount);
+        Assert.Equal("Translated dialogue", result[0].TranslatedLines[0]);
+        Assert.Equal("Translated sign", result[1].TranslatedLines[0]);
     }
 
     private static SubtitleItem Item(int position, string line)

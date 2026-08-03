@@ -1,6 +1,9 @@
 namespace Lingarr.Server.Services.Subtitle;
 
-internal sealed record ProviderTextItem(int Position, string ProviderText);
+internal sealed record ProviderTextItem(
+    int Position,
+    string ProviderText,
+    SubtitleSemanticKind SemanticKind = SubtitleSemanticKind.Dialogue);
 
 internal sealed class ProviderTextDeduplicationResult
 {
@@ -37,11 +40,11 @@ internal static class ProviderTextDeduper
         var representatives = new List<ProviderTextItem>(items.Count);
         var representativePositionByPosition = new Dictionary<int, int>(items.Count);
         var memberPositionsByRepresentativePosition = new Dictionary<int, List<int>>();
-        var representativeByKey = new Dictionary<string, ProviderTextItem>(StringComparer.Ordinal);
+        var representativeByKey = new Dictionary<(SubtitleSemanticKind SemanticKind, string Text), ProviderTextItem>();
 
         foreach (var item in items)
         {
-            var key = Normalize(item.ProviderText);
+            var key = (item.SemanticKind, Normalize(item.ProviderText));
             if (!representativeByKey.TryGetValue(key, out var representative))
             {
                 representative = item;

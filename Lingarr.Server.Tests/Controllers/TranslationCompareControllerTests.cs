@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -14,8 +15,11 @@ using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models.Api;
+using Lingarr.Server.Models.FileSystem;
 using Lingarr.Server.Models.Translation;
 using Lingarr.Server.Services;
+using Lingarr.Server.Services.Subtitle;
+using Lingarr.Server.Services.Translation;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -91,6 +95,9 @@ public class TranslationCompareControllerTests : IDisposable
 
         Assert.Equal("Hello there", payload.Lines[0].Original);
         Assert.Equal("Czesc tam", payload.Lines[0].Translated);
+        Assert.Equal(
+            BuildCurrentSourceFingerprint(request, sourcePath),
+            payload.SourceFingerprint);
         Assert.Equal(1000, payload.Lines[0].StartTimeMs);
         Assert.Equal(1000, payload.Lines[0].DurationMs);
     }
@@ -458,6 +465,230 @@ public class TranslationCompareControllerTests : IDisposable
     }
 
     [Fact]
+    public async Task AcceptTranslation_WhenSourceSnapshotIsStale_ReturnsConflictWithoutApplyingEdits()
+    {
+        var sourcePath = Path.Combine(_tempDirectory, "stale-source-snapshot.en.srt");
+        await File.WriteAllTextAsync(sourcePath, CreateSrtSubtitle("Original line"));
+
+        var request = new TranslationRequest
+        {
+            Title = "Stale source snapshot",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = sourcePath,
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Failed
+        };
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var completionService = new RecordingFailedTranslationCompletionService();
+        var controller = CreateController(completionService: completionService);
+        var compareResult = await controller.GetCompletedTranslationCompare(request.Id);
+        var comparePayload = Assert.IsType<CompletedTranslationCompareResponse>(
+            Assert.IsType<OkObjectResult>(compareResult.Result).Value);
+
+        await File.WriteAllTextAsync(sourcePath, CreateSrtSubtitle("Changed line"));
+
+        var actionResult = await controller.AcceptTranslation(
+            request.Id,
+            new TranslationCompareEditRequest
+            {
+                SourceFingerprint = comparePayload.SourceFingerprint,
+                Edits =
+                [
+                    new TranslationCompareEdit
+                    {
+                        Position = 1,
+                        TranslatedText = "Zmiana"
+                    }
+                ]
+            },
+            CancellationToken.None);
+
+        Assert.IsType<ConflictObjectResult>(actionResult.Result);
+        Assert.Equal(0, completionService.CallCount);
+    }
+
+    [Fact]
+    public async Task SaveTranslation_WhenSourceFingerprintIsMissing_ReturnsConflict()
+    {
+        var sourcePath = Path.Combine(_tempDirectory, "missing-source-fingerprint.en.srt");
+        await File.WriteAllTextAsync(sourcePath, CreateSrtSubtitle("Editable line"));
+
+        var request = new TranslationRequest
+        {
+            Title = "Missing source fingerprint",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = sourcePath,
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Failed
+        };
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var actionResult = await CreateController().SaveTranslation(
+            request.Id,
+            new TranslationCompareEditRequest
+            {
+                Edits =
+                [
+                    new TranslationCompareEdit
+                    {
+                        Position = 1,
+                        TranslatedText = "Edytowana linia"
+                    }
+                ]
+            },
+            CancellationToken.None);
+
+        Assert.IsType<ConflictObjectResult>(actionResult.Result);
+    }
+
+    [Fact]
+    public async Task AcceptTranslation_WhenEditTargetsDuplicateProviderText_FansEditAcrossSemanticMembers()
+    {
+        var sourcePath = Path.Combine(_tempDirectory, "duplicate-edit.en.srt");
+        await File.WriteAllTextAsync(
+            sourcePath,
+            CreateSrtSubtitle("Repeat line", "Repeat line"));
+
+        var request = new TranslationRequest
+        {
+            Title = "Duplicate edit",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = sourcePath,
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Failed
+        };
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var completionService = new RecordingFailedTranslationCompletionService();
+        var actionResult = await CreateController(completionService: completionService)
+            .AcceptTranslation(
+                request.Id,
+                new TranslationCompareEditRequest
+                {
+                    SourceFingerprint = BuildCurrentSourceFingerprint(request, sourcePath),
+                    Edits =
+                    [
+                        new TranslationCompareEdit
+                        {
+                            Position = 2,
+                            TranslatedText = "Powtórzona linia"
+                        }
+                    ]
+                },
+                CancellationToken.None);
+
+        Assert.IsType<ObjectResult>(actionResult.Result);
+        Assert.Equal(
+            new Dictionary<int, string>
+            {
+                [1] = "Powtórzona linia",
+                [2] = "Powtórzona linia"
+            },
+            completionService.Edits);
+    }
+
+    [Fact]
+    public async Task AcceptTranslation_WhenDuplicateMembersHaveConflictingEdits_ReturnsBadRequest()
+    {
+        var sourcePath = Path.Combine(_tempDirectory, "conflicting-duplicate-edit.en.srt");
+        await File.WriteAllTextAsync(
+            sourcePath,
+            CreateSrtSubtitle("Repeat line", "Repeat line"));
+
+        var request = new TranslationRequest
+        {
+            Title = "Conflicting duplicate edit",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = sourcePath,
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Failed
+        };
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var completionService = new RecordingFailedTranslationCompletionService();
+        var actionResult = await CreateController(completionService: completionService)
+            .AcceptTranslation(
+                request.Id,
+                new TranslationCompareEditRequest
+                {
+                    SourceFingerprint = BuildCurrentSourceFingerprint(request, sourcePath),
+                    Edits =
+                    [
+                        new TranslationCompareEdit
+                        {
+                            Position = 1,
+                            TranslatedText = "Pierwsza wersja"
+                        },
+                        new TranslationCompareEdit
+                        {
+                            Position = 2,
+                            TranslatedText = "Druga wersja"
+                        }
+                    ]
+                },
+                CancellationToken.None);
+
+        Assert.IsType<BadRequestObjectResult>(actionResult.Result);
+        Assert.Equal(0, completionService.CallCount);
+    }
+
+    [Fact]
+    public async Task AcceptTranslation_WhenSameProviderTextHasDifferentSemanticKinds_DoesNotFanEdit()
+    {
+        var sourcePath = Path.Combine(_tempDirectory, "semantic-duplicate-edit.en.ass");
+        await File.WriteAllTextAsync(
+            sourcePath,
+            CreateAssSubtitleWithStyles(
+                ("Title", "Default"),
+                ("Title", "Signs")));
+
+        var request = new TranslationRequest
+        {
+            Title = "Semantic duplicate edit",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = sourcePath,
+            SourceSubtitleFormat = ".ass",
+            SubtitleOutputMode = "ass-only",
+            RequiredOutputFormats = ".ass",
+            MediaType = MediaType.Episode,
+            Status = TranslationStatus.Failed
+        };
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var completionService = new RecordingFailedTranslationCompletionService();
+        var actionResult = await CreateController(completionService: completionService)
+            .AcceptTranslation(
+                request.Id,
+                new TranslationCompareEditRequest
+                {
+                    SourceFingerprint = BuildCurrentSourceFingerprint(request, sourcePath),
+                    Edits =
+                    [
+                        new TranslationCompareEdit
+                        {
+                            Position = 1,
+                            TranslatedText = "Tytuł"
+                        }
+                    ]
+                },
+                CancellationToken.None);
+
+        Assert.IsType<ObjectResult>(actionResult.Result);
+        Assert.Equal(new Dictionary<int, string> { [1] = "Tytuł" }, completionService.Edits);
+    }
+
+    [Fact]
     public async Task AcceptTranslation_WhenFailedCueRowsExist_PreservesOnlyUnapprovedCueRows()
     {
         var sourcePath = Path.Combine(_tempDirectory, "failed-source.en.srt");
@@ -521,10 +752,390 @@ public class TranslationCompareControllerTests : IDisposable
 
         await controller.AcceptTranslation(
             request.Id,
-            new TranslationCompareEditRequest(),
+            new TranslationCompareEditRequest
+            {
+                SourceFingerprint = BuildCurrentSourceFingerprint(request, sourcePath)
+            },
             CancellationToken.None);
 
-        Assert.Equal([2], completionService.SourceTextPositions.Order());
+        Assert.Empty(completionService.SourceTextPositions);
+    }
+
+    [Fact]
+    public async Task GetCompletedTranslationCompare_WhenFailedCueHistoryIsStale_UsesLatestReportedPositions()
+    {
+        var sourcePath = Path.Combine(_tempDirectory, "stale-failed-history.en.srt");
+        await File.WriteAllTextAsync(
+            sourcePath,
+            "1\n00:00:01,000 --> 00:00:02,000\nLine one\n\n" +
+            "2\n00:00:03,000 --> 00:00:04,000\nLine two\n\n" +
+            "3\n00:00:05,000 --> 00:00:06,000\nLine three\n");
+
+        var request = new TranslationRequest
+        {
+            Title = "Stale Failed History",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = sourcePath,
+            SourceSubtitleFormat = ".srt",
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Failed
+        };
+
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        _dbContext.TranslationFailedCues.AddRange(
+            new TranslationFailedCue
+            {
+                TranslationRequestId = request.Id,
+                Position = 1,
+                SourceText = "Line one",
+                NormalizedText = "line one",
+                TextHash = "hash-one",
+                AutoApprovalEligible = true
+            },
+            new TranslationFailedCue
+            {
+                TranslationRequestId = request.Id,
+                Position = 2,
+                SourceText = "Line two",
+                NormalizedText = "line two",
+                TextHash = "hash-two",
+                AutoApprovalEligible = true
+            });
+        _dbContext.TranslationRequestLogs.AddRange(
+            new TranslationRequestLog
+            {
+                TranslationRequestId = request.Id,
+                Level = "Error",
+                Message = "older failure",
+                Details = "Translation failed: 2 subtitle(s) missing at positions: 1, 2."
+            },
+            new TranslationRequestLog
+            {
+                TranslationRequestId = request.Id,
+                Level = "Error",
+                Message = "latest failure",
+                Details = "Translation failed: 1 subtitle(s) missing at positions: 2."
+            });
+        await _dbContext.SaveChangesAsync();
+
+        var controller = CreateController(
+            checkpointService: new StaticTranslationCheckpointService(new TranslationCheckpoint
+            {
+                TranslationRequestId = request.Id,
+                SourceFingerprint = BuildFallbackFingerprint(sourcePath, "en", "pl", ".srt"),
+                Translations = { [1] = "Linia jeden", [2] = "Linia dwa" }
+            }));
+
+        var actionResult = await controller.GetCompletedTranslationCompare(request.Id);
+        var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
+        var payload = Assert.IsType<CompletedTranslationCompareResponse>(okResult.Value);
+
+        Assert.Equal([2], payload.MissingPositions);
+        Assert.False(payload.Lines.Single(line => line.Position == 1).IsMissing);
+        Assert.True(payload.Lines.Single(line => line.Position == 2).IsMissing);
+    }
+
+    [Fact]
+    public async Task AcceptTranslation_WhenFailedCueHistoryIsStale_ConsumesLatestReportedPositions()
+    {
+        var sourcePath = Path.Combine(_tempDirectory, "stale-accept-history.en.srt");
+        await File.WriteAllTextAsync(
+            sourcePath,
+            "1\n00:00:01,000 --> 00:00:02,000\nLine one\n\n" +
+            "2\n00:00:03,000 --> 00:00:04,000\nLine two\n");
+
+        var request = new TranslationRequest
+        {
+            Title = "Stale Accept History",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = sourcePath,
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Failed
+        };
+
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        _dbContext.TranslationFailedCues.AddRange(
+            new TranslationFailedCue
+            {
+                TranslationRequestId = request.Id,
+                Position = 1,
+                SourceText = "Line one",
+                NormalizedText = "line one",
+                TextHash = "hash-one",
+                AutoApprovalEligible = true
+            },
+            new TranslationFailedCue
+            {
+                TranslationRequestId = request.Id,
+                Position = 2,
+                SourceText = "Line two",
+                NormalizedText = "line two",
+                TextHash = "hash-two",
+                AutoApprovalEligible = true
+            });
+        _dbContext.TranslationRequestLogs.AddRange(
+            new TranslationRequestLog
+            {
+                TranslationRequestId = request.Id,
+                Level = "Error",
+                Message = "older failure",
+                Details = "Translation failed: 1 subtitle(s) missing at positions: 1."
+            },
+            new TranslationRequestLog
+            {
+                TranslationRequestId = request.Id,
+                Level = "Error",
+                Message = "latest failure",
+                Details = "Translation failed: 1 subtitle(s) missing at positions: 2."
+            });
+        await _dbContext.SaveChangesAsync();
+
+        var completionService = new RecordingFailedTranslationCompletionService();
+        var controller = CreateController(
+            checkpointService: new StaticTranslationCheckpointService(new TranslationCheckpoint
+            {
+                TranslationRequestId = request.Id,
+                SourceFingerprint = "fingerprint",
+                Translations = { [1] = "Linia jeden", [2] = "Linia dwa" }
+            }),
+            completionService: completionService);
+
+        await controller.AcceptTranslation(
+            request.Id,
+            new TranslationCompareEditRequest
+            {
+                SourceFingerprint = BuildCurrentSourceFingerprint(request, sourcePath)
+            },
+            CancellationToken.None);
+
+        Assert.Empty(completionService.SourceTextPositions);
+    }
+
+    [Fact]
+    public async Task GetCompletedTranslationCompare_WhenFailedCheckpointHasDuplicatesAndEchoes_HydratesSafely()
+    {
+        var sourcePath = Path.Combine(_tempDirectory, "failed-duplicate-hydration.en.srt");
+        await File.WriteAllTextAsync(
+            sourcePath,
+            CreateSrtSubtitle(
+                "Repeat line",
+                "Repeat line",
+                "Ordinary source echo",
+                "[Music]"));
+
+        var request = new TranslationRequest
+        {
+            Title = "Failed duplicate hydration",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = sourcePath,
+            SourceSubtitleFormat = ".srt",
+            SubtitleOutputMode = "srt",
+            RequiredOutputFormats = ".srt",
+            SourceSnapshotFingerprint = BuildFallbackFingerprint(sourcePath, "en", "pl", ".srt"),
+            MediaType = MediaType.Episode,
+            Status = TranslationStatus.Failed
+        };
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var checkpoint = new TranslationCheckpoint
+        {
+            TranslationRequestId = request.Id,
+            SourceFingerprint = BuildFallbackFingerprint(sourcePath, "en", "pl", ".srt"),
+            Translations = new Dictionary<int, string>
+            {
+                [1] = "Powtorzona linia",
+                [3] = "Ordinary source echo",
+                [4] = "[Music]"
+            }
+        };
+
+        var actionResult = await CreateController(
+            checkpointService: new StaticTranslationCheckpointService(checkpoint))
+            .GetCompletedTranslationCompare(request.Id);
+
+        var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
+        var payload = Assert.IsType<CompletedTranslationCompareResponse>(okResult.Value);
+
+        Assert.Equal([3], payload.MissingPositions);
+        Assert.Equal("Powtorzona linia", payload.Lines.Single(line => line.Position == 1).Translated);
+        Assert.Equal("Powtorzona linia", payload.Lines.Single(line => line.Position == 2).Translated);
+        Assert.True(payload.Lines.Single(line => line.Position == 3).IsMissing);
+        Assert.Null(payload.Lines.Single(line => line.Position == 3).Translated);
+        Assert.DoesNotContain(4, payload.MissingPositions);
+    }
+
+    [Fact]
+    public async Task AcceptTranslation_WhenFailedCheckpointHasSafeFallbackAndOrdinaryEcho_PassesOnlySafeSourcePositions()
+    {
+        var sourcePath = Path.Combine(_tempDirectory, "failed-accept-hydration.en.srt");
+        await File.WriteAllTextAsync(
+            sourcePath,
+            CreateSrtSubtitle(
+                "Repeat line",
+                "Repeat line",
+                "Ordinary source echo",
+                "[Music]"));
+
+        var request = new TranslationRequest
+        {
+            Title = "Failed accept hydration",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = sourcePath,
+            SourceSubtitleFormat = ".srt",
+            SubtitleOutputMode = "srt",
+            RequiredOutputFormats = ".srt",
+            SourceSnapshotFingerprint = BuildFallbackFingerprint(sourcePath, "en", "pl", ".srt"),
+            MediaType = MediaType.Episode,
+            Status = TranslationStatus.Failed
+        };
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var checkpoint = new TranslationCheckpoint
+        {
+            TranslationRequestId = request.Id,
+            SourceFingerprint = BuildFallbackFingerprint(sourcePath, "en", "pl", ".srt"),
+            Translations = new Dictionary<int, string>
+            {
+                [1] = "Powtorzona linia",
+                [3] = "Ordinary source echo",
+                [4] = "[Music]"
+            }
+        };
+        var completionService = new RecordingFailedTranslationCompletionService();
+
+        var actionResult = await CreateController(
+                checkpointService: new StaticTranslationCheckpointService(checkpoint),
+                completionService: completionService)
+            .AcceptTranslation(
+                request.Id,
+                new TranslationCompareEditRequest
+                {
+                    SourceFingerprint = BuildCurrentSourceFingerprint(request, sourcePath)
+                },
+                CancellationToken.None);
+
+        Assert.IsType<ObjectResult>(actionResult.Result);
+        Assert.Equal([4], completionService.SourceTextPositions.Order());
+    }
+
+    [Fact]
+    public async Task GetCompletedTranslationCompare_WhenLatestReportHasPositionWithoutCueRow_KeepsItVisible()
+    {
+        var sourcePath = Path.Combine(_tempDirectory, "latest-report-without-cue.en.srt");
+        await File.WriteAllTextAsync(sourcePath, CreateSrtSubtitle("Translated line", "New failed line"));
+
+        var request = new TranslationRequest
+        {
+            Title = "Latest report without cue",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = sourcePath,
+            SourceSubtitleFormat = ".srt",
+            SubtitleOutputMode = "srt",
+            RequiredOutputFormats = ".srt",
+            SourceSnapshotFingerprint = BuildFallbackFingerprint(sourcePath, "en", "pl", ".srt"),
+            MediaType = MediaType.Episode,
+            Status = TranslationStatus.Failed
+        };
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        _dbContext.TranslationFailedCues.Add(new TranslationFailedCue
+        {
+            TranslationRequestId = request.Id,
+            Position = 1,
+            SourceText = "Translated line",
+            NormalizedText = "translated line",
+            TextHash = "old-hash",
+            AutoApprovalEligible = true
+        });
+        _dbContext.TranslationRequestLogs.Add(new TranslationRequestLog
+        {
+            TranslationRequestId = request.Id,
+            Level = "Error",
+            Message = "latest generic failure",
+            Details = "Translation failed: 1 subtitle(s) missing at positions: 2."
+        });
+        await _dbContext.SaveChangesAsync();
+
+        var checkpoint = new TranslationCheckpoint
+        {
+            TranslationRequestId = request.Id,
+            SourceFingerprint = BuildFallbackFingerprint(sourcePath, "en", "pl", ".srt"),
+            Translations = new Dictionary<int, string>
+            {
+                [1] = "Przetłumaczona linia"
+            }
+        };
+
+        var actionResult = await CreateController(
+                checkpointService: new StaticTranslationCheckpointService(checkpoint))
+            .GetCompletedTranslationCompare(request.Id);
+
+        var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
+        var payload = Assert.IsType<CompletedTranslationCompareResponse>(okResult.Value);
+        Assert.Equal([2], payload.MissingPositions);
+        Assert.False(payload.Lines.Single(line => line.Position == 1).IsMissing);
+        Assert.True(payload.Lines.Single(line => line.Position == 2).IsMissing);
+        Assert.True(payload.Lines.Single(line => line.Position == 2).CanEdit);
+    }
+
+    [Fact]
+    public async Task SaveTranslation_WhenFailedRequestHasNoCheckpoint_CreatesCheckpointAndReturnsUpdatedCompare()
+    {
+        var sourcePath = Path.Combine(_tempDirectory, "save-without-checkpoint.en.srt");
+        await File.WriteAllTextAsync(
+            sourcePath,
+            CreateSrtSubtitle("First line", "Second line"));
+
+        var request = new TranslationRequest
+        {
+            Title = "Save without checkpoint",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = sourcePath,
+            MediaType = MediaType.Episode,
+            Status = TranslationStatus.Failed
+        };
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var checkpointService = new RecordingTranslationCheckpointService();
+        var sourceFingerprint = BuildCurrentSourceFingerprint(request, sourcePath);
+        var actionResult = await CreateController(checkpointService: checkpointService)
+            .SaveTranslation(
+                request.Id,
+                new TranslationCompareEditRequest
+                {
+                    SourceFingerprint = sourceFingerprint,
+                    Edits =
+                    [
+                        new TranslationCompareEdit
+                        {
+                            Position = 1,
+                            TranslatedText = "Pierwsza linia"
+                        }
+                    ]
+                },
+                CancellationToken.None);
+
+        var payload = Assert.IsType<CompletedTranslationCompareResponse>(
+            Assert.IsType<OkObjectResult>(actionResult.Result).Value);
+        Assert.NotNull(checkpointService.SavedCheckpoint);
+        Assert.Equal(sourceFingerprint, checkpointService.SavedCheckpoint!.SourceFingerprint);
+        Assert.Equal("Pierwsza linia", payload.Lines.Single(line => line.Position == 1).Translated);
+        Assert.True(payload.Lines.Single(line => line.Position == 2).IsMissing);
+        Assert.Equal(TranslationStatus.Failed, request.Status);
     }
 
     [Fact]
@@ -565,6 +1176,7 @@ public class TranslationCompareControllerTests : IDisposable
             request.Id,
             new TranslationCompareEditRequest
             {
+                SourceFingerprint = BuildCurrentSourceFingerprint(request, sourcePath),
                 Edits =
                 [
                     new TranslationCompareEdit
@@ -616,6 +1228,7 @@ public class TranslationCompareControllerTests : IDisposable
             request.Id,
             new TranslationCompareEditRequest
             {
+                SourceFingerprint = BuildCurrentSourceFingerprint(request, sourcePath),
                 Edits =
                 [
                     new TranslationCompareEdit
@@ -672,6 +1285,118 @@ public class TranslationCompareControllerTests : IDisposable
         Assert.Equal("Do widzenia", payload.Lines.Single(line => line.Position == 4).Translated);
     }
 
+    [Fact]
+    public async Task GetCompletedTranslationCompare_WhenTranslatedAssHasSameTimestampDrawing_MatchesVisibleDialogue()
+    {
+        var sourcePath = Path.Combine(_tempDirectory, "same-timestamp-ass-source.en.ass");
+        var translatedPath = Path.Combine(_tempDirectory, "same-timestamp-ass-source.pl.ass");
+        var drawingCue = @"{\p1}m 0 0 l 10 10{\p0}";
+
+        await File.WriteAllTextAsync(sourcePath, CreateAssSubtitleWithCues("Hello"));
+        await File.WriteAllTextAsync(
+            translatedPath,
+            CreateAssSubtitleWithTimedCues(
+                (drawingCue, 1, 2),
+                ("Czesc", 1, 2)));
+
+        var request = new TranslationRequest
+        {
+            Title = "Same Timestamp ASS Compare",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = sourcePath,
+            TranslatedSubtitle = translatedPath,
+            SourceSubtitleFormat = ".ass",
+            MediaType = MediaType.Episode,
+            Status = TranslationStatus.Completed,
+            CompletedAt = DateTime.UtcNow
+        };
+
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var actionResult = await CreateController().GetCompletedTranslationCompare(request.Id);
+        var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
+        var payload = Assert.IsType<CompletedTranslationCompareResponse>(okResult.Value);
+
+        var line = Assert.Single(payload.Lines);
+        Assert.Equal("Hello", line.Original);
+        Assert.Equal("Czesc", line.Translated);
+    }
+
+    [Fact]
+    public async Task GetCompletedTranslationCompare_WhenFailedRequestHasSourceButNoCheckpoint_ReturnsEditableMissingLines()
+    {
+        var sourcePath = Path.Combine(_tempDirectory, "failed-without-checkpoint.en.srt");
+        await File.WriteAllTextAsync(
+            sourcePath,
+            "1\n00:00:01,000 --> 00:00:02,000\nFirst line\n\n" +
+            "2\n00:00:03,000 --> 00:00:04,000\nSecond line\n");
+
+        var request = new TranslationRequest
+        {
+            Title = "Failed without checkpoint",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = sourcePath,
+            MediaType = MediaType.Episode,
+            Status = TranslationStatus.Failed
+        };
+
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var actionResult = await CreateController().GetCompletedTranslationCompare(request.Id);
+
+        var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
+        var payload = Assert.IsType<CompletedTranslationCompareResponse>(okResult.Value);
+        Assert.True(payload.CanAccept);
+        Assert.True(payload.IsPartialFailure);
+        Assert.Equal([1, 2], payload.MissingPositions);
+        Assert.All(payload.Lines, line =>
+        {
+            Assert.True(line.IsMissing);
+            Assert.True(line.CanEdit);
+            Assert.False(line.Success);
+            Assert.Null(line.Translated);
+        });
+    }
+
+    [Fact]
+    public async Task AcceptTranslation_WhenFailedRequestHasNoCheckpoint_PassesAllSourcePositionsForPreservation()
+    {
+        var sourcePath = Path.Combine(_tempDirectory, "accept-without-checkpoint.en.srt");
+        await File.WriteAllTextAsync(
+            sourcePath,
+            "1\n00:00:01,000 --> 00:00:02,000\nFirst line\n\n" +
+            "2\n00:00:03,000 --> 00:00:04,000\nSecond line\n");
+
+        var request = new TranslationRequest
+        {
+            Title = "Accept without checkpoint",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = sourcePath,
+            MediaType = MediaType.Episode,
+            Status = TranslationStatus.Failed
+        };
+
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var completionService = new RecordingFailedTranslationCompletionService();
+        var actionResult = await CreateController(completionService: completionService).AcceptTranslation(
+            request.Id,
+            new TranslationCompareEditRequest
+            {
+                SourceFingerprint = BuildCurrentSourceFingerprint(request, sourcePath)
+            },
+            CancellationToken.None);
+
+        Assert.IsType<ObjectResult>(actionResult.Result);
+        Assert.Empty(completionService.SourceTextPositions);
+    }
+
     private TranslationCompareController CreateController(
         ISubtitleExtractionService? extractionService = null,
         ISourceSubtitleResolver? sourceSubtitleResolver = null,
@@ -698,16 +1423,66 @@ public class TranslationCompareControllerTests : IDisposable
     private static string CreateAssSubtitle(string text)
         => CreateAssSubtitleWithCues(text);
 
-    private static string CreateAssSubtitleWithCues(params string[] texts)
+    private static string CreateSrtSubtitle(params string[] lines)
     {
-        var events = texts.Select((text, index) =>
-            $"Dialogue: 0,0:00:{index + 1:00}.00,0:00:{index + 2:00}.00,Default,,0,0,0,,{text}");
+        return string.Join(
+            "\n\n",
+            lines.Select((line, index) =>
+                $"{index + 1}\n00:00:{index + 1:00},000 --> 00:00:{index + 2:00},000\n{line}"));
+    }
+
+    private static string BuildFallbackFingerprint(
+        string sourcePath,
+        string sourceLanguage,
+        string targetLanguage,
+        string sourceFormat)
+    {
+        using var stream = File.OpenRead(sourcePath);
+        var contentHash = Convert.ToHexString(SHA256.HashData(stream));
+        return $"{sourcePath}|{sourceLanguage}|{targetLanguage}|{sourceFormat}|content-sha256:{contentHash}";
+    }
+
+    private static string BuildCurrentSourceFingerprint(
+        TranslationRequest request,
+        string sourcePath)
+    {
+        using var stream = File.OpenRead(sourcePath);
+        var contentHash = Convert.ToHexString(SHA256.HashData(stream));
+        return TranslationCheckpointService.BuildCheckpointFingerprint(request, contentHash);
+    }
+
+    private static string CreateAssSubtitleWithCues(params string[] texts)
+        => CreateAssSubtitleWithTimedCues(
+            texts.Select((text, index) => (text, index + 1, index + 2)).ToArray());
+
+    private static string CreateAssSubtitleWithTimedCues(
+        params (string Text, int StartSecond, int EndSecond)[] cues)
+    {
+        var events = cues.Select(cue =>
+            $"Dialogue: 0,0:00:{cue.StartSecond:00}.00,0:00:{cue.EndSecond:00}.00,Default,,0,0,0,,{cue.Text}");
 
         return "[Script Info]\n" +
                "ScriptType: v4.00+\n\n" +
                "[V4+ Styles]\n" +
                "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n" +
                "Style: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1,0,2,10,10,10,1\n\n" +
+               "[Events]\n" +
+               "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n" +
+               string.Join("\n", events) + "\n";
+    }
+
+    private static string CreateAssSubtitleWithStyles(
+        params (string Text, string Style)[] cues)
+    {
+        var events = cues.Select((cue, index) =>
+            $"Dialogue: 0,0:00:{index + 1:00}.00,0:00:{index + 2:00}.00,{cue.Style},,0,0,0,,{cue.Text}");
+
+        return "[Script Info]\n" +
+               "ScriptType: v4.00+\n\n" +
+               "[V4+ Styles]\n" +
+               "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n" +
+               "Style: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1,0,2,10,10,10,1\n" +
+               "Style: Signs,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1,0,2,10,10,10,1\n\n" +
                "[Events]\n" +
                "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n" +
                string.Join("\n", events) + "\n";
@@ -912,6 +1687,12 @@ public class TranslationCompareControllerTests : IDisposable
             return Task.CompletedTask;
         }
 
+        public Task SaveCheckpointAsync(
+            TranslationCheckpoint checkpoint,
+            CancellationToken cancellationToken,
+            string? ownershipToken)
+            => SaveCheckpointAsync(checkpoint, cancellationToken);
+
         public Task SaveTranslationAsync(
             int translationRequestId,
             string sourceFingerprint,
@@ -921,6 +1702,20 @@ public class TranslationCompareControllerTests : IDisposable
         {
             return Task.CompletedTask;
         }
+
+        public Task SaveTranslationAsync(
+            int translationRequestId,
+            string sourceFingerprint,
+            int position,
+            string translatedText,
+            CancellationToken cancellationToken,
+            string? ownershipToken)
+            => SaveTranslationAsync(
+                translationRequestId,
+                sourceFingerprint,
+                position,
+                translatedText,
+                cancellationToken);
 
         public Task DeleteAsync(int translationRequestId, CancellationToken cancellationToken)
         {
@@ -953,6 +1748,12 @@ public class TranslationCompareControllerTests : IDisposable
             CancellationToken cancellationToken)
             => Task.CompletedTask;
 
+        public Task SaveCheckpointAsync(
+            TranslationCheckpoint checkpoint,
+            CancellationToken cancellationToken,
+            string? ownershipToken)
+            => SaveCheckpointAsync(checkpoint, cancellationToken);
+
         public Task SaveTranslationAsync(
             int translationRequestId,
             string sourceFingerprint,
@@ -960,6 +1761,78 @@ public class TranslationCompareControllerTests : IDisposable
             string translatedText,
             CancellationToken cancellationToken)
             => Task.CompletedTask;
+
+        public Task SaveTranslationAsync(
+            int translationRequestId,
+            string sourceFingerprint,
+            int position,
+            string translatedText,
+            CancellationToken cancellationToken,
+            string? ownershipToken)
+            => SaveTranslationAsync(
+                translationRequestId,
+                sourceFingerprint,
+                position,
+                translatedText,
+                cancellationToken);
+
+        public Task DeleteAsync(int translationRequestId, CancellationToken cancellationToken)
+            => Task.CompletedTask;
+    }
+
+    private sealed class RecordingTranslationCheckpointService : ITranslationCheckpointService
+    {
+        public TranslationCheckpoint? Checkpoint { get; private set; }
+
+        public TranslationCheckpoint? SavedCheckpoint { get; private set; }
+
+        public Task<TranslationCheckpoint?> LoadAsync(
+            int translationRequestId,
+            string sourceFingerprint,
+            CancellationToken cancellationToken)
+            => Task.FromResult(Checkpoint);
+
+        public Task<TranslationCheckpoint?> LoadByRequestIdAsync(
+            int translationRequestId,
+            CancellationToken cancellationToken)
+            => Task.FromResult(Checkpoint);
+
+        public Task SaveCheckpointAsync(
+            TranslationCheckpoint checkpoint,
+            CancellationToken cancellationToken)
+        {
+            SavedCheckpoint = checkpoint;
+            Checkpoint = checkpoint;
+            return Task.CompletedTask;
+        }
+
+        public Task SaveCheckpointAsync(
+            TranslationCheckpoint checkpoint,
+            CancellationToken cancellationToken,
+            string? ownershipToken)
+            => SaveCheckpointAsync(checkpoint, cancellationToken);
+
+        public Task SaveTranslationAsync(
+            int translationRequestId,
+            string sourceFingerprint,
+            int position,
+            string translatedText,
+            CancellationToken cancellationToken)
+            => Task.CompletedTask;
+
+        public Task SaveTranslationAsync(
+            int translationRequestId,
+            string sourceFingerprint,
+            int position,
+            string translatedText,
+            CancellationToken cancellationToken,
+            string? ownershipToken)
+            => SaveTranslationAsync(
+                translationRequestId,
+                sourceFingerprint,
+                position,
+                translatedText,
+                cancellationToken);
 
         public Task DeleteAsync(int translationRequestId, CancellationToken cancellationToken)
             => Task.CompletedTask;
@@ -980,11 +1853,48 @@ public class TranslationCompareControllerTests : IDisposable
                 OutputPath: null,
                 SkippedReason: "Not configured for this test."));
         }
+        public async Task<FailedTranslationCompletionResult> PublishCompletedEditsAsync(
+            TranslationRequest request,
+            string sourcePath,
+            IReadOnlyList<SubtitleItem> translatedSubtitles,
+            CancellationToken cancellationToken)
+        {
+            var outputPaths = new List<string>();
+            if (!string.IsNullOrWhiteSpace(request.TranslatedSubtitle))
+            {
+                outputPaths.Add(request.TranslatedSubtitle);
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.GeneratedSubtitlePaths))
+            {
+                outputPaths.AddRange(
+                    JsonSerializer.Deserialize<List<string>>(request.GeneratedSubtitlePaths) ?? []);
+            }
+
+            foreach (var outputPath in outputPaths
+                         .Where(path => !string.IsNullOrWhiteSpace(path))
+                         .Distinct(StringComparer.OrdinalIgnoreCase)
+                         .Where(path => !path.StartsWith("mkv-embedded:", StringComparison.OrdinalIgnoreCase))
+                         .Where(File.Exists))
+            {
+                var stripFormatting = !SubtitleOutputModeHelper.IsAssFormat(
+                    SubtitleOutputModeHelper.NormalizeFormat(Path.GetExtension(outputPath)));
+                await new SubtitleService(NullLogger<SubtitleService>.Instance)
+                    .WriteSubtitles(outputPath, translatedSubtitles.ToList(), stripFormatting);
+            }
+
+            return new FailedTranslationCompletionResult(
+                Completed: true,
+                AlreadyCompleted: false,
+                OutputPath: request.TranslatedSubtitle);
+        }
     }
 
     private sealed class RecordingFailedTranslationCompletionService : IFailedTranslationCompletionService
     {
         public List<int> SourceTextPositions { get; } = [];
+        public Dictionary<int, string> Edits { get; } = [];
+        public int CallCount { get; private set; }
 
         public Task<FailedTranslationCompletionResult> CompleteAsync(
             TranslationRequest request,
@@ -993,12 +1903,30 @@ public class TranslationCompareControllerTests : IDisposable
             string logMessage,
             CancellationToken cancellationToken)
         {
+            CallCount++;
             SourceTextPositions.AddRange(sourceTextPositions);
+            foreach (var edit in edits)
+            {
+                Edits[edit.Key] = edit.Value;
+            }
+
             return Task.FromResult(new FailedTranslationCompletionResult(
                 Completed: false,
                 AlreadyCompleted: false,
                 OutputPath: null,
                 SkippedReason: "Captured for test."));
+        }
+
+        public Task<FailedTranslationCompletionResult> PublishCompletedEditsAsync(
+            TranslationRequest request,
+            string sourcePath,
+            IReadOnlyList<SubtitleItem> translatedSubtitles,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult(new FailedTranslationCompletionResult(
+                Completed: true,
+                AlreadyCompleted: false,
+                OutputPath: request.TranslatedSubtitle));
         }
     }
 
