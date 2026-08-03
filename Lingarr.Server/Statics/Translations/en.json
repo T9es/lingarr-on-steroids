@@ -290,6 +290,7 @@
     "close": "Close",
     "noActiveTranslations": "No translations currently in progress.",
     "noFailedTranslations": "No failed translations.",
+    "failureReason": "Failure reason",
     "noQueuedTranslations": "No translations in queue.",
     "nextRetryAt": "Next retry: {time}",
     "reenqueueQueue": "Re-enqueue queue",

@@ -260,6 +260,15 @@
                                                 :completed-at="item.completedAt" />
                                         </span>
                                     </div>
+                                    <div
+                                        v-if="item.latestFailureMessage"
+                                        class="text-secondary-content mt-1 truncate text-xs"
+                                        :title="item.latestFailureMessage">
+                                        <span class="text-primary-content/70">
+                                            {{ translate('translations.failureReason') }}:
+                                        </span>
+                                        {{ item.latestFailureMessage }}
+                                    </div>
                                 </div>
                                 <div class="flex items-center gap-2">
                                     <button
@@ -267,9 +276,13 @@
                                         class="border-accent hover:bg-accent cursor-pointer rounded border px-2 py-1 text-xs transition-colors"
                                         :title="translate('translations.reviewMissing')"
                                         @click.stop="openCompareForFailed(item)">
-                                        Review
+                                        {{ translate('translations.reviewMissing') }}
                                     </button>
                                     <button
+                                        v-if="
+                                            item.status === TRANSLATION_STATUS.FAILED ||
+                                            item.status === TRANSLATION_STATUS.INTERRUPTED
+                                        "
                                         class="border-accent hover:bg-accent cursor-pointer rounded border px-2 py-1 text-xs transition-colors"
                                         :title="translate('translations.viewLogs')"
                                         @click.stop="openLogs(item)">
@@ -475,9 +488,12 @@
                                             @click.stop="runTestForItem(item)">
                                             <TestIcon class="h-4 w-4" />
                                         </button>
-                                        <!-- View Logs Button (failed translations only) -->
+                                        <!-- View Logs Button (failed or interrupted translations) -->
                                         <button
-                                            v-if="item.status === TRANSLATION_STATUS.FAILED"
+                                            v-if="
+                                                item.status === TRANSLATION_STATUS.FAILED ||
+                                                item.status === TRANSLATION_STATUS.INTERRUPTED
+                                            "
                                             class="border-accent hover:bg-accent cursor-pointer rounded border px-2 py-1 text-xs transition-colors"
                                             :title="translate('translations.viewLogs')"
                                             @click.stop="openLogs(item)">
@@ -712,7 +728,12 @@ async function handleAction(translationRequest: ITranslationRequest, action: TRA
 }
 
 async function openLogs(item: ITranslationRequest) {
-    if (item.status !== TRANSLATION_STATUS.FAILED) return
+    if (
+        item.status !== TRANSLATION_STATUS.FAILED &&
+        item.status !== TRANSLATION_STATUS.INTERRUPTED
+    ) {
+        return
+    }
 
     logsModalOpen.value = true
     logsLoading.value = true

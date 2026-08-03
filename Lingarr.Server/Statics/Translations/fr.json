@@ -290,6 +290,7 @@
     "close": "Fermer",
     "noActiveTranslations": "Aucune traduction active.",
     "noFailedTranslations": "Aucune traduction échouée.",
+    "failureReason": "Raison de l'échec",
     "noQueuedTranslations": "Aucune traduction en file d'attente.",
     "nextRetryAt": "Prochaine tentative : {time}",
     "reenqueueQueue": "Remettre en file",

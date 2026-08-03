@@ -290,6 +290,7 @@
     "close": "Zamknij",
     "noActiveTranslations": "Brak aktywnych tłumaczeń.",
     "noFailedTranslations": "Brak nieudanych tłumaczeń.",
+    "failureReason": "Powód niepowodzenia",
     "noQueuedTranslations": "Brak tłumaczeń w kolejce.",
     "nextRetryAt": "Następna próba: {time}",
     "reenqueueQueue": "Ponownie dodaj do kolejki",

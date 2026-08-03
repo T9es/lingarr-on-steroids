@@ -768,7 +768,12 @@ SettingKeys.Translation.BatchContextAfter,
             AddRequestLog(
                 "Information",
                 $"Translation completed successfully and subtitle file was written to: {writtenOutput.PrimaryPath}");
-            await HandleCompletion(request, writtenOutput.OutputPaths, effectiveCancellationToken);
+            var completionAccepted = await HandleCompletion(request, writtenOutput.OutputPaths, effectiveCancellationToken);
+            if (!completionAccepted)
+            {
+                await CleanupUnclaimedOutputFilesAsync(request, writtenOutput.OutputPaths);
+                return;
+            }
         }
         catch (ProviderPauseException ex)
         {
@@ -820,15 +825,6 @@ SettingKeys.Translation.BatchContextAfter,
                 }
             }
 
-            try
-            {
-                await _translationRequestService.ClearMediaHash(translationRequest);
-            }
-            catch (Exception cleanupEx)
-            {
-                _logger.LogWarning(cleanupEx, "Error clearing media hash during failure handling");
-            }
-
             try 
             {
                 // Calculate exponential backoff for next retry
@@ -843,6 +839,8 @@ SettingKeys.Translation.BatchContextAfter,
                 
                 var now = DateTime.UtcNow;
                 var nextRetryAt = now.Add(retryDelay);
+                var terminalStateLost = false;
+                var failureStatusUpdated = false;
                 
                 // Retry logic for status update - prevents jobs getting stuck in InProgress
                 // when database is temporarily unavailable
@@ -850,15 +848,28 @@ SettingKeys.Translation.BatchContextAfter,
                 {
                     try
                     {
-                        // Update retry tracking fields before status update
-                        translationRequest.RetryCount++;
-                        translationRequest.FailedAt = now;
-                        translationRequest.NextRetryAt = nextRetryAt;
-                        
-                        translationRequest = await _translationRequestService.UpdateTranslationRequest(
+                        var failureClaimed = await TryMarkGenericFailureAsync(
                             translationRequest,
-                            TranslationStatus.Failed,
-                            null);
+                            now,
+                            nextRetryAt,
+                            effectiveCancellationToken);
+
+                        if (!failureClaimed)
+                        {
+                            terminalStateLost = true;
+                            break;
+                        }
+
+                        failureStatusUpdated = true;
+
+                        try
+                        {
+                            await _translationRequestService.ClearMediaHash(translationRequest);
+                        }
+                        catch (Exception cleanupEx)
+                        {
+                            _logger.LogWarning(cleanupEx, "Error clearing media hash during failure handling");
+                        }
 
                         // Update translation state to reflect failure
                         try
@@ -880,8 +891,20 @@ SettingKeys.Translation.BatchContextAfter,
                     }
                 }
 
+                if (terminalStateLost)
+                {
+                    return;
+                }
+
+                if (!failureStatusUpdated)
+                {
+                    _logger.LogWarning(
+                        "Could not persist failed status for translation request {RequestId} after three attempts; deferring failure side effects until the job is retried",
+                        translationRequest.Id);
+                }
+
                 // Persist collected logs for failed translations
-                if (requestLogs.Count > 0)
+                if (failureStatusUpdated && requestLogs.Count > 0)
                 {
                     _dbContext.TranslationRequestLogs.AddRange(requestLogs);
                 }
@@ -894,7 +917,7 @@ SettingKeys.Translation.BatchContextAfter,
                     : failureException.ToString();
                 _logger.LogError(failureException, "Translation failed for request {RequestId}", translationRequest.Id);
 
-                if (translationRequest.WorkloadKind == TranslationWorkloadKind.Upload)
+                if (failureStatusUpdated && translationRequest.WorkloadKind == TranslationWorkloadKind.Upload)
                 {
                     try
                     {
@@ -912,26 +935,29 @@ SettingKeys.Translation.BatchContextAfter,
                     }
                 }
                 
-                // Log to dashboard
-                await _dashboardService.LogError(
-                    "TranslationJob",
-                    failureMessage,
-                    $"Request ID: {translationRequest.Id}\nMedia ID: {translationRequest.MediaId}",
-                    failureDetails
-                );
-                
-                _dbContext.TranslationRequestLogs.Add(new TranslationRequestLog
+                if (failureStatusUpdated)
                 {
-                    TranslationRequestId = translationRequest.Id,
-                    Level = "Error",
-                    Message = failureMessage,
-                    Details = failureDetails
-                });
+                    // Log to dashboard
+                    await _dashboardService.LogError(
+                        "TranslationJob",
+                        failureMessage,
+                        $"Request ID: {translationRequest.Id}\nMedia ID: {translationRequest.MediaId}",
+                        failureDetails
+                    );
 
-                await _dbContext.SaveChangesAsync();
+                    _dbContext.TranslationRequestLogs.Add(new TranslationRequestLog
+                    {
+                        TranslationRequestId = translationRequest.Id,
+                        Level = "Error",
+                        Message = failureMessage,
+                        Details = failureDetails
+                    });
 
-                await _translationRequestService.UpdateActiveCount();
-                await _progressService.Emit(translationRequest, 0);
+                    await _dbContext.SaveChangesAsync();
+
+                    await _translationRequestService.UpdateActiveCount();
+                    await _progressService.Emit(translationRequest, 0);
+                }
             }
             catch (DeepL.NotFoundException)
             {
@@ -1601,7 +1627,96 @@ Exception? lastException = null;
         string GeneratedFormats,
         IReadOnlyCollection<string> OutputPaths);
 
-    private async Task HandleProviderPause(
+    private async Task CleanupUnclaimedOutputFilesAsync(
+        TranslationRequest translationRequest,
+        IReadOnlyCollection<string> outputPaths)
+    {
+        var recordedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(translationRequest.GeneratedSubtitlePaths))
+        {
+            try
+            {
+                var persistedPaths = JsonSerializer.Deserialize<List<string>>(
+                    translationRequest.GeneratedSubtitlePaths);
+                if (persistedPaths != null)
+                {
+                    recordedPaths.UnionWith(persistedPaths);
+                }
+            }
+            catch (JsonException)
+            {
+                _logger.LogDebug(
+                    "Could not parse recorded output paths while cleaning stale output for request {RequestId}",
+                    translationRequest.Id);
+            }
+        }
+
+        foreach (var outputPath in outputPaths)
+        {
+            if (string.IsNullOrWhiteSpace(outputPath) ||
+                IsSamePath(outputPath, translationRequest.SubtitleToTranslate) ||
+                recordedPaths.Contains(outputPath) ||
+                !File.Exists(outputPath))
+            {
+                continue;
+            }
+
+            try
+            {
+                File.Delete(outputPath);
+                _logger.LogInformation(
+                    "Removed unclaimed subtitle output {OutputPath} after stale completion for request {RequestId}",
+                    outputPath,
+                    translationRequest.Id);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Failed to remove unclaimed subtitle output {OutputPath} after stale completion for request {RequestId}",
+                    outputPath,
+                    translationRequest.Id);
+            }
+        }
+    }
+
+    internal async Task<bool> TryMarkGenericFailureAsync(
+        TranslationRequest request,
+        DateTime failedAt,
+        DateTime nextRetryAt,
+        CancellationToken cancellationToken)
+    {
+        var rowsUpdated = await _dbContext.TranslationRequests
+            .Where(item => item.Id == request.Id &&
+                           item.Status == TranslationStatus.InProgress)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.Status, TranslationStatus.Failed)
+                .SetProperty(item => item.IsActive, (bool?)null)
+                .SetProperty(item => item.RetryCount, item => item.RetryCount + 1)
+                .SetProperty(item => item.FailedAt, failedAt)
+                .SetProperty(item => item.NextRetryAt, nextRetryAt)
+                .SetProperty(item => item.CompletedAt, (DateTime?)null)
+                .SetProperty(item => item.PausedAt, (DateTime?)null)
+                .SetProperty(item => item.PauseReason, (string?)null)
+                .SetProperty(item => item.PausedProvider, (string?)null)
+                .SetProperty(item => item.UpdatedAt, failedAt),
+                cancellationToken);
+
+        if (rowsUpdated == 0)
+        {
+            await _dbContext.Entry(request).ReloadAsync(cancellationToken);
+            _logger.LogInformation(
+                "Skipping failure for translation request {RequestId} because it is no longer active",
+                request.Id);
+            return false;
+        }
+
+        await _dbContext.Entry(request).ReloadAsync(cancellationToken);
+        await _translationRequestService.UpdateActiveCount();
+        return true;
+    }
+
+    internal async Task<bool> HandleProviderPause(
         TranslationRequest request,
         ProviderPauseException exception,
         List<TranslationRequestLog> requestLogs,
@@ -1612,21 +1727,22 @@ Exception? lastException = null;
             ? "Translation provider paused the request."
             : exception.Reason;
 
-        var translationRequest =
-            await _dbContext.TranslationRequests.FirstOrDefaultAsync(
+        var currentRequest = await _dbContext.TranslationRequests
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
                 translationRequest => translationRequest.Id == request.Id,
                 cancellationToken);
 
-        if (translationRequest == null)
+        if (currentRequest == null)
         {
             _logger.LogWarning(
                 "Paused translation request {RequestId} was not found during pause handling",
                 request.Id);
-            return;
+            return false;
         }
 
         var apiDelay = (exception.ResumeAt ?? now.AddSeconds(60)) - now;
-        var pauseDelay = translationRequest.RetryCount switch
+        var pauseDelay = currentRequest.RetryCount switch
         {
             0 => apiDelay,
             1 => TimeSpan.FromSeconds(120),
@@ -1634,15 +1750,32 @@ Exception? lastException = null;
             _ => TimeSpan.FromSeconds(300)
         };
         var resumeAt = now + pauseDelay;
-        translationRequest.RetryCount++;
+        var rowsUpdated = await _dbContext.TranslationRequests
+            .Where(translationRequest => translationRequest.Id == request.Id &&
+                                         translationRequest.Status == TranslationStatus.InProgress &&
+                                         translationRequest.RetryCount == currentRequest.RetryCount)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(translationRequest => translationRequest.Status, TranslationStatus.Paused)
+                .SetProperty(translationRequest => translationRequest.IsActive, (bool?)true)
+                .SetProperty(translationRequest => translationRequest.PausedAt, now)
+                .SetProperty(translationRequest => translationRequest.PauseReason, reason)
+                .SetProperty(translationRequest => translationRequest.PausedProvider, exception.Provider)
+                .SetProperty(translationRequest => translationRequest.NextRetryAt, resumeAt)
+                .SetProperty(translationRequest => translationRequest.CompletedAt, (DateTime?)null)
+                .SetProperty(translationRequest => translationRequest.RetryCount, translationRequest => translationRequest.RetryCount + 1)
+                .SetProperty(translationRequest => translationRequest.UpdatedAt, now),
+                cancellationToken);
 
-        translationRequest.Status = TranslationStatus.Paused;
-        translationRequest.IsActive = true;
-        translationRequest.PausedAt = now;
-        translationRequest.PauseReason = reason;
-        translationRequest.PausedProvider = exception.Provider;
-        translationRequest.NextRetryAt = resumeAt;
-        translationRequest.CompletedAt = null;
+        if (rowsUpdated == 0)
+        {
+            _logger.LogInformation(
+                "Skipping pause for translation request {RequestId} because it is no longer the active job",
+                request.Id);
+            return false;
+        }
+
+        await _dbContext.Entry(request).ReloadAsync(cancellationToken);
+        var translationRequest = request;
 
         if (requestLogs.Count > 0)
         {
@@ -1677,22 +1810,47 @@ Exception? lastException = null;
             exception.Provider,
             resumeAt,
             reason);
+
+        return true;
     }
 
-    private async Task HandleCompletion(
+    internal async Task<bool> HandleCompletion(
         TranslationRequest translationRequest,
         IReadOnlyCollection<string> outputPaths,
         CancellationToken cancellationToken)
     {
-        translationRequest.CompletedAt = DateTime.UtcNow;
-        translationRequest.Status = TranslationStatus.Completed;
-        translationRequest.IsActive = null;
-        translationRequest.PausedAt = null;
-        translationRequest.PauseReason = null;
-        translationRequest.PausedProvider = null;
-        translationRequest.RetryCount = 0;
-        translationRequest.NextRetryAt = null;
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        var now = DateTime.UtcNow;
+        var translatedSubtitle = translationRequest.TranslatedSubtitle;
+        var generatedOutputFormats = translationRequest.GeneratedOutputFormats;
+        var generatedSubtitlePaths = translationRequest.GeneratedSubtitlePaths;
+
+        var rowsUpdated = await _dbContext.TranslationRequests
+            .Where(item => item.Id == translationRequest.Id &&
+                          item.Status == TranslationStatus.InProgress)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.TranslatedSubtitle, translatedSubtitle)
+                .SetProperty(item => item.GeneratedOutputFormats, generatedOutputFormats)
+                .SetProperty(item => item.GeneratedSubtitlePaths, generatedSubtitlePaths)
+                .SetProperty(item => item.CompletedAt, now)
+                .SetProperty(item => item.Status, TranslationStatus.Completed)
+                .SetProperty(item => item.IsActive, (bool?)null)
+                .SetProperty(item => item.PausedAt, (DateTime?)null)
+                .SetProperty(item => item.PauseReason, (string?)null)
+                .SetProperty(item => item.PausedProvider, (string?)null)
+                .SetProperty(item => item.RetryCount, 0)
+                .SetProperty(item => item.NextRetryAt, (DateTime?)null)
+                .SetProperty(item => item.UpdatedAt, now), cancellationToken);
+
+        if (rowsUpdated == 0)
+        {
+            await _dbContext.Entry(translationRequest).ReloadAsync(cancellationToken);
+            _logger.LogInformation(
+                "Skipping completion for translation request {RequestId} because it is no longer active",
+                translationRequest.Id);
+            return false;
+        }
+
+        await _dbContext.Entry(translationRequest).ReloadAsync(cancellationToken);
 
         if (translationRequest.WorkloadKind == TranslationWorkloadKind.Upload)
         {
@@ -1732,6 +1890,8 @@ Exception? lastException = null;
         {
             _logger.LogWarning(ex, "Failed to update translation state after completion");
         }
+
+        return true;
     }
 
     private async Task RefreshEmbeddedSubtitleIndexAfterEmbeddedOutputAsync(
@@ -1766,43 +1926,61 @@ Exception? lastException = null;
         }
     }
 
-    private async Task HandleCancellation(TranslationRequest request)
+    internal async Task HandleCancellation(TranslationRequest request)
     {
         var cleanupToken = CancellationToken.None;
 
-        _logger.LogInformation("Translation cancelled for subtitle: |Orange|{subtitlePath}|/Orange|",
-            request.SubtitleToTranslate);
         var translationRequest =
             await _dbContext.TranslationRequests.FirstOrDefaultAsync(translationRequest =>
                 translationRequest.Id == request.Id, cleanupToken);
 
-        if (translationRequest != null)
+        if (translationRequest == null)
         {
-            translationRequest.CompletedAt = DateTime.UtcNow;
-            translationRequest.Status = TranslationStatus.Cancelled;
-            translationRequest.IsActive = null;
-            translationRequest.PausedAt = null;
-            translationRequest.PauseReason = null;
-            translationRequest.PausedProvider = null;
-
-            await _dbContext.SaveChangesAsync(cleanupToken);
-            if (translationRequest.WorkloadKind == TranslationWorkloadKind.Upload)
-            {
-                await _uploadWorkspaceService.HandleRequestCancelledAsync(translationRequest, cleanupToken);
-            }
-
-            await _translationRequestService.ClearMediaHash(translationRequest);
-            await _translationRequestService.UpdateActiveCount();
-            await _progressService.Emit(translationRequest, 0);
-            if (_translationCheckpointService != null)
-            {
-                await _translationCheckpointService.DeleteAsync(translationRequest.Id, cleanupToken);
-            }
-            await RefreshTranslationStateAsync(translationRequest, cleanupToken);
+            return;
         }
+
+        var now = DateTime.UtcNow;
+        var expectedStatus = translationRequest.Status;
+        var rowsUpdated = await _dbContext.TranslationRequests
+            .Where(item => item.Id == request.Id &&
+                           item.Status == expectedStatus &&
+                           (item.Status == TranslationStatus.Pending ||
+                            item.Status == TranslationStatus.InProgress ||
+                            item.Status == TranslationStatus.Paused))
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.CompletedAt, now)
+                .SetProperty(item => item.Status, TranslationStatus.Cancelled)
+                .SetProperty(item => item.IsActive, (bool?)null)
+                .SetProperty(item => item.PausedAt, (DateTime?)null)
+                .SetProperty(item => item.PauseReason, (string?)null)
+                .SetProperty(item => item.PausedProvider, (string?)null)
+                .SetProperty(item => item.NextRetryAt, (DateTime?)null)
+                .SetProperty(item => item.UpdatedAt, now), cleanupToken);
+
+        if (rowsUpdated == 0)
+        {
+            return;
+        }
+
+        await _dbContext.Entry(translationRequest).ReloadAsync(cleanupToken);
+        _logger.LogInformation("Translation cancelled for subtitle: |Orange|{subtitlePath}|/Orange|",
+            translationRequest.SubtitleToTranslate);
+        if (translationRequest.WorkloadKind == TranslationWorkloadKind.Upload)
+        {
+            await _uploadWorkspaceService.HandleRequestCancelledAsync(translationRequest, cleanupToken);
+        }
+
+        await _translationRequestService.ClearMediaHash(translationRequest);
+        await _translationRequestService.UpdateActiveCount();
+        await _progressService.Emit(translationRequest, 0);
+        if (_translationCheckpointService != null)
+        {
+            await _translationCheckpointService.DeleteAsync(translationRequest.Id, cleanupToken);
+        }
+        await RefreshTranslationStateAsync(translationRequest, cleanupToken);
     }
 
-    private async Task<bool> TryCancelObsoleteUnsafeSourceAsync(
+    internal async Task<bool> TryCancelObsoleteUnsafeSourceAsync(
         TranslationRequest request,
         EmbeddedSubtitle? selectedSubtitle,
         IReadOnlyList<SubtitleItem> subtitles,
@@ -1820,24 +1998,44 @@ Exception? lastException = null;
             return false;
         }
 
-        _logger.LogWarning(
-            "Cancelling obsolete unsafe translation request {RequestId}: {Reason}",
+        const string failureMessage =
+            "Translation failed before execution because the selected source is obsolete or unsafe.";
+        var now = DateTime.UtcNow;
+
+        var rowsUpdated = await _dbContext.TranslationRequests
+            .Where(item => item.Id == request.Id &&
+                          item.Status == TranslationStatus.InProgress)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.CompletedAt, (DateTime?)null)
+                .SetProperty(item => item.Status, TranslationStatus.Failed)
+                .SetProperty(item => item.FailedAt, now)
+                .SetProperty(item => item.RetryCount, item => item.RetryCount + 1)
+                .SetProperty(item => item.IsActive, (bool?)null)
+                .SetProperty(item => item.PausedAt, (DateTime?)null)
+                .SetProperty(item => item.PauseReason, (string?)null)
+                .SetProperty(item => item.PausedProvider, (string?)null)
+                .SetProperty(item => item.NextRetryAt, (DateTime?)null)
+                .SetProperty(item => item.UpdatedAt, now), cancellationToken);
+
+        if (rowsUpdated == 0)
+        {
+            _logger.LogInformation(
+                "Skipping obsolete unsafe source failure for translation request {RequestId} because it is no longer active",
+                request.Id);
+            return true;
+        }
+
+        await _dbContext.Entry(request).ReloadAsync(cancellationToken);
+        _logger.LogError(
+            "Marking obsolete unsafe translation request {RequestId} as failed: {Reason}",
             request.Id,
             reason);
-
-        request.CompletedAt = DateTime.UtcNow;
-        request.Status = TranslationStatus.Cancelled;
-        request.IsActive = null;
-        request.PausedAt = null;
-        request.PauseReason = null;
-        request.PausedProvider = null;
-        request.NextRetryAt = null;
 
         _dbContext.TranslationRequestLogs.Add(new TranslationRequestLog
         {
             TranslationRequestId = request.Id,
-            Level = "Warning",
-            Message = "Translation cancelled before execution because the selected source is obsolete or unsafe.",
+            Level = "Error",
+            Message = failureMessage,
             Details = reason
         });
 
@@ -1880,11 +2078,6 @@ Exception? lastException = null;
             !(supplementalEnabled && isSupplementalSource))
         {
             return $"Selected source has only {request.SourceSubtitleEntryCount} entries; minimum full-dialogue threshold is {SubtitleExtractionService.MinimumDialogueEntries}.";
-        }
-
-        if (LooksPathologicalAssSource(request, subtitles))
-        {
-            return "Selected ASS/SSA source is drawing-heavy/pathological and is not safe to translate.";
         }
 
         if (EmbeddedSourceLanguageMismatchesRequest(request, selectedSubtitle))
@@ -2410,18 +2603,4 @@ Exception? lastException = null;
             : $"OCR from {selectedSubtitle?.CodecName ?? "image-based"} subtitles";
     }
 
-    private static bool LooksPathologicalAssSource(
-        TranslationRequest request,
-        IReadOnlyList<SubtitleItem> subtitles)
-    {
-        if (subtitles.Count == 0 ||
-            !SubtitleOutputModeHelper.IsAssFormat(
-                request.SourceSubtitleFormat ?? Path.GetExtension(request.SubtitleToTranslate)))
-        {
-            return false;
-        }
-
-        var analysis = AssSubtitleSourceAnalyzer.AnalyzeSubtitleItems(subtitles);
-        return analysis.IsPathological;
-    }
 }

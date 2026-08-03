@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations.Schema;
 using Lingarr.Core.Enum;
 
 namespace Lingarr.Core.Entities;
@@ -104,6 +105,9 @@ public class TranslationRequest : BaseEntity
     /// When the request last failed (null if never failed)
     /// </summary>
     public DateTime? FailedAt { get; set; }
+
+    [NotMapped]
+    public string? LatestFailureMessage { get; set; }
     
     /// <summary>
     /// When the request should be retried next (null if not scheduled for retry)

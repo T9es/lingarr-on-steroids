@@ -308,11 +308,16 @@ export const useTranslationRequestStore = defineStore('translateRequest', {
 
                 if (
                     requestProgress.status === TRANSLATION_STATUS.COMPLETED ||
-                    requestProgress.status === TRANSLATION_STATUS.CANCELLED
+                    requestProgress.status === TRANSLATION_STATUS.CANCELLED ||
+                    requestProgress.status === TRANSLATION_STATUS.INTERRUPTED
                 ) {
                     idsToRemoveFromQueue.add(requestProgress.id)
                     inProgressMap.delete(requestProgress.id)
-                    failedMap.delete(requestProgress.id)
+                    if (requestProgress.status === TRANSLATION_STATUS.INTERRUPTED) {
+                        failedMap.set(requestProgress.id, mergedRequest)
+                    } else {
+                        failedMap.delete(requestProgress.id)
+                    }
                     continue
                 }
 

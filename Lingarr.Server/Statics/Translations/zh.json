@@ -290,6 +290,7 @@
     "close": "关闭",
     "noActiveTranslations": "无活动翻译。",
     "noFailedTranslations": "无失败翻译。",
+    "failureReason": "失败原因",
     "noQueuedTranslations": "队列中无翻译。",
     "nextRetryAt": "下次重试：{time}",
     "reenqueueQueue": "重新排队",

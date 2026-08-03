@@ -290,6 +290,7 @@
     "close": "Sluiten",
     "noActiveTranslations": "Geen actieve vertalingen.",
     "noFailedTranslations": "Geen mislukte vertalingen.",
+    "failureReason": "Reden van mislukking",
     "noQueuedTranslations": "Geen vertalingen in wachtrij.",
     "nextRetryAt": "Volgende poging: {time}",
     "reenqueueQueue": "Wachtrij opnieuw inplannen",

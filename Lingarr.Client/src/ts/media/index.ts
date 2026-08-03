@@ -105,6 +105,7 @@ export interface ITranslationRequest {
     status: TranslationStatus
     progress: number
     completedAt?: string | null
+    latestFailureMessage?: string | null
     isPriority?: boolean
     isActive?: boolean
     startedAt?: string | null

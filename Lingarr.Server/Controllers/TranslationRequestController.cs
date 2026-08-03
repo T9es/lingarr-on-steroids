@@ -32,10 +32,10 @@ public class TranslationRequestController : ControllerBase
     }
 
     /// <summary>
-    /// Gets all translation requests with Failed status
+    /// Gets all failed or interrupted translation requests
     /// </summary>
-    /// <response code="200">Returns all failed translation requests</response>
-    /// <response code="500">If there was an error retrieving failed requests</response>
+    /// <response code="200">Returns all failed or interrupted translation requests</response>
+    /// <response code="500">If there was an error retrieving attention requests</response>
     /// <returns>ActionResult containing the list of failed translation requests</returns>
     [HttpGet("failed")]
     public async Task<ActionResult<List<TranslationRequest>>> GetFailedRequests()
@@ -212,7 +212,7 @@ public class TranslationRequestController : ControllerBase
     }
 
     /// <summary>
-    /// Retries all translation requests with Failed status.
+    /// Retries all failed or interrupted translation requests.
     /// </summary>
     /// <response code="200">Returns structured retry counters</response>
     /// <response code="500">If there was an error processing the retries</response>
@@ -224,7 +224,7 @@ public class TranslationRequestController : ControllerBase
     }
 
     /// <summary>
-    /// Removes all translation requests with Failed status
+    /// Removes all failed or interrupted translation requests
     /// </summary>
     /// <response code="200">Returns the count of removed requests</response>
     /// <response code="500">If there was an error processing the removal</response>

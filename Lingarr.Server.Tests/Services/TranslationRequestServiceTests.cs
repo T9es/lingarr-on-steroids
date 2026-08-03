@@ -450,7 +450,9 @@ public class TranslationRequestServiceTests
     [Fact]
     public async Task InterruptActiveRequestsForMedia_MarksRequestsInterruptedAndClearsMediaHash()
     {
-        await using var context = BuildContext();
+        await using var connection = new SqliteConnection("Filename=:memory:");
+        await connection.OpenAsync();
+        await using var context = BuildSqliteContext(connection);
 
         var movie = new Movie
         {
@@ -500,7 +502,9 @@ public class TranslationRequestServiceTests
     [Fact]
     public async Task InterruptActiveRequestsForMedia_IgnoresUploadRequestsWithCollidingMediaId()
     {
-        await using var context = BuildContext();
+        await using var connection = new SqliteConnection("Filename=:memory:");
+        await connection.OpenAsync();
+        await using var context = BuildSqliteContext(connection);
 
         context.Movies.Add(new Movie
         {
@@ -547,6 +551,153 @@ public class TranslationRequestServiceTests
         Assert.Equal(TranslationStatus.Pending, requests[1].Status);
         Assert.Null(requests[0].IsActive);
         Assert.True(requests[1].IsActive);
+    }
+
+    [Theory]
+    [InlineData(TranslationStatus.Failed)]
+    [InlineData(TranslationStatus.Completed)]
+    [InlineData(TranslationStatus.Interrupted)]
+    [InlineData(TranslationStatus.Cancelled)]
+    public async Task CancelTranslationRequest_DoesNotDowngradeTerminalRequest(
+        TranslationStatus terminalStatus)
+    {
+        await using var connection = new SqliteConnection("Filename=:memory:");
+        await connection.OpenAsync();
+        await using var context = BuildSqliteContext(connection);
+
+        var request = CreateRequest(
+            1,
+            56,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/movie.en.srt",
+            terminalStatus,
+            DateTime.UtcNow);
+        request.IsActive = null;
+        context.TranslationRequests.Add(request);
+        await context.SaveChangesAsync();
+
+        var cancellationMock = new Mock<ITranslationCancellationService>();
+        var mediaStateMock = new Mock<IMediaStateService>();
+        var service = CreateService(
+            context,
+            cancellationServiceMock: cancellationMock,
+            mediaStateServiceMock: mediaStateMock);
+
+        var result = await service.CancelTranslationRequest(new TranslationRequest
+        {
+            Id = request.Id,
+            Title = request.Title,
+            SourceLanguage = request.SourceLanguage,
+            TargetLanguage = request.TargetLanguage,
+            MediaType = request.MediaType,
+            Status = request.Status
+        });
+
+        Assert.NotNull(result);
+        var persistedRequest = await context.TranslationRequests
+            .AsNoTracking()
+            .SingleAsync(item => item.Id == request.Id);
+        Assert.Equal(terminalStatus, persistedRequest.Status);
+        Assert.Null(persistedRequest.IsActive);
+        cancellationMock.Verify(service => service.CancelJob(request.Id), Times.Never);
+        mediaStateMock.Verify(
+            service => service.UpdateStateAsync(
+                It.IsAny<Lingarr.Core.Interfaces.IMedia>(),
+                It.IsAny<MediaType>(),
+                It.IsAny<bool>()),
+            Times.Never);
+    }
+
+    [Theory]
+    [InlineData(TranslationStatus.Failed)]
+    [InlineData(TranslationStatus.Interrupted)]
+    [InlineData(TranslationStatus.Cancelled)]
+    public async Task InterruptActiveRequestsForMedia_IgnoresTerminalRequest(
+        TranslationStatus terminalStatus)
+    {
+        await using var connection = new SqliteConnection("Filename=:memory:");
+        await connection.OpenAsync();
+        await using var context = BuildSqliteContext(connection);
+
+        var movie = new Movie
+        {
+            Id = 56,
+            RadarrId = 56,
+            Title = "Movie 56",
+            FileName = "movie-56.mkv",
+            Path = "/movies",
+            MediaHash = "hash",
+            DateAdded = DateTime.UtcNow
+        };
+        var request = CreateRequest(
+            1,
+            movie.Id,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/movie-56.en.srt",
+            terminalStatus,
+            DateTime.UtcNow);
+        request.IsActive = null;
+
+        context.Movies.Add(movie);
+        context.TranslationRequests.Add(request);
+        await context.SaveChangesAsync();
+
+        var cancellationMock = new Mock<ITranslationCancellationService>();
+        var mediaStateMock = new Mock<IMediaStateService>();
+        var service = CreateService(
+            context,
+            cancellationServiceMock: cancellationMock,
+            mediaStateServiceMock: mediaStateMock);
+
+        var interrupted = await service.InterruptActiveRequestsForMedia(MediaType.Movie, movie.Id);
+
+        Assert.Equal(0, interrupted);
+        var persistedRequest = await context.TranslationRequests
+            .AsNoTracking()
+            .SingleAsync(item => item.Id == request.Id);
+        Assert.Equal(terminalStatus, persistedRequest.Status);
+        Assert.Null(persistedRequest.IsActive);
+        Assert.Equal("hash", (await context.Movies.AsNoTracking().SingleAsync(item => item.Id == movie.Id)).MediaHash);
+        cancellationMock.Verify(service => service.CancelJob(request.Id), Times.Never);
+        mediaStateMock.Verify(
+            service => service.UpdateStateAsync(
+                It.IsAny<Lingarr.Core.Interfaces.IMedia>(),
+                It.IsAny<MediaType>(),
+                It.IsAny<bool>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateTranslationRequest_DoesNotStartInterruptedRequest()
+    {
+        await using var context = BuildContext();
+        var request = CreateRequest(
+            1,
+            57,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/movie-57.en.srt",
+            TranslationStatus.Interrupted,
+            DateTime.UtcNow);
+        request.IsActive = null;
+        context.TranslationRequests.Add(request);
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+
+        await Assert.ThrowsAsync<TaskCanceledException>(() =>
+            service.UpdateTranslationRequest(request, TranslationStatus.InProgress));
+
+        var persistedRequest = await context.TranslationRequests
+            .AsNoTracking()
+            .SingleAsync(item => item.Id == request.Id);
+        Assert.Equal(TranslationStatus.Interrupted, persistedRequest.Status);
+        Assert.Null(persistedRequest.IsActive);
     }
 
     [Fact]
@@ -1040,6 +1191,303 @@ public class TranslationRequestServiceTests
     }
 
     [Fact]
+    public async Task RetryAllFailedRequests_RetriesInterruptedRequestsAndLeavesCancelledRequestsOut()
+    {
+        await using var context = BuildContext();
+
+        var now = DateTime.UtcNow;
+        var failedRequest = CreateRequest(
+            1,
+            301,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/failed-retry.en.srt",
+            TranslationStatus.Failed,
+            now.AddMinutes(-3));
+        var interruptedRequest = CreateRequest(
+            2,
+            302,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/interrupted-retry.en.srt",
+            TranslationStatus.Interrupted,
+            now.AddMinutes(-2));
+        var cancelledRequest = CreateRequest(
+            3,
+            303,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/cancelled-retry.en.srt",
+            TranslationStatus.Cancelled,
+            now.AddMinutes(-1));
+
+        context.TranslationRequests.AddRange(failedRequest, interruptedRequest, cancelledRequest);
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+        var result = await service.RetryAllFailedRequests();
+
+        Assert.Equal(2, result.TotalFailed);
+        Assert.Equal(2, result.Retried);
+        Assert.Equal(0, result.RemainingFailed);
+
+        var persistedRequests = await context.TranslationRequests
+            .AsNoTracking()
+            .OrderBy(request => request.Id)
+            .ToListAsync();
+        Assert.Equal(TranslationStatus.Pending, persistedRequests[0].Status);
+        Assert.Equal(TranslationStatus.Pending, persistedRequests[1].Status);
+        Assert.Equal(TranslationStatus.Cancelled, persistedRequests[2].Status);
+        Assert.True(persistedRequests[0].IsActive);
+        Assert.True(persistedRequests[1].IsActive);
+    }
+
+    [Fact]
+    public async Task RemoveAllFailedRequests_RemovesInterruptedRequestsAndLeavesCancelledRequestsOut()
+    {
+        await using var context = BuildContext();
+
+        var now = DateTime.UtcNow;
+        var failedRequest = CreateRequest(
+            1,
+            304,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/failed-remove.en.srt",
+            TranslationStatus.Failed,
+            now.AddMinutes(-3));
+        var interruptedRequest = CreateRequest(
+            2,
+            305,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/interrupted-remove.en.srt",
+            TranslationStatus.Interrupted,
+            now.AddMinutes(-2));
+        var cancelledRequest = CreateRequest(
+            3,
+            306,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/cancelled-remove.en.srt",
+            TranslationStatus.Cancelled,
+            now.AddMinutes(-1));
+
+        context.TranslationRequests.AddRange(failedRequest, interruptedRequest, cancelledRequest);
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+        var removed = await service.RemoveAllFailedRequests();
+
+        Assert.Equal(2, removed);
+        var remainingRequests = await context.TranslationRequests
+            .AsNoTracking()
+            .ToListAsync();
+        var remainingRequest = Assert.Single(remainingRequests);
+        Assert.Equal(cancelledRequest.Id, remainingRequest.Id);
+        Assert.Equal(TranslationStatus.Cancelled, remainingRequest.Status);
+    }
+
+    [Fact]
+    public async Task GetFailedRequests_PopulatesLatestFailureMessageFromNewestErrorOrWarningLog()
+    {
+        await using var context = BuildContext();
+
+        var now = DateTime.UtcNow;
+        var failedWithDetails = CreateRequest(
+            1,
+            100,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/failed-details.en.srt",
+            TranslationStatus.Failed,
+            now);
+        failedWithDetails.CompletedAt = now.AddMinutes(-1);
+
+        var failedWithMessage = CreateRequest(
+            2,
+            101,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/failed-message.en.srt",
+            TranslationStatus.Failed,
+            now.AddSeconds(1));
+        failedWithMessage.CompletedAt = now.AddMinutes(-2);
+
+        var interruptedRequest = CreateRequest(
+            3,
+            102,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/interrupted.en.srt",
+            TranslationStatus.Interrupted,
+            now.AddSeconds(2));
+        interruptedRequest.CompletedAt = now.AddMinutes(-3);
+
+        var pendingRequest = CreateRequest(
+            4,
+            103,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/pending.en.srt",
+            TranslationStatus.Pending,
+            now.AddSeconds(3));
+
+        context.TranslationRequests.AddRange(
+            failedWithDetails,
+            failedWithMessage,
+            interruptedRequest,
+            pendingRequest);
+        context.TranslationRequestLogs.AddRange(
+            new TranslationRequestLog
+            {
+                Id = 1,
+                TranslationRequestId = failedWithDetails.Id,
+                Level = "Error",
+                Message = "Older error",
+                Details = "Older details",
+                CreatedAt = now.AddMinutes(-4)
+            },
+            new TranslationRequestLog
+            {
+                Id = 2,
+                TranslationRequestId = failedWithDetails.Id,
+                Level = "Warning",
+                Message = "Latest warning",
+                Details = "Preferred details",
+                CreatedAt = now.AddMinutes(-3)
+            },
+            new TranslationRequestLog
+            {
+                Id = 3,
+                TranslationRequestId = failedWithDetails.Id,
+                Level = "Information",
+                Message = "Newest informational message",
+                Details = "Must be ignored",
+                CreatedAt = now.AddMinutes(-2)
+            },
+            new TranslationRequestLog
+            {
+                Id = 4,
+                TranslationRequestId = failedWithMessage.Id,
+                Level = "Error",
+                Message = "Fallback message",
+                Details = "   ",
+                CreatedAt = now.AddMinutes(-3)
+            },
+            new TranslationRequestLog
+            {
+                Id = 5,
+                TranslationRequestId = pendingRequest.Id,
+                Level = "Error",
+                Message = "Pending request error",
+                Details = "Must not be exposed",
+                CreatedAt = now.AddMinutes(-1)
+            },
+            new TranslationRequestLog
+            {
+                Id = 6,
+                TranslationRequestId = interruptedRequest.Id,
+                Level = "Warning",
+                Message = "Interrupted request warning",
+                Details = "Interrupted failure details",
+                CreatedAt = now.AddMinutes(-4)
+            });
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+        var requests = await service.GetFailedRequests();
+
+        Assert.Equal(
+            [failedWithDetails.Id, failedWithMessage.Id, interruptedRequest.Id],
+            requests.Select(request => request.Id));
+        Assert.Equal("Preferred details", requests[0].LatestFailureMessage);
+        Assert.Equal("Fallback message", requests[1].LatestFailureMessage);
+        Assert.Equal("Interrupted failure details", requests[2].LatestFailureMessage);
+    }
+
+    [Fact]
+    public async Task GetOverview_IncludesInterruptedRequestsAndExcludesCancelledRequests()
+    {
+        await using var context = BuildContext();
+
+        var now = DateTime.UtcNow;
+        var failedRequest = CreateRequest(
+            1,
+            104,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/failed-overview.en.srt",
+            TranslationStatus.Failed,
+            now);
+        failedRequest.CompletedAt = now.AddMinutes(-1);
+
+        var interruptedRequest = CreateRequest(
+            2,
+            105,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/interrupted-overview.en.srt",
+            TranslationStatus.Interrupted,
+            now.AddSeconds(1));
+        interruptedRequest.CompletedAt = now.AddMinutes(-2);
+
+        var cancelledRequest = CreateRequest(
+            3,
+            106,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/cancelled-overview.en.srt",
+            TranslationStatus.Cancelled,
+            now.AddSeconds(2));
+        cancelledRequest.CompletedAt = now.AddMinutes(-3);
+
+        context.TranslationRequests.AddRange(failedRequest, interruptedRequest, cancelledRequest);
+        context.TranslationRequestLogs.AddRange(
+            new TranslationRequestLog
+            {
+                TranslationRequestId = failedRequest.Id,
+                Level = "Error",
+                Message = "Failed overview message",
+                Details = "Failed overview details",
+                CreatedAt = now.AddMinutes(-3)
+            },
+            new TranslationRequestLog
+            {
+                TranslationRequestId = interruptedRequest.Id,
+                Level = "Error",
+                Message = "Interrupted overview message",
+                Details = "Interrupted overview details",
+                CreatedAt = now.AddMinutes(-4)
+            });
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+        var overview = await service.GetOverview(null, "CreatedAt", true, 1, 20, 10);
+
+        Assert.Equal(2, overview.Failed.TotalCount);
+        Assert.Equal(
+            [failedRequest.Id, interruptedRequest.Id],
+            overview.Failed.Items.Select(request => request.Id));
+        Assert.Equal("Failed overview details", overview.Failed.Items[0].LatestFailureMessage);
+        Assert.Equal("Interrupted overview details", overview.Failed.Items[1].LatestFailureMessage);
+        Assert.DoesNotContain(overview.Failed.Items, request => request.Status == TranslationStatus.Cancelled);
+    }
+
+    [Fact]
     public async Task GetOverview_ReturnsCountsAndLimitsFailedAndInProgressItems()
     {
         await using var context = BuildContext();
@@ -1063,6 +1511,39 @@ public class TranslationRequestServiceTests
         requests[7].CompletedAt = now;
 
         context.TranslationRequests.AddRange(requests);
+        context.TranslationRequestLogs.AddRange(
+            new TranslationRequestLog
+            {
+                TranslationRequestId = requests[2].Id,
+                Level = "Warning",
+                Message = "Older warning",
+                Details = "Older details",
+                CreatedAt = now.AddMinutes(-3)
+            },
+            new TranslationRequestLog
+            {
+                TranslationRequestId = requests[2].Id,
+                Level = "Error",
+                Message = "Latest failure",
+                Details = "Overview failure details",
+                CreatedAt = now.AddMinutes(-2)
+            },
+            new TranslationRequestLog
+            {
+                TranslationRequestId = requests[2].Id,
+                Level = "Information",
+                Message = "Newest informational message",
+                Details = "Must be ignored",
+                CreatedAt = now.AddMinutes(-1)
+            },
+            new TranslationRequestLog
+            {
+                TranslationRequestId = requests[0].Id,
+                Level = "Error",
+                Message = "Pending request error",
+                Details = "Must not be exposed",
+                CreatedAt = now
+            });
         await context.SaveChangesAsync();
 
         var service = CreateService(context);
@@ -1073,8 +1554,11 @@ public class TranslationRequestServiceTests
         Assert.Equal(2, overview.Pending.Items.Count());
         Assert.Equal(3, overview.Failed.TotalCount);
         Assert.Equal(2, overview.Failed.Items.Count);
+        Assert.Equal([requests[2].Id, requests[3].Id], overview.Failed.Items.Select(request => request.Id));
+        Assert.Equal("Overview failure details", overview.Failed.Items[0].LatestFailureMessage);
         Assert.Equal(2, overview.InProgress.TotalCount);
         Assert.Equal(2, overview.InProgress.Items.Count);
+        Assert.Null(overview.Pending.Items.Single(request => request.Id == requests[0].Id).LatestFailureMessage);
         Assert.DoesNotContain(overview.Failed.Items, request => request.Status != TranslationStatus.Failed);
         Assert.DoesNotContain(overview.InProgress.Items, request =>
             request.Status != TranslationStatus.InProgress && request.Status != TranslationStatus.Paused);

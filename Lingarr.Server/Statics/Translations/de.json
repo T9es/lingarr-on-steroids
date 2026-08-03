@@ -290,6 +290,7 @@
     "close": "Schließen",
     "noActiveTranslations": "Keine aktiven Übersetzungen.",
     "noFailedTranslations": "Keine fehlgeschlagenen Übersetzungen.",
+    "failureReason": "Fehlerursache",
     "noQueuedTranslations": "Keine Übersetzungen in der Warteschlange.",
     "nextRetryAt": "Nächster Versuch: {time}",
     "reenqueueQueue": "Warteschlange neu einreihen",
