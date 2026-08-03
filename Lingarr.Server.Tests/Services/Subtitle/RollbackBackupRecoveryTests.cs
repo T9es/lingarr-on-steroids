@@ -305,6 +305,23 @@ public sealed class RollbackBackupRecoveryTests : IDisposable
     }
 
     [Fact]
+    public void ReconcileSubtitleBackups_WhenPublishedOutputIsByteIdenticalToOriginal_DeletesBackupInsteadOfRestoring()
+    {
+        // When the published output is byte-identical to the original (e.g.
+        // source-preserved positions), the current file needs no restore: the
+        // backup is redundant and must be deleted, not swapped back into place.
+        var content = _originalContent;
+        var backupPath = CreateJobStyleBackup(content, expectedPublishedHash: Hash(content));
+        File.WriteAllText(_finalPath, content);
+
+        RollbackBackupRecovery.ReconcileSubtitleBackups(_finalPath, 7, NullLogger.Instance);
+
+        Assert.Equal(content, File.ReadAllText(_finalPath));
+        Assert.False(File.Exists(backupPath));
+        Assert.False(File.Exists($"{backupPath}.meta.json"));
+    }
+
+    [Fact]
     public void ReconcileSubtitleBackups_WhenCompareStyleBackupHasNoManifest_NeverMovesItIntoPlace()
     {
         // The completed-edits naming ({base}.{token}.bak{ext}) also matches ordinary

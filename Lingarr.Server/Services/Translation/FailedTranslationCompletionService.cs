@@ -681,8 +681,13 @@ public class FailedTranslationCompletionService : IFailedTranslationCompletionSe
             if (rowsUpdated == 0)
             {
                 await _dbContext.Entry(dbRequest).ReloadAsync(cancellationToken);
-                var completedByOthers = dbRequest.Status == TranslationStatus.Completed;
-                if (!completedByOthers)
+                // rowsUpdated == 0 while the request is still Completed means another
+                // worker reclaimed the claim (JobId is no longer this attempt's token)
+                // or already committed it (JobId is null). In both cases this attempt's
+                // backups must not survive and its files must not be rolled back.
+                var claimWasTakenOver =
+                    !string.Equals(dbRequest.JobId, ownershipToken, StringComparison.Ordinal);
+                if (!claimWasTakenOver)
                 {
                     RollbackPublishedOutputs(publishedOutputs);
                     RollbackEmbeddedPublication(embeddedPublication);
@@ -722,10 +727,21 @@ public class FailedTranslationCompletionService : IFailedTranslationCompletionSe
             var completedByOthers = false;
             try
             {
-                completedByOthers = await _dbContext.TranslationRequests
+                var requestState = await _dbContext.TranslationRequests
                     .Where(item => item.Id == dbRequest.Id)
-                    .Select(item => item.Status)
-                    .FirstOrDefaultAsync(CancellationToken.None) == TranslationStatus.Completed;
+                    .Select(item => new { item.Status, item.JobId })
+                    .FirstOrDefaultAsync(CancellationToken.None);
+                // In this flow the request is Completed by definition, so a mere
+                // Completed status is no takeover evidence: only a JobId that is no
+                // longer this attempt's ownership token proves another worker
+                // reclaimed the request and will publish its own outputs.
+                completedByOthers = requestState != null &&
+                                    requestState.Status == TranslationStatus.Completed &&
+                                    requestState.JobId != null &&
+                                    !string.Equals(
+                                        requestState.JobId,
+                                        ownershipToken,
+                                        StringComparison.Ordinal);
             }
             catch (Exception stateQueryException)
             {

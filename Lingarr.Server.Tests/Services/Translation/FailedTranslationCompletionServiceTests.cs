@@ -1563,6 +1563,224 @@ public class FailedTranslationCompletionServiceTests : IDisposable
         Assert.Equal("Boom after claim", result.SkippedReason);
     }
 
+    [Fact]
+    public async Task PublishCompletedEditsAsync_WhenEmbeddingFailsWithoutTakeover_RollsBackAndKeepsCommittedOutput()
+    {
+        var mediaDirectory = Path.Combine(_tempDirectory, "pce-no-takeover-media");
+        var cacheDirectory = Path.Combine(_tempDirectory, "pce-no-takeover-cache");
+        Directory.CreateDirectory(mediaDirectory);
+        Directory.CreateDirectory(cacheDirectory);
+
+        var mediaPath = Path.Combine(mediaDirectory, "managed-movie.mkv");
+        var sourcePath = Path.Combine(cacheDirectory, "movie-3-stream-0-eng.srt");
+        await File.WriteAllTextAsync(mediaPath, "clean committed container");
+        await File.WriteAllTextAsync(sourcePath, CreateSrtSubtitle("Hello"));
+        var fingerprint = BuildFallbackFingerprint(sourcePath, "en", "pl", ".srt");
+
+        var movie = new Movie
+        {
+            RadarrId = 3,
+            Title = "PCE movie",
+            FileName = Path.GetFileName(mediaPath),
+            Path = mediaDirectory,
+            DateAdded = DateTime.UtcNow
+        };
+        _dbContext.Movies.Add(movie);
+        await _dbContext.SaveChangesAsync();
+
+        var request = new TranslationRequest
+        {
+            MediaId = movie.Id,
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = sourcePath,
+            SourceSubtitleFormat = ".srt",
+            SubtitleOutputMode = "srt",
+            RequiredOutputFormats = ".srt",
+            SourceSnapshotFingerprint = fingerprint,
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Completed,
+            WorkloadKind = TranslationWorkloadKind.Library,
+            GeneratedSubtitlePaths = System.Text.Json.JsonSerializer.Serialize(
+                new[] { $"mkv-embedded:{mediaPath}" })
+        };
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var checkpointService = new Mock<ITranslationCheckpointService>();
+        var cacheService = new Mock<IEmbeddedSubtitleCacheService>();
+        cacheService
+            .Setup(service => service.IsManagedCachePath(sourcePath))
+            .Returns(true);
+
+        var mkvEmbeddingService = new Mock<IMkvEmbeddingService>();
+        mkvEmbeddingService
+            .Setup(service => service.WouldExceedPathLimit(It.IsAny<string>()))
+            .Returns(false);
+        mkvEmbeddingService
+            .Setup(service => service.EmbedSubtitlesAsync(
+                mediaPath,
+                It.IsAny<IReadOnlyCollection<MkvSubtitleInput>>(),
+                It.IsAny<CancellationToken>()))
+            .Returns<string, IReadOnlyCollection<MkvSubtitleInput>, CancellationToken>(async (path, _, _) =>
+            {
+                // The embed partially succeeds (the container is swapped) before failing.
+                await File.WriteAllTextAsync(path, "partially embedded container");
+                return new MkvEmbedResult(false, Error: "mkvmerge unavailable");
+            });
+
+        var service = CreateService(
+            sourcePath,
+            checkpointService.Object,
+            new Dictionary<string, string>
+            {
+                [SettingKeys.Translation.RemoveLanguageTag] = "false",
+                [SettingKeys.Translation.StripSubtitleFormatting] = "false",
+                [SettingKeys.Translation.SubtitleOutputMode] = "srt",
+                [SettingKeys.Translation.EmbedInContainer] = "true"
+            },
+            mkvEmbeddingService: mkvEmbeddingService.Object,
+            embeddedSubtitleCacheService: cacheService.Object);
+
+        var result = await service.PublishCompletedEditsAsync(
+            request,
+            sourcePath,
+            new List<SubtitleItem>
+            {
+                new()
+                {
+                    Position = 1,
+                    StartTime = 0,
+                    EndTime = 1000,
+                    Lines = new List<string> { "Hello" },
+                    PlaintextLines = new List<string> { "Hello" },
+                    TranslatedLines = new List<string> { "Czesc" }
+                }
+            },
+            CancellationToken.None);
+
+        // No takeover happened (JobId is still this attempt's token): the failed
+        // attempt must roll back, restoring the clean committed container from its
+        // backup instead of deleting that backup.
+        Assert.False(result.Completed);
+        Assert.Contains("mkvmerge unavailable", result.SkippedReason);
+        Assert.Equal("clean committed container", await File.ReadAllTextAsync(mediaPath));
+    }
+
+    [Fact]
+    public async Task PublishCompletedEditsAsync_WhenEmbeddingFailsAfterTakeover_DoesNotRollBackTakeoverContainer()
+    {
+        var mediaDirectory = Path.Combine(_tempDirectory, "pce-takeover-media");
+        var cacheDirectory = Path.Combine(_tempDirectory, "pce-takeover-cache");
+        Directory.CreateDirectory(mediaDirectory);
+        Directory.CreateDirectory(cacheDirectory);
+
+        var mediaPath = Path.Combine(mediaDirectory, "managed-movie.mkv");
+        var sourcePath = Path.Combine(cacheDirectory, "movie-4-stream-0-eng.srt");
+        await File.WriteAllTextAsync(mediaPath, "clean committed container");
+        await File.WriteAllTextAsync(sourcePath, CreateSrtSubtitle("Hello"));
+        var fingerprint = BuildFallbackFingerprint(sourcePath, "en", "pl", ".srt");
+
+        var movie = new Movie
+        {
+            RadarrId = 4,
+            Title = "PCE takeover movie",
+            FileName = Path.GetFileName(mediaPath),
+            Path = mediaDirectory,
+            DateAdded = DateTime.UtcNow
+        };
+        _dbContext.Movies.Add(movie);
+        await _dbContext.SaveChangesAsync();
+
+        var request = new TranslationRequest
+        {
+            MediaId = movie.Id,
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = sourcePath,
+            SourceSubtitleFormat = ".srt",
+            SubtitleOutputMode = "srt",
+            RequiredOutputFormats = ".srt",
+            SourceSnapshotFingerprint = fingerprint,
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Completed,
+            WorkloadKind = TranslationWorkloadKind.Library,
+            GeneratedSubtitlePaths = System.Text.Json.JsonSerializer.Serialize(
+                new[] { $"mkv-embedded:{mediaPath}" })
+        };
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var checkpointService = new Mock<ITranslationCheckpointService>();
+        var cacheService = new Mock<IEmbeddedSubtitleCacheService>();
+        cacheService
+            .Setup(service => service.IsManagedCachePath(sourcePath))
+            .Returns(true);
+
+        var mkvEmbeddingService = new Mock<IMkvEmbeddingService>();
+        mkvEmbeddingService
+            .Setup(service => service.WouldExceedPathLimit(It.IsAny<string>()))
+            .Returns(false);
+        mkvEmbeddingService
+            .Setup(service => service.EmbedSubtitlesAsync(
+                mediaPath,
+                It.IsAny<IReadOnlyCollection<MkvSubtitleInput>>(),
+                It.IsAny<CancellationToken>()))
+            .Returns<string, IReadOnlyCollection<MkvSubtitleInput>, CancellationToken>(async (path, _, _) =>
+            {
+                // Another worker reclaims the request mid-embed, then the embed fails.
+                await _dbContext.TranslationRequests
+                    .Where(item => item.Id == request.Id)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(item => item.JobId, "replacement-claim")
+                        .SetProperty(item => item.UpdatedAt, DateTime.UtcNow));
+                await File.WriteAllTextAsync(path, "replacement container");
+                return new MkvEmbedResult(false, Error: "mkvmerge unavailable");
+            });
+
+        var service = CreateService(
+            sourcePath,
+            checkpointService.Object,
+            new Dictionary<string, string>
+            {
+                [SettingKeys.Translation.RemoveLanguageTag] = "false",
+                [SettingKeys.Translation.StripSubtitleFormatting] = "false",
+                [SettingKeys.Translation.SubtitleOutputMode] = "srt",
+                [SettingKeys.Translation.EmbedInContainer] = "true"
+            },
+            mkvEmbeddingService: mkvEmbeddingService.Object,
+            embeddedSubtitleCacheService: cacheService.Object);
+
+        var result = await service.PublishCompletedEditsAsync(
+            request,
+            sourcePath,
+            new List<SubtitleItem>
+            {
+                new()
+                {
+                    Position = 1,
+                    StartTime = 0,
+                    EndTime = 1000,
+                    Lines = new List<string> { "Hello" },
+                    PlaintextLines = new List<string> { "Hello" },
+                    TranslatedLines = new List<string> { "Czesc" }
+                }
+            },
+            CancellationToken.None);
+
+        // The claim was taken over: this attempt must NOT roll the container back
+        // (the replacement worker owns the files), and its rollback backups must
+        // not survive as live manifests.
+        Assert.False(result.Completed);
+        Assert.Contains("mkvmerge unavailable", result.SkippedReason);
+        Assert.Equal("replacement container", await File.ReadAllTextAsync(mediaPath));
+        Assert.False(
+            Directory.EnumerateFiles(_tempDirectory, "*.meta.json", SearchOption.AllDirectories)
+                .Any());
+    }
+
     private FailedTranslationCompletionService CreateService(
         string sourcePath,
         ITranslationCheckpointService checkpointService,
