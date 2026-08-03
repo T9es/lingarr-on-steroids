@@ -1952,6 +1952,24 @@ Exception? lastException = null;
         }
     }
 
+    private void CleanupLoserBackups(
+        IReadOnlyCollection<PublishedSubtitleArtifact> publishedOutputs,
+        EmbeddedPublicationTransaction? embeddedPublication)
+    {
+        foreach (var publishedOutput in publishedOutputs)
+        {
+            RollbackBackupRecovery.DeleteBackup(publishedOutput.BackupPath);
+        }
+
+        if (embeddedPublication != null)
+        {
+            foreach (var backup in embeddedPublication.Backups)
+            {
+                RollbackBackupRecovery.DeleteBackup(backup.BackupPath);
+            }
+        }
+    }
+
     private void CleanupPublicationBackups(
         IReadOnlyCollection<PublishedSubtitleArtifact> publishedOutputs)
     {
@@ -2638,9 +2656,13 @@ Exception? lastException = null;
                 }
                 else
                 {
+                    // Another worker committed the request. This attempt's backups must
+                    // not survive: a live manifest could later make the reconciler
+                    // restore the pre-publication original over the committed output.
                     _logger.LogInformation(
-                        "Skipping file rollback for translation request {RequestId} because it was completed by another worker; files are left for reconciliation",
+                        "Completed by another worker; removing this attempt's rollback backups for request {RequestId}",
                         translationRequest.Id);
+                    CleanupLoserBackups(publishedOutputs, embeddedPublication);
                 }
 
                 CleanupStagedOutputArtifacts(
@@ -2725,9 +2747,13 @@ Exception? lastException = null;
                 }
                 else
                 {
+                    // Another worker committed the request. This attempt's backups must
+                    // not survive: a live manifest could later make the reconciler
+                    // restore the pre-publication original over the committed output.
                     _logger.LogInformation(
-                        "Skipping file rollback for translation request {RequestId} because it was completed by another worker; files are left for reconciliation",
+                        "Completed by another worker; removing this attempt's rollback backups for request {RequestId}",
                         translationRequest.Id);
+                    CleanupLoserBackups(publishedOutputs, embeddedPublication);
                 }
             }
             else

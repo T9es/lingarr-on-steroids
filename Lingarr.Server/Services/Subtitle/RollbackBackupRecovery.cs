@@ -129,7 +129,7 @@ internal static class RollbackBackupRecovery
         CollectMatchingFiles(directory, $"{fileName}{JobRollbackPrefix}*{JobRollbackSuffix}", candidates, allowLegacyRestore: true);
         CollectMatchingFiles(directory, $"{fileNameWithoutExtension}.*{JobRollbackSuffix}{extension}", candidates, allowLegacyRestore: false);
 
-        ReconcileCandidates(finalPath, candidates, requestId, logger);
+        ReconcileCandidates(finalPath, candidates, logger);
     }
 
     /// <summary>
@@ -144,7 +144,7 @@ internal static class RollbackBackupRecovery
         {
             var tempCandidates = new List<(string BackupPath, bool AllowLegacyRestore)>();
             CollectMatchingFiles(tempDirectory, JobEmbeddedBackupPattern, tempCandidates, allowLegacyRestore: true);
-            ReconcileCandidates(mediaPath, tempCandidates, requestId, logger);
+            ReconcileCandidates(mediaPath, tempCandidates, logger);
         }
 
         var directory = Path.GetDirectoryName(mediaPath);
@@ -157,7 +157,7 @@ internal static class RollbackBackupRecovery
         var extension = Path.GetExtension(mediaPath);
         var siblingCandidates = new List<(string BackupPath, bool AllowLegacyRestore)>();
         CollectMatchingFiles(directory, $"{fileNameWithoutExtension}.*{JobRollbackSuffix}{extension}", siblingCandidates, allowLegacyRestore: false);
-        ReconcileCandidates(mediaPath, siblingCandidates, requestId, logger);
+        ReconcileCandidates(mediaPath, siblingCandidates, logger);
     }
 
     /// <summary>
@@ -190,7 +190,6 @@ internal static class RollbackBackupRecovery
     private static void ReconcileCandidates(
         string targetPath,
         List<(string BackupPath, bool AllowLegacyRestore)> candidates,
-        int requestId,
         ILogger logger)
     {
         if (candidates.Count == 0)
@@ -282,6 +281,20 @@ internal static class RollbackBackupRecovery
             return;
         }
 
+        if (manifest.OriginalHash != null &&
+            string.Equals(currentHash, manifest.OriginalHash, StringComparison.Ordinal))
+        {
+            // The current file is already the original: the backup is redundant.
+            // Checked before the published-hash rule so that byte-identical output
+            // (e.g. source-preserved positions) deletes instead of restoring.
+            logger.LogDebug(
+                "Deleting redundant rollback backup {BackupPath} for {TargetPath} (file matches original)",
+                backupPath,
+                targetPath);
+            DeleteBackup(backupPath);
+            return;
+        }
+
         if (manifest.ExpectedPublishedHash != null &&
             string.Equals(currentHash, manifest.ExpectedPublishedHash, StringComparison.Ordinal))
         {
@@ -293,18 +306,6 @@ internal static class RollbackBackupRecovery
                 manifest.RequestId);
             DeleteFileIfExists(targetPath);
             TryRestore(targetPath, backupPath, logger);
-            return;
-        }
-
-        if (manifest.OriginalHash != null &&
-            string.Equals(currentHash, manifest.OriginalHash, StringComparison.Ordinal))
-        {
-            // The current file is already the original: the backup is redundant.
-            logger.LogDebug(
-                "Deleting redundant rollback backup {BackupPath} for {TargetPath} (file matches original)",
-                backupPath,
-                targetPath);
-            DeleteBackup(backupPath);
             return;
         }
 

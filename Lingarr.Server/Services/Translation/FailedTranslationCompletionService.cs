@@ -365,6 +365,16 @@ public class FailedTranslationCompletionService : IFailedTranslationCompletionSe
                     RollbackPublishedOutputs(publishedOutputs);
                     RollbackEmbeddedPublication(embeddedPublication);
                 }
+                else
+                {
+                    // Another worker committed the request. This attempt's backups must
+                    // not survive: a live manifest could later make the reconciler
+                    // restore the pre-publication original over the committed output.
+                    _logger.LogInformation(
+                        "Completed by another worker; removing this attempt's rollback backups for request {RequestId}",
+                        dbRequest.Id);
+                    CleanupLoserBackups(publishedOutputs, embeddedPublication);
+                }
 
                 publishedOutputs = null;
                 embeddedPublication = null;
@@ -414,14 +424,51 @@ public class FailedTranslationCompletionService : IFailedTranslationCompletionSe
                     dbRequest.Id);
             }
 
-            if (!completionCommitted && publishedOutputs != null && !completedByOthers)
+            if (!completionCommitted && writtenOutput != null)
             {
-                RollbackPublishedOutputs(publishedOutputs);
+                try
+                {
+                    // Mirror the job's post-commit probe: if the completion update
+                    // actually landed, the files are committed and must not be rolled back.
+                    var serializedFinalPaths = JsonSerializer.Serialize(writtenOutput.FinalPaths);
+                    completionCommitted = await _dbContext.TranslationRequests
+                        .AsNoTracking()
+                        .AnyAsync(item => item.Id == dbRequest.Id &&
+                                          item.Status == TranslationStatus.Completed &&
+                                          item.JobId == null &&
+                                          item.TranslatedSubtitle == writtenOutput.PrimaryPath &&
+                                          item.GeneratedSubtitlePaths == serializedFinalPaths,
+                            CancellationToken.None);
+                }
+                catch (Exception probeException)
+                {
+                    _logger.LogWarning(
+                        probeException,
+                        "Could not determine whether completion committed for request {RequestId}",
+                        dbRequest.Id);
+                }
             }
 
-            if (!completionCommitted && !completedByOthers)
+            if (completionCommitted)
             {
+                CleanupPublicationBackups(publishedOutputs);
+                CleanupEmbeddedPublicationBackups(embeddedPublication);
+            }
+            else if (!completedByOthers)
+            {
+                if (publishedOutputs != null)
+                {
+                    RollbackPublishedOutputs(publishedOutputs);
+                }
+
                 RollbackEmbeddedPublication(embeddedPublication);
+            }
+            else
+            {
+                _logger.LogInformation(
+                    "Completed by another worker; removing this attempt's rollback backups for request {RequestId}",
+                    dbRequest.Id);
+                CleanupLoserBackups(publishedOutputs, embeddedPublication);
             }
 
             if (writtenOutput != null)
@@ -640,6 +687,16 @@ public class FailedTranslationCompletionService : IFailedTranslationCompletionSe
                     RollbackPublishedOutputs(publishedOutputs);
                     RollbackEmbeddedPublication(embeddedPublication);
                 }
+                else
+                {
+                    // Another worker committed the request. This attempt's backups must
+                    // not survive: a live manifest could later make the reconciler
+                    // restore the pre-publication original over the committed output.
+                    _logger.LogInformation(
+                        "Completed by another worker; removing this attempt's rollback backups for request {RequestId}",
+                        dbRequest.Id);
+                    CleanupLoserBackups(publishedOutputs, embeddedPublication);
+                }
 
                 publishedOutputs = null;
                 embeddedPublication = null;
@@ -678,14 +735,51 @@ public class FailedTranslationCompletionService : IFailedTranslationCompletionSe
                     dbRequest.Id);
             }
 
-            if (!publicationCommitted && publishedOutputs != null && !completedByOthers)
+            if (!publicationCommitted && writtenOutput != null)
             {
-                RollbackPublishedOutputs(publishedOutputs);
+                try
+                {
+                    // Mirror the job's post-commit probe: if the completion update
+                    // actually landed, the files are committed and must not be rolled back.
+                    var serializedFinalPaths = JsonSerializer.Serialize(writtenOutput.FinalPaths);
+                    publicationCommitted = await _dbContext.TranslationRequests
+                        .AsNoTracking()
+                        .AnyAsync(item => item.Id == dbRequest.Id &&
+                                          item.Status == TranslationStatus.Completed &&
+                                          item.JobId == null &&
+                                          item.TranslatedSubtitle == writtenOutput.PrimaryPath &&
+                                          item.GeneratedSubtitlePaths == serializedFinalPaths,
+                            CancellationToken.None);
+                }
+                catch (Exception probeException)
+                {
+                    _logger.LogWarning(
+                        probeException,
+                        "Could not determine whether completion committed for request {RequestId}",
+                        dbRequest.Id);
+                }
             }
 
-            if (!publicationCommitted && !completedByOthers)
+            if (publicationCommitted)
             {
+                CleanupPublicationBackups(publishedOutputs);
+                CleanupEmbeddedPublicationBackups(embeddedPublication);
+            }
+            else if (!completedByOthers)
+            {
+                if (publishedOutputs != null)
+                {
+                    RollbackPublishedOutputs(publishedOutputs);
+                }
+
                 RollbackEmbeddedPublication(embeddedPublication);
+            }
+            else
+            {
+                _logger.LogInformation(
+                    "Completed by another worker; removing this attempt's rollback backups for request {RequestId}",
+                    dbRequest.Id);
+                CleanupLoserBackups(publishedOutputs, embeddedPublication);
             }
 
             if (writtenOutput != null)
@@ -1639,6 +1733,27 @@ public class FailedTranslationCompletionService : IFailedTranslationCompletionSe
         {
             RollbackPublishedOutputs(new PublishedSubtitleOutputs(publishedOutputs));
             throw;
+        }
+    }
+
+    private static void CleanupLoserBackups(
+        PublishedSubtitleOutputs? publishedOutputs,
+        EmbeddedPublicationTransaction? embeddedPublication)
+    {
+        if (publishedOutputs != null)
+        {
+            foreach (var output in publishedOutputs.Outputs)
+            {
+                RollbackBackupRecovery.DeleteBackup(output.BackupPath);
+            }
+        }
+
+        if (embeddedPublication != null)
+        {
+            foreach (var backup in embeddedPublication.Backups)
+            {
+                RollbackBackupRecovery.DeleteBackup(backup.BackupPath);
+            }
         }
     }
 
