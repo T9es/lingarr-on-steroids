@@ -212,10 +212,10 @@
                             <div
                                 v-for="item in failedRequests"
                                 :key="`failed-${item.id}`"
-                                class="border-secondary/40 bg-tertiary flex flex-col gap-2 rounded-md border px-3 py-2 md:flex-row md:items-center md:justify-between">
+                                class="border-secondary/40 bg-tertiary flex flex-col gap-2 rounded-md border px-3 py-2 md:grid md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
                                 <div class="min-w-0">
                                     <div
-                                        class="flex min-w-0 flex-wrap items-center gap-2 md:flex-nowrap">
+                                        class="flex min-w-0 flex-wrap items-center gap-2">
                                         <div class="min-w-0 flex-1 overflow-hidden">
                                             <span
                                                 v-if="item.mediaType === MEDIA_TYPE.EPISODE"
@@ -270,7 +270,7 @@
                                         {{ item.latestFailureMessage }}
                                     </div>
                                 </div>
-                                <div class="flex items-center gap-2">
+                                <div class="flex shrink-0 items-center justify-end gap-2">
                                     <button
                                         v-if="item.status === TRANSLATION_STATUS.FAILED"
                                         class="border-accent hover:bg-accent cursor-pointer rounded border px-2 py-1 text-xs transition-colors"
