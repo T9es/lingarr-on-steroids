@@ -598,7 +598,7 @@ public class SourceSubtitleSnapshotServiceTests
     }
 
     [Fact]
-    public async Task ResolveCurrentSnapshotAsync_ShouldRejectPathologicalExternalAssAndUseEmbeddedSource()
+    public async Task ResolveCurrentSnapshotAsync_ShouldUsePathologicalExternalAssWhenItIsOnlyUsableSource()
     {
         var dbContext = CreateDbContext();
         var settingServiceMock = new Mock<ISettingService>();
@@ -645,16 +645,7 @@ public class SourceSubtitleSnapshotServiceTests
             var snapshot = await service.ResolveCurrentSnapshotAsync(
                 movie,
                 MediaType.Movie,
-                [
-                    new EmbeddedSubtitle
-                    {
-                        StreamIndex = 4,
-                        Language = "eng",
-                        Title = "English",
-                        CodecName = "subrip",
-                        IsTextBased = true
-                    }
-                ],
+                [],
                 [
                     new Subtitles
                     {
@@ -666,8 +657,91 @@ public class SourceSubtitleSnapshotServiceTests
                 ]);
 
             Assert.NotNull(snapshot);
-            Assert.Equal(SourceSubtitleSnapshot.EmbeddedType, snapshot!.SourceType);
-            Assert.Equal(4, snapshot.StreamIndex);
+            Assert.Equal(SourceSubtitleSnapshot.ExternalType, snapshot!.SourceType);
+            Assert.Contains(Path.GetFileName(pathologicalAssPath), snapshot.Identity, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            if (File.Exists(pathologicalAssPath))
+            {
+                File.Delete(pathologicalAssPath);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ResolveCurrentSnapshotAsync_ShouldPreferUsableCaptionExternalSrtOverPathologicalAss()
+    {
+        var dbContext = CreateDbContext();
+        var settingServiceMock = new Mock<ISettingService>();
+        var subtitleServiceMock = new Mock<ISubtitleService>();
+        var pathologicalAssPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.en.ass");
+        var cleanSrtPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.en.sdh.srt");
+
+        try
+        {
+            await File.WriteAllTextAsync(
+                pathologicalAssPath,
+                "[Events]\n" + string.Join(
+                    "\n",
+                    Enumerable.Range(1, 600).Select(index =>
+                        $"Dialogue: 0,0:00:{index % 60:00}.00,0:00:{index % 60:00}.50,Default,,0,0,0,,a")));
+            await File.WriteAllTextAsync(
+                cleanSrtPath,
+                string.Join(
+                    "\n\n",
+                    Enumerable.Range(1, 100).Select(index =>
+                        $"{index}\n00:00:{index % 60:00},000 --> 00:00:{index % 60:00},500\nMeaningful line {index}")));
+
+            settingServiceMock
+                .Setup(s => s.GetSettingAsJson<SourceLanguage>(SettingKeys.Translation.SourceLanguages))
+                .ReturnsAsync([new SourceLanguage { Name = "English", Code = "en" }]);
+
+            settingServiceMock
+                .Setup(s => s.GetSetting(SettingKeys.Translation.IgnoreCaptions))
+                .ReturnsAsync("false");
+
+            var service = new SourceSubtitleSnapshotService(
+                dbContext,
+                settingServiceMock.Object,
+                subtitleServiceMock.Object,
+                NullLogger<SourceSubtitleSnapshotService>.Instance);
+
+            var movie = new Movie
+            {
+                Id = 7,
+                RadarrId = 7,
+                Title = "Movie",
+                Path = "/movies",
+                FileName = "movie.mkv",
+                DateAdded = DateTime.UtcNow
+            };
+
+            var snapshot = await service.ResolveCurrentSnapshotAsync(
+                movie,
+                MediaType.Movie,
+                [],
+                [
+                    new Subtitles
+                    {
+                        Path = pathologicalAssPath,
+                        FileName = "movie.en.ass",
+                        Language = "en",
+                        Format = ".ass"
+                    },
+                    new Subtitles
+                    {
+                        Path = cleanSrtPath,
+                        FileName = "movie.en.sdh.srt",
+                        Language = "en",
+                        Caption = "sdh",
+                        Format = ".srt"
+                    }
+                ]);
+
+            Assert.NotNull(snapshot);
+            Assert.Equal(SourceSubtitleSnapshot.ExternalType, snapshot!.SourceType);
+            Assert.Contains(Path.GetFileName(cleanSrtPath), snapshot.Identity, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain(Path.GetFileName(pathologicalAssPath), snapshot.Identity, StringComparison.OrdinalIgnoreCase);
         }
         finally
@@ -675,6 +749,291 @@ public class SourceSubtitleSnapshotServiceTests
             if (File.Exists(pathologicalAssPath))
             {
                 File.Delete(pathologicalAssPath);
+            }
+
+            if (File.Exists(cleanSrtPath))
+            {
+                File.Delete(cleanSrtPath);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ResolveCurrentSnapshotAsync_ShouldPreferCleanFullExternalSrtOverCaptionAndPathologicalAss()
+    {
+        var dbContext = CreateDbContext();
+        var settingServiceMock = new Mock<ISettingService>();
+        var subtitleServiceMock = new Mock<ISubtitleService>();
+        var pathologicalAssPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.en.ass");
+        var captionSrtPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.en.sdh.srt");
+        var fullSrtPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.en.srt");
+
+        try
+        {
+            await File.WriteAllTextAsync(
+                pathologicalAssPath,
+                "[Events]\n" + string.Join(
+                    "\n",
+                    Enumerable.Range(1, 600).Select(index =>
+                        $"Dialogue: 0,0:00:{index % 60:00}.00,0:00:{index % 60:00}.50,Default,,0,0,0,,a")));
+            await File.WriteAllTextAsync(
+                captionSrtPath,
+                string.Join(
+                    "\n\n",
+                    Enumerable.Range(1, 100).Select(index =>
+                        $"{index}\n00:00:{index % 60:00},000 --> 00:00:{index % 60:00},500\nCaption line {index}")));
+            await File.WriteAllTextAsync(
+                fullSrtPath,
+                string.Join(
+                    "\n\n",
+                    Enumerable.Range(1, 100).Select(index =>
+                        $"{index}\n00:00:{index % 60:00},000 --> 00:00:{index % 60:00},500\nFull line {index}")));
+
+            settingServiceMock
+                .Setup(s => s.GetSettingAsJson<SourceLanguage>(SettingKeys.Translation.SourceLanguages))
+                .ReturnsAsync([new SourceLanguage { Name = "English", Code = "en" }]);
+
+            settingServiceMock
+                .Setup(s => s.GetSetting(SettingKeys.Translation.IgnoreCaptions))
+                .ReturnsAsync("false");
+
+            var service = new SourceSubtitleSnapshotService(
+                dbContext,
+                settingServiceMock.Object,
+                subtitleServiceMock.Object,
+                NullLogger<SourceSubtitleSnapshotService>.Instance);
+
+            var movie = new Movie
+            {
+                Id = 10,
+                RadarrId = 10,
+                Title = "Movie",
+                Path = "/movies",
+                FileName = "movie.mkv",
+                DateAdded = DateTime.UtcNow
+            };
+
+            var snapshot = await service.ResolveCurrentSnapshotAsync(
+                movie,
+                MediaType.Movie,
+                [],
+                [
+                    new Subtitles
+                    {
+                        Path = pathologicalAssPath,
+                        FileName = "movie.en.ass",
+                        Language = "en",
+                        Format = ".ass"
+                    },
+                    new Subtitles
+                    {
+                        Path = captionSrtPath,
+                        FileName = "movie.en.sdh.srt",
+                        Language = "en",
+                        Caption = "sdh",
+                        Format = ".srt"
+                    },
+                    new Subtitles
+                    {
+                        Path = fullSrtPath,
+                        FileName = "movie.en.srt",
+                        Language = "en",
+                        Format = ".srt"
+                    }
+                ]);
+
+            Assert.NotNull(snapshot);
+            Assert.Equal(SourceSubtitleSnapshot.ExternalType, snapshot!.SourceType);
+            Assert.Contains(Path.GetFileName(fullSrtPath), snapshot.Identity, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(Path.GetFileName(captionSrtPath), snapshot.Identity, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(Path.GetFileName(pathologicalAssPath), snapshot.Identity, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            if (File.Exists(pathologicalAssPath))
+            {
+                File.Delete(pathologicalAssPath);
+            }
+
+            if (File.Exists(captionSrtPath))
+            {
+                File.Delete(captionSrtPath);
+            }
+
+            if (File.Exists(fullSrtPath))
+            {
+                File.Delete(fullSrtPath);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ResolveExternalSourceWithAutoAsync_ShouldPreferUsableCaptionExternalSrtOverPathologicalAss()
+    {
+        var dbContext = CreateDbContext();
+        var settingServiceMock = new Mock<ISettingService>();
+        var subtitleServiceMock = new Mock<ISubtitleService>();
+        var pathologicalAssPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.en.ass");
+        var cleanSrtPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.en.sdh.srt");
+
+        try
+        {
+            await File.WriteAllTextAsync(
+                pathologicalAssPath,
+                "[Events]\n" + string.Join(
+                    "\n",
+                    Enumerable.Range(1, 600).Select(index =>
+                        $"Dialogue: 0,0:00:{index % 60:00}.00,0:00:{index % 60:00}.50,Default,,0,0,0,,a")));
+            await File.WriteAllTextAsync(
+                cleanSrtPath,
+                string.Join(
+                    "\n\n",
+                    Enumerable.Range(1, 100).Select(index =>
+                        $"{index}\n00:00:{index % 60:00},000 --> 00:00:{index % 60:00},500\nMeaningful line {index}")));
+
+            settingServiceMock
+                .Setup(s => s.GetSetting(SettingKeys.Translation.IgnoreCaptions))
+                .ReturnsAsync("false");
+
+            var service = new SourceSubtitleSnapshotService(
+                dbContext,
+                settingServiceMock.Object,
+                subtitleServiceMock.Object,
+                NullLogger<SourceSubtitleSnapshotService>.Instance);
+
+            var movie = new Movie
+            {
+                Id = 9,
+                RadarrId = 9,
+                Title = "Movie",
+                Path = "/movies",
+                FileName = "movie.mkv",
+                DateAdded = DateTime.UtcNow
+            };
+
+            var resolved = await service.ResolveExternalSourceWithAutoAsync(
+                movie,
+                [
+                    new Subtitles
+                    {
+                        Path = pathologicalAssPath,
+                        FileName = "movie.en.ass",
+                        Language = "en",
+                        Format = ".ass"
+                    },
+                    new Subtitles
+                    {
+                        Path = cleanSrtPath,
+                        FileName = "movie.en.sdh.srt",
+                        Language = "en",
+                        Caption = "sdh",
+                        Format = ".srt"
+                    }
+                ],
+                useAutoMode: true,
+                targetLanguages: []);
+
+            Assert.NotNull(resolved);
+            Assert.Equal(cleanSrtPath, resolved!.Subtitle.Path);
+        }
+        finally
+        {
+            if (File.Exists(pathologicalAssPath))
+            {
+                File.Delete(pathologicalAssPath);
+            }
+
+            if (File.Exists(cleanSrtPath))
+            {
+                File.Delete(cleanSrtPath);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ResolveCurrentSnapshotAsync_ShouldPreferLessPathologicalExternalAssCandidate()
+    {
+        var dbContext = CreateDbContext();
+        var settingServiceMock = new Mock<ISettingService>();
+        var subtitleServiceMock = new Mock<ISubtitleService>();
+        var morePathologicalAssPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.more.en.ass");
+        var lessPathologicalAssPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.less.en.ass");
+
+        try
+        {
+            await File.WriteAllTextAsync(
+                morePathologicalAssPath,
+                "[Events]\n" + string.Join(
+                    "\n",
+                    Enumerable.Range(1, 600).Select(index =>
+                        $"Dialogue: 0,0:00:{index % 60:00}.00,0:00:{index % 60:00}.50,Default,,0,0,0,,a")));
+            await File.WriteAllTextAsync(
+                lessPathologicalAssPath,
+                "[Events]\n" + string.Join(
+                    "\n",
+                    Enumerable.Range(1, 600).Select(index =>
+                        $"Dialogue: 0,0:00:{index % 60:00}.00,0:00:{index % 60:00}.50,Default,,0,0,0,,repeated dialogue")));
+
+            settingServiceMock
+                .Setup(s => s.GetSettingAsJson<SourceLanguage>(SettingKeys.Translation.SourceLanguages))
+                .ReturnsAsync([new SourceLanguage { Name = "English", Code = "en" }]);
+
+            settingServiceMock
+                .Setup(s => s.GetSetting(SettingKeys.Translation.IgnoreCaptions))
+                .ReturnsAsync("false");
+
+            var service = new SourceSubtitleSnapshotService(
+                dbContext,
+                settingServiceMock.Object,
+                subtitleServiceMock.Object,
+                NullLogger<SourceSubtitleSnapshotService>.Instance);
+
+            var movie = new Movie
+            {
+                Id = 8,
+                RadarrId = 8,
+                Title = "Movie",
+                Path = "/movies",
+                FileName = "movie.mkv",
+                DateAdded = DateTime.UtcNow
+            };
+
+            var snapshot = await service.ResolveCurrentSnapshotAsync(
+                movie,
+                MediaType.Movie,
+                [],
+                [
+                    new Subtitles
+                    {
+                        Path = morePathologicalAssPath,
+                        FileName = "movie.more.en.ass",
+                        Language = "en",
+                        Format = ".ass"
+                    },
+                    new Subtitles
+                    {
+                        Path = lessPathologicalAssPath,
+                        FileName = "movie.less.en.ass",
+                        Language = "en",
+                        Format = ".ass"
+                    }
+                ]);
+
+            Assert.NotNull(snapshot);
+            Assert.Equal(SourceSubtitleSnapshot.ExternalType, snapshot!.SourceType);
+            Assert.Contains(Path.GetFileName(lessPathologicalAssPath), snapshot.Identity, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(Path.GetFileName(morePathologicalAssPath), snapshot.Identity, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            if (File.Exists(morePathologicalAssPath))
+            {
+                File.Delete(morePathologicalAssPath);
+            }
+
+            if (File.Exists(lessPathologicalAssPath))
+            {
+                File.Delete(lessPathologicalAssPath);
             }
         }
     }

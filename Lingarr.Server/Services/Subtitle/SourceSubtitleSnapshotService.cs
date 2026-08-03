@@ -206,18 +206,10 @@ public class SourceSubtitleSnapshotService : ISourceSubtitleSnapshotService
         List<Subtitles> subtitles,
         bool ignoreCaptions)
     {
-        var validSubtitles = subtitles
-            .Where(s => !ExternalSubtitleCandidateHelper.ShouldSkipAsPrimarySource(s))
-            .Where(s => !ExternalSubtitleCandidateHelper.IsSupplementalOrCommentary(s))
-            .ToList();
-
-        if (validSubtitles.Count == 0)
-        {
-            return (null, null);
-        }
-
-        var candidates = new List<(Subtitles Subtitle, string Language, int Score)>();
-        foreach (var subtitle in validSubtitles)
+        var candidates = new List<(Subtitles Subtitle, string Language)>();
+        foreach (var subtitle in subtitles
+                     .Where(s => !ExternalSubtitleCandidateHelper.ShouldSkipAsPrimarySource(s))
+                     .Where(s => !ExternalSubtitleCandidateHelper.IsSupplementalOrCommentary(s)))
         {
             var language = SubtitleLanguageHelper.DetectLanguageFromFileName(subtitle.FileName);
             if (string.IsNullOrWhiteSpace(language) ||
@@ -226,35 +218,17 @@ public class SourceSubtitleSnapshotService : ISourceSubtitleSnapshotService
                 continue;
             }
 
-            var score = ExternalSubtitleCandidateHelper.ScorePrimarySourceCandidate(subtitle);
-            candidates.Add((subtitle, language, score));
+            candidates.Add((subtitle, language));
         }
 
-        var cleanCandidate = candidates
-            .Where(c => !SubtitleLanguageHelper.IsCaptionSubtitleType(
-                ExternalSubtitleCandidateHelper.GetSubtitleType(c.Subtitle)))
-            .OrderByDescending(c => c.Score)
-            .ThenBy(c => c.Subtitle.Path, StringComparer.OrdinalIgnoreCase)
+        var selectedSubtitle = ExternalSubtitleCandidateHelper
+            .OrderPrimarySourceCandidates(candidates.Select(candidate => candidate.Subtitle), ignoreCaptions)
             .FirstOrDefault();
-
-        if (cleanCandidate.Subtitle != null)
+        if (selectedSubtitle != null)
         {
-            return (cleanCandidate.Subtitle, cleanCandidate.Language);
-        }
-
-        if (!ignoreCaptions)
-        {
-            var captionCandidate = candidates
-                .Where(c => SubtitleLanguageHelper.IsCaptionSubtitleType(
-                    ExternalSubtitleCandidateHelper.GetSubtitleType(c.Subtitle)))
-                .OrderByDescending(c => c.Score)
-                .ThenBy(c => c.Subtitle.Path, StringComparer.OrdinalIgnoreCase)
-                .FirstOrDefault();
-
-            if (captionCandidate.Subtitle != null)
-            {
-                return (captionCandidate.Subtitle, captionCandidate.Language);
-            }
+            var selectedCandidate = candidates.First(candidate =>
+                ReferenceEquals(candidate.Subtitle, selectedSubtitle));
+            return (selectedCandidate.Subtitle, selectedCandidate.Language);
         }
 
         return (null, null);

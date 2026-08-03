@@ -34,35 +34,47 @@ public static class ExternalSubtitleCandidateHelper
                 continue;
             }
 
-            var cleanCandidate = sourceCandidates
-                .Where(s => !SubtitleLanguageHelper.IsCaptionSubtitleType(GetSubtitleType(s)))
-                .OrderByDescending(ScorePrimarySourceCandidate)
-                .ThenBy(s => s.Path, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(s => s.FileName, StringComparer.OrdinalIgnoreCase)
+            var selectedCandidate = OrderPrimarySourceCandidates(sourceCandidates, ignoreCaptions)
                 .FirstOrDefault();
-            if (cleanCandidate != null)
+            if (selectedCandidate != null)
             {
-                return new ExternalSubtitleSourceSelection(cleanCandidate, sourceLanguage);
-            }
-
-            if (ignoreCaptions)
-            {
-                continue;
-            }
-
-            var captionCandidate = sourceCandidates
-                .Where(s => SubtitleLanguageHelper.IsCaptionSubtitleType(GetSubtitleType(s)))
-                .OrderByDescending(ScorePrimarySourceCandidate)
-                .ThenBy(s => s.Path, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(s => s.FileName, StringComparer.OrdinalIgnoreCase)
-                .FirstOrDefault();
-            if (captionCandidate != null)
-            {
-                return new ExternalSubtitleSourceSelection(captionCandidate, sourceLanguage);
+                return new ExternalSubtitleSourceSelection(selectedCandidate, sourceLanguage);
             }
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Orders candidates by source quality tier: clean full dialogue, clean captions, then pathological ASS fallback.
+    /// </summary>
+    public static IReadOnlyList<Subtitles> OrderPrimarySourceCandidates(
+        IEnumerable<Subtitles> subtitles,
+        bool ignoreCaptions)
+    {
+        var validSubtitles = subtitles
+            .Where(s => !ShouldSkipAsPrimarySource(s))
+            .Where(s => !IsSupplementalOrCommentary(s))
+            .ToList();
+
+        var cleanCandidates = OrderCandidates(
+            validSubtitles
+                .Where(s => !IsPathologicalAssSource(s))
+                .Where(s => !SubtitleLanguageHelper.IsCaptionSubtitleType(GetSubtitleType(s))));
+        var captionCandidates = OrderCandidates(
+            validSubtitles
+                .Where(s => !IsPathologicalAssSource(s))
+                .Where(s => SubtitleLanguageHelper.IsCaptionSubtitleType(GetSubtitleType(s))));
+        var pathologicalCandidates = OrderCandidates(
+            validSubtitles
+                .Where(IsPathologicalAssSource)
+                .Where(s => !ignoreCaptions ||
+                            !SubtitleLanguageHelper.IsCaptionSubtitleType(GetSubtitleType(s))));
+
+        return cleanCandidates
+            .Concat(ignoreCaptions ? Enumerable.Empty<Subtitles>() : captionCandidates)
+            .Concat(pathologicalCandidates)
+            .ToList();
     }
 
     public static bool ShouldSkipAsPrimarySource(Subtitles subtitle)
@@ -70,8 +82,7 @@ public static class ExternalSubtitleCandidateHelper
         return IsTemporarySource(subtitle) ||
                IsLingarrExtractedArtifact(subtitle) ||
                IsSparseSubtitleFile(subtitle) ||
-               IsCorruptTextSubtitleFile(subtitle) ||
-               IsPathologicalAssSource(subtitle);
+               IsCorruptTextSubtitleFile(subtitle);
     }
 
     public static bool ShouldSkipAsMainTarget(Subtitles subtitle)
@@ -143,9 +154,14 @@ public static class ExternalSubtitleCandidateHelper
 
     public static bool IsPathologicalAssSource(Subtitles subtitle)
     {
+        return AnalyzeAssSource(subtitle)?.IsPathological == true;
+    }
+
+    private static AssSubtitleSourceAnalysis? AnalyzeAssSource(Subtitles subtitle)
+    {
         if (string.IsNullOrWhiteSpace(subtitle.Path) || !File.Exists(subtitle.Path))
         {
-            return false;
+            return null;
         }
 
         var normalizedFormat = SubtitleOutputModeHelper.NormalizeFormat(
@@ -154,19 +170,18 @@ public static class ExternalSubtitleCandidateHelper
                 : Path.GetExtension(subtitle.Path));
         if (!SubtitleOutputModeHelper.IsAssFormat(normalizedFormat))
         {
-            return false;
+            return null;
         }
 
         try
         {
             using var stream = File.OpenRead(subtitle.Path);
             var subtitles = new SsaParser().ParseStream(stream, Encoding.UTF8);
-            var analysis = AssSubtitleSourceAnalyzer.AnalyzeSubtitleItems(subtitles);
-            return analysis.IsPathological;
+            return AssSubtitleSourceAnalyzer.AnalyzeSubtitleItems(subtitles);
         }
         catch
         {
-            return false;
+            return null;
         }
     }
 
@@ -226,7 +241,22 @@ public static class ExternalSubtitleCandidateHelper
             score += Math.Min(entryCount.Value, 2_000) / 25;
         }
 
+        score += GetPathologicalAssScoreAdjustment(subtitle);
+
         return score;
+    }
+
+    private static int GetPathologicalAssScoreAdjustment(Subtitles subtitle)
+    {
+        return AnalyzeAssSource(subtitle)?.ContentScoreAdjustment ?? 0;
+    }
+
+    private static IEnumerable<Subtitles> OrderCandidates(IEnumerable<Subtitles> subtitles)
+    {
+        return subtitles
+            .OrderByDescending(ScorePrimarySourceCandidate)
+            .ThenBy(s => s.Path, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(s => s.FileName, StringComparer.OrdinalIgnoreCase);
     }
 
     private static string ExtractReadablePayload(string line)

@@ -5,6 +5,7 @@ namespace Lingarr.Server.Services.Subtitle;
 public enum SubtitleSourceCandidateRole
 {
     PrimaryFullDialogue,
+    PathologicalAssFallback,
     CaptionFallback,
     SupplementalForcedSigns,
     RejectedSparse,

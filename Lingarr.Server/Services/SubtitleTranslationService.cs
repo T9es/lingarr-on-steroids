@@ -63,6 +63,12 @@ public class SubtitleTranslationService
                 sourceFingerprint,
                 cancellationToken);
         var checkpointTranslations = checkpoint?.Translations ?? new Dictionary<int, string>();
+        await ValidateAndCleanNonBatchCheckpointAsync(
+            structureEntries,
+            checkpoint,
+            checkpointTranslations,
+            translationRequest,
+            cancellationToken);
         var iteration = 0;
         var totalSubtitles = subtitles.Count;
 
@@ -95,6 +101,12 @@ public class SubtitleTranslationService
                         ContextLinesAfter = contextLinesAfter.Count > 0 ? contextLinesAfter : null
                     },
                     cancellationToken);
+                translated = ValidateFreshProviderTranslation(
+                    entry.Subtitle.Position,
+                    entry.ProviderText,
+                    translated,
+                    translationRequest.SourceLanguage,
+                    translationRequest.TargetLanguage);
 
                 if (_checkpointService != null)
                 {
@@ -210,17 +222,15 @@ public class SubtitleTranslationService
                 .Select(entry => new ProviderTextItem(entry.Subtitle.Position, entry.ProviderText))
                 .ToList());
         var representativeProviderTranslations = new Dictionary<int, string>();
-        foreach (var entry in structureEntries.Where(entry => entry.IsTranslatable))
-        {
-            if (!checkpointTranslations.TryGetValue(entry.Subtitle.Position, out var checkpointTranslation))
-            {
-                continue;
-            }
-
-            var representativePosition = globalDeduplication.GetRepresentativePosition(entry.Subtitle.Position);
-            representativeProviderTranslations[representativePosition] =
-                SubtitleTextStructure.NormalizeProviderTranslationText(checkpointTranslation);
-        }
+        await HydrateBatchCheckpointTranslationsAsync(
+            globalDeduplication,
+            checkpoint,
+            checkpointTranslations,
+            representativeProviderTranslations,
+            translationRequest.SourceLanguage,
+            translationRequest.TargetLanguage,
+            fileIdentifier,
+            cancellationToken);
 
         var representativeEntries = structureEntries
             .Where(entry =>
@@ -254,6 +264,7 @@ public class SubtitleTranslationService
                                 _deferredRepairService != null;
         var useImmediateFallback = batchRetryMode.Equals("immediate", StringComparison.OrdinalIgnoreCase);
         var globalFailures = new List<RepairItem>();
+        var deferredRepairEchoedPositions = new HashSet<int>();
 
         for (var batchIndex = 0; batchIndex < batches.Count; batchIndex++)
         {
@@ -384,8 +395,37 @@ public class SubtitleTranslationService
                 fileIdentifier,
                 cancellationToken);
 
+            var repairSourceItems = representativeFailures
+                .Where(failure => representativeEntriesByPosition.ContainsKey(failure.Position))
+                .Select(failure => new BatchSubtitleItem
+                {
+                    Position = failure.Position,
+                    Line = representativeEntriesByPosition[failure.Position].ProviderText
+                })
+                .ToList();
+            var repairValidation = AnalyzeProviderTranslations(
+                repairSourceItems,
+                repairResults,
+                translationRequest.SourceLanguage,
+                translationRequest.TargetLanguage);
+            var invalidRepairPositions = repairValidation.InvalidPositions;
+            deferredRepairEchoedPositions.UnionWith(repairValidation.EchoedPositions);
+            if (invalidRepairPositions.Count > 0)
+            {
+                _logger.LogWarning(
+                    "[{FileId}] Deferred repair rejected {Count} source-echo or wrong-language result(s) at positions [{Positions}] before applying or checkpoint persistence.",
+                    fileIdentifier,
+                    invalidRepairPositions.Count,
+                    string.Join(", ", invalidRepairPositions.OrderBy(position => position)));
+            }
+
             foreach (var repairResult in repairResults)
             {
+                if (invalidRepairPositions.Contains(repairResult.Key))
+                {
+                    continue;
+                }
+
                 representativeProviderTranslations[repairResult.Key] =
                     SubtitleTextStructure.NormalizeProviderTranslationText(repairResult.Value);
                 if (_checkpointService != null)
@@ -420,6 +460,7 @@ public class SubtitleTranslationService
             translationRequest.TargetLanguage,
             fileIdentifier,
             "final");
+        echoedRepresentativePositions.UnionWith(deferredRepairEchoedPositions);
         foreach (var position in echoedRepresentativePositions)
         {
             representativeProviderTranslations.Remove(position);
@@ -662,6 +703,11 @@ public class SubtitleTranslationService
             }
         }
 
+        var providerValidation = AnalyzeProviderTranslations(
+            batchItems,
+            batchResults,
+            sourceLanguage,
+            targetLanguage);
         var echoedPositions = GetMostlyEchoedPositions(
             batchItems,
             batchResults,
@@ -675,12 +721,24 @@ public class SubtitleTranslationService
             targetLanguage,
             fileIdentifier,
             $"batch {batchNumber}/{totalBatches}");
+        var invalidProviderPositions = providerValidation.InvalidPositions.ToHashSet();
+        invalidProviderPositions.UnionWith(echoedPositions);
+        invalidProviderPositions.UnionWith(wrongLanguagePositions);
+        if (providerValidation.MismatchedPositions.Count > 0 && wrongLanguagePositions.Count == 0)
+        {
+            _logger.LogWarning(
+                "[{FileId}] Batch {BatchNum}/{TotalBatches}: rejected {Count} individual result(s) using the wrong target language at positions [{Positions}] before application or checkpoint persistence.",
+                fileIdentifier,
+                batchNumber,
+                totalBatches,
+                providerValidation.MismatchedPositions.Count,
+                string.Join(", ", providerValidation.MismatchedPositions.OrderBy(position => position)));
+        }
         var resolvedProviderTranslations = new Dictionary<int, string>();
         foreach (var entry in structureEntries.Where(entry => entry.IsTranslatable))
         {
             var representativePosition = deduplication.GetRepresentativePosition(entry.Subtitle.Position);
-            if (echoedPositions.Contains(representativePosition) ||
-                wrongLanguagePositions.Contains(representativePosition))
+            if (invalidProviderPositions.Contains(representativePosition))
             {
                 continue;
             }
@@ -770,6 +828,236 @@ public class SubtitleTranslationService
             missingEntries,
             item => echoedPositions.Contains(deduplication.GetRepresentativePosition(item.Position)));
         return new BatchProcessingResult(resolvedProviderTranslations, []);
+    }
+
+    private async Task HydrateBatchCheckpointTranslationsAsync(
+        ProviderTextDeduplicationResult deduplication,
+        TranslationCheckpoint? checkpoint,
+        Dictionary<int, string> checkpointTranslations,
+        Dictionary<int, string> representativeProviderTranslations,
+        string? sourceLanguage,
+        string? targetLanguage,
+        string fileIdentifier,
+        CancellationToken cancellationToken)
+    {
+        var checkpointChanged = false;
+        var invalidCheckpointRepresentatives = new HashSet<int>();
+        var removedCheckpointPositions = new HashSet<int>();
+
+        foreach (var representative in deduplication.Representatives)
+        {
+            var representativePosition = representative.Position;
+            var sourceItem = new BatchSubtitleItem
+            {
+                Position = representativePosition,
+                Line = representative.ProviderText
+            };
+            var candidates = new List<(int Position, string Translation, bool IsValid)>();
+            foreach (var memberPosition in deduplication
+                         .GetMemberPositions(representativePosition)
+                         .OrderBy(position => position))
+            {
+                if (!checkpointTranslations.TryGetValue(memberPosition, out var checkpointTranslation))
+                {
+                    continue;
+                }
+
+                var normalizedTranslation = SubtitleTextStructure.NormalizeProviderTranslationText(checkpointTranslation);
+                var candidateValidation = AnalyzeProviderTranslations(
+                    [sourceItem],
+                    new Dictionary<int, string>
+                    {
+                        [representativePosition] = normalizedTranslation
+                    },
+                    sourceLanguage,
+                    targetLanguage);
+                candidates.Add((
+                    memberPosition,
+                    normalizedTranslation,
+                    candidateValidation.InvalidPositions.Count == 0));
+            }
+
+            var chosenCandidate = candidates
+                .Where(candidate => candidate.IsValid)
+                .OrderBy(candidate => candidate.Position == representativePosition ? 0 : 1)
+                .ThenBy(candidate => candidate.Position)
+                .FirstOrDefault();
+            if (!chosenCandidate.IsValid)
+            {
+                if (candidates.Count > 0)
+                {
+                    invalidCheckpointRepresentatives.Add(representativePosition);
+                }
+
+                foreach (var memberPosition in deduplication.GetMemberPositions(representativePosition))
+                {
+                    if (checkpointTranslations.Remove(memberPosition))
+                    {
+                        checkpointChanged = true;
+                        removedCheckpointPositions.Add(memberPosition);
+                    }
+                }
+
+                continue;
+            }
+
+            representativeProviderTranslations[representativePosition] = chosenCandidate.Translation;
+            if (!checkpointTranslations.TryGetValue(representativePosition, out var canonicalTranslation) ||
+                !string.Equals(canonicalTranslation, chosenCandidate.Translation, StringComparison.Ordinal))
+            {
+                checkpointTranslations[representativePosition] = chosenCandidate.Translation;
+                checkpointChanged = true;
+            }
+
+            foreach (var memberPosition in deduplication
+                         .GetMemberPositions(representativePosition)
+                         .Where(position => position != representativePosition))
+            {
+                if (checkpointTranslations.Remove(memberPosition))
+                {
+                    checkpointChanged = true;
+                    removedCheckpointPositions.Add(memberPosition);
+                }
+            }
+        }
+
+        if (!checkpointChanged || checkpoint == null || _checkpointService == null)
+        {
+            return;
+        }
+
+        checkpoint.UpdatedAtUtc = DateTime.UtcNow;
+        await _checkpointService.SaveCheckpointAsync(checkpoint, cancellationToken);
+        _logger.LogWarning(
+            "[{FileId}] Canonicalized {RepresentativeCount} checkpoint representative(s), removed {CheckpointCount} stale or invalid checkpoint key(s), and retained {InvalidRepresentativeCount} representative(s) for fresh translation at positions [{Positions}].",
+            fileIdentifier,
+            deduplication.Representatives.Count,
+            removedCheckpointPositions.Count,
+            invalidCheckpointRepresentatives.Count,
+            string.Join(", ", invalidCheckpointRepresentatives.OrderBy(position => position)));
+    }
+
+    private async Task ValidateAndCleanNonBatchCheckpointAsync(
+        IReadOnlyList<SubtitleTranslationNode> structureEntries,
+        TranslationCheckpoint? checkpoint,
+        Dictionary<int, string> checkpointTranslations,
+        TranslationRequest translationRequest,
+        CancellationToken cancellationToken)
+    {
+        if (checkpoint == null || _checkpointService == null || checkpointTranslations.Count == 0)
+        {
+            return;
+        }
+
+        var cachedSourceItems = structureEntries
+            .Where(entry => entry.IsTranslatable && checkpointTranslations.ContainsKey(entry.Subtitle.Position))
+            .GroupBy(entry => entry.Subtitle.Position)
+            .Select(group => group.First())
+            .Select(entry => new BatchSubtitleItem
+            {
+                Position = entry.Subtitle.Position,
+                Line = entry.ProviderText
+            })
+            .ToList();
+        var cachedTranslations = cachedSourceItems.ToDictionary(
+            item => item.Position,
+            item => checkpointTranslations[item.Position]);
+        var invalidPositions = AnalyzeProviderTranslations(
+            cachedSourceItems,
+            cachedTranslations,
+            translationRequest.SourceLanguage,
+            translationRequest.TargetLanguage).InvalidPositions;
+        if (invalidPositions.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var position in invalidPositions)
+        {
+            checkpointTranslations.Remove(position);
+        }
+
+        checkpoint.UpdatedAtUtc = DateTime.UtcNow;
+        await _checkpointService.SaveCheckpointAsync(checkpoint, cancellationToken);
+        _logger.LogWarning(
+            "Removed {Count} invalid checkpoint translation(s) at positions [{Positions}] for request {RequestId} before single-line translation.",
+            invalidPositions.Count,
+            string.Join(", ", invalidPositions.OrderBy(position => position)),
+            translationRequest.Id);
+    }
+
+    private static ProviderTranslationValidationResult AnalyzeProviderTranslations(
+        IReadOnlyList<BatchSubtitleItem> sourceItems,
+        IReadOnlyDictionary<int, string> translatedByPosition,
+        string? sourceLanguage,
+        string? targetLanguage)
+    {
+        var validation = ProviderTranslationValidation.Analyze(
+            sourceItems,
+            translatedByPosition,
+            sourceLanguage,
+            targetLanguage);
+        var invalidPositions = validation.InvalidPositions.ToHashSet();
+        foreach (var sourceItem in sourceItems)
+        {
+            if (!translatedByPosition.TryGetValue(sourceItem.Position, out var translated) ||
+                string.IsNullOrWhiteSpace(translated))
+            {
+                invalidPositions.Add(sourceItem.Position);
+            }
+        }
+
+        return new ProviderTranslationValidationResult(
+            invalidPositions,
+            validation.EchoedPositions,
+            validation.MismatchedPositions);
+    }
+
+    private static string ValidateFreshProviderTranslation(
+        int position,
+        string sourceText,
+        string translatedText,
+        string? sourceLanguage,
+        string? targetLanguage)
+    {
+        var normalizedTranslation = SubtitleTextStructure.NormalizeProviderTranslationText(translatedText);
+        var sourceItem = new BatchSubtitleItem
+        {
+            Position = position,
+            Line = sourceText
+        };
+        var validation = AnalyzeProviderTranslations(
+            [sourceItem],
+            new Dictionary<int, string>
+            {
+                [position] = normalizedTranslation
+            },
+            sourceLanguage,
+            targetLanguage);
+        if (!validation.InvalidPositions.Contains(position))
+        {
+            return normalizedTranslation;
+        }
+
+        var reasons = new List<string>();
+        if (string.IsNullOrWhiteSpace(normalizedTranslation))
+        {
+            reasons.Add("the provider returned an empty translation");
+        }
+
+        if (validation.EchoedPositions.Contains(position))
+        {
+            reasons.Add("the provider echoed the source text");
+        }
+
+        if (validation.MismatchedPositions.Contains(position))
+        {
+            reasons.Add("the provider returned the wrong target language");
+        }
+
+        throw new TranslationException(
+            $"Provider returned an invalid translation for subtitle position {position}: {string.Join(" and ", reasons)}. " +
+            "The result was not saved or applied.");
     }
 
     private HashSet<int> GetMostlyEchoedPositions(

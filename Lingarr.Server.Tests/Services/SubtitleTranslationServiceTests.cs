@@ -11,6 +11,7 @@ using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models.Batch;
 using Lingarr.Server.Models.FileSystem;
+using Lingarr.Server.Models.Translation;
 using Lingarr.Server.Services;
 using Lingarr.Server.Services.Translation;
 using Microsoft.Extensions.Logging;
@@ -421,6 +422,303 @@ public class SubtitleTranslationServiceTests
     }
 
     [Fact]
+    public async Task TranslateSubtitles_WhenCachedSourceEchoIsInvalidatedAndRepaired()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var checkpointServiceMock = new Mock<ITranslationCheckpointService>();
+        var loggerMock = new Mock<ILogger>();
+        var progressServiceMock = new Mock<IProgressService>();
+        var savedCheckpoints = new List<TranslationCheckpoint>();
+        var checkpoint = new TranslationCheckpoint
+        {
+            TranslationRequestId = 108,
+            SourceFingerprint = "non-batch-echo",
+            Translations = new Dictionary<int, string>
+            {
+                [1] = "Life isn't over yet!"
+            }
+        };
+
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+        translationServiceMock
+            .Setup(service => service.TranslateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync("Życie jeszcze się nie skończyło!");
+        checkpointServiceMock
+            .Setup(service => service.LoadAsync(108, "non-batch-echo", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(checkpoint);
+        checkpointServiceMock
+            .Setup(service => service.SaveCheckpointAsync(
+                It.IsAny<TranslationCheckpoint>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<TranslationCheckpoint, CancellationToken>((saved, _) => savedCheckpoints.Add(saved))
+            .Returns(Task.CompletedTask);
+        checkpointServiceMock
+            .Setup(service => service.SaveTranslationAsync(
+                108,
+                "non-batch-echo",
+                1,
+                "Życie jeszcze się nie skończyło!",
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            loggerMock.Object,
+            progressServiceMock.Object,
+            checkpointService: checkpointServiceMock.Object);
+
+        var result = await service.TranslateSubtitles(
+            [Item(1, "Life isn't over yet!")],
+            new TranslationRequest
+            {
+                Id = 108,
+                Title = "Episode",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                MediaType = Lingarr.Core.Enum.MediaType.Show,
+                Status = Lingarr.Core.Enum.TranslationStatus.Pending,
+                SourceSnapshotFingerprint = "non-batch-echo"
+            },
+            stripSubtitleFormatting: false,
+            contextBefore: 0,
+            contextAfter: 0,
+            preserveAssFormatting: false,
+            cancellationToken: CancellationToken.None);
+
+        Assert.Equal("Życie jeszcze się nie skończyło!", result[0].TranslatedLines[0]);
+        translationServiceMock.Verify(service => service.TranslateAsync(
+            "Life isn't over yet!",
+            "en",
+            "pl",
+            It.IsAny<List<string>?>(),
+            It.IsAny<List<string>?>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+        var savedCheckpoint = Assert.Single(savedCheckpoints);
+        Assert.DoesNotContain(1, savedCheckpoint.Translations.Keys);
+    }
+
+    [Fact]
+    public async Task TranslateSubtitles_WhenCachedTranslationUsesWrongTargetLanguageIsInvalidatedAndRepaired()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var checkpointServiceMock = new Mock<ITranslationCheckpointService>();
+        var loggerMock = new Mock<ILogger>();
+        var progressServiceMock = new Mock<IProgressService>();
+        var savedCheckpoints = new List<TranslationCheckpoint>();
+        var checkpoint = new TranslationCheckpoint
+        {
+            TranslationRequestId = 109,
+            SourceFingerprint = "non-batch-language",
+            Translations = new Dictionary<int, string>
+            {
+                [1] = "This translation is ready for review."
+            }
+        };
+
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+        translationServiceMock
+            .Setup(service => service.TranslateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync("この翻訳は確認の準備ができています。");
+        checkpointServiceMock
+            .Setup(service => service.LoadAsync(109, "non-batch-language", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(checkpoint);
+        checkpointServiceMock
+            .Setup(service => service.SaveCheckpointAsync(
+                It.IsAny<TranslationCheckpoint>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<TranslationCheckpoint, CancellationToken>((saved, _) => savedCheckpoints.Add(saved))
+            .Returns(Task.CompletedTask);
+        checkpointServiceMock
+            .Setup(service => service.SaveTranslationAsync(
+                109,
+                "non-batch-language",
+                1,
+                "この翻訳は確認の準備ができています。",
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            loggerMock.Object,
+            progressServiceMock.Object,
+            checkpointService: checkpointServiceMock.Object);
+
+        var result = await service.TranslateSubtitles(
+            [Item(1, "The translation is ready for review.")],
+            new TranslationRequest
+            {
+                Id = 109,
+                Title = "Episode",
+                SourceLanguage = "en",
+                TargetLanguage = "ja",
+                MediaType = Lingarr.Core.Enum.MediaType.Show,
+                Status = Lingarr.Core.Enum.TranslationStatus.Pending,
+                SourceSnapshotFingerprint = "non-batch-language"
+            },
+            stripSubtitleFormatting: false,
+            contextBefore: 0,
+            contextAfter: 0,
+            preserveAssFormatting: false,
+            cancellationToken: CancellationToken.None);
+
+        Assert.Equal("この翻訳は確認の準備ができています。", result[0].TranslatedLines[0]);
+        translationServiceMock.Verify(service => service.TranslateAsync(
+            "The translation is ready for review.",
+            "en",
+            "ja",
+            It.IsAny<List<string>?>(),
+            It.IsAny<List<string>?>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+        var savedCheckpoint = Assert.Single(savedCheckpoints);
+        Assert.DoesNotContain(1, savedCheckpoint.Translations.Keys);
+    }
+
+    [Fact]
+    public async Task TranslateSubtitles_WhenFreshProviderEchoesSource_ThrowsBeforeCheckpointOrApply()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var checkpointServiceMock = new Mock<ITranslationCheckpointService>();
+        var loggerMock = new Mock<ILogger>();
+        var progressServiceMock = new Mock<IProgressService>();
+
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+        translationServiceMock
+            .Setup(service => service.TranslateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync("This source sentence must be translated before approval.");
+        checkpointServiceMock
+            .Setup(service => service.LoadAsync(
+                It.IsAny<int>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TranslationCheckpoint?)null);
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            loggerMock.Object,
+            progressServiceMock.Object,
+            checkpointService: checkpointServiceMock.Object);
+        var subtitles = new List<SubtitleItem>
+        {
+            Item(1, "This source sentence must be translated before approval.")
+        };
+
+        var exception = await Assert.ThrowsAsync<TranslationException>(() => service.TranslateSubtitles(
+            subtitles,
+            new TranslationRequest
+            {
+                Id = 112,
+                Title = "Episode",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                MediaType = Lingarr.Core.Enum.MediaType.Show,
+                Status = Lingarr.Core.Enum.TranslationStatus.Pending
+            },
+            stripSubtitleFormatting: false,
+            contextBefore: 0,
+            contextAfter: 0,
+            preserveAssFormatting: false,
+            cancellationToken: CancellationToken.None));
+
+        Assert.Contains("source", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("echo", exception.Message, StringComparison.OrdinalIgnoreCase);
+        checkpointServiceMock.Verify(service => service.SaveTranslationAsync(
+            112,
+            It.IsAny<string>(),
+            1,
+            It.IsAny<string>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Empty(subtitles[0].TranslatedLines);
+    }
+
+    [Fact]
+    public async Task TranslateSubtitles_WhenFreshProviderUsesWrongTargetLanguage_ThrowsBeforeCheckpointOrApply()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var checkpointServiceMock = new Mock<ITranslationCheckpointService>();
+        var loggerMock = new Mock<ILogger>();
+        var progressServiceMock = new Mock<IProgressService>();
+
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+        translationServiceMock
+            .Setup(service => service.TranslateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync("\u3053\u306e\u7ffb\u8a33\u306f\u65e5\u672c\u8a9e\u3067\u3059\u3002");
+        checkpointServiceMock
+            .Setup(service => service.LoadAsync(
+                It.IsAny<int>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TranslationCheckpoint?)null);
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            loggerMock.Object,
+            progressServiceMock.Object,
+            checkpointService: checkpointServiceMock.Object);
+        var subtitles = new List<SubtitleItem>
+        {
+            Item(1, "This translation is ready for final review.")
+        };
+
+        var exception = await Assert.ThrowsAsync<TranslationException>(() => service.TranslateSubtitles(
+            subtitles,
+            new TranslationRequest
+            {
+                Id = 113,
+                Title = "Episode",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                MediaType = Lingarr.Core.Enum.MediaType.Show,
+                Status = Lingarr.Core.Enum.TranslationStatus.Pending
+            },
+            stripSubtitleFormatting: false,
+            contextBefore: 0,
+            contextAfter: 0,
+            preserveAssFormatting: false,
+            cancellationToken: CancellationToken.None));
+
+        Assert.Contains("wrong target language", exception.Message, StringComparison.OrdinalIgnoreCase);
+        checkpointServiceMock.Verify(service => service.SaveTranslationAsync(
+            113,
+            It.IsAny<string>(),
+            1,
+            It.IsAny<string>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Empty(subtitles[0].TranslatedLines);
+    }
+
+    [Fact]
     public async Task ProcessSubtitleBatch_WhenPlainSubtitleContainsAssSyntax_UsesVisibleInputOnly()
     {
         var translationServiceMock = new Mock<ITranslationService>();
@@ -557,6 +855,276 @@ public class SubtitleTranslationServiceTests
         Assert.Equal("Fran", sentBatch.Line);
         Assert.Equal("{\\an7}Franszczu", result[0].TranslatedLines[0]);
         Assert.Equal("{\\an8}Franszczu", result[1].TranslatedLines[0]);
+    }
+
+    [Fact]
+    public async Task TranslateSubtitlesBatch_WhenCachedEchoRepresentativeHasDuplicatePositions_RepairsItAndPreservesValidCache()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var batchServiceMock = translationServiceMock.As<IBatchTranslationService>();
+        var checkpointServiceMock = new Mock<ITranslationCheckpointService>();
+        var loggerMock = new Mock<ILogger>();
+        var progressServiceMock = new Mock<IProgressService>();
+        var capturedBatches = new List<List<BatchSubtitleItem>>();
+        var savedCheckpoints = new List<TranslationCheckpoint>();
+        var checkpoint = new TranslationCheckpoint
+        {
+            TranslationRequestId = 110,
+            SourceFingerprint = "batch-checkpoint",
+            Translations = new Dictionary<int, string>
+            {
+                [243] = "Life isn't over yet!",
+                [244] = "Life isn't over yet!",
+                [245] = "Musimy teraz wyjść."
+            }
+        };
+
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+        batchServiceMock
+            .Setup(service => service.TranslateBatchAsync(
+                It.IsAny<List<BatchSubtitleItem>>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .Callback((List<BatchSubtitleItem> batch, string _, string _, List<string>? _, List<string>? _, CancellationToken _) =>
+            {
+                capturedBatches.Add(batch);
+            })
+            .ReturnsAsync(new Dictionary<int, string>
+            {
+                [243] = "Życie jeszcze się nie skończyło!"
+            });
+        checkpointServiceMock
+            .Setup(service => service.LoadAsync(110, "batch-checkpoint", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(checkpoint);
+        checkpointServiceMock
+            .Setup(service => service.SaveCheckpointAsync(
+                It.IsAny<TranslationCheckpoint>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<TranslationCheckpoint, CancellationToken>((saved, _) => savedCheckpoints.Add(saved))
+            .Returns(Task.CompletedTask);
+        checkpointServiceMock
+            .Setup(service => service.SaveTranslationAsync(
+                110,
+                "batch-checkpoint",
+                243,
+                "Życie jeszcze się nie skończyło!",
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            loggerMock.Object,
+            progressServiceMock.Object,
+            checkpointService: checkpointServiceMock.Object);
+
+        var result = await service.TranslateSubtitlesBatch(
+            [
+                Item(243, "Life isn't over yet!"),
+                Item(244, "Life isn't over yet!"),
+                Item(245, "We have to leave now.")
+            ],
+            new TranslationRequest
+            {
+                Id = 110,
+                Title = "Episode",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                MediaType = Lingarr.Core.Enum.MediaType.Show,
+                Status = Lingarr.Core.Enum.TranslationStatus.Pending,
+                SourceSnapshotFingerprint = "batch-checkpoint"
+            },
+            stripSubtitleFormatting: false,
+            preserveAssFormatting: false,
+            batchSize: 3,
+            batchRetryMode: "none",
+            cancellationToken: CancellationToken.None);
+
+        var sentBatch = Assert.Single(capturedBatches);
+        var sentItem = Assert.Single(sentBatch);
+        Assert.Equal(243, sentItem.Position);
+        Assert.Equal("Life isn't over yet!", sentItem.Line);
+        Assert.Equal("Życie jeszcze się nie skończyło!", result[0].TranslatedLines[0]);
+        Assert.Equal("Życie jeszcze się nie skończyło!", result[1].TranslatedLines[0]);
+        Assert.Equal("Musimy teraz wyjść.", result[2].TranslatedLines[0]);
+        var savedCheckpoint = Assert.Single(savedCheckpoints);
+        Assert.DoesNotContain(243, savedCheckpoint.Translations.Keys);
+        Assert.DoesNotContain(244, savedCheckpoint.Translations.Keys);
+        Assert.Equal("Musimy teraz wyjść.", savedCheckpoint.Translations[245]);
+    }
+
+    [Fact]
+    public async Task TranslateSubtitlesBatch_WhenDuplicateCheckpointAliasesHaveMixedValidity_UsesDeterministicCanonicalValues()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var batchServiceMock = translationServiceMock.As<IBatchTranslationService>();
+        var checkpointServiceMock = new Mock<ITranslationCheckpointService>();
+        var loggerMock = new Mock<ILogger>();
+        var progressServiceMock = new Mock<IProgressService>();
+        var capturedBatches = new List<List<BatchSubtitleItem>>();
+        var savedCheckpoints = new List<TranslationCheckpoint>();
+        var checkpoint = new TranslationCheckpoint
+        {
+            TranslationRequestId = 114,
+            SourceFingerprint = "mixed-duplicate-checkpoint",
+            Translations = new Dictionary<int, string>
+            {
+                [1] = "Zycie jeszcze sie nie skonczylo.",
+                [2] = "Life isn't over yet!",
+                [3] = "We have to leave now.",
+                [4] = "Musimy teraz wyjsc.",
+                [999] = "Healthy unrelated translation"
+            }
+        };
+
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+        batchServiceMock
+            .Setup(service => service.TranslateBatchAsync(
+                It.IsAny<List<BatchSubtitleItem>>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .Callback((List<BatchSubtitleItem> batch, string _, string _, List<string>? _, List<string>? _, CancellationToken _) =>
+            {
+                capturedBatches.Add(batch);
+            })
+            .ReturnsAsync(new Dictionary<int, string>());
+        checkpointServiceMock
+            .Setup(service => service.LoadAsync(114, "mixed-duplicate-checkpoint", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(checkpoint);
+        checkpointServiceMock
+            .Setup(service => service.SaveCheckpointAsync(
+                It.IsAny<TranslationCheckpoint>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<TranslationCheckpoint, CancellationToken>((saved, _) => savedCheckpoints.Add(saved))
+            .Returns(Task.CompletedTask);
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            loggerMock.Object,
+            progressServiceMock.Object,
+            checkpointService: checkpointServiceMock.Object);
+
+        var result = await service.TranslateSubtitlesBatch(
+            [
+                Item(1, "Life isn't over yet!"),
+                Item(2, "Life isn't over yet!"),
+                Item(3, "We have to leave now."),
+                Item(4, "We have to leave now.")
+            ],
+            new TranslationRequest
+            {
+                Id = 114,
+                Title = "Episode",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                MediaType = Lingarr.Core.Enum.MediaType.Show,
+                Status = Lingarr.Core.Enum.TranslationStatus.Pending,
+                SourceSnapshotFingerprint = "mixed-duplicate-checkpoint"
+            },
+            stripSubtitleFormatting: false,
+            preserveAssFormatting: false,
+            batchSize: 4,
+            batchRetryMode: "none",
+            cancellationToken: CancellationToken.None);
+
+        Assert.Empty(capturedBatches);
+        Assert.Equal("Zycie jeszcze sie nie skonczylo.", result[0].TranslatedLines[0]);
+        Assert.Equal("Zycie jeszcze sie nie skonczylo.", result[1].TranslatedLines[0]);
+        Assert.Equal("Musimy teraz wyjsc.", result[2].TranslatedLines[0]);
+        Assert.Equal("Musimy teraz wyjsc.", result[3].TranslatedLines[0]);
+        var savedCheckpoint = Assert.Single(savedCheckpoints);
+        Assert.Equal("Zycie jeszcze sie nie skonczylo.", savedCheckpoint.Translations[1]);
+        Assert.DoesNotContain(2, savedCheckpoint.Translations.Keys);
+        Assert.Equal("Musimy teraz wyjsc.", savedCheckpoint.Translations[3]);
+        Assert.DoesNotContain(4, savedCheckpoint.Translations.Keys);
+        Assert.Equal("Healthy unrelated translation", savedCheckpoint.Translations[999]);
+    }
+
+    [Fact]
+    public async Task TranslateSubtitlesBatch_WhenOneFreshResultUsesWrongTargetLanguage_RejectsOnlyThatCueBeforePersistence()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var batchServiceMock = translationServiceMock.As<IBatchTranslationService>();
+        var checkpointServiceMock = new Mock<ITranslationCheckpointService>();
+        var loggerMock = new Mock<ILogger>();
+        var progressServiceMock = new Mock<IProgressService>();
+
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+        batchServiceMock
+            .Setup(service => service.TranslateBatchAsync(
+                It.IsAny<List<BatchSubtitleItem>>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((List<BatchSubtitleItem> batch, string _, string _, List<string>? _, List<string>? _, CancellationToken _) =>
+                batch.ToDictionary(
+                    item => item.Position,
+                    item => item.Position == 1
+                        ? "\u3053\u306e\u7ffb\u8a33\u306f\u65e5\u672c\u8a9e\u3067\u3059\u3002"
+                        : $"Przetlumaczona linia {item.Position}"));
+        checkpointServiceMock
+            .Setup(service => service.LoadAsync(
+                It.IsAny<int>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TranslationCheckpoint?)null);
+        checkpointServiceMock
+            .Setup(service => service.SaveTranslationAsync(
+                It.IsAny<int>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            loggerMock.Object,
+            progressServiceMock.Object,
+            checkpointService: checkpointServiceMock.Object);
+        var subtitles = Enumerable.Range(1, 5)
+            .Select(position => Item(position, $"This is source subtitle line number {position}."))
+            .ToList();
+
+        var exception = await Assert.ThrowsAsync<MissingTranslationException>(() => service.TranslateSubtitlesBatch(
+            subtitles,
+            new TranslationRequest
+            {
+                Id = 115,
+                Title = "Episode",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                MediaType = Lingarr.Core.Enum.MediaType.Show,
+                Status = Lingarr.Core.Enum.TranslationStatus.Pending
+            },
+            stripSubtitleFormatting: false,
+            preserveAssFormatting: false,
+            batchSize: 5,
+            batchRetryMode: "none",
+            cancellationToken: CancellationToken.None));
+
+        Assert.Contains(1, exception.MissingCues.Select(cue => cue.Position));
+        Assert.Empty(subtitles[0].TranslatedLines);
+        Assert.Equal("Przetlumaczona linia 2", subtitles[1].TranslatedLines[0]);
+        checkpointServiceMock.Verify(service => service.SaveTranslationAsync(
+            115,
+            It.IsAny<string>(),
+            1,
+            It.IsAny<string>(),
+            It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -917,6 +1485,110 @@ public class SubtitleTranslationServiceTests
         Assert.Equal("Fran", repairItem.OriginalLine);
         Assert.Equal("{\\an7}Franszczu", result[0].TranslatedLines[0]);
         Assert.Equal("{\\an8}Franszczu", result[1].TranslatedLines[0]);
+    }
+
+    [Fact]
+    public async Task TranslateSubtitlesBatch_WhenDeferredRepairReturnsSourceEcho_DoesNotApplyOrPersistIt()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var batchServiceMock = translationServiceMock.As<IBatchTranslationService>();
+        var checkpointServiceMock = new Mock<ITranslationCheckpointService>();
+        var loggerMock = new Mock<ILogger>();
+        var progressServiceMock = new Mock<IProgressService>();
+        var deferredRepairServiceMock = new Mock<IDeferredRepairService>();
+
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+        batchServiceMock
+            .Setup(service => service.TranslateBatchAsync(
+                It.IsAny<List<BatchSubtitleItem>>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<int, string>());
+        checkpointServiceMock
+            .Setup(service => service.LoadAsync(111, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TranslationCheckpoint?)null);
+        deferredRepairServiceMock
+            .Setup(service => service.BuildContextualRepairBatch(
+                It.IsAny<List<RepairItem>>(),
+                It.IsAny<List<SubtitleItem>>(),
+                It.IsAny<int>(),
+                It.IsAny<IReadOnlyDictionary<int, string>>()))
+            .Returns((List<RepairItem> failedItems, List<SubtitleItem> _, int _, IReadOnlyDictionary<int, string> _) => new ContextualRepairBatch
+            {
+                Items = failedItems
+                    .Select(item => new BatchSubtitleItem { Position = item.Position, Line = item.OriginalLine })
+                    .ToList(),
+                FailedPositions = failedItems.Select(item => item.Position).ToHashSet()
+            });
+        deferredRepairServiceMock
+            .Setup(service => service.ExecuteRepairAsync(
+                It.IsAny<ContextualRepairBatch>(),
+                It.IsAny<IBatchTranslationService>(),
+                It.IsAny<IBatchFallbackService>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ContextualRepairBatch _, IBatchTranslationService _, IBatchFallbackService _, string _, string _, int _, int _, string _, CancellationToken _) =>
+                Enumerable.Range(1, 30)
+                    .ToDictionary(
+                        position => position,
+                        position => position <= 2
+                            ? $"Subtitle line number {position}"
+                            : $"Przetłumaczona linia {position}"));
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            loggerMock.Object,
+            progressServiceMock.Object,
+            Mock.Of<IBatchFallbackService>(),
+            deferredRepairServiceMock.Object,
+            checkpointServiceMock.Object);
+
+        var subtitles = Enumerable.Range(1, 30)
+            .Select(position => Item(position, $"Subtitle line number {position}"))
+            .ToList();
+
+        var exception = await Assert.ThrowsAsync<MissingTranslationException>(() => service.TranslateSubtitlesBatch(
+            subtitles,
+            new TranslationRequest
+            {
+                Id = 111,
+                Title = "Episode",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                MediaType = Lingarr.Core.Enum.MediaType.Show,
+                Status = Lingarr.Core.Enum.TranslationStatus.Pending
+            },
+            stripSubtitleFormatting: false,
+            preserveAssFormatting: false,
+            batchSize: 30,
+            batchRetryMode: "deferred",
+            cancellationToken: CancellationToken.None));
+
+        Assert.Contains("missing", exception.Message, StringComparison.OrdinalIgnoreCase);
+        checkpointServiceMock.Verify(service => service.SaveTranslationAsync(
+            111,
+            It.IsAny<string>(),
+            1,
+            It.IsAny<string>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+        checkpointServiceMock.Verify(service => service.SaveTranslationAsync(
+            111,
+            It.IsAny<string>(),
+            2,
+            It.IsAny<string>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Empty(subtitles[0].TranslatedLines);
+        Assert.Empty(subtitles[1].TranslatedLines);
+        Assert.Equal("Przetłumaczona linia 3", subtitles[2].TranslatedLines[0]);
     }
 
     [Fact]

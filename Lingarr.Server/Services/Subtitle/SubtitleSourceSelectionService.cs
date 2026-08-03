@@ -73,18 +73,17 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
             return CreateResult(primary, assessments);
         }
 
-        if (allowCaptionFallback)
-        {
-            var captionFallback = assessments
-                .Where(assessment => assessment.Role == SubtitleSourceCandidateRole.CaptionFallback)
-                .OrderByDescending(assessment => assessment.Score)
-                .ThenBy(assessment => assessment.Subtitle.StreamIndex)
-                .FirstOrDefault();
+        var fallback = assessments
+            .Where(assessment =>
+                assessment.Role == SubtitleSourceCandidateRole.PathologicalAssFallback ||
+                (allowCaptionFallback && assessment.Role == SubtitleSourceCandidateRole.CaptionFallback))
+            .OrderByDescending(assessment => assessment.Score)
+            .ThenBy(assessment => assessment.Subtitle.StreamIndex)
+            .FirstOrDefault();
 
-            if (captionFallback != null)
-            {
-                return CreateResult(captionFallback, assessments);
-            }
+        if (fallback != null)
+        {
+            return CreateResult(fallback, assessments);
         }
 
         return new SubtitleSourceSelectionResult { Assessments = assessments };
@@ -172,17 +171,6 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
         var pathologicalAdjustment = await GetPathologicalScoreAdjustmentAsync(
             candidate,
             cancellationToken);
-        if (pathologicalAdjustment.IsPathological)
-        {
-            return new SubtitleSourceCandidateAssessment(
-                candidate,
-                SubtitleSourceCandidateRole.RejectedPathological,
-                matchedLanguage,
-                int.MinValue + 4,
-                entryCount,
-                "ASS/SSA analysis detected drawing-heavy, duplicated, or fragmented source content.");
-        }
-
         if (string.Equals(subtitleType, SubtitleLanguageHelper.TypeCommentary, StringComparison.OrdinalIgnoreCase))
         {
             return new SubtitleSourceCandidateAssessment(
@@ -203,6 +191,17 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
                 BuildScore(candidate, matchedLanguage, normalizedSourceLanguages, isAutoMode, pathologicalAdjustment.ScoreAdjustment),
                 entryCount,
                 "Forced/signs/songs subtitles are supplemental and cannot be primary sources.");
+        }
+
+        if (pathologicalAdjustment.IsPathological)
+        {
+            return new SubtitleSourceCandidateAssessment(
+                candidate,
+                SubtitleSourceCandidateRole.PathologicalAssFallback,
+                matchedLanguage,
+                BuildScore(candidate, matchedLanguage, normalizedSourceLanguages, isAutoMode, pathologicalAdjustment.ScoreAdjustment),
+                entryCount,
+                "ASS/SSA analysis detected drawing-heavy, duplicated, or fragmented source content; retained as a fallback.");
         }
 
         if (SubtitleLanguageHelper.IsForcedDialogueType(subtitleType))
@@ -424,7 +423,7 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
             if (analysis.IsPathological)
             {
                 _logger.LogWarning(
-                    "Rejecting embedded subtitle stream {StreamIndex} ({Title}) as pathological: drawingEvents={DrawingEvents}, translatableEvents={TranslatableEvents}, duplicateRatio={DuplicateRatio:F2}, avgProviderChars={AverageChars:F2}",
+                    "Penalizing embedded subtitle stream {StreamIndex} ({Title}) as pathological fallback: drawingEvents={DrawingEvents}, translatableEvents={TranslatableEvents}, duplicateRatio={DuplicateRatio:F2}, avgProviderChars={AverageChars:F2}",
                     candidate.StreamIndex,
                     candidate.Title ?? candidate.CodecName,
                     analysis.DrawingEvents,

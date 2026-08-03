@@ -51,4 +51,26 @@ public class TranslationEchoGuardTests
         Assert.Equal([1, 2, 3], analysis.EchoedPositions);
         Assert.True(analysis.IsMostlyEchoed);
     }
+
+    [Fact]
+    public void AnalyzeBatch_WhenShortOrdinaryCueEchoesSource_FlagsEcho()
+    {
+        var sourceItems = new List<BatchSubtitleItem>
+        {
+            new() { Position = 1, Line = "I know" }
+        };
+        var translatedByPosition = new Dictionary<int, string>
+        {
+            [1] = "I know"
+        };
+
+        var analysis = TranslationEchoGuard.AnalyzeBatch(
+            sourceItems,
+            translatedByPosition,
+            sourceLanguage: "en",
+            targetLanguage: "pl");
+
+        Assert.Equal([1], analysis.EchoedPositions);
+        Assert.Equal(1, analysis.ComparableCount);
+    }
 }

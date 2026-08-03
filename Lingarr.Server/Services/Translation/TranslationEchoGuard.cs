@@ -182,13 +182,7 @@ internal static class TranslationEchoGuard
         }
 
         var normalized = NormalizeForComparison(text);
-        if (normalized.Length < 12)
-        {
-            return false;
-        }
-
-        var wordCount = normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
-        if (wordCount < 3)
+        if (normalized.Length == 0)
         {
             return false;
         }
