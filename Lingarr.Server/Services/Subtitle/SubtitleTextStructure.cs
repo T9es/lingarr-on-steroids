@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace Lingarr.Server.Services.Subtitle;
 
@@ -230,6 +231,18 @@ internal sealed class SubtitleTextLine
 
 internal sealed class SubtitleTextStructure
 {
+    private static readonly Regex CueLevelAssOverrideRegex = new(
+        @"\\(?:[A-Za-z][A-Za-z0-9]*|[1-4][A-Za-z][A-Za-z0-9]*)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex AssInlineStyleOverrideBlockRegex = new(
+        @"^\{(?:\\[ibus](?:0|1)?)+\}$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex AssInlineStyleTagRegex = new(
+        @"\\(?<name>[ibus])(?<value>0|1)?",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     private readonly List<SubtitleTextLine> _providerVisibleLines;
     private readonly Dictionary<int, List<SubtitleTextLine>> _segmentsBySourceLineIndex;
 
@@ -395,6 +408,12 @@ internal sealed class SubtitleTextStructure
             if (TryFindNearestTextMatch(translatedText, parts, index - 1, -1, out var previousStart, out var previousLength))
             {
                 insertions.Add(new TextInsertion(previousStart + previousLength, part.SourceText, insertions.Count));
+                continue;
+            }
+
+            if (ShouldPreserveAssOverrideBlockOnAnchorLoss(parts, index))
+            {
+                insertions.Add(new TextInsertion(0, part.SourceText, insertions.Count));
             }
         }
 
@@ -404,6 +423,113 @@ internal sealed class SubtitleTextStructure
     private static bool ShouldPreserveLocalPart(SubtitleTextPart part)
     {
         return part.Kind != SubtitleTextPartKind.AssNonBreakingSpace;
+    }
+
+    private static bool ShouldPreserveAssOverrideBlockOnAnchorLoss(
+        IReadOnlyList<SubtitleTextPart> parts,
+        int index)
+    {
+        var part = parts[index];
+        return part.Kind == SubtitleTextPartKind.AssOverrideBlock &&
+            CueLevelAssOverrideRegex.IsMatch(part.SourceText) &&
+            !IsUnmatchedInlineStyleWrapper(parts, index);
+    }
+
+    private static bool IsUnmatchedInlineStyleWrapper(
+        IReadOnlyList<SubtitleTextPart> parts,
+        int index)
+    {
+        if (!AssInlineStyleOverrideBlockRegex.IsMatch(parts[index].SourceText))
+        {
+            return false;
+        }
+
+        return HasAdjacentInlineStylePartner(parts, index, 1) ||
+            HasAdjacentInlineStylePartner(parts, index, -1);
+    }
+
+    private static bool HasAdjacentInlineStylePartner(
+        IReadOnlyList<SubtitleTextPart> parts,
+        int index,
+        int step)
+    {
+        var textIndex = index + step;
+        while (textIndex >= 0 && textIndex < parts.Count &&
+               parts[textIndex].Kind == SubtitleTextPartKind.AssNonBreakingSpace)
+        {
+            textIndex += step;
+        }
+
+        if (textIndex < 0 || textIndex >= parts.Count || !parts[textIndex].IsTranslatable)
+        {
+            return false;
+        }
+
+        var partnerIndex = textIndex + step;
+        while (partnerIndex >= 0 && partnerIndex < parts.Count &&
+               parts[partnerIndex].Kind == SubtitleTextPartKind.AssNonBreakingSpace)
+        {
+            partnerIndex += step;
+        }
+
+        return partnerIndex >= 0 &&
+            partnerIndex < parts.Count &&
+            parts[partnerIndex].Kind == SubtitleTextPartKind.AssOverrideBlock &&
+            AreMatchingInlineStyleOverrideBlocks(
+                parts[index].SourceText,
+                parts[partnerIndex].SourceText);
+    }
+
+    private static bool AreMatchingInlineStyleOverrideBlocks(
+        string firstBlock,
+        string secondBlock)
+    {
+        var firstTags = GetInlineStyleTags(firstBlock);
+        var secondTags = GetInlineStyleTags(secondBlock);
+        if (firstTags == null ||
+            secondTags == null ||
+            firstTags.Count != secondTags.Count ||
+            firstTags.Count == 0)
+        {
+            return false;
+        }
+
+        return firstTags.All(tag =>
+            secondTags.TryGetValue(tag.Key, out var secondValue) &&
+            AreOppositeInlineStyleValues(tag.Value, secondValue));
+    }
+
+    private static Dictionary<char, string?>? GetInlineStyleTags(string sourceText)
+    {
+        if (!AssInlineStyleOverrideBlockRegex.IsMatch(sourceText))
+        {
+            return null;
+        }
+
+        var innerText = sourceText[1..^1];
+        var matches = AssInlineStyleTagRegex.Matches(innerText);
+        if (matches.Count == 0 || matches.Sum(match => match.Length) != innerText.Length)
+        {
+            return null;
+        }
+
+        var tags = new Dictionary<char, string?>();
+        foreach (Match match in matches)
+        {
+            var name = char.ToLowerInvariant(match.Groups["name"].Value[0]);
+            tags[name] = match.Groups["value"].Success
+                ? match.Groups["value"].Value
+                : null;
+        }
+
+        return tags;
+    }
+
+    private static bool AreOppositeInlineStyleValues(string? firstValue, string? secondValue)
+    {
+        return !string.Equals(firstValue, secondValue, StringComparison.Ordinal) &&
+            (string.Equals(firstValue, "0", StringComparison.Ordinal) ||
+             string.Equals(secondValue, "0", StringComparison.Ordinal));
     }
 
     private static bool ShouldPreserveTrailingWrapper(

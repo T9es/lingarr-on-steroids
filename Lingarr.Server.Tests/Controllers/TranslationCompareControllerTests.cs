@@ -527,6 +527,151 @@ public class TranslationCompareControllerTests : IDisposable
         Assert.Equal([2], completionService.SourceTextPositions.Order());
     }
 
+    [Fact]
+    public async Task SaveTranslation_WhenAssRequestResolvesToSrtOutput_SanitizesEditedSrt()
+    {
+        var sourcePath = Path.Combine(_tempDirectory, "edited-source.en.ass");
+        var assPath = Path.Combine(_tempDirectory, "edited-source.pl.ass");
+        var srtPath = Path.Combine(_tempDirectory, "edited-source.pl.srt");
+
+        await File.WriteAllTextAsync(sourcePath, CreateAssSubtitle("Hello"));
+        await File.WriteAllTextAsync(assPath, CreateAssSubtitle("Existing ASS"));
+        await File.WriteAllTextAsync(
+            srtPath,
+            "1\n00:00:01,000 --> 00:00:02,000\nExisting SRT\n");
+
+        var request = new TranslationRequest
+        {
+            Title = "Edited ASS and SRT Request",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = sourcePath,
+            TranslatedSubtitle = assPath,
+            SourceSubtitleFormat = ".ass",
+            SubtitleOutputMode = "both",
+            RequiredOutputFormats = ".ass,.srt",
+            GeneratedOutputFormats = ".ass,.srt",
+            GeneratedSubtitlePaths = JsonSerializer.Serialize(new[] { assPath, srtPath }),
+            MediaType = MediaType.Episode,
+            Status = TranslationStatus.Completed,
+            CompletedAt = DateTime.UtcNow
+        };
+
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var controller = CreateController();
+        var actionResult = await controller.SaveTranslation(
+            request.Id,
+            new TranslationCompareEditRequest
+            {
+                Edits =
+                [
+                    new TranslationCompareEdit
+                    {
+                        Position = 1,
+                        TranslatedText = @"{\pos(200,130)}Czesc"
+                    }
+                ]
+            },
+            CancellationToken.None);
+
+        Assert.IsType<OkObjectResult>(actionResult.Result);
+        var savedSrt = await File.ReadAllTextAsync(srtPath);
+        Assert.Contains("Czesc", savedSrt, StringComparison.Ordinal);
+        Assert.DoesNotContain("{\\", savedSrt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SaveTranslation_WhenAssRequestResolvesToAssOutput_PreservesEditedAssTags()
+    {
+        var sourcePath = Path.Combine(_tempDirectory, "edited-ass-source.en.ass");
+        var assPath = Path.Combine(_tempDirectory, "edited-ass-source.pl.ass");
+
+        await File.WriteAllTextAsync(sourcePath, CreateAssSubtitle("Hello"));
+        await File.WriteAllTextAsync(assPath, CreateAssSubtitle("Existing ASS"));
+
+        var request = new TranslationRequest
+        {
+            Title = "Edited ASS Request",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = sourcePath,
+            TranslatedSubtitle = assPath,
+            SourceSubtitleFormat = ".ass",
+            SubtitleOutputMode = "ass-only",
+            RequiredOutputFormats = ".ass",
+            GeneratedOutputFormats = ".ass",
+            GeneratedSubtitlePaths = JsonSerializer.Serialize(new[] { assPath }),
+            MediaType = MediaType.Episode,
+            Status = TranslationStatus.Completed,
+            CompletedAt = DateTime.UtcNow
+        };
+
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var controller = CreateController();
+        var actionResult = await controller.SaveTranslation(
+            request.Id,
+            new TranslationCompareEditRequest
+            {
+                Edits =
+                [
+                    new TranslationCompareEdit
+                    {
+                        Position = 1,
+                        TranslatedText = @"{\pos(200,130)}Czesc"
+                    }
+                ]
+            },
+            CancellationToken.None);
+
+        Assert.IsType<OkObjectResult>(actionResult.Result);
+        var savedAss = await File.ReadAllTextAsync(assPath);
+        Assert.Contains(@"{\pos(200,130)}Czesc", savedAss, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task GetCompletedTranslationCompare_WhenSrtDropsAssDrawingCues_MatchesByTimestamp()
+    {
+        var sourcePath = Path.Combine(_tempDirectory, "sparse-ass-source.en.ass");
+        var translatedPath = Path.Combine(_tempDirectory, "sparse-ass-source.pl.srt");
+        var drawingCue = @"{\p1}m 0 0 l 10 10{\p0}";
+
+        await File.WriteAllTextAsync(
+            sourcePath,
+            CreateAssSubtitleWithCues(drawingCue, "Hello", drawingCue, "Goodbye"));
+        await File.WriteAllTextAsync(
+            translatedPath,
+            "1\n00:00:02,000 --> 00:00:03,000\nCzesc\n\n" +
+            "2\n00:00:04,000 --> 00:00:05,000\nDo widzenia\n");
+
+        var request = new TranslationRequest
+        {
+            Title = "Sparse ASS Compare",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = sourcePath,
+            TranslatedSubtitle = translatedPath,
+            SourceSubtitleFormat = ".ass",
+            MediaType = MediaType.Episode,
+            Status = TranslationStatus.Completed,
+            CompletedAt = DateTime.UtcNow
+        };
+
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var actionResult = await CreateController().GetCompletedTranslationCompare(request.Id);
+        var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
+        var payload = Assert.IsType<CompletedTranslationCompareResponse>(okResult.Value);
+
+        Assert.Equal([2, 4], payload.Lines.Select(line => line.Position));
+        Assert.Equal("Czesc", payload.Lines.Single(line => line.Position == 2).Translated);
+        Assert.Equal("Do widzenia", payload.Lines.Single(line => line.Position == 4).Translated);
+    }
+
     private TranslationCompareController CreateController(
         ISubtitleExtractionService? extractionService = null,
         ISourceSubtitleResolver? sourceSubtitleResolver = null,
@@ -551,7 +696,13 @@ public class TranslationCompareControllerTests : IDisposable
     }
 
     private static string CreateAssSubtitle(string text)
+        => CreateAssSubtitleWithCues(text);
+
+    private static string CreateAssSubtitleWithCues(params string[] texts)
     {
+        var events = texts.Select((text, index) =>
+            $"Dialogue: 0,0:00:{index + 1:00}.00,0:00:{index + 2:00}.00,Default,,0,0,0,,{text}");
+
         return "[Script Info]\n" +
                "ScriptType: v4.00+\n\n" +
                "[V4+ Styles]\n" +
@@ -559,7 +710,7 @@ public class TranslationCompareControllerTests : IDisposable
                "Style: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1,0,2,10,10,10,1\n\n" +
                "[Events]\n" +
                "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n" +
-               $"Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{text}\n";
+               string.Join("\n", events) + "\n";
     }
 
     private sealed class FakeSubtitleExtractionService : ISubtitleExtractionService

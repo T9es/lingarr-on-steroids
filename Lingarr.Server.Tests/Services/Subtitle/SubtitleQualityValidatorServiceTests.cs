@@ -118,6 +118,99 @@ public class SubtitleQualityValidatorServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ValidateAsync_WhenPlainOutputDropsDrawingHeavyAssCues_UsesVisibleSourceCueCount()
+    {
+        var drawingCue = @"{\p1}m 0 0 l 10 10{\p0}";
+        var sourcePath = await WriteAssAsync("drawing-heavy.en.ass", [
+            drawingCue,
+            drawingCue,
+            "Hello",
+            drawingCue,
+            drawingCue,
+            drawingCue,
+            "Goodbye",
+            drawingCue,
+            drawingCue,
+            drawingCue
+        ]);
+        var targetPath = await WriteSrtAsync("drawing-heavy.pl.srt", [
+            "Czesc",
+            "Do widzenia"
+        ]);
+
+        var result = await _service.ValidateAsync(new SubtitleQualityValidationRequest
+        {
+            SourcePath = sourcePath,
+            TargetPath = targetPath,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            OutputFormat = ".srt"
+        }, CancellationToken.None);
+
+        Assert.True(result.IsValid, result.Summary);
+        Assert.Equal(2, result.SourceEntryCount);
+        Assert.Equal(2, result.TargetEntryCount);
+        Assert.Equal(1, result.MinimumTargetEntryCount);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_WhenPlainSrtUsesSequentialNumbers_ReportsMissingAssPositionsByTimestamp()
+    {
+        var drawingCue = @"{\p1}m 0 0 l 10 10{\p0}";
+        var sourcePath = await WriteAssAsync("sparse-identity.en.ass", [
+            drawingCue,
+            "Hello",
+            drawingCue,
+            "Goodbye",
+            "Another line",
+            "One more line",
+            "The final line"
+        ]);
+        var targetPath = Path.Combine(_tempDirectory, "sparse-identity.pl.srt");
+        await File.WriteAllTextAsync(
+            targetPath,
+            "1\n00:00:02,000 --> 00:00:03,000\nCzesc\n\n" +
+            "2\n00:00:04,000 --> 00:00:05,000\nDo widzenia\n\n" +
+            "3\n00:00:05,000 --> 00:00:06,000\nKolejna linia\n");
+
+        var result = await _service.ValidateAsync(new SubtitleQualityValidationRequest
+        {
+            SourcePath = sourcePath,
+            TargetPath = targetPath,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            OutputFormat = ".srt"
+        }, CancellationToken.None);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(SubtitleQualityIssueCodes.TooShort, result.IssueTypes);
+        Assert.Equal(
+            "Target has 3 entries but selected source has 5; minimum acceptable is 4. Missing source positions: 6, 7.",
+            result.Summary);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_WhenAssOutputContainsDrawingCues_KeepsRawAssCounts()
+    {
+        var drawingCue = @"{\p1}m 0 0 l 10 10{\p0}";
+        var sourceLines = Enumerable.Repeat(drawingCue, 9).Append("Hello").ToArray();
+        var sourcePath = await WriteAssAsync("raw-counts.en.ass", sourceLines);
+        var targetPath = await WriteAssAsync("raw-counts.pl.ass", sourceLines);
+
+        var result = await _service.ValidateAsync(new SubtitleQualityValidationRequest
+        {
+            SourcePath = sourcePath,
+            TargetPath = targetPath,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            OutputFormat = ".ass"
+        }, CancellationToken.None);
+
+        Assert.Equal(10, result.SourceEntryCount);
+        Assert.Equal(10, result.TargetEntryCount);
+    }
+
+    [Fact]
     public async Task ValidateAsync_WhenPlainSrtContainsAssTags_RejectsUnexpectedAssTags()
     {
         var sourcePath = await WriteAssAsync("episode.en.ass", [

@@ -14,8 +14,12 @@ public class SrtWriter : ISubtitleWriter
     /// </summary>
     /// <param name="subtitleItem">The SubtitleItem to convert</param>
     /// <param name="subtitleEntryNumber">The subtitle number for the entry (increments sequentially from 1)</param>
+    /// <param name="linesToUse">The rendered lines to write for the subtitle entry</param>
     /// <returns>A list of strings to write as an SRT subtitle entry</returns>
-    private IEnumerable<string> SubtitleItemToSubtitleEntry(SubtitleItem subtitleItem, int subtitleEntryNumber)
+    private IEnumerable<string> SubtitleItemToSubtitleEntry(
+        SubtitleItem subtitleItem,
+        int subtitleEntryNumber,
+        IReadOnlyList<string> linesToUse)
     {
         // take the start and end timestamps and format it as a timecode line
         string FormatTimeCodeLine()
@@ -28,10 +32,17 @@ public class SrtWriter : ISubtitleWriter
         List<string> lines = new List<string>();
         lines.Add(subtitleEntryNumber.ToString());
         lines.Add(FormatTimeCodeLine());
-        var linesToUse = subtitleItem.TranslatedLines.Count > 0 ? subtitleItem.TranslatedLines : subtitleItem.Lines;
         lines.AddRange(linesToUse);
 
         return lines;
+    }
+
+    private static List<string> GetLinesToUse(SubtitleItem subtitleItem)
+    {
+        var linesToUse = subtitleItem.TranslatedLines.Count > 0
+            ? subtitleItem.TranslatedLines
+            : subtitleItem.Lines;
+        return PlainTextSubtitleOutputRenderer.ConvertToPlainTextLines(string.Join("\\N", linesToUse));
     }
     
     /// <inheritdoc />
@@ -56,13 +67,21 @@ public class SrtWriter : ISubtitleWriter
 
             List<SubtitleItem>
                 items = subtitleItems.ToList(); // avoid multiple enumeration since we're using a for instead of foreach
-            for (int index = 0; index < items.Count; index++)
+            var subtitleEntryNumber = 0;
+            foreach (var subtitleItem in items)
             {
-                SubtitleItem subtitleItem = items[index];
+                var linesToUse = GetLinesToUse(subtitleItem);
+                if (PlainTextSubtitleOutputRenderer.ShouldSkipSubtitle(linesToUse))
+                {
+                    continue;
+                }
+
+                subtitleEntryNumber++;
                 // Create a subtitle entry
                 IEnumerable<string>
                     lines = SubtitleItemToSubtitleEntry(subtitleItem,
-                        subtitleItem.Position); // add one because subtitle entry numbers start at 1 instead of 0
+                        subtitleEntryNumber,
+                        linesToUse); // add one because subtitle entry numbers start at 1 instead of 0
                 foreach (string line in lines)
                 {
                     await writer.WriteLineAsync(line);

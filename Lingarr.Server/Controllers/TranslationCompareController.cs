@@ -485,13 +485,10 @@ public class TranslationCompareController : ControllerBase
                 }
             }
 
-            var saveSettings = await _settingService.GetSettings([
-                SettingKeys.Translation.StripSubtitleFormatting
-            ]);
 
-            var stripFormatting =
-                saveSettings.TryGetValue(SettingKeys.Translation.StripSubtitleFormatting, out var stripVal) &&
-                string.Equals(stripVal, "true", StringComparison.OrdinalIgnoreCase);
+            var stripFormatting = ShouldStripFormattingForCompareOutput(
+                request,
+                translatedSubtitlePath);
 
             // Write full subtitles (with translator info preserved) to disk
             await _subtitleService.WriteSubtitles(translatedSubtitlePath, translatedSubtitles, stripFormatting);
@@ -903,6 +900,25 @@ public class TranslationCompareController : ControllerBase
 
 
 
+    private static bool ShouldStripFormattingForCompareOutput(
+        TranslationRequest request,
+        string targetPath)
+    {
+        var targetFormat = GetSubtitlePathFormat(targetPath);
+        if (!string.IsNullOrWhiteSpace(targetFormat))
+        {
+            return !SubtitleOutputModeHelper.IsAssFormat(targetFormat);
+        }
+
+        var requestedFormats = SubtitleOutputModeHelper.DeserializeFormats(request.RequiredOutputFormats);
+        if (requestedFormats.Count == 0)
+        {
+            requestedFormats = SubtitleOutputModeHelper.DeserializeFormats(request.GeneratedOutputFormats);
+        }
+
+        return !requestedFormats.Any(SubtitleOutputModeHelper.IsAssFormat);
+    }
+
     private static bool IsPlainTextSubtitlePath(string? path)
 
     {
@@ -1312,7 +1328,18 @@ public class TranslationCompareController : ControllerBase
         List<SubtitleItem> originalSubtitles,
         List<SubtitleItem> translatedSubtitles)
     {
-        translatedSubtitles = NormalizeTranslatedPositionsForComparison(originalSubtitles, translatedSubtitles);
+        var visibleOriginalSubtitles = originalSubtitles
+            .Where(IsVisibleSubtitle)
+            .ToList();
+
+        var timingComparison = BuildTimingComparison(visibleOriginalSubtitles, translatedSubtitles);
+        if (timingComparison != null)
+        {
+            return timingComparison;
+        }
+
+        originalSubtitles = visibleOriginalSubtitles;
+        translatedSubtitles = NormalizeTranslatedPositionsForComparison(originalSubtitles, translatedSubtitles);
 
         if (CanCompareByPosition(originalSubtitles, translatedSubtitles))
         {
@@ -1322,7 +1349,61 @@ public class TranslationCompareController : ControllerBase
         return BuildIndexComparison(originalSubtitles, translatedSubtitles);
     }
 
-    private static List<TranslationCompareLineDto> BuildIndexComparison(
+    private static List<TranslationCompareLineDto>? BuildTimingComparison(
+        IReadOnlyList<SubtitleItem> originalSubtitles,
+        IReadOnlyList<SubtitleItem> translatedSubtitles)
+    {
+        var targetByTiming = translatedSubtitles
+            .Where(subtitle => subtitle.EndTime > subtitle.StartTime)
+            .GroupBy(subtitle => (subtitle.StartTime, subtitle.EndTime))
+            .ToDictionary(group => group.Key, group => new Queue<SubtitleItem>(group));
+        var sourceTimings = originalSubtitles
+            .Where(subtitle => subtitle.EndTime > subtitle.StartTime)
+            .Select(subtitle => (subtitle.StartTime, subtitle.EndTime))
+            .ToHashSet();
+
+        if (!sourceTimings.Overlaps(targetByTiming.Keys))
+        {
+            return null;
+        }
+
+        var matchedTargets = new HashSet<SubtitleItem>();
+        var result = new List<TranslationCompareLineDto>(originalSubtitles.Count + translatedSubtitles.Count);
+        foreach (var original in originalSubtitles)
+        {
+            targetByTiming.TryGetValue((original.StartTime, original.EndTime), out var targetQueue);
+            var translated = targetQueue is { Count: > 0 }
+                ? targetQueue.Dequeue()
+                : null;
+            if (translated != null)
+            {
+                matchedTargets.Add(translated);
+            }
+
+            result.Add(BuildCompareLine(original.Position, original, translated));
+        }
+
+        foreach (var translated in translatedSubtitles
+                     .Where(subtitle => !matchedTargets.Contains(subtitle))
+                     .OrderBy(subtitle => subtitle.StartTime)
+                     .ThenBy(subtitle => subtitle.EndTime)
+                     .ThenBy(subtitle => subtitle.Position))
+        {
+            result.Add(BuildCompareLine(translated.Position, null, translated));
+        }
+
+        return result;
+    }
+
+    private static bool IsVisibleSubtitle(SubtitleItem subtitle)
+    {
+        var lines = subtitle.Lines.Count > 0 ? subtitle.Lines : subtitle.PlaintextLines;
+        var plainTextLines = PlainTextSubtitleOutputRenderer.ConvertToPlainTextLines(
+            string.Join("\\N", lines));
+        return !PlainTextSubtitleOutputRenderer.ShouldSkipSubtitle(plainTextLines);
+    }
+
+    private static List<TranslationCompareLineDto> BuildIndexComparison(
         List<SubtitleItem> originalSubtitles,
         List<SubtitleItem> translatedSubtitles)
     {

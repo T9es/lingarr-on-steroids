@@ -327,6 +327,102 @@ public class SubtitleTextStructureTests
         Assert.Equal("Moge wpasc do ciebie pograc w Gwiezdna Odwage?", translated[0]);
     }
 
+    [Theory]
+    [InlineData(@"{\i1}", @"{\i0}")]
+    [InlineData(@"{\b1}", @"{\b0}")]
+    [InlineData(@"{\u1}", @"{\u0}")]
+    [InlineData(@"{\s1}", @"{\s0}")]
+    public void AssInlineStyleWrapper_WhenTranslatedTextLosesSourceAnchor_ShouldDropWrapperTags(
+        string openingTag,
+        string closingTag)
+    {
+        var sourceLines = new List<string> { $"Prefix {openingTag}unmatched phrase{closingTag} suffix" };
+        var structure = BuildAssStructure(sourceLines);
+
+        var translated = structure.ApplyProviderTranslation("Przetlumaczony tekst");
+
+        Assert.Equal("Przetlumaczony tekst", Assert.Single(translated));
+    }
+
+    [Theory]
+    [InlineData(@"{\t(0,500,\fs40)}")]
+    [InlineData(@"{\move(0,0,100,100)}")]
+    [InlineData(@"{\pos(100,200)}")]
+    [InlineData(@"{\clip(0,0,100,100)}")]
+    [InlineData(@"{\iclip(0,0,100,100)}")]
+    [InlineData(@"{\fad(200,300)}")]
+    [InlineData(@"{\fade(0,255,0,0,100,200,300)}")]
+    [InlineData(@"{\org(100,200)}")]
+    [InlineData(@"{\an8}")]
+    [InlineData(@"{\fs40}")]
+    [InlineData(@"{\fscx120}")]
+    [InlineData(@"{\fscy80}")]
+    [InlineData(@"{\fr15}")]
+    [InlineData(@"{\frx10}")]
+    [InlineData(@"{\fry20}")]
+    [InlineData(@"{\frz30}")]
+    [InlineData(@"{\alpha&H80&}")]
+    [InlineData(@"{\1a&H80&}")]
+    [InlineData(@"{\4a&H40&}")]
+    [InlineData(@"{\c&HFFFFFF&}")]
+    [InlineData(@"{\1c&HFFFFFF&}")]
+    [InlineData(@"{\4c&H000000&}")]
+    [InlineData(@"{\bord2}")]
+    [InlineData(@"{\shad3}")]
+    [InlineData(@"{\fnArial}")]
+    [InlineData(@"{\fe1}")]
+    [InlineData(@"{\rAltStyle}")]
+    [InlineData(@"{\q2}")]
+    [InlineData(@"{\i1}")]
+    [InlineData(@"{\b1}")]
+    [InlineData(@"{\u1}")]
+    [InlineData(@"{\s1}")]
+    [InlineData(@"{\fsp2}")]
+    [InlineData(@"{\pbo4}")]
+    public void AssCueLevelTags_WhenTranslatedTextLosesSourceAnchors_PreserveTagsAtCueStart(string tag)
+    {
+        var structure = BuildAssStructure([$"Original {tag} source anchor"]);
+
+        var translated = structure.ApplyProviderTranslation("Przetlumaczone slowo");
+
+        Assert.Equal($"{tag}Przetlumaczone slowo", Assert.Single(translated));
+    }
+
+    [Fact]
+    public void AssCueLevelTags_WhenPersistentAndInlineTagsShareABlock_PreserveTheWholeBlock()
+    {
+        var structure = BuildAssStructure([@"Original {\i1\fs40} source anchor"]);
+
+        var translated = structure.ApplyProviderTranslation("Przetlumaczone slowo");
+
+        Assert.Equal(@"{\i1\fs40}Przetlumaczone slowo", Assert.Single(translated));
+    }
+
+    [Fact]
+    public void AssPersistentStyleTags_WhenDifferentStyleBlocksLoseAnchors_PreserveEachBlock()
+    {
+        var structure = BuildAssStructure([@"Original {\i1} first {\b1} second {\u1} third {\s1} fourth {\fsp2} fifth {\pbo4} sixth"]);
+
+        var translated = structure.ApplyProviderTranslation("Przetlumaczone slowo");
+
+        Assert.Equal(
+            @"{\i1}{\b1}{\u1}{\s1}{\fsp2}{\pbo4}Przetlumaczone slowo",
+            Assert.Single(translated));
+    }
+
+    [Fact]
+    public void AssPersistentTags_WhenProjectedToSrtOrVttText_ShouldNotLeakOverrideBlocks()
+    {
+        var structure = BuildAssStructure([@"Original {\t(0,500,\fs40)\1c&HFFFFFF&} source anchor"]);
+
+        var translated = structure.ApplyProviderTranslation("Przetlumaczone slowo");
+        var nonAssLines = PlainTextSubtitleOutputRenderer.ConvertToPlainTextLines(
+            string.Join("\\N", translated));
+
+        Assert.Equal(["Przetlumaczone slowo"], nonAssLines);
+        Assert.DoesNotContain(nonAssLines, line => line.Contains("{\\", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void SrtInlineHtml_ShouldProtectMarkupFromProviderAndRestoreAfterTranslation()
     {

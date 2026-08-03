@@ -5,7 +5,9 @@ namespace Lingarr.Server.Services.Subtitle;
 
 public class VttWriter : ISubtitleWriter
 {
-    private IEnumerable<string> SubtitleItemToSubtitleEntry(SubtitleItem subtitleItem)
+    private IEnumerable<string> SubtitleItemToSubtitleEntry(
+        SubtitleItem subtitleItem,
+        IReadOnlyList<string> linesToUse)
     {
         string FormatTimeCodeLine()
         {
@@ -17,10 +19,17 @@ public class VttWriter : ISubtitleWriter
         List<string> lines = new List<string>();
         lines.Add(subtitleItem.Position.ToString());
         lines.Add(FormatTimeCodeLine());
-        var linesToUse = subtitleItem.TranslatedLines.Count > 0 ? subtitleItem.TranslatedLines : subtitleItem.Lines;
         lines.AddRange(linesToUse);
 
         return lines;
+    }
+
+    private static List<string> GetLinesToUse(SubtitleItem subtitleItem)
+    {
+        var linesToUse = subtitleItem.TranslatedLines.Count > 0
+            ? subtitleItem.TranslatedLines
+            : subtitleItem.Lines;
+        return PlainTextSubtitleOutputRenderer.ConvertToPlainTextLines(string.Join("\\N", linesToUse));
     }
 
     public async Task WriteStreamAsync(
@@ -46,10 +55,15 @@ public class VttWriter : ISubtitleWriter
             await writer.WriteLineAsync();
 
             List<SubtitleItem> items = subtitleItems.ToList();
-            for (int index = 0; index < items.Count; index++)
+            foreach (var subtitleItem in items)
             {
-                SubtitleItem subtitleItem = items[index];
-                IEnumerable<string> lines = SubtitleItemToSubtitleEntry(subtitleItem);
+                var linesToUse = GetLinesToUse(subtitleItem);
+                if (PlainTextSubtitleOutputRenderer.ShouldSkipSubtitle(linesToUse))
+                {
+                    continue;
+                }
+
+                IEnumerable<string> lines = SubtitleItemToSubtitleEntry(subtitleItem, linesToUse);
                 foreach (string line in lines)
                 {
                     await writer.WriteLineAsync(line);
