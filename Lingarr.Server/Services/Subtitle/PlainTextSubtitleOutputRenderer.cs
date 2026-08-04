@@ -52,6 +52,11 @@ internal static class PlainTextSubtitleOutputRenderer
         return lines;
     }
 
+    public static bool ContainsAssMarkup(string text)
+    {
+        return AssDrawingBlockRegex.IsMatch(text) || AssOverrideBlockRegex.IsMatch(text);
+    }
+
     public static bool ShouldSkipSubtitle(IReadOnlyList<string> plainTextLines)
     {
         return plainTextLines.Count == 0 || plainTextLines.All(ShouldSkipLine);

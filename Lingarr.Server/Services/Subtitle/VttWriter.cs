@@ -24,12 +24,21 @@ public class VttWriter : ISubtitleWriter
         return lines;
     }
 
-    private static List<string> GetLinesToUse(SubtitleItem subtitleItem)
+    private static List<string> GetLinesToUse(
+        SubtitleItem subtitleItem,
+        bool stripSubtitleFormatting,
+        out bool rendered)
     {
         var linesToUse = subtitleItem.TranslatedLines.Count > 0
             ? subtitleItem.TranslatedLines
             : subtitleItem.Lines;
-        return PlainTextSubtitleOutputRenderer.ConvertToPlainTextLines(string.Join("\\N", linesToUse));
+        var joined = string.Join("\\N", linesToUse);
+        // Only run plain-text rendering for ASS-sourced lines (or explicit stripping).
+        // Valid SRT/VTT markup like <i>/<b>/<u> must survive source-file rewrites.
+        rendered = stripSubtitleFormatting || PlainTextSubtitleOutputRenderer.ContainsAssMarkup(joined);
+        return rendered
+            ? PlainTextSubtitleOutputRenderer.ConvertToPlainTextLines(joined)
+            : linesToUse.ToList();
     }
 
     public async Task WriteStreamAsync(
@@ -57,8 +66,11 @@ public class VttWriter : ISubtitleWriter
             List<SubtitleItem> items = subtitleItems.ToList();
             foreach (var subtitleItem in items)
             {
-                var linesToUse = GetLinesToUse(subtitleItem);
-                if (PlainTextSubtitleOutputRenderer.ShouldSkipSubtitle(linesToUse))
+                var linesToUse = GetLinesToUse(subtitleItem, stripSubtitleFormatting, out var rendered);
+                var shouldSkip = rendered
+                    ? PlainTextSubtitleOutputRenderer.ShouldSkipSubtitle(linesToUse)
+                    : linesToUse.All(string.IsNullOrWhiteSpace);
+                if (shouldSkip)
                 {
                     continue;
                 }
