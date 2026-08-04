@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Lingarr.Core.Enum;
@@ -11,6 +12,15 @@ public class EmbeddedSubtitleCacheService : IEmbeddedSubtitleCacheService
     private const int SourceSnapshotVersion = 1;
     private const string SourceSnapshotSuffix = ".source.json";
     private static readonly JsonSerializerOptions SourceSnapshotJsonOptions = new(JsonSerializerDefaults.Web);
+
+    // Content hashes are memoized per (path, size, timestamps) so repeated validations
+    // of the same media file across tracks/workers do not re-read the whole container.
+    // The same-signature replacement guard still works: the first validation after a
+    // replacement misses the memo and re-hashes.
+    private static readonly ConcurrentDictionary<string, (string Hash, DateTime Utc)>
+        ContentHashCache = new();
+    private static readonly TimeSpan ContentHashCacheTtl = TimeSpan.FromMinutes(10);
+    private const int ContentHashCacheMaxEntries = 512;
 
     private readonly ILogger<EmbeddedSubtitleCacheService> _logger;
 
@@ -141,7 +151,27 @@ public class EmbeddedSubtitleCacheService : IEmbeddedSubtitleCacheService
                 return false;
             }
 
-            var currentContentHash = ComputeContentHash(sourceMediaPath);
+            var cacheKey = BuildContentHashCacheKey(sourceInfo);
+            string? currentContentHash;
+            if (ContentHashCache.TryGetValue(cacheKey, out var memoized) &&
+                DateTime.UtcNow - memoized.Utc < ContentHashCacheTtl)
+            {
+                currentContentHash = memoized.Hash;
+            }
+            else
+            {
+                currentContentHash = ComputeContentHash(sourceMediaPath);
+                if (!string.IsNullOrWhiteSpace(currentContentHash))
+                {
+                    if (ContentHashCache.Count >= ContentHashCacheMaxEntries)
+                    {
+                        ContentHashCache.Clear();
+                    }
+
+                    ContentHashCache[cacheKey] = (currentContentHash, DateTime.UtcNow);
+                }
+            }
+
             return string.Equals(
                 currentContentHash,
                 snapshot.ContentHash,
@@ -319,6 +349,16 @@ public class EmbeddedSubtitleCacheService : IEmbeddedSubtitleCacheService
             CreationUtcTicks = sourceInfo.CreationTimeUtc.Ticks,
             ContentHash = contentHash
         };
+    }
+
+    private static string BuildContentHashCacheKey(FileInfo sourceInfo)
+    {
+        return string.Join(
+            "|",
+            sourceInfo.FullName,
+            sourceInfo.Length,
+            sourceInfo.LastWriteTimeUtc.Ticks,
+            sourceInfo.CreationTimeUtc.Ticks);
     }
 
     private static string ComputeContentHash(string path)
