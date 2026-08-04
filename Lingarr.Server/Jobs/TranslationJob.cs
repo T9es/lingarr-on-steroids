@@ -2682,22 +2682,42 @@ Exception? lastException = null;
                 await BeforeFinalCompletionCommitAsync();
             }
 
-            transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
-            var rowsUpdated = await completionQuery
-                .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(item => item.TranslatedSubtitle, translatedSubtitle)
-                    .SetProperty(item => item.GeneratedOutputFormats, generatedOutputFormats)
-                    .SetProperty(item => item.GeneratedSubtitlePaths, generatedSubtitlePaths)
-                    .SetProperty(item => item.CompletedAt, now)
-                    .SetProperty(item => item.Status, TranslationStatus.Completed)
-                    .SetProperty(item => item.IsActive, (bool?)null)
-                    .SetProperty(item => item.PausedAt, (DateTime?)null)
-                    .SetProperty(item => item.PauseReason, (string?)null)
-                    .SetProperty(item => item.PausedProvider, (string?)null)
-                    .SetProperty(item => item.RetryCount, 0)
-                    .SetProperty(item => item.NextRetryAt, (DateTime?)null)
-                    .SetProperty(item => item.JobId, (string?)null)
-                    .SetProperty(item => item.UpdatedAt, now), cancellationToken);
+            (transaction, var rowsUpdated) = await _dbContext.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+            {
+                var tx = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+                try
+                {
+                    var rows = await completionQuery
+                        .ExecuteUpdateAsync(setters => setters
+                            .SetProperty(item => item.TranslatedSubtitle, translatedSubtitle)
+                            .SetProperty(item => item.GeneratedOutputFormats, generatedOutputFormats)
+                            .SetProperty(item => item.GeneratedSubtitlePaths, generatedSubtitlePaths)
+                            .SetProperty(item => item.CompletedAt, now)
+                            .SetProperty(item => item.Status, TranslationStatus.Completed)
+                            .SetProperty(item => item.IsActive, (bool?)null)
+                            .SetProperty(item => item.PausedAt, (DateTime?)null)
+                            .SetProperty(item => item.PauseReason, (string?)null)
+                            .SetProperty(item => item.PausedProvider, (string?)null)
+                            .SetProperty(item => item.RetryCount, 0)
+                            .SetProperty(item => item.NextRetryAt, (DateTime?)null)
+                            .SetProperty(item => item.JobId, (string?)null)
+                            .SetProperty(item => item.UpdatedAt, now), cancellationToken);
+                    return (tx, rows);
+                }
+                catch
+                {
+                    try
+                    {
+                        await tx.RollbackAsync(CancellationToken.None);
+                    }
+                    finally
+                    {
+                        await tx.DisposeAsync();
+                    }
+
+                    throw;
+                }
+            });
 
             if (rowsUpdated == 0)
             {

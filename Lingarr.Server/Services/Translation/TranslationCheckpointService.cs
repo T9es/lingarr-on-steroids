@@ -198,6 +198,31 @@ public class TranslationCheckpointService : ITranslationCheckpointService
         var path = GetCheckpointPath(checkpoint.TranslationRequestId);
         var checkpointLock = GetCheckpointLock(path);
         await checkpointLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (_dbContext == null)
+            {
+                await SaveCheckpointCoreAsync(checkpoint, path, ownershipToken, cancellationToken);
+            }
+            else
+            {
+                var strategy = _dbContext.Database.CreateExecutionStrategy();
+                await strategy.ExecuteAsync(async () =>
+                    await SaveCheckpointCoreAsync(checkpoint, path, ownershipToken, cancellationToken));
+            }
+        }
+        finally
+        {
+            checkpointLock.Release();
+        }
+    }
+
+    private async Task SaveCheckpointCoreAsync(
+        TranslationCheckpoint checkpoint,
+        string path,
+        string? ownershipToken,
+        CancellationToken cancellationToken)
+    {
         CheckpointOwnershipLease? ownershipLease = null;
         try
         {
@@ -259,8 +284,6 @@ public class TranslationCheckpointService : ITranslationCheckpointService
             {
                 await ownershipLease.DisposeAsync();
             }
-
-            checkpointLock.Release();
         }
     }
 
@@ -289,6 +312,36 @@ public class TranslationCheckpointService : ITranslationCheckpointService
         var path = GetCheckpointPath(translationRequestId);
         var checkpointLock = GetCheckpointLock(path);
         await checkpointLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (_dbContext == null)
+            {
+                await SaveTranslationCoreAsync(
+                    path, translationRequestId, sourceFingerprint, position, translatedText, ownershipToken, cancellationToken);
+            }
+            else
+            {
+                var strategy = _dbContext.Database.CreateExecutionStrategy();
+                await strategy.ExecuteAsync(async () =>
+                    await SaveTranslationCoreAsync(
+                        path, translationRequestId, sourceFingerprint, position, translatedText, ownershipToken, cancellationToken));
+            }
+        }
+        finally
+        {
+            checkpointLock.Release();
+        }
+    }
+
+    private async Task SaveTranslationCoreAsync(
+        string path,
+        int translationRequestId,
+        string sourceFingerprint,
+        int position,
+        string translatedText,
+        string? ownershipToken,
+        CancellationToken cancellationToken)
+    {
         CheckpointOwnershipLease? ownershipLease = null;
         try
         {
@@ -337,8 +390,6 @@ public class TranslationCheckpointService : ITranslationCheckpointService
             {
                 await ownershipLease.DisposeAsync();
             }
-
-            checkpointLock.Release();
         }
     }
 
@@ -353,6 +404,31 @@ public class TranslationCheckpointService : ITranslationCheckpointService
         var path = GetCheckpointPath(translationRequestId);
         var checkpointLock = GetCheckpointLock(path);
         await checkpointLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (_dbContext == null)
+            {
+                await DeleteCheckpointCoreAsync(path, translationRequestId, ownershipToken, cancellationToken);
+            }
+            else
+            {
+                var strategy = _dbContext.Database.CreateExecutionStrategy();
+                await strategy.ExecuteAsync(async () =>
+                    await DeleteCheckpointCoreAsync(path, translationRequestId, ownershipToken, cancellationToken));
+            }
+        }
+        finally
+        {
+            checkpointLock.Release();
+        }
+    }
+
+    private async Task DeleteCheckpointCoreAsync(
+        string path,
+        int translationRequestId,
+        string? ownershipToken,
+        CancellationToken cancellationToken)
+    {
         CheckpointDatabaseLease? deletionLease = null;
         try
         {
@@ -389,8 +465,6 @@ public class TranslationCheckpointService : ITranslationCheckpointService
             {
                 await deletionLease.DisposeAsync();
             }
-
-            checkpointLock.Release();
         }
     }
 
