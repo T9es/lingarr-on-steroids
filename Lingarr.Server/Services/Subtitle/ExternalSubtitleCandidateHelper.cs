@@ -21,24 +21,46 @@ public static class ExternalSubtitleCandidateHelper
             return null;
         }
 
-        foreach (var sourceLanguage in configuredSourceLanguages
-                     .Select(SubtitleLanguageHelper.NormalizeLanguageCode)
-                     .Where(language => !string.IsNullOrWhiteSpace(language))
-                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        var languages = configuredSourceLanguages
+            .Select(SubtitleLanguageHelper.NormalizeLanguageCode)
+            .Where(language => !string.IsNullOrWhiteSpace(language))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var candidatesByLanguage = new List<(string Language, IReadOnlyList<Subtitles> Ordered)>();
+        foreach (var sourceLanguage in languages)
         {
             var sourceCandidates = validSubtitles
                 .Where(s => SubtitleLanguageHelper.LanguageMatches(s.Language, sourceLanguage))
                 .ToList();
-            if (sourceCandidates.Count == 0)
+            if (sourceCandidates.Count > 0)
             {
-                continue;
+                candidatesByLanguage.Add(
+                    (sourceLanguage, OrderPrimarySourceCandidates(sourceCandidates, ignoreCaptions)));
             }
+        }
 
-            var selectedCandidate = OrderPrimarySourceCandidates(sourceCandidates, ignoreCaptions)
-                .FirstOrDefault();
-            if (selectedCandidate != null)
+        // First pass: clean (non-pathological) candidates across all configured languages.
+        // A drawing-heavy ASS in an earlier language must not shadow a clean subtitle in a
+        // later one. Pathological candidates always sort last, so checking the first item
+        // is sufficient.
+        foreach (var (sourceLanguage, ordered) in candidatesByLanguage)
+        {
+            var first = ordered.FirstOrDefault();
+            if (first != null && !IsPathologicalAssSource(first))
             {
-                return new ExternalSubtitleSourceSelection(selectedCandidate, sourceLanguage);
+                return new ExternalSubtitleSourceSelection(first, sourceLanguage);
+            }
+        }
+
+        // Last-resort pass: pathological ASS is only used when no clean candidate exists
+        // in any configured language.
+        foreach (var (sourceLanguage, ordered) in candidatesByLanguage)
+        {
+            var fallback = ordered.FirstOrDefault(IsPathologicalAssSource);
+            if (fallback != null)
+            {
+                return new ExternalSubtitleSourceSelection(fallback, sourceLanguage);
             }
         }
 
