@@ -187,6 +187,20 @@ internal static class TranslationEchoGuard
             return false;
         }
 
+        // Short lines (single words, names, numbers, interjections) are legitimately
+        // returned unchanged; flagging them as echoes produces false "missing"
+        // translation failures that fail the whole request.
+        if (normalized.Length < 12)
+        {
+            return false;
+        }
+
+        var wordCount = normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
+        if (wordCount < 3)
+        {
+            return false;
+        }
+
         comparable = normalized;
         return true;
     }

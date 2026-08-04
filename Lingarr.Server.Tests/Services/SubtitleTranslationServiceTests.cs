@@ -2008,7 +2008,7 @@ public class SubtitleTranslationServiceTests
     }
 
     [Fact]
-    public async Task TranslateSubtitlesBatch_WhenSingleResidualDialogueEchoRemains_StillReportsMissing()
+    public async Task TranslateSubtitlesBatch_WhenSingleResidualDialogueEchoRemains_PreservesSourceWithinTolerance()
     {
         var translationServiceMock = new Mock<ITranslationService>();
         var batchServiceMock = translationServiceMock.As<IBatchTranslationService>();
@@ -2075,7 +2075,7 @@ public class SubtitleTranslationServiceTests
             .Select(position => Item(position, position == 1 ? "Whoa, whoa, whoa." : $"Subtitle line number {position}"))
             .ToList();
 
-        var exception = await Assert.ThrowsAsync<MissingTranslationException>(() => service.TranslateSubtitlesBatch(
+        var result = await service.TranslateSubtitlesBatch(
             subtitles,
             new TranslationRequest
             {
@@ -2090,10 +2090,12 @@ public class SubtitleTranslationServiceTests
             preserveAssFormatting: false,
             batchSize: 100,
             batchRetryMode: "deferred",
-            cancellationToken: CancellationToken.None));
+            cancellationToken: CancellationToken.None);
 
-        Assert.Contains(1, exception.MissingCues.Select(cue => cue.Position));
-        Assert.Empty(subtitles[0].TranslatedLines);
+        // A single residual echo is within the 2%/25 tolerance: the source text is
+        // preserved and the request succeeds instead of failing the whole file.
+        Assert.Equal(subtitles, result);
+        Assert.Equal(["Whoa, whoa, whoa."], subtitles[0].TranslatedLines);
         Assert.Equal("Przetlumaczona linia 2", subtitles[1].TranslatedLines[0]);
     }
 

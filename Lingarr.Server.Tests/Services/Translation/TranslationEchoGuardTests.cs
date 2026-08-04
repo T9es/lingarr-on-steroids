@@ -53,7 +53,7 @@ public class TranslationEchoGuardTests
     }
 
     [Fact]
-    public void AnalyzeBatch_WhenShortOrdinaryCueEchoesSource_FlagsEcho()
+    public void AnalyzeBatch_WhenShortOrdinaryCueEchoesSource_DoesNotFlagEcho()
     {
         var sourceItems = new List<BatchSubtitleItem>
         {
@@ -70,7 +70,9 @@ public class TranslationEchoGuardTests
             sourceLanguage: "en",
             targetLanguage: "pl");
 
-        Assert.Equal([1], analysis.EchoedPositions);
-        Assert.Equal(1, analysis.ComparableCount);
+        // Short cues (single words, interjections, names) are legitimately returned
+        // unchanged; they are exempt from echo flagging so they cannot fail the request.
+        Assert.Empty(analysis.EchoedPositions);
+        Assert.Equal(0, analysis.ComparableCount);
     }
 }
