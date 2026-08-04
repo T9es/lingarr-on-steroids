@@ -163,26 +163,24 @@ public class DeferredRepairService : IDeferredRepairService
                     "[{FileId}] Repair attempt {Attempt}: Processing {RequestCount} failed representatives in {ChunkCount} scheduling chunk(s) of max size {BatchSize}",
                     fileIdentifier, attempt, repairRequests.Count, chunks.Count, batchSize);
 
-                var requestNumber = 0;
                 for (int i = 0; i < chunks.Count; i++)
                 {
                     var chunk = chunks[i];
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    var chunkResults = await fallbackService.TranslateWithFallbackAsync(
+                        chunk,
+                        batchService,
+                        sourceLanguage,
+                        targetLanguage,
+                        3,
+                        fileIdentifier,
+                        i + 1,
+                        chunks.Count,
+                        cancellationToken);
+
                     foreach (var repairRequest in chunk)
                     {
-                        cancellationToken.ThrowIfCancellationRequested();
-                        requestNumber++;
-
-                        var chunkResults = await fallbackService.TranslateWithFallbackAsync(
-                            [repairRequest],
-                            batchService,
-                            sourceLanguage,
-                            targetLanguage,
-                            3,
-                            fileIdentifier,
-                            requestNumber,
-                            repairRequests.Count,
-                            cancellationToken);
-
                         if (repairBatch.FailedPositions.Contains(repairRequest.Position) &&
                             chunkResults.TryGetValue(repairRequest.Position, out var translated) &&
                             !string.IsNullOrWhiteSpace(translated))

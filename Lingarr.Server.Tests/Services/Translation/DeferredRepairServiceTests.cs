@@ -152,6 +152,56 @@ public class DeferredRepairServiceTests
     }
 
     [Fact]
+    public async Task ExecuteRepairAsync_BatchesMultipleFailedItemsPerApiCall()
+    {
+        var fallbackServiceMock = new Mock<IBatchFallbackService>();
+        var calls = new List<List<BatchSubtitleItem>>();
+
+        fallbackServiceMock
+            .Setup(service => service.TranslateWithFallbackAsync(
+                It.IsAny<List<BatchSubtitleItem>>(),
+                It.IsAny<IBatchTranslationService>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>()))
+            .Callback((List<BatchSubtitleItem> batch, IBatchTranslationService _, string _, string _, int _, string _, int _, int _, CancellationToken _) =>
+            {
+                calls.Add(batch);
+            })
+            .Returns((List<BatchSubtitleItem> batch, IBatchTranslationService _, string _, string _, int _, string _, int _, int _, CancellationToken _) =>
+                Task.FromResult(batch.ToDictionary(item => item.Position, item => $"t{item.Position}")));
+
+        var positions = Enumerable.Range(1, 250).ToList();
+        var repairBatch = new ContextualRepairBatch
+        {
+            Items = positions.Select(position => new BatchSubtitleItem { Position = position, Line = $"L{position}" }).ToList(),
+            FailedPositions = positions.ToHashSet(),
+            Ranges = [new ContextRange(1, 250)]
+        };
+
+        var service = new DeferredRepairService(Mock.Of<ILogger<DeferredRepairService>>());
+        var result = await service.ExecuteRepairAsync(
+            repairBatch,
+            Mock.Of<IBatchTranslationService>(),
+            fallbackServiceMock.Object,
+            "en",
+            "pl",
+            batchSize: 100,
+            maxRetries: 1,
+            fileIdentifier: "test",
+            CancellationToken.None);
+
+        // 250 failed items split into 100/100/50 -> exactly 3 API calls, not 250
+        Assert.Equal(3, calls.Count);
+        Assert.Equal([100, 100, 50], calls.Select(call => call.Count).ToArray());
+        Assert.Equal(250, result.Count);
+    }
+
+    [Fact]
     public async Task ExecuteRepairAsync_WhenRetriesAreExhausted_ReturnsMissingTranslationData()
     {
         var fallbackServiceMock = new Mock<IBatchFallbackService>();
