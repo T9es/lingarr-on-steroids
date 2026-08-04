@@ -342,55 +342,45 @@ public class TranslationCheckpointService : ITranslationCheckpointService
         string? ownershipToken,
         CancellationToken cancellationToken)
     {
-        CheckpointOwnershipLease? ownershipLease = null;
-        try
+        // Per-cue saves run for every translated cue (hundreds per episode). Open a
+        // DB transaction per cue would cost hundreds of BEGIN/COMMIT round-trips and
+        // hold the request-row lock across the checkpoint file write, blocking
+        // pause/cancel/claim. Ownership is instead verified with cheap reads before
+        // and immediately before the atomic rename; a lost attempt cannot publish.
+        await EnsureAttemptOwnershipAsync(
+            translationRequestId,
+            ownershipToken,
+            cancellationToken);
+        Directory.CreateDirectory(_checkpointRoot);
+        var checkpoint = await LoadAsync(translationRequestId, sourceFingerprint, cancellationToken) ??
+                         new TranslationCheckpoint
+                         {
+                             TranslationRequestId = translationRequestId,
+                             SourceFingerprint = sourceFingerprint
+                         };
+
+        if (_beforeCheckpointWriteAsync != null)
         {
-            ownershipLease = await BeginAttemptOwnershipLeaseAsync(
+            await _beforeCheckpointWriteAsync();
+        }
+
+        await EnsureAttemptOwnershipAsync(
+            translationRequestId,
+            ownershipToken,
+            cancellationToken);
+        checkpoint.Translations[position] = translatedText;
+        checkpoint.UpdatedAtUtc = DateTime.UtcNow;
+        checkpoint.OwnershipToken = ownershipToken;
+        await WriteCheckpointAtomicallyAsync(
+            path,
+            checkpoint,
+            cancellationToken,
+            () => EnsureAttemptOwnershipAsync(
                 translationRequestId,
                 ownershipToken,
-                cancellationToken);
-            Directory.CreateDirectory(_checkpointRoot);
-            var checkpoint = await LoadAsync(translationRequestId, sourceFingerprint, cancellationToken) ??
-                             new TranslationCheckpoint
-                             {
-                                 TranslationRequestId = translationRequestId,
-                                 SourceFingerprint = sourceFingerprint
-                             };
+                cancellationToken));
 
-            if (_beforeCheckpointWriteAsync != null)
-            {
-                await _beforeCheckpointWriteAsync();
-            }
-
-            await EnsureAttemptOwnershipAsync(
-                translationRequestId,
-                ownershipToken,
-                cancellationToken);
-            checkpoint.Translations[position] = translatedText;
-            checkpoint.UpdatedAtUtc = DateTime.UtcNow;
-            checkpoint.OwnershipToken = ownershipToken;
-            await WriteCheckpointAtomicallyAsync(
-                path,
-                checkpoint,
-                cancellationToken,
-                () => EnsureAttemptOwnershipAsync(
-                    translationRequestId,
-                    ownershipToken,
-                    cancellationToken));
-            if (ownershipLease != null)
-            {
-                await ownershipLease.CommitAsync();
-            }
-
-            TrackLoadedCheckpoint(checkpoint);
-        }
-        finally
-        {
-            if (ownershipLease != null)
-            {
-                await ownershipLease.DisposeAsync();
-            }
-        }
+        TrackLoadedCheckpoint(checkpoint);
     }
 
     public Task DeleteAsync(int translationRequestId, CancellationToken cancellationToken)
