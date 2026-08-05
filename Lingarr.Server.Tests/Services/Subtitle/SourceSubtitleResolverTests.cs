@@ -358,6 +358,255 @@ public sealed class SourceSubtitleResolverTests : IDisposable
             Times.Never);
     }
 
+    [Fact]
+    public async Task ResolveReadableSourcePathAsync_AdoptsSoleVideoFileWhenDbFileNameIsStale()
+    {
+        var mediaPath = Path.Combine(_tempDirectory, "actual.release.mkv");
+        await File.WriteAllTextAsync(mediaPath, "replacement release");
+
+        var movie = new Movie
+        {
+            Id = 104,
+            RadarrId = 104,
+            Title = "Movie",
+            FileName = "stale.file.name.mkv", // not on disk
+            Path = _tempDirectory,
+            DateAdded = DateTime.UtcNow
+        };
+        _dbContext.Movies.Add(movie);
+        await _dbContext.SaveChangesAsync();
+
+        var extractedPath = Path.Combine(_tempDirectory, "extracted.srt");
+        await File.WriteAllTextAsync(extractedPath, "1\n00:00:01,000 --> 00:00:02,000\nHello");
+
+        var extractionService = new Mock<ISubtitleExtractionService>();
+        extractionService
+            .Setup(service => service.TryExtractEmbeddedSubtitleForRequestAsync(
+                movie.Id,
+                MediaType.Movie,
+                "eng",
+                null,
+                null))
+            .ReturnsAsync(extractedPath);
+
+        var resolver = new SourceSubtitleResolver(
+            _dbContext,
+            Mock.Of<ISubtitleService>(),
+            extractionService.Object,
+            Mock.Of<ISourceSubtitleSnapshotService>(),
+            new EmbeddedSubtitleCacheService(NullLogger<EmbeddedSubtitleCacheService>.Instance),
+            NullLogger<SourceSubtitleResolver>.Instance);
+        var request = new TranslationRequest
+        {
+            Id = 204,
+            Title = movie.Title,
+            SourceLanguage = "eng",
+            TargetLanguage = "pol",
+            MediaId = movie.Id,
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Pending
+        };
+
+        var resolvedPath = await resolver.ResolveReadableSourcePathAsync(request);
+
+        Assert.Equal(extractedPath, resolvedPath);
+        var persisted = await _dbContext.Movies.AsNoTracking().SingleAsync(item => item.Id == movie.Id);
+        Assert.Equal("actual.release.mkv", persisted.FileName);
+        extractionService.Verify(service => service.TryExtractEmbeddedSubtitleForRequestAsync(
+            movie.Id,
+            MediaType.Movie,
+            "eng",
+            null,
+            null), Times.Once);
+    }
+
+    [Fact]
+    public async Task ResolveReadableSourcePathAsync_FailsWhenMultipleVideoFilesExist()
+    {
+        await File.WriteAllTextAsync(Path.Combine(_tempDirectory, "first.mkv"), "first");
+        await File.WriteAllTextAsync(Path.Combine(_tempDirectory, "second.mkv"), "second");
+
+        var movie = new Movie
+        {
+            Id = 105,
+            RadarrId = 105,
+            Title = "Movie",
+            FileName = "stale.file.name.mkv", // not on disk
+            Path = _tempDirectory,
+            DateAdded = DateTime.UtcNow
+        };
+        _dbContext.Movies.Add(movie);
+        await _dbContext.SaveChangesAsync();
+
+        var extractionService = new Mock<ISubtitleExtractionService>();
+        extractionService
+            .Setup(service => service.TryExtractEmbeddedSubtitleForRequestAsync(
+                It.IsAny<int>(),
+                It.IsAny<MediaType>(),
+                It.IsAny<string>(),
+                It.IsAny<List<int>?>(),
+                It.IsAny<int?>()))
+            .ReturnsAsync((string?)null);
+
+        var resolver = new SourceSubtitleResolver(
+            _dbContext,
+            Mock.Of<ISubtitleService>(),
+            extractionService.Object,
+            Mock.Of<ISourceSubtitleSnapshotService>(),
+            new EmbeddedSubtitleCacheService(NullLogger<EmbeddedSubtitleCacheService>.Instance),
+            NullLogger<SourceSubtitleResolver>.Instance);
+        var request = new TranslationRequest
+        {
+            Id = 205,
+            Title = movie.Title,
+            SourceLanguage = "eng",
+            TargetLanguage = "pol",
+            MediaId = movie.Id,
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Pending
+        };
+
+        var resolvedPath = await resolver.ResolveReadableSourcePathAsync(request);
+
+        Assert.Null(resolvedPath);
+        var persisted = await _dbContext.Movies.AsNoTracking().SingleAsync(item => item.Id == movie.Id);
+        Assert.Equal("stale.file.name.mkv", persisted.FileName);
+    }
+
+    [Fact]
+    public async Task ResolveReadableSourcePathAsync_ResyncsEmbeddedRowsWhenMediaFileReplaced()
+    {
+        var mediaPath = Path.Combine(_tempDirectory, "replacement.release.mkv");
+        await File.WriteAllTextAsync(mediaPath, "replacement release");
+
+        var movie = new Movie
+        {
+            Id = 106,
+            RadarrId = 106,
+            Title = "Movie",
+            FileName = "old.release.mkv", // not on disk
+            Path = _tempDirectory,
+            DateAdded = DateTime.UtcNow
+        };
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = movie.Id,
+            StreamIndex = 0,
+            Language = "eng",
+            CodecName = "subrip",
+            IsTextBased = true
+        });
+        _dbContext.Movies.Add(movie);
+        await _dbContext.SaveChangesAsync();
+
+        var extractedPath = Path.Combine(_tempDirectory, "extracted.srt");
+        await File.WriteAllTextAsync(extractedPath, "1\n00:00:01,000 --> 00:00:02,000\nHello");
+
+        var extractionService = new Mock<ISubtitleExtractionService>();
+        extractionService
+            .Setup(service => service.TryExtractEmbeddedSubtitleForRequestAsync(
+                movie.Id,
+                MediaType.Movie,
+                "eng",
+                null,
+                0))
+            .ReturnsAsync(extractedPath);
+
+        var resolver = new SourceSubtitleResolver(
+            _dbContext,
+            Mock.Of<ISubtitleService>(),
+            extractionService.Object,
+            Mock.Of<ISourceSubtitleSnapshotService>(),
+            new EmbeddedSubtitleCacheService(NullLogger<EmbeddedSubtitleCacheService>.Instance),
+            NullLogger<SourceSubtitleResolver>.Instance);
+        var request = new TranslationRequest
+        {
+            Id = 206,
+            Title = movie.Title,
+            SourceLanguage = "eng",
+            TargetLanguage = "pol",
+            MediaId = movie.Id,
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Pending,
+            SourceSnapshotStreamIndex = 0
+        };
+
+        var resolvedPath = await resolver.ResolveReadableSourcePathAsync(request);
+
+        Assert.Equal(extractedPath, resolvedPath);
+        extractionService.Verify(
+            service => service.SyncEmbeddedSubtitles(It.IsAny<Movie>()),
+            Times.Once);
+        var persisted = await _dbContext.Movies.AsNoTracking().SingleAsync(item => item.Id == movie.Id);
+        Assert.Equal("replacement.release.mkv", persisted.FileName);
+    }
+
+    [Fact]
+    public async Task ResolveReadableSourcePathAsync_DoesNotResyncRowsWhenDbFileNameMatchesDisk()
+    {
+        var mediaPath = Path.Combine(_tempDirectory, "matching.mkv");
+        await File.WriteAllTextAsync(mediaPath, "unchanged release");
+
+        var movie = new Movie
+        {
+            Id = 107,
+            RadarrId = 107,
+            Title = "Movie",
+            FileName = Path.GetFileName(mediaPath),
+            Path = _tempDirectory,
+            DateAdded = DateTime.UtcNow
+        };
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = movie.Id,
+            StreamIndex = 0,
+            Language = "eng",
+            CodecName = "subrip",
+            IsTextBased = true
+        });
+        _dbContext.Movies.Add(movie);
+        await _dbContext.SaveChangesAsync();
+
+        var extractedPath = Path.Combine(_tempDirectory, "extracted.srt");
+        await File.WriteAllTextAsync(extractedPath, "1\n00:00:01,000 --> 00:00:02,000\nHello");
+
+        var extractionService = new Mock<ISubtitleExtractionService>();
+        extractionService
+            .Setup(service => service.TryExtractEmbeddedSubtitleForRequestAsync(
+                movie.Id,
+                MediaType.Movie,
+                "eng",
+                null,
+                0))
+            .ReturnsAsync(extractedPath);
+
+        var resolver = new SourceSubtitleResolver(
+            _dbContext,
+            Mock.Of<ISubtitleService>(),
+            extractionService.Object,
+            Mock.Of<ISourceSubtitleSnapshotService>(),
+            new EmbeddedSubtitleCacheService(NullLogger<EmbeddedSubtitleCacheService>.Instance),
+            NullLogger<SourceSubtitleResolver>.Instance);
+        var request = new TranslationRequest
+        {
+            Id = 207,
+            Title = movie.Title,
+            SourceLanguage = "eng",
+            TargetLanguage = "pol",
+            MediaId = movie.Id,
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Pending,
+            SourceSnapshotStreamIndex = 0
+        };
+
+        var resolvedPath = await resolver.ResolveReadableSourcePathAsync(request);
+
+        Assert.Equal(extractedPath, resolvedPath);
+        extractionService.Verify(
+            service => service.SyncEmbeddedSubtitles(It.IsAny<Movie>()),
+            Times.Never);
+    }
+
     public void Dispose()
     {
         _dbContext.Dispose();
