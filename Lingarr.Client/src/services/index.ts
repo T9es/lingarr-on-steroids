@@ -1,6 +1,7 @@
 import axios, { AxiosStatic } from 'axios'
 import { Services } from '@/ts'
 import { subtitleService } from './subtitleService'
+import { blockedMediaService } from './blockedMediaService'
 import { translateService } from './translateService'
 import { settingService } from './settingService'
 import { mediaService } from './mediaService'
@@ -22,6 +23,7 @@ import { dashboardService } from '@/services/dashboardService'
 const services = (axios: AxiosStatic): Services => ({
     setting: settingService(axios),
     subtitle: subtitleService(axios),
+    blockedMedia: blockedMediaService(axios),
     translate: translateService(axios),
     chutes: chutesService(axios),
     nanoGpt: nanoGptService(axios),

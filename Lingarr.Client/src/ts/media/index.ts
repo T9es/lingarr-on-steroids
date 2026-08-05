@@ -246,6 +246,18 @@ export const MEDIA_TYPE = {
 
 export type MediaType = (typeof MEDIA_TYPE)[keyof typeof MEDIA_TYPE]
 
+export interface IBlockedMediaItem {
+    mediaId: number
+    mediaType: 'movie' | 'episode'
+    title: string
+    translationState: TranslationStateType
+    streamIndex?: number | null
+    ocrStatus?: number | null
+    ocrQualityScore?: number | null
+    ocrIssueSummary?: string | null
+    lastSubtitleCheckAt?: string | null
+}
+
 export const TRANSLATION_WORKLOAD_KIND = {
     LIBRARY: 'Library',
     CUSTOM_SOURCE: 'CustomSource',

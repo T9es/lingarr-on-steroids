@@ -261,6 +261,16 @@
     "noTranslationsNeeded": "Aucune traduction nécessaire"
   },
   "translations": {
+    "lastSubtitleCheck": "Dernière vérification",
+    "loadBlockedMediaError": "Échec du chargement des médias bloqués.",
+    "noBlockedMedia": "Aucun média bloqué.",
+    "ocrIssueSummary": "Problème",
+    "ocrQualityScore": "Score de qualité",
+    "ocrRetryQueued": "OCR mis en file",
+    "recheck": "Re-vérifier",
+    "retryOcr": "Réessayer l'OCR",
+    "streamIndex": "Flux",
+    "tabBlocked": "Médias bloqués",
     "title": "Titre",
     "source": "Origine",
     "target": "Cible",

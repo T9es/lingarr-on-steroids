@@ -1,5 +1,6 @@
 import {
     DirectoryItem,
+    IBlockedMediaItem,
     ICustomMediaItem,
     ICustomSource,
     ICreateUploadBatchRequest,
@@ -28,6 +29,7 @@ import { IPathMapping } from '@/ts/index'
 export interface Services {
     setting: ISettingService
     subtitle: ISubtitleService
+    blockedMedia: IBlockedMediaService
     translate: ITranslateService
     chutes: IChutesService
     nanoGpt: INanoGptService
@@ -64,6 +66,10 @@ export interface IMediaService {
     threshold<T>(mediaType: MediaType, id: number, hours: string): Promise<T>
     priority<T>(mediaType: MediaType, id: number): Promise<T>
     integrityCheck<T>(mediaType: MediaType, id: number): Promise<T>
+}
+
+export interface IBlockedMediaService {
+    getBlockedMedia<T = IBlockedMediaItem[]>(limit?: number): Promise<T>
 }
 
 export interface ISettingService {

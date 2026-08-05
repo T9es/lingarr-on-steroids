@@ -261,6 +261,16 @@
     "noTranslationsNeeded": "No translations needed"
   },
   "translations": {
+    "lastSubtitleCheck": "Last check",
+    "loadBlockedMediaError": "Failed to load blocked media.",
+    "noBlockedMedia": "No blocked media items.",
+    "ocrIssueSummary": "Issue",
+    "ocrQualityScore": "Quality score",
+    "ocrRetryQueued": "OCR queued",
+    "recheck": "Re-check",
+    "retryOcr": "Retry OCR",
+    "streamIndex": "Stream",
+    "tabBlocked": "Blocked media",
     "title": "Title",
     "source": "Source",
     "target": "Target",

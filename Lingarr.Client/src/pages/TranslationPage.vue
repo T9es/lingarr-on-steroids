@@ -16,6 +16,16 @@
                 <button
                     class="px-6 py-3 font-medium transition-colors"
                     :class="
+                        activeTab === 'blocked'
+                            ? 'border-accent text-accent border-b-2'
+                            : 'text-secondary-content hover:text-primary-content'
+                    "
+                    @click="setActiveTab('blocked')">
+                    {{ translate('translations.tabBlocked') }}
+                </button>
+                <button
+                    class="px-6 py-3 font-medium transition-colors"
+                    :class="
                         activeTab === 'uploadWorkspace'
                             ? 'border-accent text-accent border-b-2'
                             : 'text-secondary-content hover:text-primary-content'
@@ -529,6 +539,116 @@
                     :page-size="translationRequests.pageSize" />
             </div>
 
+            <div v-if="hasOpenedBlockedTab" v-show="activeTab === 'blocked'">
+                <div class="w-full space-y-4 px-4 py-4">
+                    <!-- Blocked media -->
+                    <div class="border-accent bg-secondary rounded-md border p-4 shadow-sm">
+                        <div class="mb-3 flex items-center justify-between">
+                            <h2 class="text-sm font-semibold tracking-wide uppercase">
+                                {{ translate('translations.tabBlocked') }}
+                            </h2>
+                            <div class="flex items-center gap-2">
+                                <ReloadComponent @toggle:update="loadBlockedMedia" />
+                                <span class="text-secondary-content text-xs">
+                                    {{ blockedMedia.length }}
+                                    {{ translate('common.items') }}
+                                </span>
+                            </div>
+                        </div>
+                        <div v-if="blockedMediaError" class="text-error mb-3 text-xs">
+                            {{ blockedMediaError }}
+                        </div>
+                        <div
+                            v-if="blockedMedia.length"
+                            class="max-h-[32rem] space-y-3 overflow-y-auto pr-1">
+                            <div
+                                v-for="item in blockedMedia"
+                                :key="`blocked-${item.mediaType}-${item.mediaId}`"
+                                class="border-secondary/40 bg-tertiary flex flex-col gap-2 rounded-md border px-3 py-2 md:grid md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+                                <div class="min-w-0">
+                                    <div class="flex min-w-0 flex-wrap items-center gap-2">
+                                        <div class="min-w-0 flex-1 overflow-hidden">
+                                            <span
+                                                class="block min-w-0 truncate font-semibold"
+                                                :title="item.title">
+                                                {{ item.title }}
+                                            </span>
+                                        </div>
+                                        <div class="flex shrink-0 flex-wrap items-center gap-2">
+                                            <TranslationStateBadge
+                                                :state="item.translationState"
+                                                show-label />
+                                        </div>
+                                    </div>
+                                    <div
+                                        v-if="item.translationState === TRANSLATION_STATE.OCR_BLOCKED"
+                                        class="text-secondary-content mt-1 flex flex-wrap items-center gap-2 text-xs">
+                                        <span>
+                                            {{ translate('translations.streamIndex') }}
+                                            {{ item.streamIndex }}
+                                        </span>
+                                        <span v-if="item.ocrQualityScore != null">
+                                            {{ translate('translations.ocrQualityScore') }}:
+                                            {{ item.ocrQualityScore }}/100
+                                        </span>
+                                        <span
+                                            v-if="item.ocrIssueSummary"
+                                            class="truncate"
+                                            :title="item.ocrIssueSummary">
+                                            {{ translate('translations.ocrIssueSummary') }}:
+                                            {{ item.ocrIssueSummary }}
+                                        </span>
+                                    </div>
+                                    <div
+                                        v-else-if="
+                                            item.translationState ===
+                                                TRANSLATION_STATE.AWAITING_SOURCE &&
+                                            item.lastSubtitleCheckAt
+                                        "
+                                        class="text-secondary-content mt-1 text-xs">
+                                        {{ translate('translations.lastSubtitleCheck') }}:
+                                        {{ new Date(item.lastSubtitleCheckAt).toLocaleString() }}
+                                    </div>
+                                </div>
+                                <div class="flex shrink-0 items-center justify-end gap-2">
+                                    <span
+                                        v-if="ocrRetryMessage[blockedItemKey(item)]"
+                                        class="text-secondary-content text-xs">
+                                        {{ ocrRetryMessage[blockedItemKey(item)] }}
+                                    </span>
+                                    <span
+                                        v-if="ocrRetryError[blockedItemKey(item)]"
+                                        class="text-error text-xs">
+                                        {{ ocrRetryError[blockedItemKey(item)] }}
+                                    </span>
+                                    <button
+                                        v-if="
+                                            item.translationState ===
+                                                TRANSLATION_STATE.OCR_BLOCKED
+                                        "
+                                        class="border-accent hover:bg-accent cursor-pointer rounded border px-3 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+                                        :disabled="
+                                            ocrRetryingKey === blockedItemKey(item) ||
+                                            !item.streamIndex
+                                        "
+                                        @click="retryOcr(item)">
+                                        {{ translate('translations.retryOcr') }}
+                                    </button>
+                                    <span
+                                        v-else
+                                        class="border-accent/30 text-secondary-content rounded border px-3 py-1 text-xs">
+                                        {{ translate('translations.recheck') }}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        <div v-else-if="!blockedMediaError" class="text-secondary-content py-4 text-center text-sm">
+                            {{ translate('translations.noBlockedMedia') }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div v-if="hasOpenedUploadWorkspaceTab" v-show="activeTab === 'uploadWorkspace'">
                 <UploadWorkspaceTab />
             </div>
@@ -608,18 +728,21 @@ import { ref, onMounted, onUnmounted, ComputedRef, computed } from 'vue'
 import {
     Hub,
     IFilter,
+    IBlockedMediaItem,
     IPagedResult,
     IRequestProgress,
     ITranslationRequest,
     ITranslationRequestLog,
     MEDIA_TYPE,
     TRANSLATION_ACTIONS,
+    TRANSLATION_STATE,
     TRANSLATION_STATUS
 } from '@/ts'
 import { useTranslationRequestStore } from '@/store/translationRequest'
 import { useSignalR } from '@/composables/useSignalR'
 import useDebounce from '@/composables/useDebounce'
 import { useI18n } from '@/plugins/i18n'
+import services from '@/services'
 import PaginationComponent from '@/components/common/PaginationComponent.vue'
 import SortControls from '@/components/common/SortControls.vue'
 import SearchComponent from '@/components/common/SearchComponent.vue'
@@ -628,6 +751,7 @@ import TranslationStatus from '@/components/common/TranslationStatus.vue'
 import TranslationProgress from '@/components/common/TranslationProgress.vue'
 import TranslationAction from '@/components/common/TranslationAction.vue'
 import TranslationCompletedAt from '@/components/common/TranslationCompletedAt.vue'
+import TranslationStateBadge from '@/components/common/TranslationStateBadge.vue'
 import BadgeComponent from '@/components/common/BadgeComponent.vue'
 import PageLayout from '@/components/layout/PageLayout.vue'
 import CheckboxComponent from '@/components/common/CheckboxComponent.vue'
@@ -656,9 +780,16 @@ const retryResultBanner = ref<{ retried: number; blocked: number } | null>(null)
 const failedCompareModalOpen = ref(false)
 const selectedFailedRequestId = ref<number | null>(null)
 
-type TranslationTab = 'list' | 'uploadWorkspace'
+const blockedMedia = ref<IBlockedMediaItem[]>([])
+const blockedMediaError = ref<string | null>(null)
+const ocrRetryingKey = ref<string | null>(null)
+const ocrRetryMessage = ref<Record<string, string>>({})
+const ocrRetryError = ref<Record<string, string>>({})
+
+type TranslationTab = 'list' | 'blocked' | 'uploadWorkspace'
 
 const activeTab = ref<TranslationTab>('list')
+const hasOpenedBlockedTab = ref(false)
 const hasOpenedUploadWorkspaceTab = ref(false)
 
 const translationRequests: ComputedRef<IPagedResult<ITranslationRequest>> = computed(
@@ -701,8 +832,47 @@ const setRetryResultBanner = (retried: number, blocked: number) => {
 
 function setActiveTab(tab: TranslationTab) {
     activeTab.value = tab
+    if (tab === 'blocked') {
+        hasOpenedBlockedTab.value = true
+        loadBlockedMedia()
+    }
     if (tab === 'uploadWorkspace') {
         hasOpenedUploadWorkspaceTab.value = true
+    }
+}
+
+const blockedItemKey = (item: IBlockedMediaItem): string =>
+    `${item.mediaType}-${item.mediaId}`
+
+const loadBlockedMedia = async () => {
+    blockedMediaError.value = null
+    try {
+        blockedMedia.value = await services.blockedMedia.getBlockedMedia()
+    } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('Failed to load blocked media', error)
+        blockedMediaError.value = translate('translations.loadBlockedMediaError')
+    }
+}
+
+const retryOcr = async (item: IBlockedMediaItem) => {
+    if (!item.streamIndex) return
+
+    const key = blockedItemKey(item)
+    ocrRetryingKey.value = key
+    ocrRetryMessage.value[key] = ''
+    ocrRetryError.value[key] = ''
+
+    try {
+        await services.subtitle.queueOcr(item.mediaType, item.mediaId, item.streamIndex)
+        ocrRetryMessage.value[key] = translate('translations.ocrRetryQueued')
+        await loadBlockedMedia()
+    } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('Failed to retry OCR for blocked media', error)
+        ocrRetryError.value[key] = translate('translations.loadBlockedMediaError')
+    } finally {
+        ocrRetryingKey.value = null
     }
 }
 

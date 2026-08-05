@@ -261,6 +261,16 @@
     "noTranslationsNeeded": "Keine Übersetzungen erforderlich"
   },
   "translations": {
+    "lastSubtitleCheck": "Letzte Prüfung",
+    "loadBlockedMediaError": "Blockierte Medien konnten nicht geladen werden.",
+    "noBlockedMedia": "Keine blockierten Medien.",
+    "ocrIssueSummary": "Problem",
+    "ocrQualityScore": "Qualitätswert",
+    "ocrRetryQueued": "OCR eingereiht",
+    "recheck": "Erneut prüfen",
+    "retryOcr": "OCR erneut versuchen",
+    "streamIndex": "Stream",
+    "tabBlocked": "Blockierte Medien",
     "title": "Titel",
     "source": "Quelle",
     "target": "Ziel",

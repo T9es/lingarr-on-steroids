@@ -261,6 +261,16 @@
     "noTranslationsNeeded": "无需翻译"
   },
   "translations": {
+    "lastSubtitleCheck": "上次检查",
+    "loadBlockedMediaError": "加载被阻止的媒体失败。",
+    "noBlockedMedia": "没有被阻止的媒体项目。",
+    "ocrIssueSummary": "问题",
+    "ocrQualityScore": "质量评分",
+    "ocrRetryQueued": "OCR 已排队",
+    "recheck": "重新检查",
+    "retryOcr": "重试 OCR",
+    "streamIndex": "流",
+    "tabBlocked": "被阻止的媒体",
     "title": "标题",
     "source": "源",
     "target": "目标",

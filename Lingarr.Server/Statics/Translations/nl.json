@@ -261,6 +261,16 @@
     "noTranslationsNeeded": "Geen vertalingen nodig"
   },
   "translations": {
+    "lastSubtitleCheck": "Laatste controle",
+    "loadBlockedMediaError": "Geblokkeerde media laden is mislukt.",
+    "noBlockedMedia": "Geen geblokkeerde media-items.",
+    "ocrIssueSummary": "Probleem",
+    "ocrQualityScore": "Kwaliteitsscore",
+    "ocrRetryQueued": "OCR in wachtrij",
+    "recheck": "Opnieuw controleren",
+    "retryOcr": "OCR opnieuw proberen",
+    "streamIndex": "Stream",
+    "tabBlocked": "Geblokkeerde media",
     "title": "Titel",
     "source": "Bron",
     "target": "Doel",
