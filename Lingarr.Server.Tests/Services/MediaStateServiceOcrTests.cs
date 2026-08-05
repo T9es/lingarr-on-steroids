@@ -74,6 +74,52 @@ public class MediaStateServiceOcrTests
     }
 
     [Fact]
+    public async Task UpdateStateAsync_WithOcrEnabledAndSingleUntaggedPgs_ReturnsOcrPending()
+    {
+        await using var context = BuildContext();
+        var movie = await CreateMovieWithPgsAsync(context, SubtitleOcrStatus.NotStarted, language: null);
+        var service = BuildService(context, ocrEnabled: "true");
+
+        var state = await service.UpdateStateAsync(movie, MediaType.Movie, saveChanges: false);
+
+        Assert.Equal(TranslationState.OcrPending, state);
+    }
+
+    [Fact]
+    public async Task UpdateStateAsync_WithUntaggedBlockedOcr_ReturnsOcrBlocked()
+    {
+        await using var context = BuildContext();
+        var movie = await CreateMovieWithPgsAsync(context, SubtitleOcrStatus.BlockedLowQuality, language: "");
+        var service = BuildService(context, ocrEnabled: "true");
+
+        var state = await service.UpdateStateAsync(movie, MediaType.Movie, saveChanges: false);
+
+        Assert.Equal(TranslationState.OcrBlocked, state);
+    }
+
+    [Fact]
+    public async Task UpdateStateAsync_WithOnlyForeignTaggedPgsAndUntaggedPgs_ReturnsOcrPending()
+    {
+        await using var context = BuildContext();
+        var movie = await CreateMovieWithPgsAsync(context, SubtitleOcrStatus.NotStarted, language: "jpn");
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            StreamIndex = 1,
+            Language = "und",
+            Title = "Untagged",
+            CodecName = "hdmv_pgs_subtitle",
+            IsTextBased = false,
+            OcrStatus = SubtitleOcrStatus.NotStarted
+        });
+        await context.SaveChangesAsync();
+        var service = BuildService(context, ocrEnabled: "true");
+
+        var state = await service.UpdateStateAsync(movie, MediaType.Movie, saveChanges: false);
+
+        Assert.Equal(TranslationState.OcrPending, state);
+    }
+
+    [Fact]
     public async Task UpdateStateAsync_WithAutoModeAndBlockedOcrAndNoConfiguredSourceLanguages_ReturnsOcrBlocked()
     {
         await using var context = BuildContext();
@@ -99,7 +145,8 @@ public class MediaStateServiceOcrTests
 
     private static async Task<Movie> CreateMovieWithPgsAsync(
         LingarrDbContext context,
-        SubtitleOcrStatus status)
+        SubtitleOcrStatus status,
+        string? language = "eng")
     {
         var movie = new Movie
         {
@@ -113,7 +160,7 @@ public class MediaStateServiceOcrTests
         movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
         {
             StreamIndex = 0,
-            Language = "eng",
+            Language = language,
             Title = "English",
             CodecName = "hdmv_pgs_subtitle",
             IsTextBased = false,

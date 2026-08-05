@@ -1867,24 +1867,47 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             return false;
         }
 
-        var candidate = embeddedSubtitles
+        var ocrCandidates = embeddedSubtitles
             .Where(subtitle => !subtitle.IsTextBased)
             .Where(subtitle => _subtitleOcrService.IsSupportedCodec(subtitle.CodecName))
             .Where(IsQueueableOcrCandidate)
-            .Where(subtitle => isAutoMode ||
-                configuredSourceLanguages.Any(language =>
-                    SubtitleLanguageHelper.LanguageMatches(subtitle.Language, language)))
             .Where(subtitle => !ignoreCaptions ||
                                !SubtitleLanguageHelper.IsCaptionSubtitleType(
                                    SubtitleLanguageHelper.DetermineSubtitleType(subtitle)))
             .Where(subtitle => !SubtitleLanguageHelper.IsSupplementalSubtitleType(
-                SubtitleLanguageHelper.DetermineSubtitleType(subtitle)))
-            .OrderByDescending(subtitle => isAutoMode
-                ? SubtitleLanguageHelper.ScoreSubtitleCandidate(subtitle, subtitle.Language)
-                : configuredSourceLanguages.Max(language =>
-                    SubtitleLanguageHelper.ScoreSubtitleCandidate(subtitle, language)))
-            .ThenBy(subtitle => subtitle.StreamIndex)
-            .FirstOrDefault();
+                SubtitleLanguageHelper.DetermineSubtitleType(subtitle)));
+
+        EmbeddedSubtitle? candidate;
+        if (isAutoMode)
+        {
+            candidate = ocrCandidates
+                .OrderByDescending(subtitle =>
+                    SubtitleLanguageHelper.ScoreSubtitleCandidate(subtitle, subtitle.Language))
+                .ThenBy(subtitle => subtitle.StreamIndex)
+                .FirstOrDefault();
+        }
+        else
+        {
+            // Tagged streams matching a configured source language take precedence.
+            // Untagged (empty/"und") bitmap streams are accepted too: a PGS track without a
+            // language tag is often the sole full-dialogue track (e.g. an untagged English
+            // PGS on a release), and queuing OCR is about detecting that OCR is needed, not
+            // proving the stream's language. The lowest-index untagged stream wins.
+            var languageMatched = ocrCandidates
+                .Where(subtitle => configuredSourceLanguages.Any(language =>
+                    SubtitleLanguageHelper.LanguageMatches(subtitle.Language, language)))
+                .ToList();
+            candidate = languageMatched.Count > 0
+                ? languageMatched
+                    .OrderByDescending(subtitle => configuredSourceLanguages.Max(language =>
+                        SubtitleLanguageHelper.ScoreSubtitleCandidate(subtitle, language)))
+                    .ThenBy(subtitle => subtitle.StreamIndex)
+                    .FirstOrDefault()
+                : ocrCandidates
+                    .Where(IsUntaggedOcrLanguage)
+                    .OrderBy(subtitle => subtitle.StreamIndex)
+                    .FirstOrDefault();
+        }
 
         if (candidate == null)
         {
@@ -1972,6 +1995,12 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             media.FileName,
             candidate.StreamIndex);
         return true;
+    }
+
+    private static bool IsUntaggedOcrLanguage(EmbeddedSubtitle subtitle)
+    {
+        return string.IsNullOrWhiteSpace(subtitle.Language) ||
+               string.Equals(subtitle.Language, "und", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsQueueableOcrCandidate(EmbeddedSubtitle subtitle)

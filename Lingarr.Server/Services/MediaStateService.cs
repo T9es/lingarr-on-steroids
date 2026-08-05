@@ -767,12 +767,33 @@ public class MediaStateService : IMediaStateService
             return candidates.OrderBy(subtitle => subtitle.StreamIndex);
         }
 
-        return candidates
+        // Tagged streams that match a configured source language take precedence.
+        var languageMatched = candidates
             .Where(subtitle => sourceLanguages.Any(language =>
                 SubtitleLanguageHelper.LanguageMatches(subtitle.Language, language)))
-            .OrderByDescending(subtitle => sourceLanguages.Max(language =>
-                SubtitleLanguageHelper.ScoreSubtitleCandidate(subtitle, language)))
-            .ThenBy(subtitle => subtitle.StreamIndex);
+            .ToList();
+        if (languageMatched.Count > 0)
+        {
+            return languageMatched
+                .OrderByDescending(subtitle => sourceLanguages.Max(language =>
+                    SubtitleLanguageHelper.ScoreSubtitleCandidate(subtitle, language)))
+                .ThenBy(subtitle => subtitle.StreamIndex);
+        }
+
+        // Untagged (empty/"und") bitmap streams are accepted as candidates too: a PGS track
+        // without a language tag is often the sole full-dialogue track (e.g. an untagged
+        // English PGS on a release), and the state machine's job here is to detect that OCR
+        // is needed, not to prove the stream's language. Streams are ordered by index so the
+        // lowest untagged stream is the effective candidate.
+        return candidates
+            .Where(IsUntaggedLanguage)
+            .OrderBy(subtitle => subtitle.StreamIndex);
+    }
+
+    private static bool IsUntaggedLanguage(EmbeddedSubtitle subtitle)
+    {
+        return string.IsNullOrWhiteSpace(subtitle.Language) ||
+               string.Equals(subtitle.Language, "und", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsSupportedOcrCodec(string? codecName)
