@@ -336,9 +336,17 @@ public class SubtitleExtractionService : ISubtitleExtractionService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error extracting subtitle stream {StreamIndex} from {FilePath}",
-                streamIndex, mediaFilePath);
-            return null;
+            _logger.LogError(ex, "Error extracting subtitle stream {StreamIndex} from {FilePath} to {OutputPath}",
+                streamIndex, mediaFilePath, outputPath);
+
+            // Do NOT fold this into a null return: callers translate null into a generic
+            // 'could not be resolved' failure, which hides the real cause (OOM, IO, parse
+            // failure). Rethrow with a descriptive message so the failure stays visible
+            // and diagnosable end to end. Transient failures still fail the request,
+            // exactly as before — just with the actual reason surfaced.
+            throw new InvalidOperationException(
+                $"Subtitle extraction failed for stream {streamIndex} of {Path.GetFileName(mediaFilePath)}: {ex.Message}",
+                ex);
         }
     }
     private async Task<string?> ExtractSubtitleToPathInternalAsync(
@@ -980,18 +988,64 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             return;
         }
 
-        var content = await File.ReadAllTextAsync(filePath);
-        if (string.IsNullOrWhiteSpace(content))
+        // Never buffer the whole file: a large ASS (observed 223 MB, ~450 MB as UTF-16) blew
+        // the container heap when 4 workers ran marker writes concurrently. The entry count
+        // streams via File.ReadLines and the content pass below uses a fixed-size buffer,
+        // so peak memory stays constant regardless of file size.
+        var entryCount = CountSubtitleEntries(filePath);
+        if (entryCount < 0)
         {
-            return;
+            throw new IOException($"Cannot read subtitle file to write extraction marker: {filePath}");
         }
 
-        var builder = new System.Text.StringBuilder();
-        builder.AppendLine($"{ExtractionMarkerPrefix} StreamIndex=0, Entries={CountSubtitleEntries(filePath)}");
-        builder.AppendLine();
-        builder.Append(content);
+        // Write marker header + content into a temp file in one streaming pass, then atomically
+        // move it over the original so readers never observe a partially marked file.
+        var tempPath = $"{filePath}.lingarr-tmp";
+        try
+        {
+            var hasContent = false;
+            await using (var source = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+            using (var reader = new StreamReader(source))
+            await using (var destination = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
+            await using (var writer = new StreamWriter(destination, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false)))
+            {
+                await writer.WriteAsync($"{ExtractionMarkerPrefix} StreamIndex=0, Entries={entryCount}\n\n");
 
-        await File.WriteAllTextAsync(filePath, builder.ToString());
+                var buffer = new char[8192];
+                int charsRead;
+                while ((charsRead = await reader.ReadAsync(buffer)) > 0)
+                {
+                    if (!hasContent)
+                    {
+                        for (var i = 0; i < charsRead; i++)
+                        {
+                            if (!char.IsWhiteSpace(buffer[i]))
+                            {
+                                hasContent = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    await writer.WriteAsync(buffer.AsMemory(0, charsRead));
+                }
+            }
+
+            if (!hasContent)
+            {
+                // Matches the previous behavior: empty/whitespace-only files stay unmarked.
+                return;
+            }
+
+            File.Move(tempPath, filePath, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(tempPath))
+            {
+                File.Delete(tempPath);
+            }
+        }
     }
 
     /// <summary>
@@ -1232,6 +1286,11 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 _embeddedSubtitleCacheService.EnsureCacheDirectory();
             }
 
+            // Tracks the last exception thrown while extracting a candidate. If every
+            // candidate ends in an exception, that is a real failure (e.g. OOM during
+            // marker write) and must not surface as the generic "no suitable subtitle".
+            Exception? lastExtractionFailure = null;
+
             // If a preferred stream index is specified, try that first
             if (preferredStreamIndex.HasValue)
             {
@@ -1277,6 +1336,7 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                     }
                     catch (Exception ex)
                     {
+                        lastExtractionFailure = ex;
                         _logger.LogWarning(ex, 
                             "Failed to extract preferred stream {StreamIndex}, falling back to auto-selection", 
                             preferredStreamIndex.Value);
@@ -1445,6 +1505,7 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 }
                 catch (Exception ex)
                 {
+                    lastExtractionFailure = ex;
                     _logger.LogWarning(ex, "Failed to extract candidate Stream {StreamIndex}", candidate.StreamIndex);
                     // Continue to next candidate
                 }
@@ -1488,6 +1549,18 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 return selectedCandidate.ExtractedPath;
             }
             
+            if (lastExtractionFailure != null)
+            {
+                // Every candidate failed with an exception (OOM, IO, parse, ...): surface the
+                // real cause instead of returning null, which would degrade into the generic
+                // 'Source subtitle could not be resolved' failure with the root cause lost.
+                _logger.LogError(lastExtractionFailure,
+                    "All embedded subtitle candidates failed extraction for media {MediaId}", mediaId);
+                throw new InvalidOperationException(
+                    $"Embedded subtitle extraction failed for all candidates of media {mediaId}: {lastExtractionFailure.Message}",
+                    lastExtractionFailure);
+            }
+
             _logger.LogWarning("All suitable embedded subtitle candidates failed extraction or were excluded");
             return null;
         }

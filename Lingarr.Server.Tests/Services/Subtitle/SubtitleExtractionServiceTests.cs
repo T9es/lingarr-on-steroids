@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text;
 using System.Threading.Tasks;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
@@ -210,6 +211,129 @@ public class SubtitleExtractionServiceTests : IDisposable
         Assert.StartsWith(SubtitleExtractionService.ExtractionMarkerPrefix, lines[0]);
         Assert.Contains("[Script Info]", lines);
         Assert.Contains("Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,Hello", lines);
+    }
+
+    [Fact]
+    public async Task EnsureExtractionMarkerAsync_PreservesSrtContentAndWritesCorrectCount()
+    {
+        var filePath = Path.Combine(CreateMediaDirectory(), "episode.eng.srt");
+        var original =
+            "1\r\n00:00:01,000 --> 00:00:02,000\r\nHello there\r\n\r\n" +
+            "2\r\n00:00:03,000 --> 00:00:04,000\r\nWorld\r\n\r\n" +
+            // Cue with empty text must NOT be counted as an entry
+            "3\r\n00:00:05,000 --> 00:00:06,000\r\n\r\n";
+        await File.WriteAllTextAsync(filePath, original);
+
+        await SubtitleExtractionService.EnsureExtractionMarkerAsync(filePath);
+
+        var bytes = await File.ReadAllBytesAsync(filePath);
+        var header = $"{SubtitleExtractionService.ExtractionMarkerPrefix} StreamIndex=0, Entries=2\n\n";
+        var headerBytes = Encoding.UTF8.GetBytes(header);
+        Assert.True(bytes.Length > headerBytes.Length, "Marked file must contain header plus content");
+        Assert.True(
+            bytes.AsSpan(0, headerBytes.Length).SequenceEqual(headerBytes),
+            $"Marker header mismatch: {Encoding.UTF8.GetString(bytes.AsSpan(0, Math.Min(headerBytes.Length, bytes.Length)))}");
+        Assert.True(
+            bytes.AsSpan(headerBytes.Length).SequenceEqual(Encoding.UTF8.GetBytes(original)),
+            "Original content (including CRLF line endings) must be preserved byte-for-byte");
+        Assert.False(File.Exists(filePath + ".lingarr-tmp"), "Temp file must be cleaned up");
+    }
+
+    [Fact]
+    public async Task EnsureExtractionMarkerAsync_PreservesAssContentAndWritesCorrectCount()
+    {
+        var filePath = Path.Combine(CreateMediaDirectory(), "movie.eng.ass");
+        var original =
+            "[Script Info]\r\n" +
+            "Title: Héllo Wörld\r\n" +
+            "\r\n" +
+            "[Events]\r\n" +
+            "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\r\n" +
+            "Comment: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,not a dialogue\r\n" +
+            "Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,Hello\r\n" +
+            "Dialogue: 0,0:00:03.00,0:00:04.00,Default,,0,0,0,,World\r\n";
+        await File.WriteAllTextAsync(filePath, original);
+
+        await SubtitleExtractionService.EnsureExtractionMarkerAsync(filePath);
+
+        var bytes = await File.ReadAllBytesAsync(filePath);
+        var header = $"{SubtitleExtractionService.ExtractionMarkerPrefix} StreamIndex=0, Entries=2\n\n";
+        var headerBytes = Encoding.UTF8.GetBytes(header);
+        Assert.True(bytes.Length > headerBytes.Length, "Marked file must contain header plus content");
+        Assert.True(
+            bytes.AsSpan(0, headerBytes.Length).SequenceEqual(headerBytes),
+            $"Marker header mismatch: {Encoding.UTF8.GetString(bytes.AsSpan(0, Math.Min(headerBytes.Length, bytes.Length)))}");
+        Assert.True(
+            bytes.AsSpan(headerBytes.Length).SequenceEqual(Encoding.UTF8.GetBytes(original)),
+            "Original content (including CRLF line endings and multibyte UTF-8) must be preserved byte-for-byte");
+    }
+
+    [Fact]
+    public async Task EnsureExtractionMarkerAsync_SkipsAlreadyMarkedFilesWithoutRewrite()
+    {
+        var filePath = Path.Combine(CreateMediaDirectory(), "movie.eng.ass");
+        var alreadyMarked =
+            "; Lingarr-Extracted: StreamIndex=0, Entries=1\n\n" +
+            "[Script Info]\nTitle: Example\n\n[Events]\n" +
+            "Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,Hello\n";
+        await File.WriteAllTextAsync(filePath, alreadyMarked);
+        var originalBytes = await File.ReadAllBytesAsync(filePath);
+        var writtenAt = DateTime.UtcNow.AddHours(-1);
+        File.SetLastWriteTimeUtc(filePath, writtenAt);
+
+        await SubtitleExtractionService.EnsureExtractionMarkerAsync(filePath);
+
+        Assert.Equal(originalBytes, await File.ReadAllBytesAsync(filePath));
+        Assert.Equal(writtenAt, File.GetLastWriteTimeUtc(filePath));
+        Assert.False(File.Exists(filePath + ".lingarr-tmp"), "Temp file must not be created for skipped files");
+    }
+
+    [Fact]
+    public async Task EnsureExtractionMarkerAsync_HandlesLargeFilesWithoutBuffering()
+    {
+        var filePath = Path.Combine(CreateMediaDirectory(), "movie.large.ass");
+        const int dialogueCount = 50000;
+        await using (var writer = new StreamWriter(filePath))
+        {
+            await writer.WriteLineAsync("[Script Info]");
+            await writer.WriteLineAsync("Title: Large");
+            await writer.WriteLineAsync();
+            await writer.WriteLineAsync("[Events]");
+            await writer.WriteLineAsync(
+                "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text");
+            for (var i = 0; i < dialogueCount; i++)
+            {
+                await writer.WriteLineAsync(
+                    $"Dialogue: 0,0:00:{i % 60:00}.00,0:00:{i % 60 + 1:00}.00,Default,,0,0,0,,Line {i}");
+            }
+        }
+
+        var originalSize = new FileInfo(filePath).Length;
+        Assert.True(originalSize > 2 * 1024 * 1024, $"Test file should be a few MB, was {originalSize} bytes");
+
+        await SubtitleExtractionService.EnsureExtractionMarkerAsync(filePath);
+
+        var lines = await File.ReadAllLinesAsync(filePath);
+        Assert.StartsWith(SubtitleExtractionService.ExtractionMarkerPrefix, lines[0]);
+        Assert.Contains($"Entries={dialogueCount}", lines[0]);
+
+        var headerBytes = Encoding.UTF8.GetByteCount(
+            $"{SubtitleExtractionService.ExtractionMarkerPrefix} StreamIndex=0, Entries={dialogueCount}\n\n");
+        Assert.Equal(originalSize + headerBytes, new FileInfo(filePath).Length);
+        Assert.False(File.Exists(filePath + ".lingarr-tmp"), "Temp file must be cleaned up");
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   \n\t\n   ")]
+    public async Task EnsureExtractionMarkerAsync_LeavesEmptyAndWhitespaceOnlyFilesUnmarked(string content)
+    {
+        var filePath = Path.Combine(CreateMediaDirectory(), "movie.eng.ass");
+        await File.WriteAllTextAsync(filePath, content);
+
+        await SubtitleExtractionService.EnsureExtractionMarkerAsync(filePath);
+
+        Assert.Equal(content, await File.ReadAllTextAsync(filePath));
     }
 
     [Fact]
