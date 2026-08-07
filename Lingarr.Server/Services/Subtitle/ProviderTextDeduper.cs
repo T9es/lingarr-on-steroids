@@ -72,4 +72,22 @@ internal static class ProviderTextDeduper
     {
         return SubtitleTextStructure.NormalizeProviderTranslationText(providerText).Trim();
     }
+
+    /// <summary>
+    /// Builds the set of normalized provider texts that occur at least
+    /// <see cref="RepeatedChantThreshold"/> times across a file. Repeated identical
+    /// text reads as a chant or refrain, which the provider may legitimately omit.
+    /// </summary>
+    public static IReadOnlySet<string> BuildRepeatedTexts(IEnumerable<string> providerTexts)
+    {
+        return providerTexts
+            .Select(Normalize)
+            .Where(text => text.Length > 0)
+            .GroupBy(text => text, StringComparer.Ordinal)
+            .Where(group => group.Count() >= RepeatedChantThreshold)
+            .Select(group => group.Key)
+            .ToHashSet(StringComparer.Ordinal);
+    }
+
+    private const int RepeatedChantThreshold = 3;
 }

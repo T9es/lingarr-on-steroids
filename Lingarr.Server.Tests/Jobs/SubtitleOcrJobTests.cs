@@ -67,7 +67,8 @@ public class SubtitleOcrJobTests
                 false,
                 false,
                 true,
-                null),
+                null,
+                It.IsAny<bool>()),
             Times.Once);
     }
 
@@ -109,7 +110,8 @@ public class SubtitleOcrJobTests
                 It.IsAny<bool>(),
                 It.IsAny<bool>(),
                 It.IsAny<bool>(),
-                It.IsAny<int?>()),
+                It.IsAny<int?>(),
+                It.IsAny<bool>()),
             Times.Never);
     }
 

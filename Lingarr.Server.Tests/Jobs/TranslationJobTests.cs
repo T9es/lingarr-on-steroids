@@ -716,6 +716,178 @@ public class TranslationJobTests : IDisposable
     }
 
     [Fact]
+    public async Task TryCancelObsoleteUnsafeSourceAsync_MarksRequestFailedAndPersistsReason()
+    {
+        var movie = CreateMovie(41);
+        movie.Path = _tempDirectory;
+        var request = CreateUnsafeSparseMovieRequest(movie, 101, "owner-1");
+
+        _dbContext.Movies.Add(movie);
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var job = BuildUnsafeKillJob(CreateMediaSubtitleProcessorMock(0));
+
+        var cancelled = await job.TryCancelObsoleteUnsafeSourceAsync(
+            request,
+            selectedSubtitle: null,
+            subtitles: [],
+            settings: new Dictionary<string, string>(),
+            cancellationToken: CancellationToken.None,
+            ownershipToken: "owner-1");
+
+        Assert.True(cancelled);
+
+        var updatedRequest = await _dbContext.TranslationRequests
+            .AsNoTracking()
+            .SingleAsync(item => item.Id == request.Id);
+        Assert.Equal(TranslationStatus.Failed, updatedRequest.Status);
+        Assert.Null(updatedRequest.NextRetryAt);
+
+        var errorLog = await _dbContext.TranslationRequestLogs
+            .Where(log => log.TranslationRequestId == request.Id && log.Level == "Error")
+            .SingleAsync();
+        Assert.Equal(
+            "Translation failed before execution because the selected source is obsolete or unsafe.",
+            errorLog.Message);
+        Assert.Contains("only 1 entries", errorLog.Details);
+    }
+
+    [Fact]
+    public async Task TryCancelObsoleteUnsafeSourceAsync_WhenMediaNowHasValidSource_ReProcessesOnce()
+    {
+        var movie = CreateMovie(42);
+        movie.Path = _tempDirectory;
+        var request = CreateUnsafeSparseMovieRequest(movie, 102, "owner-1");
+
+        _dbContext.Movies.Add(movie);
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var processorMock = CreateMediaSubtitleProcessorMock(1);
+        var job = BuildUnsafeKillJob(processorMock);
+
+        var cancelled = await job.TryCancelObsoleteUnsafeSourceAsync(
+            request,
+            selectedSubtitle: null,
+            subtitles: [],
+            settings: new Dictionary<string, string>(),
+            cancellationToken: CancellationToken.None,
+            ownershipToken: "owner-1");
+
+        Assert.True(cancelled);
+
+        var updatedRequest = await _dbContext.TranslationRequests
+            .AsNoTracking()
+            .SingleAsync(item => item.Id == request.Id);
+        Assert.Equal(TranslationStatus.Failed, updatedRequest.Status);
+
+        processorMock.Verify(processor => processor.ProcessMediaForceAsync(
+            It.IsAny<Lingarr.Core.Interfaces.IMedia>(),
+            It.IsAny<MediaType>(),
+            It.IsAny<bool>(),
+            It.IsAny<bool>(),
+            It.IsAny<bool>(),
+            It.IsAny<bool>(),
+            It.IsAny<int?>(),
+            true), Times.Once);
+    }
+
+    [Fact]
+    public async Task TryCancelObsoleteUnsafeSourceAsync_WhenReProcessFindsNoValidSource_StaysFailedWithoutNewRequest()
+    {
+        var movie = CreateMovie(43);
+        movie.Path = _tempDirectory;
+        var request = CreateUnsafeSparseMovieRequest(movie, 103, "owner-1");
+
+        _dbContext.Movies.Add(movie);
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var processorMock = CreateMediaSubtitleProcessorMock(0);
+        var job = BuildUnsafeKillJob(processorMock);
+
+        var cancelled = await job.TryCancelObsoleteUnsafeSourceAsync(
+            request,
+            selectedSubtitle: null,
+            subtitles: [],
+            settings: new Dictionary<string, string>(),
+            cancellationToken: CancellationToken.None,
+            ownershipToken: "owner-1");
+
+        Assert.True(cancelled);
+
+        var updatedRequest = await _dbContext.TranslationRequests
+            .AsNoTracking()
+            .SingleAsync(item => item.Id == request.Id);
+        Assert.Equal(TranslationStatus.Failed, updatedRequest.Status);
+        Assert.Equal(1, await _dbContext.TranslationRequests.CountAsync());
+
+        processorMock.Verify(processor => processor.ProcessMediaForceAsync(
+            It.IsAny<Lingarr.Core.Interfaces.IMedia>(),
+            It.IsAny<MediaType>(),
+            It.IsAny<bool>(),
+            It.IsAny<bool>(),
+            It.IsAny<bool>(),
+            It.IsAny<bool>(),
+            It.IsAny<int?>(),
+            It.IsAny<bool>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task TryCancelObsoleteUnsafeSourceAsync_SecondKillWithinWindow_DoesNotReProcessAgain()
+    {
+        var movie = CreateMovie(44);
+        movie.Path = _tempDirectory;
+        var firstRequest = CreateUnsafeSparseMovieRequest(movie, 104, "owner-1");
+        var secondRequest = CreateUnsafeSparseMovieRequest(movie, 105, "owner-2");
+        secondRequest.TargetLanguage = "de";
+
+        _dbContext.Movies.Add(movie);
+        _dbContext.TranslationRequests.AddRange(firstRequest, secondRequest);
+        await _dbContext.SaveChangesAsync();
+
+        var processorMock = CreateMediaSubtitleProcessorMock(1);
+        var job = BuildUnsafeKillJob(processorMock);
+
+        var firstCancelled = await job.TryCancelObsoleteUnsafeSourceAsync(
+            firstRequest,
+            selectedSubtitle: null,
+            subtitles: [],
+            settings: new Dictionary<string, string>(),
+            cancellationToken: CancellationToken.None,
+            ownershipToken: "owner-1");
+        var secondCancelled = await job.TryCancelObsoleteUnsafeSourceAsync(
+            secondRequest,
+            selectedSubtitle: null,
+            subtitles: [],
+            settings: new Dictionary<string, string>(),
+            cancellationToken: CancellationToken.None,
+            ownershipToken: "owner-2");
+
+        Assert.True(firstCancelled);
+        Assert.True(secondCancelled);
+
+        var requests = await _dbContext.TranslationRequests
+            .AsNoTracking()
+            .OrderBy(item => item.Id)
+            .ToListAsync();
+        Assert.All(requests, item => Assert.Equal(TranslationStatus.Failed, item.Status));
+
+        // Only the first kill triggered auto-recovery; the second was suppressed by the
+        // 60-minute window.
+        processorMock.Verify(processor => processor.ProcessMediaForceAsync(
+            It.IsAny<Lingarr.Core.Interfaces.IMedia>(),
+            It.IsAny<MediaType>(),
+            It.IsAny<bool>(),
+            It.IsAny<bool>(),
+            It.IsAny<bool>(),
+            It.IsAny<bool>(),
+            It.IsAny<int?>(),
+            It.IsAny<bool>()), Times.Once);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_WhenConfiguredSubtitleValidationBlocksSource_MarksRequestFailedAndLogsRetryableReason()
     {
         var sourceSubtitlePath = Path.Combine(_tempDirectory, "validation-blocked.en.srt");
@@ -4105,6 +4277,104 @@ public class TranslationJobTests : IDisposable
             _embeddedSubtitleCacheService,
             Mock.Of<IUploadWorkspaceService>(),
             translationCheckpointService);
+    }
+
+    private TranslationJob BuildUnsafeKillJob(Mock<IMediaSubtitleProcessor> mediaSubtitleProcessorMock)
+    {
+        var translationRequestServiceMock = new Mock<ITranslationRequestService>();
+        translationRequestServiceMock
+            .Setup(service => service.ClearMediaHash(It.IsAny<TranslationRequest>()))
+            .Returns(Task.CompletedTask);
+        translationRequestServiceMock
+            .Setup(service => service.UpdateActiveCount())
+            .ReturnsAsync(0);
+
+        var progressServiceMock = new Mock<IProgressService>();
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+
+        var mediaStateServiceMock = new Mock<IMediaStateService>();
+        mediaStateServiceMock
+            .Setup(service => service.UpdateStateAsync(
+                It.IsAny<Lingarr.Core.Interfaces.IMedia>(),
+                It.IsAny<MediaType>(),
+                It.IsAny<bool>()))
+            .ReturnsAsync(TranslationState.Failed);
+
+        return new TranslationJob(
+            NullLogger<TranslationJob>.Instance,
+            _settingServiceMock.Object,
+            _dbContext,
+            progressServiceMock.Object,
+            new SubtitleService(NullLogger<SubtitleService>.Instance),
+            Mock.Of<IScheduleService>(),
+            Mock.Of<IStatisticsService>(),
+            Mock.Of<ITranslationServiceFactory>(),
+            translationRequestServiceMock.Object,
+            Mock.Of<IBatchFallbackService>(),
+            Mock.Of<ISubtitleExtractionService>(),
+            Mock.Of<ITranslationCancellationService>(),
+            mediaStateServiceMock.Object,
+            Mock.Of<ICustomMediaStateService>(),
+            Mock.Of<IDeferredRepairService>(),
+            Mock.Of<IDashboardService>(),
+            Mock.Of<ISourceSubtitleSnapshotService>(),
+            Mock.Of<ISourceSubtitleResolver>(),
+            _embeddedSubtitleCacheService,
+            Mock.Of<IUploadWorkspaceService>(),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            mediaSubtitleProcessorMock.Object);
+    }
+
+    private static Mock<IMediaSubtitleProcessor> CreateMediaSubtitleProcessorMock(int queuedCount)
+    {
+        var processorMock = new Mock<IMediaSubtitleProcessor>();
+        processorMock
+            .Setup(processor => processor.ProcessMediaForceAsync(
+                It.IsAny<Lingarr.Core.Interfaces.IMedia>(),
+                It.IsAny<MediaType>(),
+                It.IsAny<bool>(),
+                It.IsAny<bool>(),
+                It.IsAny<bool>(),
+                It.IsAny<bool>(),
+                It.IsAny<int?>(),
+                It.IsAny<bool>()))
+            .ReturnsAsync(queuedCount);
+        return processorMock;
+    }
+
+    private static TranslationRequest CreateUnsafeSparseMovieRequest(
+        Movie movie,
+        int requestId,
+        string ownerToken)
+    {
+        return new TranslationRequest
+        {
+            Id = requestId,
+            MediaId = movie.Id,
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaType = MediaType.Movie,
+            WorkloadKind = TranslationWorkloadKind.Library,
+            WorkloadItemKey = $"library:Movie:{movie.Id}",
+            Status = TranslationStatus.InProgress,
+            IsActive = true,
+            JobId = ownerToken,
+            SubtitleToTranslate = Path.Combine(Path.GetTempPath(), "unsafe-sparse.en.srt"),
+            SourceSubtitleFormat = ".srt",
+            SubtitleOutputMode = "match-source",
+            RequiredOutputFormats = ".srt",
+            SourceSubtitleType = SubtitleLanguageHelper.TypeFull,
+            SourceSubtitleEntryCount = 1
+        };
     }
 
     private TranslationJob BuildExecutableJob(

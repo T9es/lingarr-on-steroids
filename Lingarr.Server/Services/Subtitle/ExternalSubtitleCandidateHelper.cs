@@ -42,8 +42,9 @@ public static class ExternalSubtitleCandidateHelper
 
         // First pass: clean (non-pathological) candidates across all configured languages.
         // A drawing-heavy ASS in an earlier language must not shadow a clean subtitle in a
-        // later one. Pathological candidates always sort last, so checking the first item
-        // is sufficient.
+        // later one. Pathological candidates sort before captions, so the first item is
+        // only pathological when no non-pathological candidate exists — checking the
+        // first item is sufficient.
         foreach (var (sourceLanguage, ordered) in candidatesByLanguage)
         {
             var first = ordered.FirstOrDefault();
@@ -54,7 +55,8 @@ public static class ExternalSubtitleCandidateHelper
         }
 
         // Last-resort pass: pathological ASS is only used when no clean candidate exists
-        // in any configured language.
+        // in any configured language. Pathological still beats captions, so captions are
+        // never preferred over a pathological source.
         foreach (var (sourceLanguage, ordered) in candidatesByLanguage)
         {
             var fallback = ordered.FirstOrDefault(IsPathologicalAssSource);
@@ -68,7 +70,8 @@ public static class ExternalSubtitleCandidateHelper
     }
 
     /// <summary>
-    /// Orders candidates by source quality tier: clean full dialogue, clean captions, then pathological ASS fallback.
+    /// Orders candidates by source quality tier: clean full dialogue, pathological ASS fallback, then clean captions.
+    /// Pathological ASS beats captions — captions are only used when no pathological candidate exists.
     /// </summary>
     public static IReadOnlyList<Subtitles> OrderPrimarySourceCandidates(
         IEnumerable<Subtitles> subtitles,
@@ -83,19 +86,19 @@ public static class ExternalSubtitleCandidateHelper
             validSubtitles
                 .Where(s => !IsPathologicalAssSource(s))
                 .Where(s => !SubtitleLanguageHelper.IsCaptionSubtitleType(GetSubtitleType(s))));
-        var captionCandidates = OrderCandidates(
-            validSubtitles
-                .Where(s => !IsPathologicalAssSource(s))
-                .Where(s => SubtitleLanguageHelper.IsCaptionSubtitleType(GetSubtitleType(s))));
         var pathologicalCandidates = OrderCandidates(
             validSubtitles
                 .Where(IsPathologicalAssSource)
                 .Where(s => !ignoreCaptions ||
                             !SubtitleLanguageHelper.IsCaptionSubtitleType(GetSubtitleType(s))));
+        var captionCandidates = OrderCandidates(
+            validSubtitles
+                .Where(s => !IsPathologicalAssSource(s))
+                .Where(s => SubtitleLanguageHelper.IsCaptionSubtitleType(GetSubtitleType(s))));
 
         return cleanCandidates
-            .Concat(ignoreCaptions ? Enumerable.Empty<Subtitles>() : captionCandidates)
             .Concat(pathologicalCandidates)
+            .Concat(ignoreCaptions ? Enumerable.Empty<Subtitles>() : captionCandidates)
             .ToList();
     }
 

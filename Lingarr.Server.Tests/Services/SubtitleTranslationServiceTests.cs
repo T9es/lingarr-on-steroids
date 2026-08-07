@@ -2746,6 +2746,380 @@ public class SubtitleTranslationServiceTests
         Assert.Equal("Translated sign", result[1].TranslatedLines[0]);
     }
 
+    [Fact]
+    public async Task TranslateSubtitlesBatch_WhenProviderOmitsCueRepeatedThreeTimes_PreservesChantFromSource()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var batchServiceMock = translationServiceMock.As<IBatchTranslationService>();
+        var loggerMock = new Mock<ILogger>();
+        var progressServiceMock = new Mock<IProgressService>();
+        var deferredRepairServiceMock = new Mock<IDeferredRepairService>();
+
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+
+        batchServiceMock
+            .Setup(service => service.TranslateBatchAsync(
+                It.IsAny<List<BatchSubtitleItem>>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((List<BatchSubtitleItem> batch, string _, string _, List<string>? _, List<string>? _, CancellationToken _) =>
+                batch
+                    .Where(item => item.Line != "We did it again!")
+                    .ToDictionary(item => item.Position, item => $"Przetlumaczona linia {item.Position}"));
+
+        deferredRepairServiceMock
+            .Setup(service => service.BuildContextualRepairBatch(
+                It.IsAny<List<RepairItem>>(),
+                It.IsAny<List<SubtitleItem>>(),
+                It.IsAny<int>(),
+                It.IsAny<IReadOnlyDictionary<int, string>>()))
+            .Returns((List<RepairItem> failedItems, List<SubtitleItem> _, int _, IReadOnlyDictionary<int, string> _) => new ContextualRepairBatch
+            {
+                Items = failedItems
+                    .Select(item => new BatchSubtitleItem { Position = item.Position, Line = item.OriginalLine })
+                    .ToList(),
+                FailedPositions = failedItems.Select(item => item.Position).ToHashSet(),
+                Ranges = [new ContextRange(1, 1)]
+            });
+
+        deferredRepairServiceMock
+            .Setup(service => service.ExecuteRepairAsync(
+                It.IsAny<ContextualRepairBatch>(),
+                It.IsAny<IBatchTranslationService>(),
+                It.IsAny<IBatchFallbackService>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<int, string>());
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            loggerMock.Object,
+            progressServiceMock.Object,
+            Mock.Of<IBatchFallbackService>(),
+            deferredRepairServiceMock.Object);
+
+        var subtitles = new List<SubtitleItem>
+        {
+            Item(1, "We need to get out of here."),
+            Item(2, "We did it again!"),
+            Item(3, "Follow the plan."),
+            Item(4, "We did it again!"),
+            Item(5, "We did it again!")
+        };
+
+        var result = await service.TranslateSubtitlesBatch(
+            subtitles,
+            new TranslationRequest
+            {
+                Id = 801,
+                Title = "Episode",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                MediaType = Lingarr.Core.Enum.MediaType.Show,
+                Status = Lingarr.Core.Enum.TranslationStatus.Pending
+            },
+            stripSubtitleFormatting: false,
+            preserveAssFormatting: false,
+            batchSize: 5,
+            batchRetryMode: "deferred",
+            cancellationToken: CancellationToken.None);
+
+        // The chant appears 3+ times, so it is treated as a refrain and preserved
+        // from source when the provider omits it instead of failing the whole file.
+        Assert.Equal(subtitles, result);
+        Assert.Equal("Przetlumaczona linia 1", result[0].TranslatedLines[0]);
+        Assert.Equal(["We did it again!"], result[1].TranslatedLines);
+        Assert.Equal("Przetlumaczona linia 3", result[2].TranslatedLines[0]);
+        Assert.Equal(["We did it again!"], result[3].TranslatedLines);
+        Assert.Equal(["We did it again!"], result[4].TranslatedLines);
+    }
+
+    [Fact]
+    public async Task TranslateSubtitlesBatch_WhenProviderOmitsCueRepeatedOnlyTwice_StillFails()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var batchServiceMock = translationServiceMock.As<IBatchTranslationService>();
+        var loggerMock = new Mock<ILogger>();
+        var progressServiceMock = new Mock<IProgressService>();
+        var deferredRepairServiceMock = new Mock<IDeferredRepairService>();
+
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+
+        batchServiceMock
+            .Setup(service => service.TranslateBatchAsync(
+                It.IsAny<List<BatchSubtitleItem>>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((List<BatchSubtitleItem> batch, string _, string _, List<string>? _, List<string>? _, CancellationToken _) =>
+                batch
+                    .Where(item => item.Line != "We did it again!")
+                    .ToDictionary(item => item.Position, item => $"Przetlumaczona linia {item.Position}"));
+
+        deferredRepairServiceMock
+            .Setup(service => service.BuildContextualRepairBatch(
+                It.IsAny<List<RepairItem>>(),
+                It.IsAny<List<SubtitleItem>>(),
+                It.IsAny<int>(),
+                It.IsAny<IReadOnlyDictionary<int, string>>()))
+            .Returns((List<RepairItem> failedItems, List<SubtitleItem> _, int _, IReadOnlyDictionary<int, string> _) => new ContextualRepairBatch
+            {
+                Items = failedItems
+                    .Select(item => new BatchSubtitleItem { Position = item.Position, Line = item.OriginalLine })
+                    .ToList(),
+                FailedPositions = failedItems.Select(item => item.Position).ToHashSet(),
+                Ranges = [new ContextRange(1, 1)]
+            });
+
+        deferredRepairServiceMock
+            .Setup(service => service.ExecuteRepairAsync(
+                It.IsAny<ContextualRepairBatch>(),
+                It.IsAny<IBatchTranslationService>(),
+                It.IsAny<IBatchFallbackService>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<int, string>());
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            loggerMock.Object,
+            progressServiceMock.Object,
+            Mock.Of<IBatchFallbackService>(),
+            deferredRepairServiceMock.Object);
+
+        var subtitles = new List<SubtitleItem>
+        {
+            Item(1, "We need to get out of here."),
+            Item(2, "Follow the plan."),
+            Item(3, "We did it again!"),
+            Item(4, "We did it again!")
+        };
+
+        var exception = await Assert.ThrowsAsync<MissingTranslationException>(() => service.TranslateSubtitlesBatch(
+            subtitles,
+            new TranslationRequest
+            {
+                Id = 802,
+                Title = "Episode",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                MediaType = Lingarr.Core.Enum.MediaType.Show,
+                Status = Lingarr.Core.Enum.TranslationStatus.Pending
+            },
+            stripSubtitleFormatting: false,
+            preserveAssFormatting: false,
+            batchSize: 4,
+            batchRetryMode: "deferred",
+            cancellationToken: CancellationToken.None));
+
+        // Two occurrences are below the repeat threshold: the cue stays ordinary
+        // dialogue and is not auto-filled from source.
+        Assert.Equal([3, 4], exception.MissingCues.Select(cue => cue.Position));
+        Assert.All(exception.MissingCues, cue => Assert.False(cue.AutoApprovalEligible));
+        Assert.Empty(subtitles[2].TranslatedLines);
+    }
+
+    [Fact]
+    public async Task TranslateSubtitlesBatch_WhenProviderOmitsTinyArtifactCue_CompletesWithSourceFill()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var batchServiceMock = translationServiceMock.As<IBatchTranslationService>();
+        var loggerMock = new Mock<ILogger>();
+        var progressServiceMock = new Mock<IProgressService>();
+        var deferredRepairServiceMock = new Mock<IDeferredRepairService>();
+
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+
+        batchServiceMock
+            .Setup(service => service.TranslateBatchAsync(
+                It.IsAny<List<BatchSubtitleItem>>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((List<BatchSubtitleItem> batch, string _, string _, List<string>? _, List<string>? _, CancellationToken _) =>
+                batch
+                    .Where(item => item.Line != "#4")
+                    .ToDictionary(item => item.Position, item => $"Przetlumaczona linia {item.Position}"));
+
+        deferredRepairServiceMock
+            .Setup(service => service.BuildContextualRepairBatch(
+                It.IsAny<List<RepairItem>>(),
+                It.IsAny<List<SubtitleItem>>(),
+                It.IsAny<int>(),
+                It.IsAny<IReadOnlyDictionary<int, string>>()))
+            .Returns((List<RepairItem> failedItems, List<SubtitleItem> _, int _, IReadOnlyDictionary<int, string> _) => new ContextualRepairBatch
+            {
+                Items = failedItems
+                    .Select(item => new BatchSubtitleItem { Position = item.Position, Line = item.OriginalLine })
+                    .ToList(),
+                FailedPositions = failedItems.Select(item => item.Position).ToHashSet(),
+                Ranges = [new ContextRange(1, 1)]
+            });
+
+        deferredRepairServiceMock
+            .Setup(service => service.ExecuteRepairAsync(
+                It.IsAny<ContextualRepairBatch>(),
+                It.IsAny<IBatchTranslationService>(),
+                It.IsAny<IBatchFallbackService>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<int, string>());
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            loggerMock.Object,
+            progressServiceMock.Object,
+            Mock.Of<IBatchFallbackService>(),
+            deferredRepairServiceMock.Object);
+
+        var subtitles = new List<SubtitleItem>
+        {
+            Item(1, "#4"),
+            Item(2, "A normal dialogue line"),
+            Item(3, "Another normal line")
+        };
+
+        var result = await service.TranslateSubtitlesBatch(
+            subtitles,
+            new TranslationRequest
+            {
+                Id = 803,
+                Title = "Episode",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                MediaType = Lingarr.Core.Enum.MediaType.Show,
+                Status = Lingarr.Core.Enum.TranslationStatus.Pending
+            },
+            stripSubtitleFormatting: false,
+            preserveAssFormatting: false,
+            batchSize: 3,
+            batchRetryMode: "deferred",
+            cancellationToken: CancellationToken.None);
+
+        // A 2-char artifact cue omitted by the provider is within the residual
+        // tolerance and is preserved from source instead of failing the file.
+        Assert.Equal(subtitles, result);
+        Assert.Equal(["#4"], result[0].TranslatedLines);
+        Assert.Equal("Przetlumaczona linia 2", result[1].TranslatedLines[0]);
+        Assert.Equal("Przetlumaczona linia 3", result[2].TranslatedLines[0]);
+    }
+
+    [Fact]
+    public async Task TranslateSubtitlesBatch_WhenMoreShortCuesAreMissingThanToleranceBudget_StillFails()
+    {
+        var translationServiceMock = new Mock<ITranslationService>();
+        var batchServiceMock = translationServiceMock.As<IBatchTranslationService>();
+        var loggerMock = new Mock<ILogger>();
+        var progressServiceMock = new Mock<IProgressService>();
+        var deferredRepairServiceMock = new Mock<IDeferredRepairService>();
+
+        progressServiceMock
+            .Setup(service => service.Emit(It.IsAny<TranslationRequest>(), It.IsAny<int>()))
+            .Returns(Task.CompletedTask);
+
+        batchServiceMock
+            .Setup(service => service.TranslateBatchAsync(
+                It.IsAny<List<BatchSubtitleItem>>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((List<BatchSubtitleItem> batch, string _, string _, List<string>? _, List<string>? _, CancellationToken _) =>
+                batch
+                    .Where(item => !item.Line.StartsWith("#", StringComparison.Ordinal))
+                    .ToDictionary(item => item.Position, item => $"Przetlumaczona linia {item.Position}"));
+
+        deferredRepairServiceMock
+            .Setup(service => service.BuildContextualRepairBatch(
+                It.IsAny<List<RepairItem>>(),
+                It.IsAny<List<SubtitleItem>>(),
+                It.IsAny<int>(),
+                It.IsAny<IReadOnlyDictionary<int, string>>()))
+            .Returns((List<RepairItem> failedItems, List<SubtitleItem> _, int _, IReadOnlyDictionary<int, string> _) => new ContextualRepairBatch
+            {
+                Items = failedItems
+                    .Select(item => new BatchSubtitleItem { Position = item.Position, Line = item.OriginalLine })
+                    .ToList(),
+                FailedPositions = failedItems.Select(item => item.Position).ToHashSet(),
+                Ranges = [new ContextRange(1, 1)]
+            });
+
+        deferredRepairServiceMock
+            .Setup(service => service.ExecuteRepairAsync(
+                It.IsAny<ContextualRepairBatch>(),
+                It.IsAny<IBatchTranslationService>(),
+                It.IsAny<IBatchFallbackService>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<int, string>());
+
+        var service = new SubtitleTranslationService(
+            translationServiceMock.Object,
+            loggerMock.Object,
+            progressServiceMock.Object,
+            Mock.Of<IBatchFallbackService>(),
+            deferredRepairServiceMock.Object);
+
+        // 1300 translatable cues give a residual tolerance of 25 (2% ratio capped at 25).
+        var subtitles = Enumerable.Range(1, 1300)
+            .Select(position => Item(position, position <= 30 ? $"#{position}" : $"Subtitle line {position}"))
+            .ToList();
+
+        var exception = await Assert.ThrowsAsync<MissingTranslationException>(() => service.TranslateSubtitlesBatch(
+            subtitles,
+            new TranslationRequest
+            {
+                Id = 804,
+                Title = "Episode",
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                MediaType = Lingarr.Core.Enum.MediaType.Show,
+                Status = Lingarr.Core.Enum.TranslationStatus.Pending
+            },
+            stripSubtitleFormatting: false,
+            preserveAssFormatting: false,
+            batchSize: 1300,
+            batchRetryMode: "deferred",
+            cancellationToken: CancellationToken.None));
+
+        // 30 short cues are missing: 25 fit in the shared residual budget and are
+        // preserved from source, the remaining 5 still fail the request.
+        Assert.Equal([26, 27, 28, 29, 30], exception.MissingCues.Select(cue => cue.Position));
+        Assert.Equal(["#1"], subtitles[0].TranslatedLines);
+        Assert.Equal(["#25"], subtitles[24].TranslatedLines);
+        Assert.Empty(subtitles[25].TranslatedLines);
+    }
+
     private static SubtitleItem Item(int position, string line)
     {
         return new SubtitleItem

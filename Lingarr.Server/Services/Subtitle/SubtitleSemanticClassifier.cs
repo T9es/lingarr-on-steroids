@@ -54,7 +54,9 @@ internal static class SubtitleSemanticClassifier
     private static readonly HashSet<string> LyricOrChantTerms = new(StringComparer.OrdinalIgnoreCase)
     {
         "fond", "embrace", "ha", "ha'aheo", "haaheo", "i", "ka", "lipo", "na", "nani", "noho",
-        "omoi", "kokoro", "tsuyoku", "kedo"
+        "omoi", "kokoro", "tsuyoku", "kedo",
+        // Hawaiian chant vocabulary observed in production files (e.g. Lilo & Stitch)
+        "aloha", "komo", "laila", "malihini", "ohana", "mahalo", "kaua'i", "waba", "tookie"
     };
 
     private static readonly HashSet<string> SignStyleTerms = new(StringComparer.OrdinalIgnoreCase)
@@ -77,7 +79,8 @@ internal static class SubtitleSemanticClassifier
     public static SubtitleSemanticClassification Classify(
         SubtitleItem? subtitle,
         string providerText,
-        string? styleName = null)
+        string? styleName = null,
+        IReadOnlySet<string>? repeatedProviderTexts = null)
     {
         var text = SubtitleTextStructure.NormalizeProviderTranslationText(providerText).Trim();
         var style = styleName ?? subtitle?.SsaDialogue?.Style;
@@ -142,6 +145,18 @@ internal static class SubtitleSemanticClassifier
                 true,
                 true,
                 ToReason(SubtitleSemanticKind.ProperNameOnly));
+        }
+
+        // Repeated identical text = chant/refrain; preserve from source if provider omits.
+        // Only cues that classify as Dialogue reach this point, so cues already classified
+        // as non-Dialogue are never changed.
+        if (repeatedProviderTexts?.Contains(text) == true)
+        {
+            return new SubtitleSemanticClassification(
+                SubtitleSemanticKind.LyricOrChant,
+                true,
+                true,
+                ToReason(SubtitleSemanticKind.LyricOrChant));
         }
 
         return new SubtitleSemanticClassification(

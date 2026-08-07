@@ -741,8 +741,10 @@ public class SourceSubtitleSnapshotServiceTests
 
             Assert.NotNull(snapshot);
             Assert.Equal(SourceSubtitleSnapshot.ExternalType, snapshot!.SourceType);
-            Assert.Contains(Path.GetFileName(cleanSrtPath), snapshot.Identity, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain(Path.GetFileName(pathologicalAssPath), snapshot.Identity, StringComparison.OrdinalIgnoreCase);
+            // Pathological ASS beats captions in the fallback tier: a signs dump is still
+            // closer to usable dialogue than an SDH caption track.
+            Assert.Contains(Path.GetFileName(pathologicalAssPath), snapshot.Identity, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(Path.GetFileName(cleanSrtPath), snapshot.Identity, StringComparison.OrdinalIgnoreCase);
         }
         finally
         {
@@ -934,7 +936,8 @@ public class SourceSubtitleSnapshotServiceTests
                 targetLanguages: []);
 
             Assert.NotNull(resolved);
-            Assert.Equal(cleanSrtPath, resolved!.Subtitle.Path);
+            // Pathological ASS beats captions in the fallback tier.
+            Assert.Equal(pathologicalAssPath, resolved!.Subtitle.Path);
         }
         finally
         {

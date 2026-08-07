@@ -1,12 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
+using Lingarr.Server.Models.Subtitle;
 using Lingarr.Server.Services.Subtitle;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -105,6 +107,7 @@ public sealed class SourceSubtitleResolverTests : IDisposable
             extractionService.Object,
             Mock.Of<ISourceSubtitleSnapshotService>(),
             cacheService,
+            Mock.Of<ISubtitleOcrService>(),
             NullLogger<SourceSubtitleResolver>.Instance);
         var request = new TranslationRequest
         {
@@ -169,6 +172,7 @@ public sealed class SourceSubtitleResolverTests : IDisposable
             extractionService.Object,
             Mock.Of<ISourceSubtitleSnapshotService>(),
             cacheService,
+            Mock.Of<ISubtitleOcrService>(),
             NullLogger<SourceSubtitleResolver>.Instance);
         var request = new TranslationRequest
         {
@@ -291,6 +295,7 @@ public sealed class SourceSubtitleResolverTests : IDisposable
             extractionService.Object,
             Mock.Of<ISourceSubtitleSnapshotService>(),
             cacheService,
+            Mock.Of<ISubtitleOcrService>(),
             NullLogger<SourceSubtitleResolver>.Instance);
         var request = new TranslationRequest
         {
@@ -333,6 +338,7 @@ public sealed class SourceSubtitleResolverTests : IDisposable
             extractionService.Object,
             Mock.Of<ISourceSubtitleSnapshotService>(),
             new EmbeddedSubtitleCacheService(NullLogger<EmbeddedSubtitleCacheService>.Instance),
+            Mock.Of<ISubtitleOcrService>(),
             NullLogger<SourceSubtitleResolver>.Instance);
         var request = new TranslationRequest
         {
@@ -395,6 +401,7 @@ public sealed class SourceSubtitleResolverTests : IDisposable
             extractionService.Object,
             Mock.Of<ISourceSubtitleSnapshotService>(),
             new EmbeddedSubtitleCacheService(NullLogger<EmbeddedSubtitleCacheService>.Instance),
+            Mock.Of<ISubtitleOcrService>(),
             NullLogger<SourceSubtitleResolver>.Instance);
         var request = new TranslationRequest
         {
@@ -454,6 +461,7 @@ public sealed class SourceSubtitleResolverTests : IDisposable
             extractionService.Object,
             Mock.Of<ISourceSubtitleSnapshotService>(),
             new EmbeddedSubtitleCacheService(NullLogger<EmbeddedSubtitleCacheService>.Instance),
+            Mock.Of<ISubtitleOcrService>(),
             NullLogger<SourceSubtitleResolver>.Instance);
         var request = new TranslationRequest
         {
@@ -518,6 +526,7 @@ public sealed class SourceSubtitleResolverTests : IDisposable
             extractionService.Object,
             Mock.Of<ISourceSubtitleSnapshotService>(),
             new EmbeddedSubtitleCacheService(NullLogger<EmbeddedSubtitleCacheService>.Instance),
+            Mock.Of<ISubtitleOcrService>(),
             NullLogger<SourceSubtitleResolver>.Instance);
         var request = new TranslationRequest
         {
@@ -586,6 +595,7 @@ public sealed class SourceSubtitleResolverTests : IDisposable
             extractionService.Object,
             Mock.Of<ISourceSubtitleSnapshotService>(),
             new EmbeddedSubtitleCacheService(NullLogger<EmbeddedSubtitleCacheService>.Instance),
+            Mock.Of<ISubtitleOcrService>(),
             NullLogger<SourceSubtitleResolver>.Instance);
         var request = new TranslationRequest
         {
@@ -605,6 +615,569 @@ public sealed class SourceSubtitleResolverTests : IDisposable
         extractionService.Verify(
             service => service.SyncEmbeddedSubtitles(It.IsAny<Movie>()),
             Times.Never);
+    }
+
+    [Fact]
+    public async Task ResolveReadableSourcePathAsync_RerunsOcrWhenOcrCacheFileMissingButMediaUnchanged()
+    {
+        var mediaPath = Path.Combine(_tempDirectory, "episode.mkv");
+        await File.WriteAllTextAsync(mediaPath, "unchanged media snapshot");
+
+        var cacheService = new EmbeddedSubtitleCacheService(
+            NullLogger<EmbeddedSubtitleCacheService>.Instance,
+            Path.Combine(_tempDirectory, "cache"),
+            TimeSpan.FromDays(30));
+        var ocrPath = cacheService.GetOcrCachePath(
+            mediaId: 108,
+            mediaType: MediaType.Movie,
+            streamIndex: 0,
+            language: "eng");
+        await File.WriteAllTextAsync(ocrPath, "1\n00:00:01,000 --> 00:00:02,000\nHello\n");
+        cacheService.RecordSourceSnapshot(ocrPath, mediaPath);
+
+        var movie = new Movie
+        {
+            Id = 108,
+            RadarrId = 108,
+            Title = "Movie",
+            FileName = Path.GetFileName(mediaPath),
+            Path = _tempDirectory,
+            DateAdded = DateTime.UtcNow
+        };
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = movie.Id,
+            StreamIndex = 0,
+            Language = "eng",
+            Title = "English PGS",
+            CodecName = "hdmv_pgs_subtitle",
+            IsTextBased = false,
+            OcrStatus = SubtitleOcrStatus.Succeeded,
+            OcrExtractedPath = ocrPath
+        });
+        _dbContext.Movies.Add(movie);
+        await _dbContext.SaveChangesAsync();
+
+        // Simulate the OCR output being deleted while the request was paused
+        // (manual cleanup, expired snapshot cleanup, ...) with the media unchanged.
+        File.Delete(ocrPath);
+        Assert.True(cacheService.IsSourceSnapshotCurrent(ocrPath, mediaPath));
+
+        var ocrService = new Mock<ISubtitleOcrService>();
+        ocrService
+            .Setup(service => service.RunOcrAsync(
+                movie.Id,
+                MediaType.Movie,
+                0,
+                false,
+                It.IsAny<CancellationToken>()))
+            .Returns(() =>
+            {
+                File.WriteAllText(ocrPath, "1\n00:00:01,000 --> 00:00:02,000\nHello\n");
+                return Task.FromResult(new SubtitleOcrResult
+                {
+                    Success = true,
+                    Status = SubtitleOcrStatus.Succeeded,
+                    ExtractedPath = ocrPath
+                });
+            });
+
+        var extractionService = new Mock<ISubtitleExtractionService>();
+        var resolver = new SourceSubtitleResolver(
+            _dbContext,
+            Mock.Of<ISubtitleService>(),
+            extractionService.Object,
+            Mock.Of<ISourceSubtitleSnapshotService>(),
+            cacheService,
+            ocrService.Object,
+            NullLogger<SourceSubtitleResolver>.Instance);
+        var request = new TranslationRequest
+        {
+            Id = 208,
+            Title = movie.Title,
+            SourceLanguage = "eng",
+            TargetLanguage = "pol",
+            MediaId = movie.Id,
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Pending,
+            SubtitleToTranslate = ocrPath,
+            SourceSnapshotStreamIndex = 0
+        };
+
+        var resolvedPath = await resolver.ResolveReadableSourcePathAsync(request);
+
+        Assert.Equal(ocrPath, resolvedPath);
+        Assert.True(File.Exists(ocrPath));
+        ocrService.Verify(service => service.RunOcrAsync(
+            movie.Id,
+            MediaType.Movie,
+            0,
+            false,
+            It.IsAny<CancellationToken>()), Times.Once);
+        extractionService.Verify(
+            service => service.TryExtractEmbeddedSubtitleForRequestAsync(
+                It.IsAny<int>(),
+                It.IsAny<MediaType>(),
+                It.IsAny<string>(),
+                It.IsAny<List<int>?>(),
+                It.IsAny<int?>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task ResolveReadableSourcePathAsync_DoesNotRerunOcrWhenMediaChanged()
+    {
+        var mediaPath = Path.Combine(_tempDirectory, "episode.mkv");
+        await File.WriteAllTextAsync(mediaPath, "old media snapshot");
+
+        var cacheService = new EmbeddedSubtitleCacheService(
+            NullLogger<EmbeddedSubtitleCacheService>.Instance,
+            Path.Combine(_tempDirectory, "cache"),
+            TimeSpan.FromDays(30));
+        var ocrPath = cacheService.GetOcrCachePath(
+            mediaId: 109,
+            mediaType: MediaType.Movie,
+            streamIndex: 0,
+            language: "eng");
+        await File.WriteAllTextAsync(ocrPath, "1\n00:00:01,000 --> 00:00:02,000\nHello\n");
+        cacheService.RecordSourceSnapshot(ocrPath, mediaPath);
+
+        var movie = new Movie
+        {
+            Id = 109,
+            RadarrId = 109,
+            Title = "Movie",
+            FileName = Path.GetFileName(mediaPath),
+            Path = _tempDirectory,
+            DateAdded = DateTime.UtcNow
+        };
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = movie.Id,
+            StreamIndex = 0,
+            Language = "eng",
+            Title = "English PGS",
+            CodecName = "hdmv_pgs_subtitle",
+            IsTextBased = false,
+            OcrStatus = SubtitleOcrStatus.Succeeded,
+            OcrExtractedPath = ocrPath
+        });
+        _dbContext.Movies.Add(movie);
+        await _dbContext.SaveChangesAsync();
+
+        // The media was replaced while the request was paused and the OCR output is
+        // already gone: the stale OCR must NOT be regenerated or translated.
+        await File.WriteAllTextAsync(mediaPath, "new media snapshot");
+        File.Delete(ocrPath);
+        Assert.False(cacheService.IsSourceSnapshotCurrent(ocrPath, mediaPath));
+
+        var ocrService = new Mock<ISubtitleOcrService>();
+        var extractionService = new Mock<ISubtitleExtractionService>();
+        extractionService
+            .Setup(service => service.TryExtractEmbeddedSubtitleForRequestAsync(
+                movie.Id,
+                MediaType.Movie,
+                "eng",
+                null,
+                It.IsAny<int?>()))
+            .Returns((int _, MediaType _, string _, List<int>? _, int? preferredStreamIndex) =>
+            {
+                Assert.Null(preferredStreamIndex);
+                return Task.FromResult<string?>(null);
+            });
+
+        var resolver = new SourceSubtitleResolver(
+            _dbContext,
+            Mock.Of<ISubtitleService>(),
+            extractionService.Object,
+            Mock.Of<ISourceSubtitleSnapshotService>(),
+            cacheService,
+            ocrService.Object,
+            NullLogger<SourceSubtitleResolver>.Instance);
+        var request = new TranslationRequest
+        {
+            Id = 209,
+            Title = movie.Title,
+            SourceLanguage = "eng",
+            TargetLanguage = "pol",
+            MediaId = movie.Id,
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Pending,
+            SubtitleToTranslate = ocrPath
+        };
+
+        var resolvedPath = await resolver.ResolveReadableSourcePathAsync(request);
+
+        Assert.Null(resolvedPath);
+        ocrService.Verify(
+            service => service.RunOcrAsync(
+                It.IsAny<int>(),
+                It.IsAny<MediaType>(),
+                It.IsAny<int>(),
+                It.IsAny<bool>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+        extractionService.Verify(
+            service => service.TryExtractEmbeddedSubtitleForRequestAsync(
+                movie.Id,
+                MediaType.Movie,
+                "eng",
+                null,
+                null),
+            Times.Once);
+        var clearedSubtitle = await _dbContext.EmbeddedSubtitles.SingleAsync();
+        Assert.Equal(SubtitleOcrStatus.NotStarted, clearedSubtitle.OcrStatus);
+        Assert.Null(clearedSubtitle.OcrExtractedPath);
+    }
+
+    [Fact]
+    public async Task ResolveReadableSourcePathAsync_DoesNotRerunOcrForMissingExtractedCacheFile()
+    {
+        var mediaPath = Path.Combine(_tempDirectory, "episode.mkv");
+        await File.WriteAllTextAsync(mediaPath, "unchanged media snapshot");
+
+        var cacheService = new EmbeddedSubtitleCacheService(
+            NullLogger<EmbeddedSubtitleCacheService>.Instance,
+            Path.Combine(_tempDirectory, "cache"),
+            TimeSpan.FromDays(30));
+        var extractedPath = cacheService.GetCachePath(
+            mediaId: 110,
+            mediaType: MediaType.Movie,
+            streamIndex: 0,
+            codecName: "subrip",
+            language: "eng");
+        await File.WriteAllTextAsync(extractedPath, "1\n00:00:01,000 --> 00:00:02,000\nHello\n");
+        cacheService.RecordSourceSnapshot(extractedPath, mediaPath);
+
+        var movie = new Movie
+        {
+            Id = 110,
+            RadarrId = 110,
+            Title = "Movie",
+            FileName = Path.GetFileName(mediaPath),
+            Path = _tempDirectory,
+            DateAdded = DateTime.UtcNow
+        };
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = movie.Id,
+            StreamIndex = 0,
+            Language = "eng",
+            CodecName = "subrip",
+            IsTextBased = true,
+            IsExtracted = true,
+            ExtractedPath = extractedPath
+        });
+        _dbContext.Movies.Add(movie);
+        await _dbContext.SaveChangesAsync();
+
+        // A missing extracted-text cache file is recovered by re-extraction, not OCR.
+        File.Delete(extractedPath);
+
+        var reExtractedPath = Path.Combine(_tempDirectory, "re-extracted.srt");
+        await File.WriteAllTextAsync(reExtractedPath, "1\n00:00:01,000 --> 00:00:02,000\nHello\n");
+
+        var ocrService = new Mock<ISubtitleOcrService>();
+        var extractionService = new Mock<ISubtitleExtractionService>();
+        extractionService
+            .Setup(service => service.TryExtractEmbeddedSubtitleForRequestAsync(
+                movie.Id,
+                MediaType.Movie,
+                "eng",
+                null,
+                0))
+            .ReturnsAsync(reExtractedPath);
+
+        var resolver = new SourceSubtitleResolver(
+            _dbContext,
+            Mock.Of<ISubtitleService>(),
+            extractionService.Object,
+            Mock.Of<ISourceSubtitleSnapshotService>(),
+            cacheService,
+            ocrService.Object,
+            NullLogger<SourceSubtitleResolver>.Instance);
+        var request = new TranslationRequest
+        {
+            Id = 210,
+            Title = movie.Title,
+            SourceLanguage = "eng",
+            TargetLanguage = "pol",
+            MediaId = movie.Id,
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Pending,
+            SubtitleToTranslate = extractedPath,
+            SourceSnapshotStreamIndex = 0
+        };
+
+        var resolvedPath = await resolver.ResolveReadableSourcePathAsync(request);
+
+        Assert.Equal(reExtractedPath, resolvedPath);
+        ocrService.Verify(
+            service => service.RunOcrAsync(
+                It.IsAny<int>(),
+                It.IsAny<MediaType>(),
+                It.IsAny<int>(),
+                It.IsAny<bool>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+        extractionService.Verify(
+            service => service.TryExtractEmbeddedSubtitleForRequestAsync(
+                movie.Id,
+                MediaType.Movie,
+                "eng",
+                null,
+                0),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task ResolveReadableSourcePathAsync_FallsBackWhenRerunOcrThrows()
+    {
+        var mediaPath = Path.Combine(_tempDirectory, "episode.mkv");
+        await File.WriteAllTextAsync(mediaPath, "unchanged media snapshot");
+
+        var cacheService = new EmbeddedSubtitleCacheService(
+            NullLogger<EmbeddedSubtitleCacheService>.Instance,
+            Path.Combine(_tempDirectory, "cache"),
+            TimeSpan.FromDays(30));
+        var ocrPath = cacheService.GetOcrCachePath(
+            mediaId: 111,
+            mediaType: MediaType.Movie,
+            streamIndex: 0,
+            language: "eng");
+        await File.WriteAllTextAsync(ocrPath, "1\n00:00:01,000 --> 00:00:02,000\nHello\n");
+        cacheService.RecordSourceSnapshot(ocrPath, mediaPath);
+
+        var movie = new Movie
+        {
+            Id = 111,
+            RadarrId = 111,
+            Title = "Movie",
+            FileName = Path.GetFileName(mediaPath),
+            Path = _tempDirectory,
+            DateAdded = DateTime.UtcNow
+        };
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = movie.Id,
+            StreamIndex = 0,
+            Language = "eng",
+            Title = "English PGS",
+            CodecName = "hdmv_pgs_subtitle",
+            IsTextBased = false,
+            OcrStatus = SubtitleOcrStatus.Succeeded,
+            OcrExtractedPath = ocrPath
+        });
+        _dbContext.Movies.Add(movie);
+        await _dbContext.SaveChangesAsync();
+
+        File.Delete(ocrPath);
+
+        var ocrService = new Mock<ISubtitleOcrService>();
+        ocrService
+            .Setup(service => service.RunOcrAsync(
+                movie.Id,
+                MediaType.Movie,
+                0,
+                false,
+                It.IsAny<CancellationToken>()))
+            .Returns(async () =>
+            {
+                // Mirror the real service: a failed re-OCR demotes the row to Failed and
+                // persists it before throwing.
+                var row = await _dbContext.EmbeddedSubtitles.SingleAsync(
+                    subtitle => subtitle.MovieId == movie.Id && subtitle.StreamIndex == 0);
+                row.OcrStatus = SubtitleOcrStatus.Failed;
+                row.OcrError = "ocr engine unavailable";
+                await _dbContext.SaveChangesAsync();
+                throw new InvalidOperationException("ocr engine unavailable");
+            });
+
+        var extractionService = new Mock<ISubtitleExtractionService>();
+        extractionService
+            .Setup(service => service.TryExtractEmbeddedSubtitleForRequestAsync(
+                It.IsAny<int>(),
+                It.IsAny<MediaType>(),
+                It.IsAny<string>(),
+                It.IsAny<List<int>?>(),
+                It.IsAny<int?>()))
+            .ReturnsAsync((string?)null);
+
+        var resolver = new SourceSubtitleResolver(
+            _dbContext,
+            Mock.Of<ISubtitleService>(),
+            extractionService.Object,
+            Mock.Of<ISourceSubtitleSnapshotService>(),
+            cacheService,
+            ocrService.Object,
+            NullLogger<SourceSubtitleResolver>.Instance);
+        var request = new TranslationRequest
+        {
+            Id = 211,
+            Title = movie.Title,
+            SourceLanguage = "eng",
+            TargetLanguage = "pol",
+            MediaId = movie.Id,
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Pending,
+            SubtitleToTranslate = ocrPath,
+            SourceSnapshotStreamIndex = 0
+        };
+
+        // Recovery failure must not throw and must not loop: it falls back to the
+        // existing resolution behavior.
+        var resolvedPath = await resolver.ResolveReadableSourcePathAsync(request);
+
+        Assert.Null(resolvedPath);
+        ocrService.Verify(service => service.RunOcrAsync(
+            movie.Id,
+            MediaType.Movie,
+            0,
+            false,
+            It.IsAny<CancellationToken>()), Times.Once);
+        extractionService.Verify(
+            service => service.TryExtractEmbeddedSubtitleForRequestAsync(
+                It.IsAny<int>(),
+                It.IsAny<MediaType>(),
+                It.IsAny<string>(),
+                It.IsAny<List<int>?>(),
+                It.IsAny<int?>()),
+            Times.Once);
+
+        // The failed re-OCR demoted the row, the resolver restored the captured Succeeded
+        // state (keeping future recovery possible), but the extraction fallback then resets
+        // the row because the OCR artifact is missing (IsStaleManagedArtifact) — the correct
+        // end state for a missing artifact is a fresh re-probe (NotStarted).
+        var verifyOptions = new DbContextOptionsBuilder<LingarrDbContext>()
+            .UseSqlite(_connection)
+            .Options;
+        await using var verifyContext = new LingarrDbContext(verifyOptions);
+        var restored = await verifyContext.EmbeddedSubtitles.AsNoTracking().SingleAsync();
+        Assert.Equal(SubtitleOcrStatus.NotStarted, restored.OcrStatus);
+        Assert.Null(restored.OcrError);
+    }
+
+    [Fact]
+    public async Task ResolveReadableSourcePathAsync_RestoresOcrRowStatusWhenRerunOcrFails()
+    {
+        var mediaPath = Path.Combine(_tempDirectory, "episode.mkv");
+        await File.WriteAllTextAsync(mediaPath, "unchanged media snapshot");
+
+        var cacheService = new EmbeddedSubtitleCacheService(
+            NullLogger<EmbeddedSubtitleCacheService>.Instance,
+            Path.Combine(_tempDirectory, "cache"),
+            TimeSpan.FromDays(30));
+        var ocrPath = cacheService.GetOcrCachePath(
+            mediaId: 112,
+            mediaType: MediaType.Movie,
+            streamIndex: 0,
+            language: "eng");
+        await File.WriteAllTextAsync(ocrPath, "1\n00:00:01,000 --> 00:00:02,000\nHello\n");
+        cacheService.RecordSourceSnapshot(ocrPath, mediaPath);
+
+        var movie = new Movie
+        {
+            Id = 112,
+            RadarrId = 112,
+            Title = "Movie",
+            FileName = Path.GetFileName(mediaPath),
+            Path = _tempDirectory,
+            DateAdded = DateTime.UtcNow
+        };
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = movie.Id,
+            StreamIndex = 0,
+            Language = "eng",
+            Title = "English PGS",
+            CodecName = "hdmv_pgs_subtitle",
+            IsTextBased = false,
+            OcrStatus = SubtitleOcrStatus.Succeeded,
+            OcrExtractedPath = ocrPath
+        });
+        _dbContext.Movies.Add(movie);
+        await _dbContext.SaveChangesAsync();
+
+        File.Delete(ocrPath);
+
+        var ocrService = new Mock<ISubtitleOcrService>();
+        ocrService
+            .Setup(service => service.RunOcrAsync(
+                movie.Id,
+                MediaType.Movie,
+                0,
+                false,
+                It.IsAny<CancellationToken>()))
+            .Returns(async () =>
+            {
+                // Mirror the real service: a failed re-OCR demotes the row to Failed and
+                // persists it before returning the failure result.
+                var row = await _dbContext.EmbeddedSubtitles.SingleAsync(
+                    subtitle => subtitle.MovieId == movie.Id && subtitle.StreamIndex == 0);
+                row.OcrStatus = SubtitleOcrStatus.Failed;
+                row.OcrError = "ocr engine unavailable";
+                await _dbContext.SaveChangesAsync();
+                return new SubtitleOcrResult
+                {
+                    Success = false,
+                    Status = SubtitleOcrStatus.Failed,
+                    Error = "ocr engine unavailable"
+                };
+            });
+
+        var extractionService = new Mock<ISubtitleExtractionService>();
+        extractionService
+            .Setup(service => service.TryExtractEmbeddedSubtitleForRequestAsync(
+                It.IsAny<int>(),
+                It.IsAny<MediaType>(),
+                It.IsAny<string>(),
+                It.IsAny<List<int>?>(),
+                It.IsAny<int?>()))
+            .ReturnsAsync((string?)null);
+
+        var resolver = new SourceSubtitleResolver(
+            _dbContext,
+            Mock.Of<ISubtitleService>(),
+            extractionService.Object,
+            Mock.Of<ISourceSubtitleSnapshotService>(),
+            cacheService,
+            ocrService.Object,
+            NullLogger<SourceSubtitleResolver>.Instance);
+        var request = new TranslationRequest
+        {
+            Id = 212,
+            Title = movie.Title,
+            SourceLanguage = "eng",
+            TargetLanguage = "pol",
+            MediaId = movie.Id,
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Pending,
+            SubtitleToTranslate = ocrPath,
+            SourceSnapshotStreamIndex = 0
+        };
+
+        // Recovery failure falls back to the existing resolution behavior, never throws,
+        // and the extraction fallback resets the row (artifact missing) so it is re-probed
+        // fresh — the correct end state for a missing OCR artifact.
+        var resolvedPath = await resolver.ResolveReadableSourcePathAsync(request);
+
+        Assert.Null(resolvedPath);
+        extractionService.Verify(
+            service => service.TryExtractEmbeddedSubtitleForRequestAsync(
+                It.IsAny<int>(),
+                It.IsAny<MediaType>(),
+                It.IsAny<string>(),
+                It.IsAny<List<int>?>(),
+                It.IsAny<int?>()),
+            Times.Once);
+
+        var restoreOptions = new DbContextOptionsBuilder<LingarrDbContext>()
+            .UseSqlite(_connection)
+            .Options;
+        await using var restoreContext = new LingarrDbContext(restoreOptions);
+        var restored = await restoreContext.EmbeddedSubtitles.AsNoTracking().SingleAsync();
+        Assert.Equal(SubtitleOcrStatus.NotStarted, restored.OcrStatus);
+        Assert.Null(restored.OcrError);
     }
 
     public void Dispose()

@@ -47,9 +47,10 @@ public class BulkIntegrityCheckJobTests
                 false,
                 false,
                 25,
-                It.IsAny<ICollection<SubtitleIntegrityFinding>>()))
-            .Callback<IMedia, MediaType, bool, bool, bool, bool, int?, ICollection<SubtitleIntegrityFinding>>(
-                (_, _, _, _, _, _, _, findings) => findings.Add(new SubtitleIntegrityFinding
+                It.IsAny<ICollection<SubtitleIntegrityFinding>>(),
+                It.IsAny<bool>()))
+            .Callback<IMedia, MediaType, bool, bool, bool, bool, int?, ICollection<SubtitleIntegrityFinding>, bool>(
+                (_, _, _, _, _, _, _, findings, _) => findings.Add(new SubtitleIntegrityFinding
                 {
                     MediaId = 1,
                     MediaType = MediaType.Movie.ToString(),
@@ -98,7 +99,8 @@ public class BulkIntegrityCheckJobTests
             false,
             false,
             25,
-            It.IsAny<ICollection<SubtitleIntegrityFinding>>()), Times.Once);
+            It.IsAny<ICollection<SubtitleIntegrityFinding>>(),
+            It.IsAny<bool>()), Times.Once);
     }
 
     private static LingarrDbContext CreateDbContext()

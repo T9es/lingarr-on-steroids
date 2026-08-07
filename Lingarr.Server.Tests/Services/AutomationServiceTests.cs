@@ -55,7 +55,8 @@ public class AutomationServiceTests
                 false,
                 true,
                 true,
-                null))
+                null,
+                It.IsAny<bool>()))
             .ReturnsAsync(1);
 
         var service = new AutomationService(
@@ -94,7 +95,8 @@ public class AutomationServiceTests
             false,
             true,
             true,
-            null), Times.Once);
+            null,
+            It.IsAny<bool>()), Times.Once);
     }
 
     [Fact]

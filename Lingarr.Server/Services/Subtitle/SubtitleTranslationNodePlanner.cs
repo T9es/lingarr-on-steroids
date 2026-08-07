@@ -64,6 +64,15 @@ internal static class SubtitleTranslationNodePlanner
             })
             .ToList();
 
+        // Repeated identical text across a file is a chant or refrain: the provider may
+        // legitimately omit it, so such cues are preserved from source instead of failing.
+        // The set is computed from pass-one classifications (which do not affect
+        // translatability) and applied on the second pass.
+        var repeatedProviderTexts = ProviderTextDeduper.BuildRepeatedTexts(
+            candidates
+                .Where(candidate => candidate.IsTranslatable)
+                .Select(candidate => candidate.ProviderText));
+
         var deduplication = ProviderTextDeduper.Deduplicate(
             candidates
                 .Where(candidate => candidate.IsTranslatable)
@@ -73,6 +82,15 @@ internal static class SubtitleTranslationNodePlanner
         var nodes = candidates
             .Select(candidate =>
             {
+                candidate = candidate with
+                {
+                    SemanticClassification = SubtitleSemanticClassifier.Classify(
+                        candidate.Subtitle,
+                        candidate.ProviderText,
+                        candidate.Subtitle.SsaDialogue?.Style,
+                        repeatedProviderTexts)
+                };
+
                 if (!candidate.IsTranslatable)
                 {
                     return candidate.ToNode(

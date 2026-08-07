@@ -311,6 +311,214 @@ public class SubtitleOcrServiceTests
         }
     }
 
+    [Fact]
+    public async Task RunOcrAsync_ConcurrentCallsForSameOutputPath_SerializeEngineExecution()
+    {
+        var tempDirectory = Directory.CreateTempSubdirectory();
+        await using var connection = new SqliteConnection("Filename=:memory:");
+        try
+        {
+            await connection.OpenAsync();
+            var options = new DbContextOptionsBuilder<LingarrDbContext>()
+                .UseSqlite(connection)
+                .Options;
+
+            await using (var setupContext = new LingarrDbContext(options))
+            {
+                await setupContext.Database.EnsureCreatedAsync();
+
+                var fileName = "korra.mkv";
+                await File.WriteAllTextAsync(Path.Combine(tempDirectory.FullName, fileName), "media");
+
+                var show = new Show
+                {
+                    SonarrId = 1,
+                    Title = "The Legend of Korra",
+                    Path = tempDirectory.FullName,
+                    DateAdded = DateTime.UtcNow
+                };
+                var season = new Season
+                {
+                    SeasonNumber = 4,
+                    Path = tempDirectory.FullName,
+                    Show = show
+                };
+                var episode = new Episode
+                {
+                    SonarrId = 10,
+                    EpisodeNumber = 1,
+                    Title = "Concurrent OCR",
+                    Path = tempDirectory.FullName,
+                    FileName = fileName,
+                    Season = season
+                };
+                episode.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+                {
+                    StreamIndex = 0,
+                    Language = "eng",
+                    Title = "English PGS",
+                    CodecName = "hdmv_pgs_subtitle",
+                    IsTextBased = false,
+                    Episode = episode
+                });
+
+                setupContext.Shows.Add(show);
+                setupContext.Seasons.Add(season);
+                setupContext.Episodes.Add(episode);
+                await setupContext.SaveChangesAsync();
+            }
+
+            var ocrPath = Path.Combine(tempDirectory.FullName, "ocr.srt");
+            var gateArrivals = 0;
+            var cache = new Mock<IEmbeddedSubtitleCacheService>();
+            cache
+                .Setup(service => service.GetOcrCachePath(
+                    It.IsAny<int>(),
+                    It.IsAny<MediaType>(),
+                    It.IsAny<int>(),
+                    It.IsAny<string?>()))
+                .Returns((int _, MediaType _, int _, string? _) =>
+                {
+                    Interlocked.Increment(ref gateArrivals);
+                    return ocrPath;
+                });
+
+            var subtitleService = new Mock<ISubtitleService>();
+            subtitleService
+                .Setup(service => service.ReadSubtitles(It.IsAny<string>()))
+                .ReturnsAsync(Enumerable.Range(1, SubtitleExtractionService.MinimumDialogueEntries)
+                    .Select(index => new SubtitleItem
+                    {
+                        Position = index,
+                        StartTime = index * 1000,
+                        EndTime = index * 1000 + 500,
+                        Lines = [$"Line {index}"],
+                        PlaintextLines = [$"Line {index}"]
+                    })
+                    .ToList());
+
+            var engineCalls = 0;
+            var engineConcurrency = 0;
+            var maxEngineConcurrency = 0;
+            var trackingLock = new object();
+            var releaseFirstExecution = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+
+            var engine = new Mock<ISubtitleOcrEngine>();
+            engine
+                .Setup(service => service.ConvertAsync(
+                    It.IsAny<string>(),
+                    0,
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<CancellationToken>()))
+                .Returns(async (string _, int _, string outputPath, string _, CancellationToken _) =>
+                {
+                    int callNumber;
+                    lock (trackingLock)
+                    {
+                        callNumber = ++engineCalls;
+                        engineConcurrency++;
+                        if (engineConcurrency > maxEngineConcurrency)
+                        {
+                            maxEngineConcurrency = engineConcurrency;
+                        }
+                    }
+
+                    try
+                    {
+                        if (callNumber == 1)
+                        {
+                            // Hold the first engine execution until the second call has
+                            // reached the serialization gate.
+                            await releaseFirstExecution.Task;
+                        }
+
+                        await File.WriteAllTextAsync(
+                            outputPath,
+                            "1\n00:00:01,000 --> 00:00:02,000\nHello\n");
+                        return new SubtitleOcrEngineResult
+                        {
+                            Success = true,
+                            OutputPath = outputPath
+                        };
+                    }
+                    finally
+                    {
+                        lock (trackingLock)
+                        {
+                            engineConcurrency--;
+                        }
+                    }
+                });
+
+            await using var context = new LingarrDbContext(options);
+            var episodeId = await context.Episodes
+                .Where(episode => episode.Title == "Concurrent OCR")
+                .Select(episode => episode.Id)
+                .SingleAsync();
+            var service = BuildService(
+                context,
+                subtitleService.Object,
+                cache.Object,
+                engine.Object);
+
+            var firstCall = service.RunOcrAsync(episodeId, MediaType.Episode, 0, manual: false);
+            try
+            {
+                await WaitUntilAsync(
+                    () => Volatile.Read(ref engineCalls) == 1,
+                    TimeSpan.FromSeconds(5));
+
+                var secondCall = service.RunOcrAsync(episodeId, MediaType.Episode, 0, manual: false);
+                await WaitUntilAsync(
+                    () => Volatile.Read(ref gateArrivals) == 2,
+                    TimeSpan.FromSeconds(5));
+
+                // The second call has computed its output path but must still be queued
+                // on the semaphore: the engine may not be entered a second time while the
+                // first execution is still running.
+                Assert.Equal(1, Volatile.Read(ref engineCalls));
+                Assert.Equal(1, Volatile.Read(ref maxEngineConcurrency));
+
+                releaseFirstExecution.SetResult();
+
+                var results = await Task.WhenAll(firstCall, secondCall);
+
+                Assert.Equal(2, Volatile.Read(ref engineCalls));
+                Assert.Equal(1, Volatile.Read(ref maxEngineConcurrency));
+                Assert.All(results, result => Assert.Equal(SubtitleOcrStatus.Succeeded, result.Status));
+            }
+            finally
+            {
+                releaseFirstExecution.TrySetResult();
+            }
+
+            await using var verifyContext = new LingarrDbContext(options);
+            var current = await verifyContext.EmbeddedSubtitles.AsNoTracking().SingleAsync();
+            Assert.Equal(SubtitleOcrStatus.Succeeded, current.OcrStatus);
+            Assert.Equal(SubtitleExtractionService.MinimumDialogueEntries, current.OcrCueCount);
+        }
+        finally
+        {
+            tempDirectory.Delete(recursive: true);
+        }
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (!condition())
+        {
+            if (DateTime.UtcNow >= deadline)
+            {
+                throw new TimeoutException($"Condition was not met within {timeout}.");
+            }
+
+            await Task.Delay(25);
+        }
+    }
+
     private static LingarrDbContext BuildContext()
     {
         var options = new DbContextOptionsBuilder<LingarrDbContext>()

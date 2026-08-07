@@ -519,13 +519,14 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
     
     /// <inheritdoc />
     public async Task<int> ProcessMediaForceAsync(
-        IMedia media, 
+        IMedia media,
         MediaType mediaType,
         bool forceProcess = true,
         bool forceTranslation = true,
         bool forcePriority = false,
         bool queueTranslations = true,
-        int? maxTranslationsToQueue = null)
+        int? maxTranslationsToQueue = null,
+        bool forceRequeue = false)
     {
         return await ProcessMediaForceAsync(
             media,
@@ -535,7 +536,8 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             forcePriority,
             queueTranslations,
             maxTranslationsToQueue,
-            new List<SubtitleIntegrityFinding>());
+            new List<SubtitleIntegrityFinding>(),
+            forceRequeue);
     }
 
     /// <inheritdoc />
@@ -547,7 +549,8 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         bool forcePriority,
         bool queueTranslations,
         int? maxTranslationsToQueue,
-        ICollection<SubtitleIntegrityFinding> integrityFindings)
+        ICollection<SubtitleIntegrityFinding> integrityFindings,
+        bool forceRequeue = false)
     {
         return await ProcessMediaForceCoreAsync(
             media,
@@ -558,7 +561,8 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             queueTranslations,
             maxTranslationsToQueue,
             integrityFindings,
-            targetLanguageFilter: null);
+            targetLanguageFilter: null,
+            forceRequeue: forceRequeue);
     }
 
     /// <inheritdoc />
@@ -593,7 +597,8 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         bool queueTranslations,
         int? maxTranslationsToQueue,
         ICollection<SubtitleIntegrityFinding> integrityFindings,
-        IReadOnlyCollection<string>? targetLanguageFilter)
+        IReadOnlyCollection<string>? targetLanguageFilter,
+        bool forceRequeue = false)
     {
         if (media.Path == null)
         {
@@ -625,7 +630,8 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 forcePriority,
                 queueTranslations,
                 maxTranslationsToQueue,
-                integrityFindings);
+                integrityFindings,
+                forceRequeue);
         }
 
         var sourceLanguages = await GetLanguagesSetting<SourceLanguage>(SettingKeys.Translation.SourceLanguages);
@@ -669,7 +675,8 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             forcePriority,
             queueTranslations,
             maxTranslationsToQueue,
-            integrityFindings);
+            integrityFindings,
+            forceRequeue);
         // return 0;
     }
     
@@ -688,7 +695,8 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         bool forcePriority = false,
         bool queueTranslations = true,
         int? maxTranslationsToQueue = null,
-        ICollection<SubtitleIntegrityFinding>? integrityFindings = null)
+        ICollection<SubtitleIntegrityFinding>? integrityFindings = null,
+        bool forceRequeue = false)
     {
         var existingLanguages = ExtractLanguageCodes(subtitles);
         var knownForcedDialogueGeneratedPaths =
@@ -923,7 +931,8 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                             requestedRequiredOutputFormats,
                             SubtitleLanguageHelper.DetermineSubtitleTypeFromFilename(sourceSubtitle.Path),
                             null,
-                            resolvedExternalSource.Snapshot.Identity))
+                            resolvedExternalSource.Snapshot.Identity,
+                            excludeFailed: forceRequeue))
                     {
                         _logger.LogInformation(
                             "Skipping enqueue for {FileName} {Source}->{Target}: translation request already active.",
@@ -995,7 +1004,8 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             forcePriority,
             queueTranslations,
             maxTranslationsToQueue,
-            integrityFindings);
+            integrityFindings,
+            forceRequeue);
     }
     
     /// <summary>
@@ -1009,6 +1019,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
     /// <param name="queueTranslations">If false, reports queueable translations without creating requests.</param>
     /// <param name="maxTranslationsToQueue">Optional maximum number of requests to create.</param>
     /// <param name="integrityFindings">Optional collection that receives detailed integrity findings.</param>
+    /// <param name="forceRequeue">If true, excludes Failed translation requests from the active-request dedupe gate.</param>
     /// <returns>The number of translation requests queued</returns>
     private async Task<int> TryQueueEmbeddedSubtitleTranslation(
         IMedia media,
@@ -1018,7 +1029,8 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         bool forcePriority = false,
         bool queueTranslations = true,
         int? maxTranslationsToQueue = null,
-        ICollection<SubtitleIntegrityFinding>? integrityFindings = null)
+        ICollection<SubtitleIntegrityFinding>? integrityFindings = null,
+        bool forceRequeue = false)
     {
         if (media.Path == null)
         {
@@ -1233,7 +1245,8 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                     forcePriority,
                     queueTranslations,
                     maxTranslationsToQueue,
-                    integrityFindings);
+                    integrityFindings,
+                    forceRequeue);
             }
 
             // Check if OCR status says completed but the output file is missing from disk
@@ -1739,7 +1752,8 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                         requestedRequiredOutputFormats,
                         selectedSourceType,
                         sourceSnapshot.StreamIndex,
-                        sourceSnapshot.Identity))
+                        sourceSnapshot.Identity,
+                        excludeFailed: forceRequeue))
                 {
                     _logger.LogInformation(
                         "Skipping embedded enqueue for {FileName} {Source}->{Target}: translation request already active.",
@@ -1798,7 +1812,8 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 forcePriority,
                 maxTranslationsToQueue.HasValue
                     ? Math.Max(0, maxTranslationsToQueue.Value - translationsQueued)
-                    : null);
+                    : null,
+                forceRequeue);
 
             // Only update hash if no corruption was found - this ensures re-validation on next run
             // if translation job fails or app crashes before completing
@@ -2183,7 +2198,8 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         string requestedRequiredOutputFormats,
         string? sourceSubtitleType = null,
         int? sourceSnapshotStreamIndex = null,
-        string? sourceSnapshotIdentity = null)
+        string? sourceSnapshotIdentity = null,
+        bool excludeFailed = false)
     {
         var workloadItemKey = $"library:{mediaType}:{mediaId}";
         var sourceDedupeKey = TranslationRequestService.BuildSourceDedupeKey(
@@ -2205,7 +2221,9 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 tr.SourceLanguage == sourceLanguage &&
                 tr.TargetLanguage == targetLanguage &&
                 tr.SourceDedupeKey == sourceDedupeKey &&
-(tr.IsActive == true || tr.Status == TranslationStatus.Failed));
+                // A Failed row is only treated as "still active" when the caller did not
+                // explicitly exclude it (forceRequeue), e.g. after an unsafe-source kill.
+                (tr.IsActive == true || (!excludeFailed && tr.Status == TranslationStatus.Failed)));
 
 query = isSupplemental
             ? query.Where(tr =>
@@ -2277,7 +2295,8 @@ query = isSupplemental
         IReadOnlyCollection<string> targetLanguages,
         bool forceTranslation,
         bool forcePriority,
-        int? maxTranslationsToQueue)
+        int? maxTranslationsToQueue,
+        bool forceRequeue = false)
     {
         var supplementalEnabled = string.Equals(
             await _settingService.GetSetting(SettingKeys.Translation.TranslateSupplementalSubtitles),
@@ -2351,7 +2370,8 @@ query = isSupplemental
                         requestedRequiredOutputFormats,
                         sourceType,
                         sourceSnapshot.StreamIndex,
-                        sourceSnapshot.Identity))
+                        sourceSnapshot.Identity,
+                        excludeFailed: forceRequeue))
                 {
                     continue;
                 }

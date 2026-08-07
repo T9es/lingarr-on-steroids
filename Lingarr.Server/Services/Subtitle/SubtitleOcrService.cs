@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
 using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
@@ -13,6 +14,15 @@ namespace Lingarr.Server.Services.Subtitle;
 
 public class SubtitleOcrService : ISubtitleOcrService
 {
+    /// <summary>
+    /// Serializes OCR engine executions per deterministic output path. Concurrent re-OCR
+    /// of the same stream (e.g. two paused requests resuming in different worker slots)
+    /// would otherwise start two PgsToSrt processes writing the same cache file at once,
+    /// risking a corrupt SRT that still passes the quality gate.
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> OcrOutputLocks =
+        new(StringComparer.OrdinalIgnoreCase);
+
     private static readonly HashSet<string> SupportedCodecs = new(StringComparer.OrdinalIgnoreCase)
     {
         "hdmv_pgs_subtitle",
@@ -128,118 +138,135 @@ public class SubtitleOcrService : ISubtitleOcrService
             context.Subtitle.Language);
         var tesseractLanguage = await ResolveOcrLanguageAsync(context.Subtitle, cancellationToken);
 
-        var engineResult = await _ocrEngine.ConvertAsync(
-            context.MediaPath,
-            streamIndex,
-            outputPath,
-            tesseractLanguage,
-            cancellationToken);
-        if (!engineResult.Success || string.IsNullOrWhiteSpace(engineResult.OutputPath))
-        {
-            var failedSubtitle = await MarkFailedAsync(
-                context,
-                engineResult.Error ?? "OCR engine did not produce output.",
-                cancellationToken);
-            return FromSubtitle(failedSubtitle, success: false);
-        }
-
+        // Serialize engine executions per output path (see OcrOutputLocks): only one
+        // process may write a given cache file at a time, and that file must be fully
+        // written, normalized, parsed and quality-scored before the next execution for
+        // the same path starts.
+        var outputLock = OcrOutputLocks.GetOrAdd(outputPath, static _ => new SemaphoreSlim(1, 1));
+        await outputLock.WaitAsync(cancellationToken);
         try
         {
-            NormalizeOcrOutputFile(engineResult.OutputPath);
-            if (_embeddedSubtitleCacheService.IsManagedCachePath(engineResult.OutputPath))
+            var engineResult = await _ocrEngine.ConvertAsync(
+                context.MediaPath,
+                streamIndex,
+                outputPath,
+                tesseractLanguage,
+                cancellationToken);
+            if (!engineResult.Success || string.IsNullOrWhiteSpace(engineResult.OutputPath))
             {
-                _embeddedSubtitleCacheService.RecordSourceSnapshot(
-                    engineResult.OutputPath,
-                    context.MediaPath);
+                var failedSubtitle = await MarkFailedAsync(
+                    context,
+                    engineResult.Error ?? "OCR engine did not produce output.",
+                    cancellationToken);
+                return FromSubtitle(failedSubtitle, success: false);
             }
 
-            var subtitles = await _subtitleService.ReadSubtitles(engineResult.OutputPath);
-            var quality = SubtitleOcrQualityAnalyzer.Analyze(
-                subtitles,
-                await GetMinimumQualityScoreAsync(cancellationToken),
-                manual && SubtitleLanguageHelper.IsSupplementalSubtitleType(
-                    SubtitleLanguageHelper.DetermineSubtitleType(context.Subtitle)));
-
-            var completedSubtitle = await SaveCurrentSubtitleStateAsync(
-                context,
-                streamIndex,
-                subtitle =>
-                {
-                    subtitle.OcrExtractedPath = engineResult.OutputPath;
-                    subtitle.OcrCueCount = quality.CueCount;
-                    subtitle.OcrQualityScore = quality.QualityScore;
-                    subtitle.OcrIssueSummary = quality.IssueSummary;
-                    subtitle.OcrCompletedAt = DateTime.UtcNow;
-                    subtitle.OcrError = quality.Accepted ? null : quality.IssueSummary;
-                    subtitle.OcrStatus = quality.Accepted
-                        ? SubtitleOcrStatus.Succeeded
-                        : SubtitleOcrStatus.BlockedLowQuality;
-                },
-                cancellationToken);
-            await _mediaStateService.UpdateStateAsync(context.Media, mediaType);
-
-            _logger.LogInformation(
-                "OCR completed for {MediaType} {MediaId} stream {StreamIndex}: status={Status}, cues={CueCount}, quality={QualityScore}",
-                mediaType,
-                mediaId,
-                streamIndex,
-                completedSubtitle.OcrStatus,
-                completedSubtitle.OcrCueCount,
-                completedSubtitle.OcrQualityScore);
-
-            if (!quality.Accepted)
+            try
             {
-                var corruptSamples = subtitles
-                    .Where(s =>
-                    {
-                        var text = string.Join(' ', s.Lines).Trim();
-                        return !string.IsNullOrWhiteSpace(text) &&
-                               SubtitleSemanticClassifier.IsLikelyCorruptText(text);
-                    })
-                    .Take(10)
-                    .Select(s =>
-                    {
-                        var raw = $"[{s.Position}] {string.Join(' ', s.Lines).Trim()}";
-                        return raw.Length > 200 ? raw[..197] + "..." : raw;
-                    })
-                    .ToList();
+                NormalizeOcrOutputFile(engineResult.OutputPath);
+                if (_embeddedSubtitleCacheService.IsManagedCachePath(engineResult.OutputPath))
+                {
+                    _embeddedSubtitleCacheService.RecordSourceSnapshot(
+                        engineResult.OutputPath,
+                        context.MediaPath);
+                }
 
-                if (corruptSamples.Count > 0)
+                var subtitles = await _subtitleService.ReadSubtitles(engineResult.OutputPath);
+                var quality = SubtitleOcrQualityAnalyzer.Analyze(
+                    subtitles,
+                    await GetMinimumQualityScoreAsync(cancellationToken),
+                    manual && SubtitleLanguageHelper.IsSupplementalSubtitleType(
+                        SubtitleLanguageHelper.DetermineSubtitleType(context.Subtitle)));
+
+                var completedSubtitle = await SaveCurrentSubtitleStateAsync(
+                    context,
+                    streamIndex,
+                    subtitle =>
+                    {
+                        subtitle.OcrExtractedPath = engineResult.OutputPath;
+                        subtitle.OcrCueCount = quality.CueCount;
+                        subtitle.OcrQualityScore = quality.QualityScore;
+                        subtitle.OcrIssueSummary = quality.IssueSummary;
+                        subtitle.OcrCompletedAt = DateTime.UtcNow;
+                        subtitle.OcrError = quality.Accepted ? null : quality.IssueSummary;
+                        subtitle.OcrStatus = quality.Accepted
+                            ? SubtitleOcrStatus.Succeeded
+                            : SubtitleOcrStatus.BlockedLowQuality;
+                    },
+                    cancellationToken);
+                await _mediaStateService.UpdateStateAsync(context.Media, mediaType);
+
+                _logger.LogInformation(
+                    "OCR completed for {MediaType} {MediaId} stream {StreamIndex}: status={Status}, cues={CueCount}, quality={QualityScore}",
+                    mediaType,
+                    mediaId,
+                    streamIndex,
+                    completedSubtitle.OcrStatus,
+                    completedSubtitle.OcrCueCount,
+                    completedSubtitle.OcrQualityScore);
+
+                if (!quality.Accepted)
                 {
-                    _logger.LogWarning(
-                        "OCR blocked for {MediaType} {MediaId} stream {StreamIndex}: quality={QualityScore}, issues={Issues}. Corrupt sample lines: {Samples}",
-                        mediaType,
-                        mediaId,
-                        streamIndex,
-                        quality.QualityScore,
-                        quality.IssueSummary,
-                        string.Join(" | ", corruptSamples));
+                    var corruptSamples = subtitles
+                        .Where(s =>
+                        {
+                            var text = string.Join(' ', s.Lines).Trim();
+                            return !string.IsNullOrWhiteSpace(text) &&
+                                   SubtitleSemanticClassifier.IsLikelyCorruptText(text);
+                        })
+                        .Take(10)
+                        .Select(s =>
+                        {
+                            var raw = $"[{s.Position}] {string.Join(' ', s.Lines).Trim()}";
+                            return raw.Length > 200 ? raw[..197] + "..." : raw;
+                        })
+                        .ToList();
+
+                    if (corruptSamples.Count > 0)
+                    {
+                        _logger.LogWarning(
+                            "OCR blocked for {MediaType} {MediaId} stream {StreamIndex}: quality={QualityScore}, issues={Issues}. Corrupt sample lines: {Samples}",
+                            mediaType,
+                            mediaId,
+                            streamIndex,
+                            quality.QualityScore,
+                            quality.IssueSummary,
+                            string.Join(" | ", corruptSamples));
+                    }
+                    else
+                    {
+                        _logger.LogWarning(
+                            "OCR blocked for {MediaType} {MediaId} stream {StreamIndex}: quality={QualityScore}, issues={Issues}",
+                            mediaType,
+                            mediaId,
+                            streamIndex,
+                            quality.QualityScore,
+                            quality.IssueSummary);
+                    }
                 }
-                else
-                {
-                    _logger.LogWarning(
-                        "OCR blocked for {MediaType} {MediaId} stream {StreamIndex}: quality={QualityScore}, issues={Issues}",
-                        mediaType,
-                        mediaId,
-                        streamIndex,
-                        quality.QualityScore,
-                        quality.IssueSummary);
-                }
+
+                return FromSubtitle(completedSubtitle, success: quality.Accepted);
             }
-
-            return FromSubtitle(completedSubtitle, success: quality.Accepted);
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                var failedSubtitle = await MarkFailedAsync(
+                    context,
+                    $"OCR output could not be parsed: {ex.Message}",
+                    cancellationToken);
+                return FromSubtitle(failedSubtitle, success: false);
+            }
         }
-        catch (OperationCanceledException)
+        finally
         {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            var failedSubtitle = await MarkFailedAsync(
-                context,
-                $"OCR output could not be parsed: {ex.Message}",
-                cancellationToken);
-            return FromSubtitle(failedSubtitle, success: false);
+            outputLock.Release();
+            // Entries are intentionally never removed: the key set is bounded (one
+            // deterministic output path per media stream), and removing an entry would
+            // let a caller arriving between Release() and removal acquire a fresh
+            // semaphore and bypass the gate — the exact race this lock exists to prevent.
         }
     }
 

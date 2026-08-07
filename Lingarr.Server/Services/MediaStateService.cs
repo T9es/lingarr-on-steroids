@@ -156,6 +156,8 @@ public class MediaStateService : IMediaStateService
         // 4. Check for active translation request
         if (await HasActiveTranslationRequestAsync(media.Id, mediaType))
         {
+            // Touch OCR cache files referenced by paused requests so they survive until resume
+            await TouchOcrFilesForPausedRequestsAsync(media.Id, mediaType);
             return TranslationState.InProgress;
         }
 
@@ -473,6 +475,32 @@ public class MediaStateService : IMediaStateService
             tr.MediaId == mediaId &&
             tr.MediaType == mediaType &&
             tr.Status == TranslationStatus.Failed);
+    }
+
+    /// <summary>
+    /// Touches managed cache files referenced by paused translation requests so they do
+    /// not expire under the age-based cleaner while the request waits to resume. Mirrors
+    /// the Complete-state touch below: paused requests do not reach that branch because
+    /// the active-request check above short-circuits to InProgress.
+    /// </summary>
+    private async Task TouchOcrFilesForPausedRequestsAsync(int mediaId, MediaType mediaType)
+    {
+        var pausedPaths = await _dbContext.TranslationRequests
+            .AsNoTracking()
+            .Where(request => request.WorkloadKind == TranslationWorkloadKind.Library)
+            .Where(request => request.MediaId == mediaId && request.MediaType == mediaType)
+            .Where(request => request.Status == TranslationStatus.Paused)
+            .Where(request => request.SubtitleToTranslate != null)
+            .Select(request => request.SubtitleToTranslate!)
+            .ToListAsync();
+
+        foreach (var path in pausedPaths)
+        {
+            if (_embeddedSubtitleCacheService.IsManagedCachePath(path))
+            {
+                _embeddedSubtitleCacheService.Touch(path);
+            }
+        }
     }
 
     private async Task<List<string>> GetConfiguredLanguages(string settingKey)

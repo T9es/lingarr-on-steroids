@@ -683,4 +683,81 @@ public class DuplicationPreventionTests : MediaSubtitleProcessorTestBase
             s => s.CreateRequest(It.IsAny<TranslateAbleSubtitle>(), It.IsAny<bool>()),
             Times.Never);
     }
+
+    [Fact]
+    public async Task ProcessMediaForceAsync_WithFailedRequestOnlyForceRequeueQueuesNewRequest()
+    {
+        var movie = await CreateTestMovie();
+        SetupStandardSettings();
+
+        var subtitles = new List<Subtitles>
+        {
+            new()
+            {
+                Path = "/movies/test/test.movie.en.srt",
+                FileName = "test.movie.en",
+                Language = "en",
+                Caption = "",
+                Format = ".srt"
+            }
+        };
+
+        SubtitleServiceMock
+            .Setup(s => s.GetAllSubtitles(It.IsAny<string>()))
+            .ReturnsAsync(subtitles);
+
+        // A just-killed request: same workload/language pair and dedupe key "primary",
+        // with Status == Failed and IsActive == null (the unsafe-source kill shape).
+        DbContext.TranslationRequests.Add(new TranslationRequest
+        {
+            MediaId = movie.Id,
+            MediaType = MediaType.Movie,
+            WorkloadKind = TranslationWorkloadKind.Library,
+            WorkloadItemKey = $"library:{MediaType.Movie}:{movie.Id}",
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "ro",
+            SubtitleToTranslate = subtitles[0].Path,
+            SourceSubtitleFormat = ".srt",
+            RequiredOutputFormats = ".srt",
+            SourceDedupeKey = "primary",
+            Status = TranslationStatus.Failed,
+            IsActive = null
+        });
+        await DbContext.SaveChangesAsync();
+
+        var queuedRequests = new List<TranslateAbleSubtitle>();
+        TranslationRequestServiceMock
+            .Setup(s => s.CreateRequest(It.IsAny<TranslateAbleSubtitle>(), It.IsAny<bool>()))
+            .Callback<TranslateAbleSubtitle, bool>((request, _) => queuedRequests.Add(request))
+            .ReturnsAsync(123);
+
+        // Default behavior: the Failed row still satisfies the active-request dedupe
+        // gate (gate 1), so nothing is queued even with forcePriority set.
+        var queuedWithoutRequeue = await Processor.ProcessMediaForceAsync(
+            movie,
+            MediaType.Movie,
+            forceProcess: true,
+            forceTranslation: false,
+            forcePriority: true);
+
+        Assert.Equal(0, queuedWithoutRequeue);
+        Assert.Empty(queuedRequests);
+
+        // With forceRequeue, the Failed row is excluded from gate 1 and a new request
+        // is queued for the same workload/language pair.
+        var queuedWithRequeue = await Processor.ProcessMediaForceAsync(
+            movie,
+            MediaType.Movie,
+            forceProcess: true,
+            forceTranslation: false,
+            forcePriority: true,
+            forceRequeue: true);
+
+        Assert.Equal(1, queuedWithRequeue);
+        var queuedRequest = Assert.Single(queuedRequests);
+        Assert.Equal("en", queuedRequest.SourceLanguage);
+        Assert.Equal("ro", queuedRequest.TargetLanguage);
+        Assert.Equal(movie.Id, queuedRequest.MediaId);
+    }
 }

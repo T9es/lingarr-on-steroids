@@ -11,6 +11,7 @@ internal sealed record AssSubtitleSourceAnalysisEntry(
     int RawSourceCharCount,
     int ProviderVisibleCharCount,
     bool HasDrawingCommands,
+    bool HasPositionedTypesetting,
     string? StyleName);
 
 internal sealed record AssSubtitleSourceAnalysis(
@@ -29,12 +30,16 @@ internal sealed record AssSubtitleSourceAnalysis(
     bool HasHighDrawingDensity,
     bool HasHighDuplicateDensity,
     bool HasFragmentedText,
+    bool HasSignsDump,
+    bool HasExplosiveCueCount,
     bool IsPathological)
 {
     public int ContentScoreAdjustment =>
         (HasHighDrawingDensity ? -70 : 0) +
         (HasHighDuplicateDensity ? -60 : 0) +
-        (HasFragmentedText ? -50 : 0);
+        (HasFragmentedText ? -50 : 0) +
+        (HasSignsDump ? -70 : 0) +
+        (HasExplosiveCueCount ? -70 : 0);
 }
 
 internal static class AssSubtitleSourceAnalyzer
@@ -56,6 +61,8 @@ internal static class AssSubtitleSourceAnalyzer
                 0,
                 null,
                 0,
+                false,
+                false,
                 false,
                 false,
                 false,
@@ -97,6 +104,12 @@ internal static class AssSubtitleSourceAnalyzer
         var hasFragmentedText = translatableCount >= 200 &&
                                 averageProviderCharsPerTranslatableCue > 0 &&
                                 averageProviderCharsPerTranslatableCue <= 5;
+        var positionedTypesettingCount = entries.Count(entry => entry.HasPositionedTypesetting);
+        var positionedTypesettingRatio = entries.Count == 0
+            ? 0
+            : (double)positionedTypesettingCount / entries.Count;
+        var hasSignsDump = entries.Count >= 20_000 && positionedTypesettingRatio >= 0.6;
+        var hasExplosiveCueCount = entries.Count > 100_000;
 
         return new AssSubtitleSourceAnalysis(
             entries.Count,
@@ -114,7 +127,13 @@ internal static class AssSubtitleSourceAnalyzer
             hasHighDrawingDensity,
             hasHighDuplicateDensity,
             hasFragmentedText,
-            hasHighDrawingDensity || hasHighDuplicateDensity || hasFragmentedText);
+            hasSignsDump,
+            hasExplosiveCueCount,
+            hasHighDrawingDensity ||
+            hasHighDuplicateDensity ||
+            hasFragmentedText ||
+            hasSignsDump ||
+            hasExplosiveCueCount);
     }
 
     public static async Task<AssSubtitleSourceAnalysis?> AnalyzeExtractedSubtitleAsync(
@@ -168,7 +187,16 @@ internal static class AssSubtitleSourceAnalyzer
             rawSourceCharCount,
             structure.ProviderVisibleCharCount,
             HasDrawingCommands(subtitle),
+            HasPositionedTypesetting(subtitle),
             subtitle.SsaDialogue?.Style);
+    }
+
+    private static bool HasPositionedTypesetting(SubtitleItem subtitle)
+    {
+        return subtitle.Lines.Any(line =>
+            line.Contains(@"\pos", StringComparison.OrdinalIgnoreCase) ||
+            line.Contains(@"\fscx", StringComparison.OrdinalIgnoreCase) ||
+            line.Contains(@"\fscy", StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool HasDrawingCommands(SubtitleItem subtitle)

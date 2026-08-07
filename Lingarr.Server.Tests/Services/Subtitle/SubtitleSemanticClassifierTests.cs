@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Lingarr.Server.Models.FileSystem;
 using Lingarr.Server.Services.Subtitle;
 using Xunit;
@@ -83,5 +84,44 @@ public class SubtitleSemanticClassifierTests
         Assert.Equal(SubtitleSemanticKind.SignOrTitle, SubtitleSemanticClassifier.Classify(null, "SHOW-TITLE").Kind);
         Assert.Equal(SubtitleSemanticKind.SignOrTitle, SubtitleSemanticClassifier.Classify(sign, "ON SCREEN").Kind);
         Assert.Equal(SubtitleSemanticKind.LyricOrChant, SubtitleSemanticClassifier.Classify(lyrics, "La la").Kind);
+    }
+
+    [Theory]
+    [InlineData("NO MALIHINI OHANA")]
+    [InlineData("TOOKIE BAH WABA!")]
+    [InlineData("ALOHA, E KOMO MAI")]
+    [InlineData("I LAILA 'O KAUA'I LA")]
+    public void Classify_HawaiianChantLines_AreLyricOrChant(string cue)
+    {
+        var classification = SubtitleSemanticClassifier.Classify(null, cue);
+
+        Assert.Equal(SubtitleSemanticKind.LyricOrChant, classification.Kind);
+        Assert.True(classification.ShouldRequestProvider);
+        Assert.True(classification.CanPreserveSourceWhenProviderMissing);
+    }
+
+    [Fact]
+    public void Classify_WhenTextIsRepeatedAcrossFile_IsPreservableLyricOrChant()
+    {
+        var repeatedProviderTexts = new HashSet<string> { "We did it again!" };
+
+        var classification = SubtitleSemanticClassifier.Classify(
+            null,
+            "We did it again!",
+            repeatedProviderTexts: repeatedProviderTexts);
+
+        Assert.Equal(SubtitleSemanticKind.LyricOrChant, classification.Kind);
+        Assert.True(classification.ShouldRequestProvider);
+        Assert.True(classification.CanPreserveSourceWhenProviderMissing);
+    }
+
+    [Fact]
+    public void Classify_WhenTextIsNotRepeatedAcrossFile_RemainsOrdinaryDialogue()
+    {
+        var classification = SubtitleSemanticClassifier.Classify(null, "We did it again!");
+
+        Assert.Equal(SubtitleSemanticKind.Dialogue, classification.Kind);
+        Assert.True(classification.ShouldRequestProvider);
+        Assert.False(classification.CanPreserveSourceWhenProviderMissing);
     }
 }

@@ -214,6 +214,114 @@ public class SubtitleSourceSelectionServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SelectPrimaryAsync_PrefersCleanAssOverPosDenseSignsDumpTrack()
+    {
+        var signsDumpPath = Path.Combine(_tempDirectory, "signs-dump.en.ass");
+        var entryCount = 20_000;
+        await File.WriteAllTextAsync(
+            signsDumpPath,
+            "[Events]\n" + string.Join(
+                "\n",
+                Enumerable.Range(1, entryCount).Select(index =>
+                    $"Dialogue: 0,0:00:{index % 60:00}.00,0:00:{index % 60:00}.50,Default,,0,0,0,,{{\\pos(960,540)}}Sign text {index}")));
+
+        _subtitleServiceMock
+            .Setup(service => service.ReadSubtitles(signsDumpPath))
+            .ReturnsAsync(Enumerable.Range(1, entryCount)
+                .Select(index => new SubtitleItem
+                {
+                    Position = index,
+                    Lines = [$"{{\\pos(960,540)}}Sign text {index}"],
+                    PlaintextLines = [$"Sign text {index}"]
+                })
+                .ToList());
+
+        var service = CreateService();
+
+        var result = await service.SelectPrimaryAsync(
+            [
+                new EmbeddedSubtitle
+                {
+                    StreamIndex = 0,
+                    Language = "eng",
+                    Title = "English (Sam)",
+                    CodecName = "ass",
+                    IsTextBased = true,
+                    ExtractedPath = signsDumpPath
+                },
+                new EmbeddedSubtitle
+                {
+                    StreamIndex = 3,
+                    Language = "eng",
+                    Title = "English",
+                    CodecName = "ass",
+                    IsTextBased = true
+                }
+            ],
+            ["en"],
+            allowCaptionFallback: true);
+
+        Assert.NotNull(result.SelectedSubtitle);
+        Assert.Equal(3, result.SelectedSubtitle!.StreamIndex);
+        Assert.Equal(SubtitleSourceCandidateRole.PathologicalAssFallback, GetRole(result, 0));
+        Assert.Equal(SubtitleSourceCandidateRole.PrimaryFullDialogue, GetRole(result, 3));
+    }
+
+    [Fact]
+    public async Task SelectPrimaryAsync_PrefersPathologicalAssFallbackOverCaptionFallback()
+    {
+        var signsDumpPath = Path.Combine(_tempDirectory, "signs-dump.en.ass");
+        var entryCount = 20_000;
+        await File.WriteAllTextAsync(
+            signsDumpPath,
+            "[Events]\n" + string.Join(
+                "\n",
+                Enumerable.Range(1, entryCount).Select(index =>
+                    $"Dialogue: 0,0:00:{index % 60:00}.00,0:00:{index % 60:00}.50,Default,,0,0,0,,{{\\pos(960,540)}}Sign text {index}")));
+
+        _subtitleServiceMock
+            .Setup(service => service.ReadSubtitles(signsDumpPath))
+            .ReturnsAsync(Enumerable.Range(1, entryCount)
+                .Select(index => new SubtitleItem
+                {
+                    Position = index,
+                    Lines = [$"{{\\pos(960,540)}}Sign text {index}"],
+                    PlaintextLines = [$"Sign text {index}"]
+                })
+                .ToList());
+
+        var service = CreateService();
+
+        var result = await service.SelectPrimaryAsync(
+            [
+                new EmbeddedSubtitle
+                {
+                    StreamIndex = 0,
+                    Language = "eng",
+                    Title = "English (Sam)",
+                    CodecName = "ass",
+                    IsTextBased = true,
+                    ExtractedPath = signsDumpPath
+                },
+                new EmbeddedSubtitle
+                {
+                    StreamIndex = 1,
+                    Language = "eng",
+                    Title = "English SDH",
+                    CodecName = "subrip",
+                    IsTextBased = true
+                }
+            ],
+            ["en"],
+            allowCaptionFallback: true);
+
+        Assert.NotNull(result.SelectedSubtitle);
+        Assert.Equal(0, result.SelectedSubtitle!.StreamIndex);
+        Assert.Equal(SubtitleSourceCandidateRole.PathologicalAssFallback, GetRole(result, 0));
+        Assert.Equal(SubtitleSourceCandidateRole.CaptionFallback, GetRole(result, 1));
+    }
+
+    [Fact]
     public async Task SelectPrimaryAsync_PrefersCleanFullOverCaptionAndPathologicalAssFallback()
     {
         var assPath = Path.Combine(_tempDirectory, "pathological.en.ass");
@@ -341,6 +449,33 @@ public class SubtitleSourceSelectionServiceTests : IDisposable
         Assert.NotNull(selection);
         Assert.Equal("pl", selection.SourceLanguage);
         Assert.Equal(srtPath, selection.Subtitle.Path);
+    }
+
+    [Fact]
+    public void SelectPrimarySourceCandidate_PathologicalAssBeatsSdhCaptionInSameLanguage()
+    {
+        var assPath = Path.Combine(_tempDirectory, "pathological.en.ass");
+        File.WriteAllText(assPath, "[Events]\n" + string.Join(
+            "\n",
+            Enumerable.Range(1, 600).Select(index =>
+                $"Dialogue: 0,0:00:{index % 60:00}.00,0:00:{index % 60:00}.50,Default,,0,0,0,,{{\\p1}}m 0 0 l 10 10")));
+
+        var sdhPath = Path.Combine(_tempDirectory, "show.en.sdh.srt");
+        File.WriteAllText(sdhPath, string.Join(
+            "\n\n",
+            Enumerable.Range(1, 200).Select(index =>
+                $"{index}\n00:00:{index % 60:00},000 --> 00:00:{index % 60:00},500\nClean line {index}")));
+
+        var selection = ExternalSubtitleCandidateHelper.SelectPrimarySourceCandidate(
+            [
+                new Subtitles { Path = assPath, FileName = "pathological.en.ass", Language = "en" },
+                new Subtitles { Path = sdhPath, FileName = "show.en.sdh.srt", Language = "en" }
+            ],
+            ["en"],
+            ignoreCaptions: false);
+
+        Assert.NotNull(selection);
+        Assert.Equal(assPath, selection.Subtitle.Path);
     }
 
     [Fact]

@@ -114,6 +114,21 @@ public class EmbeddedSubtitleCacheService : IEmbeddedSubtitleCacheService
             return false;
         }
 
+        return MatchesSourceSnapshot(cachePath, sourceMediaPath);
+    }
+
+    public bool IsSourceSnapshotCurrent(string cachePath, string sourceMediaPath)
+    {
+        if (!IsManagedCachePath(cachePath) || string.IsNullOrWhiteSpace(sourceMediaPath))
+        {
+            return false;
+        }
+
+        return MatchesSourceSnapshot(cachePath, sourceMediaPath);
+    }
+
+    private bool MatchesSourceSnapshot(string cachePath, string sourceMediaPath)
+    {
         try
         {
             var sourceInfo = new FileInfo(sourceMediaPath);

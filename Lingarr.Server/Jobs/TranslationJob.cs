@@ -2,6 +2,7 @@ using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
+using Lingarr.Core.Interfaces;
 using Lingarr.Server.Exceptions;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
@@ -64,6 +65,12 @@ public class TranslationJob
     private readonly ITranslationPromptContextAccessor _translationPromptContextAccessor;
     private readonly IMkvEmbeddingService _mkvEmbeddingService;
     private readonly ITranslationSiblingSequenceApprovalService? _siblingSequenceApprovalService;
+    private readonly IMediaSubtitleProcessor? _mediaSubtitleProcessor;
+
+    private const string UnsafeSourceFailureMessage =
+        "Translation failed before execution because the selected source is obsolete or unsafe.";
+
+    private const int UnsafeSourceRecoveryWindowMinutes = 60;
 
     internal Func<Task>? BeforeFinalCompletionCommitAsync { get; set; }
 
@@ -94,7 +101,8 @@ ISubtitleQualityValidatorService? subtitleQualityValidatorService = null,
         ITranslationDiagnosticsService? translationDiagnosticsService = null,
         ITranslationPromptContextAccessor? translationPromptContextAccessor = null,
         IMkvEmbeddingService? mkvEmbeddingService = null,
-        ITranslationSiblingSequenceApprovalService? siblingSequenceApprovalService = null)
+        ITranslationSiblingSequenceApprovalService? siblingSequenceApprovalService = null,
+        IMediaSubtitleProcessor? mediaSubtitleProcessor = null)
     {
         _logger = logger;
         _settings = settings;
@@ -134,6 +142,7 @@ _translationPromptContextAccessor = translationPromptContextAccessor ??
         _mkvEmbeddingService = mkvEmbeddingService ?? new MkvEmbeddingService(
             NullLogger<MkvEmbeddingService>.Instance);
         _siblingSequenceApprovalService = siblingSequenceApprovalService;
+        _mediaSubtitleProcessor = mediaSubtitleProcessor;
     }
 
     /// <summary>
@@ -3032,8 +3041,6 @@ Exception? lastException = null;
             return false;
         }
 
-        const string failureMessage =
-            "Translation failed before execution because the selected source is obsolete or unsafe.";
         var now = DateTime.UtcNow;
         var cleanupOwner = $"unsafe-source:{Guid.NewGuid():N}";
 
@@ -3093,7 +3100,7 @@ Exception? lastException = null;
         {
             TranslationRequestId = request.Id,
             Level = "Error",
-            Message = failureMessage,
+            Message = UnsafeSourceFailureMessage,
             Details = reason
         });
 
@@ -3103,7 +3110,102 @@ Exception? lastException = null;
         await _progressService.Emit(request, 0);
 
         await RefreshTranslationStateAsync(request, cancellationToken);
+        await AttemptSafeRequeueAfterUnsafeKillAsync(request, now, cancellationToken);
         return true;
+    }
+
+    /// <summary>
+    /// After an unsafe-source kill, re-processes the media once so a since-replaced or
+    /// since-validated source recovers within minutes instead of waiting for the nightly
+    /// retry job.
+    /// Loop safety: at most one auto-recovery attempt per media per hour. Every unsafe kill
+    /// writes an error log (see <see cref="UnsafeSourceFailureMessage"/>); any kill for this
+    /// media within the last 60 minutes — including re-kills of the same request row after a
+    /// nightly retry — suppresses the next recovery. The log written for the current kill is
+    /// excluded via CreatedAt &lt; <paramref name="killTime"/>, the moment captured before that
+    /// log was written. If the re-queued request is killed again, the window blocks further
+    /// auto-recovery and the nightly job resumes its normal retry cadence.
+    /// </summary>
+    private async Task AttemptSafeRequeueAfterUnsafeKillAsync(
+        TranslationRequest request,
+        DateTime killTime,
+        CancellationToken cancellationToken)
+    {
+        if (_mediaSubtitleProcessor == null ||
+            request.WorkloadKind != TranslationWorkloadKind.Library ||
+            !request.MediaId.HasValue ||
+            (request.MediaType != MediaType.Movie && request.MediaType != MediaType.Episode))
+        {
+            return;
+        }
+
+        var windowStart = killTime.AddMinutes(-UnsafeSourceRecoveryWindowMinutes);
+        var mediaRequestIds = _dbContext.TranslationRequests
+            .Where(item => item.MediaId == request.MediaId.Value &&
+                           item.MediaType == request.MediaType &&
+                           item.WorkloadKind == TranslationWorkloadKind.Library)
+            .Select(item => item.Id);
+        var recentUnsafeKills = await _dbContext.TranslationRequestLogs.CountAsync(log =>
+            log.Level == "Error" &&
+            log.Message == UnsafeSourceFailureMessage &&
+            log.CreatedAt >= windowStart &&
+            log.CreatedAt < killTime &&
+            mediaRequestIds.Contains(log.TranslationRequestId), cancellationToken);
+
+        if (recentUnsafeKills > 0)
+        {
+            _logger.LogInformation(
+                "Skipping auto-recovery for {MediaType} {MediaId} after unsafe source kill of request {RequestId}: another unsafe kill occurred within the last {Window} minutes",
+                request.MediaType,
+                request.MediaId.Value,
+                request.Id,
+                UnsafeSourceRecoveryWindowMinutes);
+            return;
+        }
+
+        IMedia? media = request.MediaType == MediaType.Movie
+            ? await _dbContext.Movies.FindAsync([request.MediaId.Value], cancellationToken)
+            : await _dbContext.Episodes.FindAsync([request.MediaId.Value], cancellationToken);
+        if (media == null || string.IsNullOrWhiteSpace(media.Path))
+        {
+            return;
+        }
+
+        // Re-process re-probes embedded streams and external subtitles, re-selects a safe
+        // source, and only queues a new request when a valid one exists.
+        // forcePriority bypasses only the completed-request dedupe (gate 2), allowing a new
+        // request alongside Completed rows. It does NOT bypass the active-request dedupe
+        // (gate 1); forceRequeue is what excludes the just-killed Failed row there, since
+        // its SourceDedupeKey ("primary" for non-supplemental tracks) otherwise matches the
+        // enqueue attempt and makes the processor skip it as "already active".
+        try
+        {
+            var queuedCount = await _mediaSubtitleProcessor.ProcessMediaForceAsync(
+                media,
+                request.MediaType,
+                forceProcess: true,
+                forceTranslation: false,
+                forcePriority: true,
+                forceRequeue: true);
+
+            _logger.LogInformation(
+                "Auto-recovery after unsafe source kill of request {RequestId}: re-processed {MediaType} {MediaId} and queued {Count} translation request(s)",
+                request.Id,
+                request.MediaType,
+                media.Id,
+                queuedCount);
+        }
+        catch (Exception ex)
+        {
+            // The kill itself already succeeded; recovery is best-effort and the nightly
+            // retry job remains the fallback.
+            _logger.LogWarning(
+                ex,
+                "Auto-recovery re-process failed after unsafe source kill of request {RequestId}; the nightly retry job will handle {MediaType} {MediaId}",
+                request.Id,
+                request.MediaType,
+                media.Id);
+        }
     }
 
     private async Task DeleteCheckpointSafelyAsync(

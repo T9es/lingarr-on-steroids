@@ -18,6 +18,7 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
     private readonly ISubtitleExtractionService _subtitleExtractionService;
     private readonly ISourceSubtitleSnapshotService _sourceSubtitleSnapshotService;
     private readonly IEmbeddedSubtitleCacheService _embeddedSubtitleCacheService;
+    private readonly ISubtitleOcrService _subtitleOcrService;
     private readonly ISubtitleSourceSelectionService _subtitleSourceSelectionService;
     private readonly ILogger<SourceSubtitleResolver> _logger;
 
@@ -27,6 +28,7 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
         ISubtitleExtractionService subtitleExtractionService,
         ISourceSubtitleSnapshotService sourceSubtitleSnapshotService,
         IEmbeddedSubtitleCacheService embeddedSubtitleCacheService,
+        ISubtitleOcrService subtitleOcrService,
         ILogger<SourceSubtitleResolver> logger,
         ISubtitleSourceSelectionService? subtitleSourceSelectionService = null)
     {
@@ -34,6 +36,7 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
         _subtitleExtractionService = subtitleExtractionService;
         _sourceSubtitleSnapshotService = sourceSubtitleSnapshotService;
         _embeddedSubtitleCacheService = embeddedSubtitleCacheService;
+        _subtitleOcrService = subtitleOcrService;
         _subtitleSourceSelectionService = subtitleSourceSelectionService ??
             new SubtitleSourceSelectionService(
                 subtitleService,
@@ -97,8 +100,18 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
         CancellationToken cancellationToken)
     {
         var path = request.SubtitleToTranslate;
-        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+        if (string.IsNullOrWhiteSpace(path))
         {
+            return false;
+        }
+
+        if (!File.Exists(path))
+        {
+            if (_embeddedSubtitleCacheService.IsManagedCachePath(path))
+            {
+                return await TryRestoreMissingManagedOcrAsync(request, path, cancellationToken);
+            }
+
             return false;
         }
 
@@ -133,6 +146,161 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
             path,
             mediaFile.Path);
         return false;
+    }
+
+    /// <summary>
+    /// Recovers a missing managed OCR cache file whose source media is unchanged by
+    /// re-running OCR for the stream (the same invocation the OcrPending flow uses) and
+    /// returning the regenerated path. Stale OCR of a CHANGED media is never regenerated:
+    /// recovery only fires when the recorded source snapshot still matches the media.
+    /// Any failure falls back to the existing behavior (false) - recovery never loops,
+    /// never throws, and never masks the original resolution failure.
+    /// </summary>
+    private async Task<bool> TryRestoreMissingManagedOcrAsync(
+        TranslationRequest request,
+        string cachePath,
+        CancellationToken cancellationToken)
+    {
+        if (!request.MediaId.HasValue)
+        {
+            return false;
+        }
+
+        var subtitle = await _dbContext.EmbeddedSubtitles
+            .FirstOrDefaultAsync(
+                item =>
+                    item.OcrExtractedPath == cachePath &&
+                    (request.MediaType == MediaType.Movie
+                        ? item.MovieId == request.MediaId.Value
+                        : item.EpisodeId == request.MediaId.Value),
+                cancellationToken);
+        if (subtitle == null ||
+            subtitle.OcrStatus is not (SubtitleOcrStatus.Succeeded or SubtitleOcrStatus.Approved))
+        {
+            return false;
+        }
+
+        var mediaFile = await ResolveCurrentMediaFileAsync(request, cancellationToken);
+        if (string.IsNullOrWhiteSpace(mediaFile.Path))
+        {
+            _logger.LogDebug(
+                "Cannot restore missing OCR cache {CachePath} because media {MediaId} is unavailable",
+                cachePath,
+                request.MediaId);
+            return false;
+        }
+
+        if (!_embeddedSubtitleCacheService.IsSourceSnapshotCurrent(cachePath, mediaFile.Path))
+        {
+            return false;
+        }
+
+        _logger.LogInformation(
+            "OCR cache file missing for {CachePath} but media unchanged; re-running OCR for {MediaType} {MediaId} stream {StreamIndex}",
+            cachePath,
+            request.MediaType,
+            request.MediaId,
+            subtitle.StreamIndex);
+
+        // Capture the row state BEFORE re-running OCR: a single failed re-OCR must not be
+        // allowed to permanently demote a previously successful row into a terminal
+        // status, or the recovery guard would close off all future recovery attempts.
+        var capturedOcrStatus = subtitle.OcrStatus;
+        var capturedOcrError = subtitle.OcrError;
+
+        try
+        {
+            var result = await _subtitleOcrService.RunOcrAsync(
+                request.MediaId.Value,
+                request.MediaType,
+                subtitle.StreamIndex,
+                manual: false,
+                cancellationToken);
+            if (!result.Success ||
+                string.IsNullOrWhiteSpace(result.ExtractedPath) ||
+                !File.Exists(result.ExtractedPath))
+            {
+                await RestoreOcrRowAfterFailedRecoveryAsync(
+                    subtitle,
+                    capturedOcrStatus,
+                    capturedOcrError,
+                    cachePath,
+                    cancellationToken);
+                return false;
+            }
+
+            request.SubtitleToTranslate = result.ExtractedPath;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Failed to re-run OCR for missing cache {CachePath} of {MediaType} {MediaId}; falling back to existing resolution behavior",
+                cachePath,
+                request.MediaType,
+                request.MediaId);
+            await RestoreOcrRowAfterFailedRecoveryAsync(
+                subtitle,
+                capturedOcrStatus,
+                capturedOcrError,
+                cachePath,
+                cancellationToken);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Reverts a failed re-OCR that demoted a previously successful OCR row into a
+    /// terminal status (Failed / BlockedLowQuality). One failed attempt must not lock the
+    /// row out of future recovery: the captured Succeeded/Approved state is restored so
+    /// the next resolution attempt can re-run OCR again. Best-effort by design: the
+    /// recovery path never throws, so a restore failure is logged and otherwise ignored.
+    /// </summary>
+    private async Task RestoreOcrRowAfterFailedRecoveryAsync(
+        EmbeddedSubtitle subtitle,
+        SubtitleOcrStatus capturedStatus,
+        string? capturedError,
+        string cachePath,
+        CancellationToken cancellationToken)
+    {
+        if (capturedStatus is not (SubtitleOcrStatus.Succeeded or SubtitleOcrStatus.Approved))
+        {
+            return;
+        }
+
+        try
+        {
+            // Reload by Id: RunOcrAsync may have detached or replaced the tracked row
+            // while applying its failure state.
+            var current = await _dbContext.EmbeddedSubtitles
+                .FirstOrDefaultAsync(item => item.Id == subtitle.Id, cancellationToken);
+            if (current == null ||
+                current.OcrStatus == capturedStatus ||
+                current.OcrStatus is not (SubtitleOcrStatus.Failed or SubtitleOcrStatus.BlockedLowQuality))
+            {
+                return;
+            }
+
+            var demotedStatus = current.OcrStatus;
+            current.OcrStatus = capturedStatus;
+            current.OcrError = capturedError;
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
+            _logger.LogWarning(
+                "Failed re-OCR for missing cache {CachePath} demoted subtitle {SubtitleId} to {DemotedStatus}; restored to {RestoredStatus} so future recovery attempts remain possible",
+                cachePath,
+                current.Id,
+                demotedStatus,
+                capturedStatus);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Could not restore OCR row state after failed re-OCR for missing cache {CachePath}",
+                cachePath);
+        }
     }
 
     private async Task<ResolvedMediaFile> ResolveCurrentMediaFileAsync(

@@ -922,7 +922,8 @@ public class SubtitleOutputReconciliationServiceTests
                 false,
                 true,
                 true,
-                null))
+                null,
+                It.IsAny<bool>()))
             .ReturnsAsync(queuedTranslations);
 
         return new SubtitleOutputReconciliationService(
@@ -969,7 +970,8 @@ public class SubtitleOutputReconciliationServiceTests
                 false,
                 true,
                 true,
-                null))
+                null,
+                It.IsAny<bool>()))
             .ReturnsAsync(queuedTranslations);
 
         return new SubtitleOutputReconciliationService(

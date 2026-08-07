@@ -18,6 +18,13 @@ public interface IEmbeddedSubtitleCacheService
 
     bool IsCurrentForSource(string cachePath, string sourceMediaPath);
 
+    /// <summary>
+    /// True when the recorded source snapshot for a managed cache path still matches the
+    /// media file, without requiring the cache file itself to exist. Used to decide
+    /// whether a missing OCR output can be regenerated from the same media.
+    /// </summary>
+    bool IsSourceSnapshotCurrent(string cachePath, string sourceMediaPath);
+
     void RecordSourceSnapshot(string cachePath, string sourceMediaPath);
 
     void Invalidate(string cachePath);

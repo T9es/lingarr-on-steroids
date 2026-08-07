@@ -27,6 +27,7 @@ public interface IMediaSubtitleProcessor
     /// <param name="forcePriority">If true, forces jobs to use the priority queue regardless of media priority status.</param>
     /// <param name="queueTranslations">If false, reports queueable translations without creating requests.</param>
     /// <param name="maxTranslationsToQueue">Optional maximum number of requests to create.</param>
+    /// <param name="forceRequeue">If true, excludes Failed translation requests from the active-request dedupe gate so a just-failed request does not block re-queueing.</param>
     /// <returns>
     /// The number of translation requests that were queued.
     /// </returns>
@@ -37,7 +38,8 @@ public interface IMediaSubtitleProcessor
         bool forceTranslation = true,
         bool forcePriority = false,
         bool queueTranslations = true,
-        int? maxTranslationsToQueue = null);
+        int? maxTranslationsToQueue = null,
+        bool forceRequeue = false);
 
     /// <summary>
     /// Processes subtitles and appends reportable integrity findings for callers that need details.
@@ -50,6 +52,7 @@ public interface IMediaSubtitleProcessor
     /// <param name="queueTranslations">If false, reports queueable translations without creating requests.</param>
     /// <param name="maxTranslationsToQueue">Optional maximum number of requests to create.</param>
     /// <param name="integrityFindings">Collection that receives detailed integrity findings.</param>
+    /// <param name="forceRequeue">If true, excludes Failed translation requests from the active-request dedupe gate so a just-failed request does not block re-queueing.</param>
     /// <returns>The number of translation requests queued or queueable targets reported.</returns>
     Task<int> ProcessMediaForceAsync(
         IMedia media,
@@ -59,7 +62,8 @@ public interface IMediaSubtitleProcessor
         bool forcePriority,
         bool queueTranslations,
         int? maxTranslationsToQueue,
-        ICollection<SubtitleIntegrityFinding> integrityFindings);
+        ICollection<SubtitleIntegrityFinding> integrityFindings,
+        bool forceRequeue = false);
 
     /// <summary>
     /// Processes subtitles for a single requested target language.

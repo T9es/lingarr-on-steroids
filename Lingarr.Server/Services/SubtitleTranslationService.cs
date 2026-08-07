@@ -17,6 +17,7 @@ public class SubtitleTranslationService
     private const int MaxBatchContextLines = 10;
     private const double ResidualEchoToleranceRatio = 0.02;
     private const int ResidualEchoToleranceCap = 25;
+    private const int ShortArtifactToleranceLength = 12;
     private int _lastProgression = -1;
     private readonly ITranslationService _translationService;
     private readonly IProgressService? _progressService;
@@ -257,6 +258,12 @@ public class SubtitleTranslationService
 
         var effectiveBatchSize = batchSize <= 0 ? subtitles.Count : batchSize;
         var structureEntries = BuildStructureEntries(subtitles, stripSubtitleFormatting, preserveAssFormatting);
+        // Repeated identical text across the file is a chant or refrain: the provider may
+        // legitimately omit it, so such cues are preserved from source instead of failing.
+        var repeatedProviderTexts = ProviderTextDeduper.BuildRepeatedTexts(
+            structureEntries
+                .Where(entry => entry.IsTranslatable)
+                .Select(entry => entry.ProviderText));
         var sourceFingerprint = await GetCheckpointFingerprintAsync(
             translationRequest,
             cancellationToken);
@@ -390,7 +397,8 @@ public class SubtitleTranslationService
                     batches.Count,
                     preserveAssFormatting,
                     cancellationToken,
-                    structureLookup);
+                    structureLookup,
+                    repeatedProviderTexts);
             }
             catch (OperationCanceledException)
             {
@@ -640,12 +648,20 @@ public class SubtitleTranslationService
             structureEntries,
             representativeProviderTranslations,
             globalDeduplication);
+        var unresolvedBeforeEchoTolerance = unresolvedEntries.Count;
         unresolvedEntries = ApplyResidualEchoTolerance(
             structureEntries,
             unresolvedEntries,
             globalDeduplication,
             echoedRepresentativePositions,
-            structureEntries.Count(entry => entry.IsTranslatable),
+            translatableCueCount,
+            fileIdentifier);
+        var echoToleranceCount = unresolvedBeforeEchoTolerance - unresolvedEntries.Count;
+        unresolvedEntries = ApplyShortArtifactTolerance(
+            structureEntries,
+            unresolvedEntries,
+            translatableCueCount,
+            echoToleranceCount,
             fileIdentifier);
         if (unresolvedEntries.Count > 0)
         {
@@ -717,8 +733,17 @@ public class SubtitleTranslationService
         int totalBatches,
         bool preserveAssFormatting,
         CancellationToken cancellationToken,
-        IReadOnlyDictionary<int, SubtitleTextStructure>? subtitleStructures)
+        IReadOnlyDictionary<int, SubtitleTextStructure>? subtitleStructures,
+        IReadOnlySet<string>? repeatedProviderTexts = null)
     {
+        // Repeated identical text across a file is a chant or refrain: the provider may
+        // legitimately omit it, so such cues are preserved from source instead of failing.
+        repeatedProviderTexts ??= ProviderTextDeduper.BuildRepeatedTexts(
+            currentBatch
+                .Select(subtitle => subtitleStructures != null && subtitleStructures.TryGetValue(subtitle.Position, out var preBuilt)
+                    ? preBuilt.ProviderVisibleText
+                    : SubtitleTextStructureFactory.Create(subtitle, stripSubtitleFormatting, preserveAssFormatting).ProviderVisibleText));
+
         var structureEntries = currentBatch
             .Select((subtitle, index) =>
             {
@@ -729,7 +754,8 @@ public class SubtitleTranslationService
                 var semanticClassification = SubtitleSemanticClassifier.Classify(
                     subtitle,
                     providerText,
-                    subtitle.SsaDialogue?.Style);
+                    subtitle.SsaDialogue?.Style,
+                    repeatedProviderTexts);
                 var isTranslatable = semanticClassification.ShouldRequestProvider;
 
                 return new SubtitleTranslationNode(
@@ -1826,6 +1852,64 @@ public class SubtitleTranslationService
             totalTranslatableCueCount);
 
         return [];
+    }
+
+    /// <summary>
+    /// Preserves a small residual of provider-omitted short cues (tiny artifacts like
+    /// "#4", single words, interjections) as source text instead of failing the whole
+    /// request. Shares the residual budget with the final echo tolerance so the total
+    /// number of preserved cues never exceeds the tolerance cap.
+    /// </summary>
+    private List<BatchSubtitleItem> ApplyShortArtifactTolerance(
+        IReadOnlyList<SubtitleTranslationNode> structureEntries,
+        List<BatchSubtitleItem> unresolvedEntries,
+        int totalTranslatableCueCount,
+        int alreadyToleratedCount,
+        string fileIdentifier)
+    {
+        if (unresolvedEntries.Count == 0)
+        {
+            return unresolvedEntries;
+        }
+
+        var toleranceLimit = CalculateResidualEchoTolerance(totalTranslatableCueCount);
+        var remainingBudget = Math.Max(0, toleranceLimit - alreadyToleratedCount);
+        if (remainingBudget == 0)
+        {
+            return unresolvedEntries;
+        }
+
+        var shortEligible = unresolvedEntries
+            .Where(item => ProviderTextDeduper.Normalize(item.Line).Length <= ShortArtifactToleranceLength)
+            .OrderBy(item => item.Position)
+            .Take(remainingBudget)
+            .ToList();
+        if (shortEligible.Count == 0)
+        {
+            return unresolvedEntries;
+        }
+
+        var entriesByPosition = structureEntries.ToDictionary(entry => entry.Subtitle.Position);
+        foreach (var item in shortEligible)
+        {
+            if (entriesByPosition.TryGetValue(item.Position, out var entry))
+            {
+                ApplyTranslationToNode(entry, entry.ProviderText);
+            }
+        }
+
+        _logger.LogWarning(
+            "[{FileId}] Preserved {Count} short provider-omitted subtitle cue(s) from source text within the {Ratio:P0} residual tolerance (limit {Limit}/{Total}).",
+            fileIdentifier,
+            shortEligible.Count,
+            ResidualEchoToleranceRatio,
+            toleranceLimit,
+            totalTranslatableCueCount);
+
+        var filledPositions = shortEligible.Select(item => item.Position).ToHashSet();
+        return unresolvedEntries
+            .Where(item => !filledPositions.Contains(item.Position))
+            .ToList();
     }
 
     private static int CalculateResidualEchoTolerance(int totalTranslatableCueCount)

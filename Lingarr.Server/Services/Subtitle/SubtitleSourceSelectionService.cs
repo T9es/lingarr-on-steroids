@@ -73,17 +73,32 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
             return CreateResult(primary, assessments);
         }
 
-        var fallback = assessments
-            .Where(assessment =>
-                assessment.Role == SubtitleSourceCandidateRole.PathologicalAssFallback ||
-                (allowCaptionFallback && assessment.Role == SubtitleSourceCandidateRole.CaptionFallback))
+        // Pathological ASS beats captions in the fallback phase: a signs dump is still
+        // closer to usable dialogue than an SDH caption track. Captions are only used
+        // when no pathological candidate exists.
+        var pathologicalFallback = assessments
+            .Where(assessment => assessment.Role == SubtitleSourceCandidateRole.PathologicalAssFallback)
             .OrderByDescending(assessment => assessment.Score)
             .ThenBy(assessment => assessment.Subtitle.StreamIndex)
             .FirstOrDefault();
 
-        if (fallback != null)
+        if (pathologicalFallback != null)
         {
-            return CreateResult(fallback, assessments);
+            return CreateResult(pathologicalFallback, assessments);
+        }
+
+        if (allowCaptionFallback)
+        {
+            var captionFallback = assessments
+                .Where(assessment => assessment.Role == SubtitleSourceCandidateRole.CaptionFallback)
+                .OrderByDescending(assessment => assessment.Score)
+                .ThenBy(assessment => assessment.Subtitle.StreamIndex)
+                .FirstOrDefault();
+
+            if (captionFallback != null)
+            {
+                return CreateResult(captionFallback, assessments);
+            }
         }
 
         return new SubtitleSourceSelectionResult { Assessments = assessments };
