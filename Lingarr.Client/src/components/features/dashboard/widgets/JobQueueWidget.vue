@@ -171,10 +171,15 @@ const clearFailedJobs = async () => {
 
 const refreshInterval = ref<number | null>(null)
 const countdownInterval = ref<number | null>(null)
+const refreshJobs = () => {
+    if (!isLoading.value) {
+        void fetchJobs()
+    }
+}
 
 onMounted(() => {
     fetchJobs()
-    refreshInterval.value = window.setInterval(fetchJobs, 10000)
+    refreshInterval.value = window.setInterval(refreshJobs, 10000)
     countdownInterval.value = window.setInterval(() => {
         now.value = Date.now()
     }, 1000)

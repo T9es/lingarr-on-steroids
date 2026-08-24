@@ -165,13 +165,14 @@ _cache.Set(cacheKey, stats, cacheOptions);
             query = query.Where(r => r.CompletedAt < endDate.Value);
         }
 
-        var requests = await query.ToListAsync();
+        var translationCount = await query.CountAsync();
+        var linesCount = await query.SumAsync(request => (long)request.SourceSubtitleEntryCount);
 
         return new FilteredStatistics
         {
-            TranslationCount = requests.Count,
-            LinesCount = requests.Sum(r => r.SourceSubtitleEntryCount),
-            FilesCount = requests.Count
+            TranslationCount = translationCount,
+            LinesCount = linesCount,
+            FilesCount = translationCount
         };
     }
 

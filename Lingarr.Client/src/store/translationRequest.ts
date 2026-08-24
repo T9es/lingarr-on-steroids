@@ -13,7 +13,7 @@ import {
 } from '@/ts'
 import services from '@/services'
 
-const PROGRESS_FLUSH_DELAY_MS = 16
+const PROGRESS_FLUSH_DELAY_MS = 100
 const SECTION_REFRESH_DELAY_MS = 1000
 
 let queuedProgressUpdates = new Map<number, IRequestProgress>()
@@ -272,38 +272,40 @@ export const useTranslationRequestStore = defineStore('translateRequest', {
             const updates = Array.from(queuedProgressUpdates.values())
             queuedProgressUpdates.clear()
 
-            const queueItems = [...this.translationRequests.items]
-            const queueIndexById = new Map<number, number>()
-            for (let index = 0; index < queueItems.length; index++) {
-                queueIndexById.set(queueItems[index].id, index)
-            }
+            const queueRequestsById = new Map(
+                this.translationRequests.items.map((request) => [request.id, request])
+            )
+            const inProgressRequestsById = new Map(
+                this.inProgressRequests.map((request) => [request.id, request])
+            )
+            const failedRequestsById = new Map(
+                this.failedRequests.map((request) => [request.id, request])
+            )
+            const removeRequest = (
+                requests: ITranslationRequest[],
+                request: ITranslationRequest
+            ) => {
+                const index = requests.indexOf(request)
+                if (index === -1) {
+                    return false
+                }
 
-            const inProgressMap = new Map<number, ITranslationRequest>()
-            for (const request of this.inProgressRequests) {
-                inProgressMap.set(request.id, request)
+                requests.splice(index, 1)
+                return true
             }
-
-            const failedMap = new Map<number, ITranslationRequest>()
-            for (const request of this.failedRequests) {
-                failedMap.set(request.id, request)
-            }
-
-            const idsToRemoveFromQueue = new Set<number>()
 
             for (const requestProgress of updates) {
-                const queueIndex = queueIndexById.get(requestProgress.id)
-                const queueRequest = queueIndex === undefined ? undefined : queueItems[queueIndex]
-                const existingRequest =
-                    queueRequest ||
-                    inProgressMap.get(requestProgress.id) ||
-                    failedMap.get(requestProgress.id)
+                const queueRequest = queueRequestsById.get(requestProgress.id)
+                const inProgressRequest = inProgressRequestsById.get(requestProgress.id)
+                const failedRequest = failedRequestsById.get(requestProgress.id)
+                const existingRequest = queueRequest || inProgressRequest || failedRequest
                 const mergedRequest = {
                     ...(existingRequest || {}),
                     ...createRequestFromProgress(requestProgress, existingRequest)
                 } as ITranslationRequest
 
-                if (queueIndex !== undefined) {
-                    queueItems[queueIndex] = mergedRequest
+                if (queueRequest) {
+                    Object.assign(queueRequest, mergedRequest)
                 }
 
                 if (
@@ -311,48 +313,74 @@ export const useTranslationRequestStore = defineStore('translateRequest', {
                     requestProgress.status === TRANSLATION_STATUS.CANCELLED ||
                     requestProgress.status === TRANSLATION_STATUS.INTERRUPTED
                 ) {
-                    idsToRemoveFromQueue.add(requestProgress.id)
-                    inProgressMap.delete(requestProgress.id)
+                    if (
+                        queueRequest &&
+                        removeRequest(this.translationRequests.items, queueRequest)
+                    ) {
+                        queueRequestsById.delete(requestProgress.id)
+                        this.translationRequests.totalCount = Math.max(
+                            0,
+                            this.translationRequests.totalCount - 1
+                        )
+                    }
+                    if (
+                        inProgressRequest &&
+                        removeRequest(this.inProgressRequests, inProgressRequest)
+                    ) {
+                        inProgressRequestsById.delete(requestProgress.id)
+                    }
                     if (requestProgress.status === TRANSLATION_STATUS.INTERRUPTED) {
-                        failedMap.set(requestProgress.id, mergedRequest)
-                    } else {
-                        failedMap.delete(requestProgress.id)
+                        if (failedRequest) {
+                            Object.assign(failedRequest, mergedRequest)
+                        } else {
+                            this.failedRequests.push(mergedRequest)
+                            failedRequestsById.set(requestProgress.id, mergedRequest)
+                        }
+                    } else if (failedRequest && removeRequest(this.failedRequests, failedRequest)) {
+                        failedRequestsById.delete(requestProgress.id)
                     }
                     continue
                 }
 
                 if (requestProgress.status === TRANSLATION_STATUS.INPROGRESS) {
-                    inProgressMap.set(requestProgress.id, mergedRequest)
-                    failedMap.delete(requestProgress.id)
+                    if (inProgressRequest) {
+                        Object.assign(inProgressRequest, mergedRequest)
+                    } else {
+                        this.inProgressRequests.push(mergedRequest)
+                        inProgressRequestsById.set(requestProgress.id, mergedRequest)
+                    }
+                    if (failedRequest && removeRequest(this.failedRequests, failedRequest)) {
+                        failedRequestsById.delete(requestProgress.id)
+                    }
                     continue
                 }
 
                 if (requestProgress.status === TRANSLATION_STATUS.FAILED) {
-                    failedMap.set(requestProgress.id, mergedRequest)
-                    inProgressMap.delete(requestProgress.id)
+                    if (failedRequest) {
+                        Object.assign(failedRequest, mergedRequest)
+                    } else {
+                        this.failedRequests.push(mergedRequest)
+                        failedRequestsById.set(requestProgress.id, mergedRequest)
+                    }
+                    if (
+                        inProgressRequest &&
+                        removeRequest(this.inProgressRequests, inProgressRequest)
+                    ) {
+                        inProgressRequestsById.delete(requestProgress.id)
+                    }
                     continue
                 }
 
-                inProgressMap.delete(requestProgress.id)
-                failedMap.delete(requestProgress.id)
+                if (
+                    inProgressRequest &&
+                    removeRequest(this.inProgressRequests, inProgressRequest)
+                ) {
+                    inProgressRequestsById.delete(requestProgress.id)
+                }
+                if (failedRequest && removeRequest(this.failedRequests, failedRequest)) {
+                    failedRequestsById.delete(requestProgress.id)
+                }
             }
-
-            const removedQueueItemsCount = Array.from(idsToRemoveFromQueue).filter((id) =>
-                queueIndexById.has(id)
-            ).length
-
-            const nextQueueItems =
-                idsToRemoveFromQueue.size > 0
-                    ? queueItems.filter((request) => !idsToRemoveFromQueue.has(request.id))
-                    : queueItems
-
-            this.translationRequests = {
-                ...this.translationRequests,
-                items: nextQueueItems,
-                totalCount: Math.max(0, this.translationRequests.totalCount - removedQueueItemsCount)
-            }
-            this.inProgressRequests = Array.from(inProgressMap.values())
-            this.failedRequests = Array.from(failedMap.values())
         },
         updateProgress(requestProgress: IRequestProgress) {
             this.queueProgressUpdate(requestProgress)

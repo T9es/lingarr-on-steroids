@@ -95,7 +95,7 @@
                         </div>
                         <div v-if="inProgressRequests.length" class="space-y-3">
                             <div
-                                v-for="item in inProgressRequests"
+                                v-for="item in visibleInProgressRequests"
                                 :key="`active-${item.id}`"
                                 class="border-secondary/40 bg-tertiary flex flex-col gap-2 rounded-md border px-3 py-2 md:flex-row md:items-center md:justify-between">
                                 <div class="min-w-0 space-y-1">
@@ -169,10 +169,22 @@
                                 </div>
                             </div>
                             <div
-                                v-if="inProgressTotalCount > inProgressRequests.length"
-                                class="text-secondary-content pt-2 text-center text-xs">
-                                {{ inProgressRequests.length }} / {{ inProgressTotalCount }}
-                                {{ translate('common.items') }}
+                                v-if="inProgressTotalCount > visibleInProgressRequests.length"
+                                class="text-secondary-content flex flex-col items-center gap-2 pt-2 text-center text-xs">
+                                <button
+                                    v-if="
+                                        visibleInProgressRequests.length < inProgressRequests.length
+                                    "
+                                    type="button"
+                                    class="text-accent cursor-pointer hover:underline"
+                                    @click="showMoreInProgress">
+                                    {{ translate('common.showMore') }}
+                                </button>
+                                <span>
+                                    {{ visibleInProgressRequests.length }} /
+                                    {{ inProgressTotalCount }}
+                                    {{ translate('common.items') }}
+                                </span>
                             </div>
                         </div>
                         <div v-else class="text-secondary-content py-4 text-center text-sm">
@@ -220,7 +232,7 @@
                             v-if="failedRequests.length"
                             class="max-h-64 space-y-3 overflow-y-auto pr-1">
                             <div
-                                v-for="item in failedRequests"
+                                v-for="item in visibleFailedRequests"
                                 :key="`failed-${item.id}`"
                                 class="border-secondary/40 bg-tertiary flex flex-col gap-2 rounded-md border px-3 py-2 md:grid md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
                                 <div class="min-w-0">
@@ -304,10 +316,19 @@
                                 </div>
                             </div>
                             <div
-                                v-if="failedTotalCount > failedRequests.length"
-                                class="text-secondary-content pt-2 text-center text-xs">
-                                {{ failedRequests.length }} / {{ failedTotalCount }}
-                                {{ translate('common.items') }}
+                                v-if="failedTotalCount > visibleFailedRequests.length"
+                                class="text-secondary-content flex flex-col items-center gap-2 pt-2 text-center text-xs">
+                                <button
+                                    v-if="visibleFailedRequests.length < failedRequests.length"
+                                    type="button"
+                                    class="text-accent cursor-pointer hover:underline"
+                                    @click="showMoreFailed">
+                                    {{ translate('common.showMore') }}
+                                </button>
+                                <span>
+                                    {{ visibleFailedRequests.length }} / {{ failedTotalCount }}
+                                    {{ translate('common.items') }}
+                                </span>
                             </div>
                         </div>
                         <div v-else class="text-secondary-content py-4 text-center text-sm">
@@ -724,7 +745,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, ComputedRef, computed } from 'vue'
+import { ref, onMounted, onUnmounted, ComputedRef, computed, watch } from 'vue'
 import {
     Hub,
     IFilter,
@@ -779,6 +800,7 @@ const cancellingQueued = ref(false)
 const retryResultBanner = ref<{ retried: number; blocked: number } | null>(null)
 const failedCompareModalOpen = ref(false)
 const selectedFailedRequestId = ref<number | null>(null)
+const REQUEST_RENDER_PAGE_SIZE = 50
 
 const blockedMedia = ref<IBlockedMediaItem[]>([])
 const blockedMediaError = ref<string | null>(null)
@@ -798,9 +820,25 @@ const translationRequests: ComputedRef<IPagedResult<ITranslationRequest>> = comp
 
 const inProgressRequests = computed(() => translationRequestStore.inProgressRequests)
 const inProgressTotalCount = computed(() => translationRequestStore.inProgressTotalCount)
+const visibleInProgressCount = ref(REQUEST_RENDER_PAGE_SIZE)
+const visibleInProgressRequests = computed(() =>
+    inProgressRequests.value.slice(0, visibleInProgressCount.value)
+)
 
 const failedRequests = computed(() => translationRequestStore.failedRequests)
 const failedTotalCount = computed(() => translationRequestStore.failedTotalCount)
+const visibleFailedCount = ref(REQUEST_RENDER_PAGE_SIZE)
+const visibleFailedRequests = computed(() =>
+    failedRequests.value.slice(0, visibleFailedCount.value)
+)
+
+watch(inProgressTotalCount, () => {
+    visibleInProgressCount.value = REQUEST_RENDER_PAGE_SIZE
+})
+
+watch(failedTotalCount, () => {
+    visibleFailedCount.value = REQUEST_RENDER_PAGE_SIZE
+})
 
 const queuedRequests = computed(() =>
     translationRequests.value.items.filter(
@@ -821,6 +859,14 @@ const handleRequestProgress = (requestProgress: IRequestProgress) => {
 
 const handleRequestActive = ({ count }: { count: number }) => {
     translationRequestStore.handleRequestActive({ count })
+}
+
+const showMoreInProgress = () => {
+    visibleInProgressCount.value += REQUEST_RENDER_PAGE_SIZE
+}
+
+const showMoreFailed = () => {
+    visibleFailedCount.value += REQUEST_RENDER_PAGE_SIZE
 }
 
 const setRetryResultBanner = (retried: number, blocked: number) => {

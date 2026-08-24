@@ -98,7 +98,7 @@
                             v-if="item.i === 'translation-history'"
                             :daily-statistics="dailyStats || []"
                             :statistics="statistics"
-                            :refresh-key="realtimeState.lastCompletedRequestId"
+                            :refresh-key="dashboardRefreshKey"
                             :is-loading="loading" />
 
                         <!-- Job Queue Widget -->
@@ -187,6 +187,8 @@ import ErrorLogWidget from './widgets/ErrorLogWidget.vue'
 import { useDashboardSignalR } from '@/composables/useDashboardSignalR'
 import { useDashboardLayout, type LayoutItem } from '@/composables/useDashboardLayout'
 
+const COMPLETION_REFRESH_DELAY_MS = 1000
+
 const { translate } = useI18n()
 const {
     state: realtimeState,
@@ -256,6 +258,12 @@ const loading = ref(true)
 const error = ref<string | null>(null)
 const statistics = ref<Statistics>()
 const dailyStats = ref<DailyStatistic[]>()
+const dashboardRefreshKey = ref<number | null>(null)
+
+let completionRefreshTimer: ReturnType<typeof setTimeout> | null = null
+let completionRefreshPending = false
+let completionRefreshInFlight = false
+let isUnmounted = false
 
 const activeTranslations = computed(() => getActiveTranslations())
 
@@ -285,14 +293,47 @@ const fetchDailyStats = async () => {
     }
 }
 
+const queueCompletionRefresh = () => {
+    if (isUnmounted || completionRefreshTimer || completionRefreshInFlight) {
+        return
+    }
+
+    completionRefreshTimer = setTimeout(() => {
+        completionRefreshTimer = null
+        void refreshAfterCompletion()
+    }, COMPLETION_REFRESH_DELAY_MS)
+}
+
+const refreshAfterCompletion = async () => {
+    if (isUnmounted || !completionRefreshPending || completionRefreshInFlight) {
+        return
+    }
+
+    completionRefreshPending = false
+    completionRefreshInFlight = true
+
+    try {
+        await Promise.all([fetchDailyStats(), fetchStatistics()])
+        if (!isUnmounted) {
+            dashboardRefreshKey.value = realtimeState.value.lastCompletedRequestId
+        }
+    } finally {
+        completionRefreshInFlight = false
+        if (completionRefreshPending) {
+            queueCompletionRefresh()
+        }
+    }
+}
+
 watch(
     () => realtimeState.value.lastCompletedRequestId,
-    async (requestId, previousRequestId) => {
+    (requestId, previousRequestId) => {
         if (!requestId || requestId === previousRequestId) {
             return
         }
 
-        await Promise.all([fetchDailyStats(), fetchStatistics()])
+        completionRefreshPending = true
+        queueCompletionRefresh()
     }
 )
 
@@ -304,6 +345,11 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+    isUnmounted = true
+    if (completionRefreshTimer) {
+        clearTimeout(completionRefreshTimer)
+        completionRefreshTimer = null
+    }
     disconnectSignalR()
 })
 

@@ -148,6 +148,69 @@ public class StatisticsServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task GetFilteredStatistics_ShouldAggregateOnlyMatchingCompletedRequests()
+    {
+        var now = DateTime.UtcNow;
+        var startDate = now.AddDays(-1);
+        var endDate = now.AddDays(1);
+
+        using (var scope = _scopeFactory.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<LingarrDbContext>();
+            dbContext.TranslationRequests.AddRange(
+                new TranslationRequest
+                {
+                    Title = "Included movie",
+                    SourceLanguage = "en",
+                    TargetLanguage = "pl",
+                    MediaType = MediaType.Movie,
+                    Status = TranslationStatus.Completed,
+                    CompletedAt = now,
+                    SourceSubtitleEntryCount = 120
+                },
+                new TranslationRequest
+                {
+                    Title = "Included episode",
+                    SourceLanguage = "en",
+                    TargetLanguage = "pl",
+                    MediaType = MediaType.Episode,
+                    Status = TranslationStatus.Completed,
+                    CompletedAt = now.AddHours(-2),
+                    SourceSubtitleEntryCount = 80
+                },
+                new TranslationRequest
+                {
+                    Title = "Failed request",
+                    SourceLanguage = "en",
+                    TargetLanguage = "pl",
+                    MediaType = MediaType.Movie,
+                    Status = TranslationStatus.Failed,
+                    CompletedAt = now,
+                    SourceSubtitleEntryCount = 900
+                },
+                new TranslationRequest
+                {
+                    Title = "Outside range",
+                    SourceLanguage = "en",
+                    TargetLanguage = "pl",
+                    MediaType = MediaType.Movie,
+                    Status = TranslationStatus.Completed,
+                    CompletedAt = now.AddDays(-2),
+                    SourceSubtitleEntryCount = 700
+                });
+            await dbContext.SaveChangesAsync();
+        }
+
+        var service = new StatisticsService(_scopeFactory, _cache);
+
+        var result = await service.GetFilteredStatistics(startDate, endDate);
+
+        Assert.Equal(2, result.TranslationCount);
+        Assert.Equal(200, result.LinesCount);
+        Assert.Equal(2, result.FilesCount);
+    }
+
+    [Fact]
     public async Task InvalidateCache_ShouldRemoveCachedData()
     {
         // Arrange

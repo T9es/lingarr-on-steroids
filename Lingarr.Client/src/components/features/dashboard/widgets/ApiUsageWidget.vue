@@ -74,6 +74,8 @@ const summaryStats = ref({
 })
 
 const fetchApiUsage = async () => {
+    if (isLoading.value) return
+
     isLoading.value = true
     localLoading.value = true
     error.value = null

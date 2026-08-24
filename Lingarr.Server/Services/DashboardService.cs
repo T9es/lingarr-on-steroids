@@ -331,11 +331,10 @@ public class DashboardService : IDashboardService
         if (jobStorage == null) return (new List<JobInfo>(), 0);
         
         var monitoringApi = jobStorage.GetMonitoringApi();
-        var allFailed = monitoringApi.FailedJobs(0, int.MaxValue);
+        var failedCount = monitoringApi.GetStatistics().Failed;
+        var failed = monitoringApi.FailedJobs(Math.Max(offset, 0), Math.Max(limit, 0));
         
-        var jobs = allFailed
-            .Skip(offset)
-            .Take(limit)
+        var jobs = failed
             .Where(job => job.Value?.Job?.Method != null)
             .Select(job => new JobInfo
             {
@@ -348,7 +347,7 @@ public class DashboardService : IDashboardService
             })
             .ToList();
         
-        return (jobs, allFailed.Count);
+        return (jobs, (int)Math.Min(failedCount, int.MaxValue));
     }
 }
 
