@@ -1,5 +1,6 @@
 using System.Globalization;
 using Lingarr.Server.Interfaces.Services.Translation;
+using Lingarr.Server.Services.Subtitle;
 
 namespace Lingarr.Server.Services.Translation;
 
@@ -167,7 +168,7 @@ public class TranslationQualityScorer : ITranslationQualityScorer
         { "sw", "bantu" }, { "zu", "bantu" }, { "xh", "bantu" },
         { "st", "bantu" }, { "tn", "bantu" }, { "sn", "bantu" },
         { "rw", "bantu" },
-        { "ha", "afroasiatic" }, { "so", "afroasiatic" }, { "am", "afroasiatic" },
+        { "ha", "afroasiatic" }, { "so", "afroasiatic" },
         { "yo", "nigercongo" }, { "ig", "nigercongo" },
         // Other
         { "mn", "mongolic" }, { "tg", "iranian" },
@@ -281,7 +282,9 @@ public class TranslationQualityScorer : ITranslationQualityScorer
 
     private (string code, string flores)? NormalizeLanguageCode(string languageCode)
     {
-        var normalized = languageCode.Trim().ToLowerInvariant();
+        var normalized = SubtitleLanguageHelper.TryNormalizeKnownLanguageCode(languageCode, out var knownCode)
+            ? knownCode
+            : languageCode.Trim().ToLowerInvariant();
 
         // Check direct ISO 639-1 match first
         if (Iso6391ToFlores.ContainsKey(normalized))
