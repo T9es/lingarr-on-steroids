@@ -2205,6 +2205,183 @@ public class TranslationRequestServiceTests
     }
 
     [Fact]
+    public async Task RetryAllFailedRequests_PreservesPersistedPrimaryAndSupplementalScopes()
+    {
+        await using var connection = new SqliteConnection("Filename=:memory:");
+        await connection.OpenAsync();
+        await using var context = BuildSqliteContext(connection);
+
+        var now = DateTime.UtcNow;
+        var workloadKey = $"library:{MediaType.Movie}:308";
+        var supplemental = CreateRequest(
+            1,
+            308,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/movie.en.srt",
+            TranslationStatus.Failed,
+            now.AddMinutes(-4));
+        supplemental.WorkloadItemKey = workloadKey;
+        supplemental.SourceDedupeKey = "supplemental:forced:stream:44";
+        supplemental.SourceSubtitleType = "Forced";
+        supplemental.IsForcedSubtitle = true;
+        supplemental.SourceSnapshotIdentity = "stream:44";
+
+        var primary = CreateRequest(
+            2,
+            308,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/movie.en.srt",
+            TranslationStatus.Failed,
+            now.AddMinutes(-3));
+        primary.WorkloadItemKey = workloadKey;
+        primary.SourceDedupeKey = "primary";
+        primary.SourceSubtitleType = "Forced";
+        primary.IsForcedSubtitle = true;
+        primary.SourceSnapshotIdentity = "stream:44";
+
+        var duplicatePrimary = CreateRequest(
+            3,
+            308,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/movie.en.srt",
+            TranslationStatus.Failed,
+            now.AddMinutes(-2));
+        duplicatePrimary.WorkloadItemKey = workloadKey;
+        duplicatePrimary.SourceDedupeKey = "primary";
+        duplicatePrimary.SourceSubtitleType = "Forced";
+        duplicatePrimary.IsForcedSubtitle = true;
+        duplicatePrimary.SourceSnapshotIdentity = "stream:44";
+
+        var unrelated = CreateRequest(
+            4,
+            309,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/other.en.srt",
+            TranslationStatus.Failed,
+            now.AddMinutes(-1));
+        unrelated.WorkloadItemKey = $"library:{MediaType.Movie}:309";
+
+        context.TranslationRequests.AddRange(supplemental, primary, duplicatePrimary, unrelated);
+        await context.SaveChangesAsync();
+
+        var result = await CreateService(context).RetryAllFailedRequests();
+
+        Assert.Equal(4, result.TotalFailed);
+        Assert.Equal(3, result.Retried);
+        Assert.Equal(1, result.BlockedByActiveRequest);
+        Assert.Equal(1, result.RemainingFailed);
+
+        context.ChangeTracker.Clear();
+        var updatedRequests = await context.TranslationRequests
+            .Where(request => request.Id <= 4)
+            .OrderBy(request => request.Id)
+            .ToListAsync();
+
+        Assert.Equal("supplemental:forced:stream:44", updatedRequests[0].SourceDedupeKey);
+        Assert.Equal("primary", updatedRequests[1].SourceDedupeKey);
+        Assert.Equal(TranslationStatus.Pending, updatedRequests[1].Status);
+        Assert.Equal("primary", updatedRequests[2].SourceDedupeKey);
+        Assert.Equal(TranslationStatus.Failed, updatedRequests[2].Status);
+        Assert.Equal(TranslationStatus.Pending, updatedRequests[3].Status);
+    }
+
+    [Fact]
+    public async Task RetryAllFailedRequests_DerivesBlankLegacySourceDedupeKeysBeforeSavingAndDeduping()
+    {
+        await using var context = BuildContext();
+
+        var now = DateTime.UtcNow;
+        var workloadKey = $"library:{MediaType.Movie}:310";
+        var firstRequest = CreateRequest(
+            1,
+            310,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/movie.en.srt",
+            TranslationStatus.Failed,
+            now.AddMinutes(-2));
+        firstRequest.WorkloadItemKey = workloadKey;
+        firstRequest.SourceDedupeKey = string.Empty;
+        firstRequest.SourceSubtitleType = "Forced";
+        firstRequest.IsForcedSubtitle = true;
+        firstRequest.SourceSnapshotIdentity = "stream:66";
+
+        var duplicateRequest = CreateRequest(
+            2,
+            310,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/movie.en.srt",
+            TranslationStatus.Failed,
+            now.AddMinutes(-1));
+        duplicateRequest.WorkloadItemKey = workloadKey;
+        duplicateRequest.SourceDedupeKey = string.Empty;
+        duplicateRequest.SourceSubtitleType = "Forced";
+        duplicateRequest.IsForcedSubtitle = true;
+        duplicateRequest.SourceSnapshotIdentity = "stream:66";
+
+        context.TranslationRequests.AddRange(firstRequest, duplicateRequest);
+        await context.SaveChangesAsync();
+
+        var result = await CreateService(context).RetryAllFailedRequests();
+
+        Assert.Equal(2, result.TotalFailed);
+        Assert.Equal(1, result.Retried);
+        Assert.Equal(1, result.BlockedByActiveRequest);
+
+        var updatedFirst = await context.TranslationRequests.SingleAsync(request => request.Id == firstRequest.Id);
+        var updatedDuplicate = await context.TranslationRequests.SingleAsync(request => request.Id == duplicateRequest.Id);
+        Assert.Equal("supplemental:forced:stream:66", updatedFirst.SourceDedupeKey);
+        Assert.Equal(TranslationStatus.Pending, updatedFirst.Status);
+        Assert.Equal(string.Empty, updatedDuplicate.SourceDedupeKey);
+        Assert.Equal(TranslationStatus.Failed, updatedDuplicate.Status);
+    }
+
+    [Theory]
+    [InlineData("primary")]
+    [InlineData("supplemental:forced:stream:55")]
+    public async Task RetryTranslationRequest_PreservesPersistedSourceDedupeScopeWhenSourceFlagsAreStale(
+        string persistedSourceDedupeKey)
+    {
+        await using var context = BuildContext();
+
+        var now = DateTime.UtcNow;
+        var failedRequest = CreateRequest(
+            1,
+            318,
+            MediaType.Movie,
+            "en",
+            "pl",
+            "/movies/movie.en.srt",
+            TranslationStatus.Failed,
+            now);
+        failedRequest.WorkloadItemKey = $"library:{MediaType.Movie}:318";
+        failedRequest.SourceDedupeKey = persistedSourceDedupeKey;
+        failedRequest.SourceSubtitleType = "Forced";
+        failedRequest.IsForcedSubtitle = true;
+        failedRequest.SourceSnapshotIdentity = "stream:55";
+        context.TranslationRequests.Add(failedRequest);
+        await context.SaveChangesAsync();
+
+        var result = await CreateService(context).RetryTranslationRequest(failedRequest);
+
+        Assert.NotNull(result);
+        Assert.True(result!.Retried);
+        var updatedRequest = await context.TranslationRequests.SingleAsync(request => request.Id == failedRequest.Id);
+        Assert.Equal(persistedSourceDedupeKey, updatedRequest.SourceDedupeKey);
+    }
+
+    [Fact]
     public async Task RetryAllFailedRequests_RetriesOnlyOneFromLegacyKeylessDuplicateFailedRowsWithinSameRun()
     {
         await using var context = BuildContext();

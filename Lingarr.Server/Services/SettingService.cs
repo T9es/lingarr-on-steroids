@@ -326,7 +326,55 @@ public class SettingService : ISettingService
 
     private string PrepareStoredValue(string key, string value)
     {
-        return IsSensitiveSetting(key) ? _encryptionService.Encrypt(value) : value;
+        var normalizedValue = NormalizeSettingValue(key, value) ?? value;
+        return IsSensitiveSetting(key) ? _encryptionService.Encrypt(normalizedValue) : normalizedValue;
+    }
+
+    private static string? NormalizeSettingValue(string key, string? value)
+    {
+        if (!string.Equals(key, SettingKeys.Translation.SourceLanguageMode, StringComparison.Ordinal) ||
+            value == null)
+        {
+            return value;
+        }
+
+        var trimmedValue = value.Trim();
+        if (TryNormalizeSourceLanguageMode(trimmedValue, out var normalizedValue))
+        {
+            return normalizedValue;
+        }
+
+        try
+        {
+            var jsonValue = JsonSerializer.Deserialize<string>(trimmedValue);
+            if (jsonValue != null && TryNormalizeSourceLanguageMode(jsonValue.Trim(), out normalizedValue))
+            {
+                return normalizedValue;
+            }
+        }
+        catch (JsonException)
+        {
+        }
+
+        return value;
+    }
+
+    private static bool TryNormalizeSourceLanguageMode(string value, out string normalizedValue)
+    {
+        if (string.Equals(value, "auto", StringComparison.OrdinalIgnoreCase))
+        {
+            normalizedValue = "auto";
+            return true;
+        }
+
+        if (string.Equals(value, "manual", StringComparison.OrdinalIgnoreCase))
+        {
+            normalizedValue = "manual";
+            return true;
+        }
+
+        normalizedValue = value;
+        return false;
     }
 
     private async Task<string?> ResolveSettingValueAsync(Setting? setting)
@@ -338,31 +386,31 @@ public class SettingService : ISettingService
 
         if (!IsSensitiveSetting(setting.Key) || string.IsNullOrEmpty(setting.Value))
         {
-            return setting.Value;
+            return NormalizeSettingValue(setting.Key, setting.Value);
         }
 
         var decryptedValue = _encryptionService.Decrypt(setting.Value);
         if (!string.Equals(decryptedValue, setting.Value, StringComparison.Ordinal))
         {
-            return decryptedValue;
+            return NormalizeSettingValue(setting.Key, decryptedValue);
         }
 
         setting.Value = _encryptionService.Encrypt(setting.Value);
         await _dbContext.SaveChangesAsync();
-        return decryptedValue;
+        return NormalizeSettingValue(setting.Key, decryptedValue);
     }
 
     private async Task<string?> ResolveEncryptedSettingValueAsync(Setting? setting)
     {
         if (setting == null || string.IsNullOrEmpty(setting.Value))
         {
-            return setting?.Value;
+            return setting == null ? null : NormalizeSettingValue(setting.Key, setting.Value);
         }
 
         var decryptedValue = _encryptionService.Decrypt(setting.Value);
         if (!string.Equals(decryptedValue, setting.Value, StringComparison.Ordinal))
         {
-            return decryptedValue;
+            return NormalizeSettingValue(setting.Key, decryptedValue);
         }
 
         if (IsSensitiveSetting(setting.Key))
@@ -371,6 +419,6 @@ public class SettingService : ISettingService
             await _dbContext.SaveChangesAsync();
         }
 
-        return decryptedValue;
+        return NormalizeSettingValue(setting.Key, decryptedValue);
     }
 }

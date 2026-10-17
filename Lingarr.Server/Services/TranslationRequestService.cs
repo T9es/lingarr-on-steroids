@@ -21,6 +21,14 @@ namespace Lingarr.Server.Services;
 public class TranslationRequestService : ITranslationRequestService
 {
     private const int RetryFailedRequestsBatchSize = 100;
+    private const string ActiveRequestDedupeIndexName = "ux_translation_requests_active_dedupe";
+
+    private enum RetryAttemptOutcome
+    {
+        Retried,
+        StateChanged,
+        BlockedByActiveRequest
+    }
 
     private static bool IsActiveStatus(TranslationStatus status) =>
         status == TranslationStatus.Pending ||
@@ -748,9 +756,17 @@ public class TranslationRequestService : ITranslationRequestService
 
                 NormalizeWorkloadIdentity(failedRequest);
                 await PopulateOutputMetadataAsync(failedRequest);
-                PopulateSourceDedupeKey(failedRequest);
+                PopulateMissingSourceDedupeKey(failedRequest);
 
-                if (!await TryRetryFailedRequestAsync(failedRequest, expectedStatus))
+                var retryOutcome = await TryRetryFailedRequestAsync(failedRequest, expectedStatus);
+                if (retryOutcome == RetryAttemptOutcome.BlockedByActiveRequest)
+                {
+                    blockedByActiveRequest++;
+                    activeDuplicateKeys.Add(duplicateKey);
+                    continue;
+                }
+
+                if (retryOutcome == RetryAttemptOutcome.StateChanged)
                 {
                     if (IsActiveStatus(failedRequest.Status))
                     {
@@ -808,14 +824,14 @@ public class TranslationRequestService : ITranslationRequestService
         return response;
     }
 
-    private async Task<bool> TryRetryFailedRequestAsync(
+    private async Task<RetryAttemptOutcome> TryRetryFailedRequestAsync(
         TranslationRequest request,
         TranslationStatus expectedStatus)
     {
         if (expectedStatus != TranslationStatus.Failed &&
             expectedStatus != TranslationStatus.Interrupted)
         {
-            return false;
+            return RetryAttemptOutcome.StateChanged;
         }
 
         var now = DateTime.UtcNow;
@@ -846,12 +862,17 @@ public class TranslationRequestService : ITranslationRequestService
                     .SetProperty(item => item.NextRetryAt, (DateTime?)null)
                     .SetProperty(item => item.UpdatedAt, now));
         }
+        catch (Exception ex) when (IsActiveDedupeUniqueViolation(ex))
+        {
+            await _dbContext.Entry(request).ReloadAsync();
+            return RetryAttemptOutcome.BlockedByActiveRequest;
+        }
         catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException)
         {
             await _dbContext.Entry(request).ReloadAsync();
             if (request.Status != expectedStatus)
             {
-                return false;
+                return RetryAttemptOutcome.StateChanged;
             }
 
             request.WorkloadKind = workloadKind;
@@ -867,18 +888,27 @@ public class TranslationRequestService : ITranslationRequestService
             request.CompletedAt = null;
             request.NextRetryAt = null;
             request.UpdatedAt = now;
-            await _dbContext.SaveChangesAsync();
-            return true;
+            try
+            {
+                await _dbContext.SaveChangesAsync();
+            }
+            catch (Exception saveException) when (IsActiveDedupeUniqueViolation(saveException))
+            {
+                await _dbContext.Entry(request).ReloadAsync();
+                return RetryAttemptOutcome.BlockedByActiveRequest;
+            }
+
+            return RetryAttemptOutcome.Retried;
         }
 
         if (rowsUpdated == 0)
         {
             await _dbContext.Entry(request).ReloadAsync();
-            return false;
+            return RetryAttemptOutcome.StateChanged;
         }
 
         await _dbContext.Entry(request).ReloadAsync();
-        return true;
+        return RetryAttemptOutcome.Retried;
     }
 
     private async Task<TranslationRequest?> ResolvePermanentlyFailedRequestAsync(TranslationRequest failedRequest)
@@ -1116,9 +1146,21 @@ public class TranslationRequestService : ITranslationRequestService
 
         NormalizeWorkloadIdentity(translationRequest);
         await PopulateOutputMetadataAsync(translationRequest);
-        PopulateSourceDedupeKey(translationRequest);
+        PopulateMissingSourceDedupeKey(translationRequest);
 
-        if (!await TryRetryFailedRequestAsync(translationRequest, expectedStatus))
+        var retryOutcome = await TryRetryFailedRequestAsync(translationRequest, expectedStatus);
+        if (retryOutcome == RetryAttemptOutcome.BlockedByActiveRequest)
+        {
+            return new RetryTranslationRequestResponse
+            {
+                RequestId = retryRequest.Id,
+                Retried = false,
+                BlockedByActiveRequest = true,
+                Message = $"Translation request for {translationRequest.Title} is already active or pending."
+            };
+        }
+
+        if (retryOutcome == RetryAttemptOutcome.StateChanged)
         {
             return new RetryTranslationRequestResponse
             {
@@ -2830,6 +2872,43 @@ public class TranslationRequestService : ITranslationRequestService
     private static void PopulateSourceDedupeKey(TranslationRequest translationRequest)
     {
         translationRequest.SourceDedupeKey = BuildSourceDedupeKey(translationRequest);
+    }
+
+    private static void PopulateMissingSourceDedupeKey(TranslationRequest translationRequest)
+    {
+        if (string.IsNullOrWhiteSpace(translationRequest.SourceDedupeKey))
+        {
+            PopulateSourceDedupeKey(translationRequest);
+        }
+    }
+
+    private static bool IsActiveDedupeUniqueViolation(Exception exception)
+    {
+        for (Exception? current = exception; current != null; current = current.InnerException)
+        {
+            if (current is Npgsql.PostgresException postgresException &&
+                postgresException.SqlState == Npgsql.PostgresErrorCodes.UniqueViolation &&
+                string.Equals(
+                    postgresException.ConstraintName,
+                    ActiveRequestDedupeIndexName,
+                    StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            if (current is Microsoft.Data.Sqlite.SqliteException sqliteException &&
+                sqliteException.SqliteExtendedErrorCode == 2067 &&
+                sqliteException.Message.Contains(
+                    "UNIQUE constraint failed: translation_requests.workload_item_key, " +
+                    "translation_requests.source_language, translation_requests.target_language, " +
+                    "translation_requests.source_dedupe_key, translation_requests.is_active",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     internal static string BuildSourceDedupeKey(TranslationRequest translationRequest)

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
@@ -19,6 +20,116 @@ namespace Lingarr.Server.Tests.Services;
 
 public class SettingServiceTests
 {
+    [Theory]
+    [InlineData("auto", "auto")]
+    [InlineData("\"auto\"", "auto")]
+    [InlineData("  MANUAL  ", "manual")]
+    [InlineData("\" Auto \"", "auto")]
+    [InlineData("unknown", "unknown")]
+    [InlineData("\"unknown\"", "\"unknown\"")]
+    [InlineData("\"auto", "\"auto")]
+    [InlineData("", "")]
+    public async Task SourceLanguageMode_ReadMethodsNormalizeRecognizedValuesAndPreserveOtherValues(
+        string rawValue,
+        string expectedValue)
+    {
+        var readPaths = new[] { "GetSetting", "GetSettings", "GetEncryptedSetting", "GetEncryptedSettings" };
+        foreach (var readPath in readPaths)
+        {
+            await using var dbContext = CreateDbContext();
+            dbContext.Settings.AddRange(
+                new Setting
+                {
+                    Key = SettingKeys.Translation.SourceLanguageMode,
+                    Value = rawValue
+                },
+                new Setting
+                {
+                    Key = "unrelated_scalar",
+                    Value = "\" AUTO \""
+                });
+            await dbContext.SaveChangesAsync();
+
+            var service = CreateService(dbContext, out _);
+            var value = readPath switch
+            {
+                "GetSetting" => await service.GetSetting(SettingKeys.Translation.SourceLanguageMode),
+                "GetSettings" => (await service.GetSettings([
+                    SettingKeys.Translation.SourceLanguageMode]))[SettingKeys.Translation.SourceLanguageMode],
+                "GetEncryptedSetting" => await service.GetEncryptedSetting(SettingKeys.Translation.SourceLanguageMode),
+                _ => (await service.GetEncryptedSettings([
+                    SettingKeys.Translation.SourceLanguageMode]))[SettingKeys.Translation.SourceLanguageMode]
+            };
+
+            Assert.Equal(expectedValue, value);
+
+            var unrelatedValue = await service.GetSetting("unrelated_scalar");
+            Assert.Equal("\" AUTO \"", unrelatedValue);
+        }
+    }
+
+    [Fact]
+    public async Task SourceLanguageMode_MissingValueRemainsNullOrEmptyAcrossReadMethods()
+    {
+        await using var dbContext = CreateDbContext();
+        var service = CreateService(dbContext, out _);
+
+        Assert.Null(await service.GetSetting(SettingKeys.Translation.SourceLanguageMode));
+        Assert.Null(await service.GetEncryptedSetting(SettingKeys.Translation.SourceLanguageMode));
+        Assert.Equal(
+            string.Empty,
+            (await service.GetSettings([SettingKeys.Translation.SourceLanguageMode]))[
+                SettingKeys.Translation.SourceLanguageMode]);
+        Assert.Equal(
+            string.Empty,
+            (await service.GetEncryptedSettings([SettingKeys.Translation.SourceLanguageMode]))[
+                SettingKeys.Translation.SourceLanguageMode]);
+    }
+
+    [Fact]
+    public async Task SourceLanguageMode_WritesCanonicalizeAndInvalidateCachedValues()
+    {
+        await using var dbContext = CreateDbContext();
+        dbContext.Settings.Add(new Setting
+        {
+            Key = SettingKeys.Translation.SourceLanguageMode,
+            Value = "\"AUTO\""
+        });
+        await dbContext.SaveChangesAsync();
+
+        var service = CreateService(dbContext, out var encryptionService);
+        Assert.Equal("auto", await service.GetSetting(SettingKeys.Translation.SourceLanguageMode));
+
+        await service.SetSetting(SettingKeys.Translation.SourceLanguageMode, "  MANUAL  ");
+        var storedMode = await dbContext.Settings.SingleAsync(
+            setting => setting.Key == SettingKeys.Translation.SourceLanguageMode);
+        Assert.Equal("manual", storedMode.Value);
+        Assert.Equal("manual", await service.GetSetting(SettingKeys.Translation.SourceLanguageMode));
+
+        const string unrelatedValue = "\" AUTO \"";
+        const string secretValue = "sensitive-value";
+        await service.SetSettings(new Dictionary<string, string>
+        {
+            [SettingKeys.Translation.SourceLanguageMode] = "\" Auto \"",
+            ["unrelated_scalar"] = unrelatedValue,
+            [SettingKeys.Translation.OpenAi.ApiKey] = secretValue
+        });
+
+        storedMode = await dbContext.Settings.SingleAsync(
+            setting => setting.Key == SettingKeys.Translation.SourceLanguageMode);
+        Assert.Equal("auto", storedMode.Value);
+        Assert.Equal("auto", await service.GetSetting(SettingKeys.Translation.SourceLanguageMode));
+
+        var storedUnrelatedValue = await dbContext.Settings.SingleAsync(
+            setting => setting.Key == "unrelated_scalar");
+        Assert.Equal(unrelatedValue, storedUnrelatedValue.Value);
+
+        var storedSecret = await dbContext.Settings.SingleAsync(
+            setting => setting.Key == SettingKeys.Translation.OpenAi.ApiKey);
+        Assert.NotEqual(secretValue, storedSecret.Value);
+        Assert.Equal(secretValue, encryptionService.Decrypt(storedSecret.Value));
+    }
+
     [Fact]
     public async Task SetSetting_ShouldEncryptSensitiveValuesBeforePersisting()
     {
