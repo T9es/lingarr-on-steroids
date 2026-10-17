@@ -135,6 +135,102 @@ public class MediaStateServiceOcrTests
         Assert.Equal(TranslationState.OcrBlocked, state);
     }
 
+    [Theory]
+    [InlineData("manual", SubtitleOcrStatus.BlockedLowQuality, SubtitleOcrStatus.NotStarted)]
+    [InlineData("auto", SubtitleOcrStatus.BlockedLowQuality, SubtitleOcrStatus.NotStarted)]
+    [InlineData("manual", SubtitleOcrStatus.Failed, SubtitleOcrStatus.Queued)]
+    [InlineData("auto", SubtitleOcrStatus.Failed, SubtitleOcrStatus.Queued)]
+    public async Task UpdateStateAsync_WithBlockedAndPendingEligibleStreams_ReturnsOcrPending(
+        string mode, SubtitleOcrStatus blockedStatus, SubtitleOcrStatus pendingStatus)
+    {
+        await using var context = BuildContext();
+        var movie = await CreateMovieWithPgsAsync(context, blockedStatus);
+        movie.EmbeddedSubtitles.Add(CreateAlternativePgs(pendingStatus));
+        await context.SaveChangesAsync();
+
+        var state = await BuildService(context, "true", mode)
+            .UpdateStateAsync(movie, MediaType.Movie);
+
+        Assert.Equal(TranslationState.OcrPending, state);
+    }
+
+    [Theory]
+    [InlineData("language")]
+    [InlineData("forced")]
+    [InlineData("caption")]
+    public async Task UpdateStateAsync_WithExcludedPendingAlternative_RemainsBlocked(string exclusion)
+    {
+        await using var context = BuildContext();
+        var movie = await CreateMovieWithPgsAsync(context, SubtitleOcrStatus.BlockedLowQuality);
+        var alternative = CreateAlternativePgs(SubtitleOcrStatus.NotStarted);
+        alternative.Language = exclusion == "language" ? "fra" : "eng";
+        alternative.IsForced = exclusion == "forced";
+        alternative.Title = exclusion == "caption" ? "English SDH" : "English";
+        movie.EmbeddedSubtitles.Add(alternative);
+        await context.SaveChangesAsync();
+
+        var state = await BuildService(context, "true", ignoreCaptions: "true")
+            .UpdateStateAsync(movie, MediaType.Movie);
+
+        Assert.Equal(TranslationState.OcrBlocked, state);
+    }
+
+    [Theory]
+    [InlineData("manual")]
+    [InlineData("auto")]
+    public async Task UpdateStateAsync_WithCompletedTargetAndMixedOcrStreams_RemainsComplete(string mode)
+    {
+        await using var context = BuildContext();
+        var movie = await CreateMovieWithPgsAsync(context, SubtitleOcrStatus.BlockedLowQuality);
+        movie.EmbeddedSubtitles.Add(CreateAlternativePgs(SubtitleOcrStatus.NotStarted));
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            StreamIndex = 2,
+            Language = "pol",
+            Title = "Polish",
+            CodecName = "subrip",
+            IsTextBased = true
+        });
+        await context.SaveChangesAsync();
+
+        var state = await BuildService(context, "true", mode)
+            .UpdateStateAsync(movie, MediaType.Movie);
+
+        Assert.Equal(TranslationState.Complete, state);
+    }
+
+    [Fact]
+    public async Task UpdateStateAsync_WithPendingAlternative_MakesCurrentVersionMediaEligibleForAutomation()
+    {
+        await using var context = BuildContext();
+        var movie = await CreateMovieWithPgsAsync(context, SubtitleOcrStatus.BlockedLowQuality);
+        movie.TranslationState = TranslationState.OcrBlocked;
+        movie.StateSettingsVersion = 1;
+        movie.EmbeddedSubtitles.Add(CreateAlternativePgs(SubtitleOcrStatus.NotStarted));
+        await context.SaveChangesAsync();
+        var service = BuildService(context, "true");
+        Assert.Empty(await service.GetMediaNeedingTranslationAsync(10));
+
+        await service.UpdateStateAsync(movie, MediaType.Movie);
+        var candidates = await service.GetMediaNeedingTranslationAsync(10);
+
+        Assert.Contains(candidates, candidate => candidate.Media.Id == movie.Id && candidate.Type == MediaType.Movie);
+        Assert.Equal(1, movie.StateSettingsVersion);
+    }
+
+    private static EmbeddedSubtitle CreateAlternativePgs(SubtitleOcrStatus status)
+    {
+        return new EmbeddedSubtitle
+        {
+            StreamIndex = 1,
+            Language = "eng",
+            Title = "English",
+            CodecName = "hdmv_pgs_subtitle",
+            IsTextBased = false,
+            OcrStatus = status
+        };
+    }
+
     private static LingarrDbContext BuildContext()
     {
         var options = new DbContextOptionsBuilder<LingarrDbContext>()
@@ -176,7 +272,8 @@ public class MediaStateServiceOcrTests
         LingarrDbContext context,
         string ocrEnabled,
         string sourceLanguageMode = "manual",
-        IReadOnlyList<SourceLanguage>? sourceLanguages = null)
+        IReadOnlyList<SourceLanguage>? sourceLanguages = null,
+        string ignoreCaptions = "false")
     {
         sourceLanguages ??= [new SourceLanguage { Code = "en", Name = "English" }];
 
@@ -195,7 +292,7 @@ public class MediaStateServiceOcrTests
             .ReturnsAsync("match-source");
         settingService
             .Setup(service => service.GetSetting(SettingKeys.Translation.IgnoreCaptions))
-            .ReturnsAsync("false");
+            .ReturnsAsync(ignoreCaptions);
         settingService
             .Setup(service => service.GetSetting(SettingKeys.SubtitleValidation.SkipWhenTargetEmbedded))
             .ReturnsAsync("true");

@@ -13,6 +13,49 @@ namespace Lingarr.Server.Tests.Services;
 
 public class BlockedMediaServiceTests
 {
+    [Theory]
+    [InlineData("PgsToSrt produced no output file.")]
+    [InlineData(null)]
+    [InlineData("")]
+    public async Task GetBlockedMediaAsync_WithFailedOcr_DoesNotExposeStaleSuccessfulQuality(string? error)
+    {
+        await using var context = BuildContext();
+        var movie = new Movie
+        {
+            RadarrId = 31,
+            Title = "Failed OCR",
+            FileName = "failed.mkv",
+            Path = "/media/movies",
+            DateAdded = DateTime.UtcNow,
+            TranslationState = TranslationState.OcrBlocked
+        };
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            StreamIndex = 0,
+            CodecName = "hdmv_pgs_subtitle",
+            IsTextBased = false,
+            OcrStatus = SubtitleOcrStatus.Failed,
+            OcrQualityScore = 100,
+            OcrIssueSummary = "OCR passed quality checks.",
+            OcrError = error
+        });
+        context.Movies.Add(movie);
+        await context.SaveChangesAsync();
+
+        var item = Assert.Single(await new BlockedMediaService(context).GetBlockedMediaAsync());
+
+        Assert.Null(item.OcrQualityScore);
+        Assert.NotEqual("OCR passed quality checks.", item.OcrIssueSummary);
+        if (!string.IsNullOrWhiteSpace(error))
+        {
+            Assert.Equal(error, item.OcrIssueSummary);
+        }
+        else
+        {
+            Assert.Contains("failed", item.OcrIssueSummary!, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
     [Fact]
     public async Task GetBlockedMediaAsync_ReturnsOcrBlockedItemsWithBlockedStreamDetail()
     {

@@ -101,8 +101,18 @@ public class BlockedMediaService : IBlockedMediaService
             {
                 response.StreamIndex = blockedStream.StreamIndex;
                 response.OcrStatus = blockedStream.OcrStatus;
-                response.OcrQualityScore = blockedStream.OcrQualityScore;
-                response.OcrIssueSummary = blockedStream.OcrIssueSummary;
+                if (blockedStream.OcrStatus == SubtitleOcrStatus.Failed)
+                {
+                    response.OcrQualityScore = null;
+                    response.OcrIssueSummary = string.IsNullOrWhiteSpace(blockedStream.OcrError)
+                        ? "OCR failed before producing usable subtitles."
+                        : blockedStream.OcrError;
+                }
+                else
+                {
+                    response.OcrQualityScore = blockedStream.OcrQualityScore;
+                    response.OcrIssueSummary = blockedStream.OcrIssueSummary;
+                }
             }
         }
 

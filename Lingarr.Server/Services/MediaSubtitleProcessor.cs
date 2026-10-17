@@ -1896,7 +1896,8 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         if (isAutoMode)
         {
             candidate = ocrCandidates
-                .OrderByDescending(subtitle =>
+                .OrderBy(subtitle => subtitle.OcrStatus == SubtitleOcrStatus.BlockedLowQuality)
+                .ThenByDescending(subtitle =>
                     SubtitleLanguageHelper.ScoreSubtitleCandidate(subtitle, subtitle.Language))
                 .ThenBy(subtitle => subtitle.StreamIndex)
                 .FirstOrDefault();
@@ -1914,13 +1915,15 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 .ToList();
             candidate = languageMatched.Count > 0
                 ? languageMatched
-                    .OrderByDescending(subtitle => configuredSourceLanguages.Max(language =>
+                    .OrderBy(subtitle => subtitle.OcrStatus == SubtitleOcrStatus.BlockedLowQuality)
+                    .ThenByDescending(subtitle => configuredSourceLanguages.Max(language =>
                         SubtitleLanguageHelper.ScoreSubtitleCandidate(subtitle, language)))
                     .ThenBy(subtitle => subtitle.StreamIndex)
                     .FirstOrDefault()
                 : ocrCandidates
                     .Where(IsUntaggedOcrLanguage)
-                    .OrderBy(subtitle => subtitle.StreamIndex)
+                    .OrderBy(subtitle => subtitle.OcrStatus == SubtitleOcrStatus.BlockedLowQuality)
+                    .ThenBy(subtitle => subtitle.StreamIndex)
                     .FirstOrDefault();
         }
 

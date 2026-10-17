@@ -2029,6 +2029,7 @@ public class TranslationJobTests : IDisposable
             SourceLanguage = "en",
             TargetLanguage = "pl",
             MediaType = MediaType.Movie,
+            WorkloadKind = TranslationWorkloadKind.CustomSource,
             Status = TranslationStatus.Pending,
             SubtitleToTranslate = sourceSubtitlePath
         };
@@ -2153,6 +2154,7 @@ public class TranslationJobTests : IDisposable
                 FileSizeBytes = 0
             });
         var sourceSubtitleResolverMock = new Mock<ISourceSubtitleResolver>();
+        SetupPreparedTranslationSource(sourceSubtitleResolverMock);
         sourceSubtitleResolverMock
             .Setup(service => service.ResolveReadableSourcePathAsync(
                 It.IsAny<TranslationRequest>(),
@@ -2227,6 +2229,7 @@ public class TranslationJobTests : IDisposable
             SourceLanguage = "en",
             TargetLanguage = "pl",
             MediaType = MediaType.Movie,
+            WorkloadKind = TranslationWorkloadKind.CustomSource,
             Status = TranslationStatus.Pending,
             SubtitleToTranslate = sourceSubtitlePath
         };
@@ -2361,6 +2364,7 @@ public class TranslationJobTests : IDisposable
                 FileSizeBytes = 0
             });
         var sourceSubtitleResolverMock = new Mock<ISourceSubtitleResolver>();
+        SetupPreparedTranslationSource(sourceSubtitleResolverMock);
         sourceSubtitleResolverMock
             .Setup(service => service.ResolveReadableSourcePathAsync(
                 It.IsAny<TranslationRequest>(),
@@ -2530,6 +2534,7 @@ public class TranslationJobTests : IDisposable
                 FileSizeBytes = 1
             });
         var sourceSubtitleResolverMock = new Mock<ISourceSubtitleResolver>();
+        SetupPreparedTranslationSource(sourceSubtitleResolverMock);
         sourceSubtitleResolverMock
             .Setup(service => service.ResolveReadableSourcePathAsync(
                 It.IsAny<TranslationRequest>(),
@@ -2943,6 +2948,7 @@ public class TranslationJobTests : IDisposable
                     FileSizeBytes = 1
                 });
             var sourceSubtitleResolverMock = new Mock<ISourceSubtitleResolver>();
+            SetupPreparedTranslationSource(sourceSubtitleResolverMock);
             sourceSubtitleResolverMock
                 .Setup(service => service.ResolveReadableSourcePathAsync(
                     It.IsAny<TranslationRequest>(),
@@ -3048,6 +3054,7 @@ public class TranslationJobTests : IDisposable
             SourceLanguage = "en",
             TargetLanguage = "pl",
             MediaType = MediaType.Movie,
+            WorkloadKind = TranslationWorkloadKind.CustomSource,
             Status = TranslationStatus.Pending,
             SubtitleToTranslate = sourceSubtitlePath,
             SourceSnapshotStreamIndex = 2
@@ -3101,6 +3108,150 @@ public class TranslationJobTests : IDisposable
         Assert.NotNull(excludedStreams);
         Assert.Contains(2, excludedStreams!);
         Assert.Equal(fallbackSubtitlePath, request.SubtitleToTranslate);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_UsesPreparedForcedDialogueCountAndExactStreamSnapshot()
+    {
+        var sourceSubtitlePath = Path.Combine(_tempDirectory, "movie-82.eng.srt");
+        await File.WriteAllTextAsync(sourceSubtitlePath, BuildSrtContent(284));
+
+        var movie = CreateMovie(82);
+        movie.Path = _tempDirectory;
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = movie.Id,
+            StreamIndex = 1,
+            Language = "eng",
+            Title = "English",
+            CodecName = "subrip",
+            IsTextBased = true,
+            IsForced = true,
+            IsExtracted = true,
+            ExtractedPath = sourceSubtitlePath
+        });
+
+        var request = new TranslationRequest
+        {
+            MediaId = movie.Id,
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Pending,
+            SubtitleToTranslate = sourceSubtitlePath
+        };
+
+        _dbContext.Movies.Add(movie);
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var translationServiceMock = new Mock<ITranslationService>();
+        translationServiceMock
+            .Setup(service => service.TranslateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string text, string _, string _, List<string>? _, List<string>? _, CancellationToken _) => text);
+
+        var resolverMock = new Mock<ISourceSubtitleResolver>();
+        resolverMock
+            .Setup(service => service.PrepareTranslationSourceAsync(
+                It.IsAny<TranslationRequest>(),
+                It.IsAny<TranslationSourcePreparationOptions>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TranslationRequest _, TranslationSourcePreparationOptions _, CancellationToken _) =>
+                new PreparedTranslationSource(sourceSubtitlePath, movie.EmbeddedSubtitles.Single(), 284, false));
+
+        var job = BuildExecutableJob(
+            new SubtitleService(NullLogger<SubtitleService>.Instance),
+            Mock.Of<ISubtitleExtractionService>(),
+            translationServiceMock.Object,
+            sourceSubtitleResolverOverride: resolverMock.Object);
+
+        await job.ExecuteAsync(request.Id, CancellationToken.None);
+
+        var updatedRequest = await _dbContext.TranslationRequests.SingleAsync(item => item.Id == request.Id);
+        Assert.Equal(284, updatedRequest.SourceSubtitleEntryCount);
+        Assert.Equal(SubtitleLanguageHelper.TypeForcedDialogue, updatedRequest.SourceSubtitleType);
+        Assert.Equal("English", updatedRequest.SelectedStreamTitle);
+        Assert.Equal(1, updatedRequest.SourceSnapshotStreamIndex);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_PreservesExplicitExternalPreparationWithoutGuessingEmbeddedMetadata()
+    {
+        var sourceSubtitlePath = Path.Combine(_tempDirectory, "external-eng.srt");
+        await File.WriteAllTextAsync(sourceSubtitlePath, BuildSrtContent(50));
+
+        var movie = CreateMovie(83);
+        movie.Path = _tempDirectory;
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            MovieId = movie.Id,
+            StreamIndex = 0,
+            Language = "por",
+            Title = "Portuguese",
+            CodecName = "subrip",
+            IsTextBased = true,
+            IsForced = true,
+            IsExtracted = true,
+            ExtractedPath = Path.Combine(_tempDirectory, "unrelated-portuguese.srt")
+        });
+
+        var request = new TranslationRequest
+        {
+            MediaId = movie.Id,
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Pending,
+            SubtitleToTranslate = sourceSubtitlePath,
+            SelectedStreamTitle = "Stale Portuguese",
+            IsForcedSubtitle = true
+        };
+
+        _dbContext.Movies.Add(movie);
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var translationServiceMock = new Mock<ITranslationService>();
+        translationServiceMock
+            .Setup(service => service.TranslateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string text, string _, string _, List<string>? _, List<string>? _, CancellationToken _) => text);
+
+        var resolverMock = new Mock<ISourceSubtitleResolver>();
+        resolverMock
+            .Setup(service => service.PrepareTranslationSourceAsync(
+                It.IsAny<TranslationRequest>(),
+                It.IsAny<TranslationSourcePreparationOptions>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PreparedTranslationSource(sourceSubtitlePath, null, 50, false));
+
+        var job = BuildExecutableJob(
+            new SubtitleService(NullLogger<SubtitleService>.Instance),
+            Mock.Of<ISubtitleExtractionService>(),
+            translationServiceMock.Object,
+            sourceSubtitleResolverOverride: resolverMock.Object);
+
+        await job.ExecuteAsync(request.Id, CancellationToken.None);
+
+        var updatedRequest = await _dbContext.TranslationRequests.SingleAsync(item => item.Id == request.Id);
+        Assert.Equal(50, updatedRequest.SourceSubtitleEntryCount);
+        Assert.Equal(SourceSubtitleSnapshot.ExternalType, updatedRequest.SourceSnapshotType);
+        Assert.Null(updatedRequest.SourceSnapshotStreamIndex);
+        Assert.Null(updatedRequest.SelectedStreamTitle);
+        Assert.False(updatedRequest.IsForcedSubtitle);
     }
 
     [Fact]
@@ -4385,7 +4536,8 @@ public class TranslationJobTests : IDisposable
         IReadOnlyDictionary<string, string>? settingOverrides = null,
         IMkvEmbeddingService? mkvEmbeddingService = null,
         ITranslationSiblingSequenceApprovalService? siblingSequenceApprovalService = null,
-        ITranslationRequestService? translationRequestServiceOverride = null)
+        ITranslationRequestService? translationRequestServiceOverride = null,
+        ISourceSubtitleResolver? sourceSubtitleResolverOverride = null)
     {
         var settingServiceMock = new Mock<ISettingService>();
         settingServiceMock
@@ -4489,18 +4641,24 @@ public class TranslationJobTests : IDisposable
             });
         sourceSnapshotServiceMock
             .Setup(service => service.CreateEmbeddedSnapshot(It.IsAny<EmbeddedSubtitle>(), It.IsAny<string>()))
-            .Returns(new SourceSubtitleSnapshot
+            .Returns((EmbeddedSubtitle subtitle, string _) => new SourceSubtitleSnapshot
             {
                 Version = SourceSubtitleSnapshot.CurrentVersion,
                 SourceType = SourceSubtitleSnapshot.EmbeddedType,
                 SourceLanguage = "en",
-                Identity = "embedded",
+                Identity = $"embedded:{subtitle.StreamIndex}",
                 Fingerprint = "fingerprint-embedded",
                 FileSizeBytes = 1,
-                StreamIndex = 3
+                StreamIndex = subtitle.StreamIndex
             });
 
-        var sourceSubtitleResolverMock = new Mock<ISourceSubtitleResolver>();
+        var sourceSubtitleResolverMock = sourceSubtitleResolverOverride == null
+            ? new Mock<ISourceSubtitleResolver>()
+            : Mock.Get(sourceSubtitleResolverOverride);
+        if (sourceSubtitleResolverOverride == null)
+        {
+            SetupPreparedTranslationSource(sourceSubtitleResolverMock);
+        }
         sourceSubtitleResolverMock
             .Setup(service => service.ResolveReadableSourcePathAsync(
                 It.IsAny<TranslationRequest>(),
@@ -4535,6 +4693,42 @@ public class TranslationJobTests : IDisposable
             null,
             mkvEmbeddingService,
             siblingSequenceApprovalService);
+    }
+
+    private void SetupPreparedTranslationSource(Mock<ISourceSubtitleResolver> resolverMock)
+    {
+        resolverMock
+            .Setup(service => service.PrepareTranslationSourceAsync(
+                It.IsAny<TranslationRequest>(),
+                It.IsAny<TranslationSourcePreparationOptions>(),
+                It.IsAny<CancellationToken>()))
+            .Returns((TranslationRequest request, TranslationSourcePreparationOptions _, CancellationToken _) =>
+                CreatePreparedTranslationSourceAsync(request));
+    }
+
+    private async Task<PreparedTranslationSource?> CreatePreparedTranslationSourceAsync(TranslationRequest request)
+    {
+        var subtitlePath = request.SubtitleToTranslate;
+        if (string.IsNullOrWhiteSpace(subtitlePath) || !File.Exists(subtitlePath))
+        {
+            return null;
+        }
+
+        EmbeddedSubtitle? selectedSubtitle = null;
+        if (request.MediaId.HasValue)
+        {
+            var exactPathMatch = _dbContext.EmbeddedSubtitles
+                .Where(subtitle => subtitle.ExtractedPath == subtitlePath || subtitle.OcrExtractedPath == subtitlePath);
+            selectedSubtitle = request.MediaType == MediaType.Movie
+                ? await exactPathMatch.FirstOrDefaultAsync(subtitle => subtitle.MovieId == request.MediaId.Value)
+                : await exactPathMatch.FirstOrDefaultAsync(subtitle => subtitle.EpisodeId == request.MediaId.Value);
+        }
+
+        return new PreparedTranslationSource(
+            subtitlePath,
+            selectedSubtitle,
+            Math.Max(0, SubtitleExtractionService.CountSubtitleEntries(subtitlePath)),
+            false);
     }
 
     private static Mock<ISubtitleQualityValidatorService> CreatePassingQualityValidator()

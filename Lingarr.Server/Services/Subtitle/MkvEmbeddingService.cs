@@ -694,20 +694,7 @@ public class MkvEmbeddingService : IMkvEmbeddingService
         CancellationToken ct)
     {
         using var process = new Process();
-        process.StartInfo = new ProcessStartInfo
-        {
-            FileName = fileName,
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true
-        };
-
-        process.StartInfo.ArgumentList.Clear();
-        foreach (var arg in argumentList)
-        {
-            process.StartInfo.ArgumentList.Add(arg);
-        }
+        process.StartInfo = CreateProcessStartInfo(fileName, argumentList, OperatingSystem.IsLinux());
 
         process.Start();
         _logger.LogDebug("Started process: {FileName} with {Count} arguments", fileName, argumentList.Count);
@@ -729,6 +716,34 @@ public class MkvEmbeddingService : IMkvEmbeddingService
         var combinedOutput = outputBuilder.ToString();
 
         return (process.ExitCode, combinedOutput);
+    }
+
+    internal static ProcessStartInfo CreateProcessStartInfo(
+        string fileName,
+        IReadOnlyList<string> arguments,
+        bool useUtf8Locale)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = fileName,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true
+        };
+
+        foreach (var argument in arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        if (useUtf8Locale)
+        {
+            startInfo.Environment["LANG"] = "C.UTF-8";
+            startInfo.Environment["LC_ALL"] = "C.UTF-8";
+        }
+
+        return startInfo;
     }
     private void CleanupTempFile(string tempPath)
     {

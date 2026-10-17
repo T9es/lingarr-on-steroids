@@ -9,6 +9,7 @@ using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models;
 using Lingarr.Server.Models.FileSystem;
+using Lingarr.Server.Models.Subtitle;
 using Lingarr.Server.Models.Translation;
 using Lingarr.Server.Services;
 using Lingarr.Server.Extensions;
@@ -349,6 +350,7 @@ _translationPromptContextAccessor = translationPromptContextAccessor ??
                 SettingKeys.Translation.BatchContextEnabled,
                 SettingKeys.Translation.BatchContextBefore,
 SettingKeys.Translation.BatchContextAfter,
+                SettingKeys.Translation.IgnoreCaptions,
                 SettingKeys.Translation.TranslateSupplementalSubtitles,
                 SettingKeys.Translation.EmbedInContainer,
                 SettingKeys.Translation.EmbedWhenPathTooLong,
@@ -379,6 +381,7 @@ SettingKeys.Translation.BatchContextAfter,
             }
 
             var subtitlePath = request.SubtitleToTranslate;
+            PreparedTranslationSource? preparedTranslationSource = null;
             if (request.WorkloadKind == TranslationWorkloadKind.Upload)
             {
                 subtitlePath = await _uploadWorkspaceService.PrepareSubtitleForRequestAsync(
@@ -427,6 +430,71 @@ SettingKeys.Translation.BatchContextAfter,
                 _logger.LogInformation("Using extracted embedded subtitle: {Path}", subtitlePath);
                 AddRequestLog("Information", $"Using extracted embedded subtitle: {subtitlePath}");
             }
+            else if (request.WorkloadKind == TranslationWorkloadKind.Library)
+            {
+                var hasManualStreamSelection = false;
+                string? manualStreamSelectionKey = null;
+                if (request.MediaId.HasValue)
+                {
+                    var streamSelectionKey = $"subtitle_stream_selection_{request.MediaId.Value}_{request.MediaType}";
+                    var preferredStreamIndexSetting = await _settings.GetSetting(streamSelectionKey);
+                    if (!string.IsNullOrEmpty(preferredStreamIndexSetting) &&
+                        int.TryParse(preferredStreamIndexSetting, out var parsedIndex))
+                    {
+                        hasManualStreamSelection = true;
+                        manualStreamSelectionKey = streamSelectionKey;
+                        request.SourceSnapshotStreamIndex = parsedIndex;
+                        _logger.LogInformation(
+                            "Using preferred stream index {StreamIndex} from manual selection",
+                            parsedIndex);
+                        AddRequestLog(
+                            "Information",
+                            $"Using preferred stream index {parsedIndex} from manual selection");
+                    }
+                }
+
+                var allowCaptionFallback = !string.Equals(
+                    settings.GetValueOrDefault(SettingKeys.Translation.IgnoreCaptions),
+                    "true",
+                    StringComparison.OrdinalIgnoreCase);
+                var isSupplementalRequest =
+                    !string.IsNullOrWhiteSpace(request.SourceDedupeKey) &&
+                    request.SourceDedupeKey.StartsWith("supplemental:", StringComparison.OrdinalIgnoreCase) &&
+                    SubtitleLanguageHelper.IsSupplementalSubtitleType(request.SourceSubtitleType);
+                preparedTranslationSource = await _sourceSubtitleResolver.PrepareTranslationSourceAsync(
+                    request,
+                    new TranslationSourcePreparationOptions(
+                        HasManualStreamSelection: hasManualStreamSelection,
+                        AllowCaptionFallback: allowCaptionFallback,
+                        IsSupplementalRequest: isSupplementalRequest,
+                        SupplementalTranslationEnabled: string.Equals(
+                            settings.GetValueOrDefault(SettingKeys.Translation.TranslateSupplementalSubtitles),
+                            "true",
+                            StringComparison.OrdinalIgnoreCase)),
+                    effectiveCancellationToken);
+
+                subtitlePath = preparedTranslationSource?.Path;
+                if (string.IsNullOrWhiteSpace(subtitlePath) || !File.Exists(subtitlePath))
+                {
+                    var errorMessage =
+                        $"Source subtitle could not be resolved to a readable file for request {request.Id}.";
+                    _logger.LogError(errorMessage);
+                    AddRequestLog("Error", errorMessage);
+                    throw new InvalidOperationException(errorMessage);
+                }
+
+                request.SubtitleToTranslate = subtitlePath;
+                if (manualStreamSelectionKey != null)
+                {
+                    await _settings.SetSetting(manualStreamSelectionKey, "");
+                }
+
+                if (SubtitleExtractionService.IsLingarrExtracted(subtitlePath))
+                {
+                    _logger.LogInformation("Using prepared embedded subtitle: {Path}", subtitlePath);
+                    AddRequestLog("Information", $"Using prepared embedded subtitle: {subtitlePath}");
+                }
+            }
             else
             {
                 if (request.MediaId.HasValue)
@@ -473,7 +541,7 @@ SettingKeys.Translation.BatchContextAfter,
             var preserveAssFormatting = false;
             var translationStripSubtitleFormatting = stripSubtitleFormatting;
 
-            async Task RefreshRequestOutputMetadataAsync()
+            async Task RefreshRequestOutputMetadataAsync(bool saveChanges = true)
             {
                 actualSourceFormat = SubtitleOutputModeHelper.NormalizeFormat(Path.GetExtension(request.SubtitleToTranslate));
                 requiredOutputFormats = SubtitleOutputModeHelper.GetRequiredOutputFormats(actualSourceFormat, subtitleOutputMode);
@@ -485,10 +553,13 @@ SettingKeys.Translation.BatchContextAfter,
                 request.SourceSubtitleFormat = actualSourceFormat;
                 request.SubtitleOutputMode = subtitleOutputMode.ToSettingValue();
                 request.RequiredOutputFormats = SubtitleOutputModeHelper.SerializeFormats(requiredOutputFormats);
-                await _dbContext.SaveChangesAsync(effectiveCancellationToken);
+                if (saveChanges)
+                {
+                    await _dbContext.SaveChangesAsync(effectiveCancellationToken);
+                }
             }
 
-            await RefreshRequestOutputMetadataAsync();
+            await RefreshRequestOutputMetadataAsync(saveChanges: preparedTranslationSource == null);
 
             // validate subtitles
             if (validateSubtitles)
@@ -568,7 +639,7 @@ SettingKeys.Translation.BatchContextAfter,
             // Generate file identifier early for logging
             var fileIdentifier = GenerateFileIdentifier(request.SubtitleToTranslate!);
 
-            EmbeddedSubtitle? selectedSubtitle = null;
+            EmbeddedSubtitle? selectedSubtitle = preparedTranslationSource?.SelectedSubtitle;
             while (true)
             {
                 subtitles = await ReadSubtitlesOrEmptyForFallbackAsync(
@@ -580,16 +651,20 @@ SettingKeys.Translation.BatchContextAfter,
                 if (subtitles.Count > 0)
                 {
                     request.SourceSubtitleEntryCount = subtitles.Count;
-                    selectedSubtitle = await GetEmbeddedSubtitleMetadata(request);
-                    var sourceIsEmbedded = ShouldUseEmbeddedSourceSubtitle(
-                        request.SubtitleToTranslate,
-                        selectedSubtitle);
+                    selectedSubtitle = preparedTranslationSource != null
+                        ? preparedTranslationSource.SelectedSubtitle
+                        : await GetEmbeddedSubtitleMetadata(request);
+                    var sourceIsEmbedded = preparedTranslationSource != null
+                        ? selectedSubtitle != null
+                        : ShouldUseEmbeddedSourceSubtitle(request.SubtitleToTranslate, selectedSubtitle);
 
                     if (sourceIsEmbedded && selectedSubtitle != null)
                     {
                         request.SelectedStreamTitle = selectedSubtitle.Title;
                         request.IsForcedSubtitle = selectedSubtitle.IsForced;
-                        request.SourceSubtitleType = SubtitleLanguageHelper.DetermineSubtitleType(selectedSubtitle);
+                        request.SourceSubtitleType = SubtitleLanguageHelper.DetermineSubtitleType(
+                            selectedSubtitle,
+                            subtitles.Count);
                         _logger.LogInformation(
                             "[{FileId}] Captured subtitle metadata: Type={Type}, Entries={Entries}, Title={Title}, Forced={Forced}",
                             fileIdentifier, request.SourceSubtitleType, request.SourceSubtitleEntryCount,
@@ -598,6 +673,12 @@ SettingKeys.Translation.BatchContextAfter,
                     else
                     {
                         // For external subtitle files, try to determine type from filename
+                        if (preparedTranslationSource != null)
+                        {
+                            request.SelectedStreamTitle = null;
+                            request.IsForcedSubtitle = false;
+                        }
+
                         request.SourceSubtitleType = SubtitleLanguageHelper.DetermineSubtitleTypeFromFilename(request.SubtitleToTranslate);
                         _logger.LogInformation(
                             "[{FileId}] External subtitle: Type={Type}, Entries={Entries}",
@@ -647,12 +728,26 @@ SettingKeys.Translation.BatchContextAfter,
                             subtitles,
                             settings,
                             effectiveCancellationToken,
-                            executionOwnershipToken))
+                            executionOwnershipToken,
+                            allowAutoRecovery: preparedTranslationSource?.IsManualSelection != true))
                     {
                         return;
                     }
 
                     break;
+                }
+
+                if (preparedTranslationSource?.IsManualSelection == true)
+                {
+                    var selectedStreamIndex = selectedSubtitle?.StreamIndex ?? request.SourceSnapshotStreamIndex;
+                    throw new InvalidOperationException(
+                        $"Manual subtitle stream {selectedStreamIndex?.ToString() ?? "unknown"} contains no readable subtitle entries.");
+                }
+
+                if (preparedTranslationSource != null)
+                {
+                    throw new InvalidOperationException(
+                        $"Prepared source subtitle '{preparedTranslationSource.Path}' yielded no readable entries (preparation counted {preparedTranslationSource.EntryCount}).");
                 }
 
                 attempt++;
@@ -3027,7 +3122,8 @@ Exception? lastException = null;
         IReadOnlyList<SubtitleItem> subtitles,
         IReadOnlyDictionary<string, string> settings,
         CancellationToken cancellationToken,
-        string? ownershipToken = null)
+        string? ownershipToken = null,
+        bool allowAutoRecovery = true)
     {
         ownershipToken = ResolveOwnershipToken(request, ownershipToken);
         var reason = GetUnsafeSourceCancellationReason(
@@ -3110,7 +3206,11 @@ Exception? lastException = null;
         await _progressService.Emit(request, 0);
 
         await RefreshTranslationStateAsync(request, cancellationToken);
-        await AttemptSafeRequeueAfterUnsafeKillAsync(request, now, cancellationToken);
+        if (allowAutoRecovery)
+        {
+            await AttemptSafeRequeueAfterUnsafeKillAsync(request, now, cancellationToken);
+        }
+
         return true;
     }
 

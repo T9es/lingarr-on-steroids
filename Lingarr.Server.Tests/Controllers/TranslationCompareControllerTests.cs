@@ -16,6 +16,7 @@ using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models.Api;
 using Lingarr.Server.Models.FileSystem;
+using Lingarr.Server.Models.Subtitle;
 using Lingarr.Server.Models.Translation;
 using Lingarr.Server.Services;
 using Lingarr.Server.Services.Subtitle;
@@ -1588,6 +1589,21 @@ public class TranslationCompareControllerTests : IDisposable
         }
 
         public int ResolveCalls { get; private set; }
+
+        public async Task<PreparedTranslationSource?> PrepareTranslationSourceAsync(
+            TranslationRequest request,
+            TranslationSourcePreparationOptions options,
+            CancellationToken cancellationToken = default)
+        {
+            var path = await ResolveReadableSourcePathAsync(request, cancellationToken);
+            return string.IsNullOrWhiteSpace(path) || !File.Exists(path)
+                ? null
+                : new PreparedTranslationSource(
+                    path,
+                    SelectedSubtitle: null,
+                    EntryCount: SubtitleExtractionService.CountSubtitleEntries(path),
+                    IsManualSelection: options.HasManualStreamSelection);
+        }
 
         public Task<string?> ResolveReadableSourcePathAsync(
             TranslationRequest request,

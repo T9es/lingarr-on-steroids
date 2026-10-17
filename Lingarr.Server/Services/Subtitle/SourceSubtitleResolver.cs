@@ -15,6 +15,7 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
         [".mkv", ".mp4", ".avi", ".m4v", ".webm", ".mov", ".wmv"];
 
     private readonly LingarrDbContext _dbContext;
+    private readonly ISubtitleService _subtitleService;
     private readonly ISubtitleExtractionService _subtitleExtractionService;
     private readonly ISourceSubtitleSnapshotService _sourceSubtitleSnapshotService;
     private readonly IEmbeddedSubtitleCacheService _embeddedSubtitleCacheService;
@@ -33,6 +34,7 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
         ISubtitleSourceSelectionService? subtitleSourceSelectionService = null)
     {
         _dbContext = dbContext;
+        _subtitleService = subtitleService;
         _subtitleExtractionService = subtitleExtractionService;
         _sourceSubtitleSnapshotService = sourceSubtitleSnapshotService;
         _embeddedSubtitleCacheService = embeddedSubtitleCacheService;
@@ -42,6 +44,556 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
                 subtitleService,
                 NullLogger<SubtitleSourceSelectionService>.Instance);
         _logger = logger;
+    }
+
+    public async Task<PreparedTranslationSource?> PrepareTranslationSourceAsync(
+        TranslationRequest request,
+        TranslationSourcePreparationOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (options.IsSupplementalRequest && !options.SupplementalTranslationEnabled)
+        {
+            throw new InvalidOperationException(
+                "Supplemental subtitle translation is disabled. Enable supplemental translation or create a new primary request.");
+        }
+
+        var currentPath = request.SubtitleToTranslate;
+        if (!request.MediaId.HasValue)
+        {
+            return await PrepareExternalSourceAsync(
+                currentPath,
+                options.HasManualStreamSelection,
+                cancellationToken);
+        }
+
+        var mediaFile = await ResolveCurrentMediaFileAsync(request, cancellationToken);
+        var mediaFileNameChanged = mediaFile.FileNameChanged;
+        if (string.IsNullOrWhiteSpace(mediaFile.Path) && !options.HasManualStreamSelection)
+        {
+            if (string.Equals(
+                    request.SourceSnapshotType,
+                    SourceSubtitleSnapshot.ExternalType,
+                    StringComparison.Ordinal))
+            {
+                return await PrepareExternalSourceAsync(currentPath, false, cancellationToken);
+            }
+
+            if (options.IsSupplementalRequest)
+            {
+                throw new InvalidOperationException(
+                    "The embedded subtitle source for this supplemental request is unavailable. Create a new supplemental request after restoring the media file.");
+            }
+
+            return null;
+        }
+
+        if (!string.IsNullOrWhiteSpace(currentPath) &&
+            !File.Exists(currentPath) &&
+            _embeddedSubtitleCacheService.IsManagedCachePath(currentPath))
+        {
+            var requiredStreamIndex = options.HasManualStreamSelection
+                ? request.SourceSnapshotStreamIndex
+                : null;
+            if (!options.HasManualStreamSelection || requiredStreamIndex.HasValue)
+            {
+                await TryRestoreMissingManagedOcrAsync(
+                    request,
+                    currentPath,
+                    cancellationToken,
+                    requiredStreamIndex);
+            }
+
+            currentPath = request.SubtitleToTranslate;
+        }
+
+        var embeddedSubtitles = await LoadCurrentEmbeddedSubtitlesAsync(
+            request,
+            cancellationToken,
+            invalidateStaleManagedArtifacts: false,
+            forceRefresh: mediaFileNameChanged);
+        var sameLanguageSubtitles = embeddedSubtitles
+            .Where(subtitle => SubtitleLanguageHelper.LanguageMatches(subtitle.Language, request.SourceLanguage))
+            .OrderBy(subtitle => subtitle.StreamIndex)
+            .ToList();
+
+        if (options.IsSupplementalRequest &&
+            string.Equals(request.SourceSnapshotType, SourceSubtitleSnapshot.ExternalType, StringComparison.Ordinal))
+        {
+            return await PrepareExternalSourceAsync(currentPath, false, cancellationToken);
+        }
+
+        if (options.IsSupplementalRequest)
+        {
+            if (!string.Equals(
+                    request.SourceSnapshotType,
+                    SourceSubtitleSnapshot.EmbeddedType,
+                    StringComparison.Ordinal) ||
+                string.IsNullOrWhiteSpace(request.SourceSnapshotIdentity))
+            {
+                throw new InvalidOperationException(
+                    "This supplemental request has no verifiable embedded source identity. Create a new supplemental request before translating it.");
+            }
+
+            var pinnedSubtitle = sameLanguageSubtitles.FirstOrDefault(subtitle =>
+                string.Equals(
+                    _sourceSubtitleSnapshotService.CreateEmbeddedSnapshot(subtitle, request.SourceLanguage).Identity,
+                    request.SourceSnapshotIdentity,
+                    StringComparison.Ordinal));
+            if (pinnedSubtitle == null)
+            {
+                throw new InvalidOperationException(
+                    "The embedded subtitle source for this supplemental request is unavailable or changed. Create a new supplemental request before translating it.");
+            }
+
+            if (options.HasManualStreamSelection &&
+                request.SourceSnapshotStreamIndex != pinnedSubtitle.StreamIndex)
+            {
+                throw new InvalidOperationException(
+                    $"Manual stream {request.SourceSnapshotStreamIndex?.ToString() ?? "unknown"} does not match this supplemental request's pinned stream {pinnedSubtitle.StreamIndex}. Create a new supplemental request to use another stream.");
+            }
+
+            sameLanguageSubtitles = [pinnedSubtitle];
+        }
+
+        if (!options.HasManualStreamSelection &&
+            string.Equals(request.SourceSnapshotType, SourceSubtitleSnapshot.ExternalType, StringComparison.Ordinal))
+        {
+            return await PrepareExternalSourceAsync(currentPath, false, cancellationToken);
+        }
+
+        if (!options.HasManualStreamSelection &&
+            !string.IsNullOrWhiteSpace(currentPath) &&
+            File.Exists(currentPath) &&
+            !_embeddedSubtitleCacheService.IsManagedCachePath(currentPath) &&
+            !sameLanguageSubtitles.Any(subtitle =>
+                PathsEqual(subtitle.ExtractedPath, currentPath) ||
+                PathsEqual(subtitle.OcrExtractedPath, currentPath)))
+        {
+            return await PrepareExternalSourceAsync(currentPath, false, cancellationToken);
+        }
+
+        if (string.IsNullOrWhiteSpace(mediaFile.Path))
+        {
+            if (options.IsSupplementalRequest)
+            {
+                throw new InvalidOperationException(
+                    "The embedded subtitle source for this supplemental request is unavailable. Create a new supplemental request after restoring the media file.");
+            }
+
+            return null;
+        }
+
+        if (options.HasManualStreamSelection)
+        {
+            var manualSubtitle = sameLanguageSubtitles.FirstOrDefault(subtitle =>
+                subtitle.StreamIndex == request.SourceSnapshotStreamIndex && subtitle.IsReadableSource());
+            if (manualSubtitle == null)
+            {
+                throw new InvalidOperationException(
+                    $"Manual subtitle stream {request.SourceSnapshotStreamIndex?.ToString() ?? "unknown"} is unavailable or does not match source language '{request.SourceLanguage}'.");
+            }
+
+            var manualPath = GetValidatedCandidatePath(
+                manualSubtitle,
+                request,
+                mediaFile.Path,
+                cancellationToken);
+            var newlyExtractedPath = (string?)null;
+            var originalManualPath = manualSubtitle.ExtractedPath;
+            var originalManualExtracted = manualSubtitle.IsExtracted;
+            var manualSelectionSucceeded = false;
+            try
+            {
+                if (manualPath == null)
+                {
+                    var extraction = await ExtractCandidateForPreparationAsync(
+                        manualSubtitle,
+                        request,
+                        mediaFile.Path,
+                        cancellationToken);
+                    manualPath = extraction?.Path;
+                    if (extraction?.IsNew == true)
+                    {
+                        newlyExtractedPath = extraction.Path;
+                    }
+                }
+
+                if (manualPath == null)
+                {
+                    throw new InvalidOperationException(
+                        $"Manual subtitle stream {manualSubtitle.StreamIndex} could not be extracted from the current media file.");
+                }
+
+                var manualCount = await CountEntriesForCandidate(
+                    manualPath,
+                    manualSubtitle.StreamIndex,
+                    cancellationToken);
+                if (!manualCount.HasValue)
+                {
+                    throw new InvalidOperationException(
+                        $"Manual subtitle stream {manualSubtitle.StreamIndex} could not be parsed because its subtitle data is malformed.");
+                }
+
+                if (manualCount.Value <= 0)
+                {
+                    throw new InvalidOperationException(
+                        $"Manual subtitle stream {manualSubtitle.StreamIndex} was rejected because its extracted subtitle could not be parsed or contains no entries.");
+                }
+
+                if (IsSupplementalRequestAllowed(options) &&
+                    !SubtitleLanguageHelper.IsSupplementalSubtitleType(
+                        SubtitleLanguageHelper.DetermineSubtitleType(manualSubtitle, manualCount.Value)))
+                {
+                    throw new InvalidOperationException(
+                        $"Manual stream {manualSubtitle.StreamIndex} is full-dialogue and cannot be translated by this supplemental request. Create a new primary request to translate it.");
+                }
+
+                if (manualSubtitle.IsTextBased)
+                {
+                    manualSubtitle.ExtractedPath = manualPath;
+                    manualSubtitle.IsExtracted = true;
+                }
+
+                if (!await IsAcceptablePrimaryCandidateAsync(
+                        manualSubtitle,
+                        request,
+                        options,
+                        manualCount.Value,
+                        cancellationToken))
+                {
+                    var assessment = await _subtitleSourceSelectionService.SelectPrimaryAsync(
+                        [manualSubtitle],
+                        [request.SourceLanguage],
+                        options.AllowCaptionFallback,
+                        cancellationToken: cancellationToken);
+                    throw CreateNoSuitableSourceException(
+                        [new PreparedCandidate(manualSubtitle, manualPath, manualCount.Value, null)],
+                        request.SourceLanguage,
+                        assessment.Assessments);
+                }
+
+                manualSelectionSucceeded = true;
+                _embeddedSubtitleCacheService.Touch(manualPath);
+                return new PreparedTranslationSource(
+                    manualPath,
+                    manualSubtitle,
+                    manualCount.Value,
+                    IsManualSelection: true);
+            }
+            finally
+            {
+                if (!manualSelectionSucceeded)
+                {
+                    manualSubtitle.ExtractedPath = originalManualPath;
+                    manualSubtitle.IsExtracted = originalManualExtracted;
+                    if (newlyExtractedPath != null)
+                    {
+                        TryDeletePreparationFile(newlyExtractedPath);
+                    }
+                }
+            }
+        }
+
+        if (sameLanguageSubtitles.Count == 0)
+        {
+            if (embeddedSubtitles.Count > 0)
+            {
+                var languageRejections = embeddedSubtitles
+                    .Select(subtitle => new PreparedCandidate(
+                        subtitle,
+                        null,
+                        null,
+                        $"Stream {subtitle.StreamIndex}: language '{subtitle.Language ?? "unknown"}' does not match source language '{request.SourceLanguage}'."))
+                    .ToList();
+                throw CreateNoSuitableSourceException(languageRejections, request.SourceLanguage);
+            }
+
+            return null;
+        }
+
+        var candidateOrder = OrderTranslationCandidates(
+            sameLanguageSubtitles,
+            request,
+            currentPath);
+        var originalPaths = candidateOrder.ToDictionary(
+            subtitle => subtitle,
+            subtitle => (subtitle.ExtractedPath, subtitle.IsExtracted));
+        var preparedCandidates = new List<PreparedCandidate>();
+        var newlyExtractedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        string? selectedPath = null;
+        EmbeddedSubtitle? selectedSubtitle = null;
+        var preparationSucceeded = false;
+
+        try
+        {
+            var currentSubtitle = IsSupplementalRequestAllowed(options)
+                ? null
+                : FindCandidateForPath(candidateOrder, request, currentPath);
+            if (currentSubtitle != null)
+            {
+                var currentCandidatePath = GetValidatedCandidatePath(
+                    currentSubtitle,
+                    request,
+                    mediaFile.Path,
+                    cancellationToken);
+                if (PathsEqual(currentCandidatePath, currentPath))
+                {
+                    var currentEntryCount = await CountEntriesForCandidate(
+                        currentCandidatePath!,
+                        currentSubtitle.StreamIndex,
+                        cancellationToken);
+                    if (currentEntryCount is >= SubtitleExtractionService.MinimumDialogueEntries)
+                    {
+                        var originalPath = currentSubtitle.ExtractedPath;
+                        var originalExtracted = currentSubtitle.IsExtracted;
+                        if (currentSubtitle.IsTextBased)
+                        {
+                            currentSubtitle.ExtractedPath = currentCandidatePath;
+                            currentSubtitle.IsExtracted = true;
+                        }
+
+                        SubtitleSourceSelectionResult currentSelection;
+                        try
+                        {
+                            currentSelection = await _subtitleSourceSelectionService.SelectPrimaryAsync(
+                                [currentSubtitle],
+                                [request.SourceLanguage],
+                                options.AllowCaptionFallback,
+                                cancellationToken: cancellationToken);
+                        }
+                        finally
+                        {
+                            currentSubtitle.ExtractedPath = originalPath;
+                            currentSubtitle.IsExtracted = originalExtracted;
+                        }
+
+                        if (currentSelection.SelectedRole == SubtitleSourceCandidateRole.PrimaryFullDialogue)
+                        {
+                            selectedSubtitle = currentSubtitle;
+                            selectedPath = currentCandidatePath;
+                            if (currentSubtitle.IsTextBased)
+                            {
+                                currentSubtitle.ExtractedPath = selectedPath;
+                                currentSubtitle.IsExtracted = true;
+                            }
+
+                            _embeddedSubtitleCacheService.Touch(currentCandidatePath!);
+                            preparationSucceeded = true;
+                            return new PreparedTranslationSource(
+                                selectedPath!,
+                                selectedSubtitle,
+                                currentEntryCount.Value,
+                                IsManualSelection: false);
+                        }
+                    }
+                }
+            }
+
+            foreach (var subtitle in candidateOrder)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var candidatePath = GetValidatedCandidatePath(
+                    subtitle,
+                    request,
+                    mediaFile.Path,
+                    cancellationToken);
+                if (candidatePath == null)
+                {
+                    var extraction = await ExtractCandidateForPreparationAsync(
+                        subtitle,
+                        request,
+                        mediaFile.Path,
+                        cancellationToken);
+                    candidatePath = extraction?.Path;
+                    if (extraction?.IsNew == true && candidatePath != null)
+                    {
+                        newlyExtractedPaths.Add(candidatePath);
+                    }
+                }
+
+                if (candidatePath == null)
+                {
+                    preparedCandidates.Add(new PreparedCandidate(
+                        subtitle,
+                        null,
+                        null,
+                        $"Stream {subtitle.StreamIndex}: extraction returned no subtitle file."));
+                    continue;
+                }
+
+                var entryCount = await CountEntriesForCandidate(
+                    candidatePath,
+                    subtitle.StreamIndex,
+                    cancellationToken);
+                if (!entryCount.HasValue)
+                {
+                    preparedCandidates.Add(new PreparedCandidate(
+                        subtitle,
+                        candidatePath,
+                        null,
+                        $"Stream {subtitle.StreamIndex}: extracted subtitle data is malformed and could not be parsed."));
+                    continue;
+                }
+
+                if (entryCount.Value <= 0)
+                {
+                    preparedCandidates.Add(new PreparedCandidate(
+                        subtitle,
+                        candidatePath,
+                        entryCount.Value,
+                        $"Stream {subtitle.StreamIndex}: extracted subtitle could not be parsed."));
+                    continue;
+                }
+
+                if (!IsSupplementalRequestAllowed(options) &&
+                    entryCount.Value < SubtitleExtractionService.MinimumDialogueEntries)
+                {
+                    preparedCandidates.Add(new PreparedCandidate(
+                        subtitle,
+                        candidatePath,
+                        entryCount.Value,
+                        $"Stream {subtitle.StreamIndex}: extracted source has only {entryCount.Value} dialogue entries."));
+                    continue;
+                }
+
+                if (subtitle.IsTextBased)
+                {
+                    subtitle.ExtractedPath = candidatePath;
+                    subtitle.IsExtracted = true;
+                }
+
+                preparedCandidates.Add(new PreparedCandidate(subtitle, candidatePath, entryCount.Value, null));
+            }
+
+            var viableCandidates = preparedCandidates
+                .Where(candidate =>
+                    candidate.Path != null &&
+                    candidate.EntryCount.HasValue &&
+                    candidate.RejectionReason == null)
+                .ToList();
+            if (viableCandidates.Count == 0)
+            {
+                throw CreateNoSuitableSourceException(preparedCandidates, request.SourceLanguage);
+            }
+
+            if (IsSupplementalRequestAllowed(options))
+            {
+                var supplemental = await SelectSupplementalCandidateAsync(
+                    viableCandidates,
+                    request,
+                    cancellationToken);
+                if (supplemental == null)
+                {
+                    throw CreateNoSuitableSourceException(preparedCandidates, request.SourceLanguage);
+                }
+
+                selectedSubtitle = supplemental.Subtitle;
+                selectedPath = supplemental.Path;
+            }
+            else
+            {
+                var selection = await _subtitleSourceSelectionService.SelectPrimaryAsync(
+                    viableCandidates.Select(candidate => candidate.Subtitle).ToList(),
+                    [request.SourceLanguage],
+                    options.AllowCaptionFallback,
+                    cancellationToken: cancellationToken);
+                var currentCandidate = viableCandidates.FirstOrDefault(candidate =>
+                    PathsEqual(candidate.Path, currentPath));
+                if (currentCandidate != null)
+                {
+                    var currentAssessment = selection.Assessments.FirstOrDefault(assessment =>
+                        ReferenceEquals(assessment.Subtitle, currentCandidate.Subtitle));
+                    if (currentAssessment != null && currentAssessment.Role == selection.SelectedRole)
+                    {
+                        selectedSubtitle = currentCandidate.Subtitle;
+                        selectedPath = currentCandidate.Path;
+                    }
+                }
+
+                if (selectedSubtitle == null)
+                {
+                    selectedSubtitle = selection.SelectedSubtitle;
+                    if (selectedSubtitle == null)
+                    {
+                        throw CreateNoSuitableSourceException(
+                            preparedCandidates,
+                            request.SourceLanguage,
+                            selection.Assessments);
+                    }
+
+                    selectedPath = viableCandidates
+                        .First(candidate => ReferenceEquals(candidate.Subtitle, selectedSubtitle))
+                        .Path;
+                }
+            }
+
+            foreach (var (subtitle, original) in originalPaths)
+            {
+                subtitle.ExtractedPath = original.ExtractedPath;
+                subtitle.IsExtracted = original.IsExtracted;
+            }
+
+            if (selectedSubtitle!.IsTextBased)
+            {
+                selectedSubtitle.ExtractedPath = selectedPath;
+                selectedSubtitle.IsExtracted = true;
+            }
+
+            if (selectedPath == null || selectedSubtitle == null)
+            {
+                throw CreateNoSuitableSourceException(preparedCandidates, request.SourceLanguage);
+            }
+
+            _embeddedSubtitleCacheService.Touch(selectedPath);
+            preparationSucceeded = true;
+            return new PreparedTranslationSource(
+                selectedPath,
+                selectedSubtitle,
+                viableCandidates.First(candidate => ReferenceEquals(candidate.Subtitle, selectedSubtitle)).EntryCount!.Value,
+                IsManualSelection: false);
+        }
+        finally
+        {
+            foreach (var (subtitle, original) in originalPaths)
+            {
+                if (!preparationSucceeded || !ReferenceEquals(subtitle, selectedSubtitle))
+                {
+                    subtitle.ExtractedPath = original.ExtractedPath;
+                    subtitle.IsExtracted = original.IsExtracted;
+                }
+            }
+
+            foreach (var extractedPath in newlyExtractedPaths)
+            {
+                if (!preparationSucceeded ||
+                    !string.Equals(extractedPath, selectedPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    TryDeletePreparationFile(extractedPath);
+                }
+            }
+        }
+    }
+
+    private async Task<PreparedTranslationSource?> PrepareExternalSourceAsync(
+        string? path,
+        bool isManualSelection,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+        {
+            return null;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        var entryCount = await ReadEntryCountStrictlyAsync(path, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        return new PreparedTranslationSource(
+            path,
+            SelectedSubtitle: null,
+            EntryCount: entryCount,
+            IsManualSelection: isManualSelection);
     }
 
     public async Task<string?> ResolveReadableSourcePathAsync(
@@ -94,6 +646,424 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
 
         return extractedPath;
     }
+
+    private string? GetValidatedCandidatePath(
+        EmbeddedSubtitle subtitle,
+        TranslationRequest request,
+        string mediaPath,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!subtitle.IsReadableSource())
+        {
+            return null;
+        }
+
+        var storedPath = subtitle.HasUsableOcr()
+            ? subtitle.OcrExtractedPath
+            : subtitle.ExtractedPath;
+        var canonicalPath = subtitle.HasUsableOcr()
+            ? _embeddedSubtitleCacheService.GetOcrCachePath(
+                request.MediaId!.Value,
+                request.MediaType,
+                subtitle.StreamIndex,
+                subtitle.Language)
+            : _embeddedSubtitleCacheService.GetCachePath(
+                request.MediaId!.Value,
+                request.MediaType,
+                subtitle.StreamIndex,
+                subtitle.CodecName,
+                subtitle.Language);
+
+        if (!string.IsNullOrWhiteSpace(storedPath) &&
+            File.Exists(storedPath) &&
+            IsPathCurrentForCandidate(storedPath, canonicalPath, mediaPath))
+        {
+            return storedPath;
+        }
+
+        if (File.Exists(canonicalPath) &&
+            IsPathCurrentForCandidate(canonicalPath, canonicalPath, mediaPath))
+        {
+            return canonicalPath;
+        }
+
+        return null;
+    }
+
+    private bool IsPathCurrentForCandidate(string path, string canonicalPath, string mediaPath)
+    {
+        if (!_embeddedSubtitleCacheService.IsManagedCachePath(path))
+        {
+            return true;
+        }
+
+        return IsCanonicalOrPreparationPath(path, canonicalPath) &&
+               _embeddedSubtitleCacheService.IsCurrentForSource(path, mediaPath);
+    }
+
+    private bool IsCanonicalOrPreparationPath(string path, string canonicalPath)
+    {
+        if (PathsEqual(path, canonicalPath))
+        {
+            return true;
+        }
+
+        if (!_embeddedSubtitleCacheService.IsManagedCachePath(path) ||
+            !string.Equals(
+                Path.GetDirectoryName(Path.GetFullPath(path)),
+                Path.GetDirectoryName(Path.GetFullPath(canonicalPath)),
+                StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(Path.GetExtension(path), Path.GetExtension(canonicalPath), StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var preparationPrefix = $"{Path.GetFileNameWithoutExtension(canonicalPath)}.prepare-";
+        var pathBaseName = Path.GetFileNameWithoutExtension(path);
+        return pathBaseName.StartsWith(preparationPrefix, StringComparison.OrdinalIgnoreCase) &&
+               Guid.TryParseExact(pathBaseName[preparationPrefix.Length..], "N", out _);
+    }
+
+    private async Task<PreparationExtraction?> ExtractCandidateForPreparationAsync(
+        EmbeddedSubtitle subtitle,
+        TranslationRequest request,
+        string mediaPath,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!subtitle.IsTextBased)
+        {
+            return null;
+        }
+
+        var canonicalPath = _embeddedSubtitleCacheService.GetCachePath(
+            request.MediaId!.Value,
+            request.MediaType,
+            subtitle.StreamIndex,
+            subtitle.CodecName,
+            subtitle.Language);
+        var extension = Path.GetExtension(canonicalPath);
+        string outputPath;
+        do
+        {
+            outputPath = Path.Combine(
+                Path.GetDirectoryName(canonicalPath)!,
+                $"{Path.GetFileNameWithoutExtension(canonicalPath)}.prepare-{Guid.NewGuid():N}{extension}");
+        }
+        while (File.Exists(outputPath));
+
+        string? extractedPath;
+        try
+        {
+            extractedPath = await _subtitleExtractionService.ExtractSubtitleToFile(
+                mediaPath,
+                subtitle.StreamIndex,
+                outputPath,
+                subtitle.CodecName);
+        }
+        catch
+        {
+            TryDeletePreparationFile(outputPath);
+            throw;
+        }
+
+        if (string.IsNullOrWhiteSpace(extractedPath) || !File.Exists(extractedPath))
+        {
+            TryDeletePreparationFile(outputPath);
+            return null;
+        }
+
+        try
+        {
+            if (_embeddedSubtitleCacheService.IsManagedCachePath(extractedPath) &&
+                !_embeddedSubtitleCacheService.IsCurrentForSource(extractedPath, mediaPath))
+            {
+                _embeddedSubtitleCacheService.RecordSourceSnapshot(extractedPath, mediaPath);
+            }
+        }
+        catch
+        {
+            TryDeletePreparationFile(outputPath);
+            throw;
+        }
+
+        return new PreparationExtraction(
+            extractedPath,
+            IsNew: PathsEqual(extractedPath, outputPath));
+    }
+
+    private async Task<bool> IsAcceptablePrimaryCandidateAsync(
+        EmbeddedSubtitle subtitle,
+        TranslationRequest request,
+        TranslationSourcePreparationOptions options,
+        int entryCount,
+        CancellationToken cancellationToken)
+    {
+        if (IsSupplementalRequestAllowed(options))
+        {
+            var subtitleType = SubtitleLanguageHelper.DetermineSubtitleType(subtitle, entryCount);
+            if (!SubtitleLanguageHelper.IsSupplementalSubtitleType(subtitleType))
+            {
+                return false;
+            }
+
+            return await IsUsableSupplementalCandidateAsync(
+                subtitle.GetReadableSourcePath()!,
+                entryCount,
+                cancellationToken);
+        }
+
+        if (entryCount < SubtitleExtractionService.MinimumDialogueEntries)
+        {
+            return false;
+        }
+
+        var selection = await _subtitleSourceSelectionService.SelectPrimaryAsync(
+            [subtitle],
+            [request.SourceLanguage],
+            options.AllowCaptionFallback,
+            cancellationToken: cancellationToken);
+        return selection.SelectedSubtitle != null;
+    }
+
+    private async Task<PreparedCandidate?> SelectSupplementalCandidateAsync(
+        IReadOnlyCollection<PreparedCandidate> candidates,
+        TranslationRequest request,
+        CancellationToken cancellationToken)
+    {
+        foreach (var candidate in candidates
+                     .Where(item => item.EntryCount is > 0)
+                     .OrderByDescending(item => ScoreSubtitle(item.Subtitle, request)))
+        {
+            var subtitleType = SubtitleLanguageHelper.DetermineSubtitleType(
+                candidate.Subtitle,
+                candidate.EntryCount);
+            if (!SubtitleLanguageHelper.IsSupplementalSubtitleType(subtitleType) ||
+                candidate.Path == null)
+            {
+                continue;
+            }
+
+            if (await IsUsableSupplementalCandidateAsync(
+                    candidate.Path,
+                    candidate.EntryCount!.Value,
+                    cancellationToken))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private async Task<bool> IsUsableSupplementalCandidateAsync(
+        string path,
+        int entryCount,
+        CancellationToken cancellationToken)
+    {
+        if (entryCount <= 0 || !File.Exists(path))
+        {
+            return false;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        var parsedSubtitles = await _subtitleService.ReadSubtitles(path);
+        cancellationToken.ThrowIfCancellationRequested();
+        return parsedSubtitles.Count > 0 &&
+               SubtitleSourceHealthAnalyzer.Analyze(parsedSubtitles).Status !=
+               SubtitleSourceHealthStatus.CorruptText;
+    }
+
+    private async Task<int?> CountEntriesForCandidate(
+        string path,
+        int streamIndex,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await ReadEntryCountStrictlyAsync(path, cancellationToken);
+        }
+        catch (Exception ex) when (IsSubtitleDataFormatException(ex))
+        {
+            _logger.LogDebug(
+                ex,
+                "Could not parse source subtitle stream {StreamIndex} at {Path}",
+                streamIndex,
+                path);
+            return null;
+        }
+    }
+
+    private async Task<int> ReadEntryCountStrictlyAsync(string path, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var parsedSubtitles = await _subtitleService.ReadSubtitles(path);
+        cancellationToken.ThrowIfCancellationRequested();
+        return parsedSubtitles.Count;
+    }
+
+    private static bool IsSubtitleDataFormatException(Exception exception)
+    {
+        return exception is FormatException or
+            ArgumentException or
+            IndexOutOfRangeException or
+            OverflowException or
+            NotSupportedException;
+    }
+
+    private void TryDeletePreparationFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                if (_embeddedSubtitleCacheService.IsManagedCachePath(path))
+                {
+                    _embeddedSubtitleCacheService.Invalidate(path);
+                }
+                else
+                {
+                    File.Delete(path);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Could not remove rejected temporary subtitle preparation file {Path}",
+                path);
+        }
+    }
+
+    private static bool IsSupplementalRequestAllowed(TranslationSourcePreparationOptions options)
+    {
+        return options.IsSupplementalRequest && options.SupplementalTranslationEnabled;
+    }
+
+    private IReadOnlyList<EmbeddedSubtitle> OrderTranslationCandidates(
+        IReadOnlyList<EmbeddedSubtitle> subtitles,
+        TranslationRequest request,
+        string? currentPath)
+    {
+        var currentPathSubtitle = FindCandidateForPath(subtitles, request, currentPath);
+        var snapshotIdentitySubtitle = subtitles.FirstOrDefault(subtitle =>
+            !string.IsNullOrWhiteSpace(request.SourceSnapshotIdentity) &&
+            string.Equals(
+                _sourceSubtitleSnapshotService.CreateEmbeddedSnapshot(subtitle, request.SourceLanguage).Identity,
+                request.SourceSnapshotIdentity,
+                StringComparison.Ordinal));
+        var snapshotIndexSubtitle = request.SourceSnapshotStreamIndex.HasValue
+            ? subtitles.FirstOrDefault(subtitle => subtitle.StreamIndex == request.SourceSnapshotStreamIndex.Value)
+            : null;
+
+        return subtitles
+            .OrderByDescending(subtitle => ReferenceEquals(subtitle, currentPathSubtitle))
+            .ThenByDescending(subtitle => ReferenceEquals(subtitle, snapshotIdentitySubtitle))
+            .ThenByDescending(subtitle => ReferenceEquals(subtitle, snapshotIndexSubtitle))
+            .ThenByDescending(subtitle => ScoreSubtitle(subtitle, request))
+            .ThenBy(subtitle => subtitle.StreamIndex)
+            .ToList();
+    }
+
+    private EmbeddedSubtitle? FindCandidateForPath(
+        IReadOnlyList<EmbeddedSubtitle> subtitles,
+        TranslationRequest request,
+        string? path)
+    {
+        return subtitles.FirstOrDefault(subtitle =>
+                   IsCanonicalOrPreparationPath(path ?? string.Empty, GetCanonicalPath(subtitle, request))) ??
+               subtitles.FirstOrDefault(subtitle =>
+                   PathsEqual(GetStoredReadablePath(subtitle), path));
+    }
+
+    private string? GetStoredReadablePath(EmbeddedSubtitle subtitle)
+    {
+        return subtitle.HasUsableOcr()
+            ? subtitle.OcrExtractedPath
+            : subtitle.ExtractedPath;
+    }
+
+    private string GetCanonicalPath(EmbeddedSubtitle subtitle, TranslationRequest request)
+    {
+        return subtitle.HasUsableOcr()
+            ? _embeddedSubtitleCacheService.GetOcrCachePath(
+                request.MediaId!.Value,
+                request.MediaType,
+                subtitle.StreamIndex,
+                subtitle.Language)
+            : _embeddedSubtitleCacheService.GetCachePath(
+                request.MediaId!.Value,
+                request.MediaType,
+                subtitle.StreamIndex,
+                subtitle.CodecName,
+                subtitle.Language);
+    }
+
+    private static bool PathsEqual(string? left, string? right)
+    {
+        if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right))
+        {
+            return false;
+        }
+
+        try
+        {
+            return string.Equals(
+                Path.GetFullPath(left),
+                Path.GetFullPath(right),
+                StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    private static InvalidOperationException CreateNoSuitableSourceException(
+        IReadOnlyCollection<PreparedCandidate> candidates,
+        string sourceLanguage,
+        IReadOnlyCollection<SubtitleSourceCandidateAssessment>? assessments = null)
+    {
+        var assessmentByStream = assessments?
+            .GroupBy(item => item.Subtitle.StreamIndex)
+            .ToDictionary(group => group.Key, group => group.First());
+        var reasons = candidates
+            .OrderBy(candidate => candidate.Subtitle.StreamIndex)
+            .Select(candidate =>
+            {
+                var count = candidate.EntryCount.HasValue
+                    ? $" ({candidate.EntryCount.Value} entries)"
+                    : string.Empty;
+                var reason = candidate.RejectionReason;
+                if (reason == null && assessmentByStream != null &&
+                    assessmentByStream.TryGetValue(candidate.Subtitle.StreamIndex, out var assessment))
+                {
+                    reason = assessment.Reason;
+                    if (!candidate.EntryCount.HasValue && assessment.EntryCount.HasValue)
+                    {
+                        count = $" ({assessment.EntryCount.Value} entries)";
+                    }
+                }
+
+                return $"Stream {candidate.Subtitle.StreamIndex}{count}: {reason ?? "rejected by source fitness checks"}";
+            })
+            .ToList();
+        var rejectionDetails = reasons.Count > 0
+            ? string.Join("; ", reasons)
+            : "No readable candidates were available.";
+        return new InvalidOperationException(
+            $"No suitable source subtitle matched source language '{sourceLanguage}'. {rejectionDetails}");
+    }
+
+    private sealed record PreparedCandidate(
+        EmbeddedSubtitle Subtitle,
+        string? Path,
+        int? EntryCount,
+        string? RejectionReason);
+
+    private sealed record PreparationExtraction(string Path, bool IsNew);
 
     private async Task<bool> HasUsableExistingPathAsync(
         TranslationRequest request,
@@ -159,7 +1129,8 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
     private async Task<bool> TryRestoreMissingManagedOcrAsync(
         TranslationRequest request,
         string cachePath,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int? requiredStreamIndex = null)
     {
         if (!request.MediaId.HasValue)
         {
@@ -175,6 +1146,7 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
                         : item.EpisodeId == request.MediaId.Value),
                 cancellationToken);
         if (subtitle == null ||
+            (requiredStreamIndex.HasValue && subtitle.StreamIndex != requiredStreamIndex.Value) ||
             subtitle.OcrStatus is not (SubtitleOcrStatus.Succeeded or SubtitleOcrStatus.Approved))
         {
             return false;
@@ -533,7 +1505,9 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
 
     private async Task<List<EmbeddedSubtitle>> LoadCurrentEmbeddedSubtitlesAsync(
         TranslationRequest request,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool invalidateStaleManagedArtifacts = true,
+        bool forceRefresh = false)
     {
         if (!request.MediaId.HasValue)
         {
@@ -555,14 +1529,18 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
             // Refresh when there are no rows at all, or when the media file changed on disk
             // (the DB file name was stale and the resolver adopted the replacement file) -
             // rows probed from the old release are no longer accurate.
-            if (movie.EmbeddedSubtitles.Count == 0 || mediaFile.FileNameChanged)
+            if (movie.EmbeddedSubtitles.Count == 0 || mediaFile.FileNameChanged || forceRefresh)
             {
                 await _subtitleExtractionService.SyncEmbeddedSubtitles(movie);
                 await _dbContext.Entry(movie).Collection(item => item.EmbeddedSubtitles).LoadAsync(cancellationToken);
             }
 
             var movieSubtitles = movie.EmbeddedSubtitles.ToList();
-            await InvalidateStaleManagedArtifactsAsync(movieSubtitles, mediaFile.Path, cancellationToken);
+            if (invalidateStaleManagedArtifacts)
+            {
+                await InvalidateStaleManagedArtifactsAsync(movieSubtitles, mediaFile.Path, cancellationToken);
+            }
+
             return movieSubtitles;
         }
 
@@ -574,14 +1552,18 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
             return [];
         }
 
-        if (episode.EmbeddedSubtitles.Count == 0 || mediaFile.FileNameChanged)
+        if (episode.EmbeddedSubtitles.Count == 0 || mediaFile.FileNameChanged || forceRefresh)
         {
             await _subtitleExtractionService.SyncEmbeddedSubtitles(episode);
             await _dbContext.Entry(episode).Collection(item => item.EmbeddedSubtitles).LoadAsync(cancellationToken);
         }
 
         var episodeSubtitles = episode.EmbeddedSubtitles.ToList();
-        await InvalidateStaleManagedArtifactsAsync(episodeSubtitles, mediaFile.Path, cancellationToken);
+        if (invalidateStaleManagedArtifacts)
+        {
+            await InvalidateStaleManagedArtifactsAsync(episodeSubtitles, mediaFile.Path, cancellationToken);
+        }
+
         return episodeSubtitles;
     }
 

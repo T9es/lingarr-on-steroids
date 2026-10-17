@@ -235,14 +235,14 @@ public class MediaStateService : IMediaStateService
                 }
 
                 // Check if OCR is needed for image-based subtitles (any language)
-                if (ocrEnabled && HasOcrBlockedSourceCandidate(embeddedSubtitles, [], ignoreCaptions))
-                {
-                    return TranslationState.OcrBlocked;
-                }
-
                 if (ocrEnabled && HasOcrPendingSourceCandidate(embeddedSubtitles, [], ignoreCaptions))
                 {
                     return TranslationState.OcrPending;
+                }
+
+                if (ocrEnabled && HasOcrBlockedSourceCandidate(embeddedSubtitles, [], ignoreCaptions))
+                {
+                    return TranslationState.OcrBlocked;
                 }
 
                 return TranslationState.AwaitingSource;
@@ -269,14 +269,14 @@ public class MediaStateService : IMediaStateService
                     return TranslationState.Complete;
                 }
 
-                if (ocrEnabled && HasOcrBlockedSourceCandidate(embeddedSubtitles, sourceLanguages, ignoreCaptions))
-                {
-                    return TranslationState.OcrBlocked;
-                }
-
                 if (ocrEnabled && HasOcrPendingSourceCandidate(embeddedSubtitles, sourceLanguages, ignoreCaptions))
                 {
                     return TranslationState.OcrPending;
+                }
+
+                if (ocrEnabled && HasOcrBlockedSourceCandidate(embeddedSubtitles, sourceLanguages, ignoreCaptions))
+                {
+                    return TranslationState.OcrBlocked;
                 }
 
                 return TranslationState.AwaitingSource;
