@@ -385,7 +385,7 @@ public class SubtitleExtractionServiceTests : IDisposable
     }
 
     [Fact]
-    public void CopyOcrMetadataIfSameStream_DoesNotPreserveStaleProcessingState()
+    public void CopyCachedMetadataIfSameStream_DoesNotPreserveStaleProcessingState()
     {
         var existingSubtitle = new EmbeddedSubtitle
         {
@@ -407,7 +407,7 @@ public class SubtitleExtractionServiceTests : IDisposable
         };
 
         var method = typeof(SubtitleExtractionService).GetMethod(
-            "CopyOcrMetadataIfSameStream",
+            "CopyCachedMetadataIfSameStream",
             BindingFlags.NonPublic | BindingFlags.Instance);
 
         Assert.NotNull(method);
@@ -418,7 +418,7 @@ public class SubtitleExtractionServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task CopyOcrMetadataIfSameStream_DoesNotReattachStaleManagedOcrAfterMediaReplacement()
+    public async Task CopyCachedMetadataIfSameStream_DoesNotReattachStaleManagedOcrAfterMediaReplacement()
     {
         var mediaDirectory = CreateMediaDirectory();
         try
@@ -467,7 +467,7 @@ public class SubtitleExtractionServiceTests : IDisposable
             };
 
             var method = typeof(SubtitleExtractionService).GetMethod(
-                "CopyOcrMetadataIfSameStream",
+                "CopyCachedMetadataIfSameStream",
                 BindingFlags.NonPublic | BindingFlags.Instance);
 
             Assert.NotNull(method);
@@ -483,6 +483,178 @@ public class SubtitleExtractionServiceTests : IDisposable
             {
                 Directory.Delete(mediaDirectory, recursive: true);
             }
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CopyCachedMetadataIfSameStream_PreservesCurrentManagedTextExtraction(bool usePreparationPath)
+    {
+        var fixture = await CreateManagedTextCacheFixtureAsync(usePreparationPath);
+        try
+        {
+            Assert.True(fixture.CacheService.IsManagedCachePath(fixture.CachePath));
+            Assert.True(fixture.CacheService.IsCurrentForSource(fixture.CachePath, fixture.MediaPath));
+
+            var existingSubtitle = CreateTextSubtitle(fixture.CachePath);
+            var newSubtitle = CreateTextSubtitle(null);
+            newSubtitle.IsExtracted = false;
+
+            var service = CreateService(fixture.CacheService);
+            InvokeCopyCachedMetadataIfSameStream(
+                service,
+                [existingSubtitle],
+                newSubtitle,
+                fixture.MediaPath);
+
+            Assert.True(newSubtitle.IsExtracted);
+            Assert.Equal(fixture.CachePath, newSubtitle.ExtractedPath);
+        }
+        finally
+        {
+            DeleteDirectory(fixture.MediaDirectory);
+        }
+    }
+
+    [Fact]
+    public async Task CopyCachedMetadataIfSameStream_DoesNotPreserveManagedTextExtractionAfterMediaReplacement()
+    {
+        var fixture = await CreateManagedTextCacheFixtureAsync(usePreparationPath: false);
+        try
+        {
+            await File.WriteAllTextAsync(fixture.MediaPath, "replacement media with a different length");
+
+            var existingSubtitle = CreateTextSubtitle(fixture.CachePath);
+            var newSubtitle = CreateTextSubtitle(null);
+            newSubtitle.IsExtracted = false;
+
+            InvokeCopyCachedMetadataIfSameStream(
+                CreateService(fixture.CacheService),
+                [existingSubtitle],
+                newSubtitle,
+                fixture.MediaPath);
+
+            Assert.False(newSubtitle.IsExtracted);
+            Assert.Null(newSubtitle.ExtractedPath);
+        }
+        finally
+        {
+            DeleteDirectory(fixture.MediaDirectory);
+        }
+    }
+
+    [Fact]
+    public async Task CopyCachedMetadataIfSameStream_DoesNotPreserveMissingManagedTextExtraction()
+    {
+        var fixture = await CreateManagedTextCacheFixtureAsync(usePreparationPath: false);
+        try
+        {
+            fixture.CacheService.Invalidate(fixture.CachePath);
+
+            var existingSubtitle = CreateTextSubtitle(fixture.CachePath);
+            var newSubtitle = CreateTextSubtitle(null);
+            newSubtitle.IsExtracted = false;
+
+            InvokeCopyCachedMetadataIfSameStream(
+                CreateService(fixture.CacheService),
+                [existingSubtitle],
+                newSubtitle,
+                fixture.MediaPath);
+
+            Assert.False(newSubtitle.IsExtracted);
+            Assert.Null(newSubtitle.ExtractedPath);
+        }
+        finally
+        {
+            DeleteDirectory(fixture.MediaDirectory);
+        }
+    }
+
+    [Fact]
+    public async Task CopyCachedMetadataIfSameStream_DoesNotPreserveUnmanagedTextExtraction()
+    {
+        var mediaDirectory = CreateMediaDirectory();
+        try
+        {
+            var mediaPath = Path.Combine(mediaDirectory, "episode.mkv");
+            var unmanagedPath = Path.Combine(mediaDirectory, "episode.eng.srt");
+            await File.WriteAllTextAsync(mediaPath, "current media snapshot");
+            await File.WriteAllTextAsync(unmanagedPath, CreateSrtContent(60));
+
+            var existingSubtitle = CreateTextSubtitle(unmanagedPath);
+            var newSubtitle = CreateTextSubtitle(null);
+            newSubtitle.IsExtracted = false;
+
+            InvokeCopyCachedMetadataIfSameStream(
+                CreateService(new EmbeddedSubtitleCacheService(
+                    NullLogger<EmbeddedSubtitleCacheService>.Instance,
+                    Path.Combine(mediaDirectory, "cache"),
+                    TimeSpan.FromDays(30))),
+                [existingSubtitle],
+                newSubtitle,
+                mediaPath);
+
+            Assert.False(newSubtitle.IsExtracted);
+            Assert.Null(newSubtitle.ExtractedPath);
+        }
+        finally
+        {
+            DeleteDirectory(mediaDirectory);
+        }
+    }
+
+    [Fact]
+    public async Task CopyCachedMetadataIfSameStream_DoesNotPreserveTextExtractionForChangedStreamMetadata()
+    {
+        var fixture = await CreateManagedTextCacheFixtureAsync(usePreparationPath: false);
+        try
+        {
+            var existingSubtitle = CreateTextSubtitle(fixture.CachePath);
+            var newSubtitle = CreateTextSubtitle(null);
+            newSubtitle.IsExtracted = false;
+            newSubtitle.StreamIndex++;
+
+            InvokeCopyCachedMetadataIfSameStream(
+                CreateService(fixture.CacheService),
+                [existingSubtitle],
+                newSubtitle,
+                fixture.MediaPath);
+
+            Assert.False(newSubtitle.IsExtracted);
+            Assert.Null(newSubtitle.ExtractedPath);
+        }
+        finally
+        {
+            DeleteDirectory(fixture.MediaDirectory);
+        }
+    }
+
+    [Fact]
+    public async Task CopyCachedMetadataIfSameStream_DoesNotPreserveExpiredManagedTextExtraction()
+    {
+        var fixture = await CreateManagedTextCacheFixtureAsync(usePreparationPath: false);
+        try
+        {
+            File.SetLastWriteTimeUtc(fixture.CachePath, DateTime.UtcNow.AddDays(-31));
+            Assert.False(fixture.CacheService.IsCurrentForSource(fixture.CachePath, fixture.MediaPath));
+
+            var existingSubtitle = CreateTextSubtitle(fixture.CachePath);
+            var newSubtitle = CreateTextSubtitle(null);
+            newSubtitle.IsExtracted = false;
+
+            InvokeCopyCachedMetadataIfSameStream(
+                CreateService(fixture.CacheService),
+                [existingSubtitle],
+                newSubtitle,
+                fixture.MediaPath);
+
+            Assert.False(newSubtitle.IsExtracted);
+            Assert.Null(newSubtitle.ExtractedPath);
+        }
+        finally
+        {
+            DeleteDirectory(fixture.MediaDirectory);
         }
     }
 
@@ -513,5 +685,89 @@ public class SubtitleExtractionServiceTests : IDisposable
         var directory = Path.Combine(Path.GetTempPath(), "lingarr-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         return directory;
+    }
+
+    private static async Task<(string MediaDirectory, string MediaPath, EmbeddedSubtitleCacheService CacheService, string CachePath)>
+        CreateManagedTextCacheFixtureAsync(bool usePreparationPath)
+    {
+        var mediaDirectory = CreateMediaDirectory();
+        var mediaPath = Path.Combine(mediaDirectory, "episode.mkv");
+        await File.WriteAllTextAsync(mediaPath, "current media snapshot");
+
+        var cacheService = new EmbeddedSubtitleCacheService(
+            NullLogger<EmbeddedSubtitleCacheService>.Instance,
+            Path.Combine(mediaDirectory, "cache"),
+            TimeSpan.FromDays(30));
+        var canonicalPath = cacheService.GetCachePath(
+            mediaId: 32,
+            mediaType: MediaType.Movie,
+            streamIndex: 0,
+            codecName: "subrip",
+            language: "eng");
+        var cachePath = usePreparationPath
+            ? Path.Combine(
+                Path.GetDirectoryName(canonicalPath)!,
+                $"{Path.GetFileNameWithoutExtension(canonicalPath)}.prepare-{Guid.NewGuid():N}{Path.GetExtension(canonicalPath)}")
+            : canonicalPath;
+
+        await File.WriteAllTextAsync(cachePath, CreateSrtContent(60));
+        cacheService.RecordSourceSnapshot(cachePath, mediaPath);
+
+        return (mediaDirectory, mediaPath, cacheService, cachePath);
+    }
+
+    private SubtitleExtractionService CreateService(EmbeddedSubtitleCacheService cacheService)
+    {
+        return new SubtitleExtractionService(
+            NullLogger<SubtitleExtractionService>.Instance,
+            _dbContext,
+            Mock.Of<ISettingService>(),
+            Mock.Of<ISubtitleService>(),
+            cacheService,
+            Mock.Of<ISubtitleLanguageDetectionService>());
+    }
+
+    private static EmbeddedSubtitle CreateTextSubtitle(string? extractedPath)
+    {
+        return new EmbeddedSubtitle
+        {
+            StreamIndex = 0,
+            Language = "eng",
+            Title = "English Full",
+            CodecName = "subrip",
+            IsTextBased = true,
+            IsExtracted = extractedPath != null,
+            ExtractedPath = extractedPath
+        };
+    }
+
+    private static string CreateSrtContent(int cueCount)
+    {
+        return string.Join(
+            "\n\n",
+            Enumerable.Range(1, cueCount).Select(index =>
+                $"{index}\n00:00:{index % 60:00},000 --> 00:00:{index % 60:00},500\nDialogue line {index}"));
+    }
+
+    private static void InvokeCopyCachedMetadataIfSameStream(
+        SubtitleExtractionService service,
+        EmbeddedSubtitle[] existingSubtitles,
+        EmbeddedSubtitle newSubtitle,
+        string mediaPath)
+    {
+        var method = typeof(SubtitleExtractionService).GetMethod(
+            "CopyCachedMetadataIfSameStream",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+
+        Assert.NotNull(method);
+        method.Invoke(service, [existingSubtitles, newSubtitle, mediaPath]);
+    }
+
+    private static void DeleteDirectory(string directory)
+    {
+        if (Directory.Exists(directory))
+        {
+            Directory.Delete(directory, recursive: true);
+        }
     }
 }

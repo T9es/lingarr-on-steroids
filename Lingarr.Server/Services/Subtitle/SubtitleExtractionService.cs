@@ -569,7 +569,7 @@ public class SubtitleExtractionService : ISubtitleExtractionService
 
                     sub.EpisodeId = episodeId;
                     sub.MovieId = movieId;
-                    CopyOcrMetadataIfSameStream(existingSubtitles, sub, mediaPath);
+                    CopyCachedMetadataIfSameStream(existingSubtitles, sub, mediaPath);
                     _dbContext.EmbeddedSubtitles.Add(sub);
                 }
 
@@ -1705,7 +1705,7 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             .ToList();
     }
 
-    private void CopyOcrMetadataIfSameStream(
+    private void CopyCachedMetadataIfSameStream(
         IReadOnlyCollection<EmbeddedSubtitle> existingSubtitles,
         EmbeddedSubtitle newSubtitle,
         string mediaPath)
@@ -1720,6 +1720,18 @@ public class SubtitleExtractionService : ISubtitleExtractionService
         if (existing == null)
         {
             return;
+        }
+
+        if (newSubtitle.IsTextBased &&
+            existing.IsTextBased &&
+            existing.IsExtracted &&
+            !string.IsNullOrWhiteSpace(existing.ExtractedPath) &&
+            File.Exists(existing.ExtractedPath) &&
+            _embeddedSubtitleCacheService.IsManagedCachePath(existing.ExtractedPath) &&
+            _embeddedSubtitleCacheService.IsCurrentForSource(existing.ExtractedPath, mediaPath))
+        {
+            newSubtitle.IsExtracted = true;
+            newSubtitle.ExtractedPath = existing.ExtractedPath;
         }
 
         if (SubtitleOcrStatePolicy.IsStaleTransient(existing, DateTime.UtcNow))

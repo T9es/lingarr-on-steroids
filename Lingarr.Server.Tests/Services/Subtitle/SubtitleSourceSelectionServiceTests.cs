@@ -71,6 +71,131 @@ public class SubtitleSourceSelectionServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SelectPrimaryAsync_AutoPrefersObservedFullDialogueOverUnknownDefaultTrack()
+    {
+        var extractedPath = await WriteCleanAssAsync("validated-full.eng.ass", 60);
+        var service = CreateService();
+
+        var result = await service.SelectPrimaryAsync(
+            [
+                new EmbeddedSubtitle
+                {
+                    StreamIndex = 0,
+                    Language = "eng",
+                    Title = "CutScenes",
+                    CodecName = "ass",
+                    IsTextBased = true,
+                    IsDefault = true
+                },
+                new EmbeddedSubtitle
+                {
+                    StreamIndex = 1,
+                    Language = "eng",
+                    Title = "English",
+                    CodecName = "ass",
+                    IsTextBased = true,
+                    ExtractedPath = extractedPath
+                }
+            ],
+            [],
+            allowCaptionFallback: true,
+            targetLanguages: ["pl"]);
+
+        Assert.Equal(1, result.SelectedSubtitle?.StreamIndex);
+        Assert.Equal(SubtitleSourceCandidateRole.PrimaryFullDialogue, result.SelectedRole);
+        Assert.Equal(SubtitleSourceCandidateRole.PrimaryFullDialogue, GetRole(result, 0));
+        Assert.Equal(SubtitleSourceCandidateRole.PrimaryFullDialogue, GetRole(result, 1));
+        Assert.Null(result.Assessments.Single(assessment => assessment.Subtitle.StreamIndex == 0).EntryCount);
+        Assert.Equal(60, result.Assessments.Single(assessment => assessment.Subtitle.StreamIndex == 1).EntryCount);
+    }
+
+    [Fact]
+    public async Task SelectPrimaryAsync_ConfiguredModeKeepsScoreOrderingForUnknownAndObservedTracks()
+    {
+        var extractedPath = await WriteCleanAssAsync("configured-full.eng.ass", 60);
+        var service = CreateService();
+
+        var result = await service.SelectPrimaryAsync(
+            [
+                new EmbeddedSubtitle
+                {
+                    StreamIndex = 0,
+                    Language = "eng",
+                    Title = "CutScenes",
+                    CodecName = "ass",
+                    IsTextBased = true,
+                    IsDefault = true
+                },
+                new EmbeddedSubtitle
+                {
+                    StreamIndex = 1,
+                    Language = "eng",
+                    Title = "English",
+                    CodecName = "ass",
+                    IsTextBased = true,
+                    ExtractedPath = extractedPath
+                }
+            ],
+            ["en"],
+            allowCaptionFallback: true);
+
+        Assert.Equal(0, result.SelectedSubtitle?.StreamIndex);
+        Assert.Equal(SubtitleSourceCandidateRole.PrimaryFullDialogue, result.SelectedRole);
+    }
+
+    [Fact]
+    public async Task SelectPrimaryAsync_AutoKeepsPathologicalFallbackAheadOfCaptionFallback()
+    {
+        var pathologicalPath = Path.Combine(_tempDirectory, "pathological-auto.eng.ass");
+        const int entryCount = 600;
+        await File.WriteAllTextAsync(
+            pathologicalPath,
+            "[Events]\n" + string.Join(
+                "\n",
+                Enumerable.Range(1, entryCount).Select(index =>
+                    $"Dialogue: 0,0:00:{index % 60:00}.00,0:00:{index % 60:00}.50,Default,,0,0,0,,{{\\p1}}m 0 0 l 10 10")));
+
+        _subtitleServiceMock
+            .Setup(service => service.ReadSubtitles(pathologicalPath))
+            .ReturnsAsync(Enumerable.Range(1, entryCount)
+                .Select(index => new SubtitleItem
+                {
+                    Position = index,
+                    Lines = ["{\\p1}m 0 0 l 10 10"],
+                    PlaintextLines = [""]
+                })
+                .ToList());
+
+        var result = await CreateService().SelectPrimaryAsync(
+            [
+                new EmbeddedSubtitle
+                {
+                    StreamIndex = 0,
+                    Language = "eng",
+                    Title = "English",
+                    CodecName = "ass",
+                    IsTextBased = true,
+                    ExtractedPath = pathologicalPath
+                },
+                new EmbeddedSubtitle
+                {
+                    StreamIndex = 1,
+                    Language = "eng",
+                    Title = "English SDH",
+                    CodecName = "ass",
+                    IsTextBased = true
+                }
+            ],
+            [],
+            allowCaptionFallback: true,
+            targetLanguages: ["pl"]);
+
+        Assert.Equal(0, result.SelectedSubtitle?.StreamIndex);
+        Assert.Equal(SubtitleSourceCandidateRole.PathologicalAssFallback, result.SelectedRole);
+        Assert.Equal(SubtitleSourceCandidateRole.CaptionFallback, GetRole(result, 1));
+    }
+
+    [Fact]
     public async Task SelectPrimaryAsync_DoesNotLetSelfLanguageScoreQualifyAnotherPoorTargetDirection()
     {
         var qualityScorerMock = new Mock<ITranslationQualityScorer>();
@@ -692,6 +817,29 @@ public class SubtitleSourceSelectionServiceTests : IDisposable
             Enumerable.Range(1, cueCount).Select(index =>
                 $"{index}\n00:00:{index % 60:00},000 --> 00:00:{index % 60:00},500\nkthytpselqgv{index:D3}"));
         await File.WriteAllTextAsync(path, content);
+        return path;
+    }
+
+    private async Task<string> WriteCleanAssAsync(string fileName, int cueCount)
+    {
+        var path = Path.Combine(_tempDirectory, fileName);
+        var content = "[Script Info]\nTitle: Clean dialogue\n[Events]\n" + string.Join(
+            "\n",
+            Enumerable.Range(1, cueCount).Select(index =>
+                $"Dialogue: 0,0:00:{index % 60:00}.00,0:00:{index % 60:00}.50,Default,,0,0,0,,Dialogue line {index}"));
+        await File.WriteAllTextAsync(path, content);
+
+        _subtitleServiceMock
+            .Setup(service => service.ReadSubtitles(path))
+            .ReturnsAsync(Enumerable.Range(1, cueCount)
+                .Select(index => new SubtitleItem
+                {
+                    Position = index,
+                    Lines = [$"Dialogue line {index}"],
+                    PlaintextLines = [$"Dialogue line {index}"]
+                })
+                .ToList());
+
         return path;
     }
 

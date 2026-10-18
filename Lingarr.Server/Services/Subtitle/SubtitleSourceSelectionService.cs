@@ -62,9 +62,12 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
                 cancellationToken));
         }
 
-        var primary = assessments
-            .Where(assessment => assessment.Role == SubtitleSourceCandidateRole.PrimaryFullDialogue)
-            .OrderByDescending(assessment => assessment.Score)
+        var primaryCandidates = assessments
+            .Where(assessment => assessment.Role == SubtitleSourceCandidateRole.PrimaryFullDialogue);
+        var primary = primaryCandidates
+            .OrderByDescending(assessment =>
+                isAutoMode && assessment.EntryCount is >= SubtitleExtractionService.MinimumDialogueEntries)
+            .ThenByDescending(assessment => assessment.Score)
             .ThenBy(assessment => assessment.Subtitle.StreamIndex)
             .FirstOrDefault();
 
