@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Lingarr.Core.Entities;
 using Lingarr.Server.Interfaces.Services;
+using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models;
 using Lingarr.Server.Models.FileSystem;
 using Lingarr.Server.Services.Subtitle;
@@ -23,6 +24,88 @@ public class SubtitleSourceSelectionServiceTests : IDisposable
     {
         _tempDirectory = Path.Combine(Path.GetTempPath(), "lingarr-source-selection-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_tempDirectory);
+    }
+
+    [Fact]
+    public async Task SelectPrimaryAsync_RejectsAutoCandidateWhenEveryTargetMatchesItsLanguage()
+    {
+        var service = CreateService();
+
+        var result = await service.SelectPrimaryAsync(
+            [new EmbeddedSubtitle
+            {
+                StreamIndex = 0,
+                Language = "pol",
+                Title = "Polish Full",
+                CodecName = "subrip",
+                IsTextBased = true
+            }],
+            [],
+            allowCaptionFallback: true,
+            targetLanguages: ["pl"]);
+
+        Assert.Null(result.SelectedSubtitle);
+        Assert.Equal(SubtitleSourceCandidateRole.RejectedLanguage, GetRole(result, 0));
+    }
+
+    [Fact]
+    public async Task SelectPrimaryAsync_AutoCandidateMayServeAnotherTargetWhenItAlsoMatchesItsOwnLanguage()
+    {
+        var service = CreateService();
+
+        var result = await service.SelectPrimaryAsync(
+            [new EmbeddedSubtitle
+            {
+                StreamIndex = 0,
+                Language = "pol",
+                Title = "Polish Full",
+                CodecName = "subrip",
+                IsTextBased = true
+            }],
+            [],
+            allowCaptionFallback: true,
+            targetLanguages: ["pl", "de"]);
+
+        Assert.NotNull(result.SelectedSubtitle);
+        Assert.Equal("pl", result.MatchedLanguage);
+    }
+
+    [Fact]
+    public async Task SelectPrimaryAsync_DoesNotLetSelfLanguageScoreQualifyAnotherPoorTargetDirection()
+    {
+        var qualityScorerMock = new Mock<ITranslationQualityScorer>();
+        qualityScorerMock
+            .Setup(scorer => scorer.ScoreDirection("pl", "pl"))
+            .Returns(100);
+        qualityScorerMock
+            .Setup(scorer => scorer.ScoreDirection("pl", "de"))
+            .Returns(20);
+        var service = new SubtitleSourceSelectionService(
+            _subtitleServiceMock.Object,
+            NullLogger<SubtitleSourceSelectionService>.Instance,
+            qualityScorerMock.Object);
+
+        var result = await service.SelectPrimaryAsync(
+            [new EmbeddedSubtitle
+            {
+                StreamIndex = 0,
+                Language = "pol",
+                Title = "Polish Full",
+                CodecName = "subrip",
+                IsTextBased = true
+            }],
+            [],
+            allowCaptionFallback: true,
+            targetLanguages: ["pl", "de"]);
+
+        Assert.Null(result.SelectedSubtitle);
+        Assert.Equal(SubtitleSourceCandidateRole.RejectedLanguage, GetRole(result, 0));
+        qualityScorerMock.Verify(
+            scorer => scorer.ScoreDirection("pl", "pl"),
+            Times.Never);
+        qualityScorerMock.Verify(
+            scorer => scorer.ScoreDirection("pl", "de"),
+            Times.Once);
     }
 
     [Fact]

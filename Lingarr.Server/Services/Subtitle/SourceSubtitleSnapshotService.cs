@@ -182,9 +182,17 @@ public class SourceSubtitleSnapshotService : ISourceSubtitleSnapshotService
         var ignoreCaptions = await ShouldIgnoreCaptionsAsync(cancellationToken);
         var matchingExternalSubtitles = externalSubtitles?.ToList()
                                        ?? await GetMatchingExternalSubtitlesAsync(media, cancellationToken);
+        var knownGeneratedPaths = await GetKnownAutoSourceGeneratedSubtitlePathsAsync(
+            media.Id,
+            ResolveMediaType(media),
+            cancellationToken);
+        var sourceCandidates = matchingExternalSubtitles
+            .Where(subtitle => string.IsNullOrWhiteSpace(subtitle.Path) ||
+                               !knownGeneratedPaths.Contains(MediaSubtitleMatcher.NormalizePath(subtitle.Path)))
+            .ToList();
 
         // Accept all external subtitles regardless of configured languages
-        var autoCandidate = SelectAutoExternalCandidate(matchingExternalSubtitles, ignoreCaptions);
+        var autoCandidate = SelectAutoExternalCandidate(sourceCandidates, ignoreCaptions, targetLanguages);
         if (autoCandidate.Subtitle == null || string.IsNullOrWhiteSpace(autoCandidate.SourceLanguage))
         {
             return null;
@@ -204,7 +212,8 @@ public class SourceSubtitleSnapshotService : ISourceSubtitleSnapshotService
     /// </summary>
     private static (Subtitles? Subtitle, string? SourceLanguage) SelectAutoExternalCandidate(
         List<Subtitles> subtitles,
-        bool ignoreCaptions)
+        bool ignoreCaptions,
+        IReadOnlyList<string>? targetLanguages)
     {
         var candidates = new List<(Subtitles Subtitle, string Language)>();
         foreach (var subtitle in subtitles
@@ -214,6 +223,13 @@ public class SourceSubtitleSnapshotService : ISourceSubtitleSnapshotService
             var language = SubtitleLanguageHelper.DetectLanguageFromFileName(subtitle.FileName);
             if (string.IsNullOrWhiteSpace(language) ||
                 language.Equals("und", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (targetLanguages is { Count: > 0 } &&
+                !targetLanguages.Any(targetLanguage =>
+                    !SubtitleLanguageHelper.LanguageMatches(language, targetLanguage)))
             {
                 continue;
             }
@@ -500,6 +516,36 @@ public class SourceSubtitleSnapshotService : ISourceSubtitleSnapshotService
             .ToListAsync(cancellationToken);
 
         return MediaSubtitleMatcher.ExtractGeneratedPaths(requests);
+    }
+
+    private async Task<HashSet<string>> GetKnownAutoSourceGeneratedSubtitlePathsAsync(
+        int mediaId,
+        MediaType mediaType,
+        CancellationToken cancellationToken)
+    {
+        var requests = await _dbContext.TranslationRequests
+            .AsNoTracking()
+            .Where(request => request.WorkloadKind == TranslationWorkloadKind.Library)
+            .Where(request => request.MediaId == mediaId && request.MediaType == mediaType)
+            .Where(request => request.Status == TranslationStatus.Completed)
+            .Where(request =>
+                (request.GeneratedSubtitlePaths != null && request.GeneratedSubtitlePaths != string.Empty) ||
+                (request.TranslatedSubtitle != null && request.TranslatedSubtitle != string.Empty))
+            .ToListAsync(cancellationToken);
+
+        var paths = MediaSubtitleMatcher.ExtractGeneratedPaths(requests)
+            .Select(MediaSubtitleMatcher.NormalizePath)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var request in requests)
+        {
+            if (!string.IsNullOrWhiteSpace(request.TranslatedSubtitle))
+            {
+                paths.Add(MediaSubtitleMatcher.NormalizePath(request.TranslatedSubtitle));
+            }
+        }
+
+        return paths;
     }
 
     private static (Subtitles? Subtitle, string? SourceLanguage) TrySelectExternalSourceCandidate(

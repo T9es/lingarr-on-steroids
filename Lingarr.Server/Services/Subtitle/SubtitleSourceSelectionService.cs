@@ -128,6 +128,19 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
                 "Language is not configured as a source language.");
         }
 
+        if (isAutoMode && targetLanguages is { Count: > 0 } &&
+            !targetLanguages.Any(targetLanguage =>
+                !SubtitleLanguageHelper.LanguageMatches(matchedLanguage, targetLanguage)))
+        {
+            return new SubtitleSourceCandidateAssessment(
+                candidate,
+                SubtitleSourceCandidateRole.RejectedLanguage,
+                matchedLanguage,
+                int.MinValue,
+                null,
+                $"Auto mode: language '{matchedLanguage}' matches every configured target language.");
+        }
+
         // In auto mode, check translation quality score against target languages
         if (isAutoMode && targetLanguages != null && targetLanguages.Count > 0)
         {
@@ -350,6 +363,11 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
         var bestScore = 0.0;
         foreach (var target in targetLanguages)
         {
+            if (SubtitleLanguageHelper.LanguageMatches(language, target))
+            {
+                continue;
+            }
+
             var score = _qualityScorer.ScoreDirection(language, target);
             if (score.HasValue && score.Value > bestScore)
             {

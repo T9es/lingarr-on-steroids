@@ -259,7 +259,10 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 
                 // Check integrity of existing target subtitles and add corrupt ones for re-translation
                 var corruptLanguages = new List<string>();
-                foreach (var targetLang in targetLanguages
+                foreach (var targetLang in FilterAutoSelfLanguageTargets(
+                    targetLanguages,
+                    isAutoMode,
+                    sourceLanguage)
                     .Intersect(existingLanguages)
                     .Where(targetLanguage => !EmbeddedTargetSubtitleHelper.IsSatisfiedTargetLanguage(
                         embeddedSatisfiedTargetLanguages,
@@ -283,13 +286,21 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 
                 // Add corrupt languages to the translation queue
                 languagesToTranslate = languagesToTranslate.Union(corruptLanguages).ToList();
+                languagesToTranslate = FilterAutoSelfLanguageTargets(
+                    languagesToTranslate,
+                    isAutoMode,
+                    sourceLanguage);
                 var foundCorruption = corruptLanguages.Count > 0;
                 
                 if (ignoreCaptions == "true")
                 {
+                    var eligibleTargetLanguages = FilterAutoSelfLanguageTargets(
+                        targetLanguages,
+                        isAutoMode,
+                        sourceLanguage);
                     var targetLanguagesWithCaptions = subtitles
                         .Where(s =>
-                            targetLanguages.Contains(s.Language) &&
+                            eligibleTargetLanguages.Contains(s.Language) &&
                             !string.IsNullOrEmpty(s.Caption) &&
                             !ExternalSubtitleCandidateHelper.ShouldSkipAsMainTarget(s))
                         .Select(s => s.Language)
@@ -775,6 +786,12 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 {
                     foreach (var targetLanguage in languagesToTranslate)
                     {
+                        if (isAutoMode &&
+                            SubtitleLanguageHelper.LanguageMatches(sourceLanguage, targetLanguage))
+                        {
+                            continue;
+                        }
+
                         AddIntegrityFinding(
                             integrityFindings,
                             media,
@@ -795,7 +812,10 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 var foundCorruption = false;
                 if (!forceTranslation)
                 {
-                    var staleCheckTargetLanguages = targetLanguages
+                    var staleCheckTargetLanguages = FilterAutoSelfLanguageTargets(
+                        targetLanguages,
+                        isAutoMode,
+                        sourceLanguage)
                         .Where(targetLanguage => !EmbeddedTargetSubtitleHelper.IsSatisfiedTargetLanguage(
                             embeddedSatisfiedTargetLanguages,
                             targetLanguage))
@@ -837,7 +857,10 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 if (!forceTranslation)
                 {
                     var corruptLanguages = new List<string>();
-                    foreach (var targetLang in targetLanguages
+                    foreach (var targetLang in FilterAutoSelfLanguageTargets(
+                                 targetLanguages,
+                                 isAutoMode,
+                                 sourceLanguage)
                         .Intersect(existingLanguages)
                         .Where(targetLanguage => !EmbeddedTargetSubtitleHelper.IsSatisfiedTargetLanguage(
                             embeddedSatisfiedTargetLanguages,
@@ -881,12 +904,21 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                     // Add corrupt languages to the translation queue
                     languagesToTranslate = languagesToTranslate.Union(corruptLanguages).ToList();
                 }
-                
+
+                languagesToTranslate = FilterAutoSelfLanguageTargets(
+                    languagesToTranslate,
+                    isAutoMode,
+                    sourceLanguage);
+
                 if (ignoreCaptions == "true")
                 {
+                    var eligibleTargetLanguages = FilterAutoSelfLanguageTargets(
+                        targetLanguages,
+                        isAutoMode,
+                        sourceLanguage);
                     var targetLanguagesWithCaptions = subtitles
                         .Where(s =>
-                            targetLanguages.Contains(s.Language) &&
+                            eligibleTargetLanguages.Contains(s.Language) &&
                             !string.IsNullOrEmpty(s.Caption) &&
                             !ShouldSkipAsMainTarget(s, knownForcedDialogueGeneratedPaths))
                         .Select(s => s.Language)
@@ -1585,6 +1617,12 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         {
             foreach (var targetLanguage in languagesToTranslate)
             {
+                if (isAutoMode &&
+                    SubtitleLanguageHelper.LanguageMatches(selectedSourceLanguage, targetLanguage))
+                {
+                    continue;
+                }
+
                 AddIntegrityFinding(
                     integrityFindings,
                     media,
@@ -1608,7 +1646,10 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
 
         if (!forceTranslation)
         {
-            var staleCheckTargetLanguages = targetLanguages
+            var staleCheckTargetLanguages = FilterAutoSelfLanguageTargets(
+                targetLanguages,
+                isAutoMode,
+                selectedSourceLanguage)
                 .Where(targetLanguage => !EmbeddedTargetSubtitleHelper.IsSatisfiedTargetLanguage(
                     embeddedSatisfiedTargetLanguages,
                     targetLanguage))
@@ -1682,7 +1723,11 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 if (tempSourcePath != null)
                 {
                     var corruptLanguages = new List<string>();
-                    foreach (var targetLang in targetLanguages.Intersect(existingExternalLanguages))
+                    foreach (var targetLang in FilterAutoSelfLanguageTargets(
+                                 targetLanguages,
+                                 isAutoMode,
+                                 selectedSourceLanguage)
+                        .Intersect(existingExternalLanguages))
                     {
                         var targetSubtitle = SelectMainTargetSubtitle(
                             matchingExternalSubtitles,
@@ -1723,6 +1768,11 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                     languagesToTranslate = languagesToTranslate.Union(corruptLanguages).ToList();
                 }
             }
+
+            languagesToTranslate = FilterAutoSelfLanguageTargets(
+                languagesToTranslate,
+                isAutoMode,
+                selectedSourceLanguage);
 
             if (!queueTranslations)
             {
@@ -1808,6 +1858,7 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                         embeddedSatisfiedTargetLanguages,
                         targetLanguage))
                     .ToList(),
+                isAutoMode,
                 forceTranslation,
                 forcePriority,
                 maxTranslationsToQueue.HasValue
@@ -2296,6 +2347,7 @@ query = isSupplemental
         SubtitleSourceSelectionResult sourceSelection,
         IReadOnlyCollection<Subtitles> matchingExternalSubtitles,
         IReadOnlyCollection<string> targetLanguages,
+        bool isAutoMode,
         bool forceTranslation,
         bool forcePriority,
         int? maxTranslationsToQueue,
@@ -2355,6 +2407,10 @@ query = isSupplemental
                         requiredOutputFormats,
                         allowSupplementalTargets: true)
                     .ToList();
+            languagesToTranslate = FilterAutoSelfLanguageTargets(
+                languagesToTranslate,
+                isAutoMode,
+                assessment.MatchedLanguage);
             if (languagesToTranslate.Count == 0)
             {
                 continue;
@@ -2411,6 +2467,22 @@ query = isSupplemental
 
         return languagesToTranslate
             .Take(Math.Max(0, maxTranslationsToQueue.Value))
+            .ToList();
+    }
+
+    private static List<string> FilterAutoSelfLanguageTargets(
+        IEnumerable<string> targetLanguages,
+        bool isAutoMode,
+        string? sourceLanguage)
+    {
+        var targets = targetLanguages.ToList();
+        if (!isAutoMode || string.IsNullOrWhiteSpace(sourceLanguage))
+        {
+            return targets;
+        }
+
+        return targets
+            .Where(targetLanguage => !SubtitleLanguageHelper.LanguageMatches(sourceLanguage, targetLanguage))
             .ToList();
     }
 

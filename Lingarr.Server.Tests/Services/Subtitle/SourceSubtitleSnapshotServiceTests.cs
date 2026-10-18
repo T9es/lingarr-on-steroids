@@ -954,6 +954,182 @@ public class SourceSubtitleSnapshotServiceTests
     }
 
     [Fact]
+    public async Task ResolveExternalSourceWithAutoAsync_ExcludesGeneratedPolishOutputAndKeepsEnglishSnapshotStable()
+    {
+        var dbContext = CreateDbContext();
+        var service = CreateService(dbContext);
+        var tempDirectory = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDirectory);
+        var sourcePath = Path.Combine(tempDirectory, "movie.en.srt");
+        var generatedPath = Path.Combine(tempDirectory, "movie.pl.srt");
+
+        try
+        {
+            await File.WriteAllTextAsync(sourcePath, CreateSrtContent("English source line"));
+            await File.WriteAllTextAsync(generatedPath, CreateSrtContent("Polish output before edit"));
+            var movie = new Movie
+            {
+                Id = 41,
+                RadarrId = 41,
+                Title = "Movie",
+                Path = tempDirectory,
+                FileName = "movie.mkv",
+                DateAdded = DateTime.UtcNow
+            };
+            dbContext.TranslationRequests.Add(new TranslationRequest
+            {
+                MediaId = movie.Id,
+                Title = movie.Title,
+                SourceLanguage = "en",
+                TargetLanguage = "pl",
+                MediaType = MediaType.Movie,
+                Status = TranslationStatus.Completed,
+                WorkloadKind = TranslationWorkloadKind.Library,
+                CompletedAt = DateTime.UtcNow.AddMinutes(-1),
+                GeneratedSubtitlePaths = System.Text.Json.JsonSerializer.Serialize(new[] { generatedPath })
+            });
+            await dbContext.SaveChangesAsync();
+
+            var subtitles = new List<Subtitles>
+            {
+                new() { Path = generatedPath, FileName = "movie.pl.srt", Language = "pl", Format = ".srt" },
+                new() { Path = sourcePath, FileName = "movie.en.srt", Language = "en", Format = ".srt" }
+            };
+
+            var first = await service.ResolveExternalSourceWithAutoAsync(
+                movie,
+                subtitles,
+                useAutoMode: true,
+                targetLanguages: ["pl", "de"]);
+
+            await File.WriteAllTextAsync(generatedPath, CreateSrtContent("Polish output after edit"));
+
+            var second = await service.ResolveExternalSourceWithAutoAsync(
+                movie,
+                subtitles,
+                useAutoMode: true,
+                targetLanguages: ["pl", "de"]);
+
+            Assert.NotNull(first);
+            Assert.NotNull(second);
+            Assert.Equal(sourcePath, first!.Subtitle.Path);
+            Assert.Equal(sourcePath, second!.Subtitle.Path);
+            Assert.Equal(first.Snapshot.Identity, second.Snapshot.Identity);
+            Assert.Equal(first.Snapshot.Fingerprint, second.Snapshot.Fingerprint);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDirectory))
+            {
+                Directory.Delete(tempDirectory, recursive: true);
+            }
+        }
+
+        static string CreateSrtContent(string linePrefix)
+        {
+            return string.Join(
+                "\n\n",
+                Enumerable.Range(1, 60).Select(index =>
+                {
+                    var start = TimeSpan.FromSeconds(index * 2);
+                    var end = start.Add(TimeSpan.FromSeconds(1));
+                    return $"{index}\n{start.ToString(@"hh\:mm\:ss\,fff")} --> {end.ToString(@"hh\:mm\:ss\,fff")}\n{linePrefix} {index}";
+                }));
+        }
+    }
+
+    [Fact]
+    public async Task ResolveExternalSourceWithAutoAsync_ExcludesLegacyCurrentLibraryOutputAsSource()
+    {
+        var dbContext = CreateDbContext();
+        var service = CreateService(dbContext);
+        var generatedPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}", "movie.pl.srt");
+        var movie = new Movie
+        {
+            Id = 42,
+            RadarrId = 42,
+            Title = "Movie",
+            Path = "/movies",
+            FileName = "movie.mkv",
+            DateAdded = DateTime.UtcNow
+        };
+        dbContext.TranslationRequests.Add(new TranslationRequest
+        {
+            MediaId = movie.Id,
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Completed,
+            WorkloadKind = TranslationWorkloadKind.Library,
+            TranslatedSubtitle = generatedPath
+        });
+        await dbContext.SaveChangesAsync();
+
+        var resolved = await service.ResolveExternalSourceWithAutoAsync(
+            movie,
+            [new Subtitles
+            {
+                Path = generatedPath,
+                FileName = "movie.pl.srt",
+                Language = "pl",
+                Format = ".srt"
+            }],
+            useAutoMode: true,
+            targetLanguages: ["de"]);
+
+        Assert.Null(resolved);
+    }
+
+    [Theory]
+    [InlineData(TranslationWorkloadKind.Library, 999)]
+    [InlineData(TranslationWorkloadKind.Upload, 43)]
+    public async Task ResolveExternalSourceWithAutoAsync_DoesNotExcludeOutputsFromOtherMediaOrWorkloads(
+        TranslationWorkloadKind workloadKind,
+        int metadataMediaId)
+    {
+        var dbContext = CreateDbContext();
+        var service = CreateService(dbContext);
+        var generatedPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}", "movie.fr.srt");
+        var movie = new Movie
+        {
+            Id = 43,
+            RadarrId = 43,
+            Title = "Movie",
+            Path = "/movies",
+            FileName = "movie.mkv",
+            DateAdded = DateTime.UtcNow
+        };
+        dbContext.TranslationRequests.Add(new TranslationRequest
+        {
+            MediaId = metadataMediaId,
+            Title = "Earlier translation",
+            SourceLanguage = "en",
+            TargetLanguage = "fr",
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Completed,
+            WorkloadKind = workloadKind,
+            TranslatedSubtitle = generatedPath
+        });
+        await dbContext.SaveChangesAsync();
+
+        var resolved = await service.ResolveExternalSourceWithAutoAsync(
+            movie,
+            [new Subtitles
+            {
+                Path = generatedPath,
+                FileName = "movie.fr.srt",
+                Language = "fr",
+                Format = ".srt"
+            }],
+            useAutoMode: true,
+            targetLanguages: ["de"]);
+
+        Assert.NotNull(resolved);
+        Assert.Equal(generatedPath, resolved!.Subtitle.Path);
+    }
+
+    [Fact]
     public async Task ResolveCurrentSnapshotAsync_ShouldPreferLessPathologicalExternalAssCandidate()
     {
         var dbContext = CreateDbContext();

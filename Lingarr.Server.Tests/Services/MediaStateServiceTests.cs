@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Data.Common;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Lingarr.Core.Configuration;
@@ -10,6 +11,7 @@ using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
+using Lingarr.Server.Interfaces.Services.Translation;
 using Lingarr.Server.Models;
 using Lingarr.Server.Models.Subtitle;
 using Lingarr.Server.Services;
@@ -347,6 +349,401 @@ public class MediaStateServiceTests : IDisposable
         var state = await service.UpdateStateAsync(movie, MediaType.Movie);
 
         Assert.Equal(TranslationState.Complete, state);
+    }
+
+    [Fact]
+    public async Task ComputeStateAsync_AutoModeDoesNotUseCurrentLegacyGeneratedOutputAsSource()
+    {
+        const int movieId = 51;
+        var movie = new Movie
+        {
+            Id = movieId,
+            RadarrId = movieId,
+            Title = "Auto Output Feedback",
+            Path = "/movies/auto-output-feedback",
+            FileName = "auto-output-feedback.mkv",
+            DateAdded = DateTime.UtcNow
+        };
+        var generatedPath = "/movies/auto-output-feedback/auto-output-feedback.pl.srt";
+        _context.Movies.Add(movie);
+        _context.TranslationRequests.Add(new TranslationRequest
+        {
+            MediaId = movieId,
+            MediaType = MediaType.Movie,
+            WorkloadKind = TranslationWorkloadKind.Library,
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            Status = TranslationStatus.Completed,
+            TranslatedSubtitle = generatedPath
+        });
+        await _context.SaveChangesAsync();
+
+        _settingServiceMock
+            .Setup(s => s.GetSettingAsJson<SourceLanguage>(SettingKeys.Translation.SourceLanguages))
+            .ReturnsAsync([]);
+        _settingServiceMock
+            .Setup(s => s.GetSettingAsJson<SourceLanguage>(SettingKeys.Translation.TargetLanguages))
+            .ReturnsAsync([new SourceLanguage { Code = "de", Name = "German" }]);
+        _settingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.Translation.SourceLanguageMode))
+            .ReturnsAsync("auto");
+        _settingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.Translation.SubtitleOutputMode))
+            .ReturnsAsync("srt-only");
+        _subtitleServiceMock
+            .Setup(s => s.GetAllSubtitles(movie.Path!))
+            .ReturnsAsync([
+                new Models.FileSystem.Subtitles
+                {
+                    Path = generatedPath,
+                    FileName = "auto-output-feedback.pl.srt",
+                    Language = "pl",
+                    Format = ".srt"
+                }
+            ]);
+
+        var qualityScorerMock = new Mock<ITranslationQualityScorer>();
+        qualityScorerMock
+            .SetupGet(scorer => scorer.MinimumAcceptableScore)
+            .Returns(50);
+        qualityScorerMock
+            .Setup(scorer => scorer.ScoreDirection("pl", "de"))
+            .Returns(85);
+        var service = new MediaStateService(
+            _context,
+            _settingServiceMock.Object,
+            _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
+            NullLogger<MediaStateService>.Instance,
+            qualityScorer: qualityScorerMock.Object);
+
+        var state = await service.UpdateStateAsync(movie, MediaType.Movie);
+
+        Assert.Equal(TranslationState.AwaitingSource, state);
+        qualityScorerMock.Verify(
+            scorer => scorer.ScoreDirection("pl", "de"),
+            Times.Never);
+    }
+
+    [Theory]
+    [InlineData(TranslationWorkloadKind.Library, 999)]
+    [InlineData(TranslationWorkloadKind.Upload, 52)]
+    public async Task ComputeStateAsync_AutoModeDoesNotExcludeGeneratedOutputFromOtherMediaOrWorkloads(
+        TranslationWorkloadKind workloadKind,
+        int metadataMediaId)
+    {
+        const int movieId = 52;
+        var movie = new Movie
+        {
+            Id = movieId,
+            RadarrId = movieId,
+            Title = "Scoped Auto Output",
+            Path = "/movies/scoped-auto-output",
+            FileName = "scoped-auto-output.mkv",
+            DateAdded = DateTime.UtcNow
+        };
+        var generatedPath = "/movies/scoped-auto-output/scoped-auto-output.pl.srt";
+        _context.Movies.Add(movie);
+        _context.TranslationRequests.Add(new TranslationRequest
+        {
+            MediaId = metadataMediaId,
+            MediaType = MediaType.Movie,
+            WorkloadKind = workloadKind,
+            Title = "Earlier unrelated translation",
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            Status = TranslationStatus.Completed,
+            TranslatedSubtitle = generatedPath
+        });
+        await _context.SaveChangesAsync();
+
+        _settingServiceMock
+            .Setup(s => s.GetSettingAsJson<SourceLanguage>(SettingKeys.Translation.SourceLanguages))
+            .ReturnsAsync([]);
+        _settingServiceMock
+            .Setup(s => s.GetSettingAsJson<SourceLanguage>(SettingKeys.Translation.TargetLanguages))
+            .ReturnsAsync([new SourceLanguage { Code = "de", Name = "German" }]);
+        _settingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.Translation.SourceLanguageMode))
+            .ReturnsAsync("auto");
+        _settingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.Translation.SubtitleOutputMode))
+            .ReturnsAsync("srt-only");
+        _subtitleServiceMock
+            .Setup(s => s.GetAllSubtitles(movie.Path!))
+            .ReturnsAsync([
+                new Models.FileSystem.Subtitles
+                {
+                    Path = generatedPath,
+                    FileName = "scoped-auto-output.pl.srt",
+                    Language = "pl",
+                    Format = ".srt"
+                }
+            ]);
+
+        var qualityScorerMock = new Mock<ITranslationQualityScorer>();
+        qualityScorerMock
+            .SetupGet(scorer => scorer.MinimumAcceptableScore)
+            .Returns(50);
+        qualityScorerMock
+            .Setup(scorer => scorer.ScoreDirection("pl", "de"))
+            .Returns(85);
+        var service = new MediaStateService(
+            _context,
+            _settingServiceMock.Object,
+            _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
+            NullLogger<MediaStateService>.Instance,
+            qualityScorer: qualityScorerMock.Object);
+
+        var state = await service.UpdateStateAsync(movie, MediaType.Movie);
+
+        Assert.Equal(TranslationState.Pending, state);
+        qualityScorerMock.Verify(
+            scorer => scorer.ScoreDirection("pl", "de"),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task ComputeStateAsync_AutoModeDoesNotScoreOrMarkSourceLanguageTargetStale()
+    {
+        const int movieId = 53;
+        var movie = new Movie
+        {
+            Id = movieId,
+            RadarrId = movieId,
+            Title = "Auto Mixed Source And Target",
+            Path = "/movies/auto-mixed-source-target",
+            FileName = "auto-mixed-source-target.mkv",
+            DateAdded = DateTime.UtcNow
+        };
+        var generatedPolishPath = "/movies/auto-mixed-source-target/auto-mixed-source-target.pl.srt";
+        _context.Movies.Add(movie);
+        _context.TranslationRequests.Add(new TranslationRequest
+        {
+            MediaId = movieId,
+            MediaType = MediaType.Movie,
+            WorkloadKind = TranslationWorkloadKind.Library,
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            Status = TranslationStatus.Completed,
+            GeneratedSubtitlePaths = System.Text.Json.JsonSerializer.Serialize(new[] { generatedPolishPath })
+        });
+        await _context.SaveChangesAsync();
+
+        _settingServiceMock
+            .Setup(s => s.GetSettingAsJson<SourceLanguage>(SettingKeys.Translation.SourceLanguages))
+            .ReturnsAsync([]);
+        _settingServiceMock
+            .Setup(s => s.GetSettingAsJson<SourceLanguage>(SettingKeys.Translation.TargetLanguages))
+            .ReturnsAsync([
+                new SourceLanguage { Code = "en", Name = "English" },
+                new SourceLanguage { Code = "pl", Name = "Polish" }
+            ]);
+        _settingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.Translation.SourceLanguageMode))
+            .ReturnsAsync("auto");
+        _settingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.Translation.SubtitleOutputMode))
+            .ReturnsAsync("srt-only");
+        _settingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.SubtitleValidation.SkipWhenTargetEmbedded))
+            .ReturnsAsync("false");
+        _subtitleServiceMock
+            .Setup(s => s.GetAllSubtitles(movie.Path!))
+            .ReturnsAsync([
+                new Models.FileSystem.Subtitles
+                {
+                    Path = "/movies/auto-mixed-source-target/auto-mixed-source-target.en.srt",
+                    FileName = "auto-mixed-source-target.en.srt",
+                    Language = "en",
+                    Format = ".srt"
+                },
+                new Models.FileSystem.Subtitles
+                {
+                    Path = generatedPolishPath,
+                    FileName = "auto-mixed-source-target.pl.srt",
+                    Language = "pl",
+                    Format = ".srt"
+                }
+            ]);
+        _sourceSubtitleSnapshotServiceMock
+            .Setup(s => s.ResolveCurrentSnapshotWithAutoAsync(
+                It.IsAny<Lingarr.Core.Interfaces.IMedia>(),
+                MediaType.Movie,
+                It.IsAny<IReadOnlyCollection<EmbeddedSubtitle>>(),
+                It.IsAny<IReadOnlyCollection<Models.FileSystem.Subtitles>>(),
+                true,
+                It.IsAny<IReadOnlyList<string>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SourceSubtitleSnapshot
+            {
+                SourceType = SourceSubtitleSnapshot.ExternalType,
+                SourceLanguage = "en",
+                Identity = "external|en|/movies/auto-mixed-source-target/auto-mixed-source-target.en.srt",
+                Fingerprint = "english-source"
+            });
+        List<string>? staleCheckTargets = null;
+        _sourceSubtitleSnapshotServiceMock
+            .Setup(s => s.GetStaleTargetLanguagesAsync(
+                movieId,
+                MediaType.Movie,
+                It.IsAny<IEnumerable<string>>(),
+                It.IsAny<SourceSubtitleSnapshot?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns((int mediaId, MediaType mediaType, IEnumerable<string> targets,
+                SourceSubtitleSnapshot? currentSnapshot, CancellationToken cancellationToken) =>
+            {
+                staleCheckTargets = targets.ToList();
+                return Task.FromResult(new HashSet<string>(
+                    targets.Where(target => SubtitleLanguageHelper.LanguageMatches(target, "en")),
+                    StringComparer.OrdinalIgnoreCase));
+            });
+
+        var qualityScorerMock = new Mock<ITranslationQualityScorer>();
+        qualityScorerMock
+            .SetupGet(scorer => scorer.MinimumAcceptableScore)
+            .Returns(50);
+        qualityScorerMock
+            .Setup(scorer => scorer.ScoreDirection(It.IsAny<string>(), It.IsAny<string>()))
+            .Returns((string source, string target) =>
+                SubtitleLanguageHelper.LanguageMatches(source, "en") &&
+                SubtitleLanguageHelper.LanguageMatches(target, "en")
+                    ? 100
+                    : SubtitleLanguageHelper.LanguageMatches(source, "en") &&
+                      SubtitleLanguageHelper.LanguageMatches(target, "pl")
+                        ? 85
+                        : SubtitleLanguageHelper.LanguageMatches(source, "pl") &&
+                          SubtitleLanguageHelper.LanguageMatches(target, "pl")
+                            ? 100
+                            : null);
+        var service = new MediaStateService(
+            _context,
+            _settingServiceMock.Object,
+            _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
+            NullLogger<MediaStateService>.Instance,
+            qualityScorer: qualityScorerMock.Object);
+
+        var state = await service.UpdateStateAsync(movie, MediaType.Movie);
+
+        Assert.Equal(TranslationState.Complete, state);
+        Assert.Equal(new[] { "pl" }, staleCheckTargets);
+        qualityScorerMock.Verify(
+            scorer => scorer.ScoreDirection(It.IsAny<string>(), It.Is<string>(target =>
+                SubtitleLanguageHelper.LanguageMatches(target, "en"))),
+            Times.Never);
+        qualityScorerMock.Verify(
+            scorer => scorer.ScoreDirection("en", "pl"),
+            Times.AtLeastOnce);
+    }
+
+    [Fact]
+    public async Task ComputeStateAsync_AutoModeDoesNotTreatScoredSourceAsValidatedWhenSnapshotIsUnavailable()
+    {
+        const int movieId = 54;
+        var movie = new Movie
+        {
+            Id = movieId,
+            RadarrId = movieId,
+            Title = "Auto Snapshot Validation",
+            Path = "/movies/auto-snapshot-validation",
+            FileName = "auto-snapshot-validation.mkv",
+            DateAdded = DateTime.UtcNow
+        };
+        var generatedGermanPath = "/movies/auto-snapshot-validation/auto-snapshot-validation.de.srt";
+        _context.Movies.Add(movie);
+        _context.TranslationRequests.Add(new TranslationRequest
+        {
+            MediaId = movieId,
+            MediaType = MediaType.Movie,
+            WorkloadKind = TranslationWorkloadKind.Library,
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "de",
+            Status = TranslationStatus.Completed,
+            GeneratedSubtitlePaths = System.Text.Json.JsonSerializer.Serialize(new[] { generatedGermanPath })
+        });
+        await _context.SaveChangesAsync();
+
+        _settingServiceMock
+            .Setup(s => s.GetSettingAsJson<SourceLanguage>(SettingKeys.Translation.SourceLanguages))
+            .ReturnsAsync([]);
+        _settingServiceMock
+            .Setup(s => s.GetSettingAsJson<SourceLanguage>(SettingKeys.Translation.TargetLanguages))
+            .ReturnsAsync([
+                new SourceLanguage { Code = "pl", Name = "Polish" },
+                new SourceLanguage { Code = "de", Name = "German" }
+            ]);
+        _settingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.Translation.SourceLanguageMode))
+            .ReturnsAsync("auto");
+        _settingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.Translation.SubtitleOutputMode))
+            .ReturnsAsync("srt-only");
+        _sourceSubtitleSnapshotServiceMock
+            .Setup(s => s.ResolveCurrentSnapshotWithAutoAsync(
+                It.IsAny<Lingarr.Core.Interfaces.IMedia>(),
+                MediaType.Movie,
+                It.IsAny<IReadOnlyCollection<EmbeddedSubtitle>>(),
+                It.IsAny<IReadOnlyCollection<Models.FileSystem.Subtitles>?>(),
+                true,
+                It.IsAny<IReadOnlyList<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((SourceSubtitleSnapshot?)null);
+        _subtitleServiceMock
+            .Setup(s => s.GetAllSubtitles(movie.Path!))
+            .ReturnsAsync([
+                new Models.FileSystem.Subtitles
+                {
+                    Path = "/movies/auto-snapshot-validation/auto-snapshot-validation.pl.forced.srt",
+                    FileName = "auto-snapshot-validation.pl.forced.srt",
+                    Language = "pl",
+                    Caption = "Forced",
+                    Format = ".srt"
+                },
+                new Models.FileSystem.Subtitles
+                {
+                    Path = generatedGermanPath,
+                    FileName = "auto-snapshot-validation.de.srt",
+                    Language = "de",
+                    Format = ".srt"
+                }
+            ]);
+
+        var qualityScorerMock = new Mock<ITranslationQualityScorer>();
+        qualityScorerMock
+            .SetupGet(scorer => scorer.MinimumAcceptableScore)
+            .Returns(50);
+        qualityScorerMock
+            .Setup(scorer => scorer.ScoreDirection("pl", "de"))
+            .Returns(85);
+        qualityScorerMock
+            .Setup(scorer => scorer.ScoreDirection("de", "pl"))
+            .Returns(85);
+        var service = new MediaStateService(
+            _context,
+            _settingServiceMock.Object,
+            _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
+            NullLogger<MediaStateService>.Instance,
+            qualityScorer: qualityScorerMock.Object);
+
+        var state = await service.UpdateStateAsync(movie, MediaType.Movie);
+
+        Assert.Equal(TranslationState.Pending, state);
+        qualityScorerMock.Verify(
+            scorer => scorer.ScoreDirection("pl", "de"),
+            Times.Once);
+        qualityScorerMock.Verify(
+            scorer => scorer.ScoreDirection("de", "pl"),
+            Times.Never);
     }
 
     [Fact]

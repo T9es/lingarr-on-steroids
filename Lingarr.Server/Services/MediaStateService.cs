@@ -217,8 +217,14 @@ public class MediaStateService : IMediaStateService
         if (isAutoMode)
         {
             // Auto mode: use quality scorer to find best source from ALL streams
+            var knownAutoSourceGeneratedPaths = await GetKnownAutoSourceGeneratedSubtitlePathsAsync(
+                media.Id,
+                mediaType);
             var autoSource = await FindAutoSourceCandidateAsync(
-                embeddedSubtitles, externalSubtitles, targetLanguages);
+                embeddedSubtitles,
+                externalSubtitles,
+                targetLanguages,
+                knownAutoSourceGeneratedPaths);
             if (autoSource != null)
             {
                 _logger.LogInformation(
@@ -293,9 +299,30 @@ public class MediaStateService : IMediaStateService
             isAutoMode,
             targetLanguages);
 
+        var effectiveTargetLanguages = targetLanguages;
+        if (isAutoMode)
+        {
+            var resolvedSourceLanguage = sourceSnapshot?.SourceLanguage;
+            if (!string.IsNullOrWhiteSpace(resolvedSourceLanguage))
+            {
+                effectiveTargetLanguages = targetLanguages
+                    .Where(targetLanguage =>
+                        !SubtitleLanguageHelper.LanguageMatches(resolvedSourceLanguage, targetLanguage))
+                    .ToList();
+                missingTargets = effectiveTargetLanguages
+                    .Where(targetLanguage => !EmbeddedTargetSubtitleHelper.IsSatisfiedTargetLanguage(
+                        embeddedSatisfiedTargetLanguages,
+                        targetLanguage))
+                    .Where(targetLanguage =>
+                        !existingTargetFormats.TryGetValue(targetLanguage, out var formats) ||
+                        requiredOutputFormats.Any(requiredFormat => !formats.Contains(requiredFormat)))
+                    .ToList();
+            }
+        }
+
         if (missingTargets.Count == 0)
         {
-            var staleCheckTargetLanguages = targetLanguages
+            var staleCheckTargetLanguages = effectiveTargetLanguages
                 .Where(targetLanguage => !EmbeddedTargetSubtitleHelper.IsSatisfiedTargetLanguage(
                     embeddedSatisfiedTargetLanguages,
                     targetLanguage))
@@ -724,6 +751,35 @@ public class MediaStateService : IMediaStateService
         return MediaSubtitleMatcher.ExtractGeneratedPaths(requests);
     }
 
+    private async Task<HashSet<string>> GetKnownAutoSourceGeneratedSubtitlePathsAsync(
+        int mediaId,
+        MediaType mediaType)
+    {
+        var requests = await _dbContext.TranslationRequests
+            .AsNoTracking()
+            .Where(request => request.WorkloadKind == TranslationWorkloadKind.Library)
+            .Where(request => request.MediaId == mediaId && request.MediaType == mediaType)
+            .Where(request => request.Status == TranslationStatus.Completed)
+            .Where(request =>
+                (request.GeneratedSubtitlePaths != null && request.GeneratedSubtitlePaths != string.Empty) ||
+                (request.TranslatedSubtitle != null && request.TranslatedSubtitle != string.Empty))
+            .ToListAsync();
+
+        var paths = MediaSubtitleMatcher.ExtractGeneratedPaths(requests)
+            .Select(MediaSubtitleMatcher.NormalizePath)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var request in requests)
+        {
+            if (!string.IsNullOrWhiteSpace(request.TranslatedSubtitle))
+            {
+                paths.Add(MediaSubtitleMatcher.NormalizePath(request.TranslatedSubtitle));
+            }
+        }
+
+        return paths;
+    }
+
     private async Task<HashSet<string>> GetKnownForcedDialogueGeneratedSubtitlePathsAsync(
         int mediaId,
         MediaType mediaType)
@@ -834,7 +890,8 @@ public class MediaStateService : IMediaStateService
     private async Task<(string Language, bool IsEmbedded)?> FindAutoSourceCandidateAsync(
         List<EmbeddedSubtitle> embeddedSubtitles,
         List<Subtitles> externalSubtitles,
-        IReadOnlyList<string> targetLanguages)
+        IReadOnlyList<string> targetLanguages,
+        IReadOnlySet<string> knownGeneratedSourcePaths)
     {
         if (_qualityScorer == null)
         {
@@ -862,6 +919,11 @@ public class MediaStateService : IMediaStateService
             var scoredTargets = 0;
             foreach (var target in targetLanguages)
             {
+                if (SubtitleLanguageHelper.LanguageMatches(subtitle.Language, target))
+                {
+                    continue;
+                }
+
                 var score = scorer.ScoreDirection(subtitle.Language, target);
                 if (score.HasValue)
                 {
@@ -885,6 +947,12 @@ public class MediaStateService : IMediaStateService
         // Check external subtitles
         foreach (var subtitle in externalSubtitles)
         {
+            if (!string.IsNullOrWhiteSpace(subtitle.Path) &&
+                knownGeneratedSourcePaths.Contains(MediaSubtitleMatcher.NormalizePath(subtitle.Path)))
+            {
+                continue;
+            }
+
             var language = SubtitleLanguageHelper.DetectLanguageFromFileName(subtitle.FileName);
             if (string.IsNullOrWhiteSpace(language) ||
                 language.Equals("und", StringComparison.OrdinalIgnoreCase))
@@ -896,6 +964,11 @@ public class MediaStateService : IMediaStateService
             var scoredTargets = 0;
             foreach (var target in targetLanguages)
             {
+                if (SubtitleLanguageHelper.LanguageMatches(language, target))
+                {
+                    continue;
+                }
+
                 var score = scorer.ScoreDirection(language, target);
                 if (score.HasValue)
                 {
