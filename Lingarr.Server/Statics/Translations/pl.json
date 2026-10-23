@@ -135,6 +135,24 @@
     "season": "Sezon",
     "episodes": "odcinków",
     "nextMissing": "Następny brakujący",
+    "failedCues": {
+      "appliedHint": "Ten tekst jest przygotowany dla tego wiersza. Zapisz zmiany lub zaakceptuj tłumaczenie, aby go użyć.",
+      "hint": "Kontrola językowa odrzuciła poniższy tekst dostawcy. Odpowiednie wiersze są podświetlone w tabeli. Używaj odrzuconego tekstu tylko w wierszach, które akceptujesz.",
+      "line": "Wiersz",
+      "noRejectedText": "Dla tego wiersza nie zapisano odrzuconego tekstu dostawcy.",
+      "reasons": {
+        "echo": "Dostawca zwrócił tekst źródłowy bez zmian (echo).",
+        "empty": "Dostawca zwrócił puste tłumaczenie.",
+        "encoding": "Przetłumaczony tekst wyglądał na zniekształcony (kontrola kodowania).",
+        "generic": "Kontrola językowa odrzuciła to tłumaczenie.",
+        "invalid": "Przetłumaczony tekst nie przeszedł kontroli formatu lub struktury.",
+        "wrongLanguage": "Przetłumaczony tekst nie pasuje do języka docelowego."
+      },
+      "rejected": "Odrzucony przez kontrolę językową",
+      "selected": "Wybrano",
+      "title": "Dostępny jest odrzucony tekst tłumaczenia",
+      "useRejected": "Użyj odrzuconego tekstu"
+    },
     "errors": {
       "saveFailed": "Nie udało się zapisać edycji.",
       "acceptFailed": "Nie udało się zaakceptować tłumaczenia."
@@ -261,13 +279,18 @@
     "noTranslationsNeeded": "Brak potrzeby tłumaczeń"
   },
   "translations": {
+    "blockedStateAll": "Wszystkie stany",
+    "lastEvaluated": "Ostatnia ocena",
     "lastSubtitleCheck": "Ostatnie sprawdzenie",
     "loadBlockedMediaError": "Nie udało się załadować zablokowanych mediów.",
     "noBlockedMedia": "Brak zablokowanych pozycji medialnych.",
     "ocrIssueSummary": "Problem",
+    "ocrMinimumScore": "Minimalny wynik",
     "ocrQualityScore": "Wynik jakości",
     "ocrRetryQueued": "OCR w kolejce",
     "recheck": "Sprawdź ponownie",
+    "recheckError": "Ponowne sprawdzenie nie powiodło się.",
+    "recheckQueued": "Zażądano ponownego sprawdzenia",
     "retryOcr": "Ponów OCR",
     "streamIndex": "Strumień",
     "tabBlocked": "Zablokowane media",

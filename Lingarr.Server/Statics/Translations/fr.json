@@ -135,6 +135,24 @@
     "season": "Saison",
     "episodes": "épisodes",
     "nextMissing": "Manquant suivant",
+    "failedCues": {
+      "appliedHint": "Ce texte est en attente pour cette ligne. Enregistre les modifications ou accepte la traduction pour l'utiliser.",
+      "hint": "Le contrôle linguistique a rejeté le texte du fournisseur ci-dessous. Les lignes correspondantes sont surlignées dans le tableau. N'utilise le texte rejeté que pour les lignes que tu approuves.",
+      "line": "Ligne",
+      "noRejectedText": "Aucun texte du fournisseur rejeté n'a été enregistré pour cette ligne.",
+      "reasons": {
+        "echo": "Le fournisseur a renvoyé le texte source inchangé (écho).",
+        "empty": "Le fournisseur a renvoyé une traduction vide.",
+        "encoding": "Le texte traduit semblait être du texte corrompu (contrôle d'encodage).",
+        "generic": "Le contrôle linguistique a rejeté cette traduction.",
+        "invalid": "Le texte traduit a échoué au contrôle de format ou de structure.",
+        "wrongLanguage": "Le texte traduit ne correspond pas à la langue cible."
+      },
+      "rejected": "Rejeté par le contrôle linguistique",
+      "selected": "Sélectionné",
+      "title": "Un texte de traduction rejeté est disponible",
+      "useRejected": "Utiliser le texte rejeté"
+    },
     "errors": {
       "saveFailed": "Échec de l'enregistrement des modifications.",
       "acceptFailed": "Échec de l'acceptation de la traduction."
@@ -261,13 +279,18 @@
     "noTranslationsNeeded": "Aucune traduction nécessaire"
   },
   "translations": {
+    "blockedStateAll": "Tous les états",
+    "lastEvaluated": "Dernière évaluation",
     "lastSubtitleCheck": "Dernière vérification",
     "loadBlockedMediaError": "Échec du chargement des médias bloqués.",
     "noBlockedMedia": "Aucun média bloqué.",
     "ocrIssueSummary": "Problème",
+    "ocrMinimumScore": "Score minimum",
     "ocrQualityScore": "Score de qualité",
     "ocrRetryQueued": "OCR mis en file",
     "recheck": "Re-vérifier",
+    "recheckError": "La nouvelle vérification a échoué.",
+    "recheckQueued": "Nouvelle vérification demandée",
     "retryOcr": "Réessayer l'OCR",
     "streamIndex": "Flux",
     "tabBlocked": "Médias bloqués",

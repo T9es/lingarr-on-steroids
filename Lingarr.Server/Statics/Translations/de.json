@@ -135,6 +135,24 @@
     "season": "Staffel",
     "episodes": "Episoden",
     "nextMissing": "Nächste fehlende",
+    "failedCues": {
+      "appliedHint": "Dieser Text ist für diese Zeile vorgemerkt. Speichere die Bearbeitungen oder akzeptiere die Übersetzung, um ihn zu verwenden.",
+      "hint": "Die Sprachprüfung hat den untenstehenden Anbietertext abgelehnt. Die passenden Zeilen sind in der Tabelle markiert. Verwende abgelehnten Text nur für Zeilen, die du genehmigst.",
+      "line": "Zeile",
+      "noRejectedText": "Für diese Zeile wurde kein abgelehnter Anbietertext gespeichert.",
+      "reasons": {
+        "echo": "Der Anbieter hat den Quelltext unverändert zurückgegeben (Echo).",
+        "empty": "Der Anbieter hat eine leere Übersetzung zurückgegeben.",
+        "encoding": "Der übersetzte Text wirkte wie fehlerhafter Text (Kodierungsprüfung).",
+        "generic": "Die Sprachprüfung hat diese Übersetzung abgelehnt.",
+        "invalid": "Der übersetzte Text hat die Format- oder Strukturprüfung nicht bestanden.",
+        "wrongLanguage": "Der übersetzte Text entspricht nicht der Zielsprache."
+      },
+      "rejected": "Von der Sprachprüfung abgelehnt",
+      "selected": "Ausgewählt",
+      "title": "Abgelehnter Übersetzungstext ist verfügbar",
+      "useRejected": "Abgelehnten Text verwenden"
+    },
     "errors": {
       "saveFailed": "Fehler beim Speichern der Änderungen.",
       "acceptFailed": "Fehler beim Akzeptieren der Übersetzung."
@@ -261,13 +279,18 @@
     "noTranslationsNeeded": "Keine Übersetzungen erforderlich"
   },
   "translations": {
+    "blockedStateAll": "Alle Status",
+    "lastEvaluated": "Zuletzt ausgewertet",
     "lastSubtitleCheck": "Letzte Prüfung",
     "loadBlockedMediaError": "Blockierte Medien konnten nicht geladen werden.",
     "noBlockedMedia": "Keine blockierten Medien.",
     "ocrIssueSummary": "Problem",
+    "ocrMinimumScore": "Mindestwert",
     "ocrQualityScore": "Qualitätswert",
     "ocrRetryQueued": "OCR eingereiht",
     "recheck": "Erneut prüfen",
+    "recheckError": "Erneute Prüfung fehlgeschlagen.",
+    "recheckQueued": "Erneute Prüfung angefordert",
     "retryOcr": "OCR erneut versuchen",
     "streamIndex": "Stream",
     "tabBlocked": "Blockierte Medien",

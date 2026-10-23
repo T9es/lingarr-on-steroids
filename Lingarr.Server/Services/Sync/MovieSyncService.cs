@@ -96,27 +96,54 @@ public class MovieSyncService : IMovieSyncService
     /// <inheritdoc />
     public async Task RemoveNonExistentMovies(IEnumerable<int> existingRadarrIds, string instanceId)
     {
-        var moviesToRemove = await _dbContext.Movies
+        var missingMovies = await _dbContext.Movies
             .Include(m => m.Images)
             .Include(m => m.EmbeddedSubtitles)
             .Where(movie => movie.SourceInstanceId == instanceId)
             .Where(movie => !existingRadarrIds.Contains(movie.RadarrId))
             .ToListAsync();
 
-        if (moviesToRemove.Any())
+        if (missingMovies.Count == 0)
         {
-            _logger.LogInformation("Removing {Count} movies that no longer exist in Radarr instance '{InstanceId}'", 
-                moviesToRemove.Count, instanceId);
-
-            // Bulk remove all images, embedded subtitles and movies
-            var imagesToRemove = moviesToRemove.SelectMany(m => m.Images).ToList();
-            var embeddedSubtitlesToRemove = moviesToRemove.SelectMany(m => m.EmbeddedSubtitles).ToList();
-            _dbContext.Images.RemoveRange(imagesToRemove);
-            _dbContext.EmbeddedSubtitles.RemoveRange(embeddedSubtitlesToRemove);
-            _dbContext.Movies.RemoveRange(moviesToRemove);
-
-            await _dbContext.SaveChangesAsync();
+            return;
         }
+
+        var utcNow = DateTime.UtcNow;
+        var newlyMissing = 0;
+        var keptVisible = 0;
+
+        foreach (var movie in missingMovies)
+        {
+            var isPruneEligible = await MissingMediaPrunePolicy.IsEligibleForMissingTrackingAsync(
+                _dbContext,
+                movie);
+            if (isPruneEligible)
+            {
+                if (movie.MissingSince == null)
+                {
+                    movie.MissingSince = utcNow;
+                    newlyMissing++;
+                }
+
+                continue;
+            }
+
+            if (movie.MissingSince != null)
+            {
+                // The row gained history or per-item settings, so it must stay visible.
+                movie.MissingSince = null;
+                keptVisible++;
+            }
+        }
+
+        await _dbContext.SaveChangesAsync();
+
+        _logger.LogInformation(
+            "Marked {NewlyMissing} of {Count} movies missing from Radarr instance '{InstanceId}' for later pruning; {KeptVisible} kept visible because they carry history or per-item settings.",
+            newlyMissing,
+            missingMovies.Count,
+            instanceId,
+            keptVisible);
     }
 
     /// <summary>

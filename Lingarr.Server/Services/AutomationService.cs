@@ -79,6 +79,17 @@ public class AutomationService : IAutomationService
                 forceStateRefresh);
         }
 
+        if (IsMissingMedia(media, mediaType))
+        {
+            _logger.LogDebug(
+                "Automation trigger '{TriggerSource}' skipped missing {MediaType} {MediaId} ({Title}); waiting for the media to return or be pruned",
+                triggerSource,
+                mediaType,
+                media.Id,
+                media.Title);
+            return 0;
+        }
+
         var settings = await _settingService.GetSettings([
             SettingKeys.Automation.AutomationEnabled,
             SettingKeys.Automation.MovieAgeThreshold,
@@ -283,6 +294,16 @@ public class AutomationService : IAutomationService
 
         await _customMediaStateService.UpdateStateAsync(item);
         return 0;
+    }
+
+    private static bool IsMissingMedia(IMedia media, MediaType mediaType)
+    {
+        return mediaType switch
+        {
+            MediaType.Movie when media is Movie movie => movie.MissingSince.HasValue,
+            MediaType.Episode when media is Episode episode => episode.MissingSince.HasValue,
+            _ => false
+        };
     }
 
     private async Task<IMedia?> LoadMediaAsync(int mediaId, MediaType mediaType)

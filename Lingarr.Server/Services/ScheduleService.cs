@@ -31,6 +31,7 @@ public class ScheduleService : IScheduleService
             ["UploadWorkspaceCleanupJob"] = new("schedule.jobDisplay.uploadCleanup", SettingKeys.Maintenance.UploadCleanupEnabled, SettingKeys.Maintenance.UploadCleanupSchedule, "0 * * * *", true),
             ["StatisticsJob"] = new("schedule.jobDisplay.statistics", SettingKeys.Maintenance.StatisticsEnabled, SettingKeys.Maintenance.StatisticsSchedule, "0 0 * * *", true),
             ["RetryFailedRequestsJob"] = new("schedule.jobDisplay.retryFailed", SettingKeys.Maintenance.RetryFailedEnabled, SettingKeys.Maintenance.RetryFailedSchedule, "0 22 * * *", true),
+            ["SubtitleLanguageContradictionJob"] = new("schedule.jobDisplay.subtitleLanguageCheck", SettingKeys.Maintenance.SubtitleLanguageCheckEnabled, SettingKeys.Maintenance.SubtitleLanguageCheckSchedule, "0 3 * * *", true),
             ["UnknownLanguageDetectionJob"] = new("schedule.jobDisplay.languageDetection", SettingKeys.SubtitleExtraction.DetectUnknownLanguages, SettingKeys.SubtitleExtraction.DetectUnknownLanguagesSchedule, null, true)
         };
 
@@ -273,6 +274,14 @@ public class ScheduleService : IScheduleService
             RecurringJob.RemoveIfExists("CleanupJob");
         }
 
+        // Missing media pruning runs daily. The prune_missing_media_days setting controls
+        // the grace window and 0 disables deletion inside the job.
+        RecurringJob.AddOrUpdate<PruneMissingMediaJob>(
+            "PruneMissingMediaJob",
+            job => job.Execute(),
+            "0 3 * * *",
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         var (uploadEnabled, uploadSchedule) = await IsJobEnabled(
             SettingKeys.Maintenance.UploadCleanupEnabled,
             SettingKeys.Maintenance.UploadCleanupSchedule,
@@ -329,6 +338,25 @@ public class ScheduleService : IScheduleService
         {
             RecurringJob.RemoveIfExists("RetryFailedRequestsJob");
         }
+
+        var (languageCheckEnabled, languageCheckSchedule) = await IsJobEnabled(
+            SettingKeys.Maintenance.SubtitleLanguageCheckEnabled,
+            SettingKeys.Maintenance.SubtitleLanguageCheckSchedule,
+            "0 3 * * *",
+            settingService);
+
+        if (languageCheckEnabled)
+        {
+            RecurringJob.AddOrUpdate<SubtitleLanguageContradictionJob>(
+                "SubtitleLanguageContradictionJob",
+                job => job.Execute(),
+                languageCheckSchedule!,
+                new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+        }
+        else
+        {
+            RecurringJob.RemoveIfExists("SubtitleLanguageContradictionJob");
+        }
     }
 
     /// <summary>
@@ -347,7 +375,10 @@ public class ScheduleService : IScheduleService
             [SettingKeys.Maintenance.CleanupEnabled] = "true",
             [SettingKeys.Maintenance.UploadCleanupEnabled] = "true",
             [SettingKeys.Maintenance.StatisticsEnabled] = "true",
-            [SettingKeys.Maintenance.RetryFailedEnabled] = "true"
+            [SettingKeys.Maintenance.RetryFailedEnabled] = "true",
+            [SettingKeys.Maintenance.SubtitleLanguageCheckEnabled] = "true",
+            [SettingKeys.Maintenance.SubtitleLanguageCheckSchedule] = "0 3 * * *",
+            [SettingKeys.Maintenance.SubtitleLanguageCheckMaxItems] = "25"
         };
 
         var settings = await settingService.GetSettings(defaults.Keys);

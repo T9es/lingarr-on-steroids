@@ -1,4 +1,4 @@
-﻿<template>
+<template>
     <PageLayout>
         <div v-if="settingsCompleted === 'true'" class="w-full">
             <div class="bg-tertiary flex flex-wrap items-center justify-between gap-2 p-4">
@@ -486,6 +486,7 @@ import {
     ISubtitle,
     MEDIA_TYPE,
     SETTINGS,
+    normalizeTranslationState,
     TRANSLATION_STATE,
     IInstance
 } from '@/ts'
@@ -596,7 +597,7 @@ const isGroupExpanded = (groupKey: string): boolean => {
 }
 
 const getGroupStateSummary = (movies: IMovie[]): string => {
-    const states = movies.map((m) => m.translationState)
+    const states = movies.map((m) => normalizeTranslationState(m.translationState))
     const translated = states.filter((s) => s === TRANSLATION_STATE.COMPLETE).length
     const pending = states.filter((s) => s === TRANSLATION_STATE.PENDING).length
     const failed = states.filter((s) => s === TRANSLATION_STATE.FAILED).length

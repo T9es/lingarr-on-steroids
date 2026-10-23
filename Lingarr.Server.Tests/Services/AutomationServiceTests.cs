@@ -5,6 +5,7 @@ using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
+using Lingarr.Core.Interfaces;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Services;
 using Microsoft.EntityFrameworkCore;
@@ -364,6 +365,75 @@ public class AutomationServiceTests
                 It.IsAny<CustomMediaItem>(),
                 It.IsAny<bool>(),
                 It.IsAny<bool>(),
+                It.IsAny<bool>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task ProcessLoadedMediaForAutomationAsync_WithMissingMovie_SkipsWithoutStateRefresh()
+    {
+        var options = new DbContextOptionsBuilder<LingarrDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
+            .Options;
+
+        await using var dbContext = new LingarrDbContext(options);
+        var mediaSubtitleProcessorMock = new Mock<IMediaSubtitleProcessor>();
+        var customMediaSubtitleProcessorMock = new Mock<ICustomMediaSubtitleProcessor>();
+        var settingServiceMock = new Mock<ISettingService>();
+        var mediaStateServiceMock = new Mock<IMediaStateService>();
+        var customMediaStateServiceMock = new Mock<ICustomMediaStateService>();
+
+        settingServiceMock
+            .Setup(s => s.GetSettings(It.IsAny<IEnumerable<string>>()))
+            .ReturnsAsync(new Dictionary<string, string>
+            {
+                [SettingKeys.Automation.AutomationEnabled] = "true",
+                [SettingKeys.Automation.MovieAgeThreshold] = "0",
+                [SettingKeys.Automation.ShowAgeThreshold] = "0"
+            });
+
+        var service = new AutomationService(
+            dbContext,
+            mediaSubtitleProcessorMock.Object,
+            customMediaSubtitleProcessorMock.Object,
+            settingServiceMock.Object,
+            mediaStateServiceMock.Object,
+            customMediaStateServiceMock.Object,
+            NullLogger<AutomationService>.Instance);
+
+        var movie = new Movie
+        {
+            Id = 90,
+            RadarrId = 90,
+            Title = "Missing Movie",
+            Path = "/movies/missing",
+            FileName = "missing.mkv",
+            DateAdded = DateTime.UtcNow.AddDays(-10),
+            TranslationState = TranslationState.Pending,
+            StateSettingsVersion = 1,
+            MissingSince = DateTime.UtcNow.AddDays(-2)
+        };
+
+        var queued = await service.ProcessLoadedMediaForAutomationAsync(
+            movie,
+            MediaType.Movie,
+            "unit_test",
+            updateRotationTimestamp: true,
+            forceStateRefresh: true);
+
+        Assert.Equal(0, queued);
+        mediaStateServiceMock.Verify(
+            s => s.UpdateStateAsync(It.IsAny<Movie>(), It.IsAny<MediaType>(), It.IsAny<bool>()),
+            Times.Never);
+        mediaSubtitleProcessorMock.Verify(
+            s => s.ProcessMediaForceAsync(
+                It.IsAny<IMedia>(),
+                It.IsAny<MediaType>(),
+                It.IsAny<bool>(),
+                It.IsAny<bool>(),
+                It.IsAny<bool>(),
+                It.IsAny<bool>(),
+                It.IsAny<int?>(),
                 It.IsAny<bool>()),
             Times.Never);
     }

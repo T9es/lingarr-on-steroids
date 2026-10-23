@@ -8,8 +8,8 @@
             class="h-3 w-3"
             :class="{
                 'animate-spin':
-                    state === TRANSLATION_STATE.IN_PROGRESS ||
-                    state === TRANSLATION_STATE.OCR_PENDING
+                    normalizedState === TRANSLATION_STATE.IN_PROGRESS ||
+                    normalizedState === TRANSLATION_STATE.OCR_PENDING
             }" />
         <span v-if="showLabel">{{ label }}</span>
     </span>
@@ -17,7 +17,11 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { TRANSLATION_STATE, TranslationStateType } from '@/ts'
+import {
+    normalizeTranslationState,
+    TRANSLATION_STATE,
+    TranslationStateValue
+} from '@/ts'
 import { useI18n } from '@/plugins/i18n'
 import CheckMarkCicleIcon from '@/components/icons/CheckMarkCicleIcon.vue'
 import LoaderCircleIcon from '@/components/icons/LoaderCircleIcon.vue'
@@ -31,7 +35,7 @@ const { translate } = useI18n()
 
 const props = withDefaults(
     defineProps<{
-        state: TranslationStateType
+        state: TranslationStateValue
         showLabel?: boolean
     }>(),
     {
@@ -39,8 +43,14 @@ const props = withDefaults(
     }
 )
 
+/**
+ * The API serializes the enum as its name while local stores keep numeric
+ * values; normalize so the badge works for both.
+ */
+const normalizedState = computed(() => normalizeTranslationState(props.state))
+
 const badgeClasses = computed(() => {
-    switch (props.state) {
+    switch (normalizedState.value) {
         case TRANSLATION_STATE.COMPLETE:
             return 'bg-green-900/50 text-green-300 border border-green-500/50'
         case TRANSLATION_STATE.IN_PROGRESS:
@@ -68,7 +78,7 @@ const badgeClasses = computed(() => {
 })
 
 const iconComponent = computed(() => {
-    switch (props.state) {
+    switch (normalizedState.value) {
         case TRANSLATION_STATE.COMPLETE:
             return CheckMarkCicleIcon
         case TRANSLATION_STATE.IN_PROGRESS:
@@ -96,7 +106,7 @@ const iconComponent = computed(() => {
 })
 
 const label = computed(() => {
-    switch (props.state) {
+    switch (normalizedState.value) {
         case TRANSLATION_STATE.COMPLETE:
             return translate('translationState.complete')
         case TRANSLATION_STATE.IN_PROGRESS:
@@ -124,7 +134,7 @@ const label = computed(() => {
 })
 
 const tooltip = computed(() => {
-    switch (props.state) {
+    switch (normalizedState.value) {
         case TRANSLATION_STATE.COMPLETE:
             return translate('translationState.tooltipComplete')
         case TRANSLATION_STATE.IN_PROGRESS:

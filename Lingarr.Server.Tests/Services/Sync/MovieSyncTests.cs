@@ -87,6 +87,135 @@ public class MovieSyncTests
             Times.Never);
     }
 
+    [Fact]
+    public async Task SyncMovie_WhenEmptyMovieIsMissing_StampsMissingSinceOnce()
+    {
+        await using var context = BuildContext();
+        var movie = CreateExistingMovie(43);
+        context.Movies.Add(movie);
+        await context.SaveChangesAsync();
+
+        var mediaStateServiceMock = new Mock<IMediaStateService>();
+        mediaStateServiceMock
+            .Setup(s => s.GetSettingsVersionAsync())
+            .ReturnsAsync(1);
+        var service = CreateService(context, mediaStateServiceMock, new Mock<ISubtitleExtractionService>());
+
+        await service.SyncMovie(CreateRadarrMovie(43, hasFile: false), "default");
+        await context.SaveChangesAsync();
+
+        var firstObserved = movie.MissingSince;
+        Assert.NotNull(firstObserved);
+
+        await service.SyncMovie(CreateRadarrMovie(43, hasFile: false), "default");
+        await context.SaveChangesAsync();
+
+        Assert.Equal(firstObserved, movie.MissingSince);
+    }
+
+    [Fact]
+    public async Task SyncMovie_WhenFileReturns_ClearsMissingSince()
+    {
+        await using var context = BuildContext();
+        var movie = CreateExistingMovie(44);
+        movie.MissingSince = new DateTime(2026, 10, 1, 8, 0, 0, DateTimeKind.Utc);
+        context.Movies.Add(movie);
+        await context.SaveChangesAsync();
+
+        var mediaStateServiceMock = new Mock<IMediaStateService>();
+        mediaStateServiceMock
+            .Setup(s => s.GetSettingsVersionAsync())
+            .ReturnsAsync(1);
+        var service = CreateService(context, mediaStateServiceMock, new Mock<ISubtitleExtractionService>());
+
+        await service.SyncMovie(CreateRadarrMovie(44, hasFile: true), "default");
+        await context.SaveChangesAsync();
+
+        Assert.Null(movie.MissingSince);
+    }
+
+    [Fact]
+    public async Task SyncMovie_WhenMissingMovieHasTranslationHistory_DoesNotStampMissingSince()
+    {
+        await using var context = BuildContext();
+        var movie = CreateExistingMovie(45);
+        context.Movies.Add(movie);
+        await context.SaveChangesAsync();
+        context.TranslationRequests.Add(new TranslationRequest
+        {
+            MediaId = movie.Id,
+            MediaType = MediaType.Movie,
+            WorkloadKind = TranslationWorkloadKind.Library,
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            Status = TranslationStatus.Completed
+        });
+        await context.SaveChangesAsync();
+
+        var mediaStateServiceMock = new Mock<IMediaStateService>();
+        mediaStateServiceMock
+            .Setup(s => s.GetSettingsVersionAsync())
+            .ReturnsAsync(1);
+        var service = CreateService(context, mediaStateServiceMock, new Mock<ISubtitleExtractionService>());
+
+        await service.SyncMovie(CreateRadarrMovie(45, hasFile: false), "default");
+        await context.SaveChangesAsync();
+
+        Assert.Null(movie.MissingSince);
+    }
+
+    [Fact]
+    public async Task SyncMovie_WhenMissingMovieIsPrioritized_DoesNotStampMissingSince()
+    {
+        await using var context = BuildContext();
+        var movie = CreateExistingMovie(46);
+        movie.IsPriority = true;
+        context.Movies.Add(movie);
+        await context.SaveChangesAsync();
+
+        var mediaStateServiceMock = new Mock<IMediaStateService>();
+        mediaStateServiceMock
+            .Setup(s => s.GetSettingsVersionAsync())
+            .ReturnsAsync(1);
+        var service = CreateService(context, mediaStateServiceMock, new Mock<ISubtitleExtractionService>());
+
+        await service.SyncMovie(CreateRadarrMovie(46, hasFile: false), "default");
+        await context.SaveChangesAsync();
+
+        Assert.Null(movie.MissingSince);
+    }
+
+    private static Movie CreateExistingMovie(int radarrId)
+    {
+        return new Movie
+        {
+            RadarrId = radarrId,
+            Title = $"Movie {radarrId}",
+            FileName = $"movie-{radarrId}",
+            Path = $"/media/filmy/Movie {radarrId}",
+            DateAdded = DateTime.UtcNow.AddDays(-10),
+            SourceInstanceId = "default",
+            TranslationState = TranslationState.AwaitingSource
+        };
+    }
+
+    private static RadarrMovie CreateRadarrMovie(int radarrId, bool hasFile)
+    {
+        return new RadarrMovie
+        {
+            Id = radarrId,
+            Title = $"Movie {radarrId}",
+            Path = $"/media/filmy/Movie {radarrId} (2024) {{tmdb-{radarrId}}}",
+            RootFolderPath = "/media/filmy",
+            Added = DateTime.UtcNow.AddDays(-10).ToString("O"),
+            HasFile = hasFile,
+            MovieFile = hasFile
+                ? new RadarrMovieFile { Path = $"/media/filmy/Movie {radarrId}/movie-{radarrId}.mkv" }
+                : new RadarrMovieFile()
+        };
+    }
+
     private static MovieSync CreateService(
         LingarrDbContext context,
         Mock<IMediaStateService> mediaStateServiceMock,

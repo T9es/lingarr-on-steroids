@@ -135,6 +135,24 @@
     "season": "Seizoen",
     "episodes": "afleveringen",
     "nextMissing": "Volgende ontbrekende",
+    "failedCues": {
+      "appliedHint": "Deze tekst staat klaar voor deze regel. Sla bewerkingen op of accepteer de vertaling om hem te gebruiken.",
+      "hint": "De taalcontrole heeft de onderstaande providertekst afgekeurd. De bijbehorende regels zijn in de tabel gemarkeerd. Gebruik afgekeurde tekst alleen voor de regels die je goedkeurt.",
+      "line": "Regel",
+      "noRejectedText": "Voor deze regel is geen afgekeurde providertekst vastgelegd.",
+      "reasons": {
+        "echo": "De provider heeft de brontekst ongewijzigd teruggegeven (echo).",
+        "empty": "De provider heeft een lege vertaling teruggegeven.",
+        "encoding": "De vertaalde tekst leek op onleesbare tekst (coderingscontrole).",
+        "generic": "De taalcontrole heeft deze vertaling afgekeurd.",
+        "invalid": "De vertaalde tekst is niet door de opmaak- of structuurcontrole gekomen.",
+        "wrongLanguage": "De vertaalde tekst komt niet overeen met de doeltaal."
+      },
+      "rejected": "Afgekeurd door de taalcontrole",
+      "selected": "Geselecteerd",
+      "title": "Afgekeurde vertalingstekst is beschikbaar",
+      "useRejected": "Afgekeurde tekst gebruiken"
+    },
     "errors": {
       "saveFailed": "Fout bij het opslaan van bewerkingen.",
       "acceptFailed": "Fout bij het accepteren van de vertaling."
@@ -261,13 +279,18 @@
     "noTranslationsNeeded": "Geen vertalingen nodig"
   },
   "translations": {
+    "blockedStateAll": "Alle statussen",
+    "lastEvaluated": "Laatst geëvalueerd",
     "lastSubtitleCheck": "Laatste controle",
     "loadBlockedMediaError": "Geblokkeerde media laden is mislukt.",
     "noBlockedMedia": "Geen geblokkeerde media-items.",
     "ocrIssueSummary": "Probleem",
+    "ocrMinimumScore": "Minimale score",
     "ocrQualityScore": "Kwaliteitsscore",
     "ocrRetryQueued": "OCR in wachtrij",
     "recheck": "Opnieuw controleren",
+    "recheckError": "Opnieuw controleren is mislukt.",
+    "recheckQueued": "Opnieuw controleren aangevraagd",
     "retryOcr": "OCR opnieuw proberen",
     "streamIndex": "Stream",
     "tabBlocked": "Geblokkeerde media",

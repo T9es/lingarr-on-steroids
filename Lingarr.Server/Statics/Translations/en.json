@@ -135,6 +135,24 @@
     "season": "Season",
     "episodes": "episodes",
     "nextMissing": "Next Missing",
+    "failedCues": {
+      "appliedHint": "This text is queued for this line. Save edits or accept the translation to use it.",
+      "hint": "The language check rejected the provider text below. The matching lines are highlighted in the table. Use rejected text only for the lines you approve.",
+      "line": "Line",
+      "noRejectedText": "No rejected provider text was recorded for this line.",
+      "reasons": {
+        "echo": "The provider returned the source text unchanged (echo).",
+        "empty": "The provider returned an empty translation.",
+        "encoding": "The translated text looked like garbled text (encoding check).",
+        "generic": "The language check rejected this translation.",
+        "invalid": "The translated text failed a format or structure check.",
+        "wrongLanguage": "The translated text does not match the target language."
+      },
+      "rejected": "Rejected by the language check",
+      "selected": "Selected",
+      "title": "Rejected translation text is available",
+      "useRejected": "Use rejected text"
+    },
     "errors": {
       "saveFailed": "Failed to save edits.",
       "acceptFailed": "Failed to accept translation."
@@ -261,13 +279,18 @@
     "noTranslationsNeeded": "No translations needed"
   },
   "translations": {
+    "blockedStateAll": "All states",
+    "lastEvaluated": "Last evaluated",
     "lastSubtitleCheck": "Last check",
     "loadBlockedMediaError": "Failed to load blocked media.",
     "noBlockedMedia": "No blocked media items.",
     "ocrIssueSummary": "Issue",
+    "ocrMinimumScore": "Minimum score",
     "ocrQualityScore": "Quality score",
     "ocrRetryQueued": "OCR queued",
     "recheck": "Re-check",
+    "recheckError": "Re-check failed.",
+    "recheckQueued": "Re-check requested",
     "retryOcr": "Retry OCR",
     "streamIndex": "Stream",
     "tabBlocked": "Blocked media",

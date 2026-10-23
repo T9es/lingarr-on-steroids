@@ -135,6 +135,24 @@
     "season": "季",
     "episodes": "集",
     "nextMissing": "下一个缺失",
+    "failedCues": {
+      "appliedHint": "该文本已为这一行暂存。保存编辑或接受翻译后即可使用。",
+      "hint": "语言检查拒绝了下方提供商返回的文本。对应的行已在表格中高亮显示。请仅对你认可的行使用被拒绝的文本。",
+      "line": "行",
+      "noRejectedText": "此行没有记录被拒绝的提供商文本。",
+      "reasons": {
+        "echo": "提供商原样返回了源文本（回声）。",
+        "empty": "提供商返回了空翻译。",
+        "encoding": "翻译文本看起来像是乱码（编码检查）。",
+        "generic": "语言检查拒绝了此翻译。",
+        "invalid": "翻译文本未通过格式或结构检查。",
+        "wrongLanguage": "翻译文本与目标语言不符。"
+      },
+      "rejected": "被语言检查拒绝",
+      "selected": "已选择",
+      "title": "有可用的被拒绝翻译文本",
+      "useRejected": "使用被拒绝的文本"
+    },
     "errors": {
       "saveFailed": "保存编辑失败。",
       "acceptFailed": "接受翻译失败。"
@@ -261,13 +279,18 @@
     "noTranslationsNeeded": "无需翻译"
   },
   "translations": {
+    "blockedStateAll": "全部状态",
+    "lastEvaluated": "最近评估",
     "lastSubtitleCheck": "上次检查",
     "loadBlockedMediaError": "加载被阻止的媒体失败。",
     "noBlockedMedia": "没有被阻止的媒体项目。",
     "ocrIssueSummary": "问题",
+    "ocrMinimumScore": "最低分数",
     "ocrQualityScore": "质量评分",
     "ocrRetryQueued": "OCR 已排队",
     "recheck": "重新检查",
+    "recheckError": "重新检查失败。",
+    "recheckQueued": "已请求重新检查",
     "retryOcr": "重试 OCR",
     "streamIndex": "流",
     "tabBlocked": "被阻止的媒体",

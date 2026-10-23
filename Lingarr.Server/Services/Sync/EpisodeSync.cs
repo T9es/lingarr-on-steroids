@@ -1,4 +1,4 @@
-﻿using Lingarr.Core.Data;
+using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Interfaces.Services;
@@ -130,7 +130,7 @@ public class EpisodeSync : IEpisodeSync
             }
         }
 
-        RemoveNonExistentEpisodes(season, episodes, instanceId);
+        await MarkMissingEpisodesAsync(season, episodes, instanceId);
     }
 
     /// <inheritdoc />
@@ -144,6 +144,14 @@ public class EpisodeSync : IEpisodeSync
     {
         if (!episode.HasFile)
         {
+            var missingEpisode = season.Episodes.FirstOrDefault(
+                seasonEpisode => seasonEpisode.SonarrId == episode.Id &&
+                                 seasonEpisode.SourceInstanceId == instanceId);
+            if (missingEpisode != null)
+            {
+                await ApplyMissingSinceAsync(missingEpisode);
+            }
+
             return null;
         }
 
@@ -241,6 +249,9 @@ public class EpisodeSync : IEpisodeSync
             episodeEntity.MediaHash = string.Empty;
         }
 
+        // Sonarr reports a file again, so the episode is no longer missing.
+        episodeEntity.MissingSince = null;
+
         var needsIndexing = isNew || fileChanged || episodeEntity.IndexedAt == null;
         
         // Return old values only if file actually changed
@@ -314,19 +325,42 @@ public class EpisodeSync : IEpisodeSync
     }
 
     /// <summary>
-    /// Removes episodes from the season that no longer exist in Sonarr
-    /// Filters by SourceInstanceId to avoid removing episodes from other instances
+    /// Stamps MissingSince for episodes that Sonarr no longer reports a file for, or that
+    /// Sonarr dropped from the season entirely, when the row has no translation history.
+    /// Rows with history stay visible and never get stamped. Filters by SourceInstanceId
+    /// to avoid touching episodes from other instances.
     /// </summary>
-    private static void RemoveNonExistentEpisodes(Season season, List<SonarrEpisode> currentEpisodes, string instanceId)
+    private async Task MarkMissingEpisodesAsync(
+        Season season,
+        List<SonarrEpisode> currentEpisodes,
+        string instanceId)
     {
-        var episodesToRemove = season.Episodes
-            .Where(seasonEpisode => seasonEpisode.SourceInstanceId == instanceId &&
-                                    currentEpisodes.All(episode => episode.Id != seasonEpisode.SonarrId))
-            .ToList();
-
-        foreach (var episodeToRemove in episodesToRemove)
+        foreach (var seasonEpisode in season.Episodes
+                     .Where(episode => episode.SourceInstanceId == instanceId)
+                     .ToList())
         {
-            season.Episodes.Remove(episodeToRemove);
+            var sonarrEpisode = currentEpisodes.FirstOrDefault(
+                episode => episode.Id == seasonEpisode.SonarrId);
+
+            // Present episodes were refreshed above, which clears MissingSince.
+            if (sonarrEpisode?.HasFile == true)
+            {
+                continue;
+            }
+
+            await ApplyMissingSinceAsync(seasonEpisode);
         }
+    }
+
+    private async Task ApplyMissingSinceAsync(Episode episode)
+    {
+        if (!await MissingMediaPrunePolicy.IsEligibleForMissingTrackingAsync(_dbContext, episode))
+        {
+            // The row carries history or per-item settings, so keep it visible.
+            episode.MissingSince = null;
+            return;
+        }
+
+        episode.MissingSince ??= DateTime.UtcNow;
     }
 }

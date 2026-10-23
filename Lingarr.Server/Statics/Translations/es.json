@@ -135,6 +135,24 @@
     "season": "Temporada",
     "episodes": "episodios",
     "nextMissing": "Siguiente faltante",
+    "failedCues": {
+      "appliedHint": "Este texto está en cola para esta línea. Guarda las ediciones o acepta la traducción para usarlo.",
+      "hint": "La comprobación de idioma rechazó el texto del proveedor que aparece abajo. Las líneas correspondientes están resaltadas en la tabla. Usa el texto rechazado solo en las líneas que apruebes.",
+      "line": "Línea",
+      "noRejectedText": "No se registró ningún texto rechazado del proveedor para esta línea.",
+      "reasons": {
+        "echo": "El proveedor devolvió el texto de origen sin cambios (eco).",
+        "empty": "El proveedor devolvió una traducción vacía.",
+        "encoding": "El texto traducido parecía texto corrupto (comprobación de codificación).",
+        "generic": "La comprobación de idioma rechazó esta traducción.",
+        "invalid": "El texto traducido no superó la comprobación de formato o estructura.",
+        "wrongLanguage": "El texto traducido no coincide con el idioma de destino."
+      },
+      "rejected": "Rechazado por la comprobación de idioma",
+      "selected": "Seleccionado",
+      "title": "Hay texto de traducción rechazado disponible",
+      "useRejected": "Usar texto rechazado"
+    },
     "errors": {
       "saveFailed": "Error al guardar los cambios.",
       "acceptFailed": "Error al aceptar la traducción."
@@ -261,13 +279,18 @@
     "noTranslationsNeeded": "Sin traducciones necesarias"
   },
   "translations": {
+    "blockedStateAll": "Todos los estados",
+    "lastEvaluated": "Última evaluación",
     "lastSubtitleCheck": "Última comprobación",
     "loadBlockedMediaError": "Error al cargar los medios bloqueados.",
     "noBlockedMedia": "No hay medios bloqueados.",
     "ocrIssueSummary": "Problema",
+    "ocrMinimumScore": "Puntuación mínima",
     "ocrQualityScore": "Puntuación de calidad",
     "ocrRetryQueued": "OCR en cola",
     "recheck": "Volver a comprobar",
+    "recheckError": "Error al volver a comprobar.",
+    "recheckQueued": "Nueva comprobación solicitada",
     "retryOcr": "Reintentar OCR",
     "streamIndex": "Flujo",
     "tabBlocked": "Medios bloqueados",

@@ -250,12 +250,27 @@ export interface IBlockedMediaItem {
     mediaId: number
     mediaType: 'movie' | 'episode'
     title: string
-    translationState: TranslationStateType
+    translationState: TranslationStateValue
     streamIndex?: number | null
-    ocrStatus?: number | null
+    ocrStatus?: number | string | null
     ocrQualityScore?: number | null
+    ocrMinimumQualityScore?: number | null
+    ocrPassesCurrentThreshold?: boolean
     ocrIssueSummary?: string | null
+    failureMessage?: string | null
     lastSubtitleCheckAt?: string | null
+    lastEvaluatedAt?: string | null
+}
+
+export interface IBlockedMediaPage extends IPagedResult<IBlockedMediaItem> {
+    countsByState: Record<string, number>
+}
+
+export interface IBlockedMediaRecheckResult {
+    mediaId: number
+    mediaType: 'movie' | 'episode'
+    state: TranslationStateValue
+    evaluatedAt: string
 }
 
 export const TRANSLATION_WORKLOAD_KIND = {
@@ -300,3 +315,54 @@ export const TRANSLATION_STATE = {
 } as const
 
 export type TranslationStateType = (typeof TRANSLATION_STATE)[keyof typeof TRANSLATION_STATE]
+
+/**
+ * A translation state value as it can arrive from the API (enum name string by
+ * default JSON serialization), from an older payload (number), or from local
+ * state. Components normalize it through `normalizeTranslationState`.
+ */
+export type TranslationStateValue = TranslationStateType | string | number | null | undefined
+
+const TRANSLATION_STATE_BY_NAME: Record<string, TranslationStateType> = {
+    unknown: TRANSLATION_STATE.UNKNOWN,
+    notapplicable: TRANSLATION_STATE.NOT_APPLICABLE,
+    pending: TRANSLATION_STATE.PENDING,
+    inprogress: TRANSLATION_STATE.IN_PROGRESS,
+    complete: TRANSLATION_STATE.COMPLETE,
+    stale: TRANSLATION_STATE.STALE,
+    nosuitablesubtitles: TRANSLATION_STATE.NO_SUITABLE_SUBTITLES,
+    failed: TRANSLATION_STATE.FAILED,
+    awaitingsource: TRANSLATION_STATE.AWAITING_SOURCE,
+    ocrpending: TRANSLATION_STATE.OCR_PENDING,
+    ocrblocked: TRANSLATION_STATE.OCR_BLOCKED
+}
+
+/**
+ * Normalizes a translation state that may be a numeric enum value or the enum
+ * name string emitted by the backend's JsonStringEnumConverter.
+ */
+export const normalizeTranslationState = (
+    value: TranslationStateValue
+): TranslationStateType => {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return value as TranslationStateType
+    }
+    if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase()
+        if (!normalized) {
+            return TRANSLATION_STATE.UNKNOWN
+        }
+        if (/^\d+$/.test(normalized)) {
+            return Number(normalized) as TranslationStateType
+        }
+        return TRANSLATION_STATE_BY_NAME[normalized] ?? TRANSLATION_STATE.UNKNOWN
+    }
+    return TRANSLATION_STATE.UNKNOWN
+}
+
+export type BlockedMediaStateFilter =
+    | 'all'
+    | 'OcrBlocked'
+    | 'Failed'
+    | 'Stale'
+    | 'AwaitingSource'

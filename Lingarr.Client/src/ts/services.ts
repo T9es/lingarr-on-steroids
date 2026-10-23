@@ -1,6 +1,7 @@
 import {
     DirectoryItem,
-    IBlockedMediaItem,
+    IBlockedMediaPage,
+    IBlockedMediaRecheckResult,
     ICustomMediaItem,
     ICustomSource,
     ICreateUploadBatchRequest,
@@ -69,7 +70,15 @@ export interface IMediaService {
 }
 
 export interface IBlockedMediaService {
-    getBlockedMedia<T = IBlockedMediaItem[]>(limit?: number): Promise<T>
+    getBlockedMedia(params?: {
+        page?: number
+        pageSize?: number
+        state?: string
+    }): Promise<IBlockedMediaPage>
+    recheck(
+        mediaType: 'movie' | 'episode',
+        mediaId: number
+    ): Promise<IBlockedMediaRecheckResult>
 }
 
 export interface ISettingService {

@@ -1,4 +1,4 @@
-﻿using Lingarr.Core.Data;
+using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
 using Lingarr.Server.Interfaces.Services;
@@ -84,6 +84,9 @@ public class MovieSync : IMovieSync
         }
 
         _logger.LogInformation("Syncing movie: {MovieId} with Path: {Path}", movie.Id, movieEntity.Path);
+
+        // Radarr reports a file again, so the movie is no longer missing.
+        movieEntity.MissingSince = null;
 
         if (movie.Images?.Any() == true)
         {
@@ -203,6 +206,20 @@ public class MovieSync : IMovieSync
             _dbContext.EmbeddedSubtitles.RemoveRange(movieEntity.EmbeddedSubtitles);
             movieEntity.EmbeddedSubtitles.Clear();
         }
+
+        // Persist the stale embedded subtitle removal before the eligibility check so rows
+        // from the vanished file are not counted as translation history.
+        if (_dbContext.ChangeTracker.HasChanges())
+        {
+            await _dbContext.SaveChangesAsync();
+        }
+
+        var isPruneEligible = await MissingMediaPrunePolicy.IsEligibleForMissingTrackingAsync(
+            _dbContext,
+            movieEntity);
+        movieEntity.MissingSince = isPruneEligible
+            ? movieEntity.MissingSince ?? DateTime.UtcNow
+            : null;
 
         _logger.LogInformation(
             "Movie '{Title}' (ID: {Id}) has no file in Radarr. Marking existing Lingarr row as awaiting source.",
