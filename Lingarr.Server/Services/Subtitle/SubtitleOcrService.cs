@@ -83,10 +83,7 @@ public class SubtitleOcrService : ISubtitleOcrService
         var validationError = await ValidateCanQueueAsync(context.Subtitle, cancellationToken);
         if (validationError != null)
         {
-            context.Subtitle.OcrStatus = SubtitleOcrStatus.Failed;
-            context.Subtitle.OcrError = validationError;
-            await _dbContext.SaveChangesAsync(cancellationToken);
-            return Fail(SubtitleOcrStatus.Failed, validationError);
+            return await FailAsync(context, validationError, cancellationToken);
         }
 
         var languageResolution = await ResolveOcrLanguageAsync(context.Subtitle, cancellationToken);
@@ -128,8 +125,7 @@ public class SubtitleOcrService : ISubtitleOcrService
         var validationError = await ValidateCanQueueAsync(context.Subtitle, cancellationToken);
         if (validationError != null)
         {
-            var failedSubtitle = await MarkFailedAsync(context, validationError, cancellationToken);
-            return FromSubtitle(failedSubtitle, success: false);
+            return await FailAsync(context, validationError, cancellationToken);
         }
 
         var languageResolution = await ResolveOcrLanguageAsync(context.Subtitle, cancellationToken);
@@ -524,25 +520,44 @@ public class SubtitleOcrService : ISubtitleOcrService
         OcrLanguageResolution resolution,
         CancellationToken cancellationToken)
     {
-        _logger.LogWarning(
-            "OCR blocked for {MediaType} {MediaId} stream {StreamIndex}: {Error}",
-            context.MediaType,
-            context.Media.Id,
-            context.Subtitle.StreamIndex,
-            resolution.Error);
-        var failedSubtitle = await MarkFailedAsync(context, resolution.Error!, cancellationToken);
-        return FromSubtitle(failedSubtitle, success: false);
+        return await FailAsync(context, resolution.Error!, cancellationToken);
     }
 
     private static string UnsupportedOcrLanguageError(string languageCode)
     {
-        return $"OCR language '{languageCode.Trim()}' is not supported: Tesseract traineddata is not installed.";
+        return $"OCR language '{languageCode.Trim()}' is not supported: no Tesseract language mapping is configured for this code.";
     }
 
     private static bool IsUntaggedOcrLanguage(string? languageCode)
     {
         return string.IsNullOrWhiteSpace(languageCode) ||
                string.Equals(languageCode.Trim(), "und", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task<SubtitleOcrResult> FailAsync(
+        OcrMediaContext context,
+        string error,
+        CancellationToken cancellationToken)
+    {
+        if (context.Subtitle.HasUsableOcr())
+        {
+            _logger.LogWarning(
+                "OCR was not run for {MediaType} {MediaId} stream {StreamIndex}: {Error}. Keeping the existing usable OCR result.",
+                context.MediaType,
+                context.Media.Id,
+                context.Subtitle.StreamIndex,
+                error);
+            return FromSubtitle(context.Subtitle, success: true);
+        }
+
+        _logger.LogWarning(
+            "OCR blocked for {MediaType} {MediaId} stream {StreamIndex}: {Error}",
+            context.MediaType,
+            context.Media.Id,
+            context.Subtitle.StreamIndex,
+            error);
+        var failedSubtitle = await MarkFailedAsync(context, error, cancellationToken);
+        return FromSubtitle(failedSubtitle, success: false);
     }
 
     private async Task<EmbeddedSubtitle> MarkFailedAsync(

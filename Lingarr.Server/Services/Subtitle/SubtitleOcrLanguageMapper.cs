@@ -23,8 +23,8 @@ public static class SubtitleOcrLanguageMapper
 
     /// <summary>
     /// Maps a subtitle language code to a Tesseract traineddata language name.
-    /// Returns false for any language without an installed mapping so callers do
-    /// not silently OCR with the wrong traineddata.
+    /// Returns false when no mapper entry exists for the code so callers do not
+    /// silently OCR with the wrong traineddata.
     /// </summary>
     public static bool TryMapToTesseractLanguage(string? languageCode, out string tesseractLanguage)
     {

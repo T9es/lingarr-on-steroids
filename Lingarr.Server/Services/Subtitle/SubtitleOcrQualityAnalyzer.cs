@@ -42,6 +42,7 @@ public static class SubtitleOcrQualityAnalyzer
         var rawTextCueCount = subtitles.Count(subtitle => !string.IsNullOrWhiteSpace(GetRawText(subtitle)));
 
         var emptyCueRatio = cueCount == 0 ? 1 : (double)(cueCount - rawTextCueCount) / cueCount;
+        var hasTranslatableText = meaningfulTexts.Count > 0;
         var corruptCount = meaningfulTexts.Count(SubtitleSemanticClassifier.IsLikelyCorruptText);
         var corruptRatio = meaningfulTexts.Count == 0 ? 0 : (double)corruptCount / meaningfulTexts.Count;
         var health = SubtitleSourceHealthAnalyzer.Analyze(subtitles);
@@ -78,6 +79,15 @@ public static class SubtitleOcrQualityAnalyzer
             issues.Add(health.Reason);
         }
 
+        // Raw-text empty detection treats poison-only cues as readable so SDH tracks are not
+        // penalised. Without this guard a track made only of bracket/music annotations would
+        // clear every ratio check and the sparse-too-healthy allowance, and be accepted.
+        if (!hasTranslatableText && cueCount > 0)
+        {
+            qualityScore -= 25;
+            issues.Add("OCR output contains no translatable text.");
+        }
+
         if (scriptMismatch)
         {
             qualityScore -= CjkScriptMismatchPenalty;
@@ -91,6 +101,7 @@ public static class SubtitleOcrQualityAnalyzer
         }
 
         var accepted = cueCount > 0 &&
+                       hasTranslatableText &&
                        (allowSparse || cueCount >= SubtitleExtractionService.MinimumDialogueEntries) &&
                        emptyCueRatio < MaximumEmptyCueRatio &&
                        corruptRatio < MaximumCorruptCueRatio &&

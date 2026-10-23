@@ -43,6 +43,49 @@ public class SubtitleOcrQualityAnalyzerSdhTests
         Assert.Contains("of cues are empty", result.IssueSummary);
     }
 
+    [Fact]
+    public void Analyze_WithPoisonOnlySparseOutput_Rejects()
+    {
+        var subtitles = new List<SubtitleItem>();
+        for (var index = 0; index < 20; index++)
+        {
+            var annotation = index % 2 == 0 ? "[music playing]" : "(\u266a \u266a)";
+            subtitles.Add(CreateCue(index, annotation, string.Empty));
+        }
+
+        var result = SubtitleOcrQualityAnalyzer.Analyze(
+            subtitles,
+            minQualityScore: 70,
+            allowSparse: true);
+
+        Assert.False(result.Accepted);
+        Assert.Contains("no translatable text", result.IssueSummary);
+    }
+
+    [Fact]
+    public void Analyze_WithSparseSignsAndDialogue_Accepts()
+    {
+        var subtitles = new List<SubtitleItem>();
+        for (var index = 0; index < 10; index++)
+        {
+            var text = $"Readable dialogue line {index}.";
+            subtitles.Add(CreateCue(index, text, text));
+        }
+
+        for (var index = 10; index < 20; index++)
+        {
+            subtitles.Add(CreateCue(index, "[music playing]", string.Empty));
+        }
+
+        var result = SubtitleOcrQualityAnalyzer.Analyze(
+            subtitles,
+            minQualityScore: 70,
+            allowSparse: true);
+
+        Assert.True(result.Accepted);
+        Assert.DoesNotContain("no translatable text", result.IssueSummary);
+    }
+
     private static List<SubtitleItem> BuildSdhSubtitles()
     {
         var subtitles = new List<SubtitleItem>();
