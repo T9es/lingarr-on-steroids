@@ -27,6 +27,47 @@ public static class SubtitleLanguageHelper
     /// </summary>
     public const int ForcedDialogueMinimumEntries = 50;
 
+    /// <summary>
+    /// Algorithm version stored next to a detected language. Stored verdicts from an older
+    /// version are ignored so the language check can be improved without a schema change.
+    /// </summary>
+    public const int CurrentLanguageDetectionVersion = SubtitleLanguageContradictionDetector.DetectionVersion;
+
+    /// <summary>
+    /// Confidence required before a detected language is used for matching and translation.
+    /// Below this threshold the declared container tag keeps winning and the check reason is
+    /// surfaced instead of overriding.
+    /// </summary>
+    public const double MinimumEffectiveLanguageConfidence = 0.90;
+
+    /// <summary>
+    /// Returns the language that should be used for matching and translation: a high
+    /// confidence detected language when it contradicts the container tag, otherwise the
+    /// normalized declared tag. The declared tag itself is never rewritten.
+    /// </summary>
+    public static string? GetEffectiveLanguage(EmbeddedSubtitle subtitle)
+    {
+        if (subtitle.DetectedLanguage is { } detected &&
+            subtitle.DetectedLanguageConfidence is >= MinimumEffectiveLanguageConfidence &&
+            subtitle.LanguageDetectionVersion == CurrentLanguageDetectionVersion &&
+            TryNormalizeKnownLanguageCode(detected, out var detectedCode))
+        {
+            return detectedCode;
+        }
+
+        return TryNormalizeKnownLanguageCode(subtitle.Language, out var declaredCode)
+            ? declaredCode
+            : null;
+    }
+
+    /// <summary>
+    /// Matches the effective language of a subtitle stream against a language code.
+    /// </summary>
+    public static bool LanguageMatchesEffective(EmbeddedSubtitle subtitle, string? language)
+    {
+        return LanguageMatches(GetEffectiveLanguage(subtitle), language);
+    }
+
     private static readonly Regex FileNameLanguageTokenRegex = new(
         @"(?<=^|[.\s_\-\[\]\(\)])([a-z]{2,3}(?:-[a-z]{2,4})?)(?=$|[.\s_\-\[\]\(\)])",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -264,7 +305,7 @@ public static class SubtitleLanguageHelper
     {
         var score = 0;
 
-        if (LanguageMatches(subtitle.Language, preferredLanguage))
+        if (LanguageMatchesEffective(subtitle, preferredLanguage))
         {
             score += 50;
         }
@@ -509,7 +550,7 @@ public static class SubtitleLanguageHelper
             for (var i = 0; i < configuredLanguages.Count; i++)
             {
                 var configuredLanguage = configuredLanguages[i];
-                if (LanguageMatches(candidate.Language, configuredLanguage))
+                if (LanguageMatchesEffective(candidate, configuredLanguage))
                 {
                     var contentScoreAdjustment = contentScoreAdjustmentSelector?.Invoke(candidate) ?? 0;
                     var baseScore = ScoreSubtitleCandidate(candidate, configuredLanguage, contentScoreAdjustment);

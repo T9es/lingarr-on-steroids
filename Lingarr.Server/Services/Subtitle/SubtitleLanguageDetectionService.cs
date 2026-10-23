@@ -130,7 +130,7 @@ public class SubtitleLanguageDetectionService : ISubtitleLanguageDetectionServic
                 return null;
             }
 
-            return Path.Combine(movie.Path, movie.FileName);
+            return MediaFileResolver.Resolve(movie.Path, movie.FileName);
         }
 
         if (subtitle.EpisodeId.HasValue)
@@ -141,7 +141,7 @@ public class SubtitleLanguageDetectionService : ISubtitleLanguageDetectionServic
                 return null;
             }
 
-            return Path.Combine(episode.Path, episode.FileName);
+            return MediaFileResolver.Resolve(episode.Path, episode.FileName);
         }
 
         return null;
@@ -329,6 +329,8 @@ public class SubtitleLanguageDetectionService : ISubtitleLanguageDetectionServic
         var detections = ParseDetectionResponse(response);
 
         var updatedCount = 0;
+        var updatedMovieIds = new HashSet<int>();
+        var updatedEpisodeIds = new HashSet<int>();
         foreach (var (streamIndex, languageCode) in detections)
         {
             var match = batch.Find(b => b.Subtitle.StreamIndex == streamIndex);
@@ -346,6 +348,15 @@ public class SubtitleLanguageDetectionService : ISubtitleLanguageDetectionServic
             }
 
             match.Subtitle.Language = normalized;
+            if (match.Subtitle.MovieId.HasValue)
+            {
+                updatedMovieIds.Add(match.Subtitle.MovieId.Value);
+            }
+            else if (match.Subtitle.EpisodeId.HasValue)
+            {
+                updatedEpisodeIds.Add(match.Subtitle.EpisodeId.Value);
+            }
+
             updatedCount++;
 
             _logger.LogInformation(
@@ -356,9 +367,48 @@ public class SubtitleLanguageDetectionService : ISubtitleLanguageDetectionServic
         if (updatedCount > 0)
         {
             await _dbContext.SaveChangesAsync(ct);
+            await InvalidateStoredMediaStatesAsync(updatedMovieIds, updatedEpisodeIds, ct);
         }
 
         return updatedCount;
+    }
+
+    /// <summary>
+    /// Marks the affected media rows for a state refresh. Tagging a stream changes which
+    /// subtitle the state machine considers usable, and the media row keeps its old state
+    /// until a settings version mismatch makes automation recompute it.
+    /// </summary>
+    private async Task InvalidateStoredMediaStatesAsync(
+        IReadOnlyCollection<int> movieIds,
+        IReadOnlyCollection<int> episodeIds,
+        CancellationToken ct)
+    {
+        if (movieIds.Count == 0 && episodeIds.Count == 0)
+        {
+            return;
+        }
+
+        var movies = movieIds.Count == 0
+            ? new List<Movie>()
+            : await _dbContext.Movies.Where(movie => movieIds.Contains(movie.Id)).ToListAsync(ct);
+        foreach (var movie in movies)
+        {
+            movie.StateSettingsVersion = 0;
+        }
+
+        var episodes = episodeIds.Count == 0
+            ? new List<Episode>()
+            : await _dbContext.Episodes.Where(episode => episodeIds.Contains(episode.Id)).ToListAsync(ct);
+        foreach (var episode in episodes)
+        {
+            episode.StateSettingsVersion = 0;
+        }
+
+        await _dbContext.SaveChangesAsync(ct);
+        _logger.LogInformation(
+            "Invalidated stored translation state for newly tagged streams: {MovieCount} movies, {EpisodeCount} episodes",
+            movies.Count,
+            episodes.Count);
     }
 
     private static string BuildDetectionPrompt(Dictionary<int, string> samples)

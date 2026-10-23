@@ -60,12 +60,42 @@ public class SubtitleExtractionService : ISubtitleExtractionService
     public const string ExtractionMarkerPrefix = "; Lingarr-Extracted:";
     
     /// <summary>
-    /// Minimum number of subtitle entries required for a track to be considered valid.
+    /// Legacy fixed minimum number of subtitle entries required for a track to be considered valid
+    /// when the media duration is unknown. Duration-aware checks should use
+    /// <see cref="GetMinimumDialogueEntries"/> instead.
     /// Tracks below this threshold are likely Signs/Songs, Forced, or otherwise incomplete.
     /// Based on analysis: even "A Quiet Place" (minimal dialogue) has 165 entries.
     /// Signs/Forced tracks typically have 0-30 entries.
     /// </summary>
     public const int MinimumDialogueEntries = 50;
+
+    /// <summary>
+    /// Minimum number of dialogue entries required for short-form content, regardless of duration.
+    /// </summary>
+    private const int MinimumDurationAwareDialogueEntries = 10;
+
+    /// <summary>
+    /// Duration-aware floor for full-dialogue tracks:
+    /// max(10, ceil(2.5 * min(durationMinutes, 40))).
+    /// Short-form content has proportionally fewer cues, so a fixed 50 entry floor rejects
+    /// complete dialogue tracks (for example a 4.5 minute episode with 33 entries needs 12).
+    /// The 40 minute cap keeps long films at 100 entries. Falls back to
+    /// <see cref="MinimumDialogueEntries"/> when the duration is unknown, non-finite, or not positive.
+    /// </summary>
+    public static int GetMinimumDialogueEntries(double? durationSeconds)
+    {
+        if (!durationSeconds.HasValue ||
+            double.IsNaN(durationSeconds.Value) ||
+            double.IsInfinity(durationSeconds.Value) ||
+            durationSeconds.Value <= 0)
+        {
+            return MinimumDialogueEntries;
+        }
+
+        var cappedDurationMinutes = Math.Min(durationSeconds.Value / 60.0, 40.0);
+        var scaledFloor = Math.Ceiling(2.5 * cappedDurationMinutes);
+        return Math.Max(MinimumDurationAwareDialogueEntries, (int)scaledFloor);
+    }
 
     public SubtitleExtractionService(
         ILogger<SubtitleExtractionService> logger,
@@ -1968,7 +1998,12 @@ public class SubtitleExtractionService : ISubtitleExtractionService
                 IsOcrSupported = !sub.IsTextBased &&
                                  (string.Equals(sub.CodecName, "hdmv_pgs_subtitle", StringComparison.OrdinalIgnoreCase) ||
                                   string.Equals(sub.CodecName, "pgssub", StringComparison.OrdinalIgnoreCase)),
-                IsOcrUsable = sub.HasUsableOcr()
+                IsOcrUsable = sub.HasUsableOcr(),
+                DetectedLanguage = sub.DetectedLanguage,
+                DetectedLanguageConfidence = sub.DetectedLanguageConfidence,
+                LanguageDetectionMethod = sub.LanguageDetectionMethod,
+                LanguageDetectionEvidence = sub.LanguageDetectionEvidence,
+                LanguageCheckedAt = sub.LanguageCheckedAt
             });
         }
 

@@ -67,6 +67,7 @@ public class TranslationJob
     private readonly IMkvEmbeddingService _mkvEmbeddingService;
     private readonly ITranslationSiblingSequenceApprovalService? _siblingSequenceApprovalService;
     private readonly IMediaSubtitleProcessor? _mediaSubtitleProcessor;
+    private readonly IMediaDurationProvider? _mediaDurationProvider;
 
     private const string UnsafeSourceFailureMessage =
         "Translation failed before execution because the selected source is obsolete or unsafe.";
@@ -103,7 +104,8 @@ ISubtitleQualityValidatorService? subtitleQualityValidatorService = null,
         ITranslationPromptContextAccessor? translationPromptContextAccessor = null,
         IMkvEmbeddingService? mkvEmbeddingService = null,
         ITranslationSiblingSequenceApprovalService? siblingSequenceApprovalService = null,
-        IMediaSubtitleProcessor? mediaSubtitleProcessor = null)
+        IMediaSubtitleProcessor? mediaSubtitleProcessor = null,
+        IMediaDurationProvider? mediaDurationProvider = null)
     {
         _logger = logger;
         _settings = settings;
@@ -144,6 +146,7 @@ _translationPromptContextAccessor = translationPromptContextAccessor ??
             NullLogger<MkvEmbeddingService>.Instance);
         _siblingSequenceApprovalService = siblingSequenceApprovalService;
         _mediaSubtitleProcessor = mediaSubtitleProcessor;
+        _mediaDurationProvider = mediaDurationProvider;
     }
 
     /// <summary>
@@ -3116,6 +3119,46 @@ Exception? lastException = null;
         await RefreshTranslationStateAsync(translationRequest, cleanupToken);
     }
 
+    /// <summary>
+    /// Resolves the full-dialogue entry floor for the request's media runtime. Returns the
+    /// legacy fixed threshold when the duration cannot be resolved (upload workloads, missing
+    /// media file, ffprobe unavailable) so existing behaviour is preserved.
+    /// </summary>
+    private async Task<int> ResolveMinimumDialogueEntriesAsync(
+        TranslationRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (_mediaDurationProvider == null ||
+            !request.MediaId.HasValue ||
+            request.WorkloadKind != TranslationWorkloadKind.Library ||
+            request.MediaType is not (MediaType.Movie or MediaType.Episode))
+        {
+            return SubtitleExtractionService.MinimumDialogueEntries;
+        }
+
+        try
+        {
+            var mediaPath = await ResolveManagedMediaPathAsync(request, cancellationToken);
+            if (string.IsNullOrWhiteSpace(mediaPath))
+            {
+                return SubtitleExtractionService.MinimumDialogueEntries;
+            }
+
+            var durationSeconds = await _mediaDurationProvider.GetDurationSecondsAsync(
+                mediaPath,
+                cancellationToken);
+            return SubtitleExtractionService.GetMinimumDialogueEntries(durationSeconds);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(
+                ex,
+                "Could not resolve a duration-aware dialogue threshold for request {RequestId}",
+                request.Id);
+            return SubtitleExtractionService.MinimumDialogueEntries;
+        }
+    }
+
     internal async Task<bool> TryCancelObsoleteUnsafeSourceAsync(
         TranslationRequest request,
         EmbeddedSubtitle? selectedSubtitle,
@@ -3126,11 +3169,13 @@ Exception? lastException = null;
         bool allowAutoRecovery = true)
     {
         ownershipToken = ResolveOwnershipToken(request, ownershipToken);
+        var minimumDialogueEntries = await ResolveMinimumDialogueEntriesAsync(request, cancellationToken);
         var reason = GetUnsafeSourceCancellationReason(
             request,
             selectedSubtitle,
             subtitles,
-            settings);
+            settings,
+            minimumDialogueEntries);
 
         if (string.IsNullOrWhiteSpace(reason))
         {
@@ -3347,7 +3392,8 @@ Exception? lastException = null;
         TranslationRequest request,
         EmbeddedSubtitle? selectedSubtitle,
         IReadOnlyList<SubtitleItem> subtitles,
-        IReadOnlyDictionary<string, string> settings)
+        IReadOnlyDictionary<string, string> settings,
+        int minimumDialogueEntries = SubtitleExtractionService.MinimumDialogueEntries)
     {
         var supplementalEnabled = settings.TryGetValue(
                                       SettingKeys.Translation.TranslateSupplementalSubtitles,
@@ -3365,10 +3411,10 @@ Exception? lastException = null;
         }
 
         if (request.SourceSubtitleEntryCount > 0 &&
-            request.SourceSubtitleEntryCount < SubtitleExtractionService.MinimumDialogueEntries &&
+            request.SourceSubtitleEntryCount < minimumDialogueEntries &&
             !(supplementalEnabled && isSupplementalSource))
         {
-            return $"Selected source has only {request.SourceSubtitleEntryCount} entries; minimum full-dialogue threshold is {SubtitleExtractionService.MinimumDialogueEntries}.";
+            return $"Selected source has only {request.SourceSubtitleEntryCount} entries; minimum full-dialogue threshold is {minimumDialogueEntries}.";
         }
 
         if (EmbeddedSourceLanguageMismatchesRequest(request, selectedSubtitle))

@@ -99,6 +99,40 @@ public class EmbeddedSubtitle : BaseEntity
     /// </summary>
     public DateTime? OcrApprovedAt { get; set; }
 
+    /// <summary>
+    /// Language detected from the subtitle content when it contradicts the container tag,
+    /// expressed as a normalized two letter code (e.g. "en"). Null when no high-confidence
+    /// contradiction was found. The stored <see cref="Language"/> tag is never rewritten.
+    /// </summary>
+    public string? DetectedLanguage { get; set; }
+
+    /// <summary>
+    /// Confidence (0.0 to 1.0) of <see cref="DetectedLanguage"/>. Only set together with it.
+    /// </summary>
+    public double? DetectedLanguageConfidence { get; set; }
+
+    /// <summary>
+    /// How the last language check was produced, e.g. "script-ratio+stopwords" or "llm-batch".
+    /// Also records negative verdicts such as "no-contradiction" or "insufficient-sample".
+    /// </summary>
+    public string? LanguageDetectionMethod { get; set; }
+
+    /// <summary>
+    /// Bounded human-readable evidence for the last language check.
+    /// </summary>
+    public string? LanguageDetectionEvidence { get; set; }
+
+    /// <summary>
+    /// When the language check last ran, successful or not. Used to cache negative results.
+    /// </summary>
+    public DateTime? LanguageCheckedAt { get; set; }
+
+    /// <summary>
+    /// Algorithm version used for the last check. Bumping the detector version invalidates
+    /// stored results so they are re-evaluated on the next run.
+    /// </summary>
+    public int LanguageDetectionVersion { get; set; }
+
     // Foreign key for Episode (nullable - belongs to either Episode or Movie)
     public int? EpisodeId { get; set; }
     [ForeignKey(nameof(EpisodeId))]

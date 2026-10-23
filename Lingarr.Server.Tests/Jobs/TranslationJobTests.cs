@@ -570,6 +570,52 @@ public class TranslationJobTests : IDisposable
     }
 
     [Fact]
+    public void GetUnsafeSourceCancellationReason_UsesDurationAwareThresholdWhenProvided()
+    {
+        var request = new TranslationRequest
+        {
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            Title = "Short-form dialogue source",
+            MediaType = MediaType.Episode,
+            Status = TranslationStatus.Pending,
+            SourceSubtitleType = SubtitleLanguageHelper.TypeFull,
+            SourceSubtitleEntryCount = 33,
+            IsForcedSubtitle = false,
+            SourceSubtitleFormat = ".srt"
+        };
+        var settings = new Dictionary<string, string>
+        {
+            [SettingKeys.Translation.TranslateSupplementalSubtitles] = "false"
+        };
+
+        var legacyReason = TranslationJob.GetUnsafeSourceCancellationReason(
+            request,
+            selectedSubtitle: null,
+            [],
+            settings);
+        var shortFormReason = TranslationJob.GetUnsafeSourceCancellationReason(
+            request,
+            selectedSubtitle: null,
+            [],
+            settings,
+            SubtitleExtractionService.GetMinimumDialogueEntries(270));
+        var strictReason = TranslationJob.GetUnsafeSourceCancellationReason(
+            request,
+            selectedSubtitle: null,
+            [],
+            settings,
+            minimumDialogueEntries: 40);
+
+        Assert.NotNull(legacyReason);
+        Assert.Contains("only 33 entries", legacyReason);
+        Assert.Contains("threshold is 50", legacyReason);
+        Assert.Null(shortFormReason);
+        Assert.NotNull(strictReason);
+        Assert.Contains("threshold is 40", strictReason);
+    }
+
+    [Fact]
     public void GetUnsafeSourceCancellationReason_ReturnsNoReason_ForFragmentedAssSource()
     {
         var request = new TranslationRequest

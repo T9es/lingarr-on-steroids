@@ -175,6 +175,7 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<ISubtitleQualityValidatorService, SubtitleQualityValidatorService>();
         builder.Services.AddScoped<ITranslationDiagnosticsService, TranslationDiagnosticsService>();
         builder.Services.AddScoped<ISubtitleSourceSelectionService, SubtitleSourceSelectionService>();
+        builder.Services.AddSingleton<IMediaDurationProvider, MediaDurationProvider>();
         builder.Services.AddScoped<ISourceSubtitleSnapshotService, SourceSubtitleSnapshotService>();
         builder.Services.AddScoped<ISourceSubtitleResolver, SourceSubtitleResolver>();
         builder.Services.AddScoped<IOrphanSubtitleCleanupService, OrphanSubtitleCleanupService>();
@@ -184,6 +185,7 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<IMkvEmbeddingService, MkvEmbeddingService>();
         builder.Services.AddSingleton<ITranslationQualityScorer, TranslationQualityScorer>();
         builder.Services.AddScoped<ISubtitleLanguageDetectionService, SubtitleLanguageDetectionService>();
+        builder.Services.AddScoped<ISubtitleLanguageContradictionDetector, SubtitleLanguageContradictionDetector>();
 
         // Register translate services
         builder.Services.AddScoped<ITranslationPromptContextAccessor, TranslationPromptContextAccessor>();

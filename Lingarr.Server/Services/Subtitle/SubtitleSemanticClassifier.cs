@@ -618,6 +618,14 @@ internal static class SubtitleSemanticClassifier
 
     private static bool IsSuspiciousToken(string token)
     {
+        // Only Latin script uses the vowel letters counted below. Applying the
+        // missing-vowel heuristic to CJK, kana, Hangul, Cyrillic, Arabic or Thai
+        // would mark every long token from those scripts as suspicious.
+        if (!token.Any(c => c is >= 'A' and <= 'Z' or >= 'a' and <= 'z'))
+        {
+            return false;
+        }
+
         var letters = token.Count(char.IsLetter);
         if (letters < 10)
         {

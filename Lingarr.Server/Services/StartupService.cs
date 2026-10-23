@@ -9,6 +9,12 @@ namespace Lingarr.Server.Services;
 
 public class StartupService : IHostedService
 {
+    /// <summary>
+    /// Current version of the subtitle state evaluator. Stored in settings so startup
+    /// re-evaluates media whose AwaitingSource states came from an older evaluator.
+    /// </summary>
+    internal const int CurrentSubtitleStateEvaluatorVersion = 1;
+
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<StartupService> _logger;
     private static readonly SemaphoreSlim _cleanupLock = new(1, 1);
@@ -110,6 +116,9 @@ public class StartupService : IHostedService
             { SettingKeys.Automation.MovieAgeThreshold, "0" },
             { SettingKeys.Automation.ShowAgeThreshold, "0" },
 
+            // Missing media pruning
+            { SettingKeys.Maintenance.PruneMissingMediaDays, "7" },
+
             // Upload workspace
             { SettingKeys.UploadWorkspace.StorageRoot, "/app/config/uploads" },
             { SettingKeys.UploadWorkspace.RetentionDays, "7" },
@@ -158,6 +167,8 @@ public class StartupService : IHostedService
         
         // Auto-recover media stuck in AwaitingSource due to previous indexing bug
         await FixStuckAwaitingSourceMedia(dbContext);
+        // Re-evaluate stored AwaitingSource states produced by an older state evaluator
+        await ReEvaluateStaleAwaitingSourceStates(dbContext);
         await RecoverStaleOcrStates(dbContext);
 
         // Ensure service_type is not empty
@@ -480,6 +491,69 @@ public class StartupService : IHostedService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error during AwaitingSource stuck media recovery. Continuing startup...");
+        }
+    }
+
+    /// <summary>
+    /// One-time re-evaluation of stored AwaitingSource states produced by an older
+    /// subtitle state evaluator. Affected rows are reset to Unknown so automation
+    /// recomputes them; the current evaluator version is stored to keep this idempotent.
+    /// </summary>
+    private async Task ReEvaluateStaleAwaitingSourceStates(LingarrDbContext dbContext)
+    {
+        try
+        {
+            var versionSetting = await dbContext.Settings
+                .FirstOrDefaultAsync(setting => setting.Key == SettingKeys.Translation.SubtitleStateEvaluatorVersion);
+            var storedVersion = versionSetting != null && int.TryParse(versionSetting.Value, out var version)
+                ? version
+                : 0;
+            if (storedVersion >= CurrentSubtitleStateEvaluatorVersion)
+            {
+                return;
+            }
+
+            var episodesReset = await dbContext.Episodes
+                .Where(episode => episode.TranslationState == TranslationState.AwaitingSource &&
+                                  episode.IndexedAt != null)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(
+                    episode => episode.TranslationState,
+                    TranslationState.Unknown));
+
+            var moviesReset = await dbContext.Movies
+                .Where(movie => movie.TranslationState == TranslationState.AwaitingSource &&
+                                movie.IndexedAt != null &&
+                                movie.FileName != null)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(
+                    movie => movie.TranslationState,
+                    TranslationState.Unknown));
+
+            if (versionSetting == null)
+            {
+                dbContext.Settings.Add(new Setting
+                {
+                    Key = SettingKeys.Translation.SubtitleStateEvaluatorVersion,
+                    Value = CurrentSubtitleStateEvaluatorVersion.ToString()
+                });
+            }
+            else
+            {
+                versionSetting.Value = CurrentSubtitleStateEvaluatorVersion.ToString();
+            }
+
+            await dbContext.SaveChangesAsync();
+
+            if (episodesReset > 0 || moviesReset > 0)
+            {
+                _logger.LogInformation(
+                    "Re-evaluated {EpisodeCount} episode(s) and {MovieCount} movie(s) stored in AwaitingSource by an older subtitle evaluator.",
+                    episodesReset,
+                    moviesReset);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during AwaitingSource state re-evaluation. Continuing startup...");
         }
     }
 

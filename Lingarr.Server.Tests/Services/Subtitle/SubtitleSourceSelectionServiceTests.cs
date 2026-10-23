@@ -303,6 +303,48 @@ public class SubtitleSourceSelectionServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SelectPrimaryAsync_AcceptsShortFormDialogueWhenDurationIsKnown()
+    {
+        var shortPath = await WriteSrtAsync("short-form.en.srt", 33);
+        _subtitleServiceMock
+            .Setup(service => service.ReadSubtitles(shortPath))
+            .ReturnsAsync(Enumerable.Range(1, 33)
+                .Select(index => new SubtitleItem
+                {
+                    Position = index,
+                    Lines = [$"Line {index}"],
+                    PlaintextLines = [$"Line {index}"]
+                })
+                .ToList());
+        var service = CreateService();
+        var shortFormSubtitle = new EmbeddedSubtitle
+        {
+            StreamIndex = 0,
+            Language = "eng",
+            Title = "English",
+            CodecName = "subrip",
+            IsTextBased = true,
+            ExtractedPath = shortPath
+        };
+
+        var withDuration = await service.SelectPrimaryAsync(
+            [shortFormSubtitle],
+            ["en"],
+            allowCaptionFallback: false,
+            contentDurationSeconds: 270);
+
+        var withoutDuration = await service.SelectPrimaryAsync(
+            [shortFormSubtitle],
+            ["en"],
+            allowCaptionFallback: false);
+
+        Assert.Equal(0, withDuration.SelectedSubtitle?.StreamIndex);
+        Assert.Equal(SubtitleSourceCandidateRole.PrimaryFullDialogue, withDuration.SelectedRole);
+        Assert.Null(withoutDuration.SelectedSubtitle);
+        Assert.Equal(SubtitleSourceCandidateRole.RejectedSparse, GetRole(withoutDuration, 0));
+    }
+
+    [Fact]
     public async Task SelectPrimaryAsync_RejectsZeroDialogueAssTrack()
     {
         var assPath = Path.Combine(_tempDirectory, "empty.en.ass");

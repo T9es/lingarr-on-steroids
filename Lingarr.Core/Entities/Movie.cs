@@ -1,4 +1,4 @@
-﻿using Lingarr.Core.Enum;
+using Lingarr.Core.Enum;
 using Lingarr.Core.Interfaces;
 
 namespace Lingarr.Core.Entities;
@@ -41,6 +41,14 @@ public class Movie : BaseEntity, IMedia
     /// or when automation rotated this item to the back of the queue.
     /// </summary>
     public DateTime? LastSubtitleCheckAt { get; set; }
+
+    /// <summary>
+    /// When Radarr first reported this movie as missing (no file) or removed it from the
+    /// library. Null means the movie is present. Rows without any translation history are
+    /// hidden from blocked media and automation while missing, then pruned after the
+    /// configured grace window.
+    /// </summary>
+    public DateTime? MissingSince { get; set; }
     
     /// <summary>
     /// Identifier for the Radarr instance this movie was synced from.

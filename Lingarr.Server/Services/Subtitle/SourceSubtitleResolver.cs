@@ -21,6 +21,8 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
     private readonly IEmbeddedSubtitleCacheService _embeddedSubtitleCacheService;
     private readonly ISubtitleOcrService _subtitleOcrService;
     private readonly ISubtitleSourceSelectionService _subtitleSourceSelectionService;
+    private readonly IMediaDurationProvider? _mediaDurationProvider;
+    private readonly ISubtitleLanguageContradictionDetector? _languageContradictionDetector;
     private readonly ILogger<SourceSubtitleResolver> _logger;
 
     public SourceSubtitleResolver(
@@ -31,7 +33,9 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
         IEmbeddedSubtitleCacheService embeddedSubtitleCacheService,
         ISubtitleOcrService subtitleOcrService,
         ILogger<SourceSubtitleResolver> logger,
-        ISubtitleSourceSelectionService? subtitleSourceSelectionService = null)
+        ISubtitleSourceSelectionService? subtitleSourceSelectionService = null,
+        IMediaDurationProvider? mediaDurationProvider = null,
+        ISubtitleLanguageContradictionDetector? languageContradictionDetector = null)
     {
         _dbContext = dbContext;
         _subtitleService = subtitleService;
@@ -43,6 +47,8 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
             new SubtitleSourceSelectionService(
                 subtitleService,
                 NullLogger<SubtitleSourceSelectionService>.Instance);
+        _mediaDurationProvider = mediaDurationProvider;
+        _languageContradictionDetector = languageContradictionDetector;
         _logger = logger;
     }
 
@@ -114,9 +120,43 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
             invalidateStaleManagedArtifacts: false,
             forceRefresh: mediaFileNameChanged);
         var sameLanguageSubtitles = embeddedSubtitles
-            .Where(subtitle => SubtitleLanguageHelper.LanguageMatches(subtitle.Language, request.SourceLanguage))
+            .Where(subtitle => SubtitleLanguageHelper.LanguageMatchesEffective(subtitle, request.SourceLanguage))
             .OrderBy(subtitle => subtitle.StreamIndex)
             .ToList();
+
+        // Failure-driven language contradiction shortcut. A stream tagged jpn that actually
+        // contains English (or any other contradiction) is never selected by the language
+        // filter above. Before failing with "no suitable source", check the readable embedded
+        // streams and adopt a high confidence detected language, either by picking the stream
+        // whose detected language matches the request or by switching a request that was
+        // created for the contradicting tag. Results are cached on the subtitle row.
+        if (sameLanguageSubtitles.Count == 0 &&
+            _languageContradictionDetector != null &&
+            !string.IsNullOrWhiteSpace(mediaFile.Path) &&
+            embeddedSubtitles.Any(subtitle => subtitle.IsReadableSource()))
+        {
+            var adoptedSubtitle = await _languageContradictionDetector.TryAdoptDetectedSourceLanguageAsync(
+                request,
+                embeddedSubtitles,
+                mediaFile.Path,
+                cancellationToken);
+            if (adoptedSubtitle != null)
+            {
+                sameLanguageSubtitles = embeddedSubtitles
+                    .Where(subtitle =>
+                        SubtitleLanguageHelper.LanguageMatchesEffective(subtitle, request.SourceLanguage))
+                    .OrderBy(subtitle => subtitle.StreamIndex)
+                    .ToList();
+                if (sameLanguageSubtitles.Count == 0)
+                {
+                    _logger.LogWarning(
+                        "Detected language contradiction on stream {StreamIndex} for request {RequestId} but no candidate matches '{SourceLanguage}'",
+                        adoptedSubtitle.StreamIndex,
+                        request.Id,
+                        request.SourceLanguage);
+                }
+            }
+        }
 
         if (options.IsSupplementalRequest &&
             string.Equals(request.SourceSnapshotType, SourceSubtitleSnapshot.ExternalType, StringComparison.Ordinal))
@@ -183,6 +223,48 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
             }
 
             return null;
+        }
+
+        // Probe the media duration once per embedded-source preparation so the dialogue
+        // entry floor scales with runtime. A null duration keeps the legacy fixed threshold
+        // everywhere below.
+        var contentDurationSeconds = await ResolveContentDurationSecondsAsync(
+            mediaFile.Path,
+            cancellationToken);
+        var minimumDialogueEntries =
+            SubtitleExtractionService.GetMinimumDialogueEntries(contentDurationSeconds);
+
+        // Failure-driven shortcut for the shape where the request language does match a track
+        // but every matching track is sparse (signs/typesetting only) while a full dialogue
+        // track is mislabeled with another language tag. The Initial D case is exactly this:
+        // request en, a sparse en-tagged signs track, and a full English track tagged jpn.
+        // Detection runs before the sparse rejections below so the mislabeled full track can
+        // be adopted instead of failing with "no suitable source".
+        if (!options.HasManualStreamSelection &&
+            !options.IsSupplementalRequest &&
+            _languageContradictionDetector != null &&
+            sameLanguageSubtitles.Count > 0 &&
+            AllMatchedCandidatesKnownSparse(sameLanguageSubtitles, minimumDialogueEntries))
+        {
+            var adoptedSubtitle = await _languageContradictionDetector.TryAdoptDetectedSourceLanguageAsync(
+                request,
+                embeddedSubtitles,
+                mediaFile.Path,
+                cancellationToken);
+            if (adoptedSubtitle != null)
+            {
+                sameLanguageSubtitles = embeddedSubtitles
+                    .Where(subtitle =>
+                        SubtitleLanguageHelper.LanguageMatchesEffective(subtitle, request.SourceLanguage))
+                    .OrderBy(subtitle => subtitle.StreamIndex)
+                    .ToList();
+                _logger.LogInformation(
+                    "Sparse matched source for request {RequestId} triggered language contradiction check; " +
+                    "adopted stream {StreamIndex} (requested '{SourceLanguage}')",
+                    request.Id,
+                    adoptedSubtitle.StreamIndex,
+                    request.SourceLanguage);
+            }
         }
 
         if (options.HasManualStreamSelection)
@@ -261,13 +343,15 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
                         request,
                         options,
                         manualCount.Value,
-                        cancellationToken))
+                        cancellationToken,
+                        contentDurationSeconds))
                 {
                     var assessment = await _subtitleSourceSelectionService.SelectPrimaryAsync(
                         [manualSubtitle],
                         [request.SourceLanguage],
                         options.AllowCaptionFallback,
-                        cancellationToken: cancellationToken);
+                        cancellationToken: cancellationToken,
+                        contentDurationSeconds: contentDurationSeconds);
                     throw CreateNoSuitableSourceException(
                         [new PreparedCandidate(manualSubtitle, manualPath, manualCount.Value, null)],
                         request.SourceLanguage,
@@ -344,7 +428,7 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
                         currentCandidatePath!,
                         currentSubtitle.StreamIndex,
                         cancellationToken);
-                    if (currentEntryCount is >= SubtitleExtractionService.MinimumDialogueEntries)
+                    if (currentEntryCount >= minimumDialogueEntries)
                     {
                         var originalPath = currentSubtitle.ExtractedPath;
                         var originalExtracted = currentSubtitle.IsExtracted;
@@ -361,7 +445,8 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
                                 [currentSubtitle],
                                 [request.SourceLanguage],
                                 options.AllowCaptionFallback,
-                                cancellationToken: cancellationToken);
+                                cancellationToken: cancellationToken,
+                                contentDurationSeconds: contentDurationSeconds);
                         }
                         finally
                         {
@@ -448,7 +533,7 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
                 }
 
                 if (!IsSupplementalRequestAllowed(options) &&
-                    entryCount.Value < SubtitleExtractionService.MinimumDialogueEntries)
+                    entryCount.Value < minimumDialogueEntries)
                 {
                     preparedCandidates.Add(new PreparedCandidate(
                         subtitle,
@@ -498,7 +583,8 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
                     viableCandidates.Select(candidate => candidate.Subtitle).ToList(),
                     [request.SourceLanguage],
                     options.AllowCaptionFallback,
-                    cancellationToken: cancellationToken);
+                    cancellationToken: cancellationToken,
+                    contentDurationSeconds: contentDurationSeconds);
                 var currentCandidate = viableCandidates.FirstOrDefault(candidate =>
                     PathsEqual(candidate.Path, currentPath));
                 if (currentCandidate != null)
@@ -594,6 +680,26 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
             SelectedSubtitle: null,
             EntryCount: entryCount,
             IsManualSelection: isManualSelection);
+    }
+
+    private async Task<double?> ResolveContentDurationSecondsAsync(
+        string? mediaPath,
+        CancellationToken cancellationToken)
+    {
+        if (_mediaDurationProvider == null || string.IsNullOrWhiteSpace(mediaPath))
+        {
+            return null;
+        }
+
+        try
+        {
+            return await _mediaDurationProvider.GetDurationSecondsAsync(mediaPath, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Could not resolve media duration for {MediaPath}", mediaPath);
+            return null;
+        }
     }
 
     public async Task<string?> ResolveReadableSourcePathAsync(
@@ -793,12 +899,54 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
             IsNew: PathsEqual(extractedPath, outputPath));
     }
 
+    /// <summary>
+    /// Returns true only when every readable candidate is already extracted and its entry count
+    /// is below the dialogue floor. Candidates without an extracted file are treated as unknown
+    /// so the contradiction check never runs just because files were not cached yet.
+    /// </summary>
+    private static bool AllMatchedCandidatesKnownSparse(
+        IReadOnlyList<EmbeddedSubtitle> candidates,
+        int minimumDialogueEntries)
+    {
+        var readableCandidates = candidates
+            .Where(candidate => candidate.IsReadableSource())
+            .ToList();
+        if (readableCandidates.Count == 0)
+        {
+            return false;
+        }
+
+        foreach (var candidate in readableCandidates)
+        {
+            var readablePath = candidate.GetReadableSourcePath();
+            if (string.IsNullOrWhiteSpace(readablePath) || !File.Exists(readablePath))
+            {
+                return false;
+            }
+
+            try
+            {
+                if (SubtitleExtractionService.CountSubtitleEntries(readablePath) >= minimumDialogueEntries)
+                {
+                    return false;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private async Task<bool> IsAcceptablePrimaryCandidateAsync(
         EmbeddedSubtitle subtitle,
         TranslationRequest request,
         TranslationSourcePreparationOptions options,
         int entryCount,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        double? contentDurationSeconds = null)
     {
         if (IsSupplementalRequestAllowed(options))
         {
@@ -814,7 +962,7 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
                 cancellationToken);
         }
 
-        if (entryCount < SubtitleExtractionService.MinimumDialogueEntries)
+        if (entryCount < SubtitleExtractionService.GetMinimumDialogueEntries(contentDurationSeconds))
         {
             return false;
         }
@@ -823,7 +971,8 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
             [subtitle],
             [request.SourceLanguage],
             options.AllowCaptionFallback,
-            cancellationToken: cancellationToken);
+            cancellationToken: cancellationToken,
+            contentDurationSeconds: contentDurationSeconds);
         return selection.SelectedSubtitle != null;
     }
 
@@ -1486,11 +1635,16 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
             .ToList();
         if (!SubtitleLanguageHelper.IsSupplementalSubtitleType(request.SourceSubtitleType))
         {
+            var mediaFile = await ResolveCurrentMediaFileAsync(request, cancellationToken);
+            var contentDurationSeconds = await ResolveContentDurationSecondsAsync(
+                mediaFile.Path,
+                cancellationToken);
             var selection = await _subtitleSourceSelectionService.SelectPrimaryAsync(
                 readableSubtitles,
                 [request.SourceLanguage],
                 allowCaptionFallback: true,
-                cancellationToken: cancellationToken);
+                cancellationToken: cancellationToken,
+                contentDurationSeconds: contentDurationSeconds);
             if (selection.SelectedSubtitle != null)
             {
                 return selection.SelectedSubtitle.StreamIndex;

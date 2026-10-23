@@ -175,6 +175,57 @@ public class MediaStateServiceOcrTests
         Assert.Equal(TranslationState.OcrBlocked, state);
     }
 
+    [Fact]
+    public async Task UpdateStateAsync_WithOnlyForcedPgs_ReturnsOcrPending()
+    {
+        await using var context = BuildContext();
+        var movie = await CreateMovieWithPgsAsync(context, SubtitleOcrStatus.NotStarted);
+        movie.EmbeddedSubtitles[0].IsForced = true;
+        await context.SaveChangesAsync();
+        var service = BuildService(context, ocrEnabled: "true");
+
+        var state = await service.UpdateStateAsync(movie, MediaType.Movie, saveChanges: false);
+
+        Assert.Equal(TranslationState.OcrPending, state);
+    }
+
+    [Fact]
+    public async Task UpdateStateAsync_WithOnlyForeignTitledPgs_ReturnsOcrPending()
+    {
+        await using var context = BuildContext();
+        var movie = await CreateMovieWithPgsAsync(context, SubtitleOcrStatus.NotStarted);
+        movie.EmbeddedSubtitles[0].Title = "Foreign only";
+        await context.SaveChangesAsync();
+        var service = BuildService(context, ocrEnabled: "true");
+
+        var state = await service.UpdateStateAsync(movie, MediaType.Movie, saveChanges: false);
+
+        Assert.Equal(TranslationState.OcrPending, state);
+    }
+
+    [Fact]
+    public async Task UpdateStateAsync_WithBlockedNormalAndPendingForcedPgs_PrefersNormalCandidate()
+    {
+        await using var context = BuildContext();
+        var movie = await CreateMovieWithPgsAsync(context, SubtitleOcrStatus.BlockedLowQuality);
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            StreamIndex = 1,
+            Language = "eng",
+            Title = "Forced",
+            CodecName = "hdmv_pgs_subtitle",
+            IsTextBased = false,
+            IsForced = true,
+            OcrStatus = SubtitleOcrStatus.NotStarted
+        });
+        await context.SaveChangesAsync();
+        var service = BuildService(context, ocrEnabled: "true");
+
+        var state = await service.UpdateStateAsync(movie, MediaType.Movie);
+
+        Assert.Equal(TranslationState.OcrBlocked, state);
+    }
+
     [Theory]
     [InlineData("manual")]
     [InlineData("auto")]

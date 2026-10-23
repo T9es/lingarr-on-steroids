@@ -10,11 +10,15 @@ public interface ISubtitleSourceSelectionService
     /// When <paramref name="targetLanguages"/> is provided (auto mode), configured
     /// source language filtering is bypassed and translation quality scoring is used
     /// to evaluate candidates.
+    /// When <paramref name="contentDurationSeconds"/> is provided, the sparse-track
+    /// threshold scales with the media runtime so complete short-form dialogue tracks
+    /// are not rejected; null keeps the legacy fixed threshold.
     /// </summary>
     Task<SubtitleSourceSelectionResult> SelectPrimaryAsync(
         IReadOnlyCollection<EmbeddedSubtitle> candidates,
         IReadOnlyList<string> configuredSourceLanguages,
         bool allowCaptionFallback,
         IReadOnlyList<string>? targetLanguages = null,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        double? contentDurationSeconds = null);
 }

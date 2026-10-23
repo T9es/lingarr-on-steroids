@@ -405,6 +405,7 @@ public class MediaStateService : IMediaStateService
         var moviesQuery = _dbContext.Movies
             .Include(m => m.EmbeddedSubtitles)
             .Where(m => !m.ExcludeFromTranslation)
+            .Where(m => m.MissingSince == null)
             .Where(m => m.TranslationState == TranslationState.Pending 
                      || m.TranslationState == TranslationState.Stale
                      || m.TranslationState == TranslationState.OcrPending
@@ -438,6 +439,7 @@ public class MediaStateService : IMediaStateService
             .Where(e => !e.ExcludeFromTranslation)
             .Where(e => !e.Season.ExcludeFromTranslation)
             .Where(e => !e.Season.Show.ExcludeFromTranslation)
+            .Where(e => e.MissingSince == null)
             .Where(e => e.TranslationState == TranslationState.Pending 
                      || e.TranslationState == TranslationState.Stale
                      || e.TranslationState == TranslationState.OcrPending
@@ -837,14 +839,26 @@ public class MediaStateService : IMediaStateService
         IReadOnlyCollection<string> sourceLanguages,
         bool ignoreCaptions)
     {
-        var candidates = embeddedSubtitles
+        var bitmapCandidates = embeddedSubtitles
             .Where(subtitle => !subtitle.IsTextBased)
             .Where(subtitle => IsSupportedOcrCodec(subtitle.CodecName))
             .Where(subtitle => !ignoreCaptions ||
                                !SubtitleLanguageHelper.IsCaptionSubtitleType(
                                    SubtitleLanguageHelper.DetermineSubtitleType(subtitle)))
-            .Where(subtitle => !SubtitleLanguageHelper.IsSupplementalSubtitleType(
-                SubtitleLanguageHelper.DetermineSubtitleType(subtitle)));
+            .ToList();
+
+        var candidates = bitmapCandidates
+            .Where(subtitle => !IsSupplementalOcrCandidate(subtitle))
+            .ToList();
+
+        if (candidates.Count == 0)
+        {
+            // Some releases only ship full dialogue as a forced or foreign-titled PGS stream.
+            // Fall back to those supplemental tracks when no ordinary track exists.
+            candidates = bitmapCandidates
+                .Where(IsSupplementalOcrCandidate)
+                .ToList();
+        }
 
         if (sourceLanguages.Count == 0)
         {
@@ -885,6 +899,25 @@ public class MediaStateService : IMediaStateService
         return !string.IsNullOrWhiteSpace(codecName) &&
                (codecName.Equals("hdmv_pgs_subtitle", StringComparison.OrdinalIgnoreCase) ||
                 codecName.Equals("pgssub", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsSupplementalOcrCandidate(EmbeddedSubtitle subtitle)
+    {
+        return SubtitleLanguageHelper.IsSupplementalSubtitleType(
+            SubtitleLanguageHelper.DetermineSubtitleType(subtitle));
+    }
+
+    private static string? ResolveExternalSubtitleLanguage(Subtitles subtitle)
+    {
+        if (SubtitleLanguageHelper.TryNormalizeKnownLanguageCode(subtitle.Language, out var normalizedLanguage))
+        {
+            return normalizedLanguage;
+        }
+
+        var language = SubtitleLanguageHelper.DetectLanguageFromFileName(subtitle.Path);
+        return !string.IsNullOrWhiteSpace(language)
+            ? language
+            : SubtitleLanguageHelper.DetectLanguageFromFileName(subtitle.FileName);
     }
 
     private async Task<(string Language, bool IsEmbedded)?> FindAutoSourceCandidateAsync(
@@ -953,7 +986,7 @@ public class MediaStateService : IMediaStateService
                 continue;
             }
 
-            var language = SubtitleLanguageHelper.DetectLanguageFromFileName(subtitle.FileName);
+            var language = ResolveExternalSubtitleLanguage(subtitle);
             if (string.IsNullOrWhiteSpace(language) ||
                 language.Equals("und", StringComparison.OrdinalIgnoreCase))
             {

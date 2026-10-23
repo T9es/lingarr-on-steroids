@@ -28,9 +28,12 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
         IReadOnlyList<string> configuredSourceLanguages,
         bool allowCaptionFallback,
         IReadOnlyList<string>? targetLanguages = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        double? contentDurationSeconds = null)
     {
         var isAutoMode = targetLanguages != null && targetLanguages.Count > 0;
+        var minimumDialogueEntries =
+            SubtitleExtractionService.GetMinimumDialogueEntries(contentDurationSeconds);
 
         var normalizedSourceLanguages = configuredSourceLanguages
             .Select(SubtitleLanguageHelper.NormalizeLanguageCode)
@@ -59,14 +62,21 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
                 normalizedSourceLanguages,
                 isAutoMode,
                 targetLanguages,
-                cancellationToken));
+                cancellationToken,
+                contentDurationSeconds));
         }
 
         var primaryCandidates = assessments
             .Where(assessment => assessment.Role == SubtitleSourceCandidateRole.PrimaryFullDialogue);
+        // The sparse gate already removed candidates below the duration-aware floor, so this
+        // ordering only prefers candidates whose observed entry count meets that floor. Using
+        // the same computed floor keeps the ordering consistent with the gate; with an unknown
+        // duration the floor is the legacy constant, so behaviour is unchanged.
         var primary = primaryCandidates
             .OrderByDescending(assessment =>
-                isAutoMode && assessment.EntryCount is >= SubtitleExtractionService.MinimumDialogueEntries)
+                isAutoMode &&
+                assessment.EntryCount.HasValue &&
+                assessment.EntryCount.Value >= minimumDialogueEntries)
             .ThenByDescending(assessment => assessment.Score)
             .ThenBy(assessment => assessment.Subtitle.StreamIndex)
             .FirstOrDefault();
@@ -112,14 +122,24 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
         IReadOnlyList<string> normalizedSourceLanguages,
         bool isAutoMode,
         IReadOnlyList<string>? targetLanguages = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        double? contentDurationSeconds = null)
     {
+        var minimumDialogueEntries =
+            SubtitleExtractionService.GetMinimumDialogueEntries(contentDurationSeconds);
+
         var matchedLanguage = isAutoMode
             ? GetCandidateLanguage(candidate)
             : MatchConfiguredLanguage(candidate, normalizedSourceLanguages);
 
         if (string.IsNullOrWhiteSpace(matchedLanguage))
         {
+            var declaredLanguage = candidate.Language ?? "unknown";
+            var detectedLanguage = SubtitleLanguageHelper.GetEffectiveLanguage(candidate);
+            var reason = string.IsNullOrWhiteSpace(detectedLanguage) ||
+                         string.Equals(detectedLanguage, declaredLanguage, StringComparison.OrdinalIgnoreCase)
+                ? "Language is not configured as a source language."
+                : $"Language is not configured as a source language (declared '{declaredLanguage}', detected '{detectedLanguage}').";
             return new SubtitleSourceCandidateAssessment(
                 candidate,
                 candidate.IsReadableSource()
@@ -128,7 +148,7 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
                 null,
                 int.MinValue,
                 null,
-                "Language is not configured as a source language.");
+                reason);
         }
 
         if (isAutoMode && targetLanguages is { Count: > 0 } &&
@@ -176,7 +196,7 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
 
         if (entryCount.HasValue &&
             entryCount.Value >= 0 &&
-            entryCount.Value < SubtitleExtractionService.MinimumDialogueEntries)
+            entryCount.Value < minimumDialogueEntries)
         {
             return new SubtitleSourceCandidateAssessment(
                 candidate,
@@ -284,14 +304,15 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
         EmbeddedSubtitle candidate,
         IReadOnlyList<string> normalizedSourceLanguages)
     {
-        if (string.IsNullOrWhiteSpace(candidate.Language))
+        var effectiveLanguage = SubtitleLanguageHelper.GetEffectiveLanguage(candidate);
+        if (string.IsNullOrWhiteSpace(effectiveLanguage))
         {
             return null;
         }
 
         foreach (var sourceLanguage in normalizedSourceLanguages)
         {
-            if (SubtitleLanguageHelper.LanguageMatches(candidate.Language, sourceLanguage))
+            if (SubtitleLanguageHelper.LanguageMatches(effectiveLanguage, sourceLanguage))
             {
                 return sourceLanguage;
             }
@@ -344,12 +365,13 @@ public class SubtitleSourceSelectionService : ISubtitleSourceSelectionService
     /// </summary>
     private static string? GetCandidateLanguage(EmbeddedSubtitle candidate)
     {
-        if (string.IsNullOrWhiteSpace(candidate.Language) ||
-            candidate.Language.Equals("und", StringComparison.OrdinalIgnoreCase))
+        var effectiveLanguage = SubtitleLanguageHelper.GetEffectiveLanguage(candidate);
+        if (string.IsNullOrWhiteSpace(effectiveLanguage) ||
+            effectiveLanguage.Equals("und", StringComparison.OrdinalIgnoreCase))
         {
             return null;
         }
-        return SubtitleLanguageHelper.NormalizeLanguageCode(candidate.Language);
+        return SubtitleLanguageHelper.NormalizeLanguageCode(effectiveLanguage);
     }
 
     /// <summary>

@@ -332,7 +332,8 @@ public class AutoModeTests : MediaSubtitleProcessorTestBase
                 It.IsAny<IReadOnlyList<string>>(),
                 It.IsAny<bool>(),
                 It.IsAny<IReadOnlyList<string>?>(),
-                It.IsAny<CancellationToken>()))
+                It.IsAny<CancellationToken>(),
+                It.IsAny<double?>()))
             .ReturnsAsync(sourceSelection);
 
         var queuedRequests = new List<TranslateAbleSubtitle>();

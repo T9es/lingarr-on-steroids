@@ -45,6 +45,40 @@ public class SubtitleExtractionServiceTests : IDisposable
             Mock.Of<ISubtitleLanguageDetectionService>());
     }
 
+    [Theory]
+    [InlineData(null, 50)]
+    [InlineData(0d, 50)]
+    [InlineData(-15d, 50)]
+    [InlineData(60d, 10)]
+    [InlineData(270d, 12)]
+    [InlineData(520d, 22)]
+    [InlineData(1440d, 60)]
+    [InlineData(2400d, 100)]
+    [InlineData(3600d, 100)]
+    [InlineData(7200d, 100)]
+    public void GetMinimumDialogueEntries_ScalesWithContentDuration(
+        double? durationSeconds,
+        int expectedEntries)
+    {
+        Assert.Equal(
+            expectedEntries,
+            SubtitleExtractionService.GetMinimumDialogueEntries(durationSeconds));
+    }
+
+    [Fact]
+    public void GetMinimumDialogueEntries_FallsBackToLegacyThresholdForUnusableDurations()
+    {
+        Assert.Equal(
+            SubtitleExtractionService.MinimumDialogueEntries,
+            SubtitleExtractionService.GetMinimumDialogueEntries(null));
+        Assert.Equal(
+            SubtitleExtractionService.MinimumDialogueEntries,
+            SubtitleExtractionService.GetMinimumDialogueEntries(double.NaN));
+        Assert.Equal(
+            SubtitleExtractionService.MinimumDialogueEntries,
+            SubtitleExtractionService.GetMinimumDialogueEntries(double.PositiveInfinity));
+    }
+
     [Fact]
     public async Task ListAvailableSubtitlesAsync_ClearsMissingExtractedMovieMetadata()
     {

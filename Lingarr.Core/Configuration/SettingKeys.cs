@@ -167,6 +167,12 @@ public static class SettingKeys
         /// Media with StateSettingsVersion != this value need re-analysis.
         /// </summary>
         public const string LanguageSettingsVersion = "language_settings_version";
+
+        /// <summary>
+        /// Integer version of the subtitle state evaluator that produced the stored states.
+        /// Media evaluated by an older version is re-queued once after startup.
+        /// </summary>
+        public const string SubtitleStateEvaluatorVersion = "subtitle_state_evaluator_version";
         
         /// <summary>
         /// Enable wrapper context for batch translations (pre/post context around entire batch)
@@ -226,6 +232,28 @@ public static class SettingKeys
         public const string StatisticsSchedule = "maintenance_statistics_schedule";
         public const string RetryFailedEnabled = "maintenance_retry_failed_enabled";
         public const string RetryFailedSchedule = "maintenance_retry_failed_schedule";
+
+        /// <summary>
+        /// Enable the bounded daily subtitle language contradiction check for
+        /// AwaitingSource/Failed media with embedded subtitle tracks.
+        /// </summary>
+        public const string SubtitleLanguageCheckEnabled = "maintenance_subtitle_language_check_enabled";
+
+        /// <summary>
+        /// Cron schedule for the subtitle language contradiction check (UTC, off-peak).
+        /// </summary>
+        public const string SubtitleLanguageCheckSchedule = "maintenance_subtitle_language_check_schedule";
+
+        /// <summary>
+        /// Maximum number of media items re-checked per subtitle language check run.
+        /// </summary>
+        public const string SubtitleLanguageCheckMaxItems = "maintenance_subtitle_language_check_max_items";
+
+        /// <summary>
+        /// Grace window in days before media that Sonarr/Radarr reports as missing may be pruned.
+        /// 0 disables pruning. Default: 7.
+        /// </summary>
+        public const string PruneMissingMediaDays = "prune_missing_media_days";
     }
 
     public static class UploadWorkspace

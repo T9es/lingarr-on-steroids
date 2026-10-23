@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Lingarr.Server.Models.FileSystem;
 using Lingarr.Server.Services.Subtitle;
 using Xunit;
@@ -123,5 +124,72 @@ public class SubtitleSemanticClassifierTests
         Assert.Equal(SubtitleSemanticKind.Dialogue, classification.Kind);
         Assert.True(classification.ShouldRequestProvider);
         Assert.False(classification.CanPreserveSourceWhenProviderMissing);
+    }
+
+    private static readonly string[] ChineseDialogueSamples =
+    [
+        "技能是上古之果在远古时代赐予人类的特殊能力",
+        "双挥或者迅捷移动感觉很酷",
+        "完美命中也不错",
+        "总之我肯定想要战斗型技能",
+        "毕竟我一直想成为冒险者",
+        "这是你小时候的梦想吧？",
+        "我希望能得到一个可以和你从事同样职业的技能",
+        "那我们就一起成为冒险者吧！",
+        "我们会成为最强的冒险者",
+        "我的辉煌冒险人生就此开始！",
+        "然后拿到那个大赞助商和直升机",
+        "公元2008年7月人类面临灭绝的危机。"
+    ];
+
+    [Theory]
+    [InlineData("技能是上古之果在远古时代赐予人类的特殊能力")]
+    [InlineData("双挥或者迅捷移动感觉很酷")]
+    [InlineData("赶紧把路修好然后离开这里")]
+    [InlineData("公元2008年7月人类面临灭绝的危机。")]
+    public void IsLikelyCorruptText_WhenChineseDialogueHasNoLatinLetters_ReturnsFalse(string cue)
+    {
+        Assert.False(SubtitleSemanticClassifier.IsLikelyCorruptText(cue));
+    }
+
+    [Fact]
+    public void IsLikelyCorruptText_ShortChineseTrack_HasNoCorruptEntries()
+    {
+        var corruptEntries = ChineseDialogueSamples.Count(SubtitleSemanticClassifier.IsLikelyCorruptText);
+
+        Assert.Equal(0, corruptEntries);
+    }
+
+    [Theory]
+    [InlineData("AAAAAAAAAAAA BBBBBBBBBBBB")]
+    [InlineData("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")]
+    [InlineData("bcdfghjklmnpqrstw")]
+    [InlineData("bcdfghjklmnpqrstw bcdfghjklmnpqrstw")]
+    [InlineData("好好好好好好好好 好好好好好好好好")]
+    [InlineData("Hello 你好 こんにちは Привет")]
+    public void IsLikelyCorruptText_WhenTextIsGenuinelyCorrupt_ReturnsTrue(string text)
+    {
+        Assert.True(SubtitleSemanticClassifier.IsLikelyCorruptText(text));
+    }
+
+    [Fact]
+    public void Analyze_WhenTrackIsChineseDialogue_ReturnsHealthyWithoutCorruptEntries()
+    {
+        var subtitles = Enumerable.Range(0, 60)
+            .Select(index =>
+            {
+                var line = ChineseDialogueSamples[index % ChineseDialogueSamples.Length];
+                return new SubtitleItem
+                {
+                    Lines = [line],
+                    PlaintextLines = [line]
+                };
+            })
+            .ToList();
+
+        var analysis = SubtitleSourceHealthAnalyzer.Analyze(subtitles);
+
+        Assert.Equal(SubtitleSourceHealthStatus.Healthy, analysis.Status);
+        Assert.Equal(0, analysis.CorruptEntries);
     }
 }

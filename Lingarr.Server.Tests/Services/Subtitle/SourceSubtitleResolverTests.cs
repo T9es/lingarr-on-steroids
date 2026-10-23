@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -11,6 +11,7 @@ using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Models.FileSystem;
 using Lingarr.Server.Models.Subtitle;
+using Lingarr.Server.Models;
 using Lingarr.Server.Services;
 using Lingarr.Server.Services.Subtitle;
 using Microsoft.Data.Sqlite;
@@ -325,6 +326,66 @@ public sealed class SourceSubtitleResolverTests : IDisposable
             1,
             It.IsAny<string>(),
             "subrip"), Times.Never);
+    }
+
+    [Fact]
+    public async Task PrepareTranslationSourceAsync_UsesDurationAwareFloorForShortFormDialogue()
+    {
+        var mediaPath = Path.Combine(_tempDirectory, "short-form.mkv");
+        await File.WriteAllTextAsync(mediaPath, "media source");
+        var movie = CreateMovie(131, mediaPath);
+        var cacheService = CreateCacheService();
+        var shortPath = cacheService.GetCachePath(movie.Id, MediaType.Movie, 0, "subrip", "eng");
+        await File.WriteAllTextAsync(shortPath, CreateSrt(33));
+        cacheService.RecordSourceSnapshot(shortPath, mediaPath);
+
+        var shortSubtitle = CreateTextSubtitle(movie, 0, "eng", "English", shortPath);
+        movie.EmbeddedSubtitles.Add(shortSubtitle);
+        _dbContext.Movies.Add(movie);
+        await _dbContext.SaveChangesAsync();
+
+        var request = new TranslationRequest
+        {
+            Id = 231,
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaId = movie.Id,
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Pending,
+            SubtitleToTranslate = shortPath,
+            SourceSnapshotStreamIndex = 0,
+            SourceSnapshotType = SourceSubtitleSnapshot.EmbeddedType
+        };
+        var options = new TranslationSourcePreparationOptions(
+            HasManualStreamSelection: false,
+            AllowCaptionFallback: false,
+            IsSupplementalRequest: false,
+            SupplementalTranslationEnabled: false);
+
+        var durationProvider = new Mock<IMediaDurationProvider>();
+        durationProvider
+            .Setup(provider => provider.GetDurationSecondsAsync(mediaPath, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(270);
+        var durationAwareResolver = CreateResolver(
+            Mock.Of<ISubtitleExtractionService>(),
+            cacheService,
+            mediaDurationProvider: durationProvider.Object);
+
+        var prepared = await durationAwareResolver.PrepareTranslationSourceAsync(request, options);
+
+        Assert.NotNull(prepared);
+        Assert.Equal(33, prepared.EntryCount);
+        Assert.Equal(0, prepared.SelectedSubtitle?.StreamIndex);
+        durationProvider.Verify(
+            provider => provider.GetDurationSecondsAsync(mediaPath, It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        var legacyResolver = CreateResolver(Mock.Of<ISubtitleExtractionService>(), cacheService);
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            legacyResolver.PrepareTranslationSourceAsync(request, options));
+
+        Assert.Contains("33 entries", exception.Message);
     }
 
     [Fact]
@@ -2578,7 +2639,7 @@ public sealed class SourceSubtitleResolverTests : IDisposable
 
         // The failed re-OCR demoted the row, the resolver restored the captured Succeeded
         // state (keeping future recovery possible), but the extraction fallback then resets
-        // the row because the OCR artifact is missing (IsStaleManagedArtifact) — the correct
+        // the row because the OCR artifact is missing (IsStaleManagedArtifact) â€” the correct
         // end state for a missing artifact is a fresh re-probe (NotStarted).
         var verifyOptions = new DbContextOptionsBuilder<LingarrDbContext>()
             .UseSqlite(_connection)
@@ -2690,7 +2751,7 @@ public sealed class SourceSubtitleResolverTests : IDisposable
 
         // Recovery failure falls back to the existing resolution behavior, never throws,
         // and the extraction fallback resets the row (artifact missing) so it is re-probed
-        // fresh — the correct end state for a missing OCR artifact.
+        // fresh â€” the correct end state for a missing OCR artifact.
         var resolvedPath = await resolver.ResolveReadableSourcePathAsync(request);
 
         Assert.Null(resolvedPath);
@@ -2710,6 +2771,93 @@ public sealed class SourceSubtitleResolverTests : IDisposable
         var restored = await restoreContext.EmbeddedSubtitles.AsNoTracking().SingleAsync();
         Assert.Equal(SubtitleOcrStatus.NotStarted, restored.OcrStatus);
         Assert.Null(restored.OcrError);
+    }
+
+    [Fact]
+    public async Task PrepareTranslationSourceAsync_SparseMatchedSignsTrack_AdoptsContradictedFullDialogueTrack()
+    {
+        // Initial D shape: request en, a sparse en-tagged signs track (37 cues) plus a full
+        // English dialogue track that the container mislabels jpn. The request language
+        // matches the sparse track, so the "no same-language match" shortcut does not fire;
+        // the sparse pre-check must trigger the contradiction check instead.
+        var mediaPath = Path.Combine(_tempDirectory, "initial-d-shape.mkv");
+        await File.WriteAllTextAsync(mediaPath, "media source");
+        var movie = CreateMovie(911, mediaPath);
+        var cacheService = CreateCacheService();
+
+        var sparsePath = cacheService.GetCachePath(movie.Id, MediaType.Movie, 0, "subrip", "eng");
+        await File.WriteAllTextAsync(sparsePath, CreateSrt(37));
+        cacheService.RecordSourceSnapshot(sparsePath, mediaPath);
+        var sparseSubtitle = CreateTextSubtitle(movie, 0, "eng", "Signs", sparsePath);
+
+        var fullPath = cacheService.GetCachePath(movie.Id, MediaType.Movie, 1, "subrip", "jpn");
+        await File.WriteAllTextAsync(fullPath, CreateSrt(120));
+        cacheService.RecordSourceSnapshot(fullPath, mediaPath);
+        var fullSubtitle = CreateTextSubtitle(movie, 1, "jpn", "Full", fullPath);
+
+        movie.EmbeddedSubtitles.Add(sparseSubtitle);
+        movie.EmbeddedSubtitles.Add(fullSubtitle);
+        _dbContext.Movies.Add(movie);
+        await _dbContext.SaveChangesAsync();
+
+        var detector = new Mock<ISubtitleLanguageContradictionDetector>();
+        detector
+            .Setup(service => service.TryAdoptDetectedSourceLanguageAsync(
+                It.IsAny<TranslationRequest>(),
+                It.IsAny<IReadOnlyList<EmbeddedSubtitle>>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(() =>
+            {
+                fullSubtitle.DetectedLanguage = "en";
+                fullSubtitle.DetectedLanguageConfidence = 0.96;
+                fullSubtitle.LanguageDetectionVersion =
+                    SubtitleLanguageHelper.CurrentLanguageDetectionVersion;
+                return Task.FromResult<EmbeddedSubtitle?>(fullSubtitle);
+            });
+
+        var durationProvider = new Mock<IMediaDurationProvider>();
+        durationProvider
+            .Setup(provider => provider.GetDurationSecondsAsync(mediaPath, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1440);
+
+        var resolver = CreateResolver(
+            Mock.Of<ISubtitleExtractionService>(),
+            cacheService,
+            mediaDurationProvider: durationProvider.Object,
+            languageContradictionDetector: detector.Object);
+
+        var request = new TranslationRequest
+        {
+            Id = 9111,
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaId = movie.Id,
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Pending,
+            SubtitleToTranslate = sparsePath,
+            SourceSnapshotStreamIndex = 0,
+            SourceSnapshotType = Lingarr.Server.Models.Subtitle.SourceSubtitleSnapshot.EmbeddedType
+        };
+        var options = new TranslationSourcePreparationOptions(
+            HasManualStreamSelection: false,
+            AllowCaptionFallback: false,
+            IsSupplementalRequest: false,
+            SupplementalTranslationEnabled: false);
+
+        var prepared = await resolver.PrepareTranslationSourceAsync(request, options);
+
+        Assert.NotNull(prepared);
+        Assert.Equal(1, prepared.SelectedSubtitle?.StreamIndex);
+        Assert.Equal(120, prepared.EntryCount);
+        detector.Verify(
+            service => service.TryAdoptDetectedSourceLanguageAsync(
+                It.IsAny<TranslationRequest>(),
+                It.IsAny<IReadOnlyList<EmbeddedSubtitle>>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     public void Dispose()
@@ -2770,7 +2918,9 @@ public sealed class SourceSubtitleResolverTests : IDisposable
         IEmbeddedSubtitleCacheService cacheService,
         ISourceSubtitleSnapshotService? snapshotService = null,
         ISubtitleOcrService? subtitleOcrService = null,
-        ISubtitleService? subtitleServiceOverride = null)
+        ISubtitleService? subtitleServiceOverride = null,
+        IMediaDurationProvider? mediaDurationProvider = null,
+        ISubtitleLanguageContradictionDetector? languageContradictionDetector = null)
     {
         var subtitleService = subtitleServiceOverride ?? new SubtitleService(NullLogger<SubtitleService>.Instance);
         return new SourceSubtitleResolver(
@@ -2783,7 +2933,9 @@ public sealed class SourceSubtitleResolverTests : IDisposable
             NullLogger<SourceSubtitleResolver>.Instance,
             new SubtitleSourceSelectionService(
                 subtitleService,
-                NullLogger<SubtitleSourceSelectionService>.Instance));
+                NullLogger<SubtitleSourceSelectionService>.Instance),
+            mediaDurationProvider,
+            languageContradictionDetector);
     }
 
     private SourceSubtitleSnapshotService CreateSnapshotService(ISubtitleService subtitleService)

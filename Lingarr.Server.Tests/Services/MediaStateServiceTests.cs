@@ -644,6 +644,68 @@ public class MediaStateServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ComputeStateAsync_AutoModeUsesStoredSidecarLanguageForExtensionlessFileName()
+    {
+        const int movieId = 61;
+        var movie = new Movie
+        {
+            Id = movieId,
+            RadarrId = movieId,
+            Title = "Sidecar Language",
+            Path = "/movies/sidecar-language",
+            FileName = "sidecar-language.mkv",
+            DateAdded = DateTime.UtcNow
+        };
+        _context.Movies.Add(movie);
+        await _context.SaveChangesAsync();
+
+        _settingServiceMock
+            .Setup(s => s.GetSettingAsJson<SourceLanguage>(SettingKeys.Translation.SourceLanguages))
+            .ReturnsAsync([]);
+        _settingServiceMock
+            .Setup(s => s.GetSettingAsJson<SourceLanguage>(SettingKeys.Translation.TargetLanguages))
+            .ReturnsAsync([new SourceLanguage { Code = "de", Name = "German" }]);
+        _settingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.Translation.SourceLanguageMode))
+            .ReturnsAsync("auto");
+        _settingServiceMock
+            .Setup(s => s.GetSetting(SettingKeys.Translation.SubtitleOutputMode))
+            .ReturnsAsync("srt-only");
+        _subtitleServiceMock
+            .Setup(s => s.GetAllSubtitles(movie.Path!))
+            .ReturnsAsync([
+                new Models.FileSystem.Subtitles
+                {
+                    Path = "/movies/sidecar-language/sidecar-language.en.srt",
+                    FileName = "sidecar-language.en",
+                    Language = "en",
+                    Format = ".srt"
+                }
+            ]);
+
+        var qualityScorerMock = new Mock<ITranslationQualityScorer>();
+        qualityScorerMock
+            .SetupGet(scorer => scorer.MinimumAcceptableScore)
+            .Returns(50);
+        qualityScorerMock
+            .Setup(scorer => scorer.ScoreDirection("en", "de"))
+            .Returns(85);
+        var service = new MediaStateService(
+            _context,
+            _settingServiceMock.Object,
+            _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
+            NullLogger<MediaStateService>.Instance,
+            qualityScorer: qualityScorerMock.Object);
+
+        var state = await service.UpdateStateAsync(movie, MediaType.Movie);
+
+        Assert.Equal(TranslationState.Pending, state);
+        qualityScorerMock.Verify(scorer => scorer.ScoreDirection("en", "de"), Times.Once);
+    }
+
+    [Fact]
     public async Task ComputeStateAsync_AutoModeDoesNotTreatScoredSourceAsValidatedWhenSnapshotIsUnavailable()
     {
         const int movieId = 54;
@@ -1708,5 +1770,90 @@ public class MediaStateServiceTests : IDisposable
         var state = await service.UpdateStateAsync(movie, MediaType.Movie);
 
         Assert.Equal(TranslationState.AwaitingSource, state);
+    }
+
+    [Fact]
+    public async Task GetMediaNeedingTranslationAsync_ExcludesMissingMedia()
+    {
+        var presentMovie = new Movie
+        {
+            Id = 71,
+            RadarrId = 71,
+            Title = "Present Movie",
+            Path = "/movies/present",
+            FileName = "present.mkv",
+            DateAdded = DateTime.UtcNow,
+            TranslationState = TranslationState.Pending
+        };
+        var missingMovie = new Movie
+        {
+            Id = 72,
+            RadarrId = 72,
+            Title = "Missing Movie",
+            Path = "/movies/missing",
+            FileName = "missing.mkv",
+            DateAdded = DateTime.UtcNow,
+            TranslationState = TranslationState.Pending,
+            MissingSince = DateTime.UtcNow.AddDays(-2)
+        };
+        var show = new Show
+        {
+            Id = 71,
+            SonarrId = 71,
+            Title = "Show",
+            Path = "/shows/show",
+            DateAdded = DateTime.UtcNow
+        };
+        var season = new Season
+        {
+            Id = 71,
+            SeasonNumber = 1,
+            Show = show
+        };
+        var presentEpisode = new Episode
+        {
+            Id = 73,
+            SonarrId = 71,
+            EpisodeNumber = 1,
+            Title = "Present Episode",
+            Path = "/shows/show",
+            FileName = "present",
+            Season = season,
+            DateAdded = DateTime.UtcNow,
+            TranslationState = TranslationState.Pending
+        };
+        var missingEpisode = new Episode
+        {
+            Id = 74,
+            SonarrId = 72,
+            EpisodeNumber = 2,
+            Title = "Missing Episode",
+            Path = "/shows/show",
+            FileName = "missing",
+            Season = season,
+            DateAdded = DateTime.UtcNow,
+            TranslationState = TranslationState.Pending,
+            MissingSince = DateTime.UtcNow.AddDays(-2)
+        };
+        season.Episodes.AddRange([presentEpisode, missingEpisode]);
+        show.Seasons.Add(season);
+        _context.Movies.AddRange(presentMovie, missingMovie);
+        _context.Shows.Add(show);
+        await _context.SaveChangesAsync();
+
+        var service = new MediaStateService(
+            _context,
+            _settingServiceMock.Object,
+            _subtitleServiceMock.Object,
+            _sourceSubtitleSnapshotServiceMock.Object,
+            _cacheServiceMock.Object,
+            NullLogger<MediaStateService>.Instance);
+
+        var candidates = await service.GetMediaNeedingTranslationAsync(10);
+
+        Assert.Contains(candidates, candidate => candidate.Media.Id == presentMovie.Id);
+        Assert.Contains(candidates, candidate => candidate.Media.Id == presentEpisode.Id);
+        Assert.DoesNotContain(candidates, candidate => candidate.Media.Id == missingMovie.Id);
+        Assert.DoesNotContain(candidates, candidate => candidate.Media.Id == missingEpisode.Id);
     }
 }

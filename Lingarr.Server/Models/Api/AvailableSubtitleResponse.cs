@@ -36,6 +36,33 @@ public class AvailableSubtitleResponse
     public DateTime? OcrApprovedAt { get; set; }
     public bool IsOcrSupported { get; set; }
     public bool IsOcrUsable { get; set; }
+
+    /// <summary>
+    /// Language detected from the subtitle content when it contradicts the container tag.
+    /// Null when no high confidence contradiction was found. The tag itself is unchanged.
+    /// </summary>
+    public string? DetectedLanguage { get; set; }
+
+    /// <summary>
+    /// Confidence (0.0 to 1.0) of <see cref="DetectedLanguage"/>.
+    /// </summary>
+    public double? DetectedLanguageConfidence { get; set; }
+
+    /// <summary>
+    /// How the last language check was produced, including negative verdicts such as
+    /// "no-contradiction", "insufficient-sample" or "ambiguous-latin".
+    /// </summary>
+    public string? LanguageDetectionMethod { get; set; }
+
+    /// <summary>
+    /// Human readable evidence or reason for the last language check.
+    /// </summary>
+    public string? LanguageDetectionEvidence { get; set; }
+
+    /// <summary>
+    /// When the language check last ran (successful or not).
+    /// </summary>
+    public DateTime? LanguageCheckedAt { get; set; }
 }
 
 /// <summary>

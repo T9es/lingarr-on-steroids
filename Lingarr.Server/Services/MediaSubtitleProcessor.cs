@@ -1933,15 +1933,27 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             return false;
         }
 
-        var ocrCandidates = embeddedSubtitles
+        var bitmapCandidates = embeddedSubtitles
             .Where(subtitle => !subtitle.IsTextBased)
             .Where(subtitle => _subtitleOcrService.IsSupportedCodec(subtitle.CodecName))
             .Where(IsQueueableOcrCandidate)
             .Where(subtitle => !ignoreCaptions ||
                                !SubtitleLanguageHelper.IsCaptionSubtitleType(
                                    SubtitleLanguageHelper.DetermineSubtitleType(subtitle)))
-            .Where(subtitle => !SubtitleLanguageHelper.IsSupplementalSubtitleType(
-                SubtitleLanguageHelper.DetermineSubtitleType(subtitle)));
+            .ToList();
+
+        var ocrCandidates = bitmapCandidates
+            .Where(subtitle => !IsSupplementalOcrCandidate(subtitle))
+            .ToList();
+
+        if (ocrCandidates.Count == 0)
+        {
+            // Some releases only ship full dialogue as a forced or foreign-titled PGS stream.
+            // Fall back to those supplemental tracks when no ordinary track exists.
+            ocrCandidates = bitmapCandidates
+                .Where(IsSupplementalOcrCandidate)
+                .ToList();
+        }
 
         EmbeddedSubtitle? candidate;
         if (isAutoMode)
@@ -2085,6 +2097,12 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                subtitle.OcrQualityScore.HasValue &&
                !string.IsNullOrWhiteSpace(subtitle.OcrExtractedPath) &&
                File.Exists(subtitle.OcrExtractedPath);
+    }
+
+    private static bool IsSupplementalOcrCandidate(EmbeddedSubtitle subtitle)
+    {
+        return SubtitleLanguageHelper.IsSupplementalSubtitleType(
+            SubtitleLanguageHelper.DetermineSubtitleType(subtitle));
     }
 
     private static void AddIntegrityFinding(
