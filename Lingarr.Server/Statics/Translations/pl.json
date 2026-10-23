@@ -360,6 +360,7 @@
       "statistics": "Statystyki",
       "retryFailed": "Ponów Nieudane Żądania",
       "languageDetection": "Wykrywanie Języka",
+      "subtitleLanguageCheck": "Sprawdzanie Języka Napisów",
       "subtitleOcr": "OCR Napisów",
       "bulkIntegrityCheck": "Masowa Kontrola Integralności",
       "verifyAssIntegrity": "Kontrola Integralności ASS",

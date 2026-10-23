@@ -360,6 +360,7 @@
       "statistics": "统计",
       "retryFailed": "重试失败的请求",
       "languageDetection": "语言检测",
+      "subtitleLanguageCheck": "字幕语言检查",
       "subtitleOcr": "字幕OCR",
       "bulkIntegrityCheck": "批量完整性检查",
       "verifyAssIntegrity": "ASS完整性检查",

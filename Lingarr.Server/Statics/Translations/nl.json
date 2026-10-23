@@ -360,6 +360,7 @@
       "statistics": "Statistieken",
       "retryFailed": "Mislukte Verzoeken Opnieuw",
       "languageDetection": "Taaldetectie",
+      "subtitleLanguageCheck": "Controle van Ondertiteltaal",
       "subtitleOcr": "Ondertitel-OCR",
       "bulkIntegrityCheck": "Bulk Integriteitscontrole",
       "verifyAssIntegrity": "ASS Integriteitscontrole",

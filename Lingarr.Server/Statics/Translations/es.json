@@ -360,6 +360,7 @@
       "statistics": "Estadísticas",
       "retryFailed": "Reintentar Solicitudes Fallidas",
       "languageDetection": "Detección de Idioma",
+      "subtitleLanguageCheck": "Comprobación de Idioma de Subtítulos",
       "subtitleOcr": "OCR de Subtítulos",
       "bulkIntegrityCheck": "Verificación de Integridad Masiva",
       "verifyAssIntegrity": "Verificación de Integridad ASS",

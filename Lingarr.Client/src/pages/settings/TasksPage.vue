@@ -161,6 +161,7 @@ const jobDisplayNames: Record<string, string> = {
     UploadWorkspaceCleanupJob: 'schedule.jobDisplay.uploadCleanup',
     StatisticsJob: 'schedule.jobDisplay.statistics',
     RetryFailedRequestsJob: 'schedule.jobDisplay.retryFailed',
+    SubtitleLanguageContradictionJob: 'schedule.jobDisplay.subtitleLanguageCheck',
     UnknownLanguageDetectionJob: 'schedule.jobDisplay.languageDetection'
 }
 
@@ -173,6 +174,7 @@ const enabledSettingMap: Record<string, string> = {
     UploadWorkspaceCleanupJob: SETTINGS.MAINTENANCE_UPLOAD_CLEANUP_ENABLED,
     StatisticsJob: SETTINGS.MAINTENANCE_STATISTICS_ENABLED,
     RetryFailedRequestsJob: SETTINGS.MAINTENANCE_RETRY_FAILED_ENABLED,
+    SubtitleLanguageContradictionJob: SETTINGS.MAINTENANCE_SUBTITLE_LANGUAGE_CHECK_ENABLED,
     UnknownLanguageDetectionJob: SETTINGS.DETECT_UNKNOWN_LANGUAGES
 }
 
@@ -185,6 +187,7 @@ const cronSettingMap: Record<string, string> = {
     UploadWorkspaceCleanupJob: SETTINGS.MAINTENANCE_UPLOAD_CLEANUP_SCHEDULE,
     StatisticsJob: SETTINGS.MAINTENANCE_STATISTICS_SCHEDULE,
     RetryFailedRequestsJob: SETTINGS.MAINTENANCE_RETRY_FAILED_SCHEDULE,
+    SubtitleLanguageContradictionJob: SETTINGS.MAINTENANCE_SUBTITLE_LANGUAGE_CHECK_SCHEDULE,
     UnknownLanguageDetectionJob: SETTINGS.DETECT_UNKNOWN_LANGUAGES_SCHEDULE
 }
 
