@@ -21,22 +21,33 @@ public static class SubtitleOcrLanguageMapper
         ["pol"] = "pol"
     };
 
-    public static string MapToTesseractLanguage(string? languageCode)
+    /// <summary>
+    /// Maps a subtitle language code to a Tesseract traineddata language name.
+    /// Returns false for any language without an installed mapping so callers do
+    /// not silently OCR with the wrong traineddata.
+    /// </summary>
+    public static bool TryMapToTesseractLanguage(string? languageCode, out string tesseractLanguage)
     {
+        tesseractLanguage = string.Empty;
         if (string.IsNullOrWhiteSpace(languageCode))
         {
-            return "eng";
+            return false;
         }
 
         var normalized = SubtitleLanguageHelper.NormalizeLanguageCode(languageCode);
         if (!string.IsNullOrWhiteSpace(normalized) &&
-            LanguageMap.TryGetValue(normalized, out var mapped))
+            LanguageMap.TryGetValue(normalized, out var normalizedMapping))
         {
-            return mapped;
+            tesseractLanguage = normalizedMapping;
+            return true;
         }
 
-        return LanguageMap.TryGetValue(languageCode.Trim(), out mapped)
-            ? mapped
-            : "eng";
+        if (LanguageMap.TryGetValue(languageCode.Trim(), out var directMapping))
+        {
+            tesseractLanguage = directMapping;
+            return true;
+        }
+
+        return false;
     }
 }

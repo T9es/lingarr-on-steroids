@@ -7,6 +7,7 @@ using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
+using Lingarr.Core.Interfaces;
 using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Models.FileSystem;
@@ -505,6 +506,393 @@ public class SubtitleOcrServiceTests
         }
     }
 
+    [Fact]
+    public async Task QueueOcrAsync_WithUnsupportedStreamLanguage_MarksFailedWithoutRunningEngine()
+    {
+        var (context, episodeId, tempDirectory) = await CreateEpisodeWithEmbeddedSubtitleAsync("chi");
+        try
+        {
+            await using var db = context;
+            var engine = new Mock<ISubtitleOcrEngine>();
+            var mediaState = new Mock<IMediaStateService>();
+            var ocrService = BuildService(
+                db,
+                Mock.Of<ISubtitleService>(),
+                Mock.Of<IEmbeddedSubtitleCacheService>(),
+                engine.Object,
+                mediaStateService: mediaState.Object);
+
+            var result = await ocrService.QueueOcrAsync(episodeId, MediaType.Episode, 0, manual: true);
+
+            Assert.False(result.Success);
+            Assert.Equal(SubtitleOcrStatus.Failed, result.Status);
+            Assert.Contains("'chi' is not supported", result.Error!);
+            Assert.Contains("Tesseract traineddata is not installed", result.Error!);
+
+            var subtitle = await db.EmbeddedSubtitles.SingleAsync();
+            Assert.Equal(SubtitleOcrStatus.Failed, subtitle.OcrStatus);
+            Assert.Contains("'chi' is not supported", subtitle.OcrError!);
+            Assert.NotNull(subtitle.OcrCompletedAt);
+
+            engine.Verify(
+                ocrEngine => ocrEngine.ConvertAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<int>(),
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<CancellationToken>()),
+                Times.Never);
+            mediaState.Verify(
+                state => state.UpdateStateAsync(
+                    It.IsAny<IMedia>(),
+                    It.IsAny<MediaType>(),
+                    It.IsAny<bool>()),
+                Times.Once);
+        }
+        finally
+        {
+            tempDirectory.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task RunOcrAsync_WithUnsupportedStreamLanguage_MarksFailedWithoutRunningEngine()
+    {
+        var (context, episodeId, tempDirectory) = await CreateEpisodeWithEmbeddedSubtitleAsync("chi");
+        try
+        {
+            await using var db = context;
+            var engine = new Mock<ISubtitleOcrEngine>();
+            var mediaState = new Mock<IMediaStateService>();
+            var ocrService = BuildService(
+                db,
+                Mock.Of<ISubtitleService>(),
+                Mock.Of<IEmbeddedSubtitleCacheService>(),
+                engine.Object,
+                mediaStateService: mediaState.Object);
+
+            var result = await ocrService.RunOcrAsync(episodeId, MediaType.Episode, 0, manual: false);
+
+            Assert.False(result.Success);
+            Assert.Equal(SubtitleOcrStatus.Failed, result.Status);
+            Assert.Contains("'chi' is not supported", result.Error!);
+
+            var subtitle = await db.EmbeddedSubtitles.SingleAsync();
+            Assert.Equal(SubtitleOcrStatus.Failed, subtitle.OcrStatus);
+            Assert.Contains("Tesseract traineddata is not installed", subtitle.OcrError!);
+
+            engine.Verify(
+                ocrEngine => ocrEngine.ConvertAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<int>(),
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<CancellationToken>()),
+                Times.Never);
+            mediaState.Verify(
+                state => state.UpdateStateAsync(
+                    It.IsAny<IMedia>(),
+                    It.IsAny<MediaType>(),
+                    It.IsAny<bool>()),
+                Times.Once);
+        }
+        finally
+        {
+            tempDirectory.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task QueueOcrAsync_WithUntaggedStreamLanguage_QueuesWithEnglishFallback()
+    {
+        var (context, episodeId, tempDirectory) = await CreateEpisodeWithEmbeddedSubtitleAsync(string.Empty);
+        try
+        {
+            await using var db = context;
+            var ocrService = BuildService(
+                db,
+                Mock.Of<ISubtitleService>(),
+                Mock.Of<IEmbeddedSubtitleCacheService>(),
+                Mock.Of<ISubtitleOcrEngine>());
+
+            var result = await ocrService.QueueOcrAsync(episodeId, MediaType.Episode, 0, manual: true);
+
+            Assert.True(result.Success);
+            Assert.Equal(SubtitleOcrStatus.Queued, result.Status);
+
+            var subtitle = await db.EmbeddedSubtitles.SingleAsync();
+            Assert.Equal(SubtitleOcrStatus.Queued, subtitle.OcrStatus);
+        }
+        finally
+        {
+            tempDirectory.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task QueueOcrAsync_WithUndLanguage_QueuesWithEnglishFallback()
+    {
+        var (context, episodeId, tempDirectory) = await CreateEpisodeWithEmbeddedSubtitleAsync("und");
+        try
+        {
+            await using var db = context;
+            var ocrService = BuildService(
+                db,
+                Mock.Of<ISubtitleService>(),
+                Mock.Of<IEmbeddedSubtitleCacheService>(),
+                Mock.Of<ISubtitleOcrEngine>());
+
+            var result = await ocrService.QueueOcrAsync(episodeId, MediaType.Episode, 0, manual: true);
+
+            Assert.True(result.Success);
+            Assert.Equal(SubtitleOcrStatus.Queued, result.Status);
+        }
+        finally
+        {
+            tempDirectory.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task RunOcrAsync_WithUntaggedStreamLanguage_UsesEnglishTraineddata()
+    {
+        var (context, episodeId, tempDirectory) = await CreateEpisodeWithEmbeddedSubtitleAsync(string.Empty);
+        try
+        {
+            await using var db = context;
+            var outputPath = Path.Combine(tempDirectory.FullName, "ocr.srt");
+            var cache = new Mock<IEmbeddedSubtitleCacheService>();
+            cache
+                .Setup(service => service.GetOcrCachePath(
+                    It.IsAny<int>(),
+                    It.IsAny<MediaType>(),
+                    It.IsAny<int>(),
+                    It.IsAny<string?>()))
+                .Returns(outputPath);
+
+            string? usedLanguage = null;
+            var engine = new Mock<ISubtitleOcrEngine>();
+            engine
+                .Setup(service => service.ConvertAsync(
+                    It.IsAny<string>(),
+                    0,
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<CancellationToken>()))
+                .Returns((string _, int _, string _, string tesseractLanguage, CancellationToken _) =>
+                {
+                    usedLanguage = tesseractLanguage;
+                    return Task.FromResult(new SubtitleOcrEngineResult
+                    {
+                        Success = false,
+                        Error = "engine stub"
+                    });
+                });
+
+            var ocrService = BuildService(
+                db,
+                Mock.Of<ISubtitleService>(),
+                cache.Object,
+                engine.Object);
+
+            var result = await ocrService.RunOcrAsync(episodeId, MediaType.Episode, 0, manual: false);
+
+            Assert.Equal("eng", usedLanguage);
+            Assert.False(result.Success);
+            Assert.Equal("engine stub", result.Error);
+        }
+        finally
+        {
+            tempDirectory.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task QueueOcrAsync_WithUnsupportedOcrLanguageSetting_MarksFailed()
+    {
+        var (context, episodeId, tempDirectory) = await CreateEpisodeWithEmbeddedSubtitleAsync("eng");
+        try
+        {
+            await using var db = context;
+            var ocrService = BuildService(
+                db,
+                Mock.Of<ISubtitleService>(),
+                Mock.Of<IEmbeddedSubtitleCacheService>(),
+                Mock.Of<ISubtitleOcrEngine>(),
+                ocrLanguages: "chi");
+
+            var result = await ocrService.QueueOcrAsync(episodeId, MediaType.Episode, 0, manual: true);
+
+            Assert.False(result.Success);
+            Assert.Equal(SubtitleOcrStatus.Failed, result.Status);
+            Assert.Contains("'chi' is not supported", result.Error!);
+        }
+        finally
+        {
+            tempDirectory.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task QueueOcrAsync_WithExplicitSupportedOcrLanguage_QueuesForeignStream()
+    {
+        var (context, episodeId, tempDirectory) = await CreateEpisodeWithEmbeddedSubtitleAsync("chi");
+        try
+        {
+            await using var db = context;
+            var ocrService = BuildService(
+                db,
+                Mock.Of<ISubtitleService>(),
+                Mock.Of<IEmbeddedSubtitleCacheService>(),
+                Mock.Of<ISubtitleOcrEngine>(),
+                ocrLanguages: "eng");
+
+            var result = await ocrService.QueueOcrAsync(episodeId, MediaType.Episode, 0, manual: true);
+
+            Assert.True(result.Success);
+            Assert.Equal(SubtitleOcrStatus.Queued, result.Status);
+
+            var subtitle = await db.EmbeddedSubtitles.SingleAsync();
+            Assert.Equal(SubtitleOcrStatus.Queued, subtitle.OcrStatus);
+        }
+        finally
+        {
+            tempDirectory.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task GetPreviewAsync_WithStaleManagedOcrOutput_DoesNotInvalidateOrResetState()
+    {
+        var (context, episodeId, tempDirectory) = await CreateEpisodeWithEmbeddedSubtitleAsync("eng");
+        try
+        {
+            var cachePath = Path.Combine(tempDirectory.FullName, "cache", "episode.ocr.srt");
+            var subtitle = await context.EmbeddedSubtitles.SingleAsync();
+            subtitle.OcrStatus = SubtitleOcrStatus.BlockedLowQuality;
+            subtitle.OcrQualityScore = 75;
+            subtitle.OcrIssueSummary = "Quality score 75 is below the required 80.";
+            subtitle.OcrExtractedPath = cachePath;
+            subtitle.OcrCompletedAt = new DateTime(2026, 5, 10, 21, 16, 50, DateTimeKind.Utc);
+            await context.SaveChangesAsync();
+
+            var cache = new Mock<IEmbeddedSubtitleCacheService>();
+            cache.Setup(service => service.IsManagedCachePath(It.IsAny<string?>())).Returns(true);
+            cache
+                .Setup(service => service.IsCurrentForSource(
+                    It.IsAny<string>(),
+                    It.IsAny<string>()))
+                .Returns(false);
+
+            var service = BuildService(
+                context,
+                Mock.Of<ISubtitleService>(),
+                cache.Object,
+                Mock.Of<ISubtitleOcrEngine>());
+
+            var preview = await service.GetPreviewAsync(episodeId, MediaType.Episode, 0);
+
+            Assert.False(preview.Success);
+            cache.Verify(service => service.Invalidate(It.IsAny<string>()), Times.Never);
+            var currentSubtitle = await context.EmbeddedSubtitles.SingleAsync();
+            Assert.Equal(SubtitleOcrStatus.BlockedLowQuality, currentSubtitle.OcrStatus);
+            Assert.Equal(cachePath, currentSubtitle.OcrExtractedPath);
+            Assert.Equal(75, currentSubtitle.OcrQualityScore);
+        }
+        finally
+        {
+            tempDirectory.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task QueueOcrAsync_WithStaleManagedOcrOutput_StillInvalidatesCachedOutput()
+    {
+        var (context, episodeId, tempDirectory) = await CreateEpisodeWithEmbeddedSubtitleAsync("eng");
+        try
+        {
+            var cachePath = Path.Combine(tempDirectory.FullName, "cache", "episode.ocr.srt");
+            var subtitle = await context.EmbeddedSubtitles.SingleAsync();
+            subtitle.OcrStatus = SubtitleOcrStatus.BlockedLowQuality;
+            subtitle.OcrQualityScore = 75;
+            subtitle.OcrIssueSummary = "Quality score 75 is below the required 80.";
+            subtitle.OcrExtractedPath = cachePath;
+            await context.SaveChangesAsync();
+
+            var cache = new Mock<IEmbeddedSubtitleCacheService>();
+            cache.Setup(service => service.IsManagedCachePath(It.IsAny<string?>())).Returns(true);
+            cache
+                .Setup(service => service.IsCurrentForSource(
+                    It.IsAny<string>(),
+                    It.IsAny<string>()))
+                .Returns(false);
+
+            var service = BuildService(
+                context,
+                Mock.Of<ISubtitleService>(),
+                cache.Object,
+                Mock.Of<ISubtitleOcrEngine>());
+
+            await service.QueueOcrAsync(episodeId, MediaType.Episode, 0, manual: true);
+
+            cache.Verify(service => service.Invalidate(cachePath), Times.Once);
+            var currentSubtitle = await context.EmbeddedSubtitles.SingleAsync();
+            Assert.Equal(SubtitleOcrStatus.Queued, currentSubtitle.OcrStatus);
+        }
+        finally
+        {
+            tempDirectory.Delete(recursive: true);
+        }
+    }
+
+    private static async Task<(LingarrDbContext Context, int EpisodeId, DirectoryInfo TempDirectory)>
+        CreateEpisodeWithEmbeddedSubtitleAsync(string streamLanguage)
+    {
+        var tempDirectory = Directory.CreateTempSubdirectory();
+        var fileName = "fallout.s01e01";
+        await File.WriteAllTextAsync(Path.Combine(tempDirectory.FullName, fileName + ".mkv"), "media");
+
+        var context = BuildContext();
+        var show = new Show
+        {
+            SonarrId = 1,
+            Title = "Fallout",
+            Path = tempDirectory.FullName,
+            DateAdded = DateTime.UtcNow
+        };
+        var season = new Season
+        {
+            SeasonNumber = 1,
+            Path = tempDirectory.FullName,
+            Show = show
+        };
+        var episode = new Episode
+        {
+            SonarrId = 1,
+            EpisodeNumber = 1,
+            Title = "The End",
+            Path = tempDirectory.FullName,
+            FileName = fileName,
+            Season = season
+        };
+        episode.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            StreamIndex = 0,
+            Language = streamLanguage,
+            Title = "PGS",
+            CodecName = "hdmv_pgs_subtitle",
+            IsTextBased = false,
+            Episode = episode
+        });
+
+        context.Shows.Add(show);
+        context.Seasons.Add(season);
+        context.Episodes.Add(episode);
+        await context.SaveChangesAsync();
+
+        return (context, episode.Id, tempDirectory);
+    }
+
     private static async Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout)
     {
         var deadline = DateTime.UtcNow + timeout;
@@ -543,7 +931,8 @@ public class SubtitleOcrServiceTests
         IEmbeddedSubtitleCacheService cacheService,
         ISubtitleOcrEngine ocrEngine,
         string ocrMinQualityScore = "80",
-        IMediaStateService? mediaStateService = null)
+        IMediaStateService? mediaStateService = null,
+        string ocrLanguages = "auto")
     {
         var settings = new Mock<ISettingService>();
         settings
@@ -554,7 +943,7 @@ public class SubtitleOcrServiceTests
             .ReturnsAsync(ocrMinQualityScore);
         settings
             .Setup(service => service.GetSetting(SettingKeys.SubtitleExtraction.OcrLanguages))
-            .ReturnsAsync("auto");
+            .ReturnsAsync(ocrLanguages);
 
         return new SubtitleOcrService(
             context,

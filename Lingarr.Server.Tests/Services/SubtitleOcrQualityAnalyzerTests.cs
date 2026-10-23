@@ -32,14 +32,20 @@ public class SubtitleOcrQualityAnalyzerTests
     }
 
     [Fact]
-    public void MapToTesseractLanguage_MapsCommonCodes()
+    public void TryMapToTesseractLanguage_MapsCommonCodes()
     {
-        Assert.Equal("eng", SubtitleOcrLanguageMapper.MapToTesseractLanguage("en"));
-        Assert.Equal("jpn", SubtitleOcrLanguageMapper.MapToTesseractLanguage("jpn"));
-        Assert.Equal("fra", SubtitleOcrLanguageMapper.MapToTesseractLanguage("fre"));
-        Assert.Equal("spa", SubtitleOcrLanguageMapper.MapToTesseractLanguage("es"));
-        Assert.Equal("deu", SubtitleOcrLanguageMapper.MapToTesseractLanguage("ger"));
-        Assert.Equal("pol", SubtitleOcrLanguageMapper.MapToTesseractLanguage("pl"));
+        Assert.True(SubtitleOcrLanguageMapper.TryMapToTesseractLanguage("en", out var english));
+        Assert.Equal("eng", english);
+        Assert.True(SubtitleOcrLanguageMapper.TryMapToTesseractLanguage("jpn", out var japanese));
+        Assert.Equal("jpn", japanese);
+        Assert.True(SubtitleOcrLanguageMapper.TryMapToTesseractLanguage("fre", out var french));
+        Assert.Equal("fra", french);
+        Assert.True(SubtitleOcrLanguageMapper.TryMapToTesseractLanguage("es", out var spanish));
+        Assert.Equal("spa", spanish);
+        Assert.True(SubtitleOcrLanguageMapper.TryMapToTesseractLanguage("ger", out var german));
+        Assert.Equal("deu", german);
+        Assert.True(SubtitleOcrLanguageMapper.TryMapToTesseractLanguage("pl", out var polish));
+        Assert.Equal("pol", polish);
     }
 
     private static List<SubtitleItem> BuildSubtitles(int count, Func<int, string> textFactory)

@@ -89,6 +89,12 @@ public class SubtitleOcrService : ISubtitleOcrService
             return Fail(SubtitleOcrStatus.Failed, validationError);
         }
 
+        var languageResolution = await ResolveOcrLanguageAsync(context.Subtitle, cancellationToken);
+        if (!languageResolution.IsSupported)
+        {
+            return await FailUnsupportedLanguageAsync(context, languageResolution, cancellationToken);
+        }
+
         var reEvaluatedResult = await TryReEvaluateBlockedLowQualityOcrAsync(
             context,
             manual,
@@ -126,6 +132,12 @@ public class SubtitleOcrService : ISubtitleOcrService
             return FromSubtitle(failedSubtitle, success: false);
         }
 
+        var languageResolution = await ResolveOcrLanguageAsync(context.Subtitle, cancellationToken);
+        if (!languageResolution.IsSupported)
+        {
+            return await FailUnsupportedLanguageAsync(context, languageResolution, cancellationToken);
+        }
+
         context.Subtitle.OcrStatus = SubtitleOcrStatus.Processing;
         context.Subtitle.OcrError = null;
         context.Subtitle.OcrAttemptedAt = DateTime.UtcNow;
@@ -136,7 +148,7 @@ public class SubtitleOcrService : ISubtitleOcrService
             mediaType,
             streamIndex,
             context.Subtitle.Language);
-        var tesseractLanguage = await ResolveOcrLanguageAsync(context.Subtitle, cancellationToken);
+        var tesseractLanguage = languageResolution.TesseractLanguage!;
 
         // Serialize engine executions per output path (see OcrOutputLocks): only one
         // process may write a given cache file at a time, and that file must be fully
@@ -172,11 +184,15 @@ public class SubtitleOcrService : ISubtitleOcrService
                 }
 
                 var subtitles = await _subtitleService.ReadSubtitles(engineResult.OutputPath);
+                var expectedScriptLanguage = IsUntaggedOcrLanguage(context.Subtitle.Language)
+                    ? null
+                    : context.Subtitle.Language;
                 var quality = SubtitleOcrQualityAnalyzer.Analyze(
                     subtitles,
                     await GetMinimumQualityScoreAsync(cancellationToken),
                     manual && SubtitleLanguageHelper.IsSupplementalSubtitleType(
-                        SubtitleLanguageHelper.DetermineSubtitleType(context.Subtitle)));
+                        SubtitleLanguageHelper.DetermineSubtitleType(context.Subtitle)),
+                    expectedScriptLanguage);
 
                 var completedSubtitle = await SaveCurrentSubtitleStateAsync(
                     context,
@@ -303,7 +319,14 @@ public class SubtitleOcrService : ISubtitleOcrService
         int streamIndex,
         CancellationToken cancellationToken = default)
     {
-        var context = await LoadContextAsync(mediaId, mediaType, streamIndex, cancellationToken);
+        // Read-only path: never invalidate cached OCR output or reset subtitle state
+        // here. Invalidation belongs to the explicit queue/run paths (POST).
+        var context = await LoadContextAsync(
+            mediaId,
+            mediaType,
+            streamIndex,
+            cancellationToken,
+            invalidateStaleManagedOcr: false);
         if (context == null)
         {
             return new SubtitleOcrPreviewResponse
@@ -466,19 +489,60 @@ public class SubtitleOcrService : ISubtitleOcrService
             : 80;
     }
 
-    private async Task<string> ResolveOcrLanguageAsync(
+    private async Task<OcrLanguageResolution> ResolveOcrLanguageAsync(
         EmbeddedSubtitle subtitle,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var mode = await _settingService.GetSetting(SettingKeys.SubtitleExtraction.OcrLanguages);
-        if (!string.IsNullOrWhiteSpace(mode) &&
+        var mode = (await _settingService.GetSetting(SettingKeys.SubtitleExtraction.OcrLanguages))?.Trim();
+        if (!string.IsNullOrEmpty(mode) &&
             !string.Equals(mode, "auto", StringComparison.OrdinalIgnoreCase))
         {
-            return SubtitleOcrLanguageMapper.MapToTesseractLanguage(mode);
+            return SubtitleOcrLanguageMapper.TryMapToTesseractLanguage(mode, out var mappedMode)
+                ? OcrLanguageResolution.Supported(mappedMode)
+                : OcrLanguageResolution.Unsupported(UnsupportedOcrLanguageError(mode));
         }
 
-        return SubtitleOcrLanguageMapper.MapToTesseractLanguage(subtitle.Language);
+        if (IsUntaggedOcrLanguage(subtitle.Language))
+        {
+            // An untagged PGS track is often the sole full-dialogue English track on a
+            // release, so keep the legacy English heuristic instead of blocking OCR.
+            _logger.LogDebug(
+                "OCR language is not declared for stream {StreamIndex}; using English traineddata as the legacy fallback.",
+                subtitle.StreamIndex);
+            return OcrLanguageResolution.Supported("eng");
+        }
+
+        var streamLanguage = subtitle.Language!.Trim();
+        return SubtitleOcrLanguageMapper.TryMapToTesseractLanguage(streamLanguage, out var mappedStreamLanguage)
+            ? OcrLanguageResolution.Supported(mappedStreamLanguage)
+            : OcrLanguageResolution.Unsupported(UnsupportedOcrLanguageError(streamLanguage));
+    }
+
+    private async Task<SubtitleOcrResult> FailUnsupportedLanguageAsync(
+        OcrMediaContext context,
+        OcrLanguageResolution resolution,
+        CancellationToken cancellationToken)
+    {
+        _logger.LogWarning(
+            "OCR blocked for {MediaType} {MediaId} stream {StreamIndex}: {Error}",
+            context.MediaType,
+            context.Media.Id,
+            context.Subtitle.StreamIndex,
+            resolution.Error);
+        var failedSubtitle = await MarkFailedAsync(context, resolution.Error!, cancellationToken);
+        return FromSubtitle(failedSubtitle, success: false);
+    }
+
+    private static string UnsupportedOcrLanguageError(string languageCode)
+    {
+        return $"OCR language '{languageCode.Trim()}' is not supported: Tesseract traineddata is not installed.";
+    }
+
+    private static bool IsUntaggedOcrLanguage(string? languageCode)
+    {
+        return string.IsNullOrWhiteSpace(languageCode) ||
+               string.Equals(languageCode.Trim(), "und", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task<EmbeddedSubtitle> MarkFailedAsync(
@@ -563,7 +627,8 @@ public class SubtitleOcrService : ISubtitleOcrService
         int mediaId,
         MediaType mediaType,
         int streamIndex,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool invalidateStaleManagedOcr = true)
     {
         if (mediaType == MediaType.Movie)
         {
@@ -583,7 +648,11 @@ public class SubtitleOcrService : ISubtitleOcrService
             }
 
             var context = new OcrMediaContext(movie, MediaType.Movie, subtitle, path);
-            await InvalidateStaleManagedOcrAsync(context, cancellationToken);
+            if (invalidateStaleManagedOcr)
+            {
+                await InvalidateStaleManagedOcrAsync(context, cancellationToken);
+            }
+
             return context;
         }
 
@@ -607,7 +676,11 @@ public class SubtitleOcrService : ISubtitleOcrService
             MediaType.Episode,
             episodeSubtitle,
             episodePath);
-        await InvalidateStaleManagedOcrAsync(episodeContext, cancellationToken);
+        if (invalidateStaleManagedOcr)
+        {
+            await InvalidateStaleManagedOcrAsync(episodeContext, cancellationToken);
+        }
+
         return episodeContext;
     }
 
@@ -690,4 +763,14 @@ public class SubtitleOcrService : ISubtitleOcrService
         MediaType MediaType,
         EmbeddedSubtitle Subtitle,
         string MediaPath);
+
+    private sealed record OcrLanguageResolution(string? TesseractLanguage, string? Error)
+    {
+        public bool IsSupported => Error == null;
+
+        public static OcrLanguageResolution Supported(string tesseractLanguage) =>
+            new(tesseractLanguage, null);
+
+        public static OcrLanguageResolution Unsupported(string error) => new(null, error);
+    }
 }
