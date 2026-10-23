@@ -16,5 +16,6 @@ public class CompletedTranslationCompareResponse
     public List<TranslationCompareLineDto> Lines { get; set; } = [];
     public bool IsPartialFailure { get; set; }
     public List<int> MissingPositions { get; set; } = [];
+    public List<FailedCueDetailDto> FailedCueDetails { get; set; } = [];
     public bool CanAccept { get; set; }
 }

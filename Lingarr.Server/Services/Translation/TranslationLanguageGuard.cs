@@ -233,7 +233,7 @@ internal static class TranslationLanguageGuard
             LatinLetters >= 6 && EastAsianLetters == 0 && (double)LatinLetters / LetterCount >= 0.85;
 
         public bool IsMojibakeLikely =>
-            MojibakeMarkers >= 4 && VisibleCharacterCount > 0 &&
+            MojibakeMarkers >= 3 && VisibleCharacterCount > 0 &&
             (double)MojibakeMarkers / VisibleCharacterCount >= 0.08;
 
         public static TextScriptStats FromText(string text)
@@ -242,18 +242,12 @@ internal static class TranslationLanguageGuard
             var visibleCharacterCount = 0;
             var eastAsianLetters = 0;
             var latinLetters = 0;
-            var mojibakeMarkers = 0;
 
             foreach (var c in text)
             {
                 if (!char.IsWhiteSpace(c))
                 {
                     visibleCharacterCount++;
-                }
-
-                if (IsMojibakeMarker(c))
-                {
-                    mojibakeMarkers++;
                 }
 
                 if (!char.IsLetter(c))
@@ -277,7 +271,67 @@ internal static class TranslationLanguageGuard
                 visibleCharacterCount,
                 eastAsianLetters,
                 latinLetters,
-                mojibakeMarkers);
+                CountMojibakeMarkers(text));
+        }
+
+        /// <summary>
+        /// Counts only actual mis-decoding evidence. A UTF-8 sequence that was decoded as
+        /// Latin-1, Windows-125x or Latin-2 shows up as a lead character followed by a
+        /// rendered continuation character. The lead byte and the continuation byte are both
+        /// damaged, so a matched pair counts twice; standalone replacement characters and C1
+        /// controls count once. Typographic quotes, dashes, ellipses and ordinary accented
+        /// letters are valid text and are never counted on their own.
+        /// </summary>
+        private static int CountMojibakeMarkers(string text)
+        {
+            var markers = 0;
+            for (var index = 0; index < text.Length; index++)
+            {
+                var c = text[index];
+                if (index + 1 < text.Length &&
+                    IsMojibakeLeadCharacter(c) &&
+                    IsMojibakeContinuationCharacter(text[index + 1]))
+                {
+                    markers += 2;
+                    index++;
+                    continue;
+                }
+
+                if (c == '\uFFFD' || IsInRange(c, '\u0080', '\u009F'))
+                {
+                    markers++;
+                }
+            }
+
+            return markers;
+        }
+
+        private static bool IsMojibakeLeadCharacter(char c)
+        {
+            return MojibakeLeadCharacters.Contains(c);
+        }
+
+        // UTF-8 lead bytes C2-DF rendered by Latin-1, Windows-1250 and Latin-2. The Latin-1
+        // range covers Â-ß; the additional characters are the Latin-2/Windows-1250
+        // renderings of the same bytes (for example C5 -> Ĺ instead of Å).
+        private static readonly string MojibakeLeadCharacters =
+            "ÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖ×ØÙÚÛÜÝÞßĂĹĆČĘĚĎĐŃŇŐŘŢŤŮŰ";
+
+        private static bool IsMojibakeContinuationCharacter(char c)
+        {
+            // A UTF-8 continuation byte keeps its value when decoded, so any byte in
+            // 0x80-0xBF is evidence. Latin-1 renders 0x80-0x9F as C1 controls and
+            // 0xA0-0xBF as printable punctuation and accented capitals.
+            if (c == '\uFFFD' ||
+                IsInRange(c, '\u0080', '\u009F') ||
+                IsInRange(c, '\u00A0', '\u00BF'))
+            {
+                return true;
+            }
+
+            // Windows-1252 and Windows-1250 renderings of bytes 0x80-0x9F, plus the
+            // Latin-2/Windows-1250 renderings of bytes 0xA0-0xBF (for example 0xBC -> Ľ).
+            return "€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸťŤĄ˘ŁĽŚŞŹŽŻą˛łľśşťźžżˇ˝".Contains(c);
         }
 
         private static bool IsEastAsian(char c)
@@ -294,13 +348,6 @@ internal static class TranslationLanguageGuard
                    IsInRange(c, 'a', 'z') ||
                    IsInRange(c, '\u00C0', '\u024F') ||
                    IsInRange(c, '\u1E00', '\u1EFF');
-        }
-
-        private static bool IsMojibakeMarker(char c)
-        {
-            return c == '\uFFFD' ||
-                   IsInRange(c, '\u0080', '\u009F') ||
-                   "ÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖ×ØÙÚÛÜÝÞßĂăĹĺĽľŤť€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ".Contains(c);
         }
 
         private static bool IsInRange(char c, char start, char end)

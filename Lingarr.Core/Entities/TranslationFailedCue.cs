@@ -16,4 +16,16 @@ public class TranslationFailedCue : BaseEntity
     public bool AutoApprovalEligible { get; set; }
     public DateTime? AutoApprovedAt { get; set; }
     public string? ApprovalSequenceHash { get; set; }
+
+    /// <summary>
+    /// The provider translation that was rejected for this position, kept so a user can
+    /// inspect and explicitly accept it without weakening provider validation.
+    /// </summary>
+    public string? RejectedText { get; set; }
+
+    /// <summary>
+    /// Stable rejection reason for <see cref="RejectedText"/>, for example source-echo or
+    /// wrong-target-language.
+    /// </summary>
+    public string? RejectionReason { get; set; }
 }

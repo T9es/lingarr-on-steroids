@@ -11,6 +11,13 @@ export interface TranslationCompareLine {
     endTimeMs?: number
 }
 
+export interface FailedCueDetail {
+    position: number
+    sourceText: string
+    rejectedText: string | null
+    rejectionReason: string | null
+}
+
 export interface CompletedTranslationCompareResponse {
     translationRequestId: number
     title: string
@@ -27,4 +34,5 @@ export interface CompletedTranslationCompareResponse {
     isPartialFailure?: boolean // NEW
     missingPositions?: number[] // NEW
     canAccept?: boolean // NEW
+    failedCueDetails?: FailedCueDetail[] // NEW: rejected provider text for missing cues
 }

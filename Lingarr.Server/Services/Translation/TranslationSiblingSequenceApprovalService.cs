@@ -513,10 +513,11 @@ public class TranslationSiblingSequenceApprovalService : ITranslationSiblingSequ
                 existingCue.AutoApprovalEligible = missingCue.AutoApprovalEligible;
                 existingCue.AutoApprovedAt = null;
                 existingCue.ApprovalSequenceHash = null;
+                ApplyRejectedProviderTranslation(existingCue, missingCue);
                 continue;
             }
 
-            _dbContext.TranslationFailedCues.Add(new TranslationFailedCue
+            var newCue = new TranslationFailedCue
             {
                 TranslationRequestId = requestId,
                 Position = missingCue.Position,
@@ -524,7 +525,9 @@ public class TranslationSiblingSequenceApprovalService : ITranslationSiblingSequ
                 NormalizedText = normalizedText,
                 TextHash = textHash,
                 AutoApprovalEligible = missingCue.AutoApprovalEligible
-            });
+            };
+            ApplyRejectedProviderTranslation(newCue, missingCue);
+            _dbContext.TranslationFailedCues.Add(newCue);
         }
 
         if (sourcePreservedPositionsChanged)
@@ -553,6 +556,19 @@ public class TranslationSiblingSequenceApprovalService : ITranslationSiblingSequ
             CompletedRequestIds = [],
             RemainingException = exception
         };
+    }
+
+    private static void ApplyRejectedProviderTranslation(
+        TranslationFailedCue cue,
+        MissingTranslationCue missingCue)
+    {
+        if (string.IsNullOrWhiteSpace(missingCue.RejectedText))
+        {
+            return;
+        }
+
+        cue.RejectedText = missingCue.RejectedText;
+        cue.RejectionReason = missingCue.RejectionReason;
     }
 
     private static string Normalize(string text)

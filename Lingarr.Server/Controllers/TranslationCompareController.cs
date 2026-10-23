@@ -117,6 +117,7 @@ public class TranslationCompareController : ControllerBase
             string? translatedSubtitlePath;
             bool isPartialFailure = false;
             List<int> missingPositions = [];
+            List<FailedCueDetailDto> failedCueDetails = [];
 
             if (request.Status == TranslationStatus.Failed)
             {
@@ -137,6 +138,7 @@ public class TranslationCompareController : ControllerBase
                     hydration);
 
                 isPartialFailure = missingPositions.Count > 0;
+                failedCueDetails = BuildFailedCueDetails(request.Id, missingPositions);
 
                 filteredTranslatedSubtitles = BuildFailedComparisonSubtitles(
                     request,
@@ -222,6 +224,7 @@ public class TranslationCompareController : ControllerBase
                 Lines = lines,
                 IsPartialFailure = isPartialFailure,
                 MissingPositions = missingPositions,
+                FailedCueDetails = failedCueDetails,
                 CanAccept = request.Status == TranslationStatus.Failed
             };
 
@@ -997,8 +1000,34 @@ public class TranslationCompareController : ControllerBase
             Lines = lines,
             IsPartialFailure = isPartialFailure,
             MissingPositions = missingPositions,
+            FailedCueDetails = BuildFailedCueDetails(request.Id, missingPositions),
             CanAccept = request.Status == TranslationStatus.Failed
         };
+    }
+
+    private List<FailedCueDetailDto> BuildFailedCueDetails(
+        int requestId,
+        IReadOnlyCollection<int> missingPositions)
+    {
+        if (missingPositions.Count == 0)
+        {
+            return [];
+        }
+
+        var missingSet = missingPositions.ToHashSet();
+        return _dbContext.TranslationFailedCues
+            .Where(cue => cue.TranslationRequestId == requestId)
+            .OrderBy(cue => cue.Position)
+            .ToList()
+            .Where(cue => missingSet.Contains(cue.Position))
+            .Select(cue => new FailedCueDetailDto
+            {
+                Position = cue.Position,
+                SourceText = cue.SourceText,
+                RejectedText = cue.RejectedText,
+                RejectionReason = cue.RejectionReason
+            })
+            .ToList();
     }
 
     private async Task<ResolvedTranslatedSubtitlePath?> ResolveTranslatedSubtitlePathAsync(

@@ -30,6 +30,12 @@ public class TranslationFailedCueConfiguration : IEntityTypeConfiguration<Transl
         builder.Property(cue => cue.ApprovalSequenceHash)
             .HasMaxLength(64);
 
+        builder.Property(cue => cue.RejectedText)
+            .HasMaxLength(4000);
+
+        builder.Property(cue => cue.RejectionReason)
+            .HasMaxLength(100);
+
         builder.HasOne(cue => cue.TranslationRequest)
             .WithMany()
             .HasForeignKey(cue => cue.TranslationRequestId)

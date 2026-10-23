@@ -1398,6 +1398,146 @@ public class TranslationCompareControllerTests : IDisposable
         Assert.Empty(completionService.SourceTextPositions);
     }
 
+    [Fact]
+    public async Task GetCompletedTranslationCompare_WhenFailedCueHasRejectedProviderText_ReturnsFailedCueDetails()
+    {
+        var sourcePath = Path.Combine(_tempDirectory, "failed-rejected-cue.en.srt");
+        await File.WriteAllTextAsync(
+            sourcePath,
+            "1\n00:00:01,000 --> 00:00:02,000\nLine one\n\n" +
+            "2\n00:00:03,000 --> 00:00:04,000\nLine two\n");
+
+        var request = new TranslationRequest
+        {
+            Title = "Rejected provider cue",
+            SourceLanguage = "ro",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = sourcePath,
+            SourceSubtitleFormat = ".srt",
+            SubtitleOutputMode = "srt",
+            RequiredOutputFormats = ".srt",
+            SourceSnapshotFingerprint = BuildFallbackFingerprint(sourcePath, "ro", "pl", ".srt"),
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Failed
+        };
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        _dbContext.TranslationRequestLogs.Add(new TranslationRequestLog
+        {
+            TranslationRequestId = request.Id,
+            Level = "Error",
+            Message = "translation failed",
+            Details = "Translation failed: 1 subtitle(s) missing at positions: 2."
+        });
+        _dbContext.TranslationFailedCues.Add(new TranslationFailedCue
+        {
+            TranslationRequestId = request.Id,
+            Position = 2,
+            SourceText = "Line two",
+            NormalizedText = "line two",
+            TextHash = "hash-two",
+            AutoApprovalEligible = true,
+            RejectedText = "Tylko ja tu znam różnicę\nmiędzy „el” a „la”?",
+            RejectionReason = "wrong-target-language"
+        });
+        await _dbContext.SaveChangesAsync();
+
+        var controller = CreateController(
+            checkpointService: new StaticTranslationCheckpointService(new TranslationCheckpoint
+            {
+                TranslationRequestId = request.Id,
+                SourceFingerprint = BuildFallbackFingerprint(sourcePath, "ro", "pl", ".srt"),
+                Translations = { [1] = "Linia jeden" }
+            }));
+
+        var actionResult = await controller.GetCompletedTranslationCompare(request.Id);
+        var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
+        var payload = Assert.IsType<CompletedTranslationCompareResponse>(okResult.Value);
+
+        var detail = Assert.Single(payload.FailedCueDetails);
+        Assert.Equal(2, detail.Position);
+        Assert.Equal("Line two", detail.SourceText);
+        Assert.Equal("Tylko ja tu znam różnicę\nmiędzy „el” a „la”?", detail.RejectedText);
+        Assert.Equal("wrong-target-language", detail.RejectionReason);
+    }
+
+    [Fact]
+    public async Task AcceptTranslation_WhenUserSubmitsPreviouslyRejectedProviderText_PassesItAsRegularEdit()
+    {
+        var sourcePath = Path.Combine(_tempDirectory, "accept-rejected-cue.en.srt");
+        await File.WriteAllTextAsync(
+            sourcePath,
+            "1\n00:00:01,000 --> 00:00:02,000\nLine one\n\n" +
+            "2\n00:00:03,000 --> 00:00:04,000\nLine two\n");
+
+        var request = new TranslationRequest
+        {
+            Title = "Accept rejected provider cue",
+            SourceLanguage = "ro",
+            TargetLanguage = "pl",
+            SubtitleToTranslate = sourcePath,
+            SourceSubtitleFormat = ".srt",
+            SubtitleOutputMode = "srt",
+            RequiredOutputFormats = ".srt",
+            SourceSnapshotFingerprint = BuildFallbackFingerprint(sourcePath, "ro", "pl", ".srt"),
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Failed
+        };
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        _dbContext.TranslationRequestLogs.Add(new TranslationRequestLog
+        {
+            TranslationRequestId = request.Id,
+            Level = "Error",
+            Message = "translation failed",
+            Details = "Translation failed: 1 subtitle(s) missing at positions: 2."
+        });
+        _dbContext.TranslationFailedCues.Add(new TranslationFailedCue
+        {
+            TranslationRequestId = request.Id,
+            Position = 2,
+            SourceText = "Line two",
+            NormalizedText = "line two",
+            TextHash = "hash-two",
+            AutoApprovalEligible = true,
+            RejectedText = "Tylko ja tu znam różnicę\nmiędzy „el” a „la”?",
+            RejectionReason = "wrong-target-language"
+        });
+        await _dbContext.SaveChangesAsync();
+
+        var completionService = new RecordingFailedTranslationCompletionService();
+        var controller = CreateController(
+            checkpointService: new StaticTranslationCheckpointService(new TranslationCheckpoint
+            {
+                TranslationRequestId = request.Id,
+                SourceFingerprint = BuildFallbackFingerprint(sourcePath, "ro", "pl", ".srt"),
+                Translations = { [1] = "Linia jeden" }
+            }),
+            completionService: completionService);
+
+        await controller.AcceptTranslation(
+            request.Id,
+            new TranslationCompareEditRequest
+            {
+                SourceFingerprint = BuildCurrentSourceFingerprint(request, sourcePath),
+                Edits =
+                [
+                    new TranslationCompareEdit
+                    {
+                        Position = 2,
+                        TranslatedText = "Tylko ja tu znam różnicę\nmiędzy „el” a „la”?"
+                    }
+                ]
+            },
+            CancellationToken.None);
+
+        Assert.Equal(
+            "Tylko ja tu znam różnicę\nmiędzy „el” a „la”?",
+            completionService.Edits[2]);
+    }
+
     private TranslationCompareController CreateController(
         ISubtitleExtractionService? extractionService = null,
         ISourceSubtitleResolver? sourceSubtitleResolver = null,

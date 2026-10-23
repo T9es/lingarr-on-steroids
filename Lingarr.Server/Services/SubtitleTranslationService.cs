@@ -349,6 +349,9 @@ public class SubtitleTranslationService
         var useImmediateFallback = batchRetryMode.Equals("immediate", StringComparison.OrdinalIgnoreCase);
         var globalFailures = new List<RepairItem>();
         var deferredRepairEchoedPositions = new HashSet<int>();
+        // Provider translations rejected by the echo/language guards are kept per run so the
+        // failed cues can persist what was rejected and a user can later accept it explicitly.
+        var rejectedProviderTranslations = new Dictionary<int, RejectedProviderTranslation>();
 
         for (var batchIndex = 0; batchIndex < batches.Count; batchIndex++)
         {
@@ -558,6 +561,12 @@ public class SubtitleTranslationService
                 sourcePreservedPositions);
             var invalidRepairPositions = repairValidation.InvalidPositions;
             deferredRepairEchoedPositions.UnionWith(repairValidation.EchoedPositions);
+            RecordRejectedProviderTranslations(
+                rejectedProviderTranslations,
+                repairResults,
+                invalidRepairPositions,
+                repairValidation.EchoedPositions,
+                repairValidation.MismatchedPositions);
             if (invalidRepairPositions.Count > 0)
             {
                 _logger.LogWarning(
@@ -610,6 +619,11 @@ public class SubtitleTranslationService
         echoedRepresentativePositions.UnionWith(deferredRepairEchoedPositions);
         foreach (var position in echoedRepresentativePositions)
         {
+            RecordRejectedProviderTranslation(
+                rejectedProviderTranslations,
+                representativeProviderTranslations,
+                position,
+                ProviderRejectionReason.SourceEcho);
             representativeProviderTranslations.Remove(position);
         }
         var wrongLanguageRepresentativePositions = GetWrongTargetLanguagePositions(
@@ -628,6 +642,11 @@ public class SubtitleTranslationService
             sourcePreservedPositions);
         foreach (var position in wrongLanguageRepresentativePositions)
         {
+            RecordRejectedProviderTranslation(
+                rejectedProviderTranslations,
+                representativeProviderTranslations,
+                position,
+                ProviderRejectionReason.WrongTargetLanguage);
             representativeProviderTranslations.Remove(position);
         }
 
@@ -668,7 +687,10 @@ public class SubtitleTranslationService
             ThrowMissingTranslationException(
                 unresolvedEntries,
                 item => echoedRepresentativePositions.Contains(
-                    globalDeduplication.GetRepresentativePosition(item.Position)));
+                    globalDeduplication.GetRepresentativePosition(item.Position)),
+                rejectedProviderTranslations: ExpandRejectedProviderTranslations(
+                    rejectedProviderTranslations,
+                    globalDeduplication));
         }
 
         if (representativeEntries.Count == 0 || _lastProgression < 100)
@@ -905,6 +927,13 @@ public class SubtitleTranslationService
         var invalidProviderPositions = providerValidation.InvalidPositions.ToHashSet();
         invalidProviderPositions.UnionWith(echoedPositions);
         invalidProviderPositions.UnionWith(wrongLanguagePositions);
+        var rejectedBatchTranslations = new Dictionary<int, RejectedProviderTranslation>();
+        RecordRejectedProviderTranslations(
+            rejectedBatchTranslations,
+            batchResults,
+            invalidProviderPositions,
+            echoedPositions,
+            wrongLanguagePositions);
         if (providerValidation.MismatchedPositions.Count > 0 && wrongLanguagePositions.Count == 0)
         {
             _logger.LogWarning(
@@ -1007,7 +1036,10 @@ public class SubtitleTranslationService
 
         ThrowMissingTranslationException(
             missingEntries,
-            item => echoedPositions.Contains(deduplication.GetRepresentativePosition(item.Position)));
+            item => echoedPositions.Contains(deduplication.GetRepresentativePosition(item.Position)),
+            rejectedProviderTranslations: ExpandRejectedProviderTranslations(
+                rejectedBatchTranslations,
+                deduplication));
         return new BatchProcessingResult(resolvedProviderTranslations, []);
     }
 
@@ -1394,11 +1426,18 @@ public class SubtitleTranslationService
         var failure = new TranslationException(
             $"Provider returned an invalid translation for subtitle position {position}: {string.Join(" and ", reasons)}. " +
             "The result was not saved or applied.");
+        var rejectionReason = validation.MismatchedPositions.Contains(position)
+            ? ProviderRejectionReason.WrongTargetLanguage
+            : validation.EchoedPositions.Contains(position)
+                ? ProviderRejectionReason.SourceEcho
+                : ProviderRejectionReason.InvalidTranslation;
         throw new MissingTranslationException(
             [new MissingTranslationCue(
                 position,
                 sourceText,
-                semanticEntry?.CanPreserveSourceWhenProviderMissing == true)],
+                semanticEntry?.CanPreserveSourceWhenProviderMissing == true,
+                normalizedTranslation,
+                rejectionReason)],
             failure);
     }
 
@@ -1600,16 +1639,83 @@ public class SubtitleTranslationService
     private static void ThrowMissingTranslationException(
         List<BatchSubtitleItem> missingItems,
         Func<BatchSubtitleItem, bool>? isAutoApprovalEligible = null,
-        Exception? innerException = null)
+        Exception? innerException = null,
+        IReadOnlyDictionary<int, RejectedProviderTranslation>? rejectedProviderTranslations = null)
     {
         var missingCues = missingItems
-            .Select(item => new MissingTranslationCue(
-                item.Position,
-                item.Line,
-                isAutoApprovalEligible?.Invoke(item) ?? false))
+            .Select(item =>
+            {
+                RejectedProviderTranslation? rejected = null;
+                rejectedProviderTranslations?.TryGetValue(item.Position, out rejected);
+                return new MissingTranslationCue(
+                    item.Position,
+                    item.Line,
+                    isAutoApprovalEligible?.Invoke(item) ?? false,
+                    rejected?.Text,
+                    rejected?.Reason);
+            })
             .ToList();
         throw new MissingTranslationException(missingCues, innerException);
     }
+
+    private static Dictionary<int, RejectedProviderTranslation> ExpandRejectedProviderTranslations(
+        Dictionary<int, RejectedProviderTranslation> rejectedProviderTranslations,
+        ProviderTextDeduplicationResult deduplication)
+    {
+        if (rejectedProviderTranslations.Count == 0)
+        {
+            return rejectedProviderTranslations;
+        }
+
+        // A rejected representative is rejected for every cue that shares its provider text,
+        // so the same rejected translation must be attached to all duplicate positions.
+        var expanded = new Dictionary<int, RejectedProviderTranslation>();
+        foreach (var (position, rejectedTranslation) in rejectedProviderTranslations)
+        {
+            foreach (var memberPosition in deduplication.GetMemberPositions(position))
+            {
+                expanded[memberPosition] = rejectedTranslation;
+            }
+        }
+
+        return expanded;
+    }
+
+    private static void RecordRejectedProviderTranslations(
+        Dictionary<int, RejectedProviderTranslation> rejected,
+        IReadOnlyDictionary<int, string> translations,
+        IEnumerable<int> invalidPositions,
+        IEnumerable<int> echoedPositions,
+        IEnumerable<int> mismatchedPositions)
+    {
+        var echoed = echoedPositions as ISet<int> ?? echoedPositions.ToHashSet();
+        var mismatched = mismatchedPositions as ISet<int> ?? mismatchedPositions.ToHashSet();
+        foreach (var position in invalidPositions)
+        {
+            var reason = mismatched.Contains(position)
+                ? ProviderRejectionReason.WrongTargetLanguage
+                : echoed.Contains(position)
+                    ? ProviderRejectionReason.SourceEcho
+                    : ProviderRejectionReason.InvalidTranslation;
+            RecordRejectedProviderTranslation(rejected, translations, position, reason);
+        }
+    }
+
+    private static void RecordRejectedProviderTranslation(
+        Dictionary<int, RejectedProviderTranslation> rejected,
+        IReadOnlyDictionary<int, string> translations,
+        int position,
+        string reason)
+    {
+        if (!translations.TryGetValue(position, out var text) || string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        rejected[position] = new RejectedProviderTranslation(text, reason);
+    }
+
+    private sealed record RejectedProviderTranslation(string Text, string Reason);
 
     private static List<string> BuildBatchContext(
         IReadOnlyList<SubtitleTranslationNode> entries,
