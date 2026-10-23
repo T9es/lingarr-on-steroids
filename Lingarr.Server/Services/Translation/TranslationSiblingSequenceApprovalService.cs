@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
@@ -562,13 +563,22 @@ public class TranslationSiblingSequenceApprovalService : ITranslationSiblingSequ
         TranslationFailedCue cue,
         MissingTranslationCue missingCue)
     {
-        if (string.IsNullOrWhiteSpace(missingCue.RejectedText))
-        {
-            return;
-        }
+        // Overwrite unconditionally: when a re-failure carries no rejected text, the previous
+        // failure's rejected translation must not stay visible as if it were current. Truncate
+        // to the persisted column limits so oversized provider text cannot fail the save.
+        cue.RejectedText = Truncate(
+            missingCue.RejectedText,
+            TranslationFailedCueConfiguration.RejectedTextMaxLength);
+        cue.RejectionReason = Truncate(
+            missingCue.RejectionReason,
+            TranslationFailedCueConfiguration.RejectionReasonMaxLength);
+    }
 
-        cue.RejectedText = missingCue.RejectedText;
-        cue.RejectionReason = missingCue.RejectionReason;
+    private static string? Truncate(string? value, int maximumLength)
+    {
+        return value == null || value.Length <= maximumLength
+            ? value
+            : value[..maximumLength];
     }
 
     private static string Normalize(string text)

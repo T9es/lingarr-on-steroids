@@ -430,7 +430,16 @@ public class SubtitleTranslationService
                         })
                         .ToList(),
                     missingCues: null,
-                    ex);
+                    ex,
+                    rejectedProviderTranslations);
+            }
+
+            // Batch validation rejections belong to this run even when the cues are queued for
+            // deferred repair, so keep them available for the final exception (and repair-path
+            // exceptions) instead of dropping them with the local batch result.
+            foreach (var rejectedTranslation in batchResult.RejectedProviderTranslations)
+            {
+                rejectedProviderTranslations[rejectedTranslation.Key] = rejectedTranslation.Value;
             }
 
             foreach (var translation in batchResult.ProviderTranslations)
@@ -533,7 +542,8 @@ public class SubtitleTranslationService
                     structureEntries,
                     representativeFailures,
                     ex.MissingCues,
-                    ex);
+                    ex,
+                    rejectedProviderTranslations);
             }
             catch (Exception ex) when (!TranslationFailureClassifier.IsProviderUnavailable(ex))
             {
@@ -541,7 +551,8 @@ public class SubtitleTranslationService
                     structureEntries,
                     representativeFailures,
                     missingCues: null,
-                    ex);
+                    ex,
+                    rejectedProviderTranslations);
             }
 
             var repairSourceItems = representativeFailures
@@ -818,7 +829,7 @@ public class SubtitleTranslationService
                 ApplyTranslationToNode(entry, entry.ProviderText);
             }
 
-            return new BatchProcessingResult(new Dictionary<int, string>(), []);
+            return new BatchProcessingResult(new Dictionary<int, string>(), [], []);
         }
 
         Dictionary<int, string> batchResults;
@@ -896,7 +907,10 @@ public class SubtitleTranslationService
                         batchItems.Count,
                         failureSummary);
 
-                    return new BatchProcessingResult(new Dictionary<int, string>(), ExpandFailures(structureEntries, batchItems));
+                    return new BatchProcessingResult(
+                        new Dictionary<int, string>(),
+                        ExpandFailures(structureEntries, batchItems),
+                        []);
                 }
 
                 throw;
@@ -1020,7 +1034,10 @@ public class SubtitleTranslationService
 
         if (missingEntries.Count == 0)
         {
-            return new BatchProcessingResult(resolvedProviderTranslations, []);
+            return new BatchProcessingResult(
+                resolvedProviderTranslations,
+                [],
+                ExpandRejectedProviderTranslations(rejectedBatchTranslations, deduplication));
         }
 
         if (collectFailures)
@@ -1031,7 +1048,10 @@ public class SubtitleTranslationService
                 batchNumber,
                 totalBatches,
                 missingEntries.Count);
-            return new BatchProcessingResult(resolvedProviderTranslations, missingEntries);
+            return new BatchProcessingResult(
+                resolvedProviderTranslations,
+                missingEntries,
+                ExpandRejectedProviderTranslations(rejectedBatchTranslations, deduplication));
         }
 
         ThrowMissingTranslationException(
@@ -1040,7 +1060,7 @@ public class SubtitleTranslationService
             rejectedProviderTranslations: ExpandRejectedProviderTranslations(
                 rejectedBatchTranslations,
                 deduplication));
-        return new BatchProcessingResult(resolvedProviderTranslations, []);
+        return new BatchProcessingResult(resolvedProviderTranslations, [], []);
     }
 
     private async Task HydrateCheckpointTranslationsAsync(
@@ -1715,7 +1735,7 @@ public class SubtitleTranslationService
         rejected[position] = new RejectedProviderTranslation(text, reason);
     }
 
-    private sealed record RejectedProviderTranslation(string Text, string Reason);
+    internal sealed record RejectedProviderTranslation(string Text, string Reason);
 
     private static List<string> BuildBatchContext(
         IReadOnlyList<SubtitleTranslationNode> entries,
@@ -2126,11 +2146,12 @@ public class SubtitleTranslationService
             .ToList();
     }
 
-    private static MissingTranslationException CreateRepairMissingTranslationException(
+    internal static MissingTranslationException CreateRepairMissingTranslationException(
         IReadOnlyList<SubtitleTranslationNode> structureEntries,
         IReadOnlyList<RepairItem> representativeFailures,
         IReadOnlyList<MissingTranslationCue>? missingCues,
-        Exception innerException)
+        Exception innerException,
+        Dictionary<int, RejectedProviderTranslation>? rejectedProviderTranslations = null)
     {
         var failedItems = missingCues == null || missingCues.Count == 0
             ? representativeFailures
@@ -2149,12 +2170,45 @@ public class SubtitleTranslationService
                 .ToList();
         var expandedItems = ExpandFailures(structureEntries, failedItems);
         var entriesByPosition = structureEntries.ToDictionary(entry => entry.Subtitle.Position);
+        // The repair path used to rebuild cues from position/source only, which discarded the
+        // rejected provider text collected for the same run. Keep both the rejected data
+        // carried by the incoming cues and the run-level rejected translations.
+        var rejectedByPosition = new Dictionary<int, RejectedProviderTranslation>();
+        if (rejectedProviderTranslations is { Count: > 0 })
+        {
+            var repairDeduplication = ProviderTextDeduper.Deduplicate(
+                structureEntries
+                    .Where(entry => entry.IsTranslatable)
+                    .Select(entry => new ProviderTextItem(
+                        entry.Subtitle.Position,
+                        entry.ProviderText,
+                        entry.SemanticKind))
+                    .ToList());
+            foreach (var (position, rejectedTranslation) in
+                     ExpandRejectedProviderTranslations(rejectedProviderTranslations, repairDeduplication))
+            {
+                rejectedByPosition[position] = rejectedTranslation;
+            }
+        }
+
+        var incomingRejectedByPosition = (missingCues ?? [])
+            .Where(cue => cue.RejectedText != null || cue.RejectionReason != null)
+            .GroupBy(cue => cue.Position)
+            .ToDictionary(group => group.Key, group => group.First());
+
         var cues = expandedItems
-            .Select(item => new MissingTranslationCue(
-                item.Position,
-                item.Line,
-                entriesByPosition.TryGetValue(item.Position, out var entry) &&
-                entry.CanPreserveSourceWhenProviderMissing))
+            .Select(item =>
+            {
+                rejectedByPosition.TryGetValue(item.Position, out var rejectedTranslation);
+                incomingRejectedByPosition.TryGetValue(item.Position, out var incomingCue);
+                return new MissingTranslationCue(
+                    item.Position,
+                    item.Line,
+                    entriesByPosition.TryGetValue(item.Position, out var entry) &&
+                    entry.CanPreserveSourceWhenProviderMissing,
+                    incomingCue?.RejectedText ?? rejectedTranslation?.Text,
+                    incomingCue?.RejectionReason ?? rejectedTranslation?.Reason);
+            })
             .DistinctBy(cue => cue.Position)
             .ToList();
 
@@ -2328,7 +2382,8 @@ public class SubtitleTranslationService
 
     private sealed record BatchProcessingResult(
         Dictionary<int, string> ProviderTranslations,
-        List<BatchSubtitleItem> Failures);
+        List<BatchSubtitleItem> Failures,
+        Dictionary<int, RejectedProviderTranslation> RejectedProviderTranslations);
 
     private sealed record SubtitleBatchSlice(
         int StartIndex,

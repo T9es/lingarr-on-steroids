@@ -6,6 +6,18 @@ namespace Lingarr.Core.Configuration;
 
 public class TranslationFailedCueConfiguration : IEntityTypeConfiguration<TranslationFailedCue>
 {
+    /// <summary>
+    /// Maximum persisted length of the rejected provider translation. Writers must truncate
+    /// to this length so an oversized provider response cannot fail the insert/update.
+    /// </summary>
+    public const int RejectedTextMaxLength = 4000;
+
+    /// <summary>
+    /// Maximum persisted length of the rejection reason code. Writers must truncate to this
+    /// length so unexpected input cannot fail the insert/update.
+    /// </summary>
+    public const int RejectionReasonMaxLength = 100;
+
     public void Configure(EntityTypeBuilder<TranslationFailedCue> builder)
     {
         builder.HasIndex(cue => new { cue.TranslationRequestId, cue.Position })
@@ -31,10 +43,10 @@ public class TranslationFailedCueConfiguration : IEntityTypeConfiguration<Transl
             .HasMaxLength(64);
 
         builder.Property(cue => cue.RejectedText)
-            .HasMaxLength(4000);
+            .HasMaxLength(RejectedTextMaxLength);
 
         builder.Property(cue => cue.RejectionReason)
-            .HasMaxLength(100);
+            .HasMaxLength(RejectionReasonMaxLength);
 
         builder.HasOne(cue => cue.TranslationRequest)
             .WithMany()

@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
 using Lingarr.Core.Entities;
 using Lingarr.Core.Enum;
@@ -350,6 +351,69 @@ public class TranslationSiblingSequenceApprovalServiceTests : IDisposable
         Assert.NotNull(result.RemainingException);
         Assert.Empty(result.ApprovedPositions);
         Assert.Empty(_completionService.CompletedRequestIds);
+    }
+
+    [Fact]
+    public async Task ProcessMissingTranslationAsync_WhenRefailureCarriesNoRejectedText_ClearsPreviousRejectedText()
+    {
+        var scenario = await CreateScenarioAsync();
+        await AddFailedCuesAsync(scenario.CurrentRequest, (10, "Previously rejected line"));
+
+        var staleCue = await _dbContext.TranslationFailedCues
+            .SingleAsync(cue => cue.TranslationRequestId == scenario.CurrentRequest.Id);
+        staleCue.RejectedText = "Stary odrzucony tekst providera";
+        staleCue.RejectionReason = "wrong-target-language";
+        await _dbContext.SaveChangesAsync();
+
+        var result = await CreateService().ProcessMissingTranslationAsync(
+            scenario.CurrentRequest,
+            Missing((10, "Previously rejected line", true)),
+            CancellationToken.None);
+
+        Assert.False(result.CurrentRequestCompleted);
+
+        var refreshedCue = await _dbContext.TranslationFailedCues
+            .SingleAsync(cue => cue.TranslationRequestId == scenario.CurrentRequest.Id);
+        Assert.Null(refreshedCue.RejectedText);
+        Assert.Null(refreshedCue.RejectionReason);
+    }
+
+    [Fact]
+    public async Task ProcessMissingTranslationAsync_WhenRejectedTextExceedsColumnLimit_TruncatesBeforeSave()
+    {
+        var scenario = await CreateScenarioAsync();
+        var oversizedRejectedText = new string(
+            'x',
+            TranslationFailedCueConfiguration.RejectedTextMaxLength + 500);
+        var oversizedRejectionReason = new string(
+            'y',
+            TranslationFailedCueConfiguration.RejectionReasonMaxLength + 20);
+
+        var result = await CreateService().ProcessMissingTranslationAsync(
+            scenario.CurrentRequest,
+            new MissingTranslationException(
+            [
+                new MissingTranslationCue(
+                    10,
+                    "Opening line one",
+                    AutoApprovalEligible: true,
+                    RejectedText: oversizedRejectedText,
+                    RejectionReason: oversizedRejectionReason)
+            ]),
+            CancellationToken.None);
+
+        Assert.False(result.CurrentRequestCompleted);
+
+        var storedCue = await _dbContext.TranslationFailedCues
+            .SingleAsync(cue => cue.TranslationRequestId == scenario.CurrentRequest.Id);
+        Assert.NotNull(storedCue.RejectedText);
+        Assert.NotNull(storedCue.RejectionReason);
+        Assert.Equal(
+            TranslationFailedCueConfiguration.RejectedTextMaxLength,
+            storedCue.RejectedText!.Length);
+        Assert.Equal(
+            TranslationFailedCueConfiguration.RejectionReasonMaxLength,
+            storedCue.RejectionReason!.Length);
     }
 
     private TranslationSiblingSequenceApprovalService CreateService()
