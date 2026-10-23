@@ -17,7 +17,7 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "9.0.14")
+                .HasAnnotation("ProductVersion", "9.0.15")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -310,6 +310,14 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<string>("DetectedLanguage")
+                        .HasColumnType("text")
+                        .HasColumnName("detected_language");
+
+                    b.Property<double?>("DetectedLanguageConfidence")
+                        .HasColumnType("double precision")
+                        .HasColumnName("detected_language_confidence");
+
                     b.Property<int?>("EpisodeId")
                         .HasColumnType("integer")
                         .HasColumnName("episode_id");
@@ -337,6 +345,22 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                     b.Property<string>("Language")
                         .HasColumnType("text")
                         .HasColumnName("language");
+
+                    b.Property<DateTime?>("LanguageCheckedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("language_checked_at");
+
+                    b.Property<string>("LanguageDetectionEvidence")
+                        .HasColumnType("text")
+                        .HasColumnName("language_detection_evidence");
+
+                    b.Property<string>("LanguageDetectionMethod")
+                        .HasColumnType("text")
+                        .HasColumnName("language_detection_method");
+
+                    b.Property<int>("LanguageDetectionVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("language_detection_version");
 
                     b.Property<int?>("MovieId")
                         .HasColumnType("integer")
@@ -454,6 +478,10 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                     b.Property<string>("MediaHash")
                         .HasColumnType("text")
                         .HasColumnName("media_hash");
+
+                    b.Property<DateTime?>("MissingSince")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("missing_since");
 
                     b.Property<string>("Path")
                         .HasColumnType("text")
@@ -627,6 +655,10 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                     b.Property<string>("MediaHash")
                         .HasColumnType("text")
                         .HasColumnName("media_hash");
+
+                    b.Property<DateTime?>("MissingSince")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("missing_since");
 
                     b.Property<string>("Path")
                         .HasColumnType("text")
@@ -1185,6 +1217,16 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                     b.Property<int>("Position")
                         .HasColumnType("integer")
                         .HasColumnName("position");
+
+                    b.Property<string>("RejectedText")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("rejected_text");
+
+                    b.Property<string>("RejectionReason")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("rejection_reason");
 
                     b.Property<string>("SourceText")
                         .IsRequired()

@@ -15,7 +15,7 @@ namespace Lingarr.Migrations.SQLite.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "9.0.14");
+            modelBuilder.HasAnnotation("ProductVersion", "9.0.15");
 
             modelBuilder.Entity("Lingarr.Core.Entities.ApiUsageLog", b =>
                 {
@@ -295,6 +295,14 @@ namespace Lingarr.Migrations.SQLite.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("created_at");
 
+                    b.Property<string>("DetectedLanguage")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("detected_language");
+
+                    b.Property<double?>("DetectedLanguageConfidence")
+                        .HasColumnType("REAL")
+                        .HasColumnName("detected_language_confidence");
+
                     b.Property<int?>("EpisodeId")
                         .HasColumnType("INTEGER")
                         .HasColumnName("episode_id");
@@ -322,6 +330,22 @@ namespace Lingarr.Migrations.SQLite.Migrations
                     b.Property<string>("Language")
                         .HasColumnType("TEXT")
                         .HasColumnName("language");
+
+                    b.Property<DateTime?>("LanguageCheckedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("language_checked_at");
+
+                    b.Property<string>("LanguageDetectionEvidence")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("language_detection_evidence");
+
+                    b.Property<string>("LanguageDetectionMethod")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("language_detection_method");
+
+                    b.Property<int>("LanguageDetectionVersion")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("language_detection_version");
 
                     b.Property<int?>("MovieId")
                         .HasColumnType("INTEGER")
@@ -437,6 +461,10 @@ namespace Lingarr.Migrations.SQLite.Migrations
                     b.Property<string>("MediaHash")
                         .HasColumnType("TEXT")
                         .HasColumnName("media_hash");
+
+                    b.Property<DateTime?>("MissingSince")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("missing_since");
 
                     b.Property<string>("Path")
                         .HasColumnType("TEXT")
@@ -604,6 +632,10 @@ namespace Lingarr.Migrations.SQLite.Migrations
                     b.Property<string>("MediaHash")
                         .HasColumnType("TEXT")
                         .HasColumnName("media_hash");
+
+                    b.Property<DateTime?>("MissingSince")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("missing_since");
 
                     b.Property<string>("Path")
                         .HasColumnType("TEXT")
@@ -1146,6 +1178,16 @@ namespace Lingarr.Migrations.SQLite.Migrations
                     b.Property<int>("Position")
                         .HasColumnType("INTEGER")
                         .HasColumnName("position");
+
+                    b.Property<string>("RejectedText")
+                        .HasMaxLength(4000)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("rejected_text");
+
+                    b.Property<string>("RejectionReason")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("rejection_reason");
 
                     b.Property<string>("SourceText")
                         .IsRequired()
