@@ -8,7 +8,7 @@ FROM node:24-slim AS client
 COPY ./Lingarr.Client/ /Client
 WORKDIR /Client
 # Install dependencies
-RUN if [ "$BUILD_CONFIGURATION" = "Release" ] ; then npm ci --only=production ; else npm install ; fi
+RUN npm ci
 RUN npm run build
 
 # Step 2: Prepare the base image for the server
