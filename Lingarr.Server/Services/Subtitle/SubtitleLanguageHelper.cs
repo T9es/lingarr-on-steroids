@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Lingarr.Core.Entities;
+using Lingarr.Core.Enum;
 
 namespace Lingarr.Server.Services.Subtitle;
 
@@ -392,6 +393,15 @@ public static class SubtitleLanguageHelper
         if (!subtitle.IsForced)
         {
             return titleType;
+        }
+
+        // OCR output is not stored in ExtractedPath, so callers that only pass the raw
+        // subtitle would otherwise classify a recovered full-dialogue bitmap track as
+        // forced signs forever. Use the analyzed cue count when the OCR result is usable.
+        if (!entryCount.HasValue &&
+            subtitle.OcrStatus is SubtitleOcrStatus.Succeeded or SubtitleOcrStatus.Approved)
+        {
+            entryCount = subtitle.OcrCueCount;
         }
 
         if (string.Equals(titleType, TypeCommentary, StringComparison.OrdinalIgnoreCase))

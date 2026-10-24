@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Lingarr.Core.Entities;
+using Lingarr.Core.Enum;
 using Lingarr.Server.Services.Subtitle;
 using Xunit;
 
@@ -17,6 +18,46 @@ public class SubtitleLanguageHelperTests
         Assert.Equal(
             "signs",
             SubtitleLanguageHelper.GetSupplementalOutputCaption(SubtitleLanguageHelper.TypeSignsSongs));
+    }
+
+    [Fact]
+    public void DetermineSubtitleType_ForcedBitmapWithUsableOcrCueCount_ReturnsForcedDialogue()
+    {
+        var subtitle = new EmbeddedSubtitle
+        {
+            Language = "eng",
+            Title = "English",
+            StreamIndex = 0,
+            IsTextBased = false,
+            IsForced = true,
+            CodecName = "hdmv_pgs_subtitle",
+            OcrStatus = SubtitleOcrStatus.Succeeded,
+            OcrCueCount = 250
+        };
+
+        Assert.Equal(
+            SubtitleLanguageHelper.TypeForcedDialogue,
+            SubtitleLanguageHelper.DetermineSubtitleType(subtitle));
+    }
+
+    [Fact]
+    public void DetermineSubtitleType_ForcedBitmapWithSparseOcrCueCount_StaysForced()
+    {
+        var subtitle = new EmbeddedSubtitle
+        {
+            Language = "eng",
+            Title = "English",
+            StreamIndex = 0,
+            IsTextBased = false,
+            IsForced = true,
+            CodecName = "hdmv_pgs_subtitle",
+            OcrStatus = SubtitleOcrStatus.Succeeded,
+            OcrCueCount = 12
+        };
+
+        Assert.Equal(
+            SubtitleLanguageHelper.TypeForced,
+            SubtitleLanguageHelper.DetermineSubtitleType(subtitle));
     }
 
     [Fact]
