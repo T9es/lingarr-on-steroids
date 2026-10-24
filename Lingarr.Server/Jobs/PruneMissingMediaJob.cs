@@ -15,7 +15,8 @@ namespace Lingarr.Server.Jobs;
 /// Prunes media rows that Sonarr/Radarr reported missing longer than the configured grace
 /// window. Only rows without requests, embedded subtitles, diagnostics or per-item
 /// settings are deleted; anything with history stays visible and is skipped.
-/// Window setting: prune_missing_media_days, default 7, 0 disables pruning.
+/// Window setting: prune_missing_media_days, default 7, 0 or a negative value disables
+/// pruning.
 ///
 /// Keep a database backup before the first live run:
 /// PostgreSQL: pg_dump -U &lt;user&gt; -d &lt;database&gt; -f lingarr-before-prune.sql

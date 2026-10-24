@@ -1476,6 +1476,9 @@ namespace Lingarr.Migrations.PostgreSQL.Migrations
                     b.HasIndex("Status")
                         .HasDatabaseName("IX_TranslationRequests_Status");
 
+                    b.HasIndex("MediaId", "MediaType")
+                        .HasDatabaseName("IX_TranslationRequests_MediaId_MediaType");
+
                     b.HasIndex("Status", "IsPriority", "CreatedAt")
                         .HasDatabaseName("IX_TranslationRequests_Status_Priority_Created");
 

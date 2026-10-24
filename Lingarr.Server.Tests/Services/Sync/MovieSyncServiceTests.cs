@@ -80,6 +80,28 @@ public class MovieSyncServiceTests
         Assert.Equal(1, await context.Movies.CountAsync());
     }
 
+    [Fact]
+    public async Task RemoveNonExistentMovies_RemovedMovieWithEmbeddedSubtitles_ClearsMetadataAndMarksMissing()
+    {
+        await using var context = BuildContext();
+        var movie = await SeedMovieAsync(context, "Movie A");
+        movie.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            StreamIndex = 0,
+            Language = "eng",
+            CodecName = "subrip",
+            IsTextBased = true
+        });
+        await context.SaveChangesAsync();
+        var service = CreateService(context);
+
+        await service.RemoveNonExistentMovies([], "default");
+
+        var saved = await context.Movies.SingleAsync();
+        Assert.NotNull(saved.MissingSince);
+        Assert.Equal(0, await context.EmbeddedSubtitles.CountAsync());
+    }
+
     private static MovieSyncService CreateService(LingarrDbContext context)
     {
         return new MovieSyncService(

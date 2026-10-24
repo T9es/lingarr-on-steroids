@@ -17,7 +17,7 @@ public class MissingMediaPrunePolicyTests
     [InlineData(null, MissingMediaPrunePolicy.DefaultPruneWindowDays)]
     [InlineData("", MissingMediaPrunePolicy.DefaultPruneWindowDays)]
     [InlineData("not-a-number", MissingMediaPrunePolicy.DefaultPruneWindowDays)]
-    [InlineData("-4", MissingMediaPrunePolicy.DefaultPruneWindowDays)]
+    [InlineData("-4", 0)]
     [InlineData("0", 0)]
     [InlineData("3", 3)]
     [InlineData("14", 14)]

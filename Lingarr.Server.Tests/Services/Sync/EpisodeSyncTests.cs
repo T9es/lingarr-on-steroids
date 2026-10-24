@@ -74,6 +74,58 @@ public class EpisodeSyncTests
     }
 
     [Fact]
+    public async Task SyncEpisodes_WhenEpisodeIsNoLongerListedBySonarr_ClearsStaleEmbeddedSubtitles()
+    {
+        await using var context = BuildContext();
+        var (season, episode) = await SeedEpisodeAsync(context);
+        episode.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            StreamIndex = 0,
+            Language = "eng",
+            CodecName = "subrip",
+            IsTextBased = true
+        });
+        await context.SaveChangesAsync();
+        var sonarrServiceMock = new Mock<ISonarrService>();
+        sonarrServiceMock
+            .Setup(service => service.GetEpisodes(ShowId, SeasonNumber, InstanceUrl, InstanceApiKey))
+            .ReturnsAsync([]);
+        var service = CreateService(context, sonarrServiceMock);
+
+        await service.SyncEpisodes(CreateSonarrShow(), season, InstanceId, InstanceUrl, InstanceApiKey);
+        await context.SaveChangesAsync();
+
+        Assert.NotNull(episode.MissingSince);
+        Assert.Equal(0, await context.EmbeddedSubtitles.CountAsync());
+    }
+
+    [Fact]
+    public async Task SyncEpisodes_WhenFilelessEpisodeStaysInSonarr_KeepsEmbeddedSubtitlesAndDoesNotStamp()
+    {
+        await using var context = BuildContext();
+        var (season, episode) = await SeedEpisodeAsync(context);
+        episode.EmbeddedSubtitles.Add(new EmbeddedSubtitle
+        {
+            StreamIndex = 0,
+            Language = "eng",
+            CodecName = "subrip",
+            IsTextBased = true
+        });
+        await context.SaveChangesAsync();
+        var sonarrServiceMock = new Mock<ISonarrService>();
+        sonarrServiceMock
+            .Setup(service => service.GetEpisodes(ShowId, SeasonNumber, InstanceUrl, InstanceApiKey))
+            .ReturnsAsync([CreateSonarrEpisode(episode.SonarrId, hasFile: false)]);
+        var service = CreateService(context, sonarrServiceMock);
+
+        await service.SyncEpisodes(CreateSonarrShow(), season, InstanceId, InstanceUrl, InstanceApiKey);
+        await context.SaveChangesAsync();
+
+        Assert.Null(episode.MissingSince);
+        Assert.Equal(1, await context.EmbeddedSubtitles.CountAsync());
+    }
+
+    [Fact]
     public async Task SyncEpisodes_WhenEpisodeHasTranslationHistory_DoesNotStampMissingSince()
     {
         await using var context = BuildContext();

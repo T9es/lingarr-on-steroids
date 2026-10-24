@@ -97,8 +97,7 @@ public class MovieSyncService : IMovieSyncService
     public async Task RemoveNonExistentMovies(IEnumerable<int> existingRadarrIds, string instanceId)
     {
         var missingMovies = await _dbContext.Movies
-            .Include(m => m.Images)
-            .Include(m => m.EmbeddedSubtitles)
+            .Include(movie => movie.EmbeddedSubtitles)
             .Where(movie => movie.SourceInstanceId == instanceId)
             .Where(movie => !existingRadarrIds.Contains(movie.RadarrId))
             .ToListAsync();
@@ -106,6 +105,25 @@ public class MovieSyncService : IMovieSyncService
         if (missingMovies.Count == 0)
         {
             return;
+        }
+
+        // Radarr no longer reports these movies, so their indexed streams belong to files that
+        // left the library. The metadata must not count as translation history here or the row
+        // could never be hidden and pruned. Only database rows are removed, cached subtitle
+        // files on disk are left alone.
+        var staleEmbeddedSubtitles = missingMovies
+            .SelectMany(movie => movie.EmbeddedSubtitles)
+            .ToList();
+        if (staleEmbeddedSubtitles.Count > 0)
+        {
+            _dbContext.EmbeddedSubtitles.RemoveRange(staleEmbeddedSubtitles);
+            foreach (var movie in missingMovies)
+            {
+                movie.EmbeddedSubtitles.Clear();
+            }
+
+            // Persist the removal so the eligibility queries below no longer see the rows.
+            await _dbContext.SaveChangesAsync();
         }
 
         var utcNow = DateTime.UtcNow;
@@ -139,11 +157,12 @@ public class MovieSyncService : IMovieSyncService
         await _dbContext.SaveChangesAsync();
 
         _logger.LogInformation(
-            "Marked {NewlyMissing} of {Count} movies missing from Radarr instance '{InstanceId}' for later pruning; {KeptVisible} kept visible because they carry history or per-item settings.",
+            "Marked {NewlyMissing} of {Count} movies missing from Radarr instance '{InstanceId}' for later pruning; {KeptVisible} kept visible because they carry history or per-item settings; removed {StaleEmbeddedCount} stale embedded subtitle row(s).",
             newlyMissing,
             missingMovies.Count,
             instanceId,
-            keptVisible);
+            keptVisible,
+            staleEmbeddedSubtitles.Count);
     }
 
     /// <summary>

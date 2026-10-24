@@ -335,6 +335,8 @@ public class EpisodeSync : IEpisodeSync
         List<SonarrEpisode> currentEpisodes,
         string instanceId)
     {
+        var missingEpisodes = new List<(Episode Episode, bool RemovedFromSonarr)>();
+
         foreach (var seasonEpisode in season.Episodes
                      .Where(episode => episode.SourceInstanceId == instanceId)
                      .ToList())
@@ -348,8 +350,48 @@ public class EpisodeSync : IEpisodeSync
                 continue;
             }
 
-            await ApplyMissingSinceAsync(seasonEpisode);
+            missingEpisodes.Add((seasonEpisode, sonarrEpisode == null));
         }
+
+        await ClearStaleEmbeddedSubtitlesAsync(missingEpisodes);
+
+        foreach (var (episode, _) in missingEpisodes)
+        {
+            await ApplyMissingSinceAsync(episode);
+        }
+    }
+
+    /// <summary>
+    /// Removes embedded subtitle metadata for episodes Sonarr no longer reports at all. Those
+    /// indexed streams belong to files that left the library and must not count as translation
+    /// history. Episodes still in Sonarr keep their metadata and the stricter eligibility rule.
+    /// Only database rows are removed, cached subtitle files on disk are left alone.
+    /// </summary>
+    private async Task ClearStaleEmbeddedSubtitlesAsync(
+        IReadOnlyCollection<(Episode Episode, bool RemovedFromSonarr)> missingEpisodes)
+    {
+        var removedEpisodeIds = missingEpisodes
+            .Where(entry => entry.RemovedFromSonarr)
+            .Select(entry => entry.Episode.Id)
+            .ToList();
+        if (removedEpisodeIds.Count == 0)
+        {
+            return;
+        }
+
+        var staleEmbeddedSubtitles = await _dbContext.EmbeddedSubtitles
+            .Where(subtitle => subtitle.EpisodeId != null
+                               && removedEpisodeIds.Contains(subtitle.EpisodeId.Value))
+            .ToListAsync();
+        if (staleEmbeddedSubtitles.Count == 0)
+        {
+            return;
+        }
+
+        _dbContext.EmbeddedSubtitles.RemoveRange(staleEmbeddedSubtitles);
+
+        // Persist the removal so the eligibility checks below no longer see the rows.
+        await _dbContext.SaveChangesAsync();
     }
 
     private async Task ApplyMissingSinceAsync(Episode episode)

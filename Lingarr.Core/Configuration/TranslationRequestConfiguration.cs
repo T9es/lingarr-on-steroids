@@ -31,6 +31,10 @@ public class TranslationRequestConfiguration : IEntityTypeConfiguration<Translat
         builder.HasIndex(tr => new { tr.WorkloadItemKey, tr.TargetLanguage, tr.RequiredOutputFormats, tr.Status, tr.CompletedAt })
             .HasDatabaseName("IX_TranslationRequests_FreshnessLookup");
 
+        // Composite index for missing media eligibility lookups by media id and type.
+        builder.HasIndex(tr => new { tr.MediaId, tr.MediaType })
+            .HasDatabaseName("IX_TranslationRequests_MediaId_MediaType");
+
         builder.Property(tr => tr.SourceSnapshotVersion)
             .HasDefaultValue(1);
 
