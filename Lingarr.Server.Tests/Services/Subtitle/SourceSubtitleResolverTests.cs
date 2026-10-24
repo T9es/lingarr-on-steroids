@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -2776,29 +2776,49 @@ public sealed class SourceSubtitleResolverTests : IDisposable
     [Fact]
     public async Task PrepareTranslationSourceAsync_SparseMatchedSignsTrack_AdoptsContradictedFullDialogueTrack()
     {
-        // Initial D shape: request en, a sparse en-tagged signs track (37 cues) plus a full
-        // English dialogue track that the container mislabels jpn. The request language
-        // matches the sparse track, so the "no same-language match" shortcut does not fire;
-        // the sparse pre-check must trigger the contradiction check instead.
+        // Live Initial D shape: request en, an en-tagged signs track with 37 cues and a full
+        // English dialogue track the container mislabels jpn. Neither stream is cached on disk
+        // yet, so the entry counts are unknown when selection starts. The sparse pre-check only
+        // trusts cached counts, so the post-extraction contradiction fallback must recover the
+        // mislabeled full dialogue stream instead of failing with "no suitable source".
         var mediaPath = Path.Combine(_tempDirectory, "initial-d-shape.mkv");
         await File.WriteAllTextAsync(mediaPath, "media source");
         var movie = CreateMovie(911, mediaPath);
         var cacheService = CreateCacheService();
 
-        var sparsePath = cacheService.GetCachePath(movie.Id, MediaType.Movie, 0, "subrip", "eng");
-        await File.WriteAllTextAsync(sparsePath, CreateSrt(37));
-        cacheService.RecordSourceSnapshot(sparsePath, mediaPath);
-        var sparseSubtitle = CreateTextSubtitle(movie, 0, "eng", "Signs", sparsePath);
-
-        var fullPath = cacheService.GetCachePath(movie.Id, MediaType.Movie, 1, "subrip", "jpn");
-        await File.WriteAllTextAsync(fullPath, CreateSrt(120));
-        cacheService.RecordSourceSnapshot(fullPath, mediaPath);
-        var fullSubtitle = CreateTextSubtitle(movie, 1, "jpn", "Full", fullPath);
+        var sparseSubtitle = CreateTextSubtitle(movie, 0, "eng", "Signs", null);
+        var fullSubtitle = CreateTextSubtitle(movie, 1, "jpn", "Full", null);
 
         movie.EmbeddedSubtitles.Add(sparseSubtitle);
         movie.EmbeddedSubtitles.Add(fullSubtitle);
         _dbContext.Movies.Add(movie);
         await _dbContext.SaveChangesAsync();
+
+        var extractionService = new Mock<ISubtitleExtractionService>();
+        extractionService
+            .Setup(service => service.ExtractSubtitleToFile(
+                mediaPath,
+                0,
+                It.IsAny<string>(),
+                "subrip"))
+            .Returns((string _, int _, string outputPath, string _) =>
+            {
+                File.WriteAllText(outputPath, CreateSrt(37));
+                cacheService.RecordSourceSnapshot(outputPath, mediaPath);
+                return Task.FromResult<string?>(outputPath);
+            });
+        extractionService
+            .Setup(service => service.ExtractSubtitleToFile(
+                mediaPath,
+                1,
+                It.IsAny<string>(),
+                "subrip"))
+            .Returns((string _, int _, string outputPath, string _) =>
+            {
+                File.WriteAllText(outputPath, CreateSrt(274));
+                cacheService.RecordSourceSnapshot(outputPath, mediaPath);
+                return Task.FromResult<string?>(outputPath);
+            });
 
         var detector = new Mock<ISubtitleLanguageContradictionDetector>();
         detector
@@ -2822,7 +2842,7 @@ public sealed class SourceSubtitleResolverTests : IDisposable
             .ReturnsAsync(1440);
 
         var resolver = CreateResolver(
-            Mock.Of<ISubtitleExtractionService>(),
+            extractionService.Object,
             cacheService,
             mediaDurationProvider: durationProvider.Object,
             languageContradictionDetector: detector.Object);
@@ -2836,7 +2856,6 @@ public sealed class SourceSubtitleResolverTests : IDisposable
             MediaId = movie.Id,
             MediaType = MediaType.Movie,
             Status = TranslationStatus.Pending,
-            SubtitleToTranslate = sparsePath,
             SourceSnapshotStreamIndex = 0,
             SourceSnapshotType = Lingarr.Server.Models.Subtitle.SourceSubtitleSnapshot.EmbeddedType
         };
@@ -2850,7 +2869,7 @@ public sealed class SourceSubtitleResolverTests : IDisposable
 
         Assert.NotNull(prepared);
         Assert.Equal(1, prepared.SelectedSubtitle?.StreamIndex);
-        Assert.Equal(120, prepared.EntryCount);
+        Assert.Equal(274, prepared.EntryCount);
         detector.Verify(
             service => service.TryAdoptDetectedSourceLanguageAsync(
                 It.IsAny<TranslationRequest>(),

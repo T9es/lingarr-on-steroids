@@ -560,6 +560,41 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
                 .ToList();
             if (viableCandidates.Count == 0)
             {
+                // A request language can match a sparse signs track while the real dialogue
+                // track is mislabeled. The pre-extraction shortcut above only sees cached
+                // candidates, so retry the contradiction check once the actual entry counts
+                // are known and a full dialogue stream may still be found.
+                var recovered = await TryRecoverContradictedFullDialogueCandidateAsync(
+                    request,
+                    options,
+                    mediaFile.Path,
+                    embeddedSubtitles,
+                    preparedCandidates,
+                    minimumDialogueEntries,
+                    contentDurationSeconds,
+                    cancellationToken);
+                if (recovered != null)
+                {
+                    if (recovered.IsNew)
+                    {
+                        newlyExtractedPaths.Add(recovered.Candidate.Path!);
+                    }
+
+                    if (recovered.Candidate.Subtitle.IsTextBased)
+                    {
+                        recovered.Candidate.Subtitle.ExtractedPath = recovered.Candidate.Path;
+                        recovered.Candidate.Subtitle.IsExtracted = true;
+                    }
+
+                    _embeddedSubtitleCacheService.Touch(recovered.Candidate.Path!);
+                    preparationSucceeded = true;
+                    return new PreparedTranslationSource(
+                        recovered.Candidate.Path!,
+                        recovered.Candidate.Subtitle,
+                        recovered.Candidate.EntryCount!.Value,
+                        IsManualSelection: false);
+                }
+
                 throw CreateNoSuitableSourceException(preparedCandidates, request.SourceLanguage);
             }
 
@@ -940,6 +975,119 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
         return true;
     }
 
+    /// <summary>
+    /// Last contradiction check before a sparse-source failure is reported. The earlier
+    /// shortcut only trusts cached entry counts, so a matching signs track can be extracted and
+    /// rejected while a mislabeled full dialogue stream was never counted. When every candidate
+    /// for the request language is now known to be below the dialogue floor, sample the other
+    /// readable streams and adopt one whose detected language satisfies the request.
+    /// </summary>
+    private async Task<RecoveredCandidate?> TryRecoverContradictedFullDialogueCandidateAsync(
+        TranslationRequest request,
+        TranslationSourcePreparationOptions options,
+        string? mediaPath,
+        IReadOnlyList<EmbeddedSubtitle> embeddedSubtitles,
+        IReadOnlyList<PreparedCandidate> preparedCandidates,
+        int minimumDialogueEntries,
+        double? contentDurationSeconds,
+        CancellationToken cancellationToken)
+    {
+        if (options.HasManualStreamSelection ||
+            options.IsSupplementalRequest ||
+            _languageContradictionDetector == null ||
+            string.IsNullOrWhiteSpace(mediaPath))
+        {
+            return null;
+        }
+
+        var sparseRejections = preparedCandidates
+            .Where(candidate => candidate.RejectionReason != null &&
+                                candidate.EntryCount.HasValue &&
+                                candidate.EntryCount.Value < minimumDialogueEntries)
+            .ToList();
+        if (sparseRejections.Count == 0 || sparseRejections.Count != preparedCandidates.Count)
+        {
+            return null;
+        }
+
+        // Nothing to adopt when every readable stream already matches the request language.
+        if (!embeddedSubtitles.Any(subtitle =>
+                subtitle.IsReadableSource() &&
+                !SubtitleLanguageHelper.LanguageMatchesEffective(subtitle, request.SourceLanguage)))
+        {
+            return null;
+        }
+
+        var adoptedSubtitle = await _languageContradictionDetector.TryAdoptDetectedSourceLanguageAsync(
+            request,
+            embeddedSubtitles,
+            mediaPath,
+            cancellationToken);
+        if (adoptedSubtitle == null)
+        {
+            return null;
+        }
+
+        var candidates = embeddedSubtitles
+            .Where(subtitle =>
+                subtitle.IsReadableSource() &&
+                SubtitleLanguageHelper.LanguageMatchesEffective(subtitle, request.SourceLanguage))
+            .OrderBy(subtitle => subtitle.StreamIndex)
+            .ToList();
+
+        foreach (var subtitle in candidates)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var candidatePath = GetValidatedCandidatePath(
+                subtitle,
+                request,
+                mediaPath,
+                cancellationToken);
+            var isNew = false;
+            if (candidatePath == null)
+            {
+                var extraction = await ExtractCandidateForPreparationAsync(
+                    subtitle,
+                    request,
+                    mediaPath,
+                    cancellationToken);
+                if (extraction == null)
+                {
+                    continue;
+                }
+
+                candidatePath = extraction.Path;
+                isNew = extraction.IsNew;
+            }
+
+            var entryCount = await CountEntriesForCandidate(
+                candidatePath,
+                subtitle.StreamIndex,
+                cancellationToken);
+            if (!entryCount.HasValue || entryCount.Value < minimumDialogueEntries)
+            {
+                continue;
+            }
+
+            if (!await IsAcceptablePrimaryCandidateAsync(
+                    subtitle,
+                    request,
+                    options,
+                    entryCount.Value,
+                    cancellationToken,
+                    contentDurationSeconds))
+            {
+                continue;
+            }
+
+            return new RecoveredCandidate(
+                new PreparedCandidate(subtitle, candidatePath, entryCount.Value, null),
+                isNew);
+        }
+
+        return null;
+    }
+
     private async Task<bool> IsAcceptablePrimaryCandidateAsync(
         EmbeddedSubtitle subtitle,
         TranslationRequest request,
@@ -1211,6 +1359,8 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
         string? Path,
         int? EntryCount,
         string? RejectionReason);
+
+    private sealed record RecoveredCandidate(PreparedCandidate Candidate, bool IsNew);
 
     private sealed record PreparationExtraction(string Path, bool IsNew);
 
