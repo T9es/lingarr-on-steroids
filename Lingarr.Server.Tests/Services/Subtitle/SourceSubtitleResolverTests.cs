@@ -2788,6 +2788,7 @@ public sealed class SourceSubtitleResolverTests : IDisposable
 
         var sparseSubtitle = CreateTextSubtitle(movie, 0, "eng", "Signs", null);
         var fullSubtitle = CreateTextSubtitle(movie, 1, "jpn", "Full", null);
+        fullSubtitle.IsForced = true;
 
         movie.EmbeddedSubtitles.Add(sparseSubtitle);
         movie.EmbeddedSubtitles.Add(fullSubtitle);

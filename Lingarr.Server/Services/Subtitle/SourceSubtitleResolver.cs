@@ -1069,13 +1069,37 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
                 continue;
             }
 
-            if (!await IsAcceptablePrimaryCandidateAsync(
+            // Validate against the freshly extracted path so entry count, health and subtitle
+            // type describe the adopted stream instead of its stale cached metadata.
+            var originalPath = subtitle.ExtractedPath;
+            var originalExtracted = subtitle.IsExtracted;
+            var acceptable = false;
+            if (subtitle.IsTextBased)
+            {
+                subtitle.ExtractedPath = candidatePath;
+                subtitle.IsExtracted = true;
+            }
+
+            try
+            {
+                acceptable = await IsAcceptablePrimaryCandidateAsync(
                     subtitle,
                     request,
                     options,
                     entryCount.Value,
                     cancellationToken,
-                    contentDurationSeconds))
+                    contentDurationSeconds);
+            }
+            finally
+            {
+                if (!acceptable)
+                {
+                    subtitle.ExtractedPath = originalPath;
+                    subtitle.IsExtracted = originalExtracted;
+                }
+            }
+
+            if (!acceptable)
             {
                 continue;
             }
