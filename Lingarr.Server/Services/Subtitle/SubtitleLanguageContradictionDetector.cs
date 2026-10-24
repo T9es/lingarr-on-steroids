@@ -40,8 +40,8 @@ public class SubtitleLanguageContradictionDetector : ISubtitleLanguageContradict
     private const int ExtractionTimeoutSeconds = 30;
     private const int MaximumEvidenceLength = 400;
 
-    private static readonly TimeSpan PositiveVerdictCache = TimeSpan.FromDays(7);
-    private static readonly TimeSpan NegativeVerdictCache = TimeSpan.FromHours(6);
+    internal static readonly TimeSpan PositiveVerdictCache = TimeSpan.FromDays(7);
+    internal static readonly TimeSpan NegativeVerdictCache = TimeSpan.FromHours(6);
     private static readonly double[] SamplePositions = [0.25, 0.5, 0.75];
 
     private readonly LingarrDbContext _dbContext;
@@ -211,10 +211,7 @@ public class SubtitleLanguageContradictionDetector : ISubtitleLanguageContradict
 
         // First prefer a stream whose detected language already matches the requested source
         // language: the request needs no language rewrite, only the stream pick changes.
-        var effectiveMatch = outcomes
-            .Where(outcome => SubtitleLanguageHelper.LanguageMatchesEffective(outcome.Subtitle, request.SourceLanguage))
-            .OrderByDescending(outcome => outcome.Confidence)
-            .FirstOrDefault();
+        var effectiveMatch = SelectEffectiveLanguageMatch(outcomes, request.SourceLanguage);
         if (effectiveMatch != null)
         {
             _logger.LogInformation(
@@ -230,11 +227,7 @@ public class SubtitleLanguageContradictionDetector : ISubtitleLanguageContradict
 
         // Otherwise adopt when the request's declared source language is the tag that
         // contradicted its own content (for example a jpn tag containing English).
-        var adopted = outcomes
-            .Where(outcome => SubtitleLanguageHelper.LanguageMatches(outcome.Subtitle.Language, request.SourceLanguage))
-            .Where(outcome => !SubtitleLanguageHelper.LanguageMatchesEffective(outcome.Subtitle, request.SourceLanguage))
-            .OrderByDescending(outcome => outcome.Confidence)
-            .FirstOrDefault();
+        var adopted = SelectContradictedDeclaredTag(outcomes, request.SourceLanguage);
 
         if (adopted == null)
         {
@@ -260,6 +253,41 @@ public class SubtitleLanguageContradictionDetector : ISubtitleLanguageContradict
 
         await _dbContext.SaveChangesAsync(cancellationToken);
         return adopted.Subtitle;
+    }
+
+    /// <summary>
+    /// Picks the highest confidence stream whose effective language already matches the
+    /// request, so the resolver can switch streams without rewriting the request language.
+    /// Verdicts below <see cref="MinimumAdoptedConfidence"/> are never adopted.
+    /// </summary>
+    internal static SubtitleLanguageCheckOutcome? SelectEffectiveLanguageMatch(
+        IEnumerable<SubtitleLanguageCheckOutcome> outcomes,
+        string sourceLanguage)
+    {
+        return outcomes
+            .Where(outcome => outcome.Confidence >= MinimumAdoptedConfidence)
+            .Where(outcome => SubtitleLanguageHelper.LanguageMatchesEffective(outcome.Subtitle, sourceLanguage))
+            .OrderByDescending(outcome => outcome.Confidence)
+            .ThenBy(outcome => outcome.Subtitle.StreamIndex)
+            .FirstOrDefault();
+    }
+
+    /// <summary>
+    /// Picks the highest confidence stream whose declared tag matches the request but whose
+    /// effective language contradicts it, i.e. the stream whose content should be adopted.
+    /// Verdicts below <see cref="MinimumAdoptedConfidence"/> are never adopted.
+    /// </summary>
+    internal static SubtitleLanguageCheckOutcome? SelectContradictedDeclaredTag(
+        IEnumerable<SubtitleLanguageCheckOutcome> outcomes,
+        string sourceLanguage)
+    {
+        return outcomes
+            .Where(outcome => outcome.Confidence >= MinimumAdoptedConfidence)
+            .Where(outcome => SubtitleLanguageHelper.LanguageMatches(outcome.Subtitle.Language, sourceLanguage))
+            .Where(outcome => !SubtitleLanguageHelper.LanguageMatchesEffective(outcome.Subtitle, sourceLanguage))
+            .OrderByDescending(outcome => outcome.Confidence)
+            .ThenBy(outcome => outcome.Subtitle.StreamIndex)
+            .FirstOrDefault();
     }
 
     private async Task<EmbeddedSubtitleCheckSample> CollectCueSamplesAsync(

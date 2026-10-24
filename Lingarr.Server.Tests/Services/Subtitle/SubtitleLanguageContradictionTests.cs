@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Lingarr.Core.Entities;
+using Lingarr.Server.Interfaces.Services.Subtitle;
 using Lingarr.Server.Services.Subtitle;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -49,6 +50,24 @@ public sealed class SubtitleLanguageContradictionTests
         "Мы должны идти домой сейчас, это очень важно для нас.",
         "Ты можешь сказать мне, где находится вокзал?",
         "Она не хочет говорить об этом сегодня вечером."
+    ];
+
+    private static readonly string[] UkrainianCues =
+    [
+        "Привіт, як справи? Я не знаю, що робити сьогодні ввечері.",
+        "Ми повинні йти додому зараз, це дуже важливо для нас.",
+        "Ти можеш сказати мені, де знаходиться вокзал, будь ласка?",
+        "Вона не хоче говорити про це сьогодні ввечері, але я наполягаю.",
+        "Після роботи ми підемо до магазину разом з дітьми, якщо буде час."
+    ];
+
+    private static readonly string[] BulgarianCues =
+    [
+        "Здравей, как си? Аз не знам какво да правя тази вечер.",
+        "Ние трябва да тръгваме към вкъщи сега, това е много важно за нас.",
+        "Можеш ли да ми кажеш къде се намира гарата, моля те?",
+        "Тя не иска да говори за това тази вечер, но аз настоявам.",
+        "След работа ще отидем до магазина заедно с децата, ако имаме време."
     ];
 
     private static readonly string[] SpanishCues =
@@ -120,13 +139,85 @@ public sealed class SubtitleLanguageContradictionTests
     }
 
     [Fact]
-    public void Detect_EnglishTagContainingRussian_ReportsRussian()
+    public void Detect_EnglishTagContainingRussian_ReportsRussianFromCyrillicStopwords()
     {
         var result = SubtitleScriptAnalyzer.Detect("en", RussianCues);
 
         Assert.Equal(SubtitleLanguageVerdict.Contradiction, result.Verdict);
         Assert.Equal("ru", result.DetectedLanguage);
         Assert.True(result.Confidence >= 0.90);
+        // The word lists must actually match; the old corrupted lists silently fell back to ru.
+        Assert.Equal("script-ratio+stopwords", result.Method);
+    }
+
+    [Fact]
+    public void Detect_EnglishTagContainingUkrainian_ReportsUkrainian()
+    {
+        var result = SubtitleScriptAnalyzer.Detect("en", UkrainianCues);
+
+        Assert.Equal(SubtitleLanguageVerdict.Contradiction, result.Verdict);
+        Assert.Equal("uk", result.DetectedLanguage);
+        Assert.Equal("script-ratio+stopwords", result.Method);
+        Assert.True(result.Confidence >= 0.90);
+    }
+
+    [Fact]
+    public void Detect_EnglishTagContainingBulgarian_ReportsBulgarian()
+    {
+        var result = SubtitleScriptAnalyzer.Detect("en", BulgarianCues);
+
+        Assert.Equal(SubtitleLanguageVerdict.Contradiction, result.Verdict);
+        Assert.Equal("bg", result.DetectedLanguage);
+        Assert.Equal("script-ratio+stopwords", result.Method);
+        Assert.True(result.Confidence >= 0.90);
+    }
+
+    [Fact]
+    public void Detect_EnglishTagContainingBulgarian_DoesNotFallBackToRussian()
+    {
+        // Regression guard for corrupted Cyrillic profiles: every Cyrillic match used to
+        // return the hardcoded ru fallback because no function word could ever hit.
+        var result = SubtitleScriptAnalyzer.Detect("en", BulgarianCues);
+
+        Assert.Equal("bg", result.DetectedLanguage);
+        Assert.DoesNotContain("fallback", result.Method);
+    }
+
+    [Fact]
+    public void FunctionWordProfiles_EveryWordBelongsToItsDeclaredScript()
+    {
+        var profiles = SubtitleScriptAnalyzer.FunctionWordProfiles;
+
+        Assert.Equal(18 + 3, profiles.Count);
+        foreach (var (code, script, functionWords) in profiles)
+        {
+            Assert.True(functionWords.Count > 20, $"{code} has too few function words");
+            foreach (var word in functionWords)
+            {
+                Assert.False(string.IsNullOrWhiteSpace(word), $"{code} contains an empty word");
+                Assert.All(
+                    word,
+                    character => Assert.Equal(script, SubtitleScriptAnalyzer.Classify(character)));
+            }
+        }
+    }
+
+    [Fact]
+    public void CyrillicProfiles_ContainRealCyrillicWordsAndDistinctiveLetters()
+    {
+        var profiles = SubtitleScriptAnalyzer.FunctionWordProfiles
+            .ToDictionary(profile => profile.Code, profile => profile.FunctionWords);
+
+        Assert.All(
+            profiles["ru"],
+            word => Assert.All(word, character => Assert.InRange(character, '\u0400', '\u04FF')));
+
+        Assert.Contains(
+            profiles["uk"],
+            word => word.Any(character => character is '\u0456' or '\u0457' or '\u0454'));
+        Assert.Contains(
+            profiles["bg"],
+            word => word.Any(character => character == '\u044A'));
     }
 
     [Fact]
@@ -276,5 +367,84 @@ public sealed class SubtitleLanguageContradictionTests
 
         Assert.NotNull(result.SelectedSubtitle);
         Assert.Equal("en", result.MatchedLanguage);
+    }
+
+    [Fact]
+    public void SelectEffectiveLanguageMatch_IgnoresVerdictsBelowAdoptedConfidenceFloor()
+    {
+        var subtitle = DetectedEnglishSubtitle(confidence: 0.96);
+        var outcomes = new[]
+        {
+            Outcome(subtitle, SubtitleLanguageVerdict.Contradiction, "en", confidence: 0.89, persisted: true),
+            Outcome(subtitle, SubtitleLanguageVerdict.Contradiction, "en", confidence: 0.90, persisted: true)
+        };
+
+        var belowFloor = SubtitleLanguageContradictionDetector.SelectEffectiveLanguageMatch(
+            outcomes.Take(1),
+            "en");
+        var atFloor = SubtitleLanguageContradictionDetector.SelectEffectiveLanguageMatch(
+            outcomes.Skip(1),
+            "en");
+
+        Assert.Null(belowFloor);
+        Assert.NotNull(atFloor);
+        Assert.Equal(0.90, atFloor.Confidence);
+    }
+
+    [Fact]
+    public void SelectContradictedDeclaredTag_IgnoresVerdictsBelowAdoptedConfidenceFloor()
+    {
+        var subtitle = DetectedEnglishSubtitle(confidence: 0.96);
+        var outcomes = new[]
+        {
+            Outcome(subtitle, SubtitleLanguageVerdict.Contradiction, "en", confidence: 0.89, persisted: true),
+            Outcome(subtitle, SubtitleLanguageVerdict.Contradiction, "en", confidence: 0.90, persisted: true)
+        };
+
+        var belowFloor = SubtitleLanguageContradictionDetector.SelectContradictedDeclaredTag(
+            outcomes.Take(1),
+            "jpn");
+        var atFloor = SubtitleLanguageContradictionDetector.SelectContradictedDeclaredTag(
+            outcomes.Skip(1),
+            "jpn");
+
+        Assert.Null(belowFloor);
+        Assert.NotNull(atFloor);
+        Assert.Equal(0.90, atFloor.Confidence);
+    }
+
+    private static EmbeddedSubtitle DetectedEnglishSubtitle(double confidence)
+    {
+        return new EmbeddedSubtitle
+        {
+            StreamIndex = 1,
+            Language = "jpn",
+            Title = "ASS",
+            CodecName = "ass",
+            IsTextBased = true,
+            IsForced = true,
+            DetectedLanguage = "en",
+            DetectedLanguageConfidence = confidence,
+            LanguageDetectionMethod = "script-ratio+stopwords",
+            LanguageDetectionVersion = SubtitleLanguageHelper.CurrentLanguageDetectionVersion
+        };
+    }
+
+    private static SubtitleLanguageCheckOutcome Outcome(
+        EmbeddedSubtitle subtitle,
+        SubtitleLanguageVerdict verdict,
+        string detectedLanguage,
+        double confidence,
+        bool persisted)
+    {
+        return new SubtitleLanguageCheckOutcome(
+            subtitle,
+            verdict,
+            subtitle.Language,
+            detectedLanguage,
+            confidence,
+            "script-ratio+stopwords",
+            "test evidence",
+            persisted);
     }
 }

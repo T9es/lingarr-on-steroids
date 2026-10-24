@@ -3419,7 +3419,9 @@ Exception? lastException = null;
 
         if (EmbeddedSourceLanguageMismatchesRequest(request, selectedSubtitle))
         {
-            return $"Selected embedded source language '{selectedSubtitle!.Language}' does not match request source language '{request.SourceLanguage}'.";
+            var effectiveLanguage = SubtitleLanguageHelper.GetEffectiveLanguage(selectedSubtitle!)
+                                    ?? selectedSubtitle!.Language;
+            return $"Selected embedded source language '{effectiveLanguage}' does not match request source language '{request.SourceLanguage}'.";
         }
 
         return null;
@@ -3436,8 +3438,12 @@ Exception? lastException = null;
             return false;
         }
 
-        return !SubtitleLanguageHelper.LanguageMatches(
-            selectedSubtitle.Language,
+        // A stream adopted because its content contradicts its container tag carries the
+        // detected language as the effective one. Comparing the raw tag here would kill the
+        // very request the resolver just repaired, so match on the same effective language
+        // (confidence and algorithm version gated) that source selection uses.
+        return !SubtitleLanguageHelper.LanguageMatchesEffective(
+            selectedSubtitle,
             request.SourceLanguage);
     }
     

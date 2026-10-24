@@ -525,6 +525,108 @@ public class TranslationJobTests : IDisposable
     }
 
     [Fact]
+    public void EmbeddedSourceLanguageMismatchesRequest_ReturnsFalse_ForAdoptedContradictionStream()
+    {
+        var request = new TranslationRequest
+        {
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            Title = "Adopted contradiction source",
+            MediaType = MediaType.Episode,
+            Status = TranslationStatus.Pending
+        };
+        var selectedSubtitle = new EmbeddedSubtitle
+        {
+            StreamIndex = 1,
+            Language = "jpn",
+            Title = "ASS",
+            CodecName = "ass",
+            IsTextBased = true,
+            IsForced = true,
+            DetectedLanguage = "en",
+            DetectedLanguageConfidence = 0.96,
+            LanguageDetectionMethod = "script-ratio+stopwords",
+            LanguageDetectionVersion = SubtitleLanguageHelper.CurrentLanguageDetectionVersion
+        };
+
+        var result = TranslationJob.EmbeddedSourceLanguageMismatchesRequest(request, selectedSubtitle);
+
+        Assert.False(result);
+    }
+
+    [Theory]
+    [InlineData(0.89, 0)]
+    [InlineData(0.96, 1)]
+    public void EmbeddedSourceLanguageMismatchesRequest_ReturnsTrue_WhenDetectionIsNotTrustworthy(
+        double confidence,
+        int versionOffset)
+    {
+        var request = new TranslationRequest
+        {
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            Title = "Untrusted detection source",
+            MediaType = MediaType.Episode,
+            Status = TranslationStatus.Pending
+        };
+        var selectedSubtitle = new EmbeddedSubtitle
+        {
+            StreamIndex = 1,
+            Language = "jpn",
+            CodecName = "ass",
+            IsTextBased = true,
+            DetectedLanguage = "en",
+            DetectedLanguageConfidence = confidence,
+            LanguageDetectionVersion = SubtitleLanguageHelper.CurrentLanguageDetectionVersion - versionOffset
+        };
+
+        var result = TranslationJob.EmbeddedSourceLanguageMismatchesRequest(request, selectedSubtitle);
+
+        Assert.True(result);
+    }
+
+    [Fact]
+    public void GetUnsafeSourceCancellationReason_ReturnsNull_ForAdoptedContradictionStream()
+    {
+        var request = new TranslationRequest
+        {
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            Title = "Adopted contradiction source",
+            MediaType = MediaType.Episode,
+            Status = TranslationStatus.Pending,
+            SourceSubtitleType = SubtitleLanguageHelper.TypeFull,
+            SourceSubtitleEntryCount = 274,
+            SourceSubtitleFormat = ".ass"
+        };
+        var selectedSubtitle = new EmbeddedSubtitle
+        {
+            StreamIndex = 1,
+            Language = "jpn",
+            Title = "ASS",
+            CodecName = "ass",
+            IsTextBased = true,
+            IsForced = true,
+            DetectedLanguage = "en",
+            DetectedLanguageConfidence = 0.96,
+            LanguageDetectionMethod = "script-ratio+stopwords",
+            LanguageDetectionVersion = SubtitleLanguageHelper.CurrentLanguageDetectionVersion
+        };
+        var settings = new Dictionary<string, string>
+        {
+            [SettingKeys.Translation.TranslateSupplementalSubtitles] = "false"
+        };
+
+        var reason = TranslationJob.GetUnsafeSourceCancellationReason(
+            request,
+            selectedSubtitle,
+            [],
+            settings);
+
+        Assert.Null(reason);
+    }
+
+    [Fact]
     public void GetUnsafeSourceCancellationReason_ReturnsReason_ForSparseNeutralEmbeddedPrimarySource()
     {
         var request = new TranslationRequest
@@ -759,6 +861,94 @@ public class TranslationJobTests : IDisposable
             "Translation failed before execution because the selected source is obsolete or unsafe.",
             errorLog.Message);
         Assert.Contains("only 1 entries", errorLog.Details);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenAdoptedContradictionStreamPassesUnsafeGate_CompletesTranslation()
+    {
+        var sourceSubtitlePath = Path.Combine(_tempDirectory, "adopted-contradiction.en.srt");
+        await File.WriteAllTextAsync(sourceSubtitlePath, BuildSrtContent(274));
+
+        var movie = CreateMovie(61);
+        movie.Path = _tempDirectory;
+        var request = CreatePendingMovieRequest(movie, sourceSubtitlePath);
+        request.SourceSubtitleType = SubtitleLanguageHelper.TypeFull;
+
+        // Shape of the live Initial D failure: the full dialogue track is tagged jpn but its
+        // content is English, and the resolver adopted it while keeping the request language en.
+        var selectedSubtitle = new EmbeddedSubtitle
+        {
+            MovieId = movie.Id,
+            StreamIndex = 1,
+            Language = "jpn",
+            Title = "ASS",
+            CodecName = "ass",
+            IsTextBased = true,
+            IsForced = true,
+            DetectedLanguage = "en",
+            DetectedLanguageConfidence = 0.96,
+            LanguageDetectionMethod = "script-ratio+stopwords",
+            LanguageCheckedAt = DateTime.UtcNow,
+            LanguageDetectionVersion = SubtitleLanguageHelper.CurrentLanguageDetectionVersion
+        };
+
+        _dbContext.Movies.Add(movie);
+        _dbContext.EmbeddedSubtitles.Add(selectedSubtitle);
+        _dbContext.TranslationRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        var resolverMock = new Mock<ISourceSubtitleResolver>();
+        resolverMock
+            .Setup(service => service.PrepareTranslationSourceAsync(
+                It.IsAny<TranslationRequest>(),
+                It.IsAny<TranslationSourcePreparationOptions>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PreparedTranslationSource(
+                sourceSubtitlePath,
+                selectedSubtitle,
+                SubtitleExtractionService.CountSubtitleEntries(sourceSubtitlePath),
+                false));
+
+        var translationServiceMock = new Mock<ITranslationService>();
+        translationServiceMock
+            .Setup(service => service.TranslateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync("Przetlumaczona linia");
+
+        var job = BuildExecutableJob(
+            new SubtitleService(NullLogger<SubtitleService>.Instance),
+            Mock.Of<ISubtitleExtractionService>(),
+            translationServiceMock.Object,
+            sourceSubtitleResolverOverride: resolverMock.Object);
+
+        await job.ExecuteAsync(request.Id, CancellationToken.None);
+
+        var updatedRequest = await _dbContext.TranslationRequests
+            .AsNoTracking()
+            .SingleAsync(item => item.Id == request.Id);
+        Assert.Equal(TranslationStatus.Completed, updatedRequest.Status);
+        Assert.NotNull(updatedRequest.TranslatedSubtitle);
+        translationServiceMock.Verify(
+            service => service.TranslateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<List<string>?>(),
+                It.IsAny<CancellationToken>()),
+            Times.AtLeast(1));
+
+        var logs = await _dbContext.TranslationRequestLogs
+            .Where(log => log.TranslationRequestId == request.Id)
+            .ToListAsync();
+        Assert.DoesNotContain(
+            logs,
+            log => log.Message == "Translation failed before execution because the selected source is obsolete or unsafe.");
     }
 
     [Fact]
