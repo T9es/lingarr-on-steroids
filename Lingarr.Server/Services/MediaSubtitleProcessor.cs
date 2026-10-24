@@ -707,7 +707,8 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
         bool queueTranslations = true,
         int? maxTranslationsToQueue = null,
         ICollection<SubtitleIntegrityFinding>? integrityFindings = null,
-        bool forceRequeue = false)
+        bool forceRequeue = false,
+        bool allowEmbeddedFallback = true)
     {
         var existingLanguages = ExtractLanguageCodes(subtitles);
         var knownForcedDialogueGeneratedPaths =
@@ -1027,7 +1028,18 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                 media.FileName);
         }
 
-        // Final fallback: try embedded
+        // Final fallback: try embedded. OCR-derived source lists must not fall back here:
+        // TryQueueEmbeddedSubtitleTranslation reports the same completed OCR output back into
+        // this method, and without this guard the two methods recurse into each other forever
+        // when auto mode cannot resolve the OCR language.
+        if (!allowEmbeddedFallback)
+        {
+            _logger.LogWarning(
+                "No usable OCR source language could be resolved for {FileName}; skipping embedded fallback to avoid a processing loop.",
+                media.FileName);
+            return 0;
+        }
+
         return await TryQueueEmbeddedSubtitleTranslation(
             media,
             mediaType,
@@ -1278,7 +1290,8 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                     queueTranslations,
                     maxTranslationsToQueue,
                     integrityFindings,
-                    forceRequeue);
+                    forceRequeue,
+                    allowEmbeddedFallback: false);
             }
 
             // Check if OCR status says completed but the output file is missing from disk
@@ -1450,7 +1463,8 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
                         forcePriority,
                         queueTranslations,
                         maxTranslationsToQueue,
-                        integrityFindings);
+                        integrityFindings,
+                        allowEmbeddedFallback: false);
                 }
 
                 // Check if OCR status says completed but the output file is missing from disk
