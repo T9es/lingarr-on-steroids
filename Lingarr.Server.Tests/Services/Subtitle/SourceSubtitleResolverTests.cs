@@ -2880,6 +2880,65 @@ public sealed class SourceSubtitleResolverTests : IDisposable
             Times.Once);
     }
 
+    [Fact]
+    public async Task PrepareTranslationSourceAsync_AcceptsForcedTextTrackAsForcedDialogue()
+    {
+        // A forced-flagged track that actually contains full dialogue is promoted at queue time
+        // as ForcedDialogue. The request then has to resolve that same track while translation
+        // executes, otherwise the promoted request would fail with "no suitable source".
+        var mediaPath = Path.Combine(_tempDirectory, "forced-dialogue-promotion.mkv");
+        await File.WriteAllTextAsync(mediaPath, "media source");
+        var movie = CreateMovie(912, mediaPath);
+        var cacheService = CreateCacheService();
+
+        var forcedSubtitle = CreateTextSubtitle(movie, 0, "eng", "English", null);
+        forcedSubtitle.IsForced = true;
+
+        movie.EmbeddedSubtitles.Add(forcedSubtitle);
+        _dbContext.Movies.Add(movie);
+        await _dbContext.SaveChangesAsync();
+
+        var extractionService = new Mock<ISubtitleExtractionService>();
+        extractionService
+            .Setup(service => service.ExtractSubtitleToFile(
+                mediaPath,
+                0,
+                It.IsAny<string>(),
+                "subrip"))
+            .Returns((string _, int _, string outputPath, string _) =>
+            {
+                File.WriteAllText(outputPath, CreateSrt(625));
+                cacheService.RecordSourceSnapshot(outputPath, mediaPath);
+                return Task.FromResult<string?>(outputPath);
+            });
+
+        var resolver = CreateResolver(extractionService.Object, cacheService);
+        var request = new TranslationRequest
+        {
+            Id = 9121,
+            Title = movie.Title,
+            SourceLanguage = "en",
+            TargetLanguage = "pl",
+            MediaId = movie.Id,
+            MediaType = MediaType.Movie,
+            Status = TranslationStatus.Pending,
+            SourceSubtitleType = SubtitleLanguageHelper.TypeForcedDialogue,
+            SourceSnapshotStreamIndex = 0,
+            SourceSnapshotType = Lingarr.Server.Models.Subtitle.SourceSubtitleSnapshot.EmbeddedType
+        };
+        var options = new TranslationSourcePreparationOptions(
+            HasManualStreamSelection: false,
+            AllowCaptionFallback: false,
+            IsSupplementalRequest: false,
+            SupplementalTranslationEnabled: false);
+
+        var prepared = await resolver.PrepareTranslationSourceAsync(request, options);
+
+        Assert.NotNull(prepared);
+        Assert.Equal(0, prepared.SelectedSubtitle?.StreamIndex);
+        Assert.Equal(625, prepared.EntryCount);
+    }
+
     public void Dispose()
     {
         _dbContext.Dispose();

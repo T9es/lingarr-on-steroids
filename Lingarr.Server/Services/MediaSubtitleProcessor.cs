@@ -32,6 +32,16 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
     private readonly ISubtitleOcrService? _subtitleOcrService;
     private readonly ITranslationDiagnosticsService? _diagnosticsService;
     private readonly IBackgroundJobClient? _backgroundJobClient;
+    private const int MaxForcedDialoguePromotionCandidates = 2;
+    private const int ForcedDialoguePromotionSampleCues = 80;
+
+    /// <summary>
+    /// Minimum share of distinct cue texts required before a forced track is promoted to a
+    /// dialogue source. Typesetting, karaoke and drawing-only tracks emit the same handful of
+    /// fragments thousands of times, so their distinct ratio is far below this floor even when
+    /// they contain enough readable entries to pass the health check.
+    /// </summary>
+    private const double MinimumForcedDialogueDistinctTextRatio = 0.5;
     private string _hash = string.Empty;
     private IMedia _media = null!;
     private MediaType _mediaType;
@@ -1347,6 +1357,29 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
             allowCaptionFallback: !string.Equals(ignoreCaptionsSetting, "true", StringComparison.OrdinalIgnoreCase),
             targetLanguages: isAutoMode ? targetLanguages.ToList() : null);
 
+        int? promotedForcedDialogueEntryCount = null;
+        if (sourceSelection.SelectedSubtitle == null)
+        {
+            var promotedForcedDialogue = await TryPromoteVerifiedForcedDialogueAsync(
+                media,
+                sourceSelection);
+            if (promotedForcedDialogue != null)
+            {
+                promotedForcedDialogueEntryCount = promotedForcedDialogue.EntryCount;
+                sourceSelection = new SubtitleSourceSelectionResult
+                {
+                    SelectedSubtitle = promotedForcedDialogue.Subtitle,
+                    MatchedLanguage = promotedForcedDialogue.Language,
+                    SelectedRole = SubtitleSourceCandidateRole.PrimaryFullDialogue,
+                    Assessments = sourceSelection.Assessments
+                        .Where(assessment => !ReferenceEquals(
+                            assessment.Subtitle,
+                            promotedForcedDialogue.Subtitle))
+                        .ToList()
+                };
+            }
+        }
+
         if (sourceSelection.SelectedSubtitle == null)
         {
             var availableLanguages = readableEmbeddedSubs
@@ -1510,7 +1543,9 @@ public class MediaSubtitleProcessor : IMediaSubtitleProcessor
 
         var selectedSubtitle = sourceSelection.SelectedSubtitle;
         var selectedSourceLanguage = sourceSelection.MatchedLanguage;
-        var selectedSourceType = SubtitleLanguageHelper.DetermineSubtitleType(selectedSubtitle);
+        var selectedSourceType = promotedForcedDialogueEntryCount.HasValue
+            ? SubtitleLanguageHelper.TypeForcedDialogue
+            : SubtitleLanguageHelper.DetermineSubtitleType(selectedSubtitle);
 
         _logger.LogInformation(
             "Selected embedded subtitle for translation: StreamIndex={StreamIndex}, LanguageTag={LanguageTag}, ConfiguredLanguage={ConfiguredLanguage}, Role={Role}, Title=\"{Title}\", Codec={Codec}",
@@ -2486,6 +2521,165 @@ query = isSupplemental
         }
 
         return queued;
+    }
+
+    private sealed record PromotedForcedDialogueSource(EmbeddedSubtitle Subtitle, string Language, int EntryCount);
+
+    /// <summary>
+    /// Last-resort promotion for releases that incorrectly flag a full-dialogue text track as
+    /// forced. The normal selection rejects an unextracted forced track as supplemental because
+    /// its real entry count is unknown, which leaves the media pending without a request forever.
+    /// Extract at most two supplemental forced candidates, verify the extracted content is a
+    /// healthy full-dialogue track in the declared language, then let the caller queue it as a
+    /// ForcedDialogue source. Anything sparse, drawing-heavy, or language-inconsistent stays
+    /// rejected exactly as before.
+    /// </summary>
+    private async Task<PromotedForcedDialogueSource?> TryPromoteVerifiedForcedDialogueAsync(
+        IMedia media,
+        SubtitleSourceSelectionResult failedSelection)
+    {
+        if (media.Path == null || string.IsNullOrWhiteSpace(media.FileName))
+        {
+            return null;
+        }
+
+        var candidates = failedSelection.SupplementalCandidates
+            .Where(assessment => assessment.Subtitle.IsTextBased)
+            .Where(assessment => assessment.Subtitle.IsForced)
+            .Where(assessment => !string.IsNullOrWhiteSpace(assessment.MatchedLanguage))
+            .Where(assessment =>
+            {
+                var readablePath = assessment.Subtitle.GetReadableSourcePath();
+                return string.IsNullOrWhiteSpace(readablePath) || !File.Exists(readablePath);
+            })
+            .Take(MaxForcedDialoguePromotionCandidates)
+            .ToList();
+
+        if (candidates.Count == 0)
+        {
+            return null;
+        }
+
+        var mediaFilePath = Path.Combine(media.Path, media.FileName);
+        var tempDirectory = Path.Combine(Path.GetTempPath(), "lingarr-forced-dialogue-promotion");
+
+        foreach (var assessment in candidates)
+        {
+            var subtitle = assessment.Subtitle;
+            string? extractedPath = null;
+            try
+            {
+                extractedPath = await _extractionService.ExtractSubtitle(
+                    mediaFilePath,
+                    subtitle.StreamIndex,
+                    tempDirectory,
+                    subtitle.CodecName,
+                    subtitle.Language);
+
+                if (string.IsNullOrWhiteSpace(extractedPath) || !File.Exists(extractedPath))
+                {
+                    continue;
+                }
+
+                var subtitles = await _subtitleService.ReadSubtitles(extractedPath);
+                var health = SubtitleSourceHealthAnalyzer.Analyze(subtitles);
+                if (!health.IsUsable)
+                {
+                    _logger.LogDebug(
+                        "Forced-dialogue promotion rejected stream {StreamIndex} for {FileName}: {Reason}",
+                        subtitle.StreamIndex,
+                        media.FileName,
+                        health.Reason);
+                    continue;
+                }
+
+                var cueTexts = subtitles
+                    .Select(cue => string.Join(' ', cue.PlaintextLines.Count > 0 ? cue.PlaintextLines : cue.Lines))
+                    .Select(text => text.Trim())
+                    .Where(text => text.Length > 0)
+                    .ToList();
+
+                var distinctTextRatio = cueTexts.Count == 0
+                    ? 0
+                    : (double)cueTexts.Distinct(StringComparer.Ordinal).Count() / cueTexts.Count;
+                if (distinctTextRatio < MinimumForcedDialogueDistinctTextRatio)
+                {
+                    _logger.LogInformation(
+                        "Forced-dialogue promotion rejected stream {StreamIndex} for {FileName}: only {DistinctRatio:P0} of the extracted entries are unique, which indicates a typesetting or karaoke track rather than dialogue.",
+                        subtitle.StreamIndex,
+                        media.FileName,
+                        distinctTextRatio);
+                    continue;
+                }
+
+                var entryCount = SubtitleExtractionService.CountSubtitleEntries(extractedPath);
+                var detectedType = SubtitleLanguageHelper.DetermineSubtitleType(subtitle, entryCount);
+                if (!SubtitleLanguageHelper.IsForcedDialogueType(detectedType))
+                {
+                    _logger.LogDebug(
+                        "Forced-dialogue promotion rejected stream {StreamIndex} for {FileName}: classified as {Type}.",
+                        subtitle.StreamIndex,
+                        media.FileName,
+                        detectedType);
+                    continue;
+                }
+
+                var cueSamples = cueTexts
+                    .Take(ForcedDialoguePromotionSampleCues)
+                    .ToList();
+
+                var scriptResult = SubtitleScriptAnalyzer.Detect(subtitle.Language, cueSamples);
+                if (scriptResult.Verdict == SubtitleLanguageVerdict.Contradiction)
+                {
+                    _logger.LogWarning(
+                        "Forced-dialogue promotion rejected stream {StreamIndex} for {FileName}: declared language '{Declared}' contradicts the sampled text ({Reason}).",
+                        subtitle.StreamIndex,
+                        media.FileName,
+                        subtitle.Language ?? "unknown",
+                        scriptResult.Evidence);
+                    continue;
+                }
+
+                _logger.LogInformation(
+                    "Promoting forced text subtitle stream {StreamIndex} for {FileName} to forced-dialogue source: {EntryCount} dialogue entries, language {Language}.",
+                    subtitle.StreamIndex,
+                    media.FileName,
+                    entryCount,
+                    assessment.MatchedLanguage);
+
+                return new PromotedForcedDialogueSource(
+                    subtitle,
+                    assessment.MatchedLanguage!,
+                    entryCount);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(
+                    ex,
+                    "Forced-dialogue promotion failed for stream {StreamIndex} of {FileName}.",
+                    subtitle.StreamIndex,
+                    media.FileName);
+            }
+            finally
+            {
+                if (!string.IsNullOrWhiteSpace(extractedPath) && File.Exists(extractedPath))
+                {
+                    try
+                    {
+                        File.Delete(extractedPath);
+                    }
+                    catch (Exception deleteException)
+                    {
+                        _logger.LogDebug(
+                            deleteException,
+                            "Failed to delete temporary forced-dialogue promotion source {Path}.",
+                            extractedPath);
+                    }
+                }
+            }
+        }
+
+        return null;
     }
 
     private static List<string> LimitQueuedLanguages(
