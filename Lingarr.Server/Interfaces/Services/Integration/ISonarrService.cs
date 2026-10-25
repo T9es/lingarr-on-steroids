@@ -1,4 +1,4 @@
-﻿using Lingarr.Server.Models.Integrations;
+using Lingarr.Server.Models.Integrations;
 
 namespace Lingarr.Server.Interfaces.Services.Integration;
 
@@ -86,4 +86,16 @@ public interface ISonarrService
     /// <param name="apiKey">The Sonarr API key</param>
     /// <returns>The episode path or null if the API call fails</returns>
     Task<SonarrEpisodePath?> GetEpisodePath(int episodeNumber, string url, string apiKey);
+
+    /// <summary>
+    /// Asynchronously retrieves a page of folder import events from the Sonarr history for a
+    /// specific instance, newest first. Used to recover imports whose download webhook never
+    /// reached Lingarr, for example while the application was restarting.
+    /// </summary>
+    /// <param name="page">The 1-based history page number.</param>
+    /// <param name="pageSize">The maximum number of records per page.</param>
+    /// <param name="url">The Sonarr server URL</param>
+    /// <param name="apiKey">The Sonarr API key</param>
+    /// <returns>The history page or null if the API call fails</returns>
+    Task<SonarrHistoryPage?> GetImportHistory(int page, int pageSize, string url, string apiKey);
 }

@@ -1,4 +1,4 @@
-﻿using Lingarr.Server.Interfaces.Services;
+using Lingarr.Server.Interfaces.Services;
 using Lingarr.Server.Interfaces.Services.Integration;
 using Lingarr.Server.Models;
 using Lingarr.Server.Models.Integrations;
@@ -7,6 +7,11 @@ namespace Lingarr.Server.Services.Integration;
 
 public class SonarrService : ISonarrService
 {
+    /// <summary>
+    /// Sonarr history event type for "download folder imported".
+    /// </summary>
+    private const int DownloadFolderImportedEventType = 3;
+
     private readonly IIntegrationService _integrationService;
 
     public SonarrService(IIntegrationService integrationService)
@@ -94,6 +99,16 @@ public class SonarrService : ISonarrService
     {
         return await _integrationService.GetApiResponse<SonarrEpisodePath>(
             $"/api/v3/episode/{episodeNumber}",
+            url,
+            apiKey);
+    }
+
+    /// <inheritdoc />
+    public async Task<SonarrHistoryPage?> GetImportHistory(int page, int pageSize, string url, string apiKey)
+    {
+        return await _integrationService.GetApiResponse<SonarrHistoryPage>(
+            $"/api/v3/history?page={page}&pageSize={pageSize}&sortKey=date&sortDirection=descending" +
+            $"&eventType={DownloadFolderImportedEventType}&includeSeries=true",
             url,
             apiKey);
     }

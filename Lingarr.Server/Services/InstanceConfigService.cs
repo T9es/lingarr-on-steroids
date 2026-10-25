@@ -41,6 +41,32 @@ public class InstanceConfigService : IInstanceConfigService
             "Sonarr");
     }
 
+    public async Task<List<InstanceConfig>> GetSonarrConfigs()
+    {
+        var instances = (await ReadConfiguredInstances(
+                SettingKeys.Integration.SonarrInstances,
+                "Sonarr"))
+            .Where(instance =>
+                !string.IsNullOrWhiteSpace(instance.Id) &&
+                !string.IsNullOrEmpty(instance.Url) &&
+                !string.IsNullOrEmpty(instance.ApiKey))
+            .GroupBy(instance => instance.Id)
+            .Select(group => group.First())
+            .Select(instance => new InstanceConfig(instance.Url, instance.ApiKey, instance.Id))
+            .ToList();
+
+        if (instances.Count > 0)
+        {
+            return instances;
+        }
+
+        var legacy = await GetLegacyConfig(
+            SettingKeys.Integration.SonarrUrl,
+            SettingKeys.Integration.SonarrApiKey,
+            "Sonarr");
+        return legacy == null ? [] : [legacy];
+    }
+
     private async Task<InstanceConfig?> GetConfig(
         string? instanceId,
         string instancesKey,
@@ -48,44 +74,41 @@ public class InstanceConfigService : IInstanceConfigService
         string legacyApiKeyKey,
         string serviceName)
     {
-        var instancesJson = await _settingService.GetSetting(instancesKey);
+        var instances = await ReadConfiguredInstances(instancesKey, serviceName);
 
-        if (!string.IsNullOrEmpty(instancesJson))
+        if (instances.Count > 0)
         {
-            try
+            InstanceSetting? instance = null;
+
+            if (!string.IsNullOrEmpty(instanceId))
             {
-                var instances = JsonSerializer.Deserialize<List<InstanceSetting>>(instancesJson, JsonOptions);
-                if (instances != null && instances.Count > 0)
+                instance = instances.FirstOrDefault(i => i.Id == instanceId);
+                if (instance == null)
                 {
-                    InstanceSetting? instance = null;
-
-                    if (!string.IsNullOrEmpty(instanceId))
-                    {
-                        instance = instances.FirstOrDefault(i => i.Id == instanceId);
-                        if (instance == null)
-                        {
-                            _logger.LogWarning(
-                                "{Service} instance '{InstanceId}' not found in configured instances",
-                                serviceName,
-                                instanceId);
-                            return null;
-                        }
-                    }
-
-                    instance ??= instances.FirstOrDefault(i => i.Id == "default") ?? instances[0];
-
-                    if (!string.IsNullOrEmpty(instance.Url) && !string.IsNullOrEmpty(instance.ApiKey))
-                    {
-                        return new InstanceConfig(instance.Url, instance.ApiKey, instance.Id);
-                    }
+                    _logger.LogWarning(
+                        "{Service} instance '{InstanceId}' not found in configured instances",
+                        serviceName,
+                        instanceId);
+                    return null;
                 }
             }
-            catch (JsonException ex)
+
+            instance ??= instances.FirstOrDefault(i => i.Id == "default") ?? instances[0];
+
+            if (!string.IsNullOrEmpty(instance.Url) && !string.IsNullOrEmpty(instance.ApiKey))
             {
-                _logger.LogWarning(ex, "Failed to deserialize {Service} instances from settings", serviceName);
+                return new InstanceConfig(instance.Url, instance.ApiKey, instance.Id);
             }
         }
 
+        return await GetLegacyConfig(legacyUrlKey, legacyApiKeyKey, serviceName);
+    }
+
+    private async Task<InstanceConfig?> GetLegacyConfig(
+        string legacyUrlKey,
+        string legacyApiKeyKey,
+        string serviceName)
+    {
         var url = await _settingService.GetSetting(legacyUrlKey);
         var apiKey = await _settingService.GetSetting(legacyApiKeyKey);
 
@@ -96,5 +119,26 @@ public class InstanceConfigService : IInstanceConfigService
         }
 
         return new InstanceConfig(url, apiKey, "default");
+    }
+
+    private async Task<List<InstanceSetting>> ReadConfiguredInstances(
+        string instancesKey,
+        string serviceName)
+    {
+        var instancesJson = await _settingService.GetSetting(instancesKey);
+        if (string.IsNullOrEmpty(instancesJson))
+        {
+            return [];
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<InstanceSetting>>(instancesJson, JsonOptions) ?? [];
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "Failed to deserialize {Service} instances from settings", serviceName);
+            return [];
+        }
     }
 }
