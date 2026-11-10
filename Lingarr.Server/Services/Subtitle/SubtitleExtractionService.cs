@@ -118,22 +118,21 @@ public class SubtitleExtractionService : ISubtitleExtractionService
     {
         try
         {
-            var process = new Process
+            var startInfo = new ProcessStartInfo
             {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = "ffprobe",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    ArgumentList = { "-version" }
-                }
+                FileName = "ffprobe",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                ArgumentList = { "-version" }
             };
 
-            process.Start();
-            await process.WaitForExitAsync();
-            return process.ExitCode == 0;
+            var result = await ChildProcessRunner.RunAsync(
+                startInfo,
+                TimeSpan.FromSeconds(30),
+                CancellationToken.None);
+            return result.Succeeded;
         }
         catch (Exception ex)
         {
@@ -298,42 +297,41 @@ public class SubtitleExtractionService : ISubtitleExtractionService
             // If copying doesn't work for the target format, we remove -c:s copy for conversion
             var copyMode = extension is ".ass" or ".ssa";
 
-            var process = new Process
+            var startInfo = new ProcessStartInfo
             {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = "ffmpeg",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                }
+                FileName = "ffmpeg",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
             };
 
-            process.StartInfo.ArgumentList.Add("-i");
-            process.StartInfo.ArgumentList.Add(mediaFilePath);
-            process.StartInfo.ArgumentList.Add("-map");
-            process.StartInfo.ArgumentList.Add($"0:s:{streamIndex}");
+            startInfo.ArgumentList.Add("-i");
+            startInfo.ArgumentList.Add(mediaFilePath);
+            startInfo.ArgumentList.Add("-map");
+            startInfo.ArgumentList.Add($"0:s:{streamIndex}");
 
             if (copyMode)
             {
-                process.StartInfo.ArgumentList.Add("-c:s");
-                process.StartInfo.ArgumentList.Add("copy");
+                startInfo.ArgumentList.Add("-c:s");
+                startInfo.ArgumentList.Add("copy");
             }
 
-            process.StartInfo.ArgumentList.Add(outputPath);
-            process.StartInfo.ArgumentList.Add("-y");
+            startInfo.ArgumentList.Add(outputPath);
+            startInfo.ArgumentList.Add("-y");
 
-            _logger.LogDebug("Running FFmpeg: ffmpeg {Arguments}", string.Join(" ", process.StartInfo.ArgumentList));
+            _logger.LogDebug("Running FFmpeg: ffmpeg {Arguments}", string.Join(" ", startInfo.ArgumentList));
 
-            process.Start();
-            var stderr = await process.StandardError.ReadToEndAsync();
-            await process.WaitForExitAsync();
+            var result = await ChildProcessRunner.RunAsync(
+                startInfo,
+                TimeSpan.FromMinutes(10),
+                CancellationToken.None);
 
-            if (process.ExitCode != 0)
+            if (result.TimedOut || result.ExitCode != 0)
             {
-                _logger.LogWarning("FFmpeg extraction failed (exit code {ExitCode}): {Error}",
-                    process.ExitCode, stderr);
+                _logger.LogWarning(
+                    "FFmpeg extraction failed (exit code {ExitCode}, timed out: {TimedOut}): {Error}",
+                    result.ExitCode, result.TimedOut, result.StandardError);
                 return null;
             }
 
@@ -1093,44 +1091,43 @@ public class SubtitleExtractionService : ISubtitleExtractionService
         {
             _logger.LogDebug("Running FFprobe on: {FullPath}", mediaFilePath);
             
-            var process = new Process
+            var startInfo = new ProcessStartInfo
             {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = "ffprobe",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                }
+                FileName = "ffprobe",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
             };
 
-            process.StartInfo.ArgumentList.Add("-v");
-            process.StartInfo.ArgumentList.Add("quiet");
-            process.StartInfo.ArgumentList.Add("-print_format");
-            process.StartInfo.ArgumentList.Add("json");
-            process.StartInfo.ArgumentList.Add("-show_streams");
-            process.StartInfo.ArgumentList.Add("-select_streams");
-            process.StartInfo.ArgumentList.Add("s");
-            process.StartInfo.ArgumentList.Add(mediaFilePath);
+            startInfo.ArgumentList.Add("-v");
+            startInfo.ArgumentList.Add("quiet");
+            startInfo.ArgumentList.Add("-print_format");
+            startInfo.ArgumentList.Add("json");
+            startInfo.ArgumentList.Add("-show_streams");
+            startInfo.ArgumentList.Add("-select_streams");
+            startInfo.ArgumentList.Add("s");
+            startInfo.ArgumentList.Add(mediaFilePath);
 
-            process.Start();
-            var output = await process.StandardOutput.ReadToEndAsync();
-            var stderr = await process.StandardError.ReadToEndAsync();
-            await process.WaitForExitAsync();
+            var result = await ChildProcessRunner.RunAsync(
+                startInfo,
+                TimeSpan.FromMinutes(2),
+                CancellationToken.None);
+            var output = result.StandardOutput;
+            var stderr = result.StandardError;
 
-            _logger.LogDebug("FFprobe result for {FileName}: exit={ExitCode}, output={Length} chars, stderr={StdErrLength} chars",
-                Path.GetFileName(mediaFilePath), process.ExitCode, output.Length, stderr.Length);
-            
+            _logger.LogDebug("FFprobe result for {FileName}: exit={ExitCode}, timedOut={TimedOut}, output={Length} chars, stderr={StdErrLength} chars",
+                Path.GetFileName(mediaFilePath), result.ExitCode, result.TimedOut, output.Length, stderr.Length);
+
             if (!string.IsNullOrEmpty(stderr))
             {
                 _logger.LogDebug("FFprobe stderr: {StdErr}", stderr);
             }
-            
-            if (process.ExitCode != 0)
+
+            if (result.TimedOut || result.ExitCode != 0)
             {
-                _logger.LogWarning("FFprobe exited with code {ExitCode} for {FilePath}. Stderr: {StdErr}",
-                    process.ExitCode, mediaFilePath, stderr);
+                _logger.LogWarning("FFprobe exited with code {ExitCode} (timed out: {TimedOut}) for {FilePath}. Stderr: {StdErr}",
+                    result.ExitCode, result.TimedOut, mediaFilePath, stderr);
                 return null;
             }
 

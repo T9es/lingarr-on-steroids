@@ -7,6 +7,22 @@ namespace Lingarr.Server.Services.Subtitle;
 
 public class ExternalSubtitleOcrEngine : ISubtitleOcrEngine
 {
+    /// <summary>
+    /// Default ceiling for one PGS OCR run. Historical runs finish in seconds (the slowest of
+    /// 929 recorded runs took under six minutes), so half an hour is many times the observed
+    /// worst case while still bounding a tool that hangs on a damaged or replaced source file.
+    /// Overridable through <c>LINGARR_PGSTOSRT_TIMEOUT_MINUTES</c>.
+    /// </summary>
+    private const int DefaultOcrTimeoutMinutes = 30;
+
+    private const int MaxOcrTimeoutMinutes = 24 * 60;
+
+    /// <summary>
+    /// Track probing with mkvmerge or ffprobe only reads file headers and must never outlive a
+    /// job either.
+    /// </summary>
+    private static readonly TimeSpan ProbeTimeout = TimeSpan.FromMinutes(2);
+
     private readonly ILogger<ExternalSubtitleOcrEngine> _logger;
 
     public ExternalSubtitleOcrEngine(ILogger<ExternalSubtitleOcrEngine> logger)
@@ -53,31 +69,28 @@ public class ExternalSubtitleOcrEngine : ISubtitleOcrEngine
                 : "/usr/share/tesseract-ocr/5/tessdata";
         }
 
-        var process = new Process
+        var startInfo = new ProcessStartInfo
         {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = "dotnet",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            }
+            FileName = "dotnet",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
         };
 
-        process.StartInfo.ArgumentList.Add(dllPath);
-        process.StartInfo.ArgumentList.Add("--input");
-        process.StartInfo.ArgumentList.Add(mediaPath);
-        process.StartInfo.ArgumentList.Add("--output");
-        process.StartInfo.ArgumentList.Add(outputPath);
-        process.StartInfo.ArgumentList.Add("--track");
-        process.StartInfo.ArgumentList.Add(trackId.Value.ToString());
-        process.StartInfo.ArgumentList.Add("--tesseractlanguage");
-        process.StartInfo.ArgumentList.Add(tesseractLanguage);
-        process.StartInfo.ArgumentList.Add("--tesseractdata");
-        process.StartInfo.ArgumentList.Add(tessData);
-        process.StartInfo.ArgumentList.Add("--tesseractversion");
-        process.StartInfo.ArgumentList.Add("5");
+        startInfo.ArgumentList.Add(dllPath);
+        startInfo.ArgumentList.Add("--input");
+        startInfo.ArgumentList.Add(mediaPath);
+        startInfo.ArgumentList.Add("--output");
+        startInfo.ArgumentList.Add(outputPath);
+        startInfo.ArgumentList.Add("--track");
+        startInfo.ArgumentList.Add(trackId.Value.ToString());
+        startInfo.ArgumentList.Add("--tesseractlanguage");
+        startInfo.ArgumentList.Add(tesseractLanguage);
+        startInfo.ArgumentList.Add("--tesseractdata");
+        startInfo.ArgumentList.Add(tessData);
+        startInfo.ArgumentList.Add("--tesseractversion");
+        startInfo.ArgumentList.Add("5");
 
         _logger.LogInformation(
             "Running PGS OCR for {MediaPath} subtitle stream {StreamIndex} as Matroska track {TrackId}",
@@ -87,20 +100,33 @@ public class ExternalSubtitleOcrEngine : ISubtitleOcrEngine
 
         try
         {
-            process.Start();
-            var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
-            await process.WaitForExitAsync(cancellationToken);
-            var stdout = await stdoutTask;
-            var stderr = await stderrTask;
+            var timeout = GetOcrTimeout();
+            var result = await ChildProcessRunner.RunAsync(startInfo, timeout, cancellationToken);
 
-            if (process.ExitCode != 0)
+            if (result.TimedOut)
             {
-                var error = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
+                _logger.LogWarning(
+                    "PGS OCR timed out after {Timeout} for {MediaPath}; the process tree was terminated.",
+                    timeout,
+                    Path.GetFileName(mediaPath));
                 return new SubtitleOcrEngineResult
                 {
                     Success = false,
-                    Error = $"PgsToSrt exited with code {process.ExitCode}: {error.Trim()}"
+                    Error =
+                        $"PgsToSrt did not finish within {timeout.TotalMinutes:0} minutes and was terminated. " +
+                        "The source file may still be downloading or be damaged."
+                };
+            }
+
+            if (result.ExitCode != 0)
+            {
+                var error = string.IsNullOrWhiteSpace(result.StandardError)
+                    ? result.StandardOutput
+                    : result.StandardError;
+                return new SubtitleOcrEngineResult
+                {
+                    Success = false,
+                    Error = $"PgsToSrt exited with code {result.ExitCode}: {error.Trim()}"
                 };
             }
 
@@ -228,34 +254,42 @@ public class ExternalSubtitleOcrEngine : ISubtitleOcrEngine
         IReadOnlyList<string> arguments,
         CancellationToken cancellationToken)
     {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = fileName,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        foreach (var argument in arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
         try
         {
-            var process = new Process
-            {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = fileName,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                }
-            };
-
-            foreach (var argument in arguments)
-            {
-                process.StartInfo.ArgumentList.Add(argument);
-            }
-
-            process.Start();
-            var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
-            await process.WaitForExitAsync(cancellationToken);
-            return (process.ExitCode == 0, await stdoutTask, await stderrTask);
+            var result = await ChildProcessRunner.RunAsync(startInfo, ProbeTimeout, cancellationToken);
+            return (result.Succeeded, result.StandardOutput, result.StandardError);
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancellation is a job-level signal, not a probe failure: never swallow it.
+            throw;
         }
         catch
         {
             return (false, string.Empty, string.Empty);
         }
+    }
+
+    private static TimeSpan GetOcrTimeout()
+    {
+        var configured = Environment.GetEnvironmentVariable("LINGARR_PGSTOSRT_TIMEOUT_MINUTES");
+        var minutes = int.TryParse(configured, out var parsed) && parsed > 0
+            ? parsed
+            : DefaultOcrTimeoutMinutes;
+        return TimeSpan.FromMinutes(Math.Min(minutes, MaxOcrTimeoutMinutes));
     }
 }

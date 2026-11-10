@@ -257,7 +257,8 @@ public class MkvEmbeddingService : IMkvEmbeddingService
             var identifyResult = await RunProcessAsync(
                 MkvMergeBinary,
                 new List<string> { "-J", mkvPath },
-                ct);
+                ct,
+                TimeSpan.FromMinutes(2));
             if (identifyResult.ExitCode != 0)
             {
                 return new MkvEmbedResult(
@@ -481,7 +482,11 @@ public class MkvEmbeddingService : IMkvEmbeddingService
         string? trackName,
         CancellationToken ct)
     {
-        var result = await RunProcessAsync(MkvMergeBinary, new List<string> { "-J", mkvPath }, ct);
+        var result = await RunProcessAsync(
+            MkvMergeBinary,
+            new List<string> { "-J", mkvPath },
+            ct,
+            TimeSpan.FromMinutes(2));
         if (result.ExitCode != 0)
         {
             throw new InvalidOperationException(
@@ -667,7 +672,8 @@ public class MkvEmbeddingService : IMkvEmbeddingService
             var result = await RunProcessAsync(
                 MkvPropEditBinary,
                 new List<string> { mkvPath, "--dry-run" },
-                ct);
+                ct,
+                TimeSpan.FromMinutes(2));
 
             if (result.ExitCode == 0)
             {
@@ -691,31 +697,26 @@ public class MkvEmbeddingService : IMkvEmbeddingService
     private async Task<(int ExitCode, string Output)> RunProcessAsync(
         string fileName,
         List<string> argumentList,
-        CancellationToken ct)
+        CancellationToken ct,
+        TimeSpan? timeout = null)
     {
-        using var process = new Process();
-        process.StartInfo = CreateProcessStartInfo(fileName, argumentList, OperatingSystem.IsLinux());
+        // A remux rewrites the whole file, so it gets a generous ceiling; callers that only probe
+        // or verify metadata pass a short one.
+        var effectiveTimeout = timeout ?? TimeSpan.FromMinutes(60);
+        var result = await ChildProcessRunner.RunAsync(
+            CreateProcessStartInfo(fileName, argumentList, OperatingSystem.IsLinux()),
+            effectiveTimeout,
+            ct);
 
-        process.Start();
-        _logger.LogDebug("Started process: {FileName} with {Count} arguments", fileName, argumentList.Count);
+        if (result.TimedOut)
+        {
+            _logger.LogWarning(
+                "Process {FileName} did not finish within {Timeout} and was terminated",
+                fileName,
+                effectiveTimeout);
+        }
 
-        var outputBuilder = new StringBuilder();
-        var errorBuilder = new StringBuilder();
-
-        var outputTask = process.StandardOutput.ReadToEndAsync(ct);
-        var errorTask = process.StandardError.ReadToEndAsync(ct);
-
-        await process.WaitForExitAsync(ct);
-
-        var output = await outputTask;
-        var error = await errorTask;
-
-        outputBuilder.Append(output);
-        outputBuilder.Append(error);
-
-        var combinedOutput = outputBuilder.ToString();
-
-        return (process.ExitCode, combinedOutput);
+        return (result.TimedOut ? -1 : result.ExitCode, result.StandardOutput + result.StandardError);
     }
 
     internal static ProcessStartInfo CreateProcessStartInfo(

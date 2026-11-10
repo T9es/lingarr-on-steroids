@@ -1981,48 +1981,47 @@ public class UploadWorkspaceService : IUploadWorkspaceService, IUploadWorkspaceC
             _ => "srt"
         };
 
-        var process = new Process
+        var startInfo = new ProcessStartInfo
         {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = "ffmpeg",
-                RedirectStandardError = true,
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            }
+            FileName = "ffmpeg",
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
         };
 
-        process.StartInfo.ArgumentList.Add("-y");
-        process.StartInfo.ArgumentList.Add("-i");
-        process.StartInfo.ArgumentList.Add(file.StoredPath);
-        process.StartInfo.ArgumentList.Add("-i");
-        process.StartInfo.ArgumentList.Add(translatedSubtitlePath);
-        process.StartInfo.ArgumentList.Add("-map");
-        process.StartInfo.ArgumentList.Add("0");
-        process.StartInfo.ArgumentList.Add("-map");
-        process.StartInfo.ArgumentList.Add("1:0");
-        process.StartInfo.ArgumentList.Add("-c");
-        process.StartInfo.ArgumentList.Add("copy");
-        process.StartInfo.ArgumentList.Add("-c:s");
-        process.StartInfo.ArgumentList.Add(subtitleCodec);
-        process.StartInfo.ArgumentList.Add($"-metadata:s:s:{existingSubtitleCount}");
-        process.StartInfo.ArgumentList.Add($"language={NormalizeLanguage(targetLanguage) ?? targetLanguage}");
-        process.StartInfo.ArgumentList.Add($"-metadata:s:s:{existingSubtitleCount}");
-        process.StartInfo.ArgumentList.Add($"title=Lingarr {targetLanguage}");
-        process.StartInfo.ArgumentList.Add(outputPath);
+        startInfo.ArgumentList.Add("-y");
+        startInfo.ArgumentList.Add("-i");
+        startInfo.ArgumentList.Add(file.StoredPath);
+        startInfo.ArgumentList.Add("-i");
+        startInfo.ArgumentList.Add(translatedSubtitlePath);
+        startInfo.ArgumentList.Add("-map");
+        startInfo.ArgumentList.Add("0");
+        startInfo.ArgumentList.Add("-map");
+        startInfo.ArgumentList.Add("1:0");
+        startInfo.ArgumentList.Add("-c");
+        startInfo.ArgumentList.Add("copy");
+        startInfo.ArgumentList.Add("-c:s");
+        startInfo.ArgumentList.Add(subtitleCodec);
+        startInfo.ArgumentList.Add($"-metadata:s:s:{existingSubtitleCount}");
+        startInfo.ArgumentList.Add($"language={NormalizeLanguage(targetLanguage) ?? targetLanguage}");
+        startInfo.ArgumentList.Add($"-metadata:s:s:{existingSubtitleCount}");
+        startInfo.ArgumentList.Add($"title=Lingarr {targetLanguage}");
+        startInfo.ArgumentList.Add(outputPath);
 
-        process.Start();
-        var stderr = await process.StandardError.ReadToEndAsync(cancellationToken);
-        await process.WaitForExitAsync(cancellationToken);
+        var result = await ChildProcessRunner.RunAsync(
+            startInfo,
+            TimeSpan.FromMinutes(60),
+            cancellationToken);
 
-        if (process.ExitCode != 0 || !File.Exists(outputPath))
+        if (result.TimedOut || result.ExitCode != 0 || !File.Exists(outputPath))
         {
             _logger.LogWarning(
-                "Failed to remux upload file {UploadBatchFileId}. Exit={ExitCode}. Error={Error}",
+                "Failed to remux upload file {UploadBatchFileId}. TimedOut={TimedOut}. Exit={ExitCode}. Error={Error}",
                 file.Id,
-                process.ExitCode,
-                stderr);
+                result.TimedOut,
+                result.ExitCode,
+                result.StandardError);
             return null;
         }
 

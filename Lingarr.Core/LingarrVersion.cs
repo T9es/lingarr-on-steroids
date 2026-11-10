@@ -371,8 +371,27 @@ public static class LingarrVersion
             };
 
             process.Start();
+
+            // Drain stderr while waiting. A redirected but unread pipe can fill and block git,
+            // which made the 3 second cap unreachable and let the child outlive it.
+            var stderrTask = process.StandardError.ReadToEndAsync();
+            if (!process.WaitForExit(3000))
+            {
+                try
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+                catch
+                {
+                    // The process may have exited between the wait and the kill.
+                }
+
+                ObserveFault(stderrTask);
+                return null;
+            }
+
             var output = process.StandardOutput.ReadToEnd().Trim();
-            process.WaitForExit(3000);
+            ObserveFault(stderrTask);
 
             return process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output)
                 ? output
@@ -382,6 +401,19 @@ public static class LingarrVersion
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// Observes a detached read task so a faulted pipe read does not surface as an unobserved
+    /// task exception after the child was killed.
+    /// </summary>
+    private static void ObserveFault(Task task)
+    {
+        task.ContinueWith(
+            static completed => _ = completed.Exception,
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
     }
 
     private static string? FindRepositoryRoot()

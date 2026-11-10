@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Text.RegularExpressions;
 using Lingarr.Core.Configuration;
 using Lingarr.Core.Data;
@@ -22,6 +23,20 @@ public class SubtitleOcrService : ISubtitleOcrService
     /// </summary>
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> OcrOutputLocks =
         new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Upper bound for waiting on another run that already writes the same output file. The
+    /// holder is itself bounded by the OCR engine timeout, so this only matters if a run somehow
+    /// stops releasing the gate; hanging forever behind it must not be possible.
+    /// </summary>
+    private static readonly TimeSpan OcrOutputLockWaitTimeout = TimeSpan.FromHours(4);
+
+    /// <summary>
+    /// A media file that changes within this window is still being copied, remuxed or imported.
+    /// Running OCR on it reads a source that may disappear mid-run, which is how one orphaned
+    /// OCR process ended up re-reading a deleted inode for five days.
+    /// </summary>
+    private static readonly TimeSpan MediaSourceStabilityWindow = TimeSpan.FromSeconds(3);
 
     private static readonly HashSet<string> SupportedCodecs = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -134,6 +149,17 @@ public class SubtitleOcrService : ISubtitleOcrService
             return await FailUnsupportedLanguageAsync(context, languageResolution, cancellationToken);
         }
 
+        // A file that is still being written or replaced must not be OCR'd: the tool would read
+        // a source that can vanish mid-run. Wait for a stable size/timestamp, then remember the
+        // signature so the result can be rejected if the source changes while OCR runs.
+        var (sourceError, sourceSignature) = await InspectMediaSourceAsync(
+            context.MediaPath,
+            cancellationToken);
+        if (sourceError != null)
+        {
+            return await FailAsync(context, sourceError, cancellationToken);
+        }
+
         context.Subtitle.OcrStatus = SubtitleOcrStatus.Processing;
         context.Subtitle.OcrError = null;
         context.Subtitle.OcrAttemptedAt = DateTime.UtcNow;
@@ -151,7 +177,16 @@ public class SubtitleOcrService : ISubtitleOcrService
         // written, normalized, parsed and quality-scored before the next execution for
         // the same path starts.
         var outputLock = OcrOutputLocks.GetOrAdd(outputPath, static _ => new SemaphoreSlim(1, 1));
-        await outputLock.WaitAsync(cancellationToken);
+        if (!await outputLock.WaitAsync(OcrOutputLockWaitTimeout, cancellationToken))
+        {
+            var lockTimeoutSubtitle = await MarkFailedAsync(
+                context,
+                $"Another OCR run for this subtitle stream did not finish within " +
+                $"{OcrOutputLockWaitTimeout.TotalHours:0} hours.",
+                cancellationToken);
+            return FromSubtitle(lockTimeoutSubtitle, success: false);
+        }
+
         try
         {
             var engineResult = await _ocrEngine.ConvertAsync(
@@ -162,11 +197,33 @@ public class SubtitleOcrService : ISubtitleOcrService
                 cancellationToken);
             if (!engineResult.Success || string.IsNullOrWhiteSpace(engineResult.OutputPath))
             {
+                // A killed tool can leave a partial cache file behind. Remove it so a later run
+                // cannot mistake it for a usable extraction.
+                DiscardOcrOutput(outputPath);
                 var failedSubtitle = await MarkFailedAsync(
                     context,
                     engineResult.Error ?? "OCR engine did not produce output.",
                     cancellationToken);
                 return FromSubtitle(failedSubtitle, success: false);
+            }
+
+            // The tool reads the media file for as long as it runs. If the file was replaced
+            // underneath it (an importer renaming a partial download into place), the SRT
+            // describes a different file than the one now on disk, so it must not be cached.
+            var sourceSignatureAfter = GetMediaSourceSignature(context.MediaPath);
+            if (!string.Equals(sourceSignature, sourceSignatureAfter, StringComparison.Ordinal))
+            {
+                _logger.LogWarning(
+                    "Discarding OCR output for {MediaType} {MediaId} stream {StreamIndex}: the media file changed while OCR was running.",
+                    mediaType,
+                    mediaId,
+                    streamIndex);
+                DiscardOcrOutput(engineResult.OutputPath);
+                var changedSourceSubtitle = await MarkFailedAsync(
+                    context,
+                    "The media file changed while OCR was running, so the extracted subtitles were discarded.",
+                    cancellationToken);
+                return FromSubtitle(changedSourceSubtitle, success: false);
             }
 
             try
@@ -753,6 +810,76 @@ public class SubtitleOcrService : ISubtitleOcrService
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Waits for the media file to stop changing and returns its signature. A non-null error
+    /// means OCR must not start against the current file.
+    /// </summary>
+    private static async Task<(string? Error, string? Signature)> InspectMediaSourceAsync(
+        string mediaPath,
+        CancellationToken cancellationToken)
+    {
+        var first = GetMediaSourceSignature(mediaPath);
+        if (first == null)
+        {
+            return ("The media file is no longer available.", null);
+        }
+
+        await Task.Delay(MediaSourceStabilityWindow, cancellationToken);
+
+        var second = GetMediaSourceSignature(mediaPath);
+        if (second == null)
+        {
+            return ("The media file disappeared while preparing OCR.", null);
+        }
+
+        return string.Equals(first, second, StringComparison.Ordinal)
+            ? (null, second)
+            : ("The media file is still being written or replaced, so OCR was deferred.", null);
+    }
+
+    /// <summary>
+    /// Identifies the current content of a media file without hashing it. Length plus the write
+    /// and creation timestamps change when an importer replaces the file with another one.
+    /// </summary>
+    private static string? GetMediaSourceSignature(string mediaPath)
+    {
+        try
+        {
+            var info = new FileInfo(mediaPath);
+            if (!info.Exists)
+            {
+                return null;
+            }
+
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"{info.Length}|{info.LastWriteTimeUtc.Ticks}|{info.CreationTimeUtc.Ticks}");
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private void DiscardOcrOutput(string outputPath)
+    {
+        try
+        {
+            if (File.Exists(outputPath) &&
+                _embeddedSubtitleCacheService.IsManagedCachePath(outputPath))
+            {
+                File.Delete(outputPath);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Could not discard OCR output {OutputPath} after a failed or stale OCR run",
+                outputPath);
+        }
     }
 
     private static SubtitleOcrResult FromSubtitle(EmbeddedSubtitle subtitle, bool success) => new()

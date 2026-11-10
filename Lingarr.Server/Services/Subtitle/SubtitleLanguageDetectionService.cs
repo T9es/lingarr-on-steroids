@@ -208,21 +208,22 @@ public class SubtitleLanguageDetectionService : ISubtitleLanguageDetectionServic
 
         try
         {
-            using var process = Process.Start(startInfo);
-            if (process == null)
+            var result = await ChildProcessRunner.RunAsync(
+                startInfo,
+                TimeSpan.FromMinutes(2),
+                ct);
+
+            if (result.TimedOut || result.ExitCode != 0)
             {
                 return null;
             }
 
-            var output = await process.StandardOutput.ReadToEndAsync(ct);
-            await process.WaitForExitAsync(ct);
-
-            if (process.ExitCode != 0)
-            {
-                return null;
-            }
-
-            return ParseSrtLines(output);
+            return ParseSrtLines(result.StandardOutput);
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancellation must reach the job, not be reported as an unreadable stream.
+            throw;
         }
         catch (Exception ex)
         {

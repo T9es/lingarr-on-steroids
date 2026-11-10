@@ -1527,6 +1527,11 @@ public class SourceSubtitleResolver : ISourceSubtitleResolver
             request.SubtitleToTranslate = result.ExtractedPath;
             return true;
         }
+        catch (OperationCanceledException)
+        {
+            // A cancelled run is not a failed recovery: let cancellation reach the caller.
+            throw;
+        }
         catch (Exception ex)
         {
             _logger.LogWarning(

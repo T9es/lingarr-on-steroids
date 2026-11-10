@@ -64,9 +64,11 @@ public class MediaDurationProvider : IMediaDurationProvider
 
             return durationSeconds;
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            return null;
+            // Caller cancellation is a signal, not a missing duration. The probe's own timeout
+            // is handled inside ProbeDurationAsync and returns null.
+            throw;
         }
         catch (Exception ex)
         {
