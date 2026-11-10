@@ -797,14 +797,17 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
 
     private TimeSpan BuildQuotaRetryDelay(TimeSpan fallbackDelay)
     {
-        var delay = _apiSuggestedRetryDelay ?? fallbackDelay;
+        // The API can ask for a retry hours away. Bounding it here keeps the retry loop inside
+        // the job instead of sleeping until the quota resets; the pause mechanism handles the
+        // long wait after the retries are exhausted.
+        var delay = RetryDelayPolicy.Clamp(_apiSuggestedRetryDelay ?? fallbackDelay);
         if (delay < MinQuotaRetryDelay)
         {
             delay = MinQuotaRetryDelay;
         }
 
         var jitter = TimeSpan.FromMilliseconds(Random.Shared.Next(0, 500));
-        return delay + jitter;
+        return RetryDelayPolicy.Clamp(delay + jitter);
     }
 
     private Task EnsureProviderCircuitAllowedAsync(CancellationToken cancellationToken)

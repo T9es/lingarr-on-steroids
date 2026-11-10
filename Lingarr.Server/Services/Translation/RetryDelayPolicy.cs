@@ -22,6 +22,22 @@ internal static class RetryDelayPolicy
     internal static readonly TimeSpan MinimumDelay = TimeSpan.FromSeconds(1);
 
     /// <summary>
+    /// Bounds a delay supplied by a provider, for example a retry hint that asks for ten hours.
+    /// A server hint may extend the wait, but it must never park the worker for longer than
+    /// <see cref="MaximumDelay"/>.
+    /// </summary>
+    /// <param name="delay">The requested delay.</param>
+    internal static TimeSpan Clamp(TimeSpan delay)
+    {
+        if (delay <= TimeSpan.Zero)
+        {
+            return MinimumDelay;
+        }
+
+        return delay >= MaximumDelay ? MaximumDelay : delay;
+    }
+
+    /// <summary>
     /// Returns the next retry delay, never below <see cref="MinimumDelay"/> and never above
     /// <see cref="MaximumDelay"/>.
     /// </summary>

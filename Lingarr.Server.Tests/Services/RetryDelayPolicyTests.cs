@@ -37,6 +37,16 @@ public class RetryDelayPolicyTests
     }
 
     [Fact]
+    public void Clamp_BoundsProviderSuppliedDelays()
+    {
+        Assert.Equal(
+            RetryDelayPolicy.MaximumDelay,
+            RetryDelayPolicy.Clamp(TimeSpan.FromHours(10)));
+        Assert.Equal(TimeSpan.FromSeconds(5), RetryDelayPolicy.Clamp(TimeSpan.FromSeconds(5)));
+        Assert.Equal(RetryDelayPolicy.MinimumDelay, RetryDelayPolicy.Clamp(TimeSpan.Zero));
+    }
+
+    [Fact]
     public void Next_NeverReturnsLessThanTheMinimum()
     {
         Assert.Equal(RetryDelayPolicy.MinimumDelay, RetryDelayPolicy.Next(TimeSpan.Zero, 2));
