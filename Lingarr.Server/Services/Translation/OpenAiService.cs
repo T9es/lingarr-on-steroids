@@ -253,7 +253,7 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
                 }
 
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
-                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+                delay = RetryDelayPolicy.Next(delay, _retryDelayMultiplier);
 
                 _logger.LogWarning(
                     "OpenAI rate limit hit. Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})",
@@ -270,7 +270,7 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
                 }
 
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
-                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+                delay = RetryDelayPolicy.Next(delay, _retryDelayMultiplier);
 
                 _logger.LogWarning(
                     "OpenAI service unavailable. Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})",
@@ -289,7 +289,7 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
                 }
 
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
-                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+                delay = RetryDelayPolicy.Next(delay, _retryDelayMultiplier);
                 
                 _logger.LogWarning(ex, "Network error (Transient). Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})", delay, attempt, _maxRetries);
             }
@@ -352,7 +352,7 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
                     delay, attempt, _maxRetries);
 
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
-                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+                delay = RetryDelayPolicy.Next(delay, _retryDelayMultiplier);
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable || ex.StatusCode == HttpStatusCode.GatewayTimeout || ex.StatusCode == HttpStatusCode.BadGateway)
             {
@@ -369,7 +369,7 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
                     ex.StatusCode, delay, attempt, _maxRetries);
 
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
-                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+                delay = RetryDelayPolicy.Next(delay, _retryDelayMultiplier);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -388,7 +388,7 @@ public class OpenAiService : BaseLanguageService, ITranslationService, IBatchTra
                     delay, attempt, _maxRetries);
 
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
-                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+                delay = RetryDelayPolicy.Next(delay, _retryDelayMultiplier);
             }
             catch (Exception ex)
             {

@@ -141,7 +141,7 @@ public class DeepSeekService : OpenAiService
                     delay, attempt, _maxRetries);
 
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
-                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+                delay = RetryDelayPolicy.Next(delay, _retryDelayMultiplier);
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable || ex.StatusCode == HttpStatusCode.GatewayTimeout || ex.StatusCode == HttpStatusCode.BadGateway)
             {
@@ -156,7 +156,7 @@ public class DeepSeekService : OpenAiService
                     ex.StatusCode, delay, attempt, _maxRetries);
 
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
-                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+                delay = RetryDelayPolicy.Next(delay, _retryDelayMultiplier);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -175,7 +175,7 @@ public class DeepSeekService : OpenAiService
                     delay, attempt, _maxRetries);
 
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
-                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+                delay = RetryDelayPolicy.Next(delay, _retryDelayMultiplier);
             }
             catch (Exception ex)
             {

@@ -172,7 +172,7 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
                 }
 
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
-                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+                delay = RetryDelayPolicy.Next(delay, _retryDelayMultiplier);
 
                 _logger.LogWarning(
                     "429 Too Many Requests. Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})",
@@ -188,7 +188,7 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
                 }
 
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
-                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+                delay = RetryDelayPolicy.Next(delay, _retryDelayMultiplier);
 
                 _logger.LogWarning(
                     "LocalAI service unavailable ({StatusCode}). Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})",
@@ -208,7 +208,7 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
                 }
 
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
-                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+                delay = RetryDelayPolicy.Next(delay, _retryDelayMultiplier);
 
                 _logger.LogWarning(ex, "Network error (Transient). Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})",
                     delay, attempt, _maxRetries);
@@ -268,7 +268,7 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
                     delay, attempt, _maxRetries);
 
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
-                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+                delay = RetryDelayPolicy.Next(delay, _retryDelayMultiplier);
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable ||
                 ex.StatusCode == HttpStatusCode.GatewayTimeout || ex.StatusCode == HttpStatusCode.BadGateway)
@@ -284,7 +284,7 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
                     ex.StatusCode, delay, attempt, _maxRetries);
 
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
-                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+                delay = RetryDelayPolicy.Next(delay, _retryDelayMultiplier);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -303,7 +303,7 @@ public class LocalAiService : BaseLanguageService, ITranslationService, IBatchTr
                     delay, attempt, _maxRetries);
 
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
-                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+                delay = RetryDelayPolicy.Next(delay, _retryDelayMultiplier);
             }
             catch (Exception ex)
             {

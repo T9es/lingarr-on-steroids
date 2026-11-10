@@ -204,7 +204,7 @@ public class NanoGptService : OpenAiService
                     _maxRetries);
 
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
-                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+                delay = RetryDelayPolicy.Next(delay, _retryDelayMultiplier);
             }
             catch (HttpRequestException ex) when (
                 ex.StatusCode == HttpStatusCode.ServiceUnavailable ||
@@ -227,7 +227,7 @@ public class NanoGptService : OpenAiService
                     _maxRetries);
 
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
-                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+                delay = RetryDelayPolicy.Next(delay, _retryDelayMultiplier);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -253,7 +253,7 @@ public class NanoGptService : OpenAiService
                     _maxRetries);
 
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
-                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+                delay = RetryDelayPolicy.Next(delay, _retryDelayMultiplier);
             }
             catch (Exception ex)
             {

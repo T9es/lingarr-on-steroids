@@ -188,7 +188,7 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
 
                 await Task.Delay(effectiveDelay, linked.Token).ConfigureAwait(false);
                 
-                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+                delay = RetryDelayPolicy.Next(delay, _retryDelayMultiplier);
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable || 
                 ex.StatusCode == HttpStatusCode.GatewayTimeout || ex.StatusCode == HttpStatusCode.BadGateway)
@@ -202,7 +202,7 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
                 }
 
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
-                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+                delay = RetryDelayPolicy.Next(delay, _retryDelayMultiplier);
                 
                 _logger.LogWarning(
                     "Gemini service unavailable ({StatusCode}). Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})",
@@ -225,7 +225,7 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
                     delay, attempt, _maxRetries);
 
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
-                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+                delay = RetryDelayPolicy.Next(delay, _retryDelayMultiplier);
             }
             catch (TranslationException)
             {
@@ -477,7 +477,7 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
 
                 await Task.Delay(effectiveDelay, linked.Token).ConfigureAwait(false);
                 
-                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+                delay = RetryDelayPolicy.Next(delay, _retryDelayMultiplier);
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable || 
                 ex.StatusCode == HttpStatusCode.GatewayTimeout || ex.StatusCode == HttpStatusCode.BadGateway)
@@ -495,7 +495,7 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
                     ex.StatusCode, delay, attempt, _maxRetries);
 
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
-                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+                delay = RetryDelayPolicy.Next(delay, _retryDelayMultiplier);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -514,7 +514,7 @@ public class GoogleGeminiService : BaseLanguageService, ITranslationService, IBa
                     delay, attempt, _maxRetries);
 
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
-                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+                delay = RetryDelayPolicy.Next(delay, _retryDelayMultiplier);
             }
             catch (TranslationException)
             {

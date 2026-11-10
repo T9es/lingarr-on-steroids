@@ -241,7 +241,7 @@ if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var us
                 }
 
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
-                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+                delay = RetryDelayPolicy.Next(delay, _retryDelayMultiplier);
                 
                 _logger.LogWarning(
                     "Anthropic rate limit hit. Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})",
@@ -259,7 +259,7 @@ if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var us
                 }
 
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
-                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+                delay = RetryDelayPolicy.Next(delay, _retryDelayMultiplier);
                 
                 _logger.LogWarning(
                     "Anthropic service unavailable ({StatusCode}). Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})",
@@ -279,7 +279,7 @@ if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var us
                 }
 
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
-                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+                delay = RetryDelayPolicy.Next(delay, _retryDelayMultiplier);
                 
                 _logger.LogWarning(ex, "Network error (Transient). Retrying in {Delay}... (Attempt {Attempt}/{MaxRetries})", 
                     delay, attempt, _maxRetries);
@@ -341,7 +341,7 @@ if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var us
                     delay, attempt, _maxRetries);
 
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
-                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+                delay = RetryDelayPolicy.Next(delay, _retryDelayMultiplier);
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable || 
                 ex.StatusCode == HttpStatusCode.GatewayTimeout || ex.StatusCode == HttpStatusCode.BadGateway)
@@ -359,7 +359,7 @@ if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var us
                     ex.StatusCode, delay, attempt, _maxRetries);
 
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
-                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+                delay = RetryDelayPolicy.Next(delay, _retryDelayMultiplier);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -378,7 +378,7 @@ if (_dashboardService != null && jsonResponse.TryGetProperty("usage", out var us
                     delay, attempt, _maxRetries);
 
                 await Task.Delay(delay, linked.Token).ConfigureAwait(false);
-                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+                delay = RetryDelayPolicy.Next(delay, _retryDelayMultiplier);
             }
             catch (Exception ex)
             {

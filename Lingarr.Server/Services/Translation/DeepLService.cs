@@ -1,4 +1,4 @@
-﻿using DeepL;
+using DeepL;
 using Lingarr.Core.Configuration;
 using Lingarr.Server.Exceptions;
 using Lingarr.Server.Interfaces.Services;
@@ -173,7 +173,7 @@ public class DeepLService : BaseTranslationService
                     delay, attempt, _maxRetries);
 
                 await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
-                delay = TimeSpan.FromTicks(delay.Ticks * _retryDelayMultiplier);
+                delay = RetryDelayPolicy.Next(delay, _retryDelayMultiplier);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
